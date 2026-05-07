@@ -1,0 +1,36 @@
+:root {
+  --mp-icon-color: #64DED6;
+}
+
+.mp-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--mp-icon-color);
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.mp-icon-lg { width: 2rem; height: 2rem; }
+.mp-icon-xl { width: 3rem; height: 3rem; }
+
+/* Works when SVGs are inline or loaded as symbols. */
+.mp-icon .icon-main {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mp-icon .icon-soft {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .46;
+}
+.mp-icon .icon-fill {
+  fill: currentColor;
+  stroke: none;
+}

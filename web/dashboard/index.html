@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metriplane — Camera-to-coordinate state infrastructure</title>
+  <meta name="description" content="Metriplane turns ordinary camera video into real-time metric XY object state, zone events, replay logs, and observability streams for robotics and industrial experimentation.">
+  <link rel="stylesheet" href="style.css?v=20260506-theme">
+</head>
+<body class="vt-landing-page">
+
+<!-- ══════════════════════════════════════════════════════════════
+     NAV
+════════════════════════════════════════════════════════════════ -->
+<nav class="lp-nav">
+  <a class="lp-nav-brand" href="index.html">
+    <img src="icons/metriplane-coordinate-grid.svg" alt="">
+    <span class="brand-wordmark">Metri<span class="brand-accent">plane</span></span>
+  </a>
+
+  <div class="lp-nav-links">
+    <a class="lp-nav-link" href="#pipeline">Pipeline</a>
+    <a class="lp-nav-link" href="#features">Features</a>
+    <a class="lp-nav-link" href="#live-state">Live State</a>
+    <a class="lp-nav-link" href="#proof">Technical</a>
+    <a class="lp-nav-link" href="../../docs/schema.md" target="_blank">Schema</a>
+    <a class="lp-nav-link" href="../../docs/INTEGRATIONS.md" target="_blank">Integrations</a>
+  </div>
+
+  <div class="lp-nav-ctas">
+    <a class="lp-nav-link lp-nav-github" href="https://github.com/Miko997/metriplane?tab=readme-ov-file#readme" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;color:var(--mp-text-muted);font-size:13px;font-weight:500;text-decoration:none;transition:color 0.14s,background 0.14s;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      GitHub
+    </a>
+    <a class="btn btn-secondary btn-sm" href="runtime.html" style="text-decoration:none;">Runtime Console</a>
+    <a class="btn btn-primary btn-sm" href="operator.html" style="text-decoration:none;">Operator Setup</a>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════════
+     HERO
+════════════════════════════════════════════════════════════════ -->
+<section class="lp-hero">
+  <div class="lp-hero-eyebrow">
+    <span class="lp-hero-eyebrow-dot"></span>
+    Open Source · Robotics &amp; Industrial
+  </div>
+
+  <h1 class="lp-hero-title">
+    Metri<span class="accent">plane</span>
+  </h1>
+
+  <p class="lp-hero-subtitle">
+    Camera-to-coordinate state infrastructure.
+  </p>
+
+  <p class="lp-hero-desc">
+    Metriplane turns ordinary camera video into real-time metric XY object state,
+    zone events, replay logs, and observability streams for robotics and
+    industrial experimentation.
+  </p>
+
+  <div class="lp-hero-ctas">
+    <a class="btn btn-primary" href="operator.html" style="font-size:14px;padding:10px 22px;min-height:44px;text-decoration:none;">
+      <img src="icons/metriplane-homography-calibration.svg" alt="" width="18" height="18">
+      Open Operator Setup
+    </a>
+    <a class="btn btn-secondary" href="runtime.html" style="font-size:14px;padding:10px 22px;min-height:44px;text-decoration:none;">
+      <img src="icons/metriplane-state-stream.svg" alt="" width="18" height="18">
+      Runtime Console
+    </a>
+    <a class="btn btn-secondary" href="https://github.com/Miko997/metriplane?tab=readme-ov-file#readme" target="_blank" rel="noopener" style="font-size:14px;padding:10px 22px;min-height:44px;text-decoration:none;display:inline-flex;align-items:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="flex-shrink:0;"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+
+  <!-- Mini world-state product card -->
+  <div class="lp-hero-product-card">
+    <div class="lp-hpc-header">
+      <span class="live-dot"></span>
+      <span class="lp-hpc-title">World State &nbsp;·&nbsp; run_id=<span style="color:var(--mp-primary-bright)">abc123</span></span>
+      <span class="lp-hpc-badge">&#9679; LIVE</span>
+    </div>
+    <div class="lp-hpc-body">
+      <!-- Coordinate grid + zones + objects -->
+      <div class="lp-hpc-canvas">
+        <div class="lp-hpc-board">
+          <div class="lp-hpc-axis-x"></div>
+          <div class="lp-hpc-axis-y"></div>
+          <!-- camera FOV wedges -->
+          <div style="position:absolute;top:-2px;left:25%;transform:translateX(-50%);">
+            <div class="lp-hpc-cam-label">cam0</div>
+            <div class="lp-hpc-fov"></div>
+          </div>
+          <div style="position:absolute;top:-2px;left:75%;transform:translateX(-50%);">
+            <div class="lp-hpc-cam-label">cam1</div>
+            <div class="lp-hpc-fov"></div>
+          </div>
+          <!-- zones -->
+          <div class="lp-hpc-zone lp-hpc-zone-a">zone_a</div>
+          <div class="lp-hpc-zone lp-hpc-zone-b">zone_b</div>
+          <!-- objects -->
+          <div class="lp-hpc-obj" style="left:30%;top:55%;">
+            <div class="lp-hpc-obj-label">id=7</div>
+            <div class="lp-hpc-obj-dot"></div>
+          </div>
+          <div class="lp-hpc-obj" style="left:68%;top:38%;animation-delay:0.6s;">
+            <div class="lp-hpc-obj-label">id=12</div>
+            <div class="lp-hpc-obj-dot" style="animation-delay:0.8s;background:#64DED6;box-shadow:0 0 10px rgba(100,222,214,0.6);"></div>
+          </div>
+          <div class="lp-hpc-obj" style="left:52%;top:72%;animation-delay:1.2s;">
+            <div class="lp-hpc-obj-label">id=3</div>
+            <div class="lp-hpc-obj-dot" style="animation-delay:1.4s;background:#3EDD8C;"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Stats column -->
+      <div class="lp-hpc-stats">
+        <div class="lp-hpc-stat">
+          <div class="lp-hpc-stat-label">FPS</div>
+          <div class="lp-hpc-stat-value teal">30.1</div>
+        </div>
+        <div class="lp-hpc-stat">
+          <div class="lp-hpc-stat-label">Objects</div>
+          <div class="lp-hpc-stat-value">3</div>
+        </div>
+        <div class="lp-hpc-stat">
+          <div class="lp-hpc-stat-label">Zones</div>
+          <div class="lp-hpc-stat-value yellow">2 active</div>
+        </div>
+        <div class="lp-hpc-stat">
+          <div class="lp-hpc-stat-label">Cameras</div>
+          <div class="lp-hpc-stat-value">cam0 · cam1</div>
+        </div>
+        <div class="lp-hpc-stat">
+          <div class="lp-hpc-stat-label">Health</div>
+          <div class="lp-hpc-stat-value green">OK</div>
+        </div>
+        <div class="lp-hpc-stat">
+          <div class="lp-hpc-stat-label">Fusion</div>
+          <div class="lp-hpc-stat-value teal">multi</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PIPELINE STRIP
+════════════════════════════════════════════════════════════════ -->
+<section class="lp-pipeline" id="pipeline">
+  <div class="lp-section-eyebrow">Processing Pipeline</div>
+
+  <div class="lp-pipeline-track">
+
+    <div class="lp-pipeline-node">
+      <div class="lp-pipeline-icon-wrap">
+        <img src="icons/metriplane-camera-video.svg" alt="Camera Input" width="32" height="32">
+      </div>
+      <span class="lp-pipeline-label">Camera Input</span>
+    </div>
+
+    <div class="lp-pipeline-arrow"></div>
+
+    <div class="lp-pipeline-node">
+      <div class="lp-pipeline-icon-wrap">
+        <img src="icons/metriplane-detect-markers.svg" alt="Detect Markers" width="32" height="32">
+      </div>
+      <span class="lp-pipeline-label">Detect Markers</span>
+    </div>
+
+    <div class="lp-pipeline-arrow"></div>
+
+    <div class="lp-pipeline-node">
+      <div class="lp-pipeline-icon-wrap">
+        <img src="icons/metriplane-homography-calibration.svg" alt="Homography" width="32" height="32">
+      </div>
+      <span class="lp-pipeline-label">Homography</span>
+    </div>
+
+    <div class="lp-pipeline-arrow"></div>
+
+    <div class="lp-pipeline-node">
+      <div class="lp-pipeline-icon-wrap">
+        <img src="icons/metriplane-metric-xy.svg" alt="Metric XY" width="32" height="32">
+      </div>
+      <span class="lp-pipeline-label">Metric XY</span>
+    </div>
+
+    <div class="lp-pipeline-arrow"></div>
+
+    <div class="lp-pipeline-node">
+      <div class="lp-pipeline-icon-wrap">
+        <img src="icons/metriplane-state-stream.svg" alt="State Stream" width="32" height="32">
+      </div>
+      <span class="lp-pipeline-label">State Stream</span>
+    </div>
+
+  </div>
+
+  <p style="color:var(--mp-text-dim);font-size:12px;text-align:center;margin:0;font-family:var(--mp-font-mono);">
+    camera video → ArUco detection → homography → world XY coordinates → WebSocket / JSONL / Prometheus
+  </p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SYSTEM OVERVIEW
+════════════════════════════════════════════════════════════════ -->
+<section class="lp-sysoverview" id="system-overview">
+  <div class="lp-sysoverview-inner">
+
+    <div class="lp-sysoverview-text">
+      <div class="lp-section-eyebrow" style="text-align:left;margin-bottom:18px;">System overview</div>
+      <h2 class="lp-sysoverview-heading">From camera video to metric world state</h2>
+      <p class="lp-sysoverview-body">
+        Metriplane maps ordinary camera input into real-time XY object state, zones, replay logs,
+        and production observability streams.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:28px;">
+        <a class="btn btn-primary" href="operator.html" style="text-decoration:none;font-size:13px;min-height:40px;padding:9px 20px;">
+          <img src="icons/metriplane-homography-calibration.svg" alt="" width="16" height="16">
+          Open Operator Setup
+        </a>
+        <a class="btn btn-secondary" href="runtime.html" style="text-decoration:none;font-size:13px;min-height:40px;padding:9px 20px;">
+          <img src="icons/metriplane-state-stream.svg" alt="" width="16" height="16">
+          Runtime Console
+        </a>
+      </div>
+    </div>
+
+    <div class="lp-sysoverview-banner">
+      <a href="brand/Metriplane.png" target="_blank" rel="noopener" class="lp-sysoverview-link" aria-label="View full system image">
+        <img
+          src="brand/Metriplane.png"
+          alt="Metriplane full system concept — camera pipeline to world state"
+          class="lp-sysoverview-img"
+          onerror="this.closest('.lp-sysoverview-banner').style.display='none'"
+        >
+        <div class="lp-sysoverview-overlay">View full image →</div>
+      </a>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     FEATURES GRID
+════════════════════════════════════════════════════════════════ -->
+<section id="features">
+  <div class="lp-features">
+    <div class="lp-features-header">
+      <div class="lp-section-eyebrow">Capabilities</div>
+      <h2 class="lp-features-title">Everything you need for spatial state</h2>
+      <p class="lp-features-subtitle">
+        From calibration to live telemetry—all the building blocks for
+        camera-based object tracking pipelines.
+      </p>
+    </div>
+
+    <div class="lp-features-grid">
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-metric-xy.svg" alt="Metric XY Positioning" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Metric XY Positioning</div>
+        <div class="lp-feature-desc">Convert camera detections into real-world planar coordinates.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-multi-camera-fusion.svg" alt="Multi-Camera Fusion" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Multi-Camera Fusion</div>
+        <div class="lp-feature-desc">Combine multiple camera views into one coherent workspace state.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-zones-events.svg" alt="Zones &amp; Events" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Zones &amp; Events</div>
+        <div class="lp-feature-desc">Define workspace zones and emit structured entry, exit, and dwell events.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-state-stream.svg" alt="Real-Time State Stream" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Real-Time State Stream</div>
+        <div class="lp-feature-desc">Stream frame state through WebSocket and JSON outputs.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-replay-logs.svg" alt="Replay &amp; Evidence Logs" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Replay &amp; Evidence Logs</div>
+        <div class="lp-feature-desc">Record deterministic JSONL logs for testing, replay, and audits.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-observability-health.svg" alt="Observability &amp; Health" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Observability &amp; Health</div>
+        <div class="lp-feature-desc">Track FPS, latency, health checks, and pipeline status.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-schema-first.svg" alt="Schema First" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Schema First</div>
+        <div class="lp-feature-desc">Use versioned, validated frame-state schemas for reliable integrations.</div>
+      </div>
+
+      <div class="lp-feature-card">
+        <div class="feature-icon-tile">
+          <img src="icons/metriplane-integration-ready.svg" alt="Integration Ready" width="24" height="24">
+        </div>
+        <div class="lp-feature-title">Integration Ready</div>
+        <div class="lp-feature-desc">Connect APIs, robotics tools, simulation bridges, and external dashboards.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     LIVE STATE PANEL
+════════════════════════════════════════════════════════════════ -->
+<section class="lp-state-section" id="live-state">
+  <div class="lp-section-eyebrow">Live Telemetry</div>
+
+  <div class="lp-state-inner">
+
+    <!-- Left: description + metric tiles -->
+    <div class="lp-state-text">
+      <h2>Real-time world state, always measured</h2>
+      <p>
+        Every frame is a structured snapshot — object IDs, metric XY positions,
+        zone membership, camera telemetry, and health signals delivered over
+        WebSocket with low-latency runtime updates.
+      </p>
+
+      <div class="lp-state-metrics">
+        <div class="lp-state-metric">
+          <div class="lp-state-metric-label">FPS</div>
+          <div class="lp-state-metric-value teal">30.1</div>
+        </div>
+        <div class="lp-state-metric">
+          <div class="lp-state-metric-label">Objects</div>
+          <div class="lp-state-metric-value white">3</div>
+        </div>
+        <div class="lp-state-metric">
+          <div class="lp-state-metric-label">Zones</div>
+          <div class="lp-state-metric-value white">2</div>
+        </div>
+        <div class="lp-state-metric">
+          <div class="lp-state-metric-label">Cameras</div>
+          <div class="lp-state-metric-value white">4</div>
+        </div>
+        <div class="lp-state-metric">
+          <div class="lp-state-metric-label">Latency</div>
+          <div class="lp-state-metric-value teal">6.2 ms</div>
+        </div>
+        <div class="lp-state-metric">
+          <div class="lp-state-metric-label">Health</div>
+          <div class="lp-state-metric-value green">OK</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a class="btn btn-primary" href="runtime.html" style="text-decoration:none;">
+          <img src="icons/metriplane-dashboard-metrics.svg" alt="" width="16" height="16">
+          Open Runtime Console
+        </a>
+        <a class="btn btn-secondary" href="../../docs/frames.md" target="_blank" style="text-decoration:none;">
+          Frame Schema Docs
+        </a>
+      </div>
+    </div>
+
+    <!-- Right: glass terminal panel -->
+    <div class="lp-state-panel">
+      <div class="lp-state-panel-header">
+        <img src="icons/metriplane-state-stream.svg" alt="" width="16" height="16">
+        <span class="lp-state-panel-title">World State · ws://localhost:8765</span>
+        <span class="lp-live-dot"></span>
+        <span style="color:var(--mp-success);font-size:10px;font-weight:700;letter-spacing:.06em;">LIVE</span>
+      </div>
+
+      <div class="lp-state-panel-body">
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">FPS</span>
+          <span class="lp-telem-value teal">30.1</span>
+        </div>
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">Objects</span>
+          <span class="lp-telem-value white">3</span>
+        </div>
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">Zones active</span>
+          <span class="lp-telem-value warn">zone_a · zone_b</span>
+        </div>
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">Cameras</span>
+          <span class="lp-telem-value white">cam0 · cam1 · cam2 · cam3</span>
+        </div>
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">Fusion</span>
+          <span class="lp-telem-value teal">multi-camera</span>
+        </div>
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">Health</span>
+          <span class="lp-telem-value ok">OK</span>
+        </div>
+        <div class="lp-telem-row">
+          <span class="lp-telem-label">Schema</span>
+          <span class="lp-telem-value" style="color:var(--mp-text-muted)">frame_state_v2</span>
+        </div>
+      </div>
+
+      <div class="lp-state-log">
+        <span><span class="ll-ts">09:14:02.041</span> <span class="ll-ok">[OK]</span>     pipeline started · run_id=abc123</span>
+        <span><span class="ll-ts">09:14:02.108</span> <span class="ll-info">[INFO]</span>   cam0 connected · /dev/video0</span>
+        <span><span class="ll-ts">09:14:02.112</span> <span class="ll-info">[INFO]</span>   cam1 connected · /dev/video2</span>
+        <span><span class="ll-ts">09:14:02.340</span> <span class="ll-ok">[OK]</span>     homography loaded · cam0 cam1</span>
+        <span><span class="ll-ts">09:14:02.501</span> <span class="ll-info">[FRAME]</span>  #1 · objects=3 · fps=30.1</span>
+        <span><span class="ll-ts">09:14:02.534</span> <span class="ll-zone">[ZONE]</span>   obj_7 entered zone_a</span>
+        <span><span class="ll-ts">09:14:02.567</span> <span class="ll-obj">[XY]</span>    obj_7 · x=1.24 y=0.88 m</span>
+        <span><span class="ll-ts">09:14:02.600</span> <span class="ll-info">[FUSE]</span>  cam0+cam1 · Δ=0.006 m</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TECHNICAL PROOF
+════════════════════════════════════════════════════════════════ -->
+<section id="proof">
+  <div class="lp-proof">
+    <div class="lp-proof-header">
+      <div class="lp-section-eyebrow">Technical Proof</div>
+      <h2 class="lp-proof-title">Measured, schema-driven, deterministic</h2>
+      <p class="lp-proof-subtitle">
+        Metriplane is built for reproducibility. Every component is instrumented,
+        typed, and tested.
+      </p>
+    </div>
+
+    <div class="lp-proof-grid">
+
+      <div class="lp-proof-card">
+        <img class="lp-proof-card-icon" src="icons/metriplane-replay-logs.svg" alt="Deterministic Replay">
+        <div class="lp-proof-card-title">Deterministic Replay</div>
+        <div class="lp-proof-card-mono">bit-exact JSONL replay<br>SHA256 run checksums</div>
+        <div class="lp-proof-card-desc">Every run is recorded as a JSONL evidence log with content-addressed provenance. Replay is bit-exact.</div>
+      </div>
+
+      <div class="lp-proof-card">
+        <img class="lp-proof-card-icon" src="icons/metriplane-schema-first.svg" alt="Schema First">
+        <div class="lp-proof-card-title">Schema-First Frames</div>
+        <div class="lp-proof-card-mono">frame_state_v2<br>typed · versioned</div>
+        <div class="lp-proof-card-desc">All pipeline output is validated against typed, versioned schemas. No silent schema drift between runs.</div>
+      </div>
+
+      <div class="lp-proof-card">
+        <img class="lp-proof-card-icon" src="icons/metriplane-observability-health.svg" alt="Observability">
+        <div class="lp-proof-card-title">Prometheus Observability</div>
+        <div class="lp-proof-card-mono">fps · latency · health<br>:8000/metrics</div>
+        <div class="lp-proof-card-desc">Per-stage latency, FPS, and health signals exported to Prometheus. Compatible with Grafana dashboards.</div>
+      </div>
+
+      <div class="lp-proof-card">
+        <img class="lp-proof-card-icon" src="icons/metriplane-coordinate-grid.svg" alt="Homography">
+        <div class="lp-proof-card-title">Homography Calibration</div>
+        <div class="lp-proof-card-mono">mapping error &lt; 5 mm<br>ArUco anchor markers</div>
+        <div class="lp-proof-card-desc">Planar homography from ArUco markers. Calibration accuracy is validated and included in the evidence manifest.</div>
+      </div>
+
+      <div class="lp-proof-card">
+        <img class="lp-proof-card-icon" src="icons/metriplane-websocket-json.svg" alt="WebSocket">
+        <div class="lp-proof-card-title">WebSocket JSON API</div>
+        <div class="lp-proof-card-mono">ws://host:8765<br>frame_state JSON</div>
+        <div class="lp-proof-card-desc">Live frame state streamed as structured JSON over WebSocket. Connect any consumer — robots, dashboards, simulators.</div>
+      </div>
+
+      <div class="lp-proof-card">
+        <img class="lp-proof-card-icon" src="icons/metriplane-integration-ready.svg" alt="Integration">
+        <div class="lp-proof-card-title">Integration Ready</div>
+        <div class="lp-proof-card-mono">ROS 2 · Omniverse<br>REST · WebSocket</div>
+        <div class="lp-proof-card-desc">Designed for downstream integration into ROS 2, Nvidia Omniverse, and any custom robotics or simulation stack.</div>
+      </div>
+
+    </div>
+
+    <!-- CTA strip -->
+    <div style="margin-top:48px;padding:32px;background:linear-gradient(135deg,rgba(15,22,27,0.92),rgba(7,13,19,0.92));border:1px solid var(--mp-border);border-radius:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;">
+      <div>
+        <div style="font-family:var(--mp-font-brand);font-size:18px;font-weight:800;letter-spacing:-0.02em;color:var(--mp-text);margin-bottom:6px;">
+          Ready to instrument your workspace?
+        </div>
+        <div style="color:var(--mp-text-muted);font-size:13px;">
+          Start with the guided Operator Setup — calibrate cameras, define zones, and run a live pipeline in minutes.
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;flex-shrink:0;">
+        <a class="btn btn-primary" href="operator.html" style="text-decoration:none;font-size:13px;min-height:40px;padding:9px 20px;">
+          <img src="icons/metriplane-homography-calibration.svg" alt="" width="16" height="16">
+          Open Operator Setup
+        </a>
+        <a class="btn btn-secondary" href="../../docs/development.md" target="_blank" style="text-decoration:none;font-size:13px;min-height:40px;padding:9px 20px;">
+          Developer Docs
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     FOOTER
+════════════════════════════════════════════════════════════════ -->
+<footer class="lp-footer">
+  <div class="lp-footer-brand">
+    Metri<span class="accent">plane</span>
+  </div>
+
+  <div class="lp-footer-links">
+    <a class="lp-footer-link" href="runtime.html">Runtime Console</a>
+    <a class="lp-footer-link" href="operator.html">Operator Setup</a>
+    <a class="lp-footer-link" href="../../docs/schema.md" target="_blank">Schema</a>
+    <a class="lp-footer-link" href="../../docs/INTEGRATIONS.md" target="_blank">Integrations</a>
+    <a class="lp-footer-link" href="../../docs/operator_ui_runbook.md" target="_blank">Runbook</a>
+    <a class="lp-footer-link" href="../../CHANGELOG.md" target="_blank">Changelog</a>
+    <a class="lp-footer-link" href="https://github.com/Miko997/metriplane?tab=readme-ov-file#readme" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:5px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      GitHub
+    </a>
+  </div>
+
+  <div class="lp-footer-copy">v0.1.0 &nbsp;·&nbsp; Camera-to-coordinate state infrastructure</div>
+</footer>
+
+</body>
+</html>

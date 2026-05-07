@@ -1,0 +1,2 @@
+session_jsonl,method,frames_used,samples,rmse_diff_cm,max_abs_diff_cm,pass,cpu_backend,gpu_backend,gpu_device,note
+timing_breakdown_001/session.jsonl,weighted,4387,13161,0.0,0.0,True,cpu_numpy,gpu_cupy,0,

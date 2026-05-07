@@ -1,0 +1,20 @@
+cameras:
+- device: /dev/video0
+  mapping_file: calib/profiles/board_55x40_warehouse_story_v1_fusion/cam0/mapping_raw.yaml
+  name: cam0
+- device: /dev/video2
+  mapping_file: calib/profiles/board_55x40_warehouse_story_v1_fusion/cam1/mapping_raw.yaml
+  name: cam1
+compute:
+  backend: cpu
+fusion:
+  method: kalman
+fusion_enable: true
+metrics_host: 127.0.0.1
+metrics_port: 8000
+profile: board_55x40_warehouse_story_v1_fusion
+record_jsonl: ~/metriplane-runs/board_55x40_warehouse_story_v1_fusion_session.jsonl
+target_fps: 30
+ws_host: 127.0.0.1
+ws_port: 8765
+zones_file: calib/profiles/board_55x40_warehouse_story_v1_fusion/zones.yaml

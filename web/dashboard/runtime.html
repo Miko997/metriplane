@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metriplane — Runtime Console</title>
+  <!-- Runtime Console: moved from index.html -->
+  <link rel="stylesheet" href="style.css?v=20260506-theme">
+</head>
+<body class="vt-page vt-runtime-page">
+
+<!-- ── Left Sidebar ─────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-logo">
+      <img src="icons/metriplane-coordinate-grid.svg" alt="Metriplane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <span class="logo-letter" style="display:none">M</span>
+    </div>
+    <div class="sidebar-brand-text">
+      <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">plane</span></span>
+      <span class="sidebar-brand-sub">Runtime Console</span>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Overview</div>
+    <a href="#live-state" class="nav-item active" data-section="live-state">
+      <span class="nav-icon"><img src="icons/metriplane-state-stream.svg" alt=""></span> Live State
+    </a>
+    <a href="#evidence" class="nav-item" data-section="evidence">
+      <span class="nav-icon"><img src="icons/metriplane-replay-logs.svg" alt=""></span> Evidence
+    </a>
+    <a href="#runbook" class="nav-item" data-section="runbook">
+      <span class="nav-icon"><img src="icons/metriplane-observability-health.svg" alt=""></span> Runbook
+    </a>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Operator</div>
+    <a href="operator.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-homography-calibration.svg" alt=""></span> Setup Wizard
+    </a>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-label">Diagnostics</div>
+    <a href="#runbook" class="nav-item" data-section="runbook">
+      <span class="nav-icon"><img src="icons/metriplane-dashboard-metrics.svg" alt=""></span> Benchmarks
+    </a>
+  </div>
+
+  <!-- Bottom CTA -->
+  <div style="flex:1"></div>
+  <div class="sidebar-cta">
+    <div class="sidebar-cta-title">New to Metriplane?</div>
+    <div class="sidebar-cta-sub">Use the guided wizard to calibrate cameras, define zones, and start a live run.</div>
+    <a href="operator.html" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">Open Operator Setup</a>
+    <a href="../../docs/operator_ui_runbook.md" target="_blank" style="display:block;text-align:center;margin-top:8px;font-size:10px;color:var(--text-muted);text-decoration:none;">View Runbook</a>
+  </div>
+</aside>
+
+<!-- ── Main ─────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Top Status Bar -->
+  <div class="topbar">
+    <span class="topbar-title">Live State</span>
+    <span class="topbar-sub">Real-time fused world state and system telemetry</span>
+
+    <div class="status-chip" id="ws-status-item" data-state="offline">
+      <span class="chip-dot" id="ws-indicator"></span>
+      <span class="chip-label">WebSocket</span>
+      <span class="chip-value" id="ws-status">offline</span>
+    </div>
+    <div class="status-chip" id="health-status-item" data-state="offline">
+      <span class="chip-dot" id="health-indicator"></span>
+      <span class="chip-label">Health</span>
+      <span class="chip-value" id="health-status">runner offline</span>
+    </div>
+    <div class="status-chip" id="metrics-status-item" data-state="offline">
+      <span class="chip-dot" id="metrics-indicator"></span>
+      <span class="chip-label">Metrics</span>
+      <span class="chip-value" id="metrics-status">offline</span>
+    </div>
+    <div class="status-chip" id="manifest-status-item" data-state="idle">
+      <span class="chip-dot" id="manifest-indicator"></span>
+      <span class="chip-label">Evidence</span>
+      <span class="chip-value" id="manifest-status">loading</span>
+    </div>
+  </div>
+
+  <!-- Content Grid -->
+  <div class="content-grid">
+
+    <!-- ── Left: Live State + Runbook ── -->
+    <div class="content-main">
+
+      <!-- Frame summary stats (kept for app.js: frame-id, run-id, schema-version, object-count) -->
+      <div class="panel" id="live-state">
+        <div class="panel-header">
+          <h2>Live State</h2>
+          <span class="panel-subtitle" id="world-update-time">Last update: —</span>
+        </div>
+
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-label">Frame ID</div>
+            <div class="stat-value" id="frame-id">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Run ID</div>
+            <div class="stat-value" id="run-id" style="font-size:13px;word-break:break-all;">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Schema</div>
+            <div class="stat-value" id="schema-version">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Objects</div>
+            <div class="stat-value" id="object-count">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Fusion</div>
+            <div class="stat-value">
+              <span class="fusion-status-badge unknown" id="fusion-status-badge" style="font-size:11px;">UNKNOWN</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detected Objects -->
+        <div class="section-title">Detected Objects</div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr><th>ID</th><th>X (m)</th><th>Y (m)</th><th>Confidence</th></tr>
+            </thead>
+            <tbody id="objects-tbody">
+              <tr>
+                <td colspan="4" class="empty-state">
+                  Waiting for frames
+                  <div class="empty-state-hint">Start a run from Operator Setup to stream live state.</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- World State Visualization -->
+        <div class="section-title">World State Visualization</div>
+        <div class="world-state-container">
+          <div class="fusion-status-bar">
+            <span class="fusion-status-label">Fusion Status</span>
+            <!-- fusion-status-badge also referenced above; this one is the canonical one for app.js -->
+          </div>
+          <div class="world-map-controls">
+            <div class="layer-toggles">
+              <label><input type="checkbox" id="toggle-cam0" checked> cam0 raw</label>
+              <label><input type="checkbox" id="toggle-cam1" checked> cam1 raw</label>
+              <label><input type="checkbox" id="toggle-fused" checked> fused</label>
+              <label><input type="checkbox" id="toggle-trails"> trails</label>
+              <label><input type="checkbox" id="toggle-autofit"> auto-fit</label>
+            </div>
+            <div class="world-map-legend">
+              <div class="legend-item"><span class="legend-icon legend-cam0"></span>cam0</div>
+              <div class="legend-item"><span class="legend-icon legend-cam1"></span>cam1</div>
+              <div class="legend-item"><span class="legend-icon legend-other"></span>other</div>
+              <div class="legend-item"><span class="legend-icon legend-fused"></span>fused</div>
+            </div>
+          </div>
+          <!-- Empty state shown by default; JS hides it and shows canvas when frames arrive -->
+          <div id="world-canvas-empty" class="world-canvas-empty-state">
+            <div class="world-canvas-cam-placeholder" style="top:12%;left:18%">
+              <div class="world-canvas-cam-placeholder-icon">▶</div>
+              <div class="world-canvas-cam-placeholder-label">cam0</div>
+            </div>
+            <div class="world-canvas-cam-placeholder" style="top:12%;right:18%">
+              <div class="world-canvas-cam-placeholder-icon">▶</div>
+              <div class="world-canvas-cam-placeholder-label">cam1</div>
+            </div>
+            <div class="world-canvas-empty-icon">
+              <img src="icons/metriplane-state-stream.svg" alt="">
+            </div>
+            <div class="world-canvas-empty-title">Waiting for world-state frames</div>
+            <div class="world-canvas-empty-sub">
+              No objects are currently detected.<br>
+              Start the runner, connect a camera, or load an evidence replay.
+            </div>
+          </div>
+          <!-- Canvas hidden until live data arrives; toggled by app.js -->
+          <canvas id="world-canvas" width="800" height="600" style="display:none;"></canvas>
+          <div class="world-state-info">
+            <span id="world-object-count">Objects: 0</span>
+          </div>
+        </div>
+
+        <!-- Camera Telemetry -->
+        <div class="section-title">Camera Telemetry</div>
+        <div class="camera-telemetry-grid" id="camera-telemetry">
+          <div class="empty-state">Waiting for frame data</div>
+        </div>
+
+        <!-- Zone Events -->
+        <div class="section-title">Zone Events</div>
+        <div class="events-list" id="zone-events">
+          <div class="empty-state">No events</div>
+        </div>
+      </div>
+
+      <!-- Quick Guide Card -->
+      <div class="panel" id="runbook">
+        <div class="panel-header" style="cursor:pointer;" onclick="document.getElementById('guide-details').toggleAttribute('open');this.querySelector('.guide-chevron').classList.toggle('guide-chevron-closed')">
+          <h2>Quick Guide</h2>
+          <span class="guide-chevron" style="font-size:12px;color:var(--mp-text-dim);margin-right:6px;transition:transform 0.18s;">▾</span>
+          <a href="../../docs/operator_ui_runbook.md" target="_blank" class="refresh-btn" onclick="event.stopPropagation()">Full Runbook</a>
+        </div>
+        <details id="guide-details" open>
+        <summary style="display:none;"></summary>
+        <div class="guide-card">
+          <div class="guide-item">
+            <div class="guide-num">1</div>
+            <div>
+              <div class="guide-title">Understand Live State</div>
+              <div class="guide-desc">The Live State panel streams real-time object positions, zone events, and camera telemetry via WebSocket (:8765). Start a run first to see data.</div>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-num">2</div>
+            <div>
+              <div class="guide-title">Check System Health</div>
+              <div class="guide-desc">The System Health panel (right column) polls the health endpoint (:8000/health). Green = all components OK. Red = check stderr or run doctor.</div>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-num">3</div>
+            <div>
+              <div class="guide-title">Investigate Evidence</div>
+              <div class="guide-desc">The Evidence Manifest table summarises all benchmark results recorded in <code>evidence/manifest.csv</code>. Serve the dashboard from the repo root to load it.</div>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-num">4</div>
+            <div>
+              <div class="guide-title">Configure &amp; Validate</div>
+              <div class="guide-desc">Use the Operator Setup wizard to calibrate cameras, define zones, and start a fusion run — all without direct terminal access beyond starting the runner.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Operator Setup CTA -->
+        <div style="padding:0 20px 20px;display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="operator.html" class="btn btn-primary" style="text-decoration:none;">Open Operator Setup</a>
+          <a href="../../docs/operator_ui_runbook.md" target="_blank" class="btn btn-secondary" style="text-decoration:none;">View Full Runbook</a>
+        </div>
+
+        <!-- Benchmark Commands -->
+        <div class="action-group">
+          <div class="action-group-title">System Checks</div>
+          <div class="action-card">
+            <div class="action-header">
+              <span class="action-title">Doctor</span>
+              <span class="action-badge">copy</span>
+            </div>
+            <div class="action-purpose">Run 8 system health checks</div>
+            <div class="action-command">
+              <code>python -m metriplane.cli doctor</code>
+              <button class="copy-btn" onclick="copyCommand('python -m metriplane.cli doctor')">copy</button>
+            </div>
+          </div>
+          <div class="action-card">
+            <div class="action-header">
+              <span class="action-title">Preflight</span>
+              <span class="action-badge">copy</span>
+            </div>
+            <div class="action-purpose">Check system dependencies</div>
+            <div class="action-command">
+              <code>./tools/mp.sh preflight</code>
+              <button class="copy-btn" onclick="copyCommand('./tools/mp.sh preflight')">copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-group-title">Evidence Collection</div>
+          <div class="action-card">
+            <div class="action-header"><span class="action-title">Deterministic Replay</span><span class="action-badge">copy</span></div>
+            <div class="action-purpose">M9.1: Verify bit-exact replay</div>
+            <div class="action-command"><code>./tools/mp.sh deterministic-replay</code><button class="copy-btn" onclick="copyCommand('./tools/mp.sh deterministic-replay')">copy</button></div>
+          </div>
+          <div class="action-card">
+            <div class="action-header"><span class="action-title">Backpressure Test</span><span class="action-badge">copy</span></div>
+            <div class="action-purpose">M9.2: Graceful degradation under load</div>
+            <div class="action-command"><code>./tools/mp.sh backpressure</code><button class="copy-btn" onclick="copyCommand('./tools/mp.sh backpressure')">copy</button></div>
+          </div>
+          <div class="action-card">
+            <div class="action-header"><span class="action-title">Timing Breakdown</span><span class="action-badge">copy</span></div>
+            <div class="action-purpose">M9.5: Per-stage latency profile</div>
+            <div class="action-command"><code>CONFIG=configs/fusion_health_cam0_local.yaml ./tools/mp.sh timing-breakdown</code><button class="copy-btn" onclick="copyCommand('CONFIG=configs/fusion_health_cam0_local.yaml ./tools/mp.sh timing-breakdown')">copy</button></div>
+          </div>
+          <div class="action-card">
+            <div class="action-header"><span class="action-title">GPU Benchmark</span><span class="action-badge">copy</span></div>
+            <div class="action-purpose">M9.6: CPU vs GPU compute backend</div>
+            <div class="action-command"><code>./tools/mp.sh gpu-benchmark</code><button class="copy-btn" onclick="copyCommand('./tools/mp.sh gpu-benchmark')">copy</button></div>
+          </div>
+        </div>
+        </details><!-- /guide-details -->
+      </div><!-- /panel#runbook -->
+    </div><!-- /content-main -->
+
+    <!-- ── Right: Health + Metrics + Evidence ── -->
+    <div class="content-sidebar">
+
+      <!-- System Health -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>System Health</h2>
+        </div>
+        <div class="health-status">
+          <span class="health-label">Overall</span>
+          <span id="health-overall" class="health-badge badge-neutral">—</span>
+        </div>
+        <div id="health-components" class="health-components">
+          <div class="empty-state">
+            Health endpoint offline
+            <div class="empty-state-hint"><a href="operator.html" style="color:var(--accent)">Run Preflight in Operator Setup</a></div>
+          </div>
+        </div>
+        <div class="panel-footer">
+          <small id="health-timestamp">—</small>
+        </div>
+      </div>
+
+      <!-- Metrics Snapshot -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Metrics Snapshot</h2>
+        </div>
+        <div id="metrics-summary" class="metrics-cards">
+          <div class="empty-state">Metrics offline</div>
+        </div>
+        <details class="metrics-details">
+          <summary>Raw metrics</summary>
+          <pre id="metrics-raw">No data</pre>
+        </details>
+      </div>
+
+      <!-- Evidence Manifest -->
+      <div class="panel" id="evidence">
+        <div class="panel-header">
+          <h2>Evidence Manifest</h2>
+          <button class="refresh-btn" onclick="refreshManifest()">Refresh</button>
+        </div>
+        <!-- Search / filter + result count -->
+        <div class="manifest-search-bar">
+          <input
+            type="search"
+            id="manifest-search"
+            class="manifest-search-input"
+            placeholder="Filter by demo, status, or metric…"
+            oninput="filterManifest(this.value)"
+          >
+          <div class="manifest-result-count" id="manifest-result-count"></div>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table compact">
+            <thead>
+              <tr><th>Demo</th><th>Status</th><th>Value</th></tr>
+            </thead>
+            <tbody id="manifest-tbody">
+              <tr><td colspan="3" class="empty-state">No manifest</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="manifest-note" id="manifest-help" style="display:none;">
+          <small>Serve from repo root or copy manifest.csv to web/dashboard/</small>
+        </div>
+      </div>
+
+    </div><!-- /content-sidebar -->
+  </div><!-- /content-grid -->
+
+  <footer class="footer">
+    Metri<span style="color:var(--mp-primary-bright)">plane</span> v0.1.0 &nbsp;·&nbsp;
+    <a href="index.html">Home</a> &nbsp;·&nbsp;
+    <a href="operator.html">Operator Setup</a> &nbsp;·&nbsp;
+    <a href="../../docs/operator_ui_runbook.md" target="_blank">Runbook</a>
+  </footer>
+
+</div><!-- /main -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js?v=20260506-theme"></script>
+</body>
+</html>

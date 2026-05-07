@@ -1,0 +1,20 @@
+profile: board_55x40_warehouse_story_v1_fusion
+
+ws_host: 0.0.0.0
+ws_port: 8765
+metrics_host: 0.0.0.0
+metrics_port: 8000
+
+# pick a mode that works on any machine for the demo (dummy or replay preferred)
+source_mode: dummy
+record_jsonl: /tmp/health_demo.jsonl
+
+health:
+  enable: true
+
+# If you prefer CLI flags, you can omit this and pass --fault ...
+faults:
+  cam1_disconnect_after_s: 8
+
+health:
+  enabled: true

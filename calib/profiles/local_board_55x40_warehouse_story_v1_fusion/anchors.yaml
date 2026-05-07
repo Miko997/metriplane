@@ -1,0 +1,21 @@
+anchors:
+- id: 0
+  world_xy:
+  - 0.0
+  - 0.0
+- id: 1
+  world_xy:
+  - 0.0
+  - 0.4
+- id: 2
+  world_xy:
+  - 0.55
+  - 0.0
+- id: 3
+  world_xy:
+  - 0.55
+  - 0.4
+board_size:
+  height_m: 0.4
+  width_m: 0.55
+profile: local_board_55x40_warehouse_story_v1_fusion

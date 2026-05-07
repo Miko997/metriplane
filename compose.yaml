@@ -1,0 +1,83 @@
+name: metriplane-core
+
+x-metriplane-base: &metriplane-base
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  environment:
+    METRIPLANE_DATA_DIR: /data
+  ports:
+    - "8765:8765"
+    - "8000:8000"
+  volumes:
+    - vt_data:/data
+    - ./:/app
+    - ./datasets:/data/datasets:ro
+
+services:
+  metriplane_demo:
+    <<: *metriplane-base
+    profiles: ["demo"]
+    command: ["--config", "configs/docker_demo_replay.yaml"]
+
+  metriplane_dummy:
+    <<: *metriplane-base
+    profiles: ["dummy"]
+    command: ["--config", "configs/docker_dummy.yaml"]
+
+  metriplane_dev:
+    <<: *metriplane-base
+    profiles: ["dev"]
+    entrypoint: ["python", "-m", "metriplane.run"]
+    command: ["--config", "configs/docker_dummy.yaml"]
+  metriplane_live:
+    <<: *metriplane-base
+    profiles: ["live"]
+    command: ["--config", "configs/docker_m8_fusion_55x40_live.yaml"]
+
+    # Camera access (Linux)
+    privileged: true
+    user: "0:0"
+
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      # many USB cameras (realsense/orbbec/etc) also need USB bus:
+      - /dev/bus/usb:/dev/bus/usb
+
+    # Optional but very useful: see recordings on host immediately
+    volumes:
+      - vt_data:/data
+      - ./datasets:/data/datasets:ro
+      - ./evidence:/data/evidence
+  metriplane_live_gpu:
+    <<: *metriplane-base
+    profiles: ["gpu"]
+    command: ["--config", "configs/docker_m8_fusion_55x40_live.yaml"]
+
+    # Enable NVIDIA GPU in Docker Compose
+    gpus: all
+
+    # Select the GPU compute backend
+    environment:
+      METRIPLANE_DATA_DIR: /data
+      METRIPLANE_COMPUTE_BACKEND: gpu
+
+    # Camera access (Linux)
+    privileged: true
+    user: "0:0"
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/bus/usb:/dev/bus/usb
+
+    # Optional but useful: write evidence to host
+    volumes:
+      - vt_data:/data
+      - ./datasets:/data/datasets:ro
+      - ./evidence:/data/evidence
+
+volumes:
+  vt_data:

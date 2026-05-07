@@ -1,0 +1,45 @@
+schema_version: "1.0"
+units: meters
+zones:
+  # Split along X into 6 equal-ish vertical slices across a 1.10m x 0.40m board.
+  - name: receiving
+    polygon:
+      - [0.00, 0.00]
+      - [0.183, 0.00]
+      - [0.183, 0.40]
+      - [0.00, 0.40]
+
+  - name: staging
+    polygon:
+      - [0.183, 0.00]
+      - [0.366, 0.00]
+      - [0.366, 0.40]
+      - [0.183, 0.40]
+
+  - name: sorting
+    polygon:
+      - [0.366, 0.00]
+      - [0.549, 0.00]
+      - [0.549, 0.40]
+      - [0.366, 0.40]
+
+  - name: storage
+    polygon:
+      - [0.549, 0.00]
+      - [0.732, 0.00]
+      - [0.732, 0.40]
+      - [0.549, 0.40]
+
+  - name: packing
+    polygon:
+      - [0.732, 0.00]
+      - [0.915, 0.00]
+      - [0.915, 0.40]
+      - [0.732, 0.40]
+
+  - name: shipping
+    polygon:
+      - [0.915, 0.00]
+      - [1.10, 0.00]
+      - [1.10, 0.40]
+      - [0.915, 0.40]

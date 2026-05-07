@@ -1,0 +1,16 @@
+camera_backend: usb
+vision_backend: aruco
+target_fps: 30
+
+# M4
+object_timeout_s: 2.0
+
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+ws_host: 127.0.0.1
+ws_port: 8765
+
+# M5 (optional but recommended)
+# intrinsics_file: calib/camera.yaml
+# mapping_file: calib/mapping.yaml

@@ -1,0 +1,25 @@
+camera_backend: usb
+vision_backend: aruco
+target_fps: 30
+
+# Keep small so Omniverse cubes disappear quickly when marker is gone
+object_timeout_s: 0.5
+
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+ws_host: 127.0.0.1
+ws_port: 8765
+
+# M5
+intrinsics_file: calib/camera.yaml
+mapping_file: calib/mapping.yaml
+
+# M6
+zones_file: calib/zones.yaml
+
+# Export analytics on Ctrl+C
+analytics_out_dir: evidence/analytics/m6_live_001
+
+# Record JSONL for replay/offline analysis
+record_jsonl: evidence/sessions/m6_live_001.jsonl

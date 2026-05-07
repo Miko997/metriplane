@@ -1,0 +1,23 @@
+units: meters
+homography:
+- - 0.002258936317959036
+  - 0.00031372759830022216
+  - -0.20481179733940483
+- - -9.565108118111799e-05
+  - -0.0025677529508938237
+  - 0.7149789599323144
+- - -0.000291357852677856
+  - 0.0010560879033533008
+  - 1.0
+type: homography_v1
+computed_at_unix: 1768247188.3886085
+anchors_file: calib/board_110x40_warehouse_story_v1/anchors.yaml
+anchors_used:
+- 12
+- 18
+- 27
+- 42
+anchors_seen: 4
+anchor_rmse: 1.7377590816876225e-08
+intrinsics_file: calib/camera.yaml
+undistort_points: true

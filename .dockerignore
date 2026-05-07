@@ -1,0 +1,42 @@
+# --- Python / venv ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- Git / IDE ---
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Big local artifacts (DO NOT send into docker build context) ---
+evidence/
+runs/
+datasets/
+ros2_ws/
+build/
+install/
+log/
+*.bag
+*.db
+*.mp4
+*.mov
+*.mkv
+*.avi
+
+# If you keep calibration profiles huge:
+calib/**/_locked_*/
+calib/**/_tmp*/
+
+datasets/*
+!datasets/demo/
+!datasets/demo/**

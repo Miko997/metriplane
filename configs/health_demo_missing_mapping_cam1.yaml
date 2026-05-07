@@ -1,0 +1,15 @@
+profile: board_55x40_warehouse_story_v1_fusion
+
+ws_host: 0.0.0.0
+ws_port: 8765
+metrics_host: 0.0.0.0
+metrics_port: 8000
+
+source_mode: dummy
+record_jsonl: /tmp/health_demo_missing_mapping.jsonl
+
+health:
+  enable: true
+
+# Purposely invalid / missing mapping path for cam1 (how you express this may differ)
+mapping_cam1: calib/DOES_NOT_EXIST.yaml

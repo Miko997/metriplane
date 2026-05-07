@@ -1,0 +1,9 @@
+object_id,total_frames,frames_seen,coverage_pct,continuous_full_session,n_missing_gaps,max_missing_gap_frames,mean_missing_gap_frames,session_duration_s
+0,1796,1796,100.0,True,0,0,0.0,59.992
+1,1796,1771,98.61,False,2,15,12.5,59.992
+12,1796,1655,92.15,False,1,141,141.0,59.992
+17,1796,60,3.34,False,2,1044,868.0,59.992
+2,1796,1796,100.0,True,0,0,0.0,59.992
+3,1796,1796,100.0,True,0,0,0.0,59.992
+4,1796,1607,89.48,False,1,189,189.0,59.992
+7,1796,1564,87.08,False,1,232,232.0,59.992

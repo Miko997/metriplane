@@ -1,0 +1,126 @@
+{
+  "name": "Metriplane Icon Pack",
+  "version": "1.0.0",
+  "color": "#64DED6",
+  "style": "transparent one-color line icons with Metriplane teal, rounded strokes, coordinate-grid details",
+  "formats": [
+    "svg",
+    "png-512"
+  ],
+  "icons": [
+    {
+      "slug": "camera-video",
+      "title": "Camera Video",
+      "svg": "svg/metriplane-camera-video.svg",
+      "png_512": "png-512/metriplane-camera-video.png"
+    },
+    {
+      "slug": "detect-markers",
+      "title": "Detect Markers",
+      "svg": "svg/metriplane-detect-markers.svg",
+      "png_512": "png-512/metriplane-detect-markers.png"
+    },
+    {
+      "slug": "homography-calibration",
+      "title": "Homography Calibration",
+      "svg": "svg/metriplane-homography-calibration.svg",
+      "png_512": "png-512/metriplane-homography-calibration.png"
+    },
+    {
+      "slug": "metric-xy",
+      "title": "Metric XY",
+      "svg": "svg/metriplane-metric-xy.svg",
+      "png_512": "png-512/metriplane-metric-xy.png"
+    },
+    {
+      "slug": "multi-camera-fusion",
+      "title": "Multi-Camera Fusion",
+      "svg": "svg/metriplane-multi-camera-fusion.svg",
+      "png_512": "png-512/metriplane-multi-camera-fusion.png"
+    },
+    {
+      "slug": "zones-events",
+      "title": "Zones and Events",
+      "svg": "svg/metriplane-zones-events.svg",
+      "png_512": "png-512/metriplane-zones-events.png"
+    },
+    {
+      "slug": "state-stream",
+      "title": "State Stream",
+      "svg": "svg/metriplane-state-stream.svg",
+      "png_512": "png-512/metriplane-state-stream.png"
+    },
+    {
+      "slug": "replay-logs",
+      "title": "Replay and Logs",
+      "svg": "svg/metriplane-replay-logs.svg",
+      "png_512": "png-512/metriplane-replay-logs.png"
+    },
+    {
+      "slug": "observability-health",
+      "title": "Observability and Health",
+      "svg": "svg/metriplane-observability-health.svg",
+      "png_512": "png-512/metriplane-observability-health.png"
+    },
+    {
+      "slug": "schema-first",
+      "title": "Schema First",
+      "svg": "svg/metriplane-schema-first.svg",
+      "png_512": "png-512/metriplane-schema-first.png"
+    },
+    {
+      "slug": "integration-ready",
+      "title": "Integration Ready",
+      "svg": "svg/metriplane-integration-ready.svg",
+      "png_512": "png-512/metriplane-integration-ready.png"
+    },
+    {
+      "slug": "object-tracking",
+      "title": "Object Tracking",
+      "svg": "svg/metriplane-object-tracking.svg",
+      "png_512": "png-512/metriplane-object-tracking.png"
+    },
+    {
+      "slug": "coordinate-grid",
+      "title": "Coordinate Grid",
+      "svg": "svg/metriplane-coordinate-grid.svg",
+      "png_512": "png-512/metriplane-coordinate-grid.png"
+    },
+    {
+      "slug": "calibration-target",
+      "title": "Calibration Target",
+      "svg": "svg/metriplane-calibration-target.svg",
+      "png_512": "png-512/metriplane-calibration-target.png"
+    },
+    {
+      "slug": "websocket-json",
+      "title": "WebSocket JSON",
+      "svg": "svg/metriplane-websocket-json.svg",
+      "png_512": "png-512/metriplane-websocket-json.png"
+    },
+    {
+      "slug": "health-monitor",
+      "title": "Health Monitor",
+      "svg": "svg/metriplane-health-monitor.svg",
+      "png_512": "png-512/metriplane-health-monitor.png"
+    },
+    {
+      "slug": "dashboard-metrics",
+      "title": "Dashboard Metrics",
+      "svg": "svg/metriplane-dashboard-metrics.svg",
+      "png_512": "png-512/metriplane-dashboard-metrics.png"
+    },
+    {
+      "slug": "api-bridge",
+      "title": "API Bridge",
+      "svg": "svg/metriplane-api-bridge.svg",
+      "png_512": "png-512/metriplane-api-bridge.png"
+    },
+    {
+      "slug": "floor-state",
+      "title": "Floor State",
+      "svg": "svg/metriplane-floor-state.svg",
+      "png_512": "png-512/metriplane-floor-state.png"
+    }
+  ]
+}

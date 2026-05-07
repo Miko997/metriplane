@@ -1,0 +1,38 @@
+profile: board_110x40_warehouse_story_v1_fusion
+
+camera_backend: usb_multi
+vision_backend: aruco
+target_fps: 30
+object_timeout_s: 1.0
+
+ws_host: 127.0.0.1
+ws_port: 8765
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+# IMPORTANT: your working indices are 0 and 2
+cameras:
+  - name: cam0
+    index: 0
+  - name: cam1
+    index: 2
+
+# Fusion knobs (read by run_fusion.py)
+fusion_enable: true
+fusion_method: kalman
+fusion_meas_sigma: 0.03
+fusion_process_sigma: 0.8
+fusion_timeout_s: 2.0
+
+# Back-compat fusion tuning (so YAML keys don't get silently ignored)
+fusion_meas_sigma: float = 0.03
+fusion_process_sigma: float = 0.8
+fusion_timeout_s: float = 2.0
+fusion_sync_window_s: float | None = None
+
+
+# record fused + raw_per_camera
+record_jsonl: evidence/sessions/m8_fusion_live_001.jsonl
+
+# exclude anchors so fusion metrics focus on moving marker(s)
+exclude_marker_ids: [12, 18, 27, 42]

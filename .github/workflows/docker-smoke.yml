@@ -1,0 +1,26 @@
+name: docker-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show docker versions
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Install python deps for ws proof
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install websockets
+
+      - name: Run docker smoke test (demo profile)
+        working-directory: metriplane-core
+        run: |
+          ./tools/docker_smoke_test.sh

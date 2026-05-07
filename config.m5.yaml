@@ -1,0 +1,18 @@
+camera_backend: usb
+vision_backend: aruco
+target_fps: 30
+
+# Make ghosts disappear faster (demo-friendly)
+object_timeout_s: 0.5
+
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+ws_host: 127.0.0.1
+ws_port: 8765
+
+intrinsics_file: calib/camera.yaml
+mapping_file: calib/mapping.yaml
+
+# M5: only the IDs you actually use in the plane + test marker
+allowed_marker_ids: [7, 12, 18, 27, 42]

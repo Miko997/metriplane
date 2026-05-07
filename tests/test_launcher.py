@@ -1,0 +1,561 @@
+"""
+Tests for Metriplane launcher v2 (metriplane/launcher.py) and CLI subcommands.
+
+Unit tests cover:
+  - CLI help text for all subcommands (start/stop/restart/status/cleanup)
+  - stop / status / cleanup with no state (safe no-ops)
+  - State helpers: save/load/clear
+  - _is_running with known-live and known-dead PIDs
+  - _get_pgid returns a valid pgid for live process
+  - _is_port_in_use with bound / unbound ports
+  - _find_repo_root finds pyproject.toml
+  - _is_vt_safe_to_kill pattern matching
+  - _read_cmdline for current process
+  - PGID stored in state (make_proc_entry)
+  - _wait_for_port_free resolves when nothing holds the port
+
+Integration test (TestStartStatusStop):
+  - start --no-open brings up runner + dashboard on free ports
+  - ports are reachable after start
+  - status reports running
+  - stop clears state AND releases ports
+  - restart works immediately after stop
+  - double start blocked
+"""
+from __future__ import annotations
+
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from metriplane.launcher import (
+    _clear_state,
+    _find_repo_root,
+    _get_pgid,
+    _has_listener,
+    _is_port_in_use,
+    _is_running,
+    _is_vt_safe_to_kill,
+    _load_state,
+    _make_proc_entry,
+    _read_cmdline,
+    _save_state,
+    _wait_for_port_free,
+    cmd_cleanup,
+    cmd_status,
+    cmd_stop,
+)
+from metriplane.cli import main as cli_main
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait_for_port(host: str, port: int, timeout: float = 10.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.3):
+                return True
+        except OSError:
+            time.sleep(0.1)
+    return False
+
+
+# ---------------------------------------------------------------------------
+# CLI --help smoke tests
+# ---------------------------------------------------------------------------
+
+class TestCLIHelp:
+    def test_start_help_exits_zero(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["start", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_stop_help_exits_zero(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["stop", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_stop_help_mentions_force(self, capsys):
+        with pytest.raises(SystemExit):
+            cli_main(["stop", "--help"])
+        out = capsys.readouterr().out
+        assert "--force" in out
+
+    def test_restart_help_exits_zero(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["restart", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_status_help_exits_zero(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["status", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_cleanup_help_exits_zero(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
+            cli_main(["cleanup", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_start_help_mentions_live(self, capsys):
+        with pytest.raises(SystemExit):
+            cli_main(["start", "--help"])
+        out = capsys.readouterr().out
+        assert "--live" in out
+
+    def test_start_help_mentions_no_open(self, capsys):
+        with pytest.raises(SystemExit):
+            cli_main(["start", "--help"])
+        out = capsys.readouterr().out
+        assert "--no-open" in out
+
+    def test_start_help_mentions_operator(self, capsys):
+        with pytest.raises(SystemExit):
+            cli_main(["start", "--help"])
+        out = capsys.readouterr().out
+        assert "--operator" in out
+
+
+# ---------------------------------------------------------------------------
+# stop / status / cleanup with no state
+# ---------------------------------------------------------------------------
+
+class TestNoState:
+    def setup_method(self):
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def test_stop_no_state_returns_zero(self, capsys):
+        rc = cmd_stop()
+        assert rc == 0
+
+    def test_stop_no_state_prints_message(self, capsys):
+        cmd_stop()
+        out = capsys.readouterr().out
+        assert "No launcher state" in out or "cleanup" in out.lower()
+
+    def test_stop_force_no_state_returns_zero(self, capsys):
+        rc = cmd_stop(force=True)
+        assert rc == 0
+
+    def test_status_no_state_returns_zero(self, capsys):
+        rc = cmd_status()
+        assert rc == 0
+
+    def test_status_no_state_prints_port_scan(self, capsys):
+        cmd_status()
+        out = capsys.readouterr().out
+        # Should always show port scan section even without state
+        assert "Runner" in out or "Dashboard" in out or "port scan" in out.lower()
+
+    def test_cleanup_no_state_returns_zero(self, capsys):
+        rc = cmd_cleanup()
+        assert rc == 0
+
+    def test_cleanup_no_state_prints_message(self, capsys):
+        cmd_cleanup()
+        out = capsys.readouterr().out
+        assert "orphan" in out.lower() or "No Metriplane orphans" in out
+
+
+# ---------------------------------------------------------------------------
+# State helpers
+# ---------------------------------------------------------------------------
+
+class TestStateHelpers:
+    def setup_method(self):
+        _clear_state()
+
+    def teardown_method(self):
+        _clear_state()
+
+    def test_load_empty_when_no_file(self):
+        assert _load_state() == {}
+
+    def test_save_and_load(self):
+        _save_state({"runner": {"pid": 99999, "pgid": 99999, "port": 9000}})
+        loaded = _load_state()
+        assert loaded["runner"]["pid"] == 99999
+        assert loaded["runner"]["pgid"] == 99999
+
+    def test_clear_removes_file(self):
+        from metriplane.launcher import _STATE_FILE
+        _save_state({"x": 1})
+        assert _STATE_FILE.exists()
+        _clear_state()
+        assert not _STATE_FILE.exists()
+
+    def test_load_returns_empty_on_corrupt(self, tmp_path, monkeypatch):
+        fake = tmp_path / "state.json"
+        fake.write_text("{NOT JSON}}")
+        import metriplane.launcher as lm
+        orig = lm._STATE_FILE
+        lm._STATE_FILE = fake
+        try:
+            assert _load_state() == {}
+        finally:
+            lm._STATE_FILE = orig
+
+
+# ---------------------------------------------------------------------------
+# _is_running
+# ---------------------------------------------------------------------------
+
+class TestIsRunning:
+    def test_current_process(self):
+        assert _is_running(os.getpid()) is True
+
+    def test_none(self):
+        assert _is_running(None) is False
+
+    def test_dead_pid(self):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        pid = proc.pid
+        proc.kill()
+        proc.wait()
+        time.sleep(0.1)
+        assert _is_running(pid) is False
+
+
+# ---------------------------------------------------------------------------
+# _get_pgid
+# ---------------------------------------------------------------------------
+
+class TestGetPgid:
+    def test_current_process_has_pgid(self):
+        pgid = _get_pgid(os.getpid())
+        assert pgid is not None
+        assert pgid > 0
+
+    def test_dead_pid_returns_none(self):
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        proc.wait()
+        # Give a moment for OS to clean up
+        time.sleep(0.05)
+        pgid = _get_pgid(proc.pid)
+        assert pgid is None
+
+    def test_new_session_pgid_equals_pid(self):
+        """start_new_session=True makes PGID == PID of the new process."""
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            start_new_session=True,
+        )
+        try:
+            pgid = _get_pgid(proc.pid)
+            assert pgid == proc.pid, f"Expected pgid={proc.pid} but got pgid={pgid}"
+        finally:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+
+
+# ---------------------------------------------------------------------------
+# _make_proc_entry
+# ---------------------------------------------------------------------------
+
+class TestMakeProcEntry:
+    def test_stores_pid_and_pgid(self):
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            start_new_session=True,
+        )
+        try:
+            entry = _make_proc_entry(proc)
+            assert entry["pid"] == proc.pid
+            assert entry["pgid"] == proc.pid  # new session: pgid == pid
+        finally:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+
+
+# ---------------------------------------------------------------------------
+# _is_port_in_use / _wait_for_port_free
+# ---------------------------------------------------------------------------
+
+class TestPortHelpers:
+    def test_free_port_not_in_use(self):
+        port = _free_port()
+        assert _is_port_in_use("127.0.0.1", port) is False
+
+    def test_bound_port_in_use(self):
+        """Port is considered in-use only when something is listening (LISTEN state).
+        SO_REUSEADDR allows two sockets to both be in BOUND (non-listen) state,
+        but blocks binding when one is in LISTEN state — matching real server behaviour.
+        """
+        port = _free_port()
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", port))
+        srv.listen(1)  # must be in LISTEN state to block new binds with SO_REUSEADDR
+        try:
+            assert _is_port_in_use("127.0.0.1", port) is True
+        finally:
+            srv.close()
+
+    def test_wait_for_port_free_when_already_free(self):
+        port = _free_port()
+        assert _wait_for_port_free(port, timeout=1.0) is True
+
+    def test_wait_for_port_free_after_release(self):
+        port = _free_port()
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", port))
+
+        # Release in background
+        def _release():
+            time.sleep(0.3)
+            srv.close()
+
+        import threading
+        t = threading.Thread(target=_release)
+        t.start()
+        result = _wait_for_port_free(port, timeout=3.0)
+        t.join()
+        assert result is True
+
+
+# ---------------------------------------------------------------------------
+# _is_vt_safe_to_kill
+# ---------------------------------------------------------------------------
+
+class TestIsVtSafeToKill:
+    def test_runner_service_is_safe(self):
+        assert _is_vt_safe_to_kill("python -m metriplane.runner.service --host 127.0.0.1") is True
+
+    def test_run_fusion_is_safe(self):
+        assert _is_vt_safe_to_kill("/home/user/.venv/bin/python -m metriplane.run_fusion") is True
+
+    def test_unknown_process_not_safe(self):
+        assert _is_vt_safe_to_kill("nginx -g daemon off") is False
+        assert _is_vt_safe_to_kill("postgres -D /var/lib/postgresql") is False
+        assert _is_vt_safe_to_kill("node server.js") is False
+
+    def test_empty_cmdline_not_safe(self):
+        assert _is_vt_safe_to_kill("") is False
+
+
+# ---------------------------------------------------------------------------
+# _read_cmdline
+# ---------------------------------------------------------------------------
+
+class TestReadCmdline:
+    def test_current_process_cmdline_nonempty(self):
+        cmdline = _read_cmdline(os.getpid())
+        assert len(cmdline) > 0
+        assert "python" in cmdline.lower() or "pytest" in cmdline.lower()
+
+    def test_dead_pid_returns_empty(self):
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        proc.wait()
+        time.sleep(0.05)
+        assert _read_cmdline(proc.pid) == ""
+
+
+# ---------------------------------------------------------------------------
+# _find_repo_root
+# ---------------------------------------------------------------------------
+
+class TestFindRepoRoot:
+    def test_finds_pyproject_toml(self):
+        root = _find_repo_root()
+        assert (root / "pyproject.toml").exists()
+
+    def test_returns_path_object(self):
+        assert isinstance(_find_repo_root(), Path)
+
+
+# ---------------------------------------------------------------------------
+# Integration: start → status → stop → port free (no-live, no-open, free ports)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def launcher_env(tmp_path):
+    """
+    Override state file to tmp_path, use free ports, cleanup on exit.
+    """
+    runner_port = _free_port()
+    dash_port = _free_port()
+
+    import metriplane.launcher as lm
+    original_state = lm._STATE_FILE
+    lm._STATE_FILE = tmp_path / "launcher-state.json"
+
+    yield {
+        "runner_port": runner_port,
+        "dash_port": dash_port,
+        "tmp_path": tmp_path,
+    }
+
+    # Guaranteed cleanup: kill anything the test started
+    state = lm._load_state()
+    for key in ("runner", "dashboard", "fusion"):
+        info = state.get(key) or {}
+        pid = info.get("pid")
+        pgid = info.get("pgid") or pid
+        if pid and lm._is_running(pid):
+            try:
+                os.killpg(int(pgid), signal.SIGKILL)
+            except Exception:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+    lm._clear_state()
+    lm._STATE_FILE = original_state
+
+
+class TestStartStatusStop:
+    def test_start_returns_zero(self, launcher_env):
+        from metriplane.launcher import cmd_start
+        rc = cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
+        assert rc == 0
+
+    def test_runner_reachable_after_start(self, launcher_env):
+        from metriplane.launcher import cmd_start
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+        assert _wait_for_port("127.0.0.1", launcher_env["runner_port"], timeout=10.0)
+
+    def test_dashboard_reachable_after_start(self, launcher_env):
+        from metriplane.launcher import cmd_start
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+        assert _wait_for_port("127.0.0.1", launcher_env["dash_port"], timeout=10.0)
+
+    def test_state_has_pgid(self, launcher_env):
+        """State must record pgid for each started process."""
+        import metriplane.launcher as lm
+        from metriplane.launcher import cmd_start
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+        state = lm._load_state()
+        assert "pgid" in state["runner"], f"runner state missing pgid: {state['runner']}"
+        assert "pgid" in state["dashboard"], f"dashboard state missing pgid: {state['dashboard']}"
+        # pgid == pid for new-session processes
+        assert state["runner"]["pgid"] == state["runner"]["pid"]
+        assert state["dashboard"]["pgid"] == state["dashboard"]["pid"]
+
+    def test_status_shows_running(self, launcher_env, capsys):
+        from metriplane.launcher import cmd_start, cmd_status
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+        capsys.readouterr()
+        rc = cmd_status()
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "running" in out.lower()
+
+    def test_stop_clears_state(self, launcher_env):
+        import metriplane.launcher as lm
+        from metriplane.launcher import cmd_start, cmd_stop
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+        assert lm._STATE_FILE.exists()
+        cmd_stop()
+        assert not lm._STATE_FILE.exists()
+
+    def test_stop_releases_runner_port(self, launcher_env):
+        """After stop, runner port must be free (PGID kill works correctly)."""
+        import metriplane.launcher as lm
+        from metriplane.launcher import cmd_start, cmd_stop
+        runner_port = launcher_env["runner_port"]
+
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=runner_port, open_browser=False)
+        assert _wait_for_port("127.0.0.1", runner_port, timeout=5.0)
+
+        cmd_stop()
+
+        freed = _wait_for_port_free(runner_port, timeout=5.0)
+        assert freed, f"Runner port {runner_port} still in use after stop"
+
+    def test_stop_releases_dashboard_port(self, launcher_env):
+        """After stop, dashboard port must be free."""
+        import metriplane.launcher as lm
+        from metriplane.launcher import cmd_start, cmd_stop
+        dash_port = launcher_env["dash_port"]
+
+        cmd_start(live=False, dashboard_port=dash_port,
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+        assert _wait_for_port("127.0.0.1", dash_port, timeout=5.0)
+
+        cmd_stop()
+
+        freed = _wait_for_port_free(dash_port, timeout=5.0)
+        assert freed, f"Dashboard port {dash_port} still in use after stop"
+
+    def test_restart_works_after_stop(self, launcher_env):
+        """Restart must succeed immediately after stop (no port residue)."""
+        from metriplane.launcher import cmd_start, cmd_stop
+        runner_port = launcher_env["runner_port"]
+        dash_port = launcher_env["dash_port"]
+
+        rc1 = cmd_start(live=False, dashboard_port=dash_port,
+                        runner_port=runner_port, open_browser=False)
+        assert rc1 == 0
+
+        cmd_stop()
+
+        # Wait for ports to be free
+        _wait_for_port_free(runner_port, timeout=5.0)
+        _wait_for_port_free(dash_port, timeout=5.0)
+
+        rc2 = cmd_start(live=False, dashboard_port=dash_port,
+                        runner_port=runner_port, open_browser=False)
+        assert rc2 == 0, "Second start should succeed after stop"
+        assert _wait_for_port("127.0.0.1", runner_port, timeout=10.0)
+
+    def test_double_start_blocked(self, launcher_env, capsys):
+        from metriplane.launcher import cmd_start
+        runner_port = launcher_env["runner_port"]
+        dash_port = launcher_env["dash_port"]
+
+        rc1 = cmd_start(live=False, dashboard_port=dash_port,
+                        runner_port=runner_port, open_browser=False)
+        assert rc1 == 0
+
+        capsys.readouterr()
+        rc2 = cmd_start(live=False, dashboard_port=dash_port,
+                        runner_port=runner_port, open_browser=False)
+        assert rc2 != 0
+        out = capsys.readouterr().out
+        assert "already running" in out.lower() or "in use" in out.lower()
+
+    def test_status_shows_port_owners_without_state(self, launcher_env, capsys):
+        """status must report port info even with no state file."""
+        import metriplane.launcher as lm
+        from metriplane.launcher import cmd_start, cmd_stop
+        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
+                  runner_port=launcher_env["runner_port"], open_browser=False)
+
+        # Remove state to simulate orphan scenario
+        lm._clear_state()
+        capsys.readouterr()
+
+        rc = cmd_status()
+        assert rc == 0
+        out = capsys.readouterr().out
+        # Status command should still output runner / port info
+        assert "Runner" in out or "runner" in out.lower()

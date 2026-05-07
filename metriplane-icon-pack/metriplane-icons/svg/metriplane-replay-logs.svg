@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="replay-logs-title replay-logs-desc">
+  <title id="replay-logs-title">Replay and Logs</title>
+  <desc id="replay-logs-desc">Replayable JSONL evidence logs and deterministic state history.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <ellipse cx="32" cy="15" rx="17" ry="6"/>
+  <path d="M15 15v27c0 3.3 7.6 6 17 6s17-2.7 17-6V15"/>
+  <path d="M15 28c0 3.3 7.6 6 17 6s17-2.7 17-6"/>
+  <path d="M15 41c0 3.3 7.6 6 17 6s17-2.7 17-6"/>
+</g>
+<g class="icon-soft">
+  <path d="M25 25 18 32l7 7"/>
+  <path d="M19 32h17c6.2 0 10 3.8 10 9"/>
+</g>
+</svg>

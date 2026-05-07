@@ -1,0 +1,24 @@
+units: meters
+homography:
+- - 0.001898621362167642
+  - -0.0033714136498524897
+  - 0.6890386679180359
+- - 0.004565471745446705
+  - -0.0004873256357499282
+  - -1.4290824268366678
+- - 0.005926275068713635
+  - -0.017040621491845175
+  - 1.0
+type: homography_v1
+computed_at_unix: 1768494202.0707774
+anchors_file: calib/profiles/board_55x40_warehouse_story_v1_fusion/anchors.yaml
+anchors_used:
+- 12
+- 18
+- 27
+- 42
+anchors_seen: 4
+anchor_rmse: 9.424321751780731e-09
+intrinsics_file: calib/profiles/board_55x40_warehouse_story_v1_fusion/cam1/camera.yaml
+undistort_points: true
+profile: board_55x40_warehouse_story_v1_fusion

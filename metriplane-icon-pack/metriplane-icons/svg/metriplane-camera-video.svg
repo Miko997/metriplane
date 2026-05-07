@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="camera-video-title camera-video-desc">
+  <title id="camera-video-title">Camera Video</title>
+  <desc id="camera-video-desc">Ordinary camera video input for the Metriplane pipeline.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <rect x="9.5" y="18" width="30" height="25" rx="5"/>
+  <circle cx="25" cy="30.5" r="7"/>
+  <circle cx="25" cy="30.5" r="2.2"/>
+  <path d="M39.5 25.5 53 18.5v25L39.5 36.5Z"/>
+</g>
+<g class="icon-soft">
+  <path d="M14 47h25"/>
+  <path d="M16 14h20"/>
+  <path d="M48 30.5h5"/>
+</g>
+</svg>

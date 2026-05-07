@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="metric-xy-title metric-xy-desc">
+  <title id="metric-xy-title">Metric XY</title>
+  <desc id="metric-xy-desc">Metric X and Y coordinate plane.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <path d="M14 50V12"/><path d="M14 50h40"/>
+  <path d="M14 12 10 18M14 12l4 6"/>
+  <path d="M54 50l-6-4M54 50l-6 4"/>
+  <circle cx="36" cy="31" r="3.5"/>
+  <path d="M36 31 47 23"/>
+</g>
+<g class="icon-soft">
+  <path d="M22 50V18M30 50V18M38 50V18M46 50V18"/>
+  <path d="M14 42h40M14 34h40M14 26h40M14 18h40"/>
+  <path d="M51 20h3v3"/>
+</g>
+</svg>

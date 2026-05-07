@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="schema-first-title schema-first-desc">
+  <title id="schema-first-title">Schema First</title>
+  <desc id="schema-first-desc">Versioned validated frame-state schemas.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <path d="M18 9h25l9 9v45H18Z"/>
+  <path d="M43 9v10h10"/>
+  <path d="M29 27l-7 7 7 7"/>
+  <path d="M41 27l7 7-7 7"/>
+  <path d="M35 26l-5 16"/>
+</g>
+<g class="icon-soft">
+  <path d="M27 51l4 4 9-11"/>
+  <path d="M24 16h12"/>
+</g>
+</svg>

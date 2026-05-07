@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metriplane — Operator Setup</title>
+  <link rel="stylesheet" href="style.css?v=20260506-theme">
+</head>
+<body class="vt-page vt-operator-page">
+<div class="op-layout">
+
+  <!-- ── Left Sidebar: step list ─────────────────────────────────── -->
+  <aside class="op-sidebar">
+    <div class="op-sidebar-brand">
+      <div class="brand-logo">
+        <img src="icons/metriplane-homography-calibration.svg" alt="Metriplane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <span class="logo-letter" style="display:none">M</span>
+      </div>
+      <div class="brand-info">
+        <span class="brand-name brand-wordmark">Metri<span class="brand-accent">plane</span></span>
+        <span class="brand-sub">Operator Setup</span>
+      </div>
+    </div>
+    <a class="op-back" href="runtime.html">← Runtime Console</a>
+
+    <!-- Active profile banner -->
+    <div id="sidebar-profile-banner" style="padding:8px 14px 6px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border);">
+      <span style="display:block;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;font-weight:600;">Active Profile</span>
+      <span id="sidebar-profile-name" style="color:var(--text-secondary);font-size:11px;word-break:break-all;">none selected</span>
+    </div>
+
+    <!-- Step navigation -->
+    <ul class="step-list" id="step-list">
+      <li class="step-item active" data-step="1"><span class="step-num">1</span><span class="step-label">Environment</span></li>
+      <li class="step-item" data-step="2"><span class="step-num">2</span><span class="step-label">Cameras</span></li>
+      <li class="step-item" data-step="3"><span class="step-num">3</span><span class="step-label">Profile</span></li>
+      <li class="step-item" data-step="4"><span class="step-num">4</span><span class="step-label">Anchors</span></li>
+      <li class="step-item" data-step="5"><span class="step-num">5</span><span class="step-label">Calibrate</span></li>
+      <li class="step-item" data-step="6"><span class="step-num">6</span><span class="step-label">Validate</span></li>
+      <li class="step-item" data-step="7"><span class="step-num">7</span><span class="step-label">Zones</span></li>
+      <li class="step-item" data-step="8"><span class="step-num">8</span><span class="step-label">Config</span></li>
+      <li class="step-item" data-step="9"><span class="step-num">9</span><span class="step-label">Run</span></li>
+      <li class="step-item" data-step="10"><span class="step-num">10</span><span class="step-label">Evidence</span></li>
+    </ul>
+  </aside>
+
+  <!-- ── Right: Horizontal Stepper + Content + Runbook Panel ──────── -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+
+    <!-- Horizontal Stepper -->
+    <nav class="h-stepper" id="h-stepper">
+      <div class="h-step active" data-step="1" onclick="goStep(1)"><div class="h-step-bubble">1</div><span class="h-step-label">Environment</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="2" onclick="goStep(2)"><div class="h-step-bubble">2</div><span class="h-step-label">Cameras</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="3" onclick="goStep(3)"><div class="h-step-bubble">3</div><span class="h-step-label">Profile</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="4" onclick="goStep(4)"><div class="h-step-bubble">4</div><span class="h-step-label">Anchors</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="5" onclick="goStep(5)"><div class="h-step-bubble">5</div><span class="h-step-label">Calibrate</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="6" onclick="goStep(6)"><div class="h-step-bubble">6</div><span class="h-step-label">Validate</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="7" onclick="goStep(7)"><div class="h-step-bubble">7</div><span class="h-step-label">Zones</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="8" onclick="goStep(8)"><div class="h-step-bubble">8</div><span class="h-step-label">Config</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="9" onclick="goStep(9)"><div class="h-step-bubble">9</div><span class="h-step-label">Run</span></div>
+      <div class="h-step-line"></div>
+      <div class="h-step" data-step="10" onclick="goStep(10)"><div class="h-step-bubble">10</div><span class="h-step-label">Export</span></div>
+    </nav>
+
+    <!-- Content + Runbook panel -->
+    <div class="op-body">
+
+      <!-- ── Main step content ──────────────────────────────────── -->
+      <div class="op-main">
+
+        <!-- ── Step 1: Environment ───────────────────────────────── -->
+        <div class="step-panel active" id="step-1">
+          <div class="step-header">
+            <div class="step-header-num">1</div>
+            <div class="step-header-meta">
+              <h2>Environment</h2>
+              <p>Check Python, git, GPU, and system dependencies.</p>
+            </div>
+            <div class="runner-pill" id="runner-pill"><span class="dot"></span><span id="runner-label">runner :9000</span></div>
+            <span class="step-status-badge" id="step-1-badge">idle</span>
+          </div>
+          <div class="notice">The runner service must be running on <code>:9000</code> — start it with <code>./tools/dashboard_runner.sh</code>. Without it, buttons are disabled.</div>
+
+          <div class="section-title">System Info</div>
+          <div id="env-info">
+            <div class="info-row"><span class="ir-label">Python</span><span class="ir-value" id="env-python">—</span></div>
+            <div class="info-row"><span class="ir-label">Interpreter</span><span class="ir-value" id="env-python-exe" style="font-size:11px;word-break:break-all">—</span></div>
+            <div class="info-row"><span class="ir-label">OpenCV</span><span class="ir-value" id="env-cv2">—</span></div>
+            <div class="info-row"><span class="ir-label">Git commit</span><span class="ir-value" id="env-git">—</span></div>
+            <div class="info-row"><span class="ir-label">GPU</span><span class="ir-value" id="env-gpu">—</span></div>
+            <div class="info-row"><span class="ir-label">Repo root</span><span class="ir-value" id="env-root">—</span></div>
+          </div>
+          <div class="notice warn" id="env-cv2-warn" style="display:none;margin-top:8px"></div>
+
+          <div class="btn-row" style="margin-top:14px;">
+            <button class="btn btn-secondary" onclick="opApi('GET','/operator/env').then(d=>renderEnv(d))">Refresh Info</button>
+            <button class="btn btn-primary" onclick="runPreflightDrawer('doctor')">Run Doctor</button>
+            <button class="btn btn-secondary" onclick="runPreflightDrawer('preflight')">Run Preflight</button>
+          </div>
+          <div class="output-log" id="step-1-log"></div>
+          <div class="step-nav">
+            <span></span>
+            <button class="btn btn-primary" onclick="goStep(2)">Next: Cameras →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 2: Cameras ──────────────────────────────────── -->
+        <div class="step-panel" id="step-2">
+          <div class="step-header">
+            <div class="step-header-num">2</div>
+            <div class="step-header-meta">
+              <h2>Cameras</h2>
+              <p>Discover v4l2 devices and assign cam0 / cam1.</p>
+            </div>
+            <span class="step-status-badge" id="step-2-badge">idle</span>
+          </div>
+
+          <div class="btn-row" style="margin-top:4px;">
+            <button class="btn btn-primary" onclick="discoverCameras()">Scan Cameras</button>
+            <span id="cam-scan-status" style="font-size:11px;color:var(--text-muted)"></span>
+          </div>
+          <div id="camera-table-wrapper" style="margin-top:12px;"></div>
+
+          <div class="section-title" style="margin-top:16px;">Selected Cameras</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">cam0 path (required)</label>
+              <input class="form-input" id="cam0-path" placeholder="/dev/video0 or 0" value="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">cam1 path (optional — multi-camera)</label>
+              <input class="form-input" id="cam1-path" placeholder="/dev/video2 or 2">
+            </div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(1)">← Back</button>
+            <button class="btn btn-primary" onclick="saveCamerasGoNext()">Next: Profile →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 3: Profile ──────────────────────────────────── -->
+        <div class="step-panel" id="step-3">
+          <div class="step-header">
+            <div class="step-header-num">3</div>
+            <div class="step-header-meta">
+              <h2>Profile &amp; Board</h2>
+              <p>Create or select a calibration profile with board dimensions.</p>
+            </div>
+            <span class="step-status-badge" id="step-3-badge">idle</span>
+          </div>
+
+          <div class="section-title">Existing Profiles</div>
+          <div id="profile-list" style="margin-bottom:12px;font-size:12px;color:var(--text-muted)">Loading…</div>
+
+          <div class="section-title">Create New Profile</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Profile name (will be prefixed local_)</label>
+              <input class="form-input" id="profile-name" placeholder="my_board_55x40">
+              <span class="form-hint">Letters, numbers, dash, underscore only.</span>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Board width (m)</label>
+              <input class="form-input" id="board-width" type="number" step="0.01" value="0.55" style="width:120px">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Board height (m)</label>
+              <input class="form-input" id="board-height" type="number" step="0.01" value="0.40" style="width:120px">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cameras</label>
+              <select class="form-select" id="profile-cams" style="width:180px">
+                <option value="single">Single (cam0 only)</option>
+                <option value="multi" selected>Multi (cam0 + cam1)</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="createProfile()">Create Profile</button>
+            <button class="btn btn-secondary" onclick="loadProfiles()">Refresh List</button>
+          </div>
+          <div class="output-log" id="step-3-log"></div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(2)">← Back</button>
+            <button class="btn btn-primary" onclick="goStep(4)">Next: Anchors →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 4: Anchors ──────────────────────────────────── -->
+        <div class="step-panel" id="step-4">
+          <div class="step-header">
+            <div class="step-header-num">4</div>
+            <div class="step-header-meta">
+              <h2>Anchor Markers</h2>
+              <p>Define ArUco marker IDs and their world-space positions.</p>
+            </div>
+            <span class="step-status-badge" id="step-4-badge">idle</span>
+          </div>
+          <div class="notice">Anchors are ArUco markers at known physical coordinates. At least 4 required. Corner anchors give the best homography accuracy.</div>
+
+          <div class="form-row" style="margin-top:8px;">
+            <div class="form-group">
+              <label class="form-label">Profile</label>
+              <input class="form-input" id="anchor-profile" placeholder="auto-filled" readonly style="background:var(--bg-0);">
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-end;">
+              <button class="btn btn-secondary" onclick="fillDefaultAnchors()">Fill defaults (corners)</button>
+            </div>
+          </div>
+
+          <div class="anchor-table-wrapper">
+            <table class="anchor-table">
+              <thead><tr><th>ArUco ID</th><th>X (m)</th><th>Y (m)</th><th></th></tr></thead>
+              <tbody id="anchor-tbody"></tbody>
+            </table>
+            <button class="anchor-add-row" onclick="addAnchorRow()">+ Add anchor</button>
+          </div>
+
+          <div class="btn-row" style="margin-top:14px;">
+            <button class="btn btn-primary" onclick="saveAnchors()">Save anchors.yaml</button>
+          </div>
+          <div class="output-log" id="step-4-log"></div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(3)">← Back</button>
+            <button class="btn btn-primary" onclick="goStep(5)">Next: Calibrate →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 5: Calibrate ─────────────────────────────────── -->
+        <div class="step-panel" id="step-5">
+          <div class="step-header">
+            <div class="step-header-num">5</div>
+            <div class="step-header-meta">
+              <h2>Calibrate Homography</h2>
+              <p>Run planar homography calibration for each camera.</p>
+            </div>
+            <span class="step-status-badge" id="step-5-badge">idle</span>
+          </div>
+          <div class="notice">Place all anchor markers on the board within camera view before running. The camera must be readable (green in Step 2).</div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Timeout (s)</label>
+              <input class="form-input" id="calib-timeout" type="number" value="30" min="10" max="120" style="width:80px" onchange="updateCalibPreviews()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Max frames</label>
+              <input class="form-input" id="calib-maxframes" type="number" value="600" min="100" max="2000" style="width:90px" onchange="updateCalibPreviews()">
+            </div>
+          </div>
+
+          <div class="section-title">cam0</div>
+          <div id="calib-cam0-info" class="notice" style="display:none"></div>
+          <div class="cmd-preview" id="calib-cam0-preview"><span class="cmd-label">Command preview</span>—</div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="runCalibrate('cam0')">Calibrate cam0</button>
+          </div>
+          <div class="output-log" id="step-5-cam0-log"></div>
+
+          <div id="calib-cam1-section">
+            <div class="section-title">cam1 (multi-camera)</div>
+            <div class="cmd-preview" id="calib-cam1-preview"><span class="cmd-label">Command preview</span>—</div>
+            <div class="btn-row">
+              <button class="btn btn-primary" onclick="runCalibrate('cam1')">Calibrate cam1</button>
+            </div>
+            <div class="output-log" id="step-5-cam1-log"></div>
+          </div>
+
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(4)">← Back</button>
+            <button class="btn btn-primary" id="calib-next-btn" disabled title="Calibrate required cameras first" onclick="goStep(6)">Next: Validate →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 6: Validate Alignment ────────────────────────── -->
+        <div class="step-panel" id="step-6">
+          <div class="step-header">
+            <div class="step-header-num">6</div>
+            <div class="step-header-meta">
+              <h2>Validate Alignment</h2>
+              <p>Check multi-camera calibration quality in world-space coordinates.</p>
+            </div>
+            <span class="step-status-badge" id="step-6-badge">idle</span>
+          </div>
+          <div class="notice">Requires both cameras calibrated (Step 5). Single-camera mode can skip this step.</div>
+
+          <div id="align-result" class="result-grid" style="display:none"></div>
+          <div class="cmd-preview" id="align-preview"><span class="cmd-label">Command preview (planar-only — no intrinsics required)</span>—</div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="runAlignment()">Validate Alignment (planar)</button>
+            <button class="btn btn-secondary" id="align-full-btn" onclick="runFullAlignment()" title="Requires intrinsics.yaml (calibrate_intrinsics_chessboard.py)">Full Diagnostic (with intrinsics)</button>
+            <button class="btn btn-secondary" onclick="goStep(7)">Skip (single-cam)</button>
+          </div>
+          <div id="align-intrinsics-notice" class="notice warn" style="display:none;margin-top:8px;"></div>
+          <div class="output-log" id="step-6-log"></div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(5)">← Back</button>
+            <button class="btn btn-primary" onclick="goStep(7)">Next: Zones →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 7: Zones ─────────────────────────────────────── -->
+        <div class="step-panel" id="step-7">
+          <div class="step-header">
+            <div class="step-header-num">7</div>
+            <div class="step-header-meta">
+              <h2>Zone Editor</h2>
+              <p>Define spatial zones for object tracking analytics.</p>
+            </div>
+            <span class="step-status-badge" id="step-7-badge">idle</span>
+          </div>
+          <div class="notice">Zones are polygons in world-space (meters). Coordinates must be within board dimensions. Vertex format: <code>[[x1,y1],[x2,y2],…]</code></div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Presets</label>
+              <div class="btn-row" style="margin-top:0">
+                <button class="btn btn-secondary" onclick="applyZonePreset('lr')">Left / Right split</button>
+                <button class="btn btn-secondary" onclick="applyZonePreset('quad')">4 Quadrants</button>
+                <button class="btn btn-secondary" onclick="applyZonePreset('full')">Full board zone</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-title">Zone Definitions</div>
+          <div id="zones-list"></div>
+          <button class="anchor-add-row" onclick="addZoneRow()">+ Add zone</button>
+
+          <div class="section-title" style="margin-top:14px;">YAML Preview</div>
+          <div class="yaml-preview" id="zones-yaml-preview">—</div>
+
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn btn-primary" onclick="saveZones()">Save zones.yaml</button>
+          </div>
+          <div class="output-log" id="step-7-log"></div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(6)">← Back</button>
+            <button class="btn btn-primary" onclick="goStep(8)">Next: Config →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 8: Runtime Config ─────────────────────────────── -->
+        <div class="step-panel" id="step-8">
+          <div class="step-header">
+            <div class="step-header-num">8</div>
+            <div class="step-header-meta">
+              <h2>Runtime Config</h2>
+              <p>Build a local YAML config for your Metriplane session.</p>
+            </div>
+            <span class="step-status-badge" id="step-8-badge">idle</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Mode</label>
+              <select class="form-select" id="cfg-mode" onchange="updateConfigPreview()">
+                <option value="single">Single camera</option>
+                <option value="multi" selected>Multi-camera fusion</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Target FPS</label>
+              <input class="form-input" id="cfg-fps" type="number" value="30" min="5" max="300" style="width:80px" onchange="updateConfigPreview()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Backend</label>
+              <select class="form-select" id="cfg-backend" style="width:110px" onchange="updateConfigPreview()">
+                <option value="cpu" selected>cpu</option>
+                <option value="gpu">gpu (CuPy)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">WS port</label>
+              <input class="form-input" id="cfg-wsport" type="number" value="8765" style="width:90px" onchange="updateConfigPreview()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Metrics port</label>
+              <input class="form-input" id="cfg-metricsport" type="number" value="8000" style="width:90px" onchange="updateConfigPreview()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Record JSONL</label>
+              <select class="form-select" id="cfg-record" style="width:100px" onchange="updateConfigPreview()">
+                <option value="true" selected>yes</option>
+                <option value="false">no</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Config filename (saved to configs/local/)</label>
+              <input class="form-input" id="cfg-filename" placeholder="my_session_local.yaml" style="width:300px" onchange="updateConfigPreview()">
+              <span class="form-hint">Will be saved as configs/local/&lt;name&gt;.yaml</span>
+            </div>
+          </div>
+
+          <div class="section-title">YAML Preview</div>
+          <div class="yaml-preview" id="cfg-yaml-preview">—</div>
+
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn btn-primary" onclick="saveConfig()">Save to configs/local/</button>
+          </div>
+          <div class="output-log" id="step-8-log"></div>
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(7)">← Back</button>
+            <button class="btn btn-primary" onclick="goStep(9)">Next: Run →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 9: Run ────────────────────────────────────────── -->
+        <div class="step-panel" id="step-9">
+          <div class="step-header">
+            <div class="step-header-num">9</div>
+            <div class="step-header-meta">
+              <h2>Run Metriplane</h2>
+              <p>Start and stop the live multi-camera fusion pipeline.</p>
+            </div>
+            <span class="step-status-badge" id="step-9-badge">idle</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Config file</label>
+              <select class="form-select" id="run-config" style="width:320px" onchange="updateRunPreview()">
+                <option value="">— select config —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Duration (s)</label>
+              <input class="form-input" id="run-duration" type="number" value="60" min="5" max="7200" style="width:90px" onchange="updateRunPreview()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Run ID</label>
+              <input class="form-input" id="run-id" placeholder="auto" style="width:180px" onchange="updateRunPreview()">
+            </div>
+          </div>
+          <div class="cmd-preview" id="run-cmd-preview"><span class="cmd-label">Command preview</span>—</div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="run-start-btn" onclick="startFusion()">&#9654; Start</button>
+            <button class="btn btn-danger" id="run-stop-btn" onclick="stopFusion()" disabled>&#9632; Stop</button>
+            <button class="btn btn-secondary" onclick="loadConfigs()">Refresh configs</button>
+          </div>
+
+          <div class="section-title" style="margin-top:16px;">Job Output</div>
+          <div class="output-log visible" id="step-9-log">Waiting for run…</div>
+          <div id="run-failed-notice" class="notice error" style="display:none;">
+            Run failed — check job output for stderr. Fix config or cameras.
+            <a href="#" onclick="goStep(8);return false;" style="color:var(--accent);">← Back to Config</a>
+          </div>
+
+          <div class="section-title">Latest Run Directory</div>
+          <div id="latest-run-info" class="notice">—</div>
+
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(8)">← Back</button>
+            <button class="btn btn-primary" id="step-9-next-export" onclick="goStep(10)">Next: Export →</button>
+          </div>
+        </div>
+
+        <!-- ── Step 10: Export Evidence ───────────────────────────── -->
+        <div class="step-panel" id="step-10">
+          <div class="step-header">
+            <div class="step-header-num">10</div>
+            <div class="step-header-meta">
+              <h2>Export Evidence</h2>
+              <p>Generate zone reports and ID stability CSVs from the latest session.</p>
+            </div>
+            <span class="step-status-badge" id="step-10-badge">idle</span>
+          </div>
+
+          <div class="section-title">Session File</div>
+          <div id="export-session-info" class="notice">Run Step 9 first to generate a session.</div>
+          <div class="form-row" style="margin-top:10px;">
+            <div class="form-group">
+              <label class="form-label">Session JSONL path</label>
+              <input class="form-input" id="export-session-path" placeholder="/home/user/metriplane-runs/run_name/session.jsonl" style="width:420px">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Output prefix</label>
+              <input class="form-input" id="export-prefix" placeholder="operator" style="width:140px" value="operator">
+            </div>
+          </div>
+
+          <div class="section-title">Reports</div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="generateReport('zones')">Generate Zone Report</button>
+            <button class="btn btn-primary" onclick="generateReport('id-stability')">Generate ID Stability Report</button>
+            <button class="btn btn-secondary" onclick="computeChecksum()">Compute SHA256</button>
+          </div>
+          <div class="output-log" id="step-10-log"></div>
+
+          <div class="section-title" style="margin-top:16px;">Output Files</div>
+          <div id="export-files-list" class="notice">—</div>
+
+          <div class="step-nav">
+            <button class="btn btn-secondary" onclick="goStep(9)">← Back</button>
+            <button class="btn btn-green" onclick="goStep(1)">&#8617; Start Over</button>
+          </div>
+        </div>
+
+      <!-- ── Preflight / Doctor Output Drawer (persistent, always visible) ── -->
+      <div class="preflight-drawer" id="preflight-drawer">
+        <div class="preflight-drawer-header" onclick="togglePreflightDrawer()">
+          <div class="preflight-drawer-title">
+            <img src="icons/metriplane-observability-health.svg" alt="" width="16" height="16" style="opacity:0.7;">
+            <span>Preflight &amp; Doctor Output</span>
+            <span class="preflight-drawer-badge" id="preflight-status-badge">idle</span>
+          </div>
+          <button class="preflight-drawer-toggle" id="preflight-toggle-btn" aria-label="Toggle preflight drawer">▾</button>
+        </div>
+        <div class="preflight-drawer-body" id="preflight-drawer-body">
+          <div class="preflight-drawer-actions">
+            <button class="btn btn-primary btn-sm" onclick="runPreflightDrawer('doctor')">
+              <img src="icons/metriplane-observability-health.svg" alt="" width="14" height="14">
+              Run Doctor
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="runPreflightDrawer('preflight')">
+              Run Preflight
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="clearPreflightDrawer()">Clear</button>
+          </div>
+          <div class="preflight-drawer-desc">
+            Checks Python, OpenCV, GPU, git, and 8 system health components.
+            Run before starting calibration or a live fusion session.
+          </div>
+          <pre class="preflight-drawer-output" id="preflight-drawer-output">No output yet — click Run Doctor or Run Preflight above.</pre>
+          <div class="preflight-summary" id="preflight-summary" style="display:none;"></div>
+        </div>
+      </div>
+
+      </div><!-- /op-main -->
+
+      <!-- ── Right: Embedded Runbook Panel ──────────────────────── -->
+      <aside class="op-runbook">
+        <div class="op-runbook-header">
+          <h3>Step Guide</h3>
+          <a href="../../docs/operator_ui_runbook.md" target="_blank" class="refresh-btn btn-sm">Full Runbook</a>
+        </div>
+        <div class="op-runbook-body" id="runbook-panel">
+          <!-- Populated by operator.js updateRunbookPanel() -->
+          <div class="rb-section">
+            <div class="rb-section-label">Purpose</div>
+            <div class="rb-text" id="rb-purpose">Select a step to see its guide.</div>
+          </div>
+          <div class="rb-section">
+            <div class="rb-section-label">Prerequisites</div>
+            <ul class="rb-list" id="rb-prerequisites"></ul>
+          </div>
+          <div class="rb-section">
+            <div class="rb-section-label">What happens</div>
+            <ul class="rb-list" id="rb-happens"></ul>
+          </div>
+          <div class="rb-section">
+            <div class="rb-section-label">Success criteria</div>
+            <div class="rb-text" id="rb-success"></div>
+          </div>
+          <div class="rb-tip" id="rb-tip" style="display:none"></div>
+          <details class="rb-trouble" id="rb-trouble" style="display:none">
+            <summary>Troubleshooting</summary>
+            <div class="rb-trouble-body" id="rb-trouble-body"></div>
+          </details>
+          <a href="../../docs/operator_ui_runbook.md" target="_blank" class="rb-fulllink">Open full runbook →</a>
+        </div>
+      </aside>
+
+    </div><!-- /op-body -->
+  </div><!-- /right flex column -->
+</div><!-- /op-layout -->
+
+<script src="operator.js?v=20260506-theme"></script>
+</body>
+</html>

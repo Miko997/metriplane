@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="object-tracking-title object-tracking-desc">
+  <title id="object-tracking-title">Object Tracking</title>
+  <desc id="object-tracking-desc">Tracked object ID, bounding geometry, and motion state.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <path d="M22 22 36 15l14 7-14 8Z"/>
+  <path d="M22 22v16l14 9 14-9V22"/>
+  <path d="M36 30v17"/>
+  <path d="M13 20v-7h8"/><path d="M51 20v-7h-8"/>
+  <path d="M13 42v7h8"/><path d="M51 42v7h-8"/>
+</g>
+<g class="icon-soft">
+  <path d="M18 32h-8M56 32h-8"/>
+  <path d="M19 52c8 5 23 5 31 0"/>
+</g>
+</svg>

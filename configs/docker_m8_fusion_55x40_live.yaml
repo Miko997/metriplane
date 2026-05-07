@@ -1,0 +1,21 @@
+# configs/docker_m8_fusion_55x40_live.yaml
+profile: board_55x40_warehouse_story_v1_fusion
+
+# MUST bind to 0.0.0.0 in docker
+ws_host: 0.0.0.0
+ws_port: 8765
+metrics_host: 0.0.0.0
+metrics_port: 8000
+
+# IMPORTANT: live camera mode (or omit; default is camera)
+source_mode: camera
+
+# Write artifacts to /data (named volume)
+record_jsonl: /data/evidence/sessions/m8_live.jsonl
+record_video: /data/evidence/videos/m8_live_overlay.mp4
+
+camera_device: /dev/video2
+# or camera_index: 2
+
+health:
+  enabled: true

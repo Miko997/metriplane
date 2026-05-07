@@ -1,0 +1,25 @@
+camera_backend: usb_multi
+vision_backend: aruco
+target_fps: 30
+profile: board_110x40_warehouse_story_v1_fusion
+
+cameras:
+  - name: cam0
+    index: 0
+
+fusion_method: kalman
+fusion:
+  method: kalman
+  meas_sigma: 0.03
+  process_sigma: 0.8
+  timeout_s: 2.0
+  z_world: 0.0
+
+object_timeout_s: 1.0
+exclude_marker_ids: [12,18,27,42]
+
+record_jsonl: evidence/sessions/m8_single_cam0_001.jsonl
+ws_host: 127.0.0.1
+ws_port: 8765
+metrics_host: 127.0.0.1
+metrics_port: 8000

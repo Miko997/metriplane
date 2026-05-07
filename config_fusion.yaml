@@ -1,0 +1,21 @@
+profile: board_55x40_warehouse_story_v1_fusion
+
+camera_backend: usb
+vision_backend: aruco
+target_fps: 30
+
+fusion_enable: true
+
+cameras:
+  - name: cam0
+    index: 0
+  - name: cam1
+    index: 2
+
+ws_host: 127.0.0.1
+ws_port: 8765
+
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+object_timeout_s: 2.0

@@ -1,0 +1,19 @@
+camera_backend: usb
+vision_backend: aruco
+target_fps: 30
+
+# keep short so hallucinations expire fast
+object_timeout_s: 0.6
+
+ws_host: 127.0.0.1
+ws_port: 8765
+
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+intrinsics_file: calib/camera.yaml
+mapping_file: calib/board_110x40_warehouse_story_v1/mapping.yaml
+zones_file: calib/board_110x40_warehouse_story_v1/zones.yaml
+
+analytics_out_dir: evidence/analytics/m6_board_110x40_warehouse_story_v1_live_001
+record_jsonl: evidence/sessions/m6_board_110x40_warehouse_story_v1_live_001.jsonl

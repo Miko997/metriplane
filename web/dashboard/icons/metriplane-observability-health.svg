@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="observability-health-title observability-health-desc">
+  <title id="observability-health-title">Observability and Health</title>
+  <desc id="observability-health-desc">Metrics, dashboards, heartbeats, and system health.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <rect x="11" y="14" width="42" height="38" rx="5"/>
+  <path d="M17 40l7-9 6 5 5-15 8 20 6-8"/>
+</g>
+<g class="icon-soft">
+  <path d="M17 46h34"/><path d="M17 34h5M17 26h5"/>
+  <path d="M24 14v38M38 14v38"/>
+  <circle cx="49" cy="21" r="2"/>
+</g>
+</svg>

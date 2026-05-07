@@ -1,0 +1,22 @@
+test_marker_id: 7
+points:
+  - name: p00
+    world_xy: [0.143, 0.143]
+  - name: p10
+    world_xy: [0.275, 0.143]
+  - name: p20
+    world_xy: [0.408, 0.143]
+
+  - name: p01
+    world_xy: [0.143, 0.200]
+  - name: p11
+    world_xy: [0.275, 0.200]
+  - name: p21
+    world_xy: [0.408, 0.200]
+
+  - name: p02
+    world_xy: [0.143, 0.258]
+  - name: p12
+    world_xy: [0.275, 0.258]
+  - name: p22
+    world_xy: [0.408, 0.258]

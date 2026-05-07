@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="zones-events-title zones-events-desc">
+  <title id="zones-events-title">Zones and Events</title>
+  <desc id="zones-events-desc">Tracked zones and event triggers on a metric floor plane.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <rect x="10" y="15" width="22" height="19" rx="2" stroke-dasharray="4 3"/>
+  <rect x="32" y="30" width="22" height="19" rx="2" stroke-dasharray="4 3"/>
+  <path d="M13 45h8l3-7 5 13 4-9h9l3-7 5 12"/>
+</g>
+<g class="icon-soft">
+  <path d="M15 25h12M38 40h12"/>
+  <circle cx="21" cy="24" r="2"/><circle cx="43" cy="39" r="2"/>
+</g>
+</svg>

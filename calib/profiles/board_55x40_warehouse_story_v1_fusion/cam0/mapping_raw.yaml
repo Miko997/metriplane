@@ -1,0 +1,24 @@
+units: meters
+homography:
+- - 0.0005159405470760446
+  - 0.002775733717069821
+  - -0.3883058110559238
+- - 0.0019611898159043947
+  - -0.00045326148011203487
+  - -0.20340868321730415
+- - -0.0003104885316986924
+  - 0.001388535166379153
+  - 0.9999999999999999
+type: homography_v1
+computed_at_unix: 1777440602.6893258
+anchors_file: <repo>/calib/profiles/board_55x40_warehouse_story_v1_fusion/anchors.yaml
+anchors_used:
+- 0
+- 1
+- 2
+- 3
+anchors_seen: 4
+anchor_rmse: 9.424321602570309e-09
+intrinsics_file: null
+undistort_points: false
+profile: null

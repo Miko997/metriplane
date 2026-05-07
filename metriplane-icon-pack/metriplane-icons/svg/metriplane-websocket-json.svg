@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="websocket-json-title websocket-json-desc">
+  <title id="websocket-json-title">WebSocket JSON</title>
+  <desc id="websocket-json-desc">Real-time JSON/WebSocket output stream.</desc>
+  <style>:root { color: #64DED6; }
+.icon-main { fill: none; stroke: currentColor; stroke-width: 2.35; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.icon-soft { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .46; vector-effect: non-scaling-stroke; }
+.icon-fill { fill: currentColor; stroke: none; }</style>
+  <g class="icon-main">
+  <path d="M20 18 12 26l8 8"/>
+  <path d="M44 18l8 8-8 8"/>
+  <path d="M31 15 25 37"/>
+  <circle cx="32" cy="47" r="3.5"/>
+  <path d="M32 43.5V39"/>
+</g>
+<g class="icon-soft">
+  <path d="M22 45c7-7 17-7 24 0"/>
+  <path d="M17 39c10-10 27-10 37 0"/>
+  <path d="M13 33c13-13 35-13 48 0"/>
+</g>
+</svg>

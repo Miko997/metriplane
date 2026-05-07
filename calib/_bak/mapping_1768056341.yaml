@@ -1,0 +1,23 @@
+units: meters
+homography:
+- - 0.0008246648339545642
+  - -0.0016206086702663287
+  - -0.033940393358182726
+- - 1.0277701653776005e-05
+  - -0.001114362145153043
+  - 0.16179391534283383
+- - 0.00016607189300995014
+  - -0.0055091248184494885
+  - 1.0
+type: homography_v1
+computed_at_unix: 1768000015.1916227
+anchors_file: calib/anchors.yaml
+anchors_used:
+- 12
+- 18
+- 27
+- 42
+anchors_seen: 4
+anchor_rmse: 1.7377591040598204e-08
+intrinsics_file: calib/camera.yaml
+undistort_points: true

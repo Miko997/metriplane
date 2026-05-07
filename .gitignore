@@ -1,0 +1,40 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Metriplane outputs
+runs/
+evidence/
+*.jsonl
+*.csv
+*.log
+*.mp4
+*.png
+
+# system
+.env
+.DS_Store
+metriplane-omniverse-ext/
+metriplane-omniverse-ext/
+metriplane.egg-info/
+
+# Evidence inventory files are tracked; raw evidence artifacts stay ignored
+!evidence/
+!evidence/manifest.csv
+!evidence/checksums.txt
+
+# Keep raw evidence outputs out of Git
+evidence/experiments/
+evidence/runs/
+evidence/**/*.jsonl
+evidence/**/*.mp4
+evidence/**/*.png
+evidence/**/*.jpg
+
+# Local machine-specific configs
+configs/*_local.yaml
+
+# Keep the small CI replay fixture; do not unignore run/session JSONL artifacts elsewhere.
+!tests/data/
+!tests/data/sample_session.jsonl

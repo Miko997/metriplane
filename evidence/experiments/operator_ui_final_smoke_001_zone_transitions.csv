@@ -1,0 +1,3 @@
+from_zone,to_zone,count
+left,right,7
+right,left,7

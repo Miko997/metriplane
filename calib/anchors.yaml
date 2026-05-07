@@ -1,0 +1,9 @@
+anchors:
+  - id: 12
+    world_xy: [0.000, 0.000]
+  - id: 18
+    world_xy: [0.550, 0.000]
+  - id: 27
+    world_xy: [0.550, 0.400]
+  - id: 42
+    world_xy: [0.000, 0.400]
