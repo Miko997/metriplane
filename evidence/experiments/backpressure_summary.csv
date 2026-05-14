@@ -1,0 +1,2 @@
+duration_s,input_hz,detect_ms,queue_max,policy,frames_generated,frames_accepted,drops_total,detect_processed,published,max_queue_depth,mean_latency_ms,p50_latency_ms,p95_latency_ms,pass
+30.0,120.0,30.0,5,KEEP_LATEST,3600,3600,2605,995,995,5,50.891435857459754,50.87301600724459,69.83044202206656,true

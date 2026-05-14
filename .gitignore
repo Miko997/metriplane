@@ -19,10 +19,11 @@ metriplane-omniverse-ext/
 metriplane-omniverse-ext/
 metriplane.egg-info/
 
-# Evidence inventory files are tracked; raw evidence artifacts stay ignored
+# Evidence inventory and small Paper B artifacts are tracked; raw outputs stay ignored.
 !evidence/
 !evidence/manifest.csv
 !evidence/checksums.txt
+!evidence/CHECKSUMS.sha256
 
 # Keep raw evidence outputs out of Git
 evidence/experiments/
@@ -32,9 +33,18 @@ evidence/**/*.mp4
 evidence/**/*.png
 evidence/**/*.jpg
 
+!evidence/experiments/
+!evidence/experiments/*.csv
+!evidence/experiments/*.md
+!evidence/experiments/*.json
+!evidence/experiments/*.sha256
+
 # Local machine-specific configs
 configs/*_local.yaml
 
 # Keep the small CI replay fixture; do not unignore run/session JSONL artifacts elsewhere.
 !tests/data/
 !tests/data/sample_session.jsonl
+
+# Local run output accidentally created as literal tilde directory
+/~/

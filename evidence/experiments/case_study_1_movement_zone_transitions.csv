@@ -1,0 +1,13 @@
+from_zone,to_zone,count
+bl,br,19
+bl,tl,5
+bl,tr,6
+br,bl,22
+br,tl,7
+br,tr,3
+tl,bl,5
+tl,br,10
+tl,tr,13
+tr,bl,3
+tr,br,3
+tr,tl,16

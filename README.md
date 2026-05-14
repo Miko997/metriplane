@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/assets/metriplane.png" alt="Metriplane" width="760">
+  <img src="docs/assets/metriplane.png" alt="MetriPlane" width="760">
 </p>
 
-<h1 align="center">Metriplane</h1>
+<h1 align="center">MetriPlane</h1>
 
 <p align="center">
   <strong>Turn ordinary cameras into metric object-state streams — ArUco + planar homography → real-time world-coordinate tracking and zone analytics.</strong>
@@ -23,14 +23,21 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
   <a href="#operator-dashboard">Operator Dashboard</a> ·
-  <a href="#evidence--benchmarks">Evidence</a> ·
+  <a href="#public-release">Release</a> ·
+  <a href="#paper-b-benchmark-reproducibility">Evidence</a> ·
   <a href="#installation">Setup</a> ·
   <a href="#documentation">Docs</a>
 </p>
 
 ---
 
-## Why Metriplane?
+## Public release
+
+Paper B canonical release tag: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1). Initial public release: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0). For the Paper B reproducibility package, see [`ARTIFACTS.md`](ARTIFACTS.md), the full evidence manifest at [`evidence/manifest.csv`](evidence/manifest.csv), and the compact evidence index at [`docs/eval/evidence_index.md`](docs/eval/evidence_index.md).
+
+---
+
+## Why MetriPlane?
 
 | Feature | What it means |
 |---|---|
@@ -42,7 +49,7 @@
 | 🎞️ **Deterministic replay** | Bit-exact JSONL replay for regression testing and demos |
 | 🖥️ **Operator dashboard** | Browser-based wizard: scan cameras → calibrate → run → export |
 | 🐳 **Docker ready** | One-command `docker-compose up` demo — no camera needed |
-| 🔬 **Evidence-backed** | All benchmark claims backed by CSV artifacts in `evidence/` |
+| 🔬 **Evidence-backed** | Benchmark claims backed by evidence artifacts, manifest rows, and checksums |
 | ⚡ **GPU-optional** | CuPy backend for large workloads; CPU is default for small N (see [GPU Statement](#gpu-statement)) |
 
 ---
@@ -52,7 +59,7 @@
 The browser-based Operator Dashboard guides you through every step — environment check, camera scan, calibration, zone drawing, live fusion, and session export — with no command-line required after initial setup.
 
 <p align="center">
-  <img src="docs/assets/Operator.png" alt="Metriplane Operator Dashboard" width="900">
+  <img src="docs/assets/Operator.png" alt="MetriPlane Operator Dashboard" width="900">
 </p>
 
 **Start the dashboard:**
@@ -73,29 +80,29 @@ Full runbook: [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) · Mu
 <tr>
 <td width="50%" valign="top">
 <a href="https://www.youtube.com/watch?v=X4nyYcNFQhM">
-  <img src="docs/assets/demo1.jpg" alt="Metriplane Demo 1" width="100%">
+  <img src="docs/assets/demo1.jpg" alt="MetriPlane camera-first planar tracking demo" width="100%">
 </a>
-<br><b>Demo 1</b>
+<br><b>Camera-first planar tracking</b>
 </td>
 <td width="50%" valign="top">
 <a href="https://www.youtube.com/watch?v=q20j5-Owd4w">
-  <img src="docs/assets/demo2.jpg" alt="Metriplane Demo 2" width="100%">
+  <img src="docs/assets/demo2.jpg" alt="MetriPlane metric mapping demo" width="100%">
 </a>
-<br><b>Demo 2</b>
+<br><b>Metric mapping workflow</b>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <a href="https://www.youtube.com/watch?v=xfuW-MVuphE">
-  <img src="docs/assets/demo3.jpg" alt="Metriplane Demo 3" width="100%">
+  <img src="docs/assets/demo3.jpg" alt="MetriPlane multi-camera fusion demo" width="100%">
 </a>
-<br><b>Demo 3</b>
+<br><b>Multi-camera fusion</b>
 </td>
 <td width="50%" valign="top">
 <a href="https://www.youtube.com/watch?v=tQvOO5kANqw">
-  <img src="docs/assets/demo4.jpg" alt="Metriplane Demo 4" width="100%">
+  <img src="docs/assets/demo4.jpg" alt="MetriPlane zone analytics demo" width="100%">
 </a>
-<br><b>Demo 4</b>
+<br><b>Zone analytics and streaming</b>
 </td>
 </tr>
 </table>
@@ -115,10 +122,12 @@ pip install -e .
 ### Option B: Docker (fastest start)
 
 ```bash
-./tools/docker_demo_up.sh            # start backend (replays pre-recorded session)
+./tools/docker_demo_up.sh            # start dummy-mode backend
 curl http://localhost:8000/health | jq
 ./tools/docker_clean.sh              # clean up
 ```
+
+Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim.
 
 See [`docker/docker_quickstart.md`](docker/docker_quickstart.md) for live-camera mode and GPU pass-through.
 
@@ -163,23 +172,26 @@ USB/RTSP Camera → ArUco Detection → Planar Mapping → Fusion → Tracking/Z
 
 ---
 
-## Evidence & Benchmarks
+## Paper B benchmark reproducibility
 
-All benchmark results are in `evidence/` with SHA256 checksums. See [`evidence/manifest.csv`](evidence/manifest.csv).
+All Paper B benchmark claims are anchored to the current public evidence campaign. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv). The canonical Paper B evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md).
 
-| Feature | Artifact | Key result |
-|---|---|---|
-| Deterministic replay | `evidence/experiments/replay_determinism.csv` | 301 frames, 0.0 cm max diff, 0 mismatches |
-| Backpressure | `evidence/experiments/backpressure_summary.csv` | 120 Hz load, queue_max=5, pass=true |
-| Mapping accuracy | `evidence/experiments/mapping_error_001.csv` | mean 0.63 cm, max 1.07 cm (N=9 points) |
-| ID stability (static) | `evidence/experiments/id_stability_001.csv` | 100% coverage, 0 gaps, 4384 frames |
-| ID stability (motion) | `evidence/experiments/id_stability_movement_001.csv` | ≥97.4% coverage, 87608 frames |
-| Latency (detect, p95) | `evidence/experiments/latency_summary.csv` | cam0: 1.50 ms, cam1: 1.72 ms |
-| Fusion jitter | `evidence/experiments/fusion_jitter_001.csv` | jitter_std 0.07–0.23 mm |
-| GPU vs CPU | `evidence/experiments/gpu_benchmark_001.csv` | CPU faster at all tested N (1–1000 objects) |
-| CPU/GPU equivalence | `evidence/experiments/compute_equivalence_001.csv` | 4387 frames, rmse_diff=0.0, max_diff=0.0 |
+| Paper result | Reported value | Direct artifact | Regenerate / verify |
+|---|---:|---|---|
+| Latency / update rate | 4,387 timing samples; detect.cam0 p95 1.242 ms; detect.cam1 p95 1.684 ms; fuse p95 0.184 ms; non-pacing pipeline p95 ≈3.55 ms | [`latency_summary.csv`](evidence/experiments/latency_summary.csv), [`latency_summary.md`](docs/eval/latency_summary.md) | `./tools/mp.sh timing-breakdown` |
+| Mapping error | 0.63 cm mean; 1.07 cm max; 9 grid points | [`mapping_error_001.csv`](evidence/experiments/mapping_error_001.csv) | `python benchmarks/run_mapping_error.py --help` |
+| Static fiducial continuity | IDs 4, 7, and 12: 100.0% coverage over 4,387 frames; 0 missing gaps | [`id_stability_001.csv`](evidence/experiments/id_stability_001.csv) | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_001.csv` |
+| Motion fiducial continuity | 98.39-99.25% primary-marker coverage over 88,475 frames; max gap 533 frames | [`id_stability_movement_001.csv`](evidence/experiments/id_stability_movement_001.csv), [`stability_summary.md`](docs/eval/stability_summary.md) | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_movement_001.csv` |
+| Replay determinism | 302 frames; 906 object pairs; 0.0 cm max positional difference; 0 event mismatches | [`replay_determinism.csv`](evidence/experiments/replay_determinism.csv), [`manifest.csv`](evidence/manifest.csv) | `./tools/mp.sh deterministic-replay` |
+| Backpressure / overload behavior | 120 Hz synthetic input; queue_max=5; KEEP_LATEST; 3,600 generated; 995 published; 2,605 dropped; p95 latency 69.830 ms | [`backpressure_summary.csv`](evidence/experiments/backpressure_summary.csv), [`backpressure_001.csv`](evidence/experiments/backpressure_001.csv) | `./tools/mp.sh backpressure` |
+| Fusion jitter | 0.067-0.080 mm jitter std; 100.0% coverage; absolute fused accuracy not measured | [`fusion_jitter_001.csv`](evidence/experiments/fusion_jitter_001.csv), [`benchmark_summary.md`](docs/eval/benchmark_summary.md) | `python benchmarks/run_fusion_jitter.py <session.jsonl> --out evidence/experiments/fusion_jitter_001.csv` |
+| CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl <session.jsonl> --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
+| CPU/GPU fusion performance | GPU backend correct but slower than CPU for tested N=1-1000 fusion-compute workloads; CPU remains default for current workloads | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | `./tools/mp.sh gpu-benchmark` |
+| Zone dwell / transitions | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | `python tools/zones_report_jsonl.py <session.jsonl> --out evidence/experiments --prefix case_study_1_movement` |
+| Docker / demo proof | Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | `./tools/docker_demo_up.sh` |
+| Operator UI smoke evidence | Operator UI final smoke: 10-step workflow passed; 1,797 frames; analytics exported | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md) | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
 
-Full evidence docs: [`docs/eval/evidence_matrix.md`](docs/eval/evidence_matrix.md) · [`docs/eval/evidence_index.md`](docs/eval/evidence_index.md)
+For a compact artifact index, see [ARTIFACTS.md](ARTIFACTS.md). For the full evidence manifest, see [`evidence/manifest.csv`](evidence/manifest.csv).
 
 ---
 
@@ -297,7 +309,7 @@ python -m metriplane.cli doctor                # import + dependency check
 ./tools/mp.sh gpu-benchmark                    # CPU vs GPU performance
 
 # Docker
-./tools/docker_demo_up.sh                      # start replay demo
+./tools/docker_demo_up.sh                      # start dummy-mode Docker demo
 ./tools/docker_live_up.sh                      # start live camera mode
 ./tools/docker_stop.sh                         # stop containers
 ```
@@ -347,7 +359,7 @@ METRIPLANE_TIMING=1                    # enable per-stage timing
 
 ### GPU Statement
 
-Metriplane includes an optional CuPy GPU backend for fusion matrix operations. **In tested workloads (N=1–1000 objects), the CPU backend is faster than GPU** due to per-frame transfer overhead at small vector sizes. The GPU backend is available for larger workloads and future use.
+MetriPlane includes an optional CuPy GPU backend for fusion compute. The current public `gpu_benchmark_001.csv` includes real `gpu_cupy` timing rows and shows the GPU backend is numerically valid but slower than CPU for the tested N=1-1000 fusion-compute workloads. CPU remains the default backend for current workloads; GPU remains optional for larger future batched workloads. This benchmark covers fusion compute only, not camera capture, ArUco detection, mapping, WebSocket streaming, JSONL recording, or full-pipeline acceleration.
 
 Measured results: [`docs/gpu_compute_backend.md`](docs/gpu_compute_backend.md) · [`evidence/experiments/gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv)
 
@@ -385,4 +397,4 @@ MIT License — see [LICENSE](LICENSE).
 
 ---
 
-*Metriplane — initial public release*
+*MetriPlane — Paper B canonical evidence release*

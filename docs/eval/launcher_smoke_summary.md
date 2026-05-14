@@ -9,7 +9,7 @@
 
 ## What Was Validated
 
-The Metriplane one-command launcher (`metriplane start/stop/restart/cleanup` and
+The MetriPlane one-command launcher (`metriplane start/stop/restart/cleanup` and
 `tools/start_metriplane.sh`) was validated end-to-end on the development machine
 with live 2-camera fusion:
 
@@ -42,7 +42,7 @@ The one-command launcher contributes to the RQ1 productization value argument:
 
 This directly compares favorably against sensor-heavy approaches where operator
 setup requires hardware configuration, driver installation, and multi-step service
-startup. Metriplane reduces setup to one command from a terminal.
+startup. MetriPlane reduces setup to one command from a terminal.
 
 ### RQ2 — Architectural choices for extensibility, integration, and adoption
 
@@ -55,7 +55,7 @@ The launcher architecture demonstrates productization design:
 - **Port-free polling**: `stop` verifies all ports are released before returning,
   making immediate `restart` safe without explicit sleep.
 - **Layered recovery**: `cleanup` → `stop --force` → `restart` covers all orphan
-  scenarios without killing non-Metriplane processes.
+  scenarios without killing non-MetriPlane processes.
 
 These are reusable platform design patterns applicable to any multi-service
 Python deployment, not specific to vision systems.

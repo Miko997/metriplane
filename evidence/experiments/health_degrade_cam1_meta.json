@@ -1,0 +1,46 @@
+{
+  "argv": [
+    "metriplane-fusion",
+    "--config",
+    "configs/fusion_health_300fps.yaml",
+    "--runs-dir",
+    "<runs_dir>",
+    "--run-id",
+    "health_degrade_cam1_001",
+    "--fault",
+    "cam1_disconnect_after_s=8",
+    "--duration-s",
+    "20"
+  ],
+  "artifacts": {
+    "env_txt": "<runs_dir>/health_degrade_cam1_001/env.txt",
+    "session_jsonl": "<runs_dir>/health_degrade_cam1_001/session.jsonl"
+  },
+  "checksums": {
+    "config_canonical_json_sha256": "374489919f82bd800d922f4492405680bff9812c085916e854034047c284d481",
+    "config_yaml_sha256": "a209a2d9db354d612c1eed06ccb2a411fd6000316e2aebb412df7ff1e5fb68b4",
+    "env_txt_sha256": "84156fb932d89ac7b87e3611a7704abf710ffb8b756f4d8a9a104aec8436e330"
+  },
+  "config": {
+    "canonical_json_path": "<runs_dir>/health_degrade_cam1_001/config.canonical.json",
+    "hash": "374489919f82bd800d922f4492405680bff9812c085916e854034047c284d481",
+    "hash_algo": "sha256",
+    "snapshot_yaml_path": "<runs_dir>/health_degrade_cam1_001/config.yaml",
+    "source_config_path": "configs/fusion_health_300fps.yaml"
+  },
+  "created_utc": "2026-05-13T13:06:13Z",
+  "cwd": "<repo>",
+  "git": {
+    "commit": "382be2dff875cba78f028ea2240f1acf99699e1e",
+    "describe": "v0.1.0-dirty",
+    "dirty": true,
+    "repo_root": "<repo>"
+  },
+  "hostname": "miko-21796-2252-20700",
+  "resolved_profile": "board_55x40_warehouse_story_v1_fusion",
+  "run_dir": "<runs_dir>/health_degrade_cam1_001",
+  "run_id": "health_degrade_cam1_001",
+  "schema_version": "1.0",
+  "source_config_path": "configs/fusion_health_300fps.yaml",
+  "user": "miko"
+}

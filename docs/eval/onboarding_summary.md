@@ -48,7 +48,7 @@ This evidence contributes to RQ1 (product value vs. sensor-heavy approaches):
 - Sensor-heavy approaches (e.g. ROS 2 + LIDAR + proprietary SDK) typically
   require: system-level driver installation, hardware calibration GUIs, custom
   launch file configuration, and multi-terminal service startup.
-- Metriplane's equivalent is: `pip install -e . && ./tools/start_metriplane.sh --live`
+- MetriPlane's equivalent is: `pip install -e . && ./tools/start_metriplane.sh --live`
 
 **What this evidence does NOT support:**
 - Clean-machine timing claims (warm pip cache inflates speed)
@@ -83,7 +83,7 @@ For evaluation RQ1 quantitative adoption-friction claim, a clean-machine run is
 needed with:
 - Fresh Ubuntu (or Windows) install with only Python and git
 - No pip cache (cold download)
-- A fresh user account with no prior Metriplane exposure
+- A fresh user account with no prior MetriPlane exposure
 - Time measured with `time` from first `git clone` to first WebSocket frame
 
 This would give a defensible "time to first demo on a clean machine" figure.

@@ -1,224 +1,98 @@
-# Metriplane Benchmark Summary
+# MetriPlane Benchmark Summary
 
-**Purpose**: Consolidated evaluation evidence for RQ3 and RQ4  
-**Last Updated**: 2026-04-27  
-**Git Commit**: bfce3d905395aa3c95035faee7fca60cb21f58fb (v1.0.0-dirty)
+**Purpose**: Paper B benchmark evidence summary
+**Paper B canonical release tag**: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+**Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
+**Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
 
----
+This summary reflects the current public evidence campaign. Historical pre-public git descriptions may remain inside raw evidence metadata for provenance, but Paper B claims use the values below.
 
-## Environment (All Benchmarks)
+## Canonical Benchmark Results
 
-| Property | Value |
-|----------|-------|
-| OS | Linux 6.17.0-22-generic (Ubuntu 24.04) |
-| Python | 3.12.3 |
-| GPU | NVIDIA GeForce RTX 5070 Ti |
-| CUDA | cuda-toolkit 13.1.1 |
-| CuPy | 13.6.0 (cupy-cuda13x) |
-| Cameras | /dev/video0 + /dev/video2 (USB) |
-| Calibration Profile | board_55x40_warehouse_story_v1_fusion |
+| Benchmark | Status | Key result | Evidence |
+|---|---|---:|---|
+| Deterministic replay | PASS | 302 frames; 906 object pairs; 0.0 cm mean/max positional difference; 0 event mismatches | `evidence/experiments/replay_determinism.csv` |
+| Backpressure | PASS | 120 Hz synthetic input; queue_max=5; 3,600 generated; 995 published; 2,605 dropped; p95 latency 69.830 ms | `evidence/experiments/backpressure_summary.csv` |
+| Latency breakdown | PASS | 4,387 samples; detect.cam0 p95 1.242 ms; detect.cam1 p95 1.684 ms; fuse p95 0.184 ms; non-pacing pipeline p95 approx. 3.55 ms | `evidence/experiments/latency_summary.csv` |
+| Mapping error | PASS | 0.63 cm mean; 1.07 cm max; N=9 grid points | `evidence/experiments/mapping_error_001.csv` |
+| Static fiducial continuity | PASS | IDs 4, 7, and 12: 100.0% coverage over 4,387 frames; 0 missing gaps | `evidence/experiments/id_stability_001.csv` |
+| Motion fiducial continuity | PASS | 88,475 frames; primary-marker coverage 98.39-99.25%; max gap 533 frames | `evidence/experiments/id_stability_movement_001.csv` |
+| Fusion jitter | PASS | 0.067-0.080 mm jitter std; 100.0% coverage; absolute fused accuracy not measured | `evidence/experiments/fusion_jitter_001.csv` |
+| CPU/GPU equivalence | PASS | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff; `cpu_numpy` vs `gpu_cupy` | `evidence/experiments/compute_equivalence_001.csv` |
+| CPU/GPU fusion performance | PASS | GPU backend is correct but slower than CPU for tested N=1-1000 fusion-compute workloads | `evidence/experiments/gpu_benchmark_001.csv` |
+| Zone analytics | PASS | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | `evidence/experiments/case_study_1_movement_zone_*.csv` |
 
----
+## Latency Breakdown
 
-## All Executed Benchmarks
+| Stage | Mean ms | p50 ms | p95 ms | Max ms | Count |
+|---|---:|---:|---:|---:|---:|
+| detect.cam1 | 1.360 | 1.319 | 1.684 | 5.290 | 4,387 |
+| detect.cam0 | 0.957 | 0.901 | 1.242 | 11.417 | 4,387 |
+| build.msg | 0.161 | 0.160 | 0.185 | 0.520 | 4,387 |
+| fuse | 0.150 | 0.150 | 0.184 | 0.352 | 4,387 |
+| record.jsonl | 0.133 | 0.134 | 0.153 | 0.348 | 4,387 |
+| zones | 0.025 | 0.025 | 0.030 | 0.070 | 4,387 |
+| map.cam0 | 0.025 | 0.025 | 0.028 | 0.074 | 4,387 |
+| map.cam1 | 0.022 | 0.022 | 0.026 | 0.060 | 4,387 |
+| ws.send | 0.013 | 0.011 | 0.015 | 0.181 | 4,387 |
+| tracking | 0.003 | 0.003 | 0.004 | 0.010 | 4,387 |
+| camera.read | 0.001 | 0.001 | 0.002 | 0.007 | 4,387 |
 
-| Benchmark | Status | Date | Commit | Key Result | Evidence Path |
-|-----------|--------|------|--------|------------|---------------|
-| **CI Tests (pytest)** | ✅ PASS | 2026-04-29 | 4a899bb | 193/193 passed (initial-public-release) | — |
-| **Doctor / Preflight** | ✅ PASS | 2026-04-27 | bfce3d9 | 8/8 checks passed | — |
-| **M9.1 Deterministic Replay** | ✅ PASS | 2026-04-27 | bfce3d9 | 1201 frames, 8405 pairs, 0.0 cm | `evidence/experiments/replay_determinism.csv` |
-| **M9.2 Backpressure** | ✅ PASS | 2026-04-27 | bfce3d9 | 2600 drops, stable, PASS | `evidence/experiments/backpressure_summary.csv` |
-| **M9.3 Health Monitoring** | ⚠️ PARTIAL | 2026-01-22 | — | Code exists, multi-cam blocked | `evidence/experiments/health_degrade_cam1_meta.json` |
-| **M9.4 Provenance** | ✅ PASS | 2026-04-27 | bfce3d9 | config_hash + git_commit stamped | `evidence/experiments/run_meta.json` |
-| **M9.5 Latency Breakdown** | ✅ PASS | 2026-04-27 | bfce3d9 | detect p95=1.72ms, fuse=0.19ms | `evidence/experiments/latency_summary.csv` |
-| **M9.6 GPU Smoke** | ✅ PASS | 2026-04-27 | bfce3d9 | RTX 5070 Ti, CuPy 13.6.0 | `evidence/manifest.csv` row 6 |
-| **M9.6 GPU Benchmark** | ✅ PASS | 2026-04-29 | 4a899bb | CPU faster (all N tested) | `evidence/experiments/gpu_benchmark_001.csv` |
-| **M9.6 GPU Equivalence** | ✅ PASS | 2026-04-27 | bfce3d9 | 13152 samples, RMSE=0.000000 | `evidence/experiments/compute_equivalence_001.csv` |
-| **Multi-Camera Alignment** | ✅ PASS | 2026-04-27 | 3dfeee5 | mean_dist=0.9mm, max=1.2mm | `evidence/manifest.csv` row 8 |
-| **Mapping Error (9-point)** | ✅ PASS | 2026-04-29 | — | mean=0.40cm, max=1.09cm | `evidence/experiments/mapping_error_001.csv` |
-| **Fusion Jitter** | ✅ PASS | 2026-04-27 | bfce3d9 | 100% coverage, jitter<0.23mm | `evidence/experiments/fusion_jitter_001.csv` |
-| **FPS / Update Rate** | ✅ PASS | 2026-04-27 | bfce3d9 | 291 FPS mean, 282–304 sustained | `docs/eval/fps_summary.md` |
-| **ID Continuity (static)** | ✅ PASS | 2026-04-27 | bfce3d9 | 100% coverage, 0 gaps | `evidence/experiments/id_stability_001.csv` |
-| **Case Study 1 — Movement** | ✅ PASS | 2026-04-27 | 9ac3366 | 87608 frames, 77 zone transitions | `docs/case-studies/case-study-1.md` |
-| **Zone Analytics (movement)** | ✅ PASS | 2026-04-27 | 9ac3366 | dwell~880 obj-s, 77 transitions | `evidence/experiments/case_study_1_movement_zone_*.csv` |
-| **ID Continuity (motion)** | ✅ PASS | 2026-04-27 | 9ac3366 | 97.4–99.1% coverage (3 objects) | `evidence/experiments/id_stability_movement_001.csv` |
-| **Operator UI End-to-End Smoke Test** | ✅ PASS | 2026-04-28 | ac186ef | 60 s, 1797 frames, 5 CSVs exported | `docs/eval/operator_ui_summary.md` |
-| **Operator UI Final Smoke Test** | ✅ PASS | 2026-04-28 | 469d51c | 60 s, 1797 frames, calibration/alignment/config/run/export completed | `docs/eval/operator_ui_final_smoke_summary.md` |
+Non-pacing pipeline p95 is approximately 3.55 ms when summing the stages above and excluding `sleep`.
 
----
-
-## Detailed Results by Category
-
-### 1) Determinism (M9.1)
-
-**Evidence**: `evidence/experiments/replay_determinism.csv`
+## Backpressure
 
 | Metric | Value |
-|--------|-------|
-| Frames compared | 1201 (re-run) / 301 (M9.1) |
-| Object pairs compared | 8405 (re-run with real markers) |
-| Mean position difference | **0.0 cm** |
-| Max position difference | **0.0 cm** |
-| Event mismatches | **0** |
-| Pass | **TRUE** |
-
-**Significance**: Bit-exact replay proven with 8405 object pair comparisons at 0.0 cm.
-
----
-
-### 2) Backpressure / Graceful Degradation (M9.2)
-
-**Evidence**: `evidence/experiments/backpressure_summary.csv`
-
-| Metric | Value |
-|--------|-------|
+|---|---:|
 | Duration | 30.0 s |
-| Input rate | 120 FPS (synthetic overload, 4x target) |
-| Simulated detection time | 30 ms/frame |
-| Queue depth max | 5 |
+| Input rate | 120.0 Hz |
+| Simulated detection time | 30.0 ms |
+| Queue max | 5 |
 | Policy | KEEP_LATEST |
-| Frames generated | 3600 |
-| Frames accepted | 3600 |
-| **Frames dropped** | **2600** |
-| Detect processed | 1000 |
-| Published | 1000 |
-| Max queue depth | **5** (saturated as expected) |
-| Mean latency | 51.06 ms |
-| p50 latency | 51.15 ms |
-| p95 latency | 69.80 ms |
-| Pass | **TRUE** |
+| Frames generated | 3,600 |
+| Frames accepted | 3,600 |
+| Dropped | 2,605 |
+| Detect processed | 995 |
+| Published | 995 |
+| Max queue depth | 5 |
+| Mean latency | 50.891 ms |
+| p50 latency | 50.873 ms |
+| p95 latency | 69.830 ms |
+| Pass | true |
 
-**Significance**: System degrades gracefully under 4x overload. No crash, no memory blowup.
+## Fusion Jitter
 
----
+| Object ID | Frames seen | Total frames | Coverage | Jitter std |
+|---:|---:|---:|---:|---:|
+| 4 | 4,387 | 4,387 | 100.0% | 0.067 mm |
+| 7 | 4,387 | 4,387 | 100.0% | 0.080 mm |
+| 12 | 4,387 | 4,387 | 100.0% | 0.075 mm |
 
-### 3) Latency Breakdown (M9.5)
+`max_error_m` is `NaN` in this artifact, so the result supports jitter/stability only, not absolute fused accuracy.
 
-**Evidence**: `evidence/experiments/latency_summary.csv` (re-run 2026-04-27)
+## CPU/GPU Performance
 
-| Stage | Mean (ms) | p95 (ms) | Max (ms) |
-|-------|-----------|----------|----------|
-| detect.cam1 | 1.410 | **1.722** | 2.059 |
-| detect.cam0 | 1.183 | **1.498** | 3.203 |
-| fuse (Kalman) | 0.159 | **0.190** | 0.280 |
-| build.msg | 0.165 | 0.180 | 0.842 |
-| record.jsonl | 0.138 | 0.151 | 0.660 |
-| map.cam0 | 0.026 | 0.029 | 0.156 |
-| map.cam1 | 0.024 | 0.027 | 0.114 |
-| zones | 0.022 | 0.025 | 0.115 |
-| ws.send | 0.011 | 0.013 | 0.180 |
+| N objects | CPU p50 ms | CPU p95 ms | GPU p50 ms | GPU p95 ms | Relation |
+|---:|---:|---:|---:|---:|---|
+| 1 | 0.005631 | 0.006708 | 0.322591 | 0.478844 | GPU slower |
+| 10 | 0.024406 | 0.026089 | 0.343555 | 0.491760 | GPU slower |
+| 50 | 0.109910 | 0.120303 | 0.432770 | 0.564343 | GPU slower |
+| 200 | 0.437469 | 0.447466 | 0.773220 | 1.148387 | GPU slower |
+| 1000 | 2.225280 | 2.270170 | 2.574817 | 2.728293 | GPU slower |
 
-**Total non-pacing pipeline p95 ≈ 4.0 ms** (4384 frames, 2 cameras, 3 markers)
-
----
-
-### 4) Mapping Accuracy
-
-**Evidence**: `evidence/experiments/mapping_error_001.csv`
-
-| Metric | Value |
-|--------|-------|
-| Test points (N) | 9 |
-| Mean error | **0.40 cm** |
-| Median error | 0.27 cm |
-| Max error | **1.09 cm** (point p21) |
-| Min error | 0.13 cm |
-| Std deviation | 0.30 cm |
-
-**Workspace**: board_110x40 (1.1m × 0.4m), single camera  
-**Significance**: Mean < 1 cm, max < 2 cm — suitable for experimentation use cases.
-
----
-
-### 5) Fusion Jitter & Coverage
-
-**Evidence**: `evidence/experiments/fusion_jitter_001.csv`
-
-| Object ID | Frames Seen | Total Frames | Coverage | Jitter Std (m) |
-|-----------|-------------|--------------|----------|----------------|
-| 12 | 4384 | 4384 | **100.0%** | 0.000229 m (0.23 mm) |
-| 4 | 4384 | 4384 | **100.0%** | 0.000068 m (0.07 mm) |
-| 7 | 4384 | 4384 | **100.0%** | 0.000178 m (0.18 mm) |
-
-**Session**: `~/metriplane-runs/timing_breakdown_001-11/session.jsonl` (15.1s, 2-camera)  
-**Significance**: 100% tracking coverage with sub-mm jitter for all 3 markers.
-
----
-
-### 6) Multi-Camera Alignment
-
-**Evidence**: `evidence/manifest.csv` row 8 (2026-04-27)
-
-| Metric | Value |
-|--------|-------|
-| Marker tested | ArUco ID 7 |
-| Raw delta cam0 vs cam1 | **0.0021 m** (2.1 mm) |
-| Mean cross-camera distance | **0.0009 m** (0.9 mm) |
-| Max cross-camera distance | **0.0012 m** (1.2 mm) |
-| Fused sensors | **2** |
-
----
-
-### 7) GPU Compute Scaling
-
-**Evidence**: `evidence/experiments/gpu_benchmark_001.csv`
-
-| N Objects | CPU p50 (ms) | GPU p50 (ms) | CPU faster by |
-|-----------|-------------|-------------|---------------|
-| 1 | **0.006** | 0.373 | 60x |
-| 10 | **0.025** | 0.398 | 16x |
-| 50 | **0.111** | 0.488 | 4.4x |
-| 200 | **0.445** | 0.833 | 1.9x |
-| 1000 | **2.226** | 2.642 | 1.2x |
-
-**Key finding**: CPU faster than GPU at all tested N. Crossover estimated beyond N=1000.
-
----
-
-## Missing Evidence
-
-| Benchmark | Reason | Priority | Command |
-|-----------|--------|----------|---------|
-| M9.3 Health degradation (multi-cam) | `/dev/video1` not capture-capable | LOW | Add 2nd USB camera |
-| Case Study 1 screenshot/video | Dashboard not run during movement session | MEDIUM | `./tools/dashboard_runner.sh` during live run |
-| Onboarding clean-machine time | Same-machine warm-cache run done (2.1 min, 6 steps); clean-VM pending | MEDIUM | Repeat on fresh Ubuntu VM |
-| End-to-end client latency | Omniverse integration external/experimental | LOW | Requires Omniverse extension |
-
----
-
-## Sufficiency Assessment (RQ3)
-
-| Requirement | Target | Result | Pass? |
-|-------------|--------|--------|-------|
-| Determinism | 0 diff on replay | 0.0 cm, 0 mismatches | ✅ |
-| Backpressure | No crash under overload | Stable 30s, 2600 drops | ✅ |
-| Latency p95 | < 10ms total | ~4.0ms (2-cam) | ✅ |
-| Mapping error mean | < 1 cm | 0.40 cm | ✅ |
-| Mapping error max | < 2 cm | 1.09 cm | ✅ |
-| Tracking coverage | > 95% | 100% (3 markers) | ✅ |
-| Fusion jitter | < 5 mm std | < 0.23 mm | ✅ |
-
----
+This benchmark covers fusion compute only. CPU remains the default backend for current workloads; GPU remains optional for larger future batched workloads.
 
 ## Regeneration Commands
 
 ```bash
-cd <repo> && source .venv/bin/activate
-
-# Tests
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
-
-# Doctor
-python -m metriplane.cli doctor
-
-# All system benchmarks
 ./tools/mp.sh deterministic-replay
 ./tools/mp.sh backpressure
-./tools/mp.sh provenance
 ./tools/mp.sh timing-breakdown
-./tools/mp.sh gpu-smoke
+python benchmarks/run_mapping_error.py --help
+python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_001.csv
+python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_movement_001.csv
+python benchmarks/run_fusion_jitter.py <session.jsonl> --out evidence/experiments/fusion_jitter_001.csv
+python benchmarks/run_compute_equivalence.py --session-jsonl <session.jsonl> --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu
 ./tools/mp.sh gpu-benchmark
-
-# Fusion jitter (needs session JSONL)
-python benchmarks/run_fusion_jitter.py ~/metriplane-runs/timing_breakdown_001-11/session.jsonl --out evidence/experiments/fusion_jitter_001.csv
+python tools/zones_report_jsonl.py <session.jsonl> --out evidence/experiments --prefix case_study_1_movement
 ```

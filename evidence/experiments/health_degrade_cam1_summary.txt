@@ -1,0 +1,6 @@
+frames=5891 duration_s=20.00
+cam0: present_frames=5891 missing_frames=0 missing_pct=0.0%
+cam0: age_s_max=0.000 dets0_frames=0 dets0_pct=0.0% stale_for_fusion_frames=0 stale_for_fusion_pct=0.0%
+cam1: present_frames=2037 missing_frames=3854 missing_pct=65.4%
+cam1: age_s_max=0.335 dets0_frames=0 dets0_pct=0.0% stale_for_fusion_frames=18 stale_for_fusion_pct=0.9%
+cam1: first_missing_at_s=6.91s

@@ -9,7 +9,7 @@
 
 ## Purpose
 
-This document records the first successful end-to-end execution of the Metriplane Operator UI
+This document records the first successful end-to-end execution of the MetriPlane Operator UI
 (the 10-step setup wizard in `web/dashboard/operator.html`).
 
 The Operator UI is the primary productization artifact for RQ1 and RQ2 of the evaluation:
@@ -39,7 +39,7 @@ All 10 Operator UI steps were executed in sequence:
 | 5a | cam0 homography calibration | ✅ `mapping_raw.yaml` written |
 | 5b | cam1 homography calibration | ✅ `mapping_raw.yaml` written |
 | 6 | Planar alignment validation (`report_alignment.py`, no intrinsics) | ✅ Alignment verified |
-| 7 | Zone writing — 2 zones (`left`, `right`) | ✅ `zones.yaml` written |
+| 7 | Zone writing - 2 UI smoke-test zones | ✅ `zones.yaml` written |
 | 8 | Runtime config generation — `board_55x40_warehouse_story_v1_fusion_multi_local.yaml` | ✅ Config saved with correct CameraSpec field names |
 | 9 | 60-second fusion run (`python -m metriplane.run_fusion`) | ✅ Session JSONL written |
 | 10 | Export: zone report + ID stability + SHA256 checksum | ✅ 5 CSVs exported |
@@ -91,19 +91,19 @@ All CSVs are committed to git under `evidence/experiments/`:
 | Coverage | **100%** for all IDs |
 | Gaps | **0** |
 
-### Zone Dwell (2 zones)
+### Zone Dwell (2 UI Smoke-Test Zones)
 
 | Zone | Total dwell (s) |
 |------|----------------|
-| left | 69.45 |
-| right | 143.54 |
+| zone A | 69.45 |
+| zone B | 143.54 |
 
 ### Zone Transitions
 
 | Transition | Count |
 |------------|-------|
-| left → right | 2 |
-| right → left | 2 |
+| zone A to zone B | 2 |
+| zone B to zone A | 2 |
 
 ---
 

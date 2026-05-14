@@ -1,0 +1,44 @@
+{
+  "argv": [
+    "metriplane-fusion",
+    "--config",
+    "configs/fusion_health_300fps.yaml",
+    "--runs-dir",
+    "<runs_dir>",
+    "--run-id",
+    "provenance_run_001",
+    "--duration-s",
+    "10"
+  ],
+  "artifacts": {
+    "env_txt": "<runs_dir>/provenance_run_001/env.txt",
+    "session_jsonl": "<runs_dir>/provenance_run_001/session.jsonl"
+  },
+  "checksums": {
+    "config_canonical_json_sha256": "374489919f82bd800d922f4492405680bff9812c085916e854034047c284d481",
+    "config_yaml_sha256": "a209a2d9db354d612c1eed06ccb2a411fd6000316e2aebb412df7ff1e5fb68b4",
+    "env_txt_sha256": "21a36b0877fcd2e9bc6c9946f38dfa224526045aad688fc07380bd5a1ccd1adb"
+  },
+  "config": {
+    "canonical_json_path": "<runs_dir>/provenance_run_001/config.canonical.json",
+    "hash": "374489919f82bd800d922f4492405680bff9812c085916e854034047c284d481",
+    "hash_algo": "sha256",
+    "snapshot_yaml_path": "<runs_dir>/provenance_run_001/config.yaml",
+    "source_config_path": "configs/fusion_health_300fps.yaml"
+  },
+  "created_utc": "2026-05-13T13:05:55Z",
+  "cwd": "<repo>",
+  "git": {
+    "commit": "382be2dff875cba78f028ea2240f1acf99699e1e",
+    "describe": "v0.1.0-dirty",
+    "dirty": true,
+    "repo_root": "<repo>"
+  },
+  "hostname": "miko-21796-2252-20700",
+  "resolved_profile": "board_55x40_warehouse_story_v1_fusion",
+  "run_dir": "<runs_dir>/provenance_run_001",
+  "run_id": "provenance_run_001",
+  "schema_version": "1.0",
+  "source_config_path": "configs/fusion_health_300fps.yaml",
+  "user": "miko"
+}

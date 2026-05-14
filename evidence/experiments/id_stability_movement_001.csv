@@ -1,0 +1,4 @@
+object_id,total_frames,frames_seen,coverage_pct,continuous_full_session,n_missing_gaps,max_missing_gap_frames,mean_missing_gap_frames,session_duration_s
+12,88475,87812,99.25,False,12,141,55.25,300.028
+4,88475,87047,98.39,False,11,533,129.82,300.028
+7,88475,87741,99.17,False,10,297,73.4,300.028

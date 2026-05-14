@@ -10,7 +10,7 @@
 
 ## What Was Validated
 
-The Metriplane Operator UI ten-step wizard was executed end-to-end on a live two-camera setup. The goal of this test is to validate the **UI workflow and export pipeline**, not to benchmark tracking accuracy.
+The MetriPlane Operator UI ten-step wizard was executed end-to-end on a live two-camera setup. The goal of this test is to validate the **UI workflow and export pipeline**, not to benchmark tracking accuracy.
 
 The 10-step workflow covers the full user journey from environment check through calibration, zone definition, config generation, fusion run, and analytics export.
 
@@ -49,11 +49,11 @@ The 10-step workflow covers the full user journey from environment check through
 
 | Metric | Value |
 |---|---|
-| Zones defined | 2 (left, right) |
+| Zones defined | 2 UI smoke-test zones |
 | Total dwell time | 252.3 s |
-| — left | 104.96 s |
-| — right | 147.33 s |
-| Zone transitions | 4 (left→right: 2, right→left: 2) |
+| Zone A dwell | 104.96 s |
+| Zone B dwell | 147.33 s |
+| Zone transitions | 4 (two in each direction) |
 | Zone events exported | 249 |
 
 ---

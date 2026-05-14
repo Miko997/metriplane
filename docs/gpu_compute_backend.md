@@ -1,85 +1,60 @@
-# GPU Compute Backend (M9.6)
+# GPU Compute Backend
 
-M9.6 introduces an **optional GPU compute backend** for the fusion compute block.
+**Paper B canonical release tag**: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+**Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 
-## What is accelerated
+MetriPlane includes an optional CuPy backend for fusion compute. CPU remains the default backend for current workloads.
 
-The first GPU-accelerated compute block is the **XY fusion reduction** used by the fusion runner when `fusion.method` is:
+## What Is Accelerated
 
-- `avg` (simple mean)
-- `weighted` (RMSE-weighted mean)
+The GPU backend covers the XY fusion reduction used by `avg` and `weighted` fusion methods. It does not accelerate camera capture, ArUco detection, planar mapping, WebSocket streaming, JSONL recording, or the full pipeline.
 
-This block is implemented in:
+Implemented backends:
 
-- `metriplane/compute/cpu_numpy.py` (CPU, NumPy)
-- `metriplane/compute/gpu_cupy.py` (GPU, CuPy)
+- `metriplane/compute/cpu_numpy.py` - CPU NumPy backend
+- `metriplane/compute/gpu_cupy.py` - GPU CuPy backend
+- `metriplane/compute/select.py` - backend selection and fallback
 
-Both backends implement the same interface from `metriplane/compute/interface.py`.
-
-## Config
-
-Add a `compute` section to your YAML config (requires `Config.compute` to exist in the Config dataclass):
+## Configuration
 
 ```yaml
 compute:
-  backend: gpu           # cpu|gpu
+  backend: gpu
   allow_fallback_to_cpu: true
   gpu:
-    provider: cupy       # currently only cupy
+    provider: cupy
     device: 0
     warmup_iters: 20
 ```
 
-Environment overrides supported by `metriplane.compute.select`:
+Environment overrides:
 
-- `METRIPLANE_COMPUTE_BACKEND` (or `METRIPLANE_COMPUTE_BACKEND`): `cpu` or `gpu`
-- `METRIPLANE_GPU_DEVICE` (or `METRIPLANE_GPU_DEVICE`): integer device index
+- `METRIPLANE_COMPUTE_BACKEND`: `cpu` or `gpu`
+- `METRIPLANE_GPU_DEVICE`: integer device index
 
-## How it is selected
+## Paper B Evidence
 
-`metriplane.compute.select.select_fusion_backend(...)` chooses:
+| Result | Artifact | Value |
+|---|---|---:|
+| CPU/GPU equivalence | `evidence/experiments/compute_equivalence_001.csv` | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff |
+| CPU/GPU fusion performance | `evidence/experiments/gpu_benchmark_001.csv` | GPU backend slower than CPU for tested N=1-1000 fusion-compute workloads |
 
-- GPU backend if requested and CuPy+GPU are available
-- otherwise (if `allow_fallback_to_cpu=true`) falls back to NumPy
+## CPU/GPU Performance Table
 
-## Benchmarks
+| N objects | CPU p50 ms | CPU p95 ms | GPU p50 ms | GPU p95 ms | Relation |
+|---:|---:|---:|---:|---:|---|
+| 1 | 0.005631 | 0.006708 | 0.322591 | 0.478844 | GPU slower |
+| 10 | 0.024406 | 0.026089 | 0.343555 | 0.491760 | GPU slower |
+| 50 | 0.109910 | 0.120303 | 0.432770 | 0.564343 | GPU slower |
+| 200 | 0.437469 | 0.447466 | 0.773220 | 1.148387 | GPU slower |
+| 1000 | 2.225280 | 2.270170 | 2.574817 | 2.728293 | GPU slower |
 
-### 1) Equivalence (CPU ↔ GPU)
-
-Compares CPU vs GPU fused XY outputs frame-by-frame from a recorded `session.jsonl`.
-
-```bash
-python benchmarks/run_compute_equivalence.py \
-  --session-jsonl runs/<run_id>/session.jsonl \
-  --method weighted \
-  --out-csv runs/<run_id>/compute_equivalence.csv
-```
-
-Default tolerances (override via CLI):
-
-- `rmse_diff_cm <= 0.05`
-- `max_abs_diff_cm <= 0.20`
-
-### 2) Performance comparison (CPU vs GPU)
-
-Synthetic benchmark that scales number of objects and measures latency p50/p95 + throughput.
+## Reproduction Commands
 
 ```bash
-python benchmarks/run_compute_backend_comparison.py \
-  --backends cpu,gpu \
-  --objects 10,50,200,1000 \
-  --cameras 2 \
-  --iters 1000 \
-  --warmup 100 \
-  --out-csv runs/compute_backend_comparison.csv
+./tools/mp.sh gpu-smoke
+./tools/mp.sh gpu-benchmark
+python benchmarks/run_compute_equivalence.py --session-jsonl <session.jsonl> --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu
 ```
 
-## GPU proof (demo)
-
-During the performance benchmark, keep `nvidia-smi` running in another terminal:
-
-```bash
-watch -n 0.5 nvidia-smi
-```
-
-This is the required “GPU utilization proof” shot in **GPU Demo 7**.
+See [`eval/gpu_summary.md`](eval/gpu_summary.md) and [`eval/CANONICAL_EVIDENCE.md`](eval/CANONICAL_EVIDENCE.md) for the Paper B evaluation framing.
