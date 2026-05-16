@@ -2,16 +2,24 @@
 
 This file is the single source of truth for the Paper B benchmark manuscript evidence campaign.
 
+Paper title: **Benchmarking Camera-First Planar Digital Twins: A Reproducible Protocol and MetriPlane Evaluation**.
+
+Release name: **MetriPlane v0.1.2 — Paper B Provenance-Synchronized Evidence Release**.
+
+No benchmark numbers changed from v0.1.1 to v0.1.2. No archival DOI is claimed yet.
+
 ## Release
 
 | Field | Value |
 |---|---|
 | Display name | MetriPlane |
 | Package/repo name | `metriplane` |
-| Paper B canonical release tag | [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1) |
-| Release URL | <https://github.com/Miko997/metriplane/releases/tag/v0.1.1> |
+| Paper B canonical release tag | [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) |
+| Release URL | <https://github.com/Miko997/metriplane/releases/tag/v0.1.2> |
+| Prior canonical evidence release | [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1) |
 | Initial public release | [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) |
 | Repository | <https://github.com/Miko997/metriplane> |
+| Archival DOI | Not claimed; pending |
 
 ## Canonical Results
 
@@ -56,4 +64,4 @@ The GPU benchmark covers fusion compute only. It does not measure or imply GPU a
 
 ## Provenance Notes
 
-Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is `v0.1.1`; `v0.1.0` was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
+Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is `v0.1.2`; `v0.1.1` was the prior canonical evidence release; `v0.1.0` was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.

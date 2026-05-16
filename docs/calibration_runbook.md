@@ -1,4 +1,4 @@
-# Metriplane Multi-Camera Calibration Runbook
+# MetriPlane Multi-Camera Calibration Runbook
 
 **Purpose**: Re-calibrate planar mapping for multi-camera fusion after cameras have been physically moved
 
@@ -425,7 +425,7 @@ python tools/calibrate_planar_homography.py \
 
 **From debug_alignment.py output**:
 ```
-mean_dist=0.0450m  max_dist=0.0823m  # BAD!
+mean_dist=0.0450m  max_dist=0.0840m  # BAD!
 ```
 
 **Solutions**:

@@ -35,13 +35,13 @@ Your summary was:
   "policy": "KEEP_LATEST",
   "frames_generated": 3600,
   "frames_accepted": 3600,
-  "drops_total": 2600,
-  "detect_processed": 1000,
-  "published": 1000,
+  "drops_total": 2605,
+  "detect_processed": 995,
+  "published": 995,
   "max_queue_depth": 5,
-  "mean_latency_ms": 51.34711069094192,
-  "p50_latency_ms": 51.069487002678216,
-  "p95_latency_ms": 69.92151000304148,
+  "mean_latency_ms": 50.891,
+  "p50_latency_ms": 50.873,
+  "p95_latency_ms": 69.830,
   "pass": "true"
 }
 ```
@@ -52,7 +52,7 @@ Interpretation:
 - Because queues are bounded to **5**, the backlog cannot grow without bound.
 - Because the policy is **KEEP_LATEST**, the queue preferentially keeps fresh frames and **drops older frames** when saturated.
 - The benchmark reports **`max_queue_depth == 5`**, confirming the bound is respected.
-- **`drops_total == 2600`** confirms drop behavior activated under overload.
+- **`drops_total == 2605`** confirms drop behavior activated under overload.
 - The pipeline continues to run for the full duration and exits cleanly with **`pass=true`**.
 
 This directly satisfies the DoD:

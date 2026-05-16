@@ -33,7 +33,7 @@
 
 ## Public release
 
-Paper B canonical release tag: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1). Initial public release: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0). For the Paper B reproducibility package, see [`ARTIFACTS.md`](ARTIFACTS.md), the full evidence manifest at [`evidence/manifest.csv`](evidence/manifest.csv), and the compact evidence index at [`docs/eval/evidence_index.md`](docs/eval/evidence_index.md).
+Paper B canonical release tag: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2), the MetriPlane v0.1.2 — Paper B Provenance-Synchronized Evidence Release. [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1) was the prior canonical evidence release, and [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. No benchmark numbers changed from v0.1.1 to v0.1.2, and no archival DOI is claimed yet. For the Paper B reproducibility package, see [`ARTIFACTS.md`](ARTIFACTS.md), the full evidence manifest at [`evidence/manifest.csv`](evidence/manifest.csv), and the compact evidence index at [`docs/eval/evidence_index.md`](docs/eval/evidence_index.md).
 
 ---
 
@@ -173,6 +173,10 @@ USB/RTSP Camera → ArUco Detection → Planar Mapping → Fusion → Tracking/Z
 ---
 
 ## Paper B benchmark reproducibility
+
+Paper title: **Benchmarking Camera-First Planar Digital Twins: A Reproducible Protocol and MetriPlane Evaluation**.
+
+For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.2. Other summaries are non-authoritative convenience summaries.
 
 All Paper B benchmark claims are anchored to the current public evidence campaign. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv). The canonical Paper B evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md).
 

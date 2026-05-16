@@ -1,7 +1,7 @@
 # MetriPlane Fiducial Continuity Summary
 
 **Purpose**: Paper B static and motion marker-continuity evidence
-**Paper B canonical release tag**: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+**Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
 

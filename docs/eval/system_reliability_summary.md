@@ -1,7 +1,7 @@
 # MetriPlane System Reliability Summary
 
 **Purpose**: Determinism, backpressure, and provenance evidence for Paper B
-**Paper B canonical release tag**: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+**Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
 
@@ -46,7 +46,7 @@ This supports the claim that bounded queues and `KEEP_LATEST` behavior prevent u
 
 ## Provenance
 
-Evidence rows are recorded in `evidence/manifest.csv`, with checksums in `evidence/CHECKSUMS.sha256`. Some raw evidence metadata preserves pre-public git descriptions for provenance; the Paper B canonical source release is `v0.1.1`; `v0.1.0` was the initial public release.
+Evidence rows are recorded in `evidence/manifest.csv`, with checksums in `evidence/CHECKSUMS.sha256`. Some raw evidence metadata preserves pre-public git descriptions for provenance; the Paper B canonical source release is `v0.1.2`; `v0.1.1` was the prior canonical evidence release; `v0.1.0` was the initial public release.
 
 ## Health Monitoring Boundary
 
