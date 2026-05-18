@@ -9,7 +9,7 @@ Status: preprint / benchmark manuscript
 Paper version: Paper B benchmark manuscript
 Repository: https://github.com/Miko997/metriplane
 Canonical release: https://github.com/Miko997/metriplane/releases/tag/v0.1.3
-Commit: V0_1_3_COMMIT_SHA_PLACEHOLDER
+Commit: c5495b8c3e18f3ca66f91c8845c8d1bbb7d6fb10
 Release date: 2026-05-18
 Artifact status: public GitHub release; archival DOI pending
 Paper status: preprint / benchmark manuscript

@@ -20,7 +20,7 @@ git checkout v0.1.3
 | Release tag | `v0.1.3` |
 | Prior canonical evidence release | `v0.1.2` |
 | Initial public release | `v0.1.0` |
-| Commit | `V0_1_3_COMMIT_SHA_PLACEHOLDER` |
+| Commit | `c5495b8c3e18f3ca66f91c8845c8d1bbb7d6fb10` |
 | Release date | `2026-05-18` |
 | Archival DOI | Not claimed; pending |
 
