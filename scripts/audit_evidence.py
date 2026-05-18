@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the Paper B v0.1.2 evidence manifest, checksums, and docs."""
+"""Audit the Paper B v0.1.3 evidence manifest, checksums, and docs."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_TAG = "v0.1.2"
+RELEASE_TAG = "v0.1.3"
 MANIFEST_PATH = ROOT / "evidence" / "manifest.csv"
 CHECKSUMS_PATH = ROOT / "evidence" / "CHECKSUMS.sha256"
 CANONICAL_TITLE = (
@@ -23,7 +23,7 @@ CANONICAL_TITLE = (
 )
 AUTHORITATIVE_WARNING = (
     "For Paper B, the authoritative metric table is "
-    "docs/eval/CANONICAL_EVIDENCE.md in release v0.1.2. Other summaries are "
+    "docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are "
     "non-authoritative convenience summaries."
 )
 REQUIRED_MANIFEST_COLUMNS = {
@@ -42,6 +42,18 @@ REQUIRED_MANIFEST_COLUMNS = {
 # The manifest cannot also pin its own final digest without becoming
 # self-referential, so this is the one explicit coverage exemption.
 CHECKSUM_MANIFEST_EXEMPTIONS = {"evidence/manifest.csv"}
+RELEASE_TREE_PATHS = (
+    "README.md",
+    "ARTIFACTS.md",
+    "CITATION.cff",
+    "docs/eval",
+    "docs/references/reference_audit.md",
+    "docs/scope_rules.md",
+    "docs/gpu_compute_backend.md",
+    "docs/pipeline_backpressure.md",
+    "evidence",
+    "scripts/audit_evidence.py",
+)
 
 
 def rel(path: Path) -> str:
@@ -300,7 +312,7 @@ def read_checksums(errors: list[str]) -> dict[str, str]:
 
 def release_tree_paths() -> set[str]:
     result = subprocess.run(
-        ["git", "ls-files", "--cached", "-z", "evidence", "docs/eval"],
+        ["git", "ls-files", "--cached", "-z", *RELEASE_TREE_PATHS],
         cwd=ROOT,
         check=True,
         stdout=subprocess.PIPE,
@@ -387,6 +399,15 @@ def text_file(path: Path) -> str | None:
 def audit_docs(errors: list[str]) -> int:
     docs_to_scan = [ROOT / "README.md", ROOT / "ARTIFACTS.md"]
     docs_to_scan.extend(sorted((ROOT / "docs" / "eval").glob("*.md")))
+    docs_to_scan.append(ROOT / "docs" / "references" / "reference_audit.md")
+    docs_to_scan.extend(
+        ROOT / path
+        for path in (
+            "docs/scope_rules.md",
+            "docs/gpu_compute_backend.md",
+            "docs/pipeline_backpressure.md",
+        )
+    )
     if (ROOT / "CITATION.cff").exists():
         docs_to_scan.append(ROOT / "CITATION.cff")
 

@@ -4,23 +4,23 @@
 
 **Benchmarking Camera-First Planar Digital Twins: A Reproducible Protocol and MetriPlane Evaluation**
 
-Release name: MetriPlane v0.1.2 — Paper B Provenance-Synchronized Evidence Release
+Release name: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
 Status: preprint / benchmark manuscript
 Paper version: Paper B benchmark manuscript
 Repository: https://github.com/Miko997/metriplane
-Canonical release: https://github.com/Miko997/metriplane/releases/tag/v0.1.2
-Commit: resolved by the v0.1.2 tag target (`git rev-parse v0.1.2^{commit}`).
-Release date: 2026-05-16
+Canonical release: https://github.com/Miko997/metriplane/releases/tag/v0.1.3
+Commit: V0_1_3_COMMIT_SHA_PLACEHOLDER
+Release date: 2026-05-18
 Artifact status: public GitHub release; archival DOI pending
 Paper status: preprint / benchmark manuscript
-Paper B canonical release tag: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
-Prior canonical evidence release: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+Paper B canonical release tag: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
+Prior canonical evidence release: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 Initial public release: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 No archival DOI is claimed for this release.
 
 Canonical Paper B evidence table: [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md)
 
-The patch from v0.1.1 to v0.1.2 corrects stale documentation, manifest values, title metadata, citation metadata, and provenance hygiene. It does not introduce new benchmark measurements.
+The patch from v0.1.2 to v0.1.3 corrects stale documentation, manifest values, title metadata, citation metadata, and provenance hygiene. It does not introduce new benchmark measurements.
 
 ## Scope
 
@@ -47,7 +47,7 @@ The patch from v0.1.1 to v0.1.2 corrects stale documentation, manifest values, t
 | Zone analytics | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions. Applied analytics, not a manually annotated ground-truth zone benchmark. |
 | Docker proof | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | Docker dummy-mode proof; replay-mode behavior is not expanded into a benchmark claim. |
 | Operator UI smoke | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md), [`operator_ui_final_smoke_001_zone_events.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_events.csv), [`operator_ui_final_smoke_001_zone_dwell.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_dwell.csv), [`operator_ui_final_smoke_001_zone_transitions.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_transitions.csv) | Workflow smoke evidence, not a tracking-accuracy benchmark. |
-| Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover the current `evidence` and `docs/eval` release tree. |
+| Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover the current evidence tree, evaluation docs, reference audit, release metadata, and audit script. |
 
 ## CPU/GPU performance
 
@@ -80,7 +80,7 @@ This benchmark covers fusion compute only. It does not measure camera capture, A
 
 ## Checksums
 
-The aggregate checksum file is [`evidence/CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256). It was generated from current evidence CSV, Markdown, JSON, JSONL, and SHA256 files in this checkout, excluding the aggregate file itself to avoid self-referential hashing.
+The aggregate checksum file is [`evidence/CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256). It was generated from the current public proof surface in this checkout, excluding the aggregate file itself to avoid self-referential hashing.
 
 To verify files that are present locally:
 
@@ -104,7 +104,7 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 
 ## Versioning and provenance
 
-Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2); [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1) was the prior canonical evidence release; [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
+Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3); [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) was the prior canonical evidence release; [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
 
 ## Historical provenance
 

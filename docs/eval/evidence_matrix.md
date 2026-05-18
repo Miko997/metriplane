@@ -1,8 +1,8 @@
 # MetriPlane Evidence Matrix
 
-**Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
-**Release name**: MetriPlane v0.1.2 — Paper B Provenance-Synchronized Evidence Release
-**Prior canonical evidence release**: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+**Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
+**Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
+**Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
 **Tests**: 193/193 passing as of initial public release evidence.
@@ -32,7 +32,7 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 | Operator UI proof | Step-by-step validated run | YES | `evidence/experiments/operator_ui_final_smoke_001.md` | 10-step workflow passed; smoke evidence, not tracking-accuracy benchmark evidence. |
 | Manifest and checksums | Manifest rows and aggregate checksum file | YES | `evidence/manifest.csv`, `evidence/CHECKSUMS.sha256` | Checksum verification is expected to pass with `sha256sum -c evidence/CHECKSUMS.sha256`. |
 | Large session provenance | Session hash in manifest when JSONL is outside Git | PARTIAL | `evidence/manifest.csv` | Large JSONL sessions may be archived outside Git; verify archived copies against manifest checksums. |
-| Paper B canonical release tag | Paper B source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.2` | Canonical source/evidence release for Paper B; `v0.1.1` was the prior canonical evidence release; `v0.1.0` was the initial public release. |
+| Paper B canonical release tag | Paper B source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | Canonical source/evidence release for Paper B; `v0.1.2` was the prior canonical evidence release; `v0.1.0` was the initial public release. |
 
 ## Case Study Evidence
 
@@ -60,7 +60,7 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 |---|---|
 | Display name | Use MetriPlane. |
 | Package/repo/CLI references | Use `metriplane` where referring to package, repo, or commands. |
-| Paper B canonical release | Use `v0.1.2` and <https://github.com/Miko997/metriplane/releases/tag/v0.1.2>; mention `v0.1.1` as the prior canonical evidence release and `v0.1.0` as the initial public release. |
+| Paper B canonical release | Use `v0.1.3` and <https://github.com/Miko997/metriplane/releases/tag/v0.1.3>; mention `v0.1.2` as the prior canonical evidence release and `v0.1.0` as the initial public release. |
 | GPU claim | CPU faster than GPU for current N=1-1000 fusion-compute benchmark; no full-pipeline GPU acceleration claim. |
 | Zone claim | Four zones and 112 transitions from current CSVs. |
 | Mapping claim | 0.63 cm mean and 1.07 cm max from `mapping_error_001.csv`. |

@@ -2,7 +2,7 @@
 
 This document defines the supported public-release scope for MetriPlane and the evidence boundaries for Paper B.
 
-**Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
+**Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Repository**: <https://github.com/Miko997/metriplane>
 **Canonical Paper B evidence**: [`eval/CANONICAL_EVIDENCE.md`](eval/CANONICAL_EVIDENCE.md)
@@ -72,4 +72,4 @@ The measured integration surface is the WebSocket/JSONL state stream. Omniverse 
 
 ## Provenance Note
 
-Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is `v0.1.2`; `v0.1.1` was the prior canonical evidence release; `v0.1.0` was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
+Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is `v0.1.3`; `v0.1.2` was the prior canonical evidence release; `v0.1.0` was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.

@@ -1,7 +1,7 @@
 # MetriPlane GPU Compute Summary
 
 **Purpose**: CPU/GPU fusion-compute evidence for Paper B
-**Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
+**Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Performance artifact**: `evidence/experiments/gpu_benchmark_001.csv` (2026-04-29, commit `4a899bb`)
 **Equivalence artifact**: `evidence/experiments/compute_equivalence_001.csv` (2026-05-13, commit `382be2d`)

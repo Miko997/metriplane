@@ -2,9 +2,9 @@
 
 Summary of public evidence artifacts, supported Paper B claims, and known limitations.
 
-**Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
-**Release name**: MetriPlane v0.1.2 — Paper B Provenance-Synchronized Evidence Release
-**Prior canonical evidence release**: [`v0.1.1`](https://github.com/Miko997/metriplane/releases/tag/v0.1.1)
+**Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
+**Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
+**Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
 **Manifest**: `evidence/manifest.csv`
@@ -12,9 +12,9 @@ Summary of public evidence artifacts, supported Paper B claims, and known limita
 
 Paper title: **Benchmarking Camera-First Planar Digital Twins: A Reproducible Protocol and MetriPlane Evaluation**.
 
-For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.2. Other summaries are non-authoritative convenience summaries.
+For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are non-authoritative convenience summaries.
 
-No benchmark numbers changed from v0.1.1 to v0.1.2. No archival DOI is claimed yet.
+No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed yet.
 
 ## Benchmark Artifacts
 
