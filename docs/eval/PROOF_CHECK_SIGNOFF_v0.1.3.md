@@ -20,7 +20,7 @@ git checkout v0.1.3
 | Release tag | `v0.1.3` |
 | Prior canonical evidence release | `v0.1.2` |
 | Initial public release | `v0.1.0` |
-| Commit | `c5495b8c3e18f3ca66f91c8845c8d1bbb7d6fb10` |
+| Commit | resolved by the v0.1.3 tag target (`git rev-parse v0.1.3^{commit}`) |
 | Release date | `2026-05-18` |
 | Archival DOI | Not claimed; pending |
 
