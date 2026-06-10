@@ -19,7 +19,7 @@ ROOT="${METRIPLANE_REPO_ROOT:-$(find_repo_root)}"
 
 # ---- defaults (override via env) ----
 METRIPLANE_VENV="${METRIPLANE_VENV:-$ROOT/.venv}"
-RUNS="${RUNS:-~/metriplane-runs}"
+RUNS="${RUNS:-$ROOT/runs}"
 CONFIG="${CONFIG:-configs/fusion_health_300fps.yaml}"
 CUDA_ENV_SH="${CUDA_ENV_SH:-$ROOT/tools/env/vt_cuda13_env.sh}"
 
@@ -31,6 +31,24 @@ HEALTH_URL="${METRICS_URL}/health"
 mkdir -p "$RUNS"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
+
+use_canonical_evidence_out() {
+  case "${METRIPLANE_EVIDENCE_OUT:-0}" in
+    1|true|TRUE|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+experiment_out_dir() {
+  local outdir
+  if use_canonical_evidence_out; then
+    outdir="evidence/experiments"
+  else
+    outdir="$RUNS/demo-evidence"
+  fi
+  mkdir -p "$outdir"
+  echo "$outdir"
+}
 
 activate() {
   [ -d "$METRIPLANE_VENV" ] || die "METRIPLANE_VENV not found: $METRIPLANE_VENV  (set METRIPLANE_VENV=/path/to/venv)"
@@ -99,6 +117,7 @@ cmd_preflight() {
   nvidia-smi -L || true
   ls -l /dev/v4l/by-id || true
   echo "RUNS=$RUNS"
+  echo "METRIPLANE_EVIDENCE_OUT=${METRIPLANE_EVIDENCE_OUT:-0}"
   echo "CONFIG=$CONFIG"
 }
 
@@ -156,9 +175,11 @@ cmd_deterministic_replay() {
 
   cat /tmp/replay_determinism.csv
 
-  mkdir -p evidence/experiments
-  cp /tmp/replay_determinism.csv evidence/experiments/replay_determinism.csv
-  sha256sum evidence/experiments/replay_determinism.csv | tee evidence/experiments/replay_determinism.sha256
+  local outdir
+  outdir="$(experiment_out_dir)"
+  cp /tmp/replay_determinism.csv "$outdir/replay_determinism.csv"
+  sha256sum "$outdir/replay_determinism.csv" | tee "$outdir/replay_determinism.sha256"
+  echo "OUTDIR=$outdir"
 }
 
 cmd_backpressure() {
@@ -190,11 +211,13 @@ cmd_backpressure() {
   echo "--- summary ---"
   cat /tmp/backpressure_summary.csv
 
-  mkdir -p evidence/experiments
-  cp /tmp/backpressure_summary.csv evidence/experiments/backpressure_summary.csv
-  cp /tmp/backpressure_timeseries.csv evidence/experiments/backpressure_timeseries.csv
-  sha256sum evidence/experiments/backpressure_summary.csv evidence/experiments/backpressure_timeseries.csv \
-    | tee evidence/experiments/backpressure.sha256
+  local outdir
+  outdir="$(experiment_out_dir)"
+  cp /tmp/backpressure_summary.csv "$outdir/backpressure_summary.csv"
+  cp /tmp/backpressure_timeseries.csv "$outdir/backpressure_timeseries.csv"
+  sha256sum "$outdir/backpressure_summary.csv" "$outdir/backpressure_timeseries.csv" \
+    | tee "$outdir/backpressure.sha256"
+  echo "OUTDIR=$outdir"
 }
 
 cmd_health_degrade_cam1() {
@@ -250,9 +273,11 @@ cmd_provenance() {
   echo "=== session.jsonl header (first 2 lines) ==="
   head -n 2 "$run_dir/session.jsonl"
 
-  mkdir -p evidence/experiments
-  cp "$run_dir/meta.json" evidence/experiments/run_meta.json
-  sha256sum evidence/experiments/run_meta.json | tee evidence/experiments/run_meta.sha256
+  local outdir
+  outdir="$(experiment_out_dir)"
+  cp "$run_dir/meta.json" "$outdir/run_meta.json"
+  sha256sum "$outdir/run_meta.json" | tee "$outdir/run_meta.sha256"
+  echo "OUTDIR=$outdir"
 }
 
 cmd_timing_breakdown() {
@@ -290,9 +315,11 @@ for r in rows[:15]:
     )
 PY
 
-  mkdir -p evidence/experiments
-  cp "$run_dir/latency_summary.csv" evidence/experiments/latency_summary.csv
-  sha256sum evidence/experiments/latency_summary.csv | tee evidence/experiments/latency_summary.sha256
+  local outdir
+  outdir="$(experiment_out_dir)"
+  cp "$run_dir/latency_summary.csv" "$outdir/latency_summary.csv"
+  sha256sum "$outdir/latency_summary.csv" | tee "$outdir/latency_summary.sha256"
+  echo "OUTDIR=$outdir"
 }
 
 cmd_gpu_smoke() {
@@ -398,9 +425,12 @@ Usage (feature names only):
 Env overrides:
   METRIPLANE_VENV=/path/to/venv
   RUNS=/path/to/metriplane-runs
+  METRIPLANE_EVIDENCE_OUT=1  # write canonical artifacts to evidence/experiments
   CONFIG=configs/fusion_health_300fps.yaml
   CUDA_ENV_SH=tools/env/vt_cuda13_env.sh
   METRICS_HOST=127.0.0.1  METRICS_PORT=8000
+
+Demo artifacts default to RUNS/demo-evidence unless METRIPLANE_EVIDENCE_OUT=1.
 EOF
 }
 
@@ -431,9 +461,11 @@ cmd_health_degrade_cam1_v2() {
   echo "=== health summary from session.jsonl (no HTTP required) ==="
   python tools/session_health_summary.py "$run_dir/session.jsonl" || true
 
-  mkdir -p evidence/experiments
-  cp "$run_dir/meta.json" evidence/experiments/health_degrade_cam1_meta.json
-  sha256sum evidence/experiments/health_degrade_cam1_meta.json | tee evidence/experiments/health_degrade_cam1_meta.sha256
+  local outdir
+  outdir="$(experiment_out_dir)"
+  cp "$run_dir/meta.json" "$outdir/health_degrade_cam1_meta.json"
+  sha256sum "$outdir/health_degrade_cam1_meta.json" | tee "$outdir/health_degrade_cam1_meta.sha256"
+  echo "OUTDIR=$outdir"
 }
 
 cmd_demo_all() {

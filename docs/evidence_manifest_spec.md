@@ -257,27 +257,27 @@ The manifest should reflect outputs from `mp.sh` commands:
 
 ```bash
 # M9.1: Deterministic Replay
-./tools/mp.sh deterministic-replay
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay
 # Generates: Run dirs with session.jsonl files
 # Manifest row: demo_id=m9_1_determinism, artifact_path points to output
 
 # M9.2: Backpressure
-./tools/mp.sh backpressure
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh backpressure
 # Generates: CSV with throughput metrics
 # Manifest row: demo_id=m9_2_backpressure, artifact_path points to CSV
 
 # M9.3: Health Degradation
-./tools/mp.sh health-degrade-cam1
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh health-degrade-cam1
 # Generates: Session JSONL with health transitions
 # Manifest row: demo_id=m9_3_health_degrade, status transitions tracked
 
 # M9.4: Provenance
-./tools/mp.sh provenance
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh provenance
 # Generates: Run dir with stamped session.jsonl
 # Manifest row: demo_id=m9_4_provenance, validates stamping
 
 # M9.5: Timing Breakdown
-./tools/mp.sh timing-breakdown
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown
 # Generates: CSV with per-stage latencies
 # Manifest row: demo_id=m9_5_timing, latencies listed
 
@@ -380,10 +380,10 @@ Consumers can:
 **Manual** (current):
 ```bash
 # Run demo
-./tools/mp.sh deterministic-replay
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay
 
 # Add row to evidence/manifest.csv manually
-# Calculate SHA-256: sha256sum ~/metriplane-runs/*/session.jsonl
+# Calculate SHA-256: sha256sum runs/*/session.jsonl
 ```
 
 **Automated** (future):
@@ -565,7 +565,7 @@ evidence/
 The manifest enables reproducibility even without artifact files:
 
 1. **Config + Commit**: Checkout commit, use config file
-2. **Re-run Demo**: `./tools/mp.sh deterministic-replay` with same input
+2. **Re-run Demo**: `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay` with same input
 3. **Compare SHA-256**: New output should match manifest hash
 4. **Validate PASS**: Criteria should still be met
 

@@ -184,12 +184,12 @@ All Paper B benchmark claims are anchored to the current public evidence campaig
 
 | Paper result | Reported value | Direct artifact | Regenerate / verify |
 |---|---:|---|---|
-| Latency / update rate | 4,387 timing samples; detect.cam0 p95 1.242 ms; detect.cam1 p95 1.684 ms; fuse p95 0.184 ms; non-pacing pipeline p95 ≈3.55 ms | [`latency_summary.csv`](evidence/experiments/latency_summary.csv), [`latency_summary.md`](docs/eval/latency_summary.md) | `./tools/mp.sh timing-breakdown` |
+| Latency / update rate | 4,387 timing samples; detect.cam0 p95 1.242 ms; detect.cam1 p95 1.684 ms; fuse p95 0.184 ms; non-pacing pipeline p95 ≈3.55 ms | [`latency_summary.csv`](evidence/experiments/latency_summary.csv), [`latency_summary.md`](docs/eval/latency_summary.md) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown` |
 | Mapping error | 0.63 cm mean; 1.07 cm max; 9 grid points | [`mapping_error_001.csv`](evidence/experiments/mapping_error_001.csv) | `python benchmarks/run_mapping_error.py --help` |
 | Static fiducial continuity | IDs 4, 7, and 12: 100.0% coverage over 4,387 frames; 0 missing gaps | [`id_stability_001.csv`](evidence/experiments/id_stability_001.csv) | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_001.csv` |
 | Motion fiducial continuity | 98.39-99.25% primary-marker coverage over 88,475 frames; max gap 533 frames | [`id_stability_movement_001.csv`](evidence/experiments/id_stability_movement_001.csv), [`stability_summary.md`](docs/eval/stability_summary.md) | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_movement_001.csv` |
-| Replay determinism | 302 frames; 906 object pairs; 0.0 cm max positional difference; 0 event mismatches | [`replay_determinism.csv`](evidence/experiments/replay_determinism.csv), [`manifest.csv`](evidence/manifest.csv) | `./tools/mp.sh deterministic-replay` |
-| Backpressure / overload behavior | 120 Hz synthetic input; queue_max=5; KEEP_LATEST; 3,600 generated; 995 published; 2,605 dropped; p95 latency 69.830 ms | [`backpressure_summary.csv`](evidence/experiments/backpressure_summary.csv), [`backpressure_001.csv`](evidence/experiments/backpressure_001.csv) | `./tools/mp.sh backpressure` |
+| Replay determinism | 302 frames; 906 object pairs; 0.0 cm max positional difference; 0 event mismatches | [`replay_determinism.csv`](evidence/experiments/replay_determinism.csv), [`manifest.csv`](evidence/manifest.csv) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay` |
+| Backpressure / overload behavior | 120 Hz synthetic input; queue_max=5; KEEP_LATEST; 3,600 generated; 995 published; 2,605 dropped; p95 latency 69.830 ms | [`backpressure_summary.csv`](evidence/experiments/backpressure_summary.csv), [`backpressure_001.csv`](evidence/experiments/backpressure_001.csv) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh backpressure` |
 | Fusion jitter | 0.067-0.080 mm jitter std; 100.0% coverage; absolute fused accuracy not measured | [`fusion_jitter_001.csv`](evidence/experiments/fusion_jitter_001.csv), [`benchmark_summary.md`](docs/eval/benchmark_summary.md) | `python benchmarks/run_fusion_jitter.py <session.jsonl> --out evidence/experiments/fusion_jitter_001.csv` |
 | CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl <session.jsonl> --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
 | CPU/GPU fusion performance | GPU backend correct but slower than CPU for tested N=1-1000 fusion-compute workloads; CPU remains default for current workloads | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | `./tools/mp.sh gpu-benchmark` |
@@ -274,6 +274,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q   # 193 tests
 ./tools/mp.sh gpu-benchmark              # CPU vs GPU comparison
 ```
 
+Demo-generated CSV and checksum artifacts are written under `runs/demo-evidence/` by default. Set `METRIPLANE_EVIDENCE_OUT=1` when intentionally regenerating canonical evidence under `evidence/experiments/`.
+
 ---
 
 ## Running Live Camera Mode
@@ -324,7 +326,8 @@ python -m metriplane.cli doctor                # import + dependency check
 
 ```bash
 METRIPLANE_VENV=~/my-venv              # venv path (default: <repo>/.venv)
-RUNS=~/metriplane-runs                 # output directory
+RUNS=/path/to/metriplane-runs          # output directory (default: <repo>/runs)
+METRIPLANE_EVIDENCE_OUT=1              # opt in to evidence/experiments outputs
 CONFIG=configs/my.yaml                 # config file
 METRIPLANE_COMPUTE_BACKEND=gpu         # force GPU backend
 METRIPLANE_TIMING=1                    # enable per-stage timing

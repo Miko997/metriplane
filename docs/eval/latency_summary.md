@@ -43,5 +43,5 @@ MetriPlane's current public timing artifact supports the claim that two-camera p
 ## Regeneration Command
 
 ```bash
-./tools/mp.sh timing-breakdown
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown
 ```

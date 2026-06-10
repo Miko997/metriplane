@@ -55,8 +55,8 @@ Health monitoring code and tests exist, but full multi-camera degradation eviden
 ## Regeneration Commands
 
 ```bash
-./tools/mp.sh deterministic-replay
-./tools/mp.sh backpressure
-./tools/mp.sh provenance
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh backpressure
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh provenance
 sha256sum -c evidence/CHECKSUMS.sha256
 ```

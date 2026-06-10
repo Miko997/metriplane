@@ -85,9 +85,9 @@ This benchmark covers fusion compute only. CPU remains the default backend for c
 ## Regeneration Commands
 
 ```bash
-./tools/mp.sh deterministic-replay
-./tools/mp.sh backpressure
-./tools/mp.sh timing-breakdown
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh backpressure
+METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown
 python benchmarks/run_mapping_error.py --help
 python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_001.csv
 python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_movement_001.csv

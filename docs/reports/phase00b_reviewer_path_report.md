@@ -58,7 +58,8 @@ event_mismatch_count: 0
 pass: true
 ```
 
-The replay command rewrote `evidence/experiments/replay_determinism.csv` and
+At Phase 00B validation time, before the later output-routing follow-up, the
+replay command rewrote `evidence/experiments/replay_determinism.csv` and
 `evidence/experiments/replay_determinism.sha256`; both files were restored to
 HEAD immediately after validation.
 
@@ -95,8 +96,7 @@ Result: no stale root-file references.
 
 ## Follow-Up Items
 
-1. Change deterministic replay demos to write into a run/output directory instead of tracked `evidence/experiments/`, so casual demos cannot dirty canonical evidence files.
-2. Re-run the reviewer quickstart from a fresh clone in a temporary directory.
-3. Revisit whether `conftest.py` can stop prepending the repository root once fresh-clone import paths are fully exercised.
-4. Consider documenting development dependency installation more explicitly for users who run tests outside the project virtualenv.
-5. Create the DOI/Zenodo archive only after stabilization is complete.
+1. Re-run the reviewer quickstart from a fresh clone in a temporary directory.
+2. Revisit whether `conftest.py` can stop prepending the repository root once fresh-clone import paths are fully exercised.
+3. Consider documenting development dependency installation more explicitly for users who run tests outside the project virtualenv.
+4. Create the DOI/Zenodo archive only after stabilization is complete.
