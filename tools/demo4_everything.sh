@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROFILE="${1:-board_55x40_warehouse_story_v1_fusion}"
-CFG="${2:-config.m8_fusion_55x40_live.yaml}"
+CFG="${2:-configs/examples/config.m8_fusion_55x40_live.yaml}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 METRIPLANE_TOP="$(cd "$ROOT/.." && pwd)"

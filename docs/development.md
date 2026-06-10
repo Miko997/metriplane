@@ -310,16 +310,16 @@ v4l2-ctl --device=/dev/video0 --list-formats-ext
 
 ```bash
 # Create local config
-cp config.m8_fusion.yaml config.m8_fusion_local.yaml
+cp configs/examples/config.m8_fusion.yaml configs/examples/config.m8_fusion_local.yaml
 
 # Edit for your hardware
-vim config.m8_fusion_local.yaml
+vim configs/examples/config.m8_fusion_local.yaml
 # Change camera devices: /dev/video0, /dev/video2
 # Adjust calibration profile paths
 # Set logging levels
 
 # Use local config
-CONFIG=config.m8_fusion_local.yaml ./tools/mp.sh run-fusion cpu 60 dev_test
+CONFIG=configs/examples/config.m8_fusion_local.yaml ./tools/mp.sh run-fusion cpu 60 dev_test
 ```
 
 **Benefits**:

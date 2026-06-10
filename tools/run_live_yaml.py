@@ -16,7 +16,7 @@ def main() -> None:
     )
 
     ap = argparse.ArgumentParser(description="Run Metriplane live loop from a YAML config.")
-    ap.add_argument("config", help="Path to YAML config (e.g. config.m6_....yaml)")
+    ap.add_argument("config", help="Path to YAML config (e.g. configs/examples/config.m6_....yaml)")
     args = ap.parse_args()
 
     cfg_path = Path(args.config)

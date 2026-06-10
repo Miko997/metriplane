@@ -9,7 +9,7 @@ if [[ "${1:-}" == "--live" ]]; then
   shift
 fi
 
-BASE_CFG="${1:-config.m6_board_110x40_warehouse_story_v1_live_002.yaml}"
+BASE_CFG="${1:-configs/examples/config.m6_board_110x40_warehouse_story_v1_live_002.yaml}"
 PROFILE="${2:-board_110x40_warehouse_story_v1}"
 
 echo "== Environment =="

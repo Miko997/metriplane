@@ -13,7 +13,7 @@ def main() -> None:
         force=True,
     )
     ap = argparse.ArgumentParser(description="Run Metriplane multi-camera fusion from YAML config.")
-    ap.add_argument("config", help="Path to YAML config (e.g. config.m8_fusion.yaml)")
+    ap.add_argument("config", help="Path to YAML config (e.g. configs/examples/config.m8_fusion.yaml)")
     args = ap.parse_args()
 
     cfg = load_config(Path(args.config))
