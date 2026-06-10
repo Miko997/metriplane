@@ -60,15 +60,15 @@ This benchmark covers fusion compute only. It does not measure camera capture, A
 | Result | Command |
 | ------ | ------- |
 | Latency/update rate | `./tools/mp.sh timing-breakdown` |
-| Static continuity | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_001.csv` |
-| Motion continuity | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_movement_001.csv` |
+| Static continuity | `python tools/analyze_id_stability_jsonl.py SESSION_JSONL --out evidence/experiments/id_stability_001.csv` |
+| Motion continuity | `python tools/analyze_id_stability_jsonl.py SESSION_JSONL --out evidence/experiments/id_stability_movement_001.csv` |
 | Mapping error | `python benchmarks/run_mapping_error.py --help` |
 | Replay determinism | `./tools/mp.sh deterministic-replay` |
 | Backpressure | `./tools/mp.sh backpressure` |
-| Fusion jitter | `python benchmarks/run_fusion_jitter.py <session.jsonl> --out evidence/experiments/fusion_jitter_001.csv` |
-| CPU/GPU equivalence | `python benchmarks/run_compute_equivalence.py --session-jsonl <session.jsonl> --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
+| Fusion jitter | `python benchmarks/run_fusion_jitter.py SESSION_JSONL --out evidence/experiments/fusion_jitter_001.csv` |
+| CPU/GPU equivalence | `python benchmarks/run_compute_equivalence.py --session-jsonl SESSION_JSONL --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
 | CPU/GPU benchmark | `./tools/mp.sh gpu-benchmark` |
-| Zone analytics | `python tools/zones_report_jsonl.py <session.jsonl> --out evidence/experiments --prefix case_study_1_movement` |
+| Zone analytics | `python tools/zones_report_jsonl.py SESSION_JSONL --out evidence/experiments --prefix case_study_1_movement` |
 | Docker proof | `./tools/docker_demo_up.sh` |
 | Operator UI smoke | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
 
