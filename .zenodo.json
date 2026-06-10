@@ -1,0 +1,46 @@
+{
+  "title": "MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, and Zone Analytics",
+  "upload_type": "software",
+  "version": "0.1.4",
+  "access_right": "open",
+  "license": "mit",
+  "language": "eng",
+  "creators": [
+    {
+      "name": "Parkkinen, Miko",
+      "type": "Researcher"
+    }
+  ],
+  "description": "MetriPlane is open research software for camera-first planar metric state streaming, deterministic replay, and zone analytics. The software detects fiducial markers, maps observations into metric XY coordinates, supports multi-camera fusion and tracking, computes zone analytics, streams schema-versioned WebSocket state, records JSONL sessions, and packages reproducibility artifacts such as manifests, checksums, and deterministic replay workflows. The software is scoped to planar XY tracking with fiducial marker IDs and does not claim marker-free object tracking, full 3D reconstruction, safety-certified industrial control, or measured end-to-end ROS 2 / Omniverse integration latency.",
+  "keywords": [
+    "research software",
+    "digital twins",
+    "robotics",
+    "industrial automation",
+    "physical observability",
+    "deterministic replay",
+    "zone analytics",
+    "computer vision",
+    "ArUco",
+    "planar homography",
+    "reproducibility",
+    "benchmark evidence"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/Miko997/metriplane",
+      "relation": "isSupplementTo",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://github.com/Miko997/metriplane/tree/v0.1.4",
+      "relation": "isSupplementTo",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://doi.org/10.5281/zenodo.20631037",
+      "relation": "isIdenticalTo",
+      "resource_type": "software"
+    }
+  ]
+}
