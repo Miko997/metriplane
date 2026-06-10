@@ -21,7 +21,7 @@ echo "== Editable install =="
 python -m pip install -e .
 
 echo
-echo "== Import path sanity (must be repo run.py) =="
+echo "== Import path sanity (must be metriplane.run package module) =="
 python - <<'PY'
 import importlib.util
 spec = importlib.util.find_spec("metriplane.run")

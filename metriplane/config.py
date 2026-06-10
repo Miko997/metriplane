@@ -118,7 +118,7 @@ class Config:
     # M9.6: compute backend selection (cpu/gpu)
     compute: dict[str, Any] | None = None
 
-    # Optional: fault injection config section (run.py uses this pattern)
+    # Optional: fault injection config section (metriplane.run uses this pattern)
     faults: dict[str, Any] | None = None
 
 # ======================================================================================

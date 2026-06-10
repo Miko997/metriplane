@@ -161,6 +161,8 @@ USB/RTSP Camera → ArUco Detection → Planar Mapping → Fusion → Tracking/Z
 | Health | `metriplane/system/` | Component-level health registry |
 | Compute backend | `metriplane/compute/` | CPU (NumPy) or GPU (CuPy) |
 
+The canonical Python package is `metriplane/`. Root `tools/` contains the supported command-line helper scripts, `configs/` contains runtime configs, and moved experiment examples live in `configs/examples/`.
+
 **Output endpoints:**
 
 | Endpoint | Format | Description |
@@ -327,6 +329,8 @@ CONFIG=configs/my.yaml                 # config file
 METRIPLANE_COMPUTE_BACKEND=gpu         # force GPU backend
 METRIPLANE_TIMING=1                    # enable per-stage timing
 ```
+
+Experiment-oriented sample configs are kept in `configs/examples/`.
 
 ---
 

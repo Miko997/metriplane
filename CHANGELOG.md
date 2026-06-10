@@ -4,6 +4,19 @@ All notable changes to Metriplane are documented here.
 
 ---
 
+## [Unreleased] — Phase 00 repository stabilization
+
+### Changed
+
+- Cleaned the repository root so the canonical Python package lives under `metriplane/`.
+- Removed duplicate root package directories and root Python module shadows.
+- Consolidated command-line helper scripts into the canonical root `tools/` directory.
+- Moved experiment configuration YAMLs into `configs/examples/`, leaving `config.example.yaml` at the root.
+- Added a tracked demo replay fixture at `datasets/demo/session_001.jsonl` for clean-clone deterministic replay.
+- Added CI and script guards for ROS pytest plugin autoload collisions.
+
+---
+
 ## [0.1.0] — 2026-05-06 — Initial public release
 
 ### Summary
