@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-CFG="${1:-config.m8_fusion_live.yaml}"
+CFG="${1:-configs/examples/config.m8_fusion_live.yaml}"
 
 # 1) Start fusion (THIS is the only process that touches cameras)
 python tools/run_fusion_yaml.py "$CFG" &

@@ -62,9 +62,9 @@ No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed y
 
 | Artifact | Command |
 |---|---|
-| Deterministic replay | `./tools/mp.sh deterministic-replay` |
-| Backpressure | `./tools/mp.sh backpressure` |
-| Latency breakdown | `./tools/mp.sh timing-breakdown` |
+| Deterministic replay | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay` |
+| Backpressure | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh backpressure` |
+| Latency breakdown | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown` |
 | Mapping error | `python benchmarks/run_mapping_error.py --help` |
 | ID stability | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out <csv>` |
 | Fusion jitter | `python benchmarks/run_fusion_jitter.py <session.jsonl> --out evidence/experiments/fusion_jitter_001.csv` |

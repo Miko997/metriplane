@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PROFILE="${1:-board_55x40_warehouse_story_v1_fusion}"
-CFG="${2:-config.m8_fusion_55x40_live.yaml}"
+CFG="${2:-configs/examples/config.m8_fusion_55x40_live.yaml}"
 DUR="${DUR:-15}"
 
 RUN_ID="$(date +%Y%m%d_%H%M%S)"

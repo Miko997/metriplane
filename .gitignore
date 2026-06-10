@@ -45,6 +45,7 @@ configs/*_local.yaml
 # Keep the small CI replay fixture; do not unignore run/session JSONL artifacts elsewhere.
 !tests/data/
 !tests/data/sample_session.jsonl
+!datasets/demo/session_001.jsonl
 
 # Local run output accidentally created as literal tilde directory
 /~/

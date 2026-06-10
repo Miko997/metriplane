@@ -374,7 +374,7 @@ def run_loop_fusion(
         log.info("M9.5 timing: DISABLED (set METRIPLANE_TIMING=1 or timing.enabled=true)")
 
     hcfg = getattr(cfg, "health", None) or {}
-    health_enabled = bool(hcfg.get("enabled", hcfg.get("enable", True)))  # default True to match run.py
+    health_enabled = bool(hcfg.get("enabled", hcfg.get("enable", True)))  # default True to match metriplane.run
     health = HealthRegistry()
 
     # M9.6: compute backend selection (CPU NumPy by default; optional GPU via CuPy)

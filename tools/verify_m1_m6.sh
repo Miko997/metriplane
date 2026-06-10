@@ -9,7 +9,7 @@ if [[ "${1:-}" == "--live" ]]; then
   shift
 fi
 
-BASE_CFG="${1:-config.m6_board_110x40_warehouse_story_v1_live_002.yaml}"
+BASE_CFG="${1:-configs/examples/config.m6_board_110x40_warehouse_story_v1_live_002.yaml}"
 PROFILE="${2:-board_110x40_warehouse_story_v1}"
 
 echo "== Environment =="
@@ -21,7 +21,7 @@ echo "== Editable install =="
 python -m pip install -e .
 
 echo
-echo "== Import path sanity (must be repo run.py) =="
+echo "== Import path sanity (must be metriplane.run package module) =="
 python - <<'PY'
 import importlib.util
 spec = importlib.util.find_spec("metriplane.run")
@@ -30,7 +30,7 @@ PY
 
 echo
 echo "== Unit tests (covers schema/mapping/zones/record-replay) =="
-python -m pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 
 echo
 echo "== Offline determinism: M6 JSONL -> CSV matches live exports (if present) =="
