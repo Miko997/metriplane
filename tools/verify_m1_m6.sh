@@ -30,7 +30,7 @@ PY
 
 echo
 echo "== Unit tests (covers schema/mapping/zones/record-replay) =="
-python -m pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 
 echo
 echo "== Offline determinism: M6 JSONL -> CSV matches live exports (if present) =="

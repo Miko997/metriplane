@@ -254,7 +254,7 @@ pip install pytest pytest-asyncio pydantic websockets   # if not already install
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q   # 193 tests
 ```
 
-> **Note**: The `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` flag prevents conflicts with ROS 2 pytest plugins if installed system-wide.
+> **Note**: The `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` flag prevents conflicts with ROS 2 pytest plugins if installed system-wide. See [`docs/development.md`](docs/development.md) and [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) for troubleshooting details.
 
 ---
 
