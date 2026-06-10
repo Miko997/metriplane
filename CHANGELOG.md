@@ -4,7 +4,13 @@ All notable changes to Metriplane are documented here.
 
 ---
 
-## [Unreleased] — Phase 00 repository stabilization
+## [Unreleased]
+
+No unreleased changes yet.
+
+---
+
+## [0.1.4] — 2026-06-10 — Repository stabilization and Zenodo DOI release
 
 ### Changed
 
@@ -14,6 +20,12 @@ All notable changes to Metriplane are documented here.
 - Moved experiment configuration YAMLs into `configs/examples/`, leaving `config.example.yaml` at the root.
 - Added a tracked demo replay fixture at `datasets/demo/session_001.jsonl` for clean-clone deterministic replay.
 - Added CI and script guards for ROS pytest plugin autoload collisions.
+- Archived the v0.1.4 software release on Zenodo: `10.5281/zenodo.20631037`.
+
+### Evidence
+
+- No benchmark values changed from v0.1.3.
+- Evidence data, checksums, and benchmark values were preserved.
 
 ---
 

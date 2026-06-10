@@ -1,26 +1,20 @@
-# MetriPlane Paper B Artifact Package
+# MetriPlane Software Artifact and Benchmark Evidence Supplement
 
-## Associated paper
+## Artifact identity
 
-**Benchmarking Camera-First Planar Digital Twins: A Reproducible Protocol and MetriPlane Evaluation**
+MetriPlane v0.1.4 is the current repository-stabilized open research software release.
 
-Release name: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
-Status: preprint / benchmark manuscript
-Paper version: Paper B benchmark manuscript
-Repository: https://github.com/Miko997/metriplane
-Canonical release: https://github.com/Miko997/metriplane/releases/tag/v0.1.3
-Commit: resolved by the v0.1.3 tag target (`git rev-parse v0.1.3^{commit}`)
-Release date: 2026-05-18
-Artifact status: public GitHub release; archival DOI pending
-Paper status: preprint / benchmark manuscript
-Paper B canonical release tag: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
-Prior canonical evidence release: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
-Initial public release: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
-No archival DOI is claimed for this release.
+- Software release: `v0.1.4`
+- DOI: `10.5281/zenodo.20631037`
+- Repository: `https://github.com/Miko997/metriplane`
+- License: MIT
+- Benchmark evidence baseline: preserved from `v0.1.3`
+- Benchmark evidence status: supplemental release evidence, not peer-reviewed publication
+- Paper status: no peer-reviewed publication is claimed in this artifact file
 
-Canonical Paper B evidence table: [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md)
+Historical note: earlier internal planning referred to this evidence as "Paper B". The public artifact should be cited as the MetriPlane software release and benchmark evidence supplement unless a separate peer-reviewed paper is accepted.
 
-The patch from v0.1.2 to v0.1.3 corrects stale documentation, manifest values, title metadata, citation metadata, and provenance hygiene. It does not introduce new benchmark measurements.
+The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). The v0.1.4 release preserves the v0.1.3 benchmark evidence values and updates repository layout and public release metadata.
 
 ## Scope
 
@@ -100,11 +94,11 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - Omniverse/ROS 2 demos are integration demonstrations unless separately measured.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
-- No DOI or external archive URL is claimed here unless explicitly added in a future release.
+- The current software release is archived on Zenodo at DOI [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
 
 ## Versioning and provenance
 
-Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The Paper B canonical source release is [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3); [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) was the prior canonical evidence release; [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
+Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The v0.1.4 software release preserves the v0.1.3 benchmark evidence baseline; [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) was the prior canonical evidence release, and [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
 
 ## Historical provenance
 

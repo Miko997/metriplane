@@ -23,17 +23,34 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
   <a href="#operator-dashboard">Operator Dashboard</a> ·
+  <a href="#citation">Citation</a> ·
   <a href="#public-release">Release</a> ·
-  <a href="#paper-b-benchmark-reproducibility">Evidence</a> ·
+  <a href="#benchmark-evidence-and-reproducibility">Evidence</a> ·
   <a href="#installation">Setup</a> ·
   <a href="#documentation">Docs</a>
 </p>
 
 ---
 
+## Citation
+
+MetriPlane v0.1.4 is archived on Zenodo as a repository-stabilized open research software release:
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20631037.svg)](https://doi.org/10.5281/zenodo.20631037)
+
+Please cite:
+
+Parkkinen, M. (2026). *MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, and Zone Analytics* (v0.1.4). Zenodo. https://doi.org/10.5281/zenodo.20631037
+
+---
+
 ## Public release
 
-Paper B canonical release tag: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3), the MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release. [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) was the prior canonical evidence release, and [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. No benchmark numbers changed from v0.1.2 to v0.1.3, and no archival DOI is claimed yet. For the Paper B reproducibility package, see [`ARTIFACTS.md`](ARTIFACTS.md), the full evidence manifest at [`evidence/manifest.csv`](evidence/manifest.csv), and the compact evidence index at [`docs/eval/evidence_index.md`](docs/eval/evidence_index.md).
+Current citable software release: [`v0.1.4`](https://github.com/Miko997/metriplane/releases/tag/v0.1.4), archived on Zenodo at DOI [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
+
+The v0.1.4 release is a repository-stabilized open research software release. It preserves the v0.1.3 benchmark evidence values, removes duplicate root package/module shadows, adds a tracked demo replay fixture for clean-clone deterministic replay, and packages the artifact for reviewer inspection and reproducible software-paper submission.
+
+The earlier v0.1.3 release remains the historical benchmark-evidence release. Benchmark evidence is treated as supplemental release evidence, not as a peer-reviewed publication.
 
 ---
 
@@ -174,15 +191,11 @@ The canonical Python package is `metriplane/`. Root `tools/` contains the suppor
 
 ---
 
-## Paper B benchmark reproducibility
+## Benchmark evidence and reproducibility
 
-Paper title: **Benchmarking Camera-First Planar Digital Twins: A Reproducible Protocol and MetriPlane Evaluation**.
+The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). Other summaries are non-authoritative convenience summaries. Benchmark claims are anchored to the public evidence campaign and direct artifacts listed below. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv).
 
-For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are non-authoritative convenience summaries.
-
-All Paper B benchmark claims are anchored to the current public evidence campaign. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv). The canonical Paper B evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md).
-
-| Paper result | Reported value | Direct artifact | Regenerate / verify |
+| Benchmark result | Reported value | Direct artifact | Regenerate / verify |
 |---|---:|---|---|
 | Latency / update rate | 4,387 timing samples; detect.cam0 p95 1.242 ms; detect.cam1 p95 1.684 ms; fuse p95 0.184 ms; non-pacing pipeline p95 ≈3.55 ms | [`latency_summary.csv`](evidence/experiments/latency_summary.csv), [`latency_summary.md`](docs/eval/latency_summary.md) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown` |
 | Mapping error | 0.63 cm mean; 1.07 cm max; 9 grid points | [`mapping_error_001.csv`](evidence/experiments/mapping_error_001.csv) | `python benchmarks/run_mapping_error.py --help` |
@@ -408,4 +421,4 @@ MIT License — see [LICENSE](LICENSE).
 
 ---
 
-*MetriPlane — Paper B canonical evidence release*
+*MetriPlane — open research software for camera-first planar metric state streaming, replay, and zone analytics.*
