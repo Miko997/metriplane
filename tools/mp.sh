@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PYTHONUTF8="${PYTHONUTF8:-1}"
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+
 # Find repository root (walk upward until we find pyproject.toml AND benchmarks/)
 find_repo_root() {
   local dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,8 +55,16 @@ experiment_out_dir() {
 
 activate() {
   [ -d "$METRIPLANE_VENV" ] || die "METRIPLANE_VENV not found: $METRIPLANE_VENV  (set METRIPLANE_VENV=/path/to/venv)"
-  # shellcheck disable=SC1090
-  source "$METRIPLANE_VENV/bin/activate"
+  if [ -f "$METRIPLANE_VENV/bin/activate" ]; then
+    # shellcheck disable=SC1090
+    source "$METRIPLANE_VENV/bin/activate"
+  elif [ -f "$METRIPLANE_VENV/Scripts/activate" ]; then
+    # shellcheck disable=SC1090
+    source "$METRIPLANE_VENV/Scripts/activate"
+  else
+    echo "No virtualenv activation script found under $METRIPLANE_VENV"
+    exit 1
+  fi
 }
 
 free_ports() {
@@ -178,7 +189,11 @@ cmd_deterministic_replay() {
   local outdir
   outdir="$(experiment_out_dir)"
   cp /tmp/replay_determinism.csv "$outdir/replay_determinism.csv"
-  sha256sum "$outdir/replay_determinism.csv" | tee "$outdir/replay_determinism.sha256"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$outdir/replay_determinism.csv" | tee "$outdir/replay_determinism.sha256"
+  else
+    shasum -a 256 "$outdir/replay_determinism.csv" | tee "$outdir/replay_determinism.sha256"
+  fi
   echo "OUTDIR=$outdir"
 }
 

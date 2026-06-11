@@ -21,6 +21,8 @@ Please complete this after running the MetriPlane v0.1.4 reviewer path.
 
 ## Commands run
 
+Linux/macOS:
+
 ```bash
 git clone https://github.com/Miko997/metriplane.git
 cd metriplane
@@ -30,6 +32,20 @@ pip install -e .
 python -m metriplane.cli doctor
 ./tools/mp.sh deterministic-replay
 ```
+
+Windows Git Bash:
+
+```bash
+git clone https://github.com/Miko997/metriplane.git
+cd metriplane
+python -m venv .venv
+source .venv/Scripts/activate
+pip install -e .
+python -m metriplane.cli doctor
+./tools/mp.sh deterministic-replay
+```
+
+Use Git Bash or WSL on Windows, not plain Command Prompt, because `tools/mp.sh` is a Bash script.
 
 Optional Docker path:
 
@@ -42,6 +58,8 @@ curl http://localhost:8000/health
 ## Observed result
 
 * Did deterministic replay pass?
+* Expected camera-free result: doctor 0 failures; replay `pass=true`; `mean_pos_diff_cm=0.0`; `max_pos_diff_cm=0.0`; `event_mismatch_count=0`.
+* `No /dev/video* devices found` is acceptable as a warning for camera-free replay.
 * Were there installation issues?
 * Did health check pass, if Docker was used?
 * Notes:
