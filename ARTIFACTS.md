@@ -2,10 +2,12 @@
 
 ## Artifact identity
 
-MetriPlane v0.1.4 is the current repository-stabilized open research software release.
+MetriPlane v0.2.0 is the current software release candidate. It adds Sentinel,
+Command Center, physical regression, and operational evidence layers on top of
+the historical camera-to-coordinate benchmark baseline.
 
-- Software release: `v0.1.4`
-- DOI: `10.5281/zenodo.20631037`
+- Software release: `v0.2.0`
+- Latest archived DOI release: `v0.1.4` at `10.5281/zenodo.20631037`
 - Repository: `https://github.com/Miko997/metriplane`
 - License: MIT
 - Benchmark evidence baseline: preserved from `v0.1.3`
@@ -14,7 +16,7 @@ MetriPlane v0.1.4 is the current repository-stabilized open research software re
 
 Historical note: earlier internal planning referred to this evidence as "Paper B". The public artifact should be cited as the MetriPlane software release and benchmark evidence supplement unless a separate peer-reviewed paper is accepted.
 
-The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). The v0.1.4 release preserves the v0.1.3 benchmark evidence values and updates repository layout and public release metadata.
+The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). The v0.2.0 release preserves the v0.1.3 benchmark evidence values and adds operational evidence for Sentinel, Command Center, evidence bundles, regression tests, camera trust, and local operator answers.
 
 ## Scope
 
@@ -22,6 +24,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 - ArUco/fiducial IDs are the tracked object identity source.
 - Evidence covers one-camera and two-camera evaluation runs.
 - The primary integration surface is the WebSocket/JSONL `FrameStateModel` state stream.
+- Sentinel is observe-only and does not control robots or machines.
 - No marker-free recognition claim is made.
 - No full 3D scene reconstruction claim is made.
 - No safety-certified industrial control claim is made.
@@ -41,7 +44,13 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | Zone analytics | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions. Applied analytics, not a manually annotated ground-truth zone benchmark. |
 | Docker proof | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | Docker dummy-mode proof; replay-mode behavior is not expanded into a benchmark claim. |
 | Operator UI smoke | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md), [`operator_ui_final_smoke_001_zone_events.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_events.csv), [`operator_ui_final_smoke_001_zone_dwell.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_dwell.csv), [`operator_ui_final_smoke_001_zone_transitions.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_transitions.csv) | Workflow smoke evidence, not a tracking-accuracy benchmark. |
-| Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover the current evidence tree, evaluation docs, reference audit, release metadata, and audit script. |
+| Object registry / traces / events | [`object_registry_001.md`](evidence/experiments/object_registry_001.md), [`trace_store_001.md`](evidence/experiments/trace_store_001.md), [`event_schema_001.md`](evidence/experiments/event_schema_001.md) | Named objects, trace summaries, and typed operational events. |
+| Rules / incidents / evidence bundles | [`rule_engine_001.md`](evidence/experiments/rule_engine_001.md), [`incident_engine_001.md`](evidence/experiments/incident_engine_001.md), [`evidence_bundles_001.md`](evidence/experiments/evidence_bundles_001.md), [`INC-0001`](evidence/incidents/INC-0001/) | Spatial rules, grouped incidents, replay bundle reports, and checksums. |
+| Sentinel contracts/runtime/forecasting | [`spatial_contract_language_001.md`](evidence/experiments/spatial_contract_language_001.md), [`sentinel_runtime_001.md`](evidence/experiments/sentinel_runtime_001.md), [`risk_forecasting_001.md`](evidence/experiments/risk_forecasting_001.md) | Observe-only Sentinel run path and short-horizon forecast evidence. |
+| Regression/counterfactual/trust/assistant | [`physical_regression_tests_001.md`](evidence/experiments/physical_regression_tests_001.md), [`counterfactual_reports_001.md`](evidence/experiments/counterfactual_reports_001.md), [`camera_trust_001.md`](evidence/experiments/camera_trust_001.md), [`operator_assistant_001.md`](evidence/experiments/operator_assistant_001.md) | Replay regression, threshold/speed/object-removal counterfactuals, camera trust, and local grounded answers. |
+| Command Center | [`command_center_ui_001.md`](evidence/experiments/command_center_ui_001.md), [`command_center_data.json`](evidence/experiments/command_center/command_center_data.json) | Read-only operator map, incidents, traces, trust, and assistant endpoints. |
+| Integrations and deployment | [`ros2_bridge_001.md`](evidence/experiments/ros2_bridge_001.md), [`isaac_omniverse_replay_001.md`](evidence/experiments/isaac_omniverse_replay_001.md), [`jetson_edge_deployment_001.md`](evidence/experiments/jetson_edge_deployment_001.md), [`fleet_agent_001.md`](evidence/experiments/fleet_agent_001.md), [`scalable_event_pipeline_001.md`](evidence/experiments/scalable_event_pipeline_001.md) | Adapter and deployment evidence with hardware/tooling limitations documented per artifact. |
+| Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover regular files in the release tree. |
 
 ## CPU/GPU performance
 
@@ -71,10 +80,14 @@ This benchmark covers fusion compute only. It does not measure camera capture, A
 | Zone analytics | `python tools/zones_report_jsonl.py <session.jsonl> --out evidence/experiments --prefix case_study_1_movement` |
 | Docker proof | `./tools/docker_demo_up.sh` |
 | Operator UI smoke | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
+| Sentinel demo | `metriplane sentinel run --config configs/sentinel_demo.yaml --run-id sentinel_demo` |
+| Command Center export | `metriplane command-center export evidence/incidents/INC-DIST-001 --out web/dashboard/command_center_data.json` |
+| Physical regression | `metriplane test evidence/incidents/INC-0001` |
+| Evidence audit | `python scripts/audit_evidence.py` |
 
 ## Checksums
 
-The aggregate checksum file is [`evidence/CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256). It was generated from the current public proof surface in this checkout, excluding the aggregate file itself to avoid self-referential hashing.
+The aggregate checksum file is [`evidence/CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256). It was generated from regular files in the current public proof surface in this checkout, excluding the aggregate file itself to avoid self-referential hashing.
 
 To verify files that are present locally:
 
@@ -94,11 +107,11 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - Omniverse/ROS 2 demos are integration demonstrations unless separately measured.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
-- The current software release is archived on Zenodo at DOI [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
+- The latest DOI-archived software release is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). v0.2.0 release archival should be performed after tagging.
 
 ## Versioning and provenance
 
-Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The v0.1.4 software release preserves the v0.1.3 benchmark evidence baseline; [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) was the prior canonical evidence release, and [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
+Some evidence files preserve pre-public internal git descriptions such as `v1.0.0-dirty` or historical VisionTwin-era metadata. The v0.2.0 software release preserves the v0.1.3 benchmark evidence baseline; [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2) was the prior canonical evidence release, and [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0) was the initial public release. Historical metadata is preserved to avoid breaking provenance and checksums.
 
 ## Historical provenance
 

@@ -1,0 +1,15 @@
+{
+  "run_id": "INC-0001",
+  "source": "evidence/incidents/INC-0001",
+  "output": "evidence/experiments/isaac_replay/metriplane_replay.usda",
+  "fps": 30.0,
+  "scale": 1.0,
+  "frames": 5,
+  "coordinate_mapping": "USD_X=X, USD_Y=Y, USD_Z=0 (2D floor)",
+  "object_ids": [
+    "cart_01"
+  ],
+  "incident_ids": [
+    "inc_0001"
+  ]
+}

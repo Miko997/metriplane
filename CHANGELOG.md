@@ -10,6 +10,31 @@ No unreleased changes yet.
 
 ---
 
+## [0.2.0] — 2026-06-13 — Sentinel and Command Center release
+
+### Added
+
+- Added Sentinel observe-only auditing over replayed physical-space state.
+- Added spatial contracts, rule validation, incident grouping, short-horizon risk forecasting, and evidence bundles.
+- Added physical regression tests, counterfactual incident reports, camera trust analysis, and a local grounded operator assistant.
+- Added the Command Center UI/API for read-only inspection of objects, incidents, traces, trust, and operator questions.
+- Added object registry, trace store, operational events, query CLI, Metriplane-Bench scenarios, Jetson deployment notes, fleet heartbeat artifacts, and scalable event exporters.
+- Added ROS 2, Isaac, and Omniverse adapter/example surfaces for downstream integration.
+
+### Changed
+
+- Promoted Metriplane from a camera-to-coordinate demo into a physical-observability and evidence platform.
+- Expanded automated coverage to 520 passing tests for the 0.2.0 release candidate.
+- Preserved the historical v0.1.3 benchmark evidence baseline while adding 0.2.0 operational evidence.
+
+### Safety and scope
+
+- Sentinel is observe-only. It does not control robots, machines, or safety systems.
+- 0.2.0 remains planar XY and marker/fiducial based.
+- Hardware-specific integrations are documented honestly as adapters or deployment paths unless separate measured evidence is included.
+
+---
+
 ## [0.1.4] — 2026-06-10 — Repository stabilization and Zenodo DOI release
 
 ### Changed

@@ -5,7 +5,7 @@
 <h1 align="center">MetriPlane</h1>
 
 <p align="center">
-  <strong>Turn ordinary cameras into metric object-state streams — ArUco + planar homography → real-time world-coordinate tracking and zone analytics.</strong>
+  <strong>Turn calibrated cameras into metric physical-observability streams: objects, traces, spatial contracts, incidents, evidence bundles, and read-only operator review.</strong>
 </p>
 
 <p align="center">
@@ -34,23 +34,33 @@
 
 ## Citation
 
-MetriPlane v0.1.4 is archived on Zenodo as a repository-stabilized open research software release:
+MetriPlane v0.2.0 is the current software release candidate. It adds Sentinel,
+an observe-only physical-space auditing layer, while preserving the historical
+v0.1.3/v0.1.4 benchmark and Zenodo evidence lineage.
 
+The latest archived release with a DOI remains v0.1.4:
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20631037.svg)](https://doi.org/10.5281/zenodo.20631037)
 
 Please cite:
 
-Parkkinen, M. (2026). *MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, and Zone Analytics* (v0.1.4). Zenodo. https://doi.org/10.5281/zenodo.20631037
+Parkkinen, M. (2026). *MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, Zone Analytics, and Physical-Space Auditing* (v0.2.0).
 
 ---
 
 ## Public release
 
-Current citable software release: [`v0.1.4`](https://github.com/Miko997/metriplane/releases/tag/v0.1.4), archived on Zenodo at DOI [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
+Current release candidate: `v0.2.0`.
 
-The v0.1.4 release is a repository-stabilized open research software release. It preserves the v0.1.3 benchmark evidence values, removes duplicate root package/module shadows, adds a tracked demo replay fixture for clean-clone deterministic replay, and packages the artifact for reviewer inspection and reproducible software-paper submission.
+The v0.2.0 release expands Metriplane from camera-to-coordinate streaming into
+an observe-only physical-observability platform: named objects, trace summaries,
+spatial contracts, incidents, replayable evidence bundles, physical regression
+tests, camera trust, counterfactual reports, grounded local operator answers,
+and the Command Center UI.
 
-The earlier v0.1.3 release remains the historical benchmark-evidence release. Benchmark evidence is treated as supplemental release evidence, not as a peer-reviewed publication.
+The earlier v0.1.3 release remains the historical benchmark-evidence release,
+and v0.1.4 remains the latest DOI-archived repository-stabilized release.
+Benchmark evidence is treated as supplemental release evidence, not as a
+peer-reviewed publication.
 
 ---
 
@@ -62,9 +72,11 @@ The earlier v0.1.3 release remains the historical benchmark-evidence release. Be
 | 📐 **Metric world coordinates** | Pixel positions mapped to real-world cm/m via planar homography |
 | 🔀 **Multi-camera fusion** | Kalman-filtered sensor fusion across multiple views |
 | 🗺️ **Zone analytics** | Polygon zones with enter / exit / dwell event streams |
+| 🧭 **Sentinel observe-only auditing** | Spatial contracts, incidents, forecasts, evidence bundles, and regression tests without robot-control integration |
 | 📡 **WebSocket streaming** | Real-time `FrameStateModel` JSON on `ws://host:8765` |
 | 🎞️ **Deterministic replay** | Bit-exact JSONL replay for regression testing and demos |
 | 🖥️ **Operator dashboard** | Browser-based wizard: scan cameras → calibrate → run → export |
+| 🧩 **Command Center** | Read-only operator view for map state, incidents, traces, trust, and grounded answers |
 | 🐳 **Docker ready** | One-command `docker-compose up` demo — no camera needed |
 | 🔬 **Evidence-backed** | Benchmark claims backed by evidence artifacts, manifest rows, and checksums |
 | ⚡ **GPU-optional** | CuPy backend for large workloads; CPU is default for small N (see [GPU Statement](#gpu-statement)) |
@@ -88,6 +100,32 @@ python -m http.server 8088 --directory web/dashboard
 ```
 
 Full runbook: [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) · Multi-camera setup: [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md)
+
+---
+
+## Sentinel and Command Center
+
+Sentinel is the 0.2.0 observe-only control-room layer. It evaluates spatial
+contracts over camera-derived object state, records incidents, forecasts near
+future rule violations, scores camera trust, and packages local evidence without
+touching robot or machine-controller code.
+
+```bash
+metriplane sentinel run \
+  --config configs/sentinel_demo.yaml \
+  --run-id sentinel_demo_001 \
+  --runs-dir ~/metriplane-runs
+
+python -m http.server 8088 --directory web/dashboard
+# open http://localhost:8088/command_center_live.html
+```
+
+Operator-facing docs:
+[`docs/sentinel.md`](docs/sentinel.md),
+[`docs/contracts.md`](docs/contracts.md),
+[`docs/command_center_dashboard.md`](docs/command_center_dashboard.md),
+[`docs/camera_trust.md`](docs/camera_trust.md), and
+[`docs/operator_assistant.md`](docs/operator_assistant.md).
 
 ---
 
@@ -193,7 +231,7 @@ The canonical Python package is `metriplane/`. Root `tools/` contains the suppor
 
 ## Benchmark evidence and reproducibility
 
-The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). Other summaries are non-authoritative convenience summaries. Benchmark claims are anchored to the public evidence campaign and direct artifacts listed below. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv).
+The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are non-authoritative convenience summaries. Benchmark claims are anchored to the public evidence campaign and direct artifacts listed below. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv).
 
 | Benchmark result | Reported value | Direct artifact | Regenerate / verify |
 |---|---:|---|---|
@@ -233,13 +271,18 @@ asyncio.run(main())
 
 Schema documented in [`docs/schema.md`](docs/schema.md).
 
-### NVIDIA Omniverse *(external / experimental)*
+### NVIDIA Omniverse / Isaac
 
-Scripts in `tools/omniverse/` demonstrate consuming the WebSocket stream in an Omniverse USD scene. **No live integration latency is measured or claimed.** See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+Export adapters under `integrations/isaac/` and `integrations/omniverse/`
+convert replay traces into USD/OpenUSD scenes for inspection. These are replay
+and adapter surfaces unless separately measured. See
+[`docs/isaac_omniverse_replay.md`](docs/isaac_omniverse_replay.md).
 
-### ROS 2 *(external / experimental)*
+### ROS 2
 
-WebSocket frames can be bridged to ROS 2 topics via `rosbridge_server` or a custom subscriber node. Zone events map naturally to ROS 2 lifecycle events. Implementation is user-provided. See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+The `integrations/ros2/metriplane_ros/` package adapts Metriplane frame state
+and alert events into ROS 2-friendly messages. It is an adapter, not a robot
+controller. See [`docs/ros2_bridge.md`](docs/ros2_bridge.md).
 
 ---
 
@@ -266,7 +309,7 @@ Full details: [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md)
 ```bash
 source .venv/bin/activate
 pip install pytest pytest-asyncio pydantic websockets   # if not already installed
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q   # 193 tests
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q   # 520 tests
 ```
 
 > **Note**: The `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` flag prevents conflicts with ROS 2 pytest plugins if installed system-wide. See [`docs/development.md`](docs/development.md) and [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) for troubleshooting details.
@@ -359,6 +402,13 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 | [`docs/calibration_runbook.md`](docs/calibration_runbook.md) | Camera calibration step-by-step |
 | [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) | Web dashboard operator guide |
 | [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md) | Multi-camera dashboard setup |
+| [`docs/physical_observability.md`](docs/physical_observability.md) | 0.2.0 product architecture and claim boundaries |
+| [`docs/object_registry.md`](docs/object_registry.md) | Named objects, types, tags, and registry loading |
+| [`docs/trace_store.md`](docs/trace_store.md) | Trace summaries, speed/dwell/idle metrics, and exports |
+| [`docs/events.md`](docs/events.md) | Operational event and alert schema |
+| [`docs/contracts.md`](docs/contracts.md) | Sentinel spatial contract language |
+| [`docs/sentinel.md`](docs/sentinel.md) | Observe-only Sentinel runtime |
+| [`docs/command_center_dashboard.md`](docs/command_center_dashboard.md) | Command Center operator UI/API |
 | [`docs/schema.md`](docs/schema.md) | `FrameStateModel` v1.0 field reference |
 | [`docs/frames.md`](docs/frames.md) | Coordinate systems: pixel, camera, world |
 | [`docs/backpressure.md`](docs/backpressure.md) | Bounded queue design |
@@ -378,8 +428,8 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 |---|---|
 | ✅ In scope | Camera ingest, ArUco detection, planar homography mapping, multi-camera fusion, zone analytics, WebSocket streaming, JSONL recording, Docker deployment |
 | ✅ Verified integration surface | WebSocket stream (`ws://host:8765`) — measured and claimed |
-| ⚡ External / experimental | NVIDIA Omniverse extension and ROS 2 bridge are community integration examples — **no live latency measurements claimed** |
-| ❌ Not in scope | Cloud infrastructure, multi-site federation, non-ArUco markers, tracking without a calibrated board |
+| ⚡ Adapter surfaces | ROS 2, Isaac, Omniverse, exporters, and Jetson deployment are integration paths unless separately measured |
+| ❌ Not in scope | Certified safety control, robot actuation, cloud dependency, non-ArUco markers, tracking without a calibrated board |
 
 ### GPU Statement
 
@@ -392,7 +442,8 @@ Measured results: [`docs/gpu_compute_backend.md`](docs/gpu_compute_backend.md) �
 - **Onboarding evidence** (`evidence/onboarding/onboarding_001.md`) was performed on the development machine with a warm pip cache — install time on a cold cache will be slower.
 - **Fusion jitter** (`fusion_jitter_001.csv`): `max_error_m` is NaN — ground-truth absolute position comparison was not run. Jitter stability (std) is measured and reported.
 - **Large session files** (JSONL) are not included in git due to size; SHA256 checksums are in `evidence/manifest.csv`.
-- **Omniverse and ROS 2** integrations are external/experimental — no live latency measurements are claimed.
+- **Sentinel** is observe-only. It emits events, incidents, forecasts, and evidence; it is not a certified safety controller and does not actuate robots or machines.
+- **ROS 2, Isaac, Omniverse, Jetson, and exporter paths** are integration/deployment surfaces unless a specific checked-in evidence artifact says otherwise.
 
 ---
 

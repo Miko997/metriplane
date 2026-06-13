@@ -1,0 +1,14 @@
+{
+  "phase": 18,
+  "config_path": "configs/sentinel_forecast_demo.yaml",
+  "contract_path": "configs/contracts/sentinel_demo.yaml",
+  "zones_path": "configs/zones.demo.yaml",
+  "replay_input": "tests/fixtures/contracts/forecast_session.jsonl",
+  "horizon_s": 2.0,
+  "step_s": 0.2,
+  "forecasts_total": 4,
+  "future_zone_forecasts": 4,
+  "future_distance_forecasts": 0,
+  "incidents_total": 1,
+  "pass": true
+}

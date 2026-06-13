@@ -441,7 +441,7 @@ window.copyCommand = copyCommand;
 // ========================================
 
 function setupNavigation() {
-    const navItems = document.querySelectorAll('.nav-item');
+    const navItems = document.querySelectorAll('.nav-item[data-section]');
     
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {

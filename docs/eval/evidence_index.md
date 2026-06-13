@@ -2,6 +2,7 @@
 
 Summary of public evidence artifacts, supported Paper B claims, and known limitations.
 
+**Current software release candidate**: `v0.2.0`
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
 **Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
@@ -33,6 +34,22 @@ No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed y
 | `docker_demo_proof_001` | Docker proof | `evidence/experiments/docker_demo_proof_001.md` | PASS | Dummy-mode startup, health, and WebSocket message flow |
 | `operator_ui_final_smoke_001` | Operator UI smoke | `evidence/experiments/operator_ui_final_smoke_001.md` | PASS | 10-step workflow passed; smoke evidence only |
 
+## Metriplane 0.2.0 Operational Evidence
+
+| ID | Feature | Artifact | Status | Key result |
+|---|---|---|---|---|
+| `object_registry_001` | Object registry | `evidence/experiments/object_registry_001.md` | PASS | Marker IDs resolve to named physical assets, types, labels, and tags |
+| `trace_store_001` | Trace summaries | `evidence/experiments/trace_store_001.md` | PASS | Session observations produce object duration, distance, speed, zone, and gap summaries |
+| `event_schema_001` | Operational events | `evidence/experiments/event_schema_001.md` | PASS | Runtime alerts are additive and backward-compatible |
+| `spatial_contract_language_001` | Spatial contracts | `evidence/experiments/spatial_contract_language_001.md` | PASS | Contract validation and replay testing cover forbidden zones and proximity rules |
+| `sentinel_runtime_001` | Sentinel runtime | `evidence/experiments/sentinel_runtime_001.md` | PASS | Observe-only replay auditor writes run summary and keeps `control_enabled=false` |
+| `risk_forecasting_001` | Short-horizon forecasting | `evidence/experiments/risk_forecasting_001.md` | PASS | Future proximity/zone violations are projected without mutating source state |
+| `physical_regression_tests_001` | Physical regression | `evidence/experiments/physical_regression_tests_001.md` | PASS | Evidence bundle can be replayed as a regression test |
+| `counterfactual_reports_001` | Counterfactuals | `evidence/experiments/counterfactual_reports_001.md` | PASS | Threshold, speed, and object-removal transforms are reported without mutating originals |
+| `camera_trust_001` | Camera trust | `evidence/experiments/camera_trust_001.md` | PASS | Dropout/disagreement metrics and recommendations are exported |
+| `operator_assistant_001` | Local assistant | `evidence/experiments/operator_assistant_001.md` | PASS | Grounded answers cite local incidents, traces, and trust artifacts |
+| `command_center_ui_001` | Command Center | `evidence/experiments/command_center_ui_001.md` | PASS | Read-only API/UI exposes objects, incidents, traces, trust, and local answers |
+
 ## Current Acceptable Claims
 
 1. Deterministic replay produced identical compared outputs for 302 frames and 906 object pairs.
@@ -45,6 +62,8 @@ No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed y
 8. CPU/GPU equivalence is exact for the Paper B artifact: 13,161 samples, 0.0 cm RMSE and max difference.
 9. GPU fusion compute is correct but slower than CPU for tested N=1-1000 workloads; this does not claim full-pipeline GPU acceleration.
 10. Zone analytics report four zones, 877.85 object-seconds dwell, and 112 transitions as applied analytics.
+11. Sentinel evaluates spatial contracts in observe-only mode and does not actuate robots or machines.
+12. 0.2.0 operational evidence supports replayable incidents, physical regression, camera trust, counterfactual reports, local operator answers, and Command Center review.
 
 ## Known Limitations
 
@@ -57,6 +76,7 @@ No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed y
 | Zone analytics are applied analytics | Not a full manually annotated ground-truth zone-detection benchmark | `case_study_1_movement_zone_*.csv` |
 | Docker proof uses dummy mode | Replay-mode behavior is not used as a benchmark claim | `docker_demo_proof_001.md` |
 | Large JSONL sessions may be outside Git | Verify archived copies with manifest/checksum records | `evidence/manifest.csv` |
+| Sentinel is observe-only | It is not a certified safety controller and does not control robots or machines | `docs/sentinel.md`, `evidence/experiments/sentinel_runtime_001.md` |
 
 ## Regeneration Commands
 

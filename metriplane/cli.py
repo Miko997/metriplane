@@ -378,6 +378,42 @@ def main(argv: list[str] | None = None) -> int:
     # Fast-path commands that need no logging setup
     if argv and argv[0] == "doctor":
         return _main_doctor(argv[1:])
+    if argv and argv[0] == "objects":
+        from metriplane.sentinel.cli_registry import main_objects
+        return main_objects(argv[1:])
+    if argv and argv[0] == "rules":
+        from metriplane.sentinel.cli_rules import main_rules
+        return main_rules(argv[1:])
+    if argv and argv[0] == "incidents":
+        from metriplane.sentinel.cli_incidents import main_incidents
+        return main_incidents(argv[1:])
+    if argv and argv[0] == "query":
+        from metriplane.sentinel.cli_query import main_query
+        return main_query(argv[1:])
+    if argv and argv[0] == "contracts":
+        from metriplane.contracts.cli import main as contracts_main
+        return contracts_main(argv[1:])
+    if argv and argv[0] == "sentinel":
+        from metriplane.sentinel.cli_runtime import main_sentinel
+        return main_sentinel(argv[1:])
+    if argv and argv[0] == "test":
+        from metriplane.testing.cli import main_test
+        return main_test(argv[1:])
+    if argv and argv[0] == "counterfactual":
+        from metriplane.counterfactuals.cli import main_counterfactual
+        return main_counterfactual(argv[1:])
+    if argv and argv[0] == "command-center":
+        from metriplane.runner.cli_command_center import main_command_center
+        return main_command_center(argv[1:])
+    if argv and argv[0] == "camera-trust":
+        from metriplane.camera_trust.cli import main_camera_trust
+        return main_camera_trust(argv[1:])
+    if argv and argv[0] == "ask":
+        from metriplane.assistant.cli import main_ask
+        return main_ask(argv[1:])
+    if argv and argv[0] == "traces":
+        from metriplane.trace.cli_traces import main_traces
+        return main_traces(argv[1:])
     if argv and argv[0] == "start":
         return _main_start(argv[1:])
     if argv and argv[0] == "stop":

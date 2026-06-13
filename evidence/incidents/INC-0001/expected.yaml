@@ -1,0 +1,16 @@
+schema_version: "1.0"
+expected:
+  incidents:
+    - type: forbidden_zone_entry
+      rule_id: no_cart_in_exit_lane
+      min_count: 1
+      object_ids_any_order: [cart_01]
+      zones: [exit_lane]
+      severity_at_least: warning
+  events:
+    - rule_id: no_cart_in_exit_lane
+      min_count: 1
+  replay:
+    deterministic_hash_match: true
+  latency:
+    p95_update_ms_max: 50

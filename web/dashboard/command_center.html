@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Metriplane - Command Center Snapshot</title>
+  <link rel="stylesheet" href="style.css?v=20260506-theme">
+  <link rel="stylesheet" href="command_center.css">
+</head>
+<body class="vt-cc-page">
+  <div class="cc-layout">
+    <aside class="cc-rail">
+      <div class="cc-rail-brand">
+        <div class="sidebar-brand-logo cc-rail-logo">
+          <img src="icons/metriplane-coordinate-grid.svg" alt="Metriplane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <span class="logo-letter" style="display:none">M</span>
+        </div>
+        <div class="sidebar-brand-text cc-rail-brand-text">
+          <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">plane</span></span>
+          <span class="sidebar-brand-sub">Sentinel Console</span>
+        </div>
+      </div>
+
+      <div class="cc-rail-section">
+        <div class="cc-rail-label">Mode</div>
+        <div class="cc-rail-state">
+          <span class="cc-state-dot neutral"></span>
+          <span>Snapshot</span>
+        </div>
+      </div>
+
+      <div class="cc-rail-section">
+        <div class="cc-rail-label">Source</div>
+        <code class="cc-rail-code" id="src">command_center_data.json</code>
+      </div>
+
+      <div class="cc-rail-section">
+        <a class="btn-mp ghost full as-link" href="command_center_live.html">Open Live</a>
+      </div>
+    </aside>
+
+    <div class="cc-content">
+      <header class="cc-header">
+        <div class="cc-heading">
+          <div class="cc-kicker">Sentinel</div>
+          <div class="cc-title-row">
+            <h1 class="cc-title">Command Center</h1>
+            <span class="cc-mode">Snapshot</span>
+          </div>
+        </div>
+        <div class="cc-stats" id="stats"></div>
+      </header>
+
+      <main class="cc-main">
+        <section class="panel cc-map-panel">
+          <div class="panel-header cc-panel-header-strong">
+            <h2>Last Frame Map</h2>
+            <span class="panel-subtitle">Snapshot state</span>
+          </div>
+          <div class="cc-map-wrap">
+            <div class="cc-map-frame">
+              <svg id="map" viewBox="0 0 480 360" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+            <div class="cc-map-meta">
+              <div class="cc-legend" id="legend"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="cc-stack">
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Incidents</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table cc-incident-table" id="incidents">
+                <thead>
+                  <tr><th>Id</th><th>Rule</th><th>Severity</th><th>Status</th><th>Summary</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel cc-panel cc-timeline-panel">
+            <div class="panel-header">
+              <h2>Event Timeline</h2>
+            </div>
+            <div class="cc-timeline" id="timeline"></div>
+          </section>
+
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Objects</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table" id="objects">
+                <thead>
+                  <tr><th>Name</th><th>Type</th><th>Zone</th><th>X</th><th>Y</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Traces</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table" id="traces">
+                <thead>
+                  <tr><th>Object</th><th>Duration</th><th>Distance</th><th>Zones</th><th>Gaps</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <footer class="cc-foot">
+        <span>Snapshot generated from command-center export</span>
+        <a href="command_center_live.html">Open live Command Center</a>
+      </footer>
+    </div>
+  </div>
+
+  <script src="command_center.js"></script>
+  <script src="mp_nav.js"></script>
+</body>
+</html>

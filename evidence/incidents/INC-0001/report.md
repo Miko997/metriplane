@@ -1,0 +1,30 @@
+# Incident inc_0001
+
+- **Rule:** `no_cart_in_exit_lane`
+- **Severity:** warning
+- **Status:** closed
+- **Run:** `INC-0001`
+- **Opened:** 1.0
+- **Closed:** 3.0
+- **Duration:** 2.0 s
+- **Objects:** cart_01
+- **Zones:** exit_lane
+
+## Summary
+
+cart_01 triggered no_cart_in_exit_lane in exit_lane for 2.0s
+
+## Evidence
+
+- Alerts in this incident: 3
+- Total alerts recorded: 3
+- Session excerpt frames: 5
+
+## Reproduce
+
+```bash
+./replay.sh
+```
+
+This re-runs incident detection over the bundled session excerpt and
+verifies the incident reproduces and all checksums match.

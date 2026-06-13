@@ -1,0 +1,44 @@
+{
+  "phase": 23,
+  "questions_tested": 5,
+  "answers_with_citations": 5,
+  "external_llm_used": false,
+  "pass": true,
+  "results": [
+    {
+      "question": "what incident happened?",
+      "intent": "incident_search",
+      "answer": "1 incident(s) found.",
+      "citations_count": 1,
+      "limitations": []
+    },
+    {
+      "question": "where did cart_01 go?",
+      "intent": "object_history",
+      "answer": "cart_01 was tracked for 2.0s, traveling 0.0 m across zones main (gaps: 0).",
+      "citations_count": 1,
+      "limitations": []
+    },
+    {
+      "question": "was the exit lane blocked?",
+      "intent": "zone_occupancy",
+      "answer": "Zone main had incident inc_0001 (cart_person_distance) lasting 0.0s, involving cart_01, human_proxy_01.",
+      "citations_count": 2,
+      "limitations": []
+    },
+    {
+      "question": "which rule triggered this incident?",
+      "intent": "rule_explanation",
+      "answer": "Rule cart_person_distance is a min_distance rule (severity critical). Minimum distance: 0.6 m.",
+      "citations_count": 1,
+      "limitations": []
+    },
+    {
+      "question": "which camera was unreliable?",
+      "intent": "camera_health",
+      "answer": "Unreliable camera(s): cam1 is FAILED (score 0.1, dropout 0.6). Recommendations: cam1 has high dropout (60%); check cable",
+      "citations_count": 1,
+      "limitations": []
+    }
+  ]
+}

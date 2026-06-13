@@ -1,0 +1,17 @@
+# Sentinel shadow-auditor demo with short-horizon risk forecasting enabled.
+replay_input: tests/fixtures/contracts/forecast_session.jsonl
+
+sentinel:
+  enabled: true
+  mode: shadow_auditor
+  contracts_file: configs/contracts/sentinel_demo.yaml
+  objects_file: configs/objects.example.yaml
+  zones_file: configs/zones.demo.yaml
+  export_summary: true
+  fail_fast_on_contract_error: true
+  forecasting:
+    enabled: true
+    horizon_s: 2.0
+    step_s: 0.2
+    min_confidence: 0.55
+    include_projected_path: true

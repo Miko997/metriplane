@@ -1,0 +1,8 @@
+forecasting:
+  enabled: true
+  horizon_s: 2.0
+  step_s: 0.2
+  min_confidence: 0.55
+  max_projected_points: 12
+  emit_low_confidence: false
+  include_projected_path: true

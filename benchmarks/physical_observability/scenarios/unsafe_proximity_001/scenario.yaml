@@ -1,0 +1,8 @@
+id: unsafe_proximity_001
+description: a cart and a human proxy come within the unsafe distance threshold
+duration_s: 3
+expected:
+  alerts:
+    - cart_person_distance
+  incidents:
+    - unsafe_proximity

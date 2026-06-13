@@ -6,7 +6,10 @@ No arbitrary command execution allowed.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
+
+_RUNS_DIR = str(Path.home() / "metriplane-runs")
 
 
 @dataclass
@@ -143,6 +146,20 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=True,
         disabled_reason=None,
         timeout_s=20,
+        requires_cameras=False
+    ),
+    # Sentinel command-center: one-click demo that populates the Command Center.
+    AllowedCommand(
+        id="sentinel-demo",
+        title="Run Sentinel Demo",
+        description="Run the Sentinel shadow-auditor demo (replay, no camera) and write a "
+                    "run the Command Center can display",
+        command=["python", "-m", "metriplane.cli", "sentinel", "run",
+                 "--config", "configs/sentinel_operator_demo.yaml",
+                 "--run-id", "sentinel_demo", "--runs-dir", _RUNS_DIR],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=60,
         requires_cameras=False
     ),
 ]

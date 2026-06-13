@@ -1,0 +1,13 @@
+{
+  "phase": 17,
+  "mode": "shadow_auditor",
+  "control_enabled": false,
+  "run_id": "ev",
+  "contract_id": "sentinel_demo_warehouse",
+  "frames_processed": 9,
+  "objects_tracked": 3,
+  "alerts_total": 2,
+  "incidents_total": 2,
+  "health": "OK",
+  "pass": true
+}

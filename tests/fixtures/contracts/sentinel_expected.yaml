@@ -1,0 +1,4 @@
+expected_incidents: 2
+rules:
+  - no_asset_in_exit_lane
+  - human_proxy_distance

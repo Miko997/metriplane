@@ -1,0 +1,40 @@
+{
+  "bundle_path": "evidence/incidents/INC-0001",
+  "pass": true,
+  "checks": [
+    {
+      "check": "checksums",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "replay.deterministic_hash_match",
+      "pass": true,
+      "detail": "331fa2168a2d8151"
+    },
+    {
+      "check": "incident[forbidden_zone_entry/no_cart_in_exit_lane]",
+      "pass": true,
+      "detail": "matched 1 (expected >=1)"
+    },
+    {
+      "check": "event[no_cart_in_exit_lane]",
+      "pass": true,
+      "detail": "matched 3 (expected >=1)"
+    },
+    {
+      "check": "latency.p95_update_ms",
+      "pass": true,
+      "detail": "0.021ms (max 50.0ms)"
+    }
+  ],
+  "observed": {
+    "incidents": 1,
+    "alerts": 3,
+    "p95_update_ms": 0.02147100167348981,
+    "rule_ids": [
+      "no_cart_in_exit_lane"
+    ]
+  },
+  "output_hash": "331fa2168a2d81515f08f7fc6eaa8270e09f5d1e5fd38b7f1cbb37616e4599c6"
+}

@@ -36,13 +36,6 @@
   </div>
 
   <div class="sidebar-section">
-    <div class="sidebar-section-label">Operator</div>
-    <a href="operator.html" class="nav-item">
-      <span class="nav-icon"><img src="icons/metriplane-homography-calibration.svg" alt=""></span> Setup Wizard
-    </a>
-  </div>
-
-  <div class="sidebar-section">
     <div class="sidebar-section-label">Diagnostics</div>
     <a href="#runbook" class="nav-item" data-section="runbook">
       <span class="nav-icon"><img src="icons/metriplane-dashboard-metrics.svg" alt=""></span> Benchmarks
@@ -52,9 +45,9 @@
   <!-- Bottom CTA -->
   <div style="flex:1"></div>
   <div class="sidebar-cta">
-    <div class="sidebar-cta-title">New to Metriplane?</div>
-    <div class="sidebar-cta-sub">Use the guided wizard to calibrate cameras, define zones, and start a live run.</div>
-    <a href="operator.html" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">Open Operator Setup</a>
+    <div class="sidebar-cta-title">Need live controls?</div>
+    <div class="sidebar-cta-sub">Use Command Center for Sentinel incidents, replay, camera trust, and assistant context.</div>
+    <a href="command_center_live.html" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">Open Command Center</a>
     <a href="../../docs/operator_ui_runbook.md" target="_blank" style="display:block;text-align:center;margin-top:8px;font-size:10px;color:var(--text-muted);text-decoration:none;">View Runbook</a>
   </div>
 </aside>
@@ -246,9 +239,8 @@
           </div>
         </div>
 
-        <!-- Operator Setup CTA -->
+        <!-- Runbook CTA -->
         <div style="padding:0 20px 20px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="operator.html" class="btn btn-primary" style="text-decoration:none;">Open Operator Setup</a>
           <a href="../../docs/operator_ui_runbook.md" target="_blank" class="btn btn-secondary" style="text-decoration:none;">View Full Runbook</a>
         </div>
 
@@ -381,7 +373,7 @@
   <footer class="footer">
     Metri<span style="color:var(--mp-primary-bright)">plane</span> v0.1.0 &nbsp;·&nbsp;
     <a href="index.html">Home</a> &nbsp;·&nbsp;
-    <a href="operator.html">Operator Setup</a> &nbsp;·&nbsp;
+    <a href="command_center_live.html">Command Center</a> &nbsp;·&nbsp;
     <a href="../../docs/operator_ui_runbook.md" target="_blank">Runbook</a>
   </footer>
 
@@ -391,5 +383,6 @@
 <div class="toast" id="toast"></div>
 
 <script src="app.js?v=20260506-theme"></script>
+  <script src="mp_nav.js"></script>
 </body>
 </html>

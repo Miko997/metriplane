@@ -1,0 +1,25 @@
+[
+  {
+    "incident_id": "inc_0001",
+    "run_id": "INC-0001",
+    "rule_id": "no_cart_in_exit_lane",
+    "severity": "warning",
+    "status": "closed",
+    "opened_ts": 1.0,
+    "closed_ts": 3.0,
+    "duration_s": 2.0,
+    "object_ids": [
+      "cart_01"
+    ],
+    "zones": [
+      "exit_lane"
+    ],
+    "summary": "cart_01 triggered no_cart_in_exit_lane in exit_lane for 2.0s",
+    "alert_ids": [
+      "alert_000001",
+      "alert_000002",
+      "alert_000003"
+    ],
+    "evidence": {}
+  }
+]
