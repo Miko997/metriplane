@@ -19,8 +19,10 @@ the core Python package so installing Metriplane never pulls in ROS dependencies
 
 ## Parameters
 
-`metriplane_ws_url` (default `ws://localhost:8765`), `reconnect_s` (2.0),
-`publish_full_frame`, `publish_alerts`, `publish_incidents`.
+`ws_url` (default `ws://127.0.0.1:8765`), `frame_topic`
+(`/metriplane/frame_state`), `alerts_topic` (`/metriplane/alerts`),
+`incidents_topic` (`/metriplane/incidents`), `reconnect_s` (2.0),
+`publish_full_frame`, `publish_alerts`, and `publish_incidents`.
 
 ## Build
 
@@ -43,6 +45,12 @@ ros2 launch metriplane_ros bridge.launch.py
 ros2 topic list | grep metriplane
 ros2 topic echo /metriplane/frame_state --once
 ros2 topic echo /metriplane/alerts
+```
+
+The installed executable should also be visible to ROS 2:
+
+```bash
+ros2 run metriplane_ros metriplane_bridge --help
 ```
 
 ## Tests (no ROS required)

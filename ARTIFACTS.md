@@ -57,6 +57,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | Command Center | [`command_center_ui_001.md`](evidence/experiments/command_center_ui_001.md), [`command_center_data.json`](evidence/experiments/command_center/command_center_data.json) | Read-only operator map, incidents, traces, trust, and assistant endpoints. |
 | Evidence Review | [`atlas_phase_24_001.md`](evidence/experiments/atlas_phase_24_001.md) through [`atlas_phase_50_001.md`](evidence/experiments/atlas_phase_50_001.md), [`docs/atlas/README.md`](docs/atlas/README.md), [`assembly_cell_missing_tool.jsonl`](datasets/demo/atlas/assembly_cell_missing_tool.jsonl) | Local evidence workflow: domain packs, physical event ledger, Cell Truth Report, dashboard, USDA replay export, evidence bundle v3, regression, training, query/saved queries, SQLite evidence lake, connectors, edge helpers, multi-cell compare, privacy report, protocol export, pilot kit, freeze audit, and Atlas-Bench core. |
 | Integrations and deployment | [`ros2_bridge_001.md`](evidence/experiments/ros2_bridge_001.md), [`isaac_omniverse_replay_001.md`](evidence/experiments/isaac_omniverse_replay_001.md), [`jetson_edge_deployment_001.md`](evidence/experiments/jetson_edge_deployment_001.md), [`fleet_agent_001.md`](evidence/experiments/fleet_agent_001.md), [`scalable_event_pipeline_001.md`](evidence/experiments/scalable_event_pipeline_001.md) | Adapter and deployment evidence with hardware/tooling limitations documented per artifact. |
+| Manual integration runtime smoke | [`ros2_runtime_manual_2026-06-14.md`](evidence/experiments/ros2_runtime_manual_2026-06-14.md), [`omniverse_runtime_manual_2026-06-14.md`](evidence/experiments/omniverse_runtime_manual_2026-06-14.md) | ROS 2 one-environment smoke passed for bridge build, `ros2 run`, launch, topic echo, and bag capture. Omniverse generated USDA evidence is partial because no raw open log or screenshot was captured. Isaac Sim and Docker runtime were not run in this pass. |
 | Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover regular files in the release tree. |
 
 ## CPU/GPU performance
@@ -114,8 +115,9 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - Marker continuity is not general re-identification.
 - Live evaluation uses a small workspace and primary marker set.
 - The GPU benchmark covers only fusion compute, not camera capture or marker detection.
-- Omniverse/ROS 2 demos are integration demonstrations unless separately measured.
-- Atlas USD/Isaac, external pilots, hardware appliance packaging, and network connectors remain future work unless separately evidenced.
+- ROS 2 manual runtime smoke is one maintainer environment only; it does not establish latency, reliability, safety, robot-control, or production-runtime claims.
+- Omniverse USDA generation is evidenced, but no raw Omniverse open log or screenshot is captured in this pass.
+- Atlas USD/Isaac, external pilots, hardware appliance packaging, Docker runtime, and network connectors remain future work unless separately evidenced.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
 - The latest DOI-archived software release is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). v0.2.0 release archival should be performed after tagging.

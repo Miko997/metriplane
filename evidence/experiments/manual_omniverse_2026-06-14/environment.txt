@@ -1,0 +1,7 @@
+date: 2026-06-14T20:22:33+03:00
+os: Linux miko-21796-2252-20700 6.17.0-35-generic #35~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 19:30:42 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+python: Python 3.12.3
+metriplane_commit: 1ca27a1
+omniverse_launcher: /home/miko/bin/omniverse
+working_directory: /home/miko/projects/metriplane-public
+NVIDIA GeForce RTX 5070 Ti, 580.159.03

@@ -5,11 +5,20 @@ SPDX-License-Identifier: MIT
 
 # UI Parity Report
 
-Generated: `2026-06-14T13:51:35+00:00`
+Generated: `2026-06-14T17:56:01+00:00`
 
 Static UI/API release gate: **PASS**
-Browser E2E release gate: **SKIPPED unless Playwright tests are run in this environment**
-Integration runtime gate: **NOT RUN for external ROS 2, Isaac, Omniverse, and Docker runtimes**
+Browser E2E release gate: **PASS**
+Integration runtime gate: **ROS 2 manual runtime smoke PASS; Omniverse manual evidence PARTIAL; Isaac Sim and Docker runtimes NOT RUN**
+
+## Manual Integration Runtime Smoke
+
+| Runtime | Result | Evidence | Boundary |
+| --- | --- | --- | --- |
+| ROS 2 | PASS | `evidence/experiments/ros2_runtime_manual_2026-06-14.md` | Manual one-environment smoke; bridge package builds, `ros2 run` resolves, launch publishes `/metriplane/frame_state`, and bag capture recorded messages. No latency, reliability, robot-control, safety, or production-runtime claim. |
+| Omniverse | PARTIAL | `evidence/experiments/omniverse_runtime_manual_2026-06-14.md` | Generated USDA replay artifact is checksummed; no raw Omniverse open log or screenshot captured. No simulator runtime, latency, physics-correctness, or production-runtime claim. |
+| Isaac Sim | NOT RUN | - | No manual runtime-open evidence captured. |
+| Docker runtime | NOT RUN | - | No manual container runtime evidence captured in this pass. |
 
 ## Summary
 

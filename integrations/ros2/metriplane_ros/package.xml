@@ -12,8 +12,11 @@ SPDX-License-Identifier: MIT
   <maintainer email="Miko.parkkinen99@gmail.com">Miko Parkkinen</maintainer>
   <license>MIT</license>
 
+  <buildtool_depend>ament_python</buildtool_depend>
+
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-websockets</exec_depend>
 
   <test_depend>ament_copyright</test_depend>

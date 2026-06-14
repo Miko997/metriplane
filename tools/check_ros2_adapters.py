@@ -16,6 +16,7 @@ def main() -> int:
     return int(pytest.main([
         "-q",
         "tests/test_ros2_msg_adapters.py",
+        "tests/test_ros2_packaging.py",
         "integrations/ros2/metriplane_ros/tests/test_msg_adapters.py",
     ]))
 

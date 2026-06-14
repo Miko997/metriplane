@@ -142,7 +142,18 @@ def _check_git_commit() -> tuple[str, str]:
         commit = result.stdout.strip()
         return ("PASS", f"Git commit {commit}")
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return ("FAIL", "Git commit not available")
+        return ("WARN", "Git commit not available outside a source checkout")
+
+
+def _cwd_looks_like_source_checkout() -> bool:
+    pyproject = Path("pyproject.toml")
+    if not pyproject.exists():
+        return False
+    try:
+        text = pyproject.read_text(encoding="utf-8").lower()
+    except OSError:
+        return True
+    return "name = \"metriplane\"" in text or "name = 'metriplane'" in text
 
 
 def _check_vt_sh_exists() -> tuple[str, str]:
@@ -150,6 +161,8 @@ def _check_vt_sh_exists() -> tuple[str, str]:
     path = Path("tools/mp.sh")
     if path.exists():
         return ("PASS", "tools/mp.sh exists")
+    if not _cwd_looks_like_source_checkout():
+        return ("WARN", "tools/mp.sh not found outside a source checkout")
     return ("FAIL", "tools/mp.sh not found")
 
 
@@ -158,6 +171,8 @@ def _check_config_exists() -> tuple[str, str]:
     path = Path("configs/fusion_health_300fps.yaml")
     if path.exists():
         return ("PASS", "configs/fusion_health_300fps.yaml exists")
+    if not _cwd_looks_like_source_checkout():
+        return ("WARN", "configs/fusion_health_300fps.yaml not found outside a source checkout")
     return ("FAIL", "configs/fusion_health_300fps.yaml not found")
 
 

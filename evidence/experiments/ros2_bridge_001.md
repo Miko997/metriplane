@@ -11,10 +11,11 @@
 # ROS-free adapter tests (core suite + package tests)
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q \
   tests/test_ros2_msg_adapters.py \
+  tests/test_ros2_packaging.py \
   integrations/ros2/metriplane_ros/tests/test_msg_adapters.py
 ```
 
-Result: 13 passed.
+Result: 18 passed.
 
 ## What was built
 
@@ -25,7 +26,8 @@ Result: 13 passed.
   WebSocket, publishing `/metriplane/frame_state`, `/metriplane/alerts`,
   `/metriplane/incidents`; background asyncio loop with reconnect; rclpy/websockets
   imported lazily.
-- `package.xml`, `setup.py`, `resource/metriplane_ros`, `launch/bridge.launch.py`.
+- `package.xml`, `setup.py`, `setup.cfg`, `resource/metriplane_ros`,
+  `launch/bridge.launch.py`.
 
 ## Topics
 

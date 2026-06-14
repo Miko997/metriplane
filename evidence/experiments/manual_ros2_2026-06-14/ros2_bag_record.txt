@@ -1,0 +1,13 @@
+[WARN] [ros2bag]: Positional "topics" argument deprecated. Please use optional "--topics" argument instead.
+stdin is not a terminal device. Keyboard handling disabled.[INFO] [1781459254.516913731] [rosbag2_recorder]: Press SPACE for pausing/resuming
+[INFO] [1781459254.519879392] [rosbag2_recorder]: Listening for topics...
+[INFO] [1781459254.519886316] [rosbag2_recorder]: Event publisher thread: Starting
+[INFO] [1781459254.519937563] [rosbag2_recorder]: Recording...
+[INFO] [1781459254.721340035] [rosbag2_recorder]: Subscribed to topic '/metriplane/alerts'
+[INFO] [1781459254.721662872] [rosbag2_recorder]: Subscribed to topic '/metriplane/frame_state'
+[INFO] [1781459254.721951613] [rosbag2_recorder]: Subscribed to topic '/metriplane/incidents'
+[INFO] [1781459254.822036452] [rosbag2_recorder]: All requested topics are subscribed. Stopping discovery...
+[INFO] [1781459260.425605261] [rosbag2_recorder]: Pausing recording.
+[INFO] [1781459260.425682308] [rosbag2_cpp]: Writing remaining messages from cache to the bag. It may take a while
+[INFO] [1781459260.426817365] [rosbag2_recorder]: Event publisher thread: Exiting
+[INFO] [1781459260.426856570] [rosbag2_recorder]: Recording stopped

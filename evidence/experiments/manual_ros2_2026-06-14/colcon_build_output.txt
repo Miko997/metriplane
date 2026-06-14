@@ -1,0 +1,44 @@
+Starting >>> metriplane_ros
+running egg_info
+creating ../../build/metriplane_ros/metriplane_ros.egg-info
+writing ../../build/metriplane_ros/metriplane_ros.egg-info/PKG-INFO
+writing dependency_links to ../../build/metriplane_ros/metriplane_ros.egg-info/dependency_links.txt
+writing entry points to ../../build/metriplane_ros/metriplane_ros.egg-info/entry_points.txt
+writing requirements to ../../build/metriplane_ros/metriplane_ros.egg-info/requires.txt
+writing top-level names to ../../build/metriplane_ros/metriplane_ros.egg-info/top_level.txt
+writing manifest file '../../build/metriplane_ros/metriplane_ros.egg-info/SOURCES.txt'
+reading manifest file '../../build/metriplane_ros/metriplane_ros.egg-info/SOURCES.txt'
+writing manifest file '../../build/metriplane_ros/metriplane_ros.egg-info/SOURCES.txt'
+running build
+running build_py
+creating /tmp/metriplane_ros_ws/build/metriplane_ros/build
+creating /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib
+creating /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros
+copying metriplane_ros/bridge_node.py -> /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros
+copying metriplane_ros/msg_adapters.py -> /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros
+copying metriplane_ros/__init__.py -> /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros
+running install
+running install_lib
+creating /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros
+copying /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros/bridge_node.py -> /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros
+copying /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros/msg_adapters.py -> /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros
+copying /tmp/metriplane_ros_ws/build/metriplane_ros/build/lib/metriplane_ros/__init__.py -> /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros
+byte-compiling /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros/bridge_node.py to bridge_node.cpython-312.pyc
+byte-compiling /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros/msg_adapters.py to msg_adapters.cpython-312.pyc
+byte-compiling /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros/__init__.py to __init__.cpython-312.pyc
+running install_data
+creating /tmp/metriplane_ros_ws/install/metriplane_ros/share/ament_index
+creating /tmp/metriplane_ros_ws/install/metriplane_ros/share/ament_index/resource_index
+creating /tmp/metriplane_ros_ws/install/metriplane_ros/share/ament_index/resource_index/packages
+copying resource/metriplane_ros -> /tmp/metriplane_ros_ws/install/metriplane_ros/share/ament_index/resource_index/packages
+copying package.xml -> /tmp/metriplane_ros_ws/install/metriplane_ros/share/metriplane_ros
+creating /tmp/metriplane_ros_ws/install/metriplane_ros/share/metriplane_ros/launch
+copying launch/bridge.launch.py -> /tmp/metriplane_ros_ws/install/metriplane_ros/share/metriplane_ros/launch
+running install_egg_info
+Copying ../../build/metriplane_ros/metriplane_ros.egg-info to /tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros-0.2.0-py3.12.egg-info
+running install_scripts
+Installing metriplane_bridge script to /tmp/metriplane_ros_ws/install/metriplane_ros/lib/metriplane_ros
+writing list of installed files to '/tmp/metriplane_ros_ws/build/metriplane_ros/install.log'
+Finished <<< metriplane_ros [0.55s]
+
+Summary: 1 package finished [0.62s]

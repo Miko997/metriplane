@@ -1,16 +1,25 @@
 # UI QA Summary — 2026-06-14
 
-Repo state: final audit working tree on `feature/release-v0.2.0` before the merge commit.
+Repo state: final release-gate working tree on `feature/release-v0.2.0`.
 
 ## Result
 
 Static UI/API release gate: **PASS**
-Browser E2E release gate: **SKIPPED in this environment**
-Integration runtime gate: **NOT RUN for external ROS 2, Isaac, Omniverse, and Docker runtimes**
+Browser E2E release gate: **PASS**
+Integration runtime gate: **ROS 2 manual runtime smoke PASS; Omniverse manual evidence PARTIAL; Isaac Sim and Docker runtimes NOT RUN**
 
 Static coverage found no broken dashboard command buttons and no unresolved P0/P1 missing UI coverage.
 The hardening audit found no duplicate HTML IDs, no dashboard JavaScript syntax errors,
 no duplicate command buttons on the same card, and no Atlas-gated buttons stuck disabled.
+
+## Manual Integration Runtime Smoke
+
+| Runtime | Result | Evidence | Boundary |
+|---|---|---|---|
+| ROS 2 | PASS | `evidence/experiments/ros2_runtime_manual_2026-06-14.md` | Manual one-environment smoke; bridge package builds, `ros2 run` resolves, launch publishes `/metriplane/frame_state`, and bag capture recorded messages. No latency, reliability, robot-control, safety, or production-runtime claim. |
+| Omniverse | PARTIAL | `evidence/experiments/omniverse_runtime_manual_2026-06-14.md` | Generated USDA replay artifact is checksummed; no raw Omniverse open log or screenshot captured. No simulator runtime, latency, physics-correctness, or production-runtime claim. |
+| Isaac Sim | NOT RUN | - | No manual runtime-open evidence captured. |
+| Docker runtime | NOT RUN | - | No manual container runtime evidence captured in this pass. |
 
 ## Coverage Summary
 
@@ -48,21 +57,22 @@ Generated coverage files:
 
 | Command | Result |
 |---|---|
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` | Initial system-Python run failed because the active interpreter was not the repo venv and lacked dependencies such as `pydantic` and `cv2` |
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q` | PASS: `570 passed, 1 skipped in 67.16s` |
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/ui_api tests/ui_coverage -q` | PASS: `27 passed in 2.67s` |
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/e2e -q` | SKIP: `1 skipped`; Playwright is not installed, so this is not final browser release evidence |
-| `PATH="/home/miko/projects/metriplane-public/.venv/bin:$PATH" python -m metriplane.cli doctor` | PASS: `8 passed, 0 warnings, 0 failed` |
-| `bash -n tools/mp.sh tools/dashboard_runner.sh tools/start_metriplane.sh tools/validate-replay.sh` | PASS |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q` | PASS after rerun outside sandbox: `574 passed in 68.26s` |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/ui_api tests/ui_coverage -q` | PASS: `27 passed in 2.66s` |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/e2e -q` | PASS after installing Playwright and Chromium: `1 passed in 1.16s` |
+| `.venv/bin/python -m metriplane.cli doctor` | PASS: `8 passed, 0 warnings, 0 failed` |
+| `bash -n tools/mp.sh tools/dashboard_runner.sh tools/validate-replay.sh` | PASS |
 | `.venv/bin/python tools/audit_ui_functionality.py --out evidence/experiments/ui_coverage_latest.csv --json evidence/experiments/ui_coverage_latest.json` | PASS: no duplicate IDs, no JS syntax errors, no broken command buttons |
 | `.venv/bin/python tools/run_ui_demo_replay.py` | PASS after rerun outside sandbox; generated local run, report, evidence workspace, and USD replay |
 | `for f in web/dashboard/*.js; do node --check "$f"; done` | PASS |
 | `./tools/mp.sh deterministic-replay` | PASS: 2 frames, 6 object pairs, 0 event mismatches |
 | `.venv/bin/python -m metriplane.cli atlas validate-pack/run/bundle verify/test` | PASS: assembly-cell pack, incident bundle, and regression result passed |
-| `.venv/bin/python tools/check_ros2_adapters.py` | PASS: `13 passed` |
-| `.venv/bin/python -m pip wheel . --no-deps --no-build-isolation --wheel-dir /tmp/mp-wheelhouse` | PASS: wheel built and includes `metriplane/` plus top-level `integrations/` |
-| Fresh venv wheel install with `--no-deps` | PASS: installed `metriplane 0.2.0`; `metriplane` and `integrations` import specs present |
-| Isolated wheel build / dependency install from PyPI | NOT RUN: network/DNS to PyPI is unavailable in this environment |
+| `.venv/bin/python tools/check_ros2_adapters.py` | PASS: `18 passed` |
+| `.venv/bin/python -m build` | PASS after network-approved isolated build; sdist and wheel built, including `metriplane/` and top-level `integrations/` |
+| Fresh venv wheel install from `dist/*.whl` | PASS after network-approved dependency install; installed `metriplane 0.2.0` |
+| `/tmp/metriplane-wheel-smoke/bin/python -m metriplane.cli doctor` | PASS from outside checkout: `5 passed, 3 warnings, 0 failed` |
+| `/tmp/metriplane-wheel-smoke/bin/metriplane doctor` | PASS from outside checkout: `5 passed, 3 warnings, 0 failed` |
+| Wheel import smoke | PASS: imports came from `/tmp/metriplane-wheel-smoke/lib/python3.12/site-packages`, including Isaac and Omniverse integration modules |
 | Static dashboard page smoke | PASS: 11 dashboard pages found and loaded as HTML |
 | Headless Chrome screenshot capture | PASS: 6 screenshots captured |
 
@@ -89,7 +99,7 @@ Each screenshot is a nonempty `1440 x 1000` PNG.
 - Added generated QA docs under `docs/qa/`.
 - Added runner/operator API safety tests under `tests/ui_api/`.
 - Added parser coverage tests under `tests/ui_coverage/`.
-- Added optional Playwright smoke test and documentation under `tests/e2e/` and `docs/qa/ui_testing.md`.
+- Added Playwright smoke test and documentation under `tests/e2e/` and `docs/qa/ui_testing.md`.
 - Added UI consumption of runner `/commands` and `/jobs` endpoints.
 - Added duplicate HTML ID, command allowlist, and Command Center merge-artifact regression tests.
 - Extended the UI audit to report duplicate IDs, JavaScript syntax errors, duplicate command buttons per card, Atlas-gated enable wiring, and read-only fallback endpoint coverage.
@@ -97,6 +107,7 @@ Each screenshot is a nonempty `1440 x 1000` PNG.
 - Added Command Center trace summary UI backed by `/operator/traces`.
 - Hardened operator profile creation so dict-shaped/unsafe camera specs are rejected instead of silently ignored.
 - Improved `tools/dashboard_runner.sh` and runner service port-conflict messages.
+- Hardened `metriplane doctor` so installed-wheel runs outside the source checkout warn on repo-only helpers instead of failing.
 
 ## Critical And High Bugs
 
@@ -111,9 +122,9 @@ Lower-level developer scripts remain classified as `cli_only_documented` unless 
 ## Limitations
 
 - The coverage audit is static and conservative; it does not prove every runtime branch.
-- Playwright is not installed in this environment, so browser automation is documented and skipped. This is not final browser release evidence.
 - The plain `python` executable outside the repo venv does not have project dependencies installed; final QA used the repo `.venv`.
-- ROS 2, Docker container runtime behavior, Isaac Sim, and Omniverse runtime behavior were not launched; their local check/export actions are visible and gated in the UI.
+- ROS 2 was launched manually in one maintainer environment and passed the bridge smoke; Omniverse has generated USDA artifact evidence but no open log/screenshot; Isaac Sim and Docker runtime behavior were not launched in this pass.
 - Headless screenshots were captured with the runner offline, so they validate layout and assets, not live runner data refresh.
 - The first sandboxed demo replay attempt failed because `/home/miko/metriplane-runs` was read-only in the sandbox; the same command passed outside the sandbox.
-- The first isolated wheel build attempted to resolve build dependencies from PyPI and failed because DNS/network access is unavailable; the no-isolation wheel build and no-deps fresh venv install passed.
+- The first sandboxed full pytest run failed because sockets and `/home/miko/.cache` writes were blocked; the same command passed outside the sandbox. After Playwright was installed, the full suite includes the browser smoke instead of skipping it.
+- The first sandboxed package build/install attempts failed because DNS/network access to PyPI was blocked; the same commands passed with network approval.

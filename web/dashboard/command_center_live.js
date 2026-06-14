@@ -185,7 +185,7 @@ function drawControlZones(svg, b) {
       y: PAD + 22,
       "text-anchor": "middle",
       class: "cc-zone-label",
-    })).textContent = "NO WORKSPACE ZONES FOUND";
+    })).textContent = "ILLUSTRATIVE COORDINATES ONLY - NO WORKSPACE ZONES LOADED";
     return;
   }
 
@@ -446,9 +446,9 @@ function renderObjects(objects) {
 function renderTraces(traces) {
   fillTable("traces", traces.map((t) => [
     t.object_id,
-    typeChip(t.type),
+    t.marker_id,
     t.duration_s != null ? `${Number(t.duration_s).toFixed(1)}s` : "--",
-    t.distance_m != null ? `${Number(t.distance_m).toFixed(2)} m` : "--",
+    t.total_distance_m != null ? `${Number(t.total_distance_m).toFixed(2)} m` : "--",
   ]));
 }
 function renderTimeline(incidents) {
@@ -511,7 +511,7 @@ document.getElementById("ask-input").addEventListener("keydown", (e) => { if (e.
 // ---- run demo -----------------------------------------------------------
 async function runDemo() {
   const status = document.getElementById("run-demo-status");
-  const btn = document.getElementById("run-demo-btn");
+  const btn = document.getElementById("build-command-center-sample-btn");
   btn.disabled = true; status.textContent = "starting...";
   try {
     const start = await postJSON("/execute", { command_id: "sentinel-demo" });
@@ -530,7 +530,7 @@ async function runDemo() {
     }, 1000);
   } catch (e) { status.textContent = "run failed: " + e; btn.disabled = false; }
 }
-document.getElementById("run-demo-btn").addEventListener("click", runDemo);
+document.getElementById("build-command-center-sample-btn").addEventListener("click", runDemo);
 
 refresh(); refreshObjects();
 setInterval(() => { refresh(); refreshObjects(); }, 5000);

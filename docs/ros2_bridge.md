@@ -39,8 +39,15 @@ source install/setup.bash
 ## Run
 
 ```bash
-ros2 launch metriplane_ros bridge.launch.py
+ros2 launch metriplane_ros bridge.launch.py ws_url:=ws://127.0.0.1:8765
 ```
+
+Launch parameters:
+
+- `ws_url` default: `ws://127.0.0.1:8765`
+- `frame_topic` default: `/metriplane/frame_state`
+- `alerts_topic` default: `/metriplane/alerts`
+- `incidents_topic` default: `/metriplane/incidents`
 
 ## Smoke test
 

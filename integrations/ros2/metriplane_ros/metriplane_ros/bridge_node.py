@@ -15,7 +15,9 @@ Topics:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import sys
 import threading
 
 from metriplane_ros.msg_adapters import (
@@ -33,8 +35,13 @@ def _build_node():  # pragma: no cover - requires rclpy
     class MetriplaneBridge(Node):
         def __init__(self) -> None:
             super().__init__("metriplane_bridge")
-            self.ws_url = self.declare_parameter(
-                "metriplane_ws_url", "ws://localhost:8765").value
+            self.ws_url = self.declare_parameter("ws_url", "ws://127.0.0.1:8765").value
+            self.frame_topic = self.declare_parameter(
+                "frame_topic", "/metriplane/frame_state").value
+            self.alerts_topic = self.declare_parameter(
+                "alerts_topic", "/metriplane/alerts").value
+            self.incidents_topic = self.declare_parameter(
+                "incidents_topic", "/metriplane/incidents").value
             self.reconnect_s = float(
                 self.declare_parameter("reconnect_s", 2.0).value)
             self.publish_full_frame = bool(
@@ -44,10 +51,10 @@ def _build_node():  # pragma: no cover - requires rclpy
             self.publish_incidents = bool(
                 self.declare_parameter("publish_incidents", True).value)
 
-            self.frame_pub = self.create_publisher(String, "/metriplane/frame_state", 10)
-            self.alert_pub = self.create_publisher(String, "/metriplane/alerts", 10)
+            self.frame_pub = self.create_publisher(String, self.frame_topic, 10)
+            self.alert_pub = self.create_publisher(String, self.alerts_topic, 10)
             self.incident_pub = self.create_publisher(
-                String, "/metriplane/incidents", 10)
+                String, self.incidents_topic, 10)
 
             self._thread = threading.Thread(target=self._run_async_loop, daemon=True)
             self._thread.start()
@@ -91,6 +98,17 @@ def _build_node():  # pragma: no cover - requires rclpy
 
 
 def main(args=None) -> None:  # pragma: no cover - requires rclpy
+    if args is None:
+        args = sys.argv[1:]
+    if any(arg in {"-h", "--help"} for arg in args):
+        print(
+            "usage: metriplane_bridge [--ros-args -p ws_url:=ws://127.0.0.1:8765 "
+            "-p frame_topic:=/metriplane/frame_state "
+            "-p alerts_topic:=/metriplane/alerts "
+            "-p incidents_topic:=/metriplane/incidents]"
+        )
+        return
+
     import rclpy
     rclpy.init(args=args)
     node = _build_node()
@@ -99,8 +117,10 @@ def main(args=None) -> None:  # pragma: no cover - requires rclpy
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        with contextlib.suppress(BaseException):
+            node.destroy_node()
+        with contextlib.suppress(BaseException):
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":  # pragma: no cover
