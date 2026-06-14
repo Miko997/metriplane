@@ -66,8 +66,9 @@ jobs:
       - name: Run static UI audit
         run: |
           python tools/audit_ui_functionality.py \
-            --out evidence/experiments/ui_coverage_latest.csv \
-            --json evidence/experiments/ui_coverage_latest.json
+            --out /tmp/metriplane_ui_coverage_latest.csv \
+            --json /tmp/metriplane_ui_coverage_latest.json \
+            --no-docs
 
       - name: Run UI API and static integrity tests
         run: |
