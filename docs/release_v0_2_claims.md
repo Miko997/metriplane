@@ -29,6 +29,7 @@ Integration runtime gate: **ROS 2 manual runtime smoke PASS; Omniverse manual ev
 | Duplicate dashboard HTML IDs are blocked by tests | validated | `tests/ui_coverage/test_dashboard_static_integrity.py`, UI audit summary | Per-file duplicate ID check |
 | MetriPlane starts as one local console | validated | `metriplane start`, `docs/dashboard_multicam_runbook.md` | `--live` or a UI run action is required for runtime stream ports |
 | Browser pages render with Playwright | validated | `tests/e2e`, `docs/qa/ui_testing.md` | Browser evidence passed with Playwright and Chromium installed locally |
+| Clean-checkout release fixtures are tracked | validated | `tests/test_release_fixture_integrity.py`, `.github/workflows/ci.yml`, `.github/workflows/release-gates.yml` | Guards deterministic test fixtures only; raw local runs and large artifacts remain ignored |
 | Camera-free demo builds Command Center and Evidence Review artifacts | validated | `tools/run_ui_demo_replay.py`, UI QA summary | Demo replay only |
 | Evidence Review demo produces an incident bundle | validated | Atlas release gate, `metriplane atlas bundle verify` | Assembly-cell demo domain pack |
 | Physical regression replays state through Atlas logic | validated | Atlas mutation regression test | Local JSONL replay/domain-pack scope |

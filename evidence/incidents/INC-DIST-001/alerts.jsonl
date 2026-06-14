@@ -1,0 +1,1 @@
+{"alert_id":"alert_000001","rule_id":"cart_person_distance","severity":"critical","ts":2.0,"object_ids":["cart_01","human_proxy_01"],"zone":"main","detail":{"distance_m":0.3},"run_id":"INC-DIST-001"}

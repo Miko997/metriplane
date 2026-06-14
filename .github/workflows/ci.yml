@@ -26,11 +26,36 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest
+          python -m pip install pytest playwright
+
+      - name: Install browser for E2E smoke
+        run: |
+          python -m playwright install chromium --with-deps
+
+      - name: Check required release fixtures
+        run: |
+          python -m pytest -q tests/test_release_fixture_integrity.py
 
       - name: Run pytest tests
         run: |
           python -m pytest -q
+
+      - name: Run doctor
+        run: |
+          python -m metriplane.cli doctor
+
+      - name: Check dashboard JavaScript syntax
+        run: |
+          for f in web/dashboard/*.js; do node --check "$f"; done
+
+      - name: Check ROS 2 adapter/package structure
+        run: |
+          python tools/check_ros2_adapters.py
+
+      - name: Verify release evidence checksums
+        run: |
+          sha256sum -c evidence/CHECKSUMS.sha256 --quiet
+          python scripts/audit_evidence.py
 
       - name: Check shell script syntax
         run: |

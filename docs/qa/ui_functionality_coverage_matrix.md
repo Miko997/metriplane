@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # UI Functionality Coverage Matrix
 
-Generated: `2026-06-14T17:56:01+00:00`
+Generated: `2026-06-14T18:38:28+00:00`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

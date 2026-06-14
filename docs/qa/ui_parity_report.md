@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # UI Parity Report
 
-Generated: `2026-06-14T17:56:01+00:00`
+Generated: `2026-06-14T18:38:28+00:00`
 
 Static UI/API release gate: **PASS**
 Browser E2E release gate: **PASS**
@@ -19,6 +19,10 @@ Integration runtime gate: **ROS 2 manual runtime smoke PASS; Omniverse manual ev
 | Omniverse | PARTIAL | `evidence/experiments/omniverse_runtime_manual_2026-06-14.md` | Generated USDA replay artifact is checksummed; no raw Omniverse open log or screenshot captured. No simulator runtime, latency, physics-correctness, or production-runtime claim. |
 | Isaac Sim | NOT RUN | - | No manual runtime-open evidence captured. |
 | Docker runtime | NOT RUN | - | No manual container runtime evidence captured in this pass. |
+
+## Clean Checkout Fixture Gate
+
+`tests/test_release_fixture_integrity.py` guards deterministic fixture files required by the release tests so CI fails early if small checked-in fixtures are missing from a clean checkout. Raw local runs, generated outputs, and large media remain ignored.
 
 ## Summary
 

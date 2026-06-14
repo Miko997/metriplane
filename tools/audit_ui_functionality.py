@@ -959,6 +959,12 @@ def write_parity_report(path: Path, actions: list[Action], summary: dict[str, in
         "| Isaac Sim | NOT RUN | - | No manual runtime-open evidence captured. |",
         "| Docker runtime | NOT RUN | - | No manual container runtime evidence captured in this pass. |",
         "",
+        "## Clean Checkout Fixture Gate",
+        "",
+        "`tests/test_release_fixture_integrity.py` guards deterministic fixture files required by "
+        "the release tests so CI fails early if small checked-in fixtures are missing from a "
+        "clean checkout. Raw local runs, generated outputs, and large media remain ignored.",
+        "",
         "## Summary",
         "",
         markdown_table(summary_rows, ["metric", "value"]),

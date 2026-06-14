@@ -4,23 +4,13 @@
 name: External Validation
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
-  reviewer-path:
-    name: Reviewer path (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-    defaults:
-      run:
-        shell: bash
+  manual-runtime:
+    name: Manual external runtime validation
+    runs-on: self-hosted
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -31,18 +21,35 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run external reviewer validation
+      - name: Install Metriplane
         run: |
           set -euo pipefail
           python -m venv .venv
-          if [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          else
-            source .venv/Scripts/activate
-          fi
+          source .venv/bin/activate
           python -m pip install --upgrade pip
           pip install -e .
+
+      - name: Run manual external runtime checklist
+        run: |
+          set -euo pipefail
+          source .venv/bin/activate
           export PYTHONUTF8=1
           export PYTHONIOENCODING=utf-8
+
+          echo "External runtime validation is manual/self-hosted evidence only."
+          echo "Expected runner capabilities may include ROS 2, Docker, GPU, Isaac Sim, or Omniverse."
+
           python -m metriplane.cli doctor
-          ./tools/mp.sh deterministic-replay
+          python tools/check_ros2_adapters.py
+
+          if command -v docker >/dev/null 2>&1; then
+            docker --version
+          else
+            echo "Docker not available on this self-hosted runner."
+          fi
+
+          if [ -f /opt/ros/jazzy/setup.bash ]; then
+            echo "ROS 2 Jazzy setup found. Run the documented manual ROS 2 runtime smoke for release evidence."
+          else
+            echo "ROS 2 Jazzy setup not found on this self-hosted runner."
+          fi

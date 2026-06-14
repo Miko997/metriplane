@@ -1,0 +1,8 @@
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":0.0,"frame_id":0,"objects":[{"id":"7","pos_world":[0.0,0.0,0.0],"zone":"main"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":0.5,"frame_id":1,"objects":[{"id":"7","pos_world":[0.5,0.0,0.0],"zone":"main"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":1.0,"frame_id":2,"objects":[{"id":"7","pos_world":[1.0,0.0,0.0],"zone":"main"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":1.5,"frame_id":3,"objects":[{"id":"7","pos_world":[1.5,0.0,0.0],"zone":"main"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":2.0,"frame_id":4,"objects":[{"id":"7","pos_world":[2.0,0.0,0.0],"zone":"main"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":2.5,"frame_id":5,"objects":[{"id":"7","pos_world":[2.5,0.0,0.0],"zone":"main"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":3.0,"frame_id":6,"objects":[{"id":"7","pos_world":[3.5,0.0,0.0],"zone":"exit_lane"}],"events":[]}
+{"schema_version":"1.0","source_backend":"dummy","run_id":"forecast_demo","ts":3.5,"frame_id":7,"objects":[{"id":"7","pos_world":[4.0,0.0,0.0],"zone":"exit_lane"}],"events":[]}

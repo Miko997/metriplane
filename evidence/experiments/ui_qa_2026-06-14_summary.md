@@ -11,6 +11,8 @@ Integration runtime gate: **ROS 2 manual runtime smoke PASS; Omniverse manual ev
 Static coverage found no broken dashboard command buttons and no unresolved P0/P1 missing UI coverage.
 The hardening audit found no duplicate HTML IDs, no dashboard JavaScript syntax errors,
 no duplicate command buttons on the same card, and no Atlas-gated buttons stuck disabled.
+The clean-checkout fixture integrity test is part of CI so release tests fail early
+if required deterministic fixtures are missing from a fresh clone.
 
 ## Manual Integration Runtime Smoke
 
@@ -20,6 +22,12 @@ no duplicate command buttons on the same card, and no Atlas-gated buttons stuck 
 | Omniverse | PARTIAL | `evidence/experiments/omniverse_runtime_manual_2026-06-14.md` | Generated USDA replay artifact is checksummed; no raw Omniverse open log or screenshot captured. No simulator runtime, latency, physics-correctness, or production-runtime claim. |
 | Isaac Sim | NOT RUN | - | No manual runtime-open evidence captured. |
 | Docker runtime | NOT RUN | - | No manual container runtime evidence captured in this pass. |
+
+## Clean Checkout Fixture Gate
+
+| Gate | Result | Evidence | Boundary |
+|---|---|---|---|
+| Release fixture integrity | PASS | `tests/test_release_fixture_integrity.py`, `.github/workflows/ci.yml`, `.github/workflows/release-gates.yml` | Small deterministic fixtures only; raw local runs and large media remain ignored. |
 
 ## Coverage Summary
 
@@ -57,7 +65,8 @@ Generated coverage files:
 
 | Command | Result |
 |---|---|
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q` | PASS after rerun outside sandbox: `574 passed in 68.26s` |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/test_release_fixture_integrity.py -q` | PASS: `1 passed in 0.01s` |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q` | PASS after rerun outside sandbox: `580 passed in 68.28s` |
 | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/ui_api tests/ui_coverage -q` | PASS: `27 passed in 2.66s` |
 | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/e2e -q` | PASS after installing Playwright and Chromium: `1 passed in 1.16s` |
 | `.venv/bin/python -m metriplane.cli doctor` | PASS: `8 passed, 0 warnings, 0 failed` |

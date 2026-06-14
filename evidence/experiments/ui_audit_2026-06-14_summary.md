@@ -12,6 +12,7 @@ Manual integration runtime smoke:
 - Omniverse: PARTIAL. See `evidence/experiments/omniverse_runtime_manual_2026-06-14.md`; generated USDA replay artifact is checksummed, but no raw open log or screenshot was captured.
 - Isaac Sim: NOT RUN. No manual runtime-open evidence captured.
 - Docker runtime: NOT RUN. No manual container runtime evidence captured in this pass.
+- Release fixture integrity: PASS. `tests/test_release_fixture_integrity.py` guards required deterministic fixtures for clean CI checkouts.
 
 Key result:
 
