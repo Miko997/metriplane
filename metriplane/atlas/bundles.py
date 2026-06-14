@@ -62,6 +62,15 @@ def _zip_dir(src: Path, dst: Path) -> None:
                 archive.write(path, path.relative_to(src).as_posix())
 
 
+def safe_extract(archive: zipfile.ZipFile, dest: str | Path) -> None:
+    root = Path(dest).resolve()
+    for member in archive.infolist():
+        target = (root / member.filename).resolve()
+        if target != root and root not in target.parents:
+            raise ValueError(f"unsafe zip path: {member.filename}")
+    archive.extractall(root)
+
+
 def export_bundle(
     run_dir: str | Path,
     incident_id: str,
@@ -146,42 +155,45 @@ def _unpack_bundle(bundle: Path) -> Iterator[Path]:
         return
     with TemporaryDirectory() as tmp:
         with zipfile.ZipFile(bundle) as archive:
-            archive.extractall(tmp)
+            safe_extract(archive, tmp)
         yield Path(tmp)
 
 
 def verify_bundle(bundle_path: str | Path) -> dict:
     bundle = Path(bundle_path)
     errors: list[str] = []
-    with _unpack_bundle(bundle) as root:
-        for required in REQUIRED_BUNDLE_FILES:
-            if not (root / required).exists():
-                errors.append(f"missing required file: {required}")
-        if not errors:
-            manifest = BundleManifest.model_validate(json.loads((root / "manifest.json").read_text()))
-            if manifest.schema_version != "metriplane.atlas.evidence_bundle.v1":
-                errors.append(f"unsupported schema_version: {manifest.schema_version}")
-            recorded: dict[str, str] = {}
-            for line in (root / "checksums.sha256").read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                digest, rel = line.split(maxsplit=1)
-                recorded[rel.lstrip("*")] = digest
-            for rel, digest in recorded.items():
-                path = root / rel
-                if not path.exists():
-                    errors.append(f"checksum references missing file: {rel}")
-                elif sha256_file(path) != digest:
-                    errors.append(f"checksum mismatch: {rel}")
-            event_ids = {
-                json.loads(line)["event_id"]
-                for line in (root / "event_timeline.jsonl").read_text().splitlines()
-                if line.strip()
-            }
-            incident = AtlasIncident.model_validate(json.loads((root / "incident.json").read_text()))
-            for event_id in incident.event_ids:
-                if event_id not in event_ids:
-                    errors.append(f"incident references missing event: {event_id}")
+    try:
+        with _unpack_bundle(bundle) as root:
+            for required in REQUIRED_BUNDLE_FILES:
+                if not (root / required).exists():
+                    errors.append(f"missing required file: {required}")
+            if not errors:
+                manifest = BundleManifest.model_validate(json.loads((root / "manifest.json").read_text()))
+                if manifest.schema_version != "metriplane.atlas.evidence_bundle.v1":
+                    errors.append(f"unsupported schema_version: {manifest.schema_version}")
+                recorded: dict[str, str] = {}
+                for line in (root / "checksums.sha256").read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    digest, rel = line.split(maxsplit=1)
+                    recorded[rel.lstrip("*")] = digest
+                for rel, digest in recorded.items():
+                    path = root / rel
+                    if not path.exists():
+                        errors.append(f"checksum references missing file: {rel}")
+                    elif sha256_file(path) != digest:
+                        errors.append(f"checksum mismatch: {rel}")
+                event_ids = {
+                    json.loads(line)["event_id"]
+                    for line in (root / "event_timeline.jsonl").read_text().splitlines()
+                    if line.strip()
+                }
+                incident = AtlasIncident.model_validate(json.loads((root / "incident.json").read_text()))
+                for event_id in incident.event_ids:
+                    if event_id not in event_ids:
+                        errors.append(f"incident references missing event: {event_id}")
+    except ValueError as exc:
+        errors.append(str(exc))
     return {
         "schema_version": "metriplane.atlas.bundle_verifier.v1",
         "bundle": str(bundle),

@@ -36,6 +36,14 @@ def _valid_name(name: str) -> bool:
     return bool(SAFE_NAME_RE.match(name))
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def _safe_camera(cam: str) -> bool:
     return bool(SAFE_CAMERA_RE.match(str(cam)))
 
@@ -145,7 +153,7 @@ def _validate_config_relative(repo_root: Path, config: str) -> Optional[Path]:
     config = config.lstrip("./")
     path = (repo_root / config).resolve()
     configs_root = (repo_root / "configs").resolve()
-    if not str(path).startswith(str(configs_root)):
+    if not _is_relative_to(path, configs_root):
         return None
     return path
 
@@ -1017,7 +1025,7 @@ class OperatorAPI:
         # Validate session path: must be in ~/metriplane-runs/ or absolute path resolving there
         session = Path(session_path).expanduser().resolve()
         runs_root = (Path.home() / "metriplane-runs").resolve()
-        if not str(session).startswith(str(runs_root)):
+        if not _is_relative_to(session, runs_root):
             return 400, {"error": "session must be a path under ~/metriplane-runs/"}
         if not session.exists():
             return 404, {"error": f"Session file not found: {session}"}
@@ -1091,10 +1099,7 @@ class OperatorAPI:
         evidence_root = (self.repo_root / "evidence").resolve()
 
         # Only checksum files in ~/metriplane-runs/ or evidence/
-        if not (
-            str(file_path).startswith(str(runs_root))
-            or str(file_path).startswith(str(evidence_root))
-        ):
+        if not (_is_relative_to(file_path, runs_root) or _is_relative_to(file_path, evidence_root)):
             return 400, {"error": "Can only checksum files under ~/metriplane-runs/ or evidence/"}
 
         if not file_path.exists():

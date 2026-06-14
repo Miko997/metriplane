@@ -35,6 +35,17 @@ def _as_dict(v: Any) -> dict[str, Any] | None:
     return dict(v) if isinstance(v, dict) else None
 
 
+def _normalize_backend(value: str) -> str:
+    aliases = {
+        "cpu_numpy": "cpu",
+        "numpy": "cpu",
+        "gpu_cupy": "gpu",
+        "cupy": "gpu",
+    }
+    backend = str(value or "cpu").strip().lower()
+    return aliases.get(backend, backend)
+
+
 def parse_compute_config(cfg_obj: Any) -> ComputeConfig:
     """Parse compute config from a Config.compute dict (or None).
 
@@ -55,7 +66,7 @@ def parse_compute_config(cfg_obj: Any) -> ComputeConfig:
 
     d = _as_dict(cfg_obj) or {}
 
-    backend = str(d.get("backend") or "cpu").strip().lower()
+    backend = _normalize_backend(str(d.get("backend") or "cpu"))
     allow_fb = bool(d.get("allow_fallback_to_cpu", True))
 
     gd = _as_dict(d.get("gpu")) or {}
@@ -67,7 +78,7 @@ def parse_compute_config(cfg_obj: Any) -> ComputeConfig:
     # Env overrides
     env_backend = os.getenv("METRIPLANE_COMPUTE_BACKEND") or os.getenv("METRIPLANE_COMPUTE_BACKEND")
     if env_backend:
-        backend = str(env_backend).strip().lower()
+        backend = _normalize_backend(env_backend)
 
     env_dev = os.getenv("METRIPLANE_GPU_DEVICE") or os.getenv("METRIPLANE_GPU_DEVICE")
     if env_dev:

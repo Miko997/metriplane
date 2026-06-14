@@ -75,6 +75,10 @@ def _run(args) -> int:
         shutil.copyfile(session_path, run_dir / "session.jsonl")
         if sentinel_cfg.objects_file and Path(sentinel_cfg.objects_file).exists():
             shutil.copyfile(sentinel_cfg.objects_file, run_dir / "objects.yaml")
+        if sentinel_cfg.zones_file and Path(sentinel_cfg.zones_file).exists():
+            shutil.copyfile(sentinel_cfg.zones_file, run_dir / "zones.yaml")
+        if sentinel_cfg.contracts_file and Path(sentinel_cfg.contracts_file).exists():
+            shutil.copyfile(sentinel_cfg.contracts_file, run_dir / "contracts.yaml")
     except Exception:
         pass
 

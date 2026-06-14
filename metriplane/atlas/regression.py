@@ -12,7 +12,7 @@ import zipfile
 
 import yaml
 
-from metriplane.atlas.bundles import verify_bundle
+from metriplane.atlas.bundles import safe_extract, verify_bundle
 from metriplane.atlas.models import AtlasIncident, RegressionSpec
 
 
@@ -23,7 +23,7 @@ def _bundle_root(bundle: Path) -> Iterator[Path]:
         return
     with TemporaryDirectory() as tmp:
         with zipfile.ZipFile(bundle) as archive:
-            archive.extractall(tmp)
+            safe_extract(archive, tmp)
         yield Path(tmp)
 
 
@@ -69,22 +69,68 @@ def run_regression(spec_path: str | Path) -> dict:
         return _result(spec, errors)
 
     with _bundle_root(Path(spec.source_bundle)) as root:
-        actual_events = [
-            json.loads(line)
-            for line in (root / "event_timeline.jsonl").read_text().splitlines()
-            if line.strip()
-        ]
-        incident = AtlasIncident.model_validate(json.loads((root / "incident.json").read_text()))
+        actual_events, actual_incidents = _replay_bundle_logic(root, spec, errors)
+        if errors:
+            return _result(spec, errors)
 
     for expected in spec.expected_events:
         if not any(_event_matches(expected, actual) for actual in actual_events):
             errors.append(f"missing expected event: {expected}")
     for expected in spec.expected_incidents:
-        if incident.incident_type != expected.get("incident_type"):
+        matches = [
+            incident for incident in actual_incidents
+            if incident.incident_type == expected.get("incident_type")
+        ]
+        if not matches:
             errors.append(f"missing expected incident type: {expected.get('incident_type')}")
-        if expected.get("severity") and incident.severity != expected.get("severity"):
+            continue
+        if expected.get("severity") and not any(
+            incident.severity == expected.get("severity") for incident in matches
+        ):
             errors.append(f"incident severity mismatch: {expected.get('severity')}")
     return _result(spec, errors)
+
+
+def _replay_bundle_logic(root: Path, spec: RegressionSpec, errors: list[str]) -> tuple[list[dict], list[AtlasIncident]]:
+    state_segment = root / "state_segment.jsonl"
+    configs = root / "configs"
+    required_configs = ["assets.yaml", "workspace.yaml", "process.yaml"]
+    if state_segment.exists() and all((configs / name).exists() for name in required_configs):
+        try:
+            from metriplane.atlas.event_ledger import read_events
+            from metriplane.atlas.runtime import run_atlas
+
+            with TemporaryDirectory() as tmp:
+                out_dir = Path(tmp) / "regression_replay"
+                run_atlas(
+                    state_segment,
+                    configs,
+                    out_dir,
+                    run_id=f"regression_{spec.test_id[:48]}",
+                    overwrite=True,
+                )
+                actual_events = [
+                    event.model_dump()
+                    for event in read_events(out_dir / "physical_event_log.jsonl")
+                ]
+                actual_incidents = [
+                    AtlasIncident.model_validate(json.loads(line))
+                    for line in (out_dir / "incidents.jsonl").read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ]
+                return actual_events, actual_incidents
+        except Exception as exc:
+            errors.append(f"pipeline replay failed: {type(exc).__name__}: {exc}")
+            return [], []
+
+    actual_events = [
+        json.loads(line)
+        for line in (root / "event_timeline.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    actual_incidents = [AtlasIncident.model_validate(json.loads((root / "incident.json").read_text(encoding="utf-8")))]
+    errors.append("bundle lacks state_segment.jsonl or Atlas configs; used stored records only")
+    return actual_events, actual_incidents
 
 
 def _event_matches(expected: dict, actual: dict) -> bool:

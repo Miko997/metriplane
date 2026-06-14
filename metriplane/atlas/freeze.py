@@ -18,6 +18,19 @@ CLAIMS = [
     ("External pilot complete", ""),
 ]
 
+FREEZE_DENYLIST = [
+    ".git/",
+    ".venv/",
+    ".vt-venv/",
+    ".env",
+    "*.pem",
+    "*.key",
+    "private_evidence/",
+    "~/",
+    "runs/",
+    "web/dashboard/atlas_run/",
+]
+
 
 def claim_audit(root: str | Path = ".") -> dict:
     base = Path(root)
@@ -34,7 +47,11 @@ def claim_audit(root: str | Path = ".") -> dict:
         "schema_version": "metriplane.atlas.claim_audit.v1",
         "claims": rows,
         "pass": all(row["supported"] or row["status"] == "EXTERNAL_REQUIRED" for row in rows),
-        "limitations": ["External pilots and DOI/archive publication cannot be completed by local code changes alone."],
+        "denylist": FREEZE_DENYLIST,
+        "limitations": [
+            "External pilots and DOI/archive publication cannot be completed by local code changes alone.",
+            "Evidence freeze writes claim audit notes only; it does not recursively copy the repository.",
+        ],
     }
 
 
@@ -47,6 +64,7 @@ def build_freeze(root: str | Path, out_dir: str | Path) -> dict:
         "# Atlas Evidence Freeze Notes",
         "",
         "This freeze is a local repository evidence freeze for the 0.2.0 Atlas foundation.",
+        "It writes claim audit notes only and does not recursively copy the repository.",
         "",
         "| claim | status | artifact |",
         "|---|---|---|",
@@ -54,6 +72,8 @@ def build_freeze(root: str | Path, out_dir: str | Path) -> dict:
     for row in audit["claims"]:
         lines.append(f"| {row['claim']} | {row['status']} | `{row['artifact']}` |")
     lines.extend([
+        "",
+        "Denylist reviewed for recursive-copy workflows: " + ", ".join(f"`{item}`" for item in FREEZE_DENYLIST) + ".",
         "",
         "Limitations: external pilots, DOI archival, hardware appliance deployment, and measured Isaac/ROS latency require separate evidence.",
         "",

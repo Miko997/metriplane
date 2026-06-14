@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import zipfile
 from pathlib import Path
 
 import yaml
@@ -16,7 +17,7 @@ from metriplane.atlas.domain_packs import validate_domain_pack
 from metriplane.atlas.event_ledger import read_events
 from metriplane.atlas.query import index_runs, query_run_events
 from metriplane.atlas.regression import create_regression_from_bundle, run_regression
-from metriplane.atlas.runtime import run_atlas
+from metriplane.atlas.runtime import _safe_generated_out_dir, run_atlas
 from metriplane.cli import main as metriplane_main
 
 
@@ -28,6 +29,14 @@ ASSEMBLY_SESSION = ROOT / "datasets" / "demo" / "atlas" / "assembly_cell_missing
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _rewrite_bundle_checksums(bundle_dir: Path) -> None:
+    checksum_path = bundle_dir / "checksums.sha256"
+    paths = [path for path in sorted(bundle_dir.rglob("*")) if path.is_file() and path != checksum_path]
+    with checksum_path.open("w", encoding="utf-8") as handle:
+        for path in paths:
+            handle.write(f"{_sha256(path)}  {path.relative_to(bundle_dir).as_posix()}\n")
 
 
 def test_atlas_domain_packs_validate() -> None:
@@ -92,6 +101,57 @@ def test_atlas_runtime_generates_replayable_cell_black_box_artifacts(tmp_path: P
 
     assert (run_dir / "training_cases" / "INC-0001.md").exists()
     assert (run_dir / "improvement_actions.json").exists()
+
+
+def test_atlas_output_guard_classifies_generated_dirs() -> None:
+    assert _safe_generated_out_dir(Path("web/dashboard/atlas_run")) is True
+    assert _safe_generated_out_dir(Path("runs/atlas/release_gate")) is True
+    assert _safe_generated_out_dir(ROOT / "not_generated_release_output") is False
+
+
+def test_atlas_regression_replays_mutated_state_segment(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_atlas(ASSEMBLY_SESSION, ASSEMBLY_PACK, run_dir, run_id="atlas_mutation")
+    bundle_dir = run_dir / "evidence_bundles" / "INC-0001"
+    spec_path = tmp_path / "mutated_regression.yaml"
+    create_regression_from_bundle(bundle_dir, spec_path)
+    assert run_regression(spec_path)["pass"] is True
+
+    rows = []
+    for line in (bundle_dir / "state_segment.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("frame_id") in (3, 4):
+            tool = {
+                "id": "12",
+                "pos_world": [2.6, 0.7, 0.0],
+                "zone": "station_a_work",
+                "confidence": 0.97,
+            }
+            row.setdefault("objects", []).append(tool)
+            row.setdefault("fused", []).append(tool)
+        rows.append(row)
+    with (bundle_dir / "state_segment.jsonl").open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+    _rewrite_bundle_checksums(bundle_dir)
+
+    result = run_regression(spec_path)
+
+    assert result["pass"] is False
+    assert any("missing expected incident type" in error for error in result["errors"])
+
+
+def test_atlas_bundle_rejects_zip_slip(tmp_path: Path) -> None:
+    bad_zip = tmp_path / "bad.zip"
+    with zipfile.ZipFile(bad_zip, "w") as archive:
+        archive.writestr("../escape.txt", "nope")
+
+    result = verify_bundle(bad_zip)
+
+    assert result["pass"] is False
+    assert any("unsafe zip path" in error for error in result["errors"])
 
 
 def test_atlas_outputs_are_deterministic_for_same_run_id(tmp_path: Path) -> None:

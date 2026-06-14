@@ -313,7 +313,7 @@ def _runtime_module_for_config(config: str, repo_root: Path) -> str:
 def _start_fusion(*, config: str, run_id: str, runs_dir: str, duration_s: float,
                    backend: str, log_file: Path, repo_root: Path) -> subprocess.Popen:
     env = dict(os.environ)
-    env["METRIPLANE_COMPUTE_BACKEND"] = "gpu_cupy" if backend == "gpu" else "cpu_numpy"
+    env["METRIPLANE_COMPUTE_BACKEND"] = "gpu" if backend == "gpu" else "cpu"
     module = _runtime_module_for_config(config, repo_root)
     cmd = [
         sys.executable, "-m", module,

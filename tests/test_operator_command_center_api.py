@@ -65,7 +65,7 @@ def test_get_frames_for_replay():
 
 
 def test_get_frames_missing_session(tmp_path):
-    assert get_frames(tmp_path) == {"frames": [], "incidents": []}
+    assert get_frames(tmp_path) == {"frames": [], "incidents": [], "workspace": {"zones": [], "stations": []}}
 
 
 def test_live_summary():
@@ -91,8 +91,9 @@ def test_export_writes_bundle_json(tmp_path):
     payload = export_command_center(BUNDLE, out)
     assert out.exists()
     data = json.loads(out.read_text())
-    assert set(data) == {"summary", "objects", "incidents", "events", "traces"}
+    assert set(data) == {"summary", "objects", "incidents", "events", "traces", "workspace"}
     assert payload["summary"]["objects_count"] == 2
+    assert "zones" in payload["workspace"]
 
 
 def test_cli_export(tmp_path):

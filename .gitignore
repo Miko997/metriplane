@@ -50,6 +50,8 @@ configs/*_local.yaml
 !tests/data/
 !tests/data/sample_session.jsonl
 !datasets/demo/session_001.jsonl
+!datasets/demo/atlas/
+!datasets/demo/atlas/*.jsonl
 
 # Local run output accidentally created as literal tilde directory
 /~/

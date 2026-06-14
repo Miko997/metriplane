@@ -60,8 +60,8 @@ Current release candidate: `v0.2.0`.
 The v0.2.0 release expands Metriplane from camera-to-coordinate streaming into
 an observe-only physical-observability platform: named objects, trace summaries,
 spatial contracts, incidents, replayable evidence bundles, physical regression
-tests, camera trust, counterfactual reports, grounded local operator answers,
-and the Command Center UI.
+tests, camera trust, experimental local forecast reports, experimental grounded
+evidence Q&A, and the Command Center UI.
 
 The earlier v0.1.3 release remains the historical benchmark-evidence release,
 and v0.1.4 remains the latest DOI-archived repository-stabilized release.
@@ -106,7 +106,10 @@ the allowlisted runner API.
 ```bash
 metriplane start
 # open http://localhost:8088/web/dashboard/index.html
-# starts runner :9000, dashboard :8088, health/metrics :8000, websocket :8765
+# starts runner :9000 and dashboard :8088
+# runtime stream, health/metrics :8000, and websocket :8765 start only with --live or from a run action
+metriplane start --live
+# also starts the runtime stream for live-state pages
 ```
 
 Full runbook: [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) · Multi-camera setup: [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md)
@@ -116,9 +119,10 @@ Full runbook: [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) · Mu
 ## Sentinel and Command Center
 
 Sentinel is the 0.2.0 observe-only control-room layer. It evaluates spatial
-contracts over camera-derived object state, records incidents, forecasts near
-future rule violations, scores camera trust, and packages local evidence without
-touching robot or machine-controller code.
+contracts over camera-derived object state, records incidents, emits
+experimental local forecast reports for near-future rule violations, scores
+camera trust, and packages local evidence without touching robot or
+machine-controller code.
 
 ```bash
 metriplane sentinel run \
@@ -264,7 +268,7 @@ The canonical Python package is `metriplane/`. Root `tools/` contains the suppor
 | `ws://host:8765` | JSON | Real-time `FrameStateModel` per frame |
 | `http://host:8000/metrics` | Prometheus | Frame rate, object count, health scores |
 | `http://host:8000/health` | JSON | Per-component health status |
-| `<runs_dir>/<run_id>/session.jsonl` | JSONL | Full session recording for replay |
+| `RUNS/RUN_ID/session.jsonl` | JSONL | Full session recording for replay |
 
 ---
 
@@ -276,14 +280,14 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 |---|---:|---|---|
 | Latency / update rate | 4,387 timing samples; detect.cam0 p95 1.242 ms; detect.cam1 p95 1.684 ms; fuse p95 0.184 ms; non-pacing pipeline p95 ≈3.55 ms | [`latency_summary.csv`](evidence/experiments/latency_summary.csv), [`latency_summary.md`](docs/eval/latency_summary.md) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh timing-breakdown` |
 | Mapping error | 0.63 cm mean; 1.07 cm max; 9 grid points | [`mapping_error_001.csv`](evidence/experiments/mapping_error_001.csv) | `python benchmarks/run_mapping_error.py --help` |
-| Static fiducial continuity | IDs 4, 7, and 12: 100.0% coverage over 4,387 frames; 0 missing gaps | [`id_stability_001.csv`](evidence/experiments/id_stability_001.csv) | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_001.csv` |
-| Motion fiducial continuity | 98.39-99.25% primary-marker coverage over 88,475 frames; max gap 533 frames | [`id_stability_movement_001.csv`](evidence/experiments/id_stability_movement_001.csv), [`stability_summary.md`](docs/eval/stability_summary.md) | `python tools/analyze_id_stability_jsonl.py <session.jsonl> --out evidence/experiments/id_stability_movement_001.csv` |
+| Static fiducial continuity | IDs 4, 7, and 12: 100.0% coverage over 4,387 frames; 0 missing gaps | [`id_stability_001.csv`](evidence/experiments/id_stability_001.csv) | `python tools/analyze_id_stability_jsonl.py SESSION_JSONL --out evidence/experiments/id_stability_001.csv` |
+| Motion fiducial continuity | 98.39-99.25% primary-marker coverage over 88,475 frames; max gap 533 frames | [`id_stability_movement_001.csv`](evidence/experiments/id_stability_movement_001.csv), [`stability_summary.md`](docs/eval/stability_summary.md) | `python tools/analyze_id_stability_jsonl.py SESSION_JSONL --out evidence/experiments/id_stability_movement_001.csv` |
 | Replay determinism | 302 frames; 906 object pairs; 0.0 cm max positional difference; 0 event mismatches | [`replay_determinism.csv`](evidence/experiments/replay_determinism.csv), [`manifest.csv`](evidence/manifest.csv) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh deterministic-replay` |
 | Backpressure / overload behavior | 120 Hz synthetic input; queue_max=5; KEEP_LATEST; 3,600 generated; 995 published; 2,605 dropped; p95 latency 69.830 ms | [`backpressure_summary.csv`](evidence/experiments/backpressure_summary.csv), [`backpressure_001.csv`](evidence/experiments/backpressure_001.csv) | `METRIPLANE_EVIDENCE_OUT=1 ./tools/mp.sh backpressure` |
-| Fusion jitter | 0.067-0.080 mm jitter std; 100.0% coverage; absolute fused accuracy not measured | [`fusion_jitter_001.csv`](evidence/experiments/fusion_jitter_001.csv), [`benchmark_summary.md`](docs/eval/benchmark_summary.md) | `python benchmarks/run_fusion_jitter.py <session.jsonl> --out evidence/experiments/fusion_jitter_001.csv` |
-| CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl <session.jsonl> --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
+| Fusion jitter | 0.067-0.080 mm jitter std; 100.0% coverage; absolute fused accuracy not measured | [`fusion_jitter_001.csv`](evidence/experiments/fusion_jitter_001.csv), [`benchmark_summary.md`](docs/eval/benchmark_summary.md) | `python benchmarks/run_fusion_jitter.py SESSION_JSONL --out evidence/experiments/fusion_jitter_001.csv` |
+| CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl SESSION_JSONL --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
 | CPU/GPU fusion performance | GPU backend correct but slower than CPU for tested N=1-1000 fusion-compute workloads; CPU remains default for current workloads | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | `./tools/mp.sh gpu-benchmark` |
-| Zone dwell / transitions | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | `python tools/zones_report_jsonl.py <session.jsonl> --out evidence/experiments --prefix case_study_1_movement` |
+| Zone dwell / transitions | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | `python tools/zones_report_jsonl.py SESSION_JSONL --out evidence/experiments --prefix case_study_1_movement` |
 | Docker / demo proof | Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | `./tools/docker_demo_up.sh` |
 | Operator UI smoke evidence | Operator UI final smoke: 10-step workflow passed; 1,797 frames; analytics exported | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md) | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
 
@@ -348,7 +352,7 @@ Full details: [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md)
 ```bash
 source .venv/bin/activate
 pip install pytest pytest-asyncio pydantic websockets   # if not already installed
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q   # 520 tests
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 ```
 
 > **Note**: The `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` flag prevents conflicts with ROS 2 pytest plugins if installed system-wide. See [`docs/development.md`](docs/development.md) and [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) for troubleshooting details.
@@ -476,6 +480,9 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 | ⚡ Adapter surfaces | ROS 2, Isaac, Omniverse, exporters, and Jetson deployment are integration paths unless separately measured |
 | ❌ Not in scope | Certified safety control, robot actuation, cloud dependency, non-ArUco markers, tracking without a calibrated board |
 
+Do not expose the local runner on `:9000` to untrusted networks. It is a
+localhost operator/development service with an allowlisted command API.
+
 ### GPU Statement
 
 MetriPlane includes an optional CuPy GPU backend for fusion compute. The current public `gpu_benchmark_001.csv` includes real `gpu_cupy` timing rows and shows the GPU backend is numerically valid but slower than CPU for the tested N=1-1000 fusion-compute workloads. CPU remains the default backend for current workloads; GPU remains optional for larger future batched workloads. This benchmark covers fusion compute only, not camera capture, ArUco detection, mapping, WebSocket streaming, JSONL recording, or full-pipeline acceleration.
@@ -490,6 +497,7 @@ Measured results: [`docs/gpu_compute_backend.md`](docs/gpu_compute_backend.md) �
 - **Sentinel** is observe-only. It emits events, incidents, forecasts, and evidence; it is not a certified safety controller and does not actuate robots or machines.
 - **Evidence Review** is observe-only and asset/process focused. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking.
 - **ROS 2, Isaac, Omniverse, Jetson, and exporter paths** are integration/deployment surfaces unless a specific checked-in evidence artifact says otherwise.
+- **Command Center and Evidence Review are operator review tools**, not production collision-avoidance, certified safety, or quality-release systems.
 
 ---
 

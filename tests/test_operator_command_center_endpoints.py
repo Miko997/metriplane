@@ -85,6 +85,37 @@ def test_frames_endpoint(api):
     assert "incidents" in data
 
 
+def test_frames_endpoint_includes_workspace_zones(api, tmp_path, monkeypatch):
+    run = tmp_path / "run"
+    run.mkdir()
+    run.joinpath("session.jsonl").write_text(
+        json.dumps({
+            "schema_version": "1.0",
+            "source_backend": "dummy",
+            "run_id": "workspace_test",
+            "ts": 0.0,
+            "frame_id": 1,
+            "objects": [{"id": "1", "pos_world": [0.2, 0.3, 0.0], "zone": "zone_a"}],
+            "events": [],
+        }) + "\n",
+        encoding="utf-8",
+    )
+    run.joinpath("zones.yaml").write_text(
+        "zones:\n"
+        "  - name: zone_a\n"
+        "    label: Zone A\n"
+        "    polygon: [[0, 0], [1, 0], [1, 1], [0, 1]]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(api, "_cc_allowed_roots", lambda: [tmp_path.resolve()])
+
+    st, data = api.route("POST", "/operator/frames", {"run_dir": str(run)})
+
+    assert st == 200
+    assert data["workspace"]["zones"][0]["zone_id"] == "zone_a"
+    assert data["workspace"]["zones"][0]["label"] == "Zone A"
+
+
 def test_unknown_endpoint_still_404(api):
     st, data = api.route("GET", "/operator/does-not-exist", {})
     assert st == 404

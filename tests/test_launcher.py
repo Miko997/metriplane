@@ -51,6 +51,7 @@ from metriplane.launcher import (
     _read_cmdline,
     _runtime_module_for_config,
     _save_state,
+    _start_fusion,
     _wait_for_port_free,
     cmd_start,
     cmd_cleanup,
@@ -155,6 +156,29 @@ class TestLauncherDefaults:
 
     def test_camera_config_uses_fusion_runtime(self):
         assert _runtime_module_for_config("configs/fusion_health_300fps.yaml", Path.cwd()) == "metriplane.run_fusion"
+
+    def test_launcher_sets_supported_compute_backend_env(self, monkeypatch, tmp_path):
+        captured = {}
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["cmd"] = cmd
+            captured["env"] = env
+            return object()
+
+        monkeypatch.setattr("metriplane.launcher._launch", fake_launch)
+        monkeypatch.setattr("metriplane.launcher._runtime_module_for_config", lambda config, repo_root: "metriplane.run")
+
+        _start_fusion(
+            config="configs/local_demo_replay.yaml",
+            run_id="test",
+            runs_dir=str(tmp_path),
+            duration_s=1.0,
+            backend="gpu",
+            log_file=tmp_path / "fusion.log",
+            repo_root=Path.cwd(),
+        )
+
+        assert captured["env"]["METRIPLANE_COMPUTE_BACKEND"] == "gpu"
 
 
 class TestNoState:

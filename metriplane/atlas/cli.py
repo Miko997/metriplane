@@ -20,12 +20,14 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--pack", required=True)
     run.add_argument("--out", required=True)
     run.add_argument("--run-id", default=None)
+    run.add_argument("--overwrite", action="store_true")
 
     run_pack = sub.add_parser("run-pack", help="Run a named checked-in domain pack")
     run_pack.add_argument("pack_name")
     run_pack.add_argument("--demo", action="store_true")
     run_pack.add_argument("--out", required=True)
     run_pack.add_argument("--session-jsonl", default=None)
+    run_pack.add_argument("--overwrite", action="store_true")
 
     report = sub.add_parser("report", help="Print Cell Truth Report path for a run")
     report.add_argument("--run-dir", required=True)
@@ -189,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "run":
             from metriplane.atlas.runtime import run_atlas
-            manifest = run_atlas(args.session_jsonl, args.pack, args.out, args.run_id)
+            manifest = run_atlas(args.session_jsonl, args.pack, args.out, args.run_id, overwrite=args.overwrite)
             print(f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}")
             print(f"report: {manifest.artifacts['cell_truth_report_html']}")
             return 0
@@ -201,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
                 pack = Path("configs/domain_packs/assembly_cell")
             session = args.session_jsonl or "datasets/demo/atlas/assembly_cell_missing_tool.jsonl"
             from metriplane.atlas.runtime import run_atlas
-            manifest = run_atlas(session, pack, args.out, run_id=f"{args.pack_name}_demo")
+            manifest = run_atlas(session, pack, args.out, run_id=f"{args.pack_name}_demo", overwrite=args.overwrite)
             print(f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}")
             print(f"report: {manifest.artifacts['cell_truth_report_html']}")
             return 0
@@ -253,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "training":
             import zipfile
             from tempfile import TemporaryDirectory
+            from metriplane.atlas.bundles import safe_extract
             from metriplane.atlas.models import AtlasIncident
             from metriplane.atlas.training import training_case_from_incident, write_training_case
             bundle_path = Path(args.bundle)
@@ -264,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 with TemporaryDirectory() as tmp:
                     with zipfile.ZipFile(bundle_path) as archive:
-                        archive.extractall(tmp)
+                        safe_extract(archive, tmp)
                     incident = AtlasIncident.model_validate(json.loads((Path(tmp) / "incident.json").read_text()))
                     case = training_case_from_incident(incident)
                     write_training_case(case, args.out)

@@ -117,19 +117,45 @@ def _copy_pack_configs(pack: DomainPack, out_dir: Path) -> None:
             shutil.copyfile(src, cfg / name)
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _safe_generated_out_dir(out_dir: Path) -> bool:
+    resolved = out_dir.resolve()
+    allowed_roots = [
+        Path("web/dashboard/atlas_run").resolve(),
+        Path("runs/atlas").resolve(),
+        Path("/tmp").resolve(),
+    ]
+    return any(resolved == root or _is_relative_to(resolved, root) for root in allowed_roots)
+
+
 def run_atlas(
     session_jsonl: str | Path,
     pack_dir: str | Path,
     out_dir: str | Path,
     run_id: str | None = None,
+    overwrite: bool = False,
 ) -> AtlasRunManifest:
     session_path = Path(session_jsonl)
     if not session_path.exists():
         raise ValueError(f"session_jsonl does not exist: {session_path}")
     pack = load_domain_pack(pack_dir)
     paths = AtlasRunPaths.from_out_dir(out_dir)
+    if paths.out_dir.exists() and _is_relative_to(session_path, paths.out_dir):
+        raise ValueError("Refusing to overwrite an output directory that contains the source session")
     if paths.out_dir.exists():
         # Derived artifacts may be overwritten, but never the source session.
+        if not overwrite and not _safe_generated_out_dir(paths.out_dir):
+            raise ValueError(
+                "Refusing to overwrite existing non-generated output directory "
+                f"without --overwrite: {paths.out_dir}"
+            )
         shutil.rmtree(paths.out_dir)
     paths.out_dir.mkdir(parents=True, exist_ok=True)
 

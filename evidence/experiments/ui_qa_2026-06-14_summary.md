@@ -1,10 +1,12 @@
 # UI QA Summary — 2026-06-14
 
-Repo commit: `a142346`
+Repo state: final audit working tree on `feature/release-v0.2.0` before the merge commit.
 
 ## Result
 
-Release gate: **PASS**
+Static UI/API release gate: **PASS**
+Browser E2E release gate: **SKIPPED in this environment**
+Integration runtime gate: **NOT RUN for external ROS 2, Isaac, Omniverse, and Docker runtimes**
 
 Static coverage found no broken dashboard command buttons and no unresolved P0/P1 missing UI coverage.
 The hardening audit found no duplicate HTML IDs, no dashboard JavaScript syntax errors,
@@ -47,14 +49,20 @@ Generated coverage files:
 | Command | Result |
 |---|---|
 | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` | Initial system-Python run failed because the active interpreter was not the repo venv and lacked dependencies such as `pydantic` and `cv2` |
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PATH="/home/miko/projects/metriplane-public/.venv/bin:$PATH" python -m pytest -q` | PASS: `553 passed, 1 skipped in 67.09s` |
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PATH="/home/miko/projects/metriplane-public/.venv/bin:$PATH" python -m pytest tests/ui_api tests/ui_coverage -q` | PASS: `23 passed in 2.64s` |
-| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PATH="/home/miko/projects/metriplane-public/.venv/bin:$PATH" python -m pytest tests/e2e -q` | SKIP: `1 skipped`; Playwright is not installed, so this is not final browser release evidence |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q` | PASS: `570 passed, 1 skipped in 67.16s` |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/ui_api tests/ui_coverage -q` | PASS: `27 passed in 2.67s` |
+| `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest tests/e2e -q` | SKIP: `1 skipped`; Playwright is not installed, so this is not final browser release evidence |
 | `PATH="/home/miko/projects/metriplane-public/.venv/bin:$PATH" python -m metriplane.cli doctor` | PASS: `8 passed, 0 warnings, 0 failed` |
-| `bash -n tools/mp.sh tools/dashboard_runner.sh` | PASS |
-| `PATH="/home/miko/projects/metriplane-public/.venv/bin:$PATH" python tools/audit_ui_functionality.py --out evidence/experiments/ui_coverage_latest.csv --json evidence/experiments/ui_coverage_latest.json` | PASS: no duplicate IDs, no JS syntax errors, no broken command buttons |
+| `bash -n tools/mp.sh tools/dashboard_runner.sh tools/start_metriplane.sh tools/validate-replay.sh` | PASS |
+| `.venv/bin/python tools/audit_ui_functionality.py --out evidence/experiments/ui_coverage_latest.csv --json evidence/experiments/ui_coverage_latest.json` | PASS: no duplicate IDs, no JS syntax errors, no broken command buttons |
 | `.venv/bin/python tools/run_ui_demo_replay.py` | PASS after rerun outside sandbox; generated local run, report, evidence workspace, and USD replay |
 | `for f in web/dashboard/*.js; do node --check "$f"; done` | PASS |
+| `./tools/mp.sh deterministic-replay` | PASS: 2 frames, 6 object pairs, 0 event mismatches |
+| `.venv/bin/python -m metriplane.cli atlas validate-pack/run/bundle verify/test` | PASS: assembly-cell pack, incident bundle, and regression result passed |
+| `.venv/bin/python tools/check_ros2_adapters.py` | PASS: `13 passed` |
+| `.venv/bin/python -m pip wheel . --no-deps --no-build-isolation --wheel-dir /tmp/mp-wheelhouse` | PASS: wheel built and includes `metriplane/` plus top-level `integrations/` |
+| Fresh venv wheel install with `--no-deps` | PASS: installed `metriplane 0.2.0`; `metriplane` and `integrations` import specs present |
+| Isolated wheel build / dependency install from PyPI | NOT RUN: network/DNS to PyPI is unavailable in this environment |
 | Static dashboard page smoke | PASS: 11 dashboard pages found and loaded as HTML |
 | Headless Chrome screenshot capture | PASS: 6 screenshots captured |
 
@@ -104,7 +112,8 @@ Lower-level developer scripts remain classified as `cli_only_documented` unless 
 
 - The coverage audit is static and conservative; it does not prove every runtime branch.
 - Playwright is not installed in this environment, so browser automation is documented and skipped. This is not final browser release evidence.
-- The plain `python` executable outside the repo venv does not have project dependencies installed; final QA used the repo `.venv` first in `PATH`.
+- The plain `python` executable outside the repo venv does not have project dependencies installed; final QA used the repo `.venv`.
 - ROS 2, Docker container runtime behavior, Isaac Sim, and Omniverse runtime behavior were not launched; their local check/export actions are visible and gated in the UI.
 - Headless screenshots were captured with the runner offline, so they validate layout and assets, not live runner data refresh.
 - The first sandboxed demo replay attempt failed because `/home/miko/metriplane-runs` was read-only in the sandbox; the same command passed outside the sandbox.
+- The first isolated wheel build attempted to resolve build dependencies from PyPI and failed because DNS/network access is unavailable; the no-isolation wheel build and no-deps fresh venv install passed.

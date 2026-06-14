@@ -2,7 +2,9 @@
 
 This file mirrors `evidence/experiments/ui_qa_2026-06-14_summary.md`.
 
-Release gate: **PASS**
+Static UI/API release gate: **PASS**
+Browser E2E release gate: **SKIPPED in this environment**
+Integration runtime gate: **NOT RUN for external ROS 2, Isaac, Omniverse, and Docker runtimes**
 
 Key result:
 
@@ -16,8 +18,8 @@ Key result:
 - `6` observe-only endpoints covered by read-only GET fallback
 - `0` critical bugs
 - `0` high bugs
-- Full pytest: `553 passed, 1 skipped`
-- New UI API and coverage tests: `23 passed`
+- Full pytest: `570 passed, 1 skipped`
+- New UI API and coverage tests: `27 passed`
 - Doctor: `8 passed, 0 warnings, 0 failed`
 - Camera-free demo replay: passed outside sandbox
 - Screenshots: `evidence/experiments/ui_screenshots_2026-06-14/`

@@ -5,9 +5,11 @@ SPDX-License-Identifier: MIT
 
 # UI Parity Report
 
-Generated: `2026-06-14T09:31:10+00:00`
+Generated: `2026-06-14T13:51:35+00:00`
 
-Release gate from static coverage: **PASS**
+Static UI/API release gate: **PASS**
+Browser E2E release gate: **SKIPPED unless Playwright tests are run in this environment**
+Integration runtime gate: **NOT RUN for external ROS 2, Isaac, Omniverse, and Docker runtimes**
 
 ## Summary
 

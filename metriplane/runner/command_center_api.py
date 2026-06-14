@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 
 def _find(run_dir: Path, names: list[str]) -> Path | None:
     for n in names:
@@ -35,6 +37,10 @@ def _objects_yaml(run_dir: Path) -> Path | None:
     return _find(run_dir, ["objects.yaml", "object_registry.yaml"])
 
 
+def _workspace_yaml(run_dir: Path) -> Path | None:
+    return _find(run_dir, ["workspace.yaml", "zones.yaml", "configs/workspace.yaml", "configs/zones.yaml"])
+
+
 def _registry(run_dir: Path):
     p = _objects_yaml(run_dir)
     if p is None:
@@ -44,6 +50,49 @@ def _registry(run_dir: Path):
         return load_registry(p)
     except Exception:
         return None
+
+
+def get_workspace(run_dir: str | Path) -> dict[str, Any]:
+    run = Path(run_dir)
+    path = _workspace_yaml(run)
+    if path is None:
+        return {"zones": [], "stations": []}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {"zones": [], "stations": []}
+
+    zones = []
+    for item in data.get("zones", []) or []:
+        zone_id = item.get("zone_id") or item.get("name") or item.get("id")
+        polygon = item.get("polygon") or []
+        if not zone_id or not polygon:
+            continue
+        zones.append({
+            "zone_id": zone_id,
+            "label": item.get("label") or zone_id,
+            "zone_type": item.get("zone_type") or item.get("type") or "zone",
+            "polygon": polygon,
+        })
+
+    stations = []
+    for item in data.get("stations", []) or []:
+        station_id = item.get("station_id") or item.get("id")
+        if not station_id:
+            continue
+        stations.append({
+            "station_id": station_id,
+            "zone_id": item.get("zone_id"),
+            "label": item.get("label") or station_id,
+        })
+
+    return {
+        "zones": zones,
+        "stations": stations,
+        "source": str(path),
+        "cell_id": data.get("cell_id"),
+        "units": data.get("units", "meters"),
+    }
 
 
 def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
@@ -154,8 +203,9 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
     """
     run = Path(run_dir)
     session = _session(run)
+    workspace = get_workspace(run)
     if session is None:
-        return {"frames": [], "incidents": []}
+        return {"frames": [], "incidents": [], "workspace": workspace}
     try:
         from metriplane.sentinel.engine import iter_frames
         registry = _registry(run)
@@ -182,7 +232,7 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
             if len(frames_out) >= max_frames:
                 break
     except Exception:
-        return {"frames": [], "incidents": []}
+        return {"frames": [], "incidents": [], "workspace": workspace}
 
     incidents = []
     for inc in get_incidents(run):
@@ -194,7 +244,7 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
             "opened_ts": inc.get("opened_ts"),
             "closed_ts": inc.get("closed_ts"),
         })
-    return {"frames": frames_out, "incidents": incidents}
+    return {"frames": frames_out, "incidents": incidents, "workspace": workspace}
 
 
 def get_live_summary(run_dir: str | Path) -> dict[str, Any]:
@@ -226,6 +276,7 @@ def export_command_center(run_dir: str | Path, out_path: str | Path) -> dict[str
         "incidents": get_incidents(run),
         "events": get_events(run),
         "traces": get_traces(run),
+        "workspace": get_workspace(run),
     }
     p = Path(out_path)
     p.parent.mkdir(parents=True, exist_ok=True)

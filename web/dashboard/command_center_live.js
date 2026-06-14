@@ -17,7 +17,7 @@ const TYPE_COLORS = {
 const SVG_NS = "http://www.w3.org/2000/svg";
 const W = 480, H = 360, PAD = 34;
 
-let replay = { frames: [], incidents: [], bounds: null, i: 0, playing: false, timer: null };
+let replay = { frames: [], incidents: [], workspace: null, bounds: null, i: 0, playing: false, timer: null };
 
 async function getJSON(p) { const r = await fetch(RUNNER + p); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); }
 async function postJSON(p, b) {
@@ -64,12 +64,21 @@ function renderStats(s) {
 }
 
 // ---- replay -------------------------------------------------------------
-function computeBounds(frames) {
+function computeBounds(frames, workspace) {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const f of frames) for (const o of f.objects) {
     if (o.x_m == null || o.y_m == null) continue;
     minX = Math.min(minX, o.x_m); maxX = Math.max(maxX, o.x_m);
     minY = Math.min(minY, o.y_m); maxY = Math.max(maxY, o.y_m);
+  }
+  for (const z of ((workspace && workspace.zones) || [])) {
+    for (const pt of z.polygon || []) {
+      if (!Array.isArray(pt) || pt.length < 2) continue;
+      const x = Number(pt[0]), y = Number(pt[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
   }
   if (!isFinite(minX)) return null;
   const px = (maxX - minX) * 0.15 || 1, py = (maxY - minY) * 0.15 || 1;
@@ -152,34 +161,61 @@ function drawLabel(svg, label, x, y, used) {
   })).textContent = label;
 }
 
-function drawControlZones(svg) {
-  const iw = W - 2 * PAD;
-  const ih = H - 2 * PAD;
-  const zones = [
-    ["main", PAD + iw * 0.08, PAD + ih * 0.21, iw * 0.62, ih * 0.60, "#40CCC4"],
-    ["exit lane", PAD + iw * 0.70, PAD + ih * 0.21, iw * 0.22, ih * 0.60, "#F7DE3F"],
-    ["office", PAD + iw * 0.08, PAD + ih * 0.08, iw * 0.30, ih * 0.10, "#219FC0"],
-  ];
+function zoneColor(zone, idx) {
+  const palette = ["#40CCC4", "#F7DE3F", "#3EDD8C", "#219FC0", "#FF6B6B"];
+  const key = String((zone && zone.zone_type) || (zone && zone.zone_id) || "").toLowerCase();
+  if (key.includes("exit") || key.includes("buffer")) return "#F7DE3F";
+  if (key.includes("tool")) return "#3EDD8C";
+  if (key.includes("station") || key.includes("work")) return "#40CCC4";
+  return palette[idx % palette.length];
+}
 
-  for (const [label, x, y, width, height, color] of zones) {
-    svg.appendChild(svgEl("rect", {
-      x, y, width, height,
+function polygonCentroid(points) {
+  if (!points.length) return [W / 2, H / 2];
+  const sum = points.reduce((acc, pt) => [acc[0] + pt[0], acc[1] + pt[1]], [0, 0]);
+  return [sum[0] / points.length, sum[1] / points.length];
+}
+
+function drawControlZones(svg, b) {
+  const zones = ((replay.workspace && replay.workspace.zones) || [])
+    .filter((z) => Array.isArray(z.polygon) && z.polygon.length >= 3);
+  if (!zones.length) {
+    svg.appendChild(svgEl("text", {
+      x: W / 2,
+      y: PAD + 22,
+      "text-anchor": "middle",
+      class: "cc-zone-label",
+    })).textContent = "NO WORKSPACE ZONES FOUND";
+    return;
+  }
+
+  zones.forEach((zone, idx) => {
+    const color = zoneColor(zone, idx);
+    const points = zone.polygon
+      .map((pt) => [Number(pt[0]), Number(pt[1])])
+      .filter((pt) => Number.isFinite(pt[0]) && Number.isFinite(pt[1]))
+      .map((pt) => [sx(pt[0], b), sy(pt[1], b)]);
+    if (points.length < 3) return;
+    svg.appendChild(svgEl("polygon", {
+      points: points.map((p) => p.join(",")).join(" "),
       fill: color,
       opacity: "0.045",
       stroke: color,
       "stroke-width": "0.8",
       "stroke-opacity": "0.22",
     }));
+    const [x, y] = polygonCentroid(points);
     svg.appendChild(svgEl("text", {
-      x: x + 8,
-      y: y + 14,
+      x,
+      y,
+      "text-anchor": "middle",
       class: "cc-zone-label",
-    })).textContent = label.toUpperCase();
-  }
+    })).textContent = String(zone.label || zone.zone_id || "zone").toUpperCase();
+  });
 }
 
 function drawMapChrome(svg) {
-  drawControlZones(svg);
+  if (replay.bounds) drawControlZones(svg, replay.bounds);
   svg.appendChild(svgEl("rect", {
     x: PAD,
     y: PAD,
@@ -248,7 +284,8 @@ function loadReplay(payload) {
   const frames = (payload && payload.frames) || [];
   replay.frames = frames;
   replay.incidents = (payload && payload.incidents) || [];
-  replay.bounds = computeBounds(frames);
+  replay.workspace = (payload && payload.workspace) || null;
+  replay.bounds = computeBounds(frames, replay.workspace);
   const scrub = document.getElementById("scrub");
   scrub.max = Math.max(0, frames.length - 1);
   if (replay.i > frames.length - 1) replay.i = Math.max(0, frames.length - 1);
