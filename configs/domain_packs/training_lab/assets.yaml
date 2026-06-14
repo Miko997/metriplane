@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+  - object_id: "61"
+    asset_id: training_workpiece_1
+    asset_type: workpiece
+    label: Training workpiece
+    expected_stations: [training_station]
+  - object_id: "62"
+    asset_id: training_tool_1
+    asset_type: tool
+    label: Training torque tool
+    expected_stations: [training_station]
+  - object_id: "63"
+    asset_id: training_kit_1
+    asset_type: kit_bin
+    label: Training kit
+    expected_zones: [training_infeed]

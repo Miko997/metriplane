@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="metric-xy-title metric-xy-desc">
   <title id="metric-xy-title">Metric XY</title>
   <desc id="metric-xy-desc">Metric X and Y coordinate plane.</desc>

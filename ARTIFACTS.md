@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Software Artifact and Benchmark Evidence Supplement
 
 ## Artifact identity
@@ -16,7 +21,7 @@ the historical camera-to-coordinate benchmark baseline.
 
 Historical note: earlier internal planning referred to this evidence as "Paper B". The public artifact should be cited as the MetriPlane software release and benchmark evidence supplement unless a separate peer-reviewed paper is accepted.
 
-The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). The v0.2.0 release preserves the v0.1.3 benchmark evidence values and adds operational evidence for Sentinel, Command Center, evidence bundles, regression tests, camera trust, and local operator answers.
+The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). The v0.2.0 release preserves the v0.1.3 benchmark evidence values and adds operational evidence for Sentinel, Command Center, evidence bundles, regression tests, camera trust, and local operator answers. The post-2.0 branch adds the Atlas Cell Black Box foundation as unreleased local evidence: domain packs, a deterministic assembly-cell replay, physical event ledger, Cell Truth Report, evidence bundle v3, generated regression tests, training cases, improvement actions, and Atlas-Bench core.
 
 ## Scope
 
@@ -28,6 +33,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 - No marker-free recognition claim is made.
 - No full 3D scene reconstruction claim is made.
 - No safety-certified industrial control claim is made.
+- Atlas is observe-only and asset/process focused. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking.
 
 ## Artifact summary
 
@@ -49,6 +55,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | Sentinel contracts/runtime/forecasting | [`spatial_contract_language_001.md`](evidence/experiments/spatial_contract_language_001.md), [`sentinel_runtime_001.md`](evidence/experiments/sentinel_runtime_001.md), [`risk_forecasting_001.md`](evidence/experiments/risk_forecasting_001.md) | Observe-only Sentinel run path and short-horizon forecast evidence. |
 | Regression/counterfactual/trust/assistant | [`physical_regression_tests_001.md`](evidence/experiments/physical_regression_tests_001.md), [`counterfactual_reports_001.md`](evidence/experiments/counterfactual_reports_001.md), [`camera_trust_001.md`](evidence/experiments/camera_trust_001.md), [`operator_assistant_001.md`](evidence/experiments/operator_assistant_001.md) | Replay regression, threshold/speed/object-removal counterfactuals, camera trust, and local grounded answers. |
 | Command Center | [`command_center_ui_001.md`](evidence/experiments/command_center_ui_001.md), [`command_center_data.json`](evidence/experiments/command_center/command_center_data.json) | Read-only operator map, incidents, traces, trust, and assistant endpoints. |
+| Atlas Cell Black Box | [`atlas_phase_24_001.md`](evidence/experiments/atlas_phase_24_001.md) through [`atlas_phase_50_001.md`](evidence/experiments/atlas_phase_50_001.md), [`docs/atlas/README.md`](docs/atlas/README.md), [`assembly_cell_missing_tool.jsonl`](datasets/demo/atlas/assembly_cell_missing_tool.jsonl) | Post-2.0 local foundation: domain packs, physical event ledger, Cell Truth Report, dashboard, USDA replay export, evidence bundle v3, regression, training, query/saved queries, SQLite evidence lake, connectors, edge helpers, multi-cell compare, privacy report, protocol export, pilot kit, freeze audit, and Atlas-Bench core. |
 | Integrations and deployment | [`ros2_bridge_001.md`](evidence/experiments/ros2_bridge_001.md), [`isaac_omniverse_replay_001.md`](evidence/experiments/isaac_omniverse_replay_001.md), [`jetson_edge_deployment_001.md`](evidence/experiments/jetson_edge_deployment_001.md), [`fleet_agent_001.md`](evidence/experiments/fleet_agent_001.md), [`scalable_event_pipeline_001.md`](evidence/experiments/scalable_event_pipeline_001.md) | Adapter and deployment evidence with hardware/tooling limitations documented per artifact. |
 | Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover regular files in the release tree. |
 
@@ -83,6 +90,9 @@ This benchmark covers fusion compute only. It does not measure camera capture, A
 | Sentinel demo | `metriplane sentinel run --config configs/sentinel_demo.yaml --run-id sentinel_demo` |
 | Command Center export | `metriplane command-center export evidence/incidents/INC-DIST-001 --out web/dashboard/command_center_data.json` |
 | Physical regression | `metriplane test evidence/incidents/INC-0001` |
+| Atlas Cell Black Box | `metriplane atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out runs/atlas/assembly_cell_missing_tool` |
+| Atlas bundle/regression | `metriplane atlas bundle verify runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip && metriplane atlas test runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml` |
+| Atlas late-phase tools | `metriplane atlas dashboard build --run-dir runs/atlas/assembly_cell_missing_tool && metriplane atlas lake build --root runs/atlas --db runs/atlas/evidence_lake.sqlite && metriplane atlas freeze audit --root .` |
 | Evidence audit | `python scripts/audit_evidence.py` |
 
 ## Checksums
@@ -105,6 +115,7 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - Live evaluation uses a small workspace and primary marker set.
 - The GPU benchmark covers only fusion compute, not camera capture or marker detection.
 - Omniverse/ROS 2 demos are integration demonstrations unless separately measured.
+- Atlas USD/Isaac, external pilots, hardware appliance packaging, and network connectors remain future work unless separately evidenced.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
 - The latest DOI-archived software release is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). v0.2.0 release archival should be performed after tagging.

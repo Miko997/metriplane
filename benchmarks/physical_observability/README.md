@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane-Bench — Physical Observability Benchmark
 
 A reproducible benchmark suite for low-cost physical observability. Each scenario is a

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Reviewer Quickstart
 
 This guide provides a camera-free path for inspecting MetriPlane v0.1.4.

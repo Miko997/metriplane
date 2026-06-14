@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+  - object_id: "31"
+    asset_id: robot_tray_1
+    asset_type: tray
+    label: Robot input tray
+    expected_stations: [robot_station]
+  - object_id: "32"
+    asset_id: end_effector_fixture_1
+    asset_type: fixture
+    label: End-effector fixture
+    expected_stations: [robot_station]
+  - object_id: "33"
+    asset_id: part_carrier_1
+    asset_type: carrier
+    label: Part carrier 1
+    expected_zones: [robot_infeed, robot_outfeed]

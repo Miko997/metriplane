@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Update-Rate Note
 
 **Purpose**: clarify update-rate evidence relative to the current Paper B campaign

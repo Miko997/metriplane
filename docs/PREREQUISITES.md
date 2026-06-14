@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane Prerequisites
 
 **Target Audience**: Developers, researchers, and operators setting up Metriplane for the first time  

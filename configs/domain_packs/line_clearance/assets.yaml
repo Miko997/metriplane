@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+  - object_id: "51"
+    asset_id: previous_batch_tote_1
+    asset_type: batch_tote
+    label: Previous batch tote
+    material_id: MAT-PREV-BATCH
+    expected_zones: [quarantine_zone]
+  - object_id: "52"
+    asset_id: current_batch_tote_1
+    asset_type: batch_tote
+    label: Current batch tote
+    material_id: MAT-CURRENT-BATCH
+    expected_zones: [line_infeed]
+  - object_id: "53"
+    asset_id: clearance_tag_1
+    asset_type: clearance_tag
+    label: Clearance tag
+    expected_stations: [line_station]

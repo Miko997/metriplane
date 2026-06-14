@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Command Center Dashboard
 
 A read-only command center that shows physical observability for a run at a glance: live

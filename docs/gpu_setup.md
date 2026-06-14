@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # GPU Setup (M9.6)
 
 This project’s M9.6 GPU compute backend uses **CuPy** to run the fusion compute block on an NVIDIA GPU.

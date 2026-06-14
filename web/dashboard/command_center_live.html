@@ -1,9 +1,14 @@
 <!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Metriplane - Command Center</title>
+  <title>MetriPlane - Command Center</title>
   <link rel="stylesheet" href="style.css?v=20260506-theme">
   <link rel="stylesheet" href="command_center.css">
 </head>
@@ -12,12 +17,12 @@
     <aside class="cc-rail">
       <div class="cc-rail-brand">
         <div class="sidebar-brand-logo cc-rail-logo">
-          <img src="icons/metriplane-coordinate-grid.svg" alt="Metriplane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <img src="icons/metriplane-coordinate-grid.svg" alt="MetriPlane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
           <span class="logo-letter" style="display:none">M</span>
         </div>
         <div class="sidebar-brand-text cc-rail-brand-text">
-          <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">plane</span></span>
-          <span class="sidebar-brand-sub">Sentinel Console</span>
+          <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">Plane</span></span>
+          <span class="sidebar-brand-sub">Command Center</span>
         </div>
       </div>
 
@@ -36,7 +41,7 @@
 
       <div class="cc-rail-section">
         <div class="cc-rail-label">Demo</div>
-        <button id="run-demo-btn" class="btn-mp full" type="button">Run Demo</button>
+        <button id="run-demo-btn" class="btn-mp full" type="button" data-command-id="sentinel-demo">Build Command Center Sample</button>
         <div id="run-demo-status" class="cc-run-status"></div>
       </div>
 
@@ -50,7 +55,7 @@
     <div class="cc-content">
       <header class="cc-header">
         <div class="cc-heading">
-          <div class="cc-kicker"><span class="live-dot"></span> Sentinel</div>
+          <div class="cc-kicker"><span class="live-dot"></span> MetriPlane</div>
           <div class="cc-title-row">
             <h1 class="cc-title">Command Center</h1>
             <span class="cc-mode cc-mode-live">Live</span>
@@ -114,6 +119,20 @@
               <h2>Event Timeline</h2>
             </div>
             <div class="cc-timeline" id="timeline"></div>
+          </section>
+
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Trace Summary</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table" id="traces">
+                <thead>
+                  <tr><th>Object</th><th>Type</th><th>Duration</th><th>Distance</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </section>
 
           <section class="panel cc-panel">

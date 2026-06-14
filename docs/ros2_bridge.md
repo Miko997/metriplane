@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # ROS 2 Bridge
 
 Metriplane ships an official ROS 2 bridge (`integrations/ros2/metriplane_ros`) that

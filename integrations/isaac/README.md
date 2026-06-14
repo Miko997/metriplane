@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane → Isaac / USD Replay
 
 Export Metriplane traces and incidents into a USD (`.usda`) replay scene that opens in

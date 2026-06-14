@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane Operator UI Runbook
 
 **Audience**: Non-code operators
@@ -14,13 +19,14 @@ Use the `metriplane start` command to bring up the full stack:
 cd <repo>
 source .venv/bin/activate
 
-metriplane start --operator --no-live   # dashboard only, open operator UI
-metriplane start --operator --live      # + live fusion (camera required)
+metriplane start --operator             # runner + dashboard, open setup wizard
+metriplane start --operator --live      # also start camera-free runtime immediately
+metriplane start --operator --live --config configs/fusion_health_300fps.yaml  # camera-backed runtime
 metriplane status                        # shows port owners even if state is missing
 metriplane stop                          # waits for ports to be released
 metriplane stop --force                 # stop + cleanup orphans when state is absent
 metriplane cleanup                       # remove orphaned Metriplane processes
-metriplane restart --operator --live    # stop → cleanup → start fresh
+metriplane restart --operator           # stop → cleanup → start fresh
 
 # Without venv activation (convenience script):
 ./tools/start_metriplane.sh --operator
@@ -32,7 +38,9 @@ metriplane restart --operator --live    # stop → cleanup → start fresh
 This starts:
 - **Runner service** on `http://127.0.0.1:9000/` (powers the operator wizard)
 - **Dashboard web server** on `http://127.0.0.1:8088/` (serves all static assets)
-- **Fusion runtime** (if `--live`) on `http://127.0.0.1:8000/` + `ws://127.0.0.1:8765`
+- **Runtime stream** only when you start a demo/live session from the UI or pass `--live`
+
+By default, no active run is started. Use the guided setup flow for camera-backed fusion, or use `--live --config configs/fusion_health_300fps.yaml` only when you intentionally want the runtime stream to start at launch.
 
 Browser opens automatically to `http://127.0.0.1:8088/web/dashboard/operator.html`.
 

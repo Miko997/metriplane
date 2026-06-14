@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 cff-version: 1.2.0
 message: "If you use MetriPlane, please cite the software release."
 title: "MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, Zone Analytics, and Physical-Space Auditing"

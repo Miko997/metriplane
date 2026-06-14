@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+// SPDX-License-Identifier: MIT
+
 // Metriplane Operator Setup Wizard - operator.js
 // Vanilla JS, no dependencies. Talks to runner :9000 via fetch.
 
@@ -1494,12 +1497,14 @@ function clearPreflightDrawer() {
   const badge  = document.getElementById('preflight-status-badge');
   if (output) output.textContent = 'No output yet — click Run Doctor or Run Preflight above.';
   if (badge)  { badge.textContent = 'idle'; badge.className = 'preflight-drawer-badge'; }
+  hidePreflightSummary();
 }
 
 async function runPreflightDrawer(command) {
   if (!state.runnerConnected) {
     const output = document.getElementById('preflight-drawer-output');
     if (output) output.textContent = '⚠ Runner not connected.\nStart it with: ./tools/dashboard_runner.sh';
+    hidePreflightSummary();
     return;
   }
 
@@ -1512,6 +1517,7 @@ async function runPreflightDrawer(command) {
 
   if (output) output.textContent = `Running ${command}…`;
   if (badge)  { badge.textContent = 'running'; badge.className = 'preflight-drawer-badge running'; }
+  hidePreflightSummary();
 
   try {
     const resp = await fetch(`${RUNNER}/execute`, {
@@ -1523,6 +1529,7 @@ async function runPreflightDrawer(command) {
       const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
       if (output) output.textContent = `Error: ${err.error || resp.statusText}`;
       if (badge)  { badge.textContent = 'fail'; badge.className = 'preflight-drawer-badge fail'; }
+      hidePreflightSummary();
       return;
     }
     const job = await resp.json();
@@ -1530,6 +1537,7 @@ async function runPreflightDrawer(command) {
   } catch (e) {
     if (output) output.textContent = `Error: ${e.message}`;
     if (badge)  { badge.textContent = 'fail'; badge.className = 'preflight-drawer-badge fail'; }
+    hidePreflightSummary();
   }
 }
 
@@ -1562,24 +1570,42 @@ function pollPreflightJob(jobId) {
   }, 1000);
 }
 
+function hidePreflightSummary() {
+  const el = document.getElementById('preflight-summary');
+  if (!el) return;
+  el.innerHTML = '';
+  el.style.display = 'none';
+}
+
+function parsePreflightSummaryCounts(stdout) {
+  const summaryMatch = stdout.match(/Summary:\s*(\d+)\s+passed,\s*(\d+)\s+warnings?,\s*(\d+)\s+failed/i);
+  if (summaryMatch) {
+    return {
+      passed: Number(summaryMatch[1]),
+      warned: Number(summaryMatch[2]),
+      failed: Number(summaryMatch[3]),
+    };
+  }
+
+  const counts = { passed: 0, warned: 0, failed: 0 };
+  stdout.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (/^(✅\s*)?PASS\b/i.test(trimmed) || /^\[PASS\]/i.test(trimmed)) counts.passed++;
+    if (/^(⚠️?\s*)?WARN(?:ING)?\b/i.test(trimmed) || /^\[WARN(?:ING)?\]/i.test(trimmed)) counts.warned++;
+    if (/^(❌|✗)?\s*FAIL(?:ED)?\b/i.test(trimmed) || /^\[FAIL(?:ED)?\]/i.test(trimmed)) counts.failed++;
+  });
+  return counts;
+}
+
 /** Parse pass/warn/fail counts from Doctor or Preflight output and render summary chips. */
 function renderPreflightSummary(stdout) {
   const el = document.getElementById('preflight-summary');
   if (!el) return;
 
-  // Count lines matching each outcome
-  const lines = stdout.split('\n');
-  let passed = 0, warned = 0, failed = 0;
-
-  lines.forEach(line => {
-    const l = line.toLowerCase();
-    if (/\b(pass|passed|✓|ok\b|success)/.test(l))  passed++;
-    if (/\b(warn|warning|⚠)/.test(l))               warned++;
-    if (/\b(fail|failed|error|✗)/.test(l))          failed++;
-  });
+  const { passed, warned, failed } = parsePreflightSummaryCounts(stdout);
 
   if (passed === 0 && warned === 0 && failed === 0) {
-    el.style.display = 'none';
+    hidePreflightSummary();
     return;
   }
 

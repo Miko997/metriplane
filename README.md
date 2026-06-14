@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <p align="center">
   <img src="docs/assets/metriplane.png" alt="MetriPlane" width="760">
 </p>
@@ -5,7 +10,7 @@
 <h1 align="center">MetriPlane</h1>
 
 <p align="center">
-  <strong>Turn calibrated cameras into metric physical-observability streams: objects, traces, spatial contracts, incidents, evidence bundles, and read-only operator review.</strong>
+  <strong>Turn calibrated cameras into metric physical-observability streams, incident evidence, cell review reports, and read-only operator review.</strong>
 </p>
 
 <p align="center">
@@ -23,6 +28,7 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
   <a href="#operator-dashboard">Operator Dashboard</a> ·
+  <a href="#evidence-review">Evidence Review</a> ·
   <a href="#citation">Citation</a> ·
   <a href="#public-release">Release</a> ·
   <a href="#benchmark-evidence-and-reproducibility">Evidence</a> ·
@@ -77,26 +83,30 @@ peer-reviewed publication.
 | 🎞️ **Deterministic replay** | Bit-exact JSONL replay for regression testing and demos |
 | 🖥️ **Operator dashboard** | Browser-based wizard: scan cameras → calibrate → run → export |
 | 🧩 **Command Center** | Read-only operator view for map state, incidents, traces, trust, and grounded answers |
+| 🧾 **Evidence Review** | Replayable physical event ledger, Cell Truth Report, incident archive, regression test, training case, and improvement action for one workcell |
 | 🐳 **Docker ready** | One-command `docker-compose up` demo — no camera needed |
 | 🔬 **Evidence-backed** | Benchmark claims backed by evidence artifacts, manifest rows, and checksums |
 | ⚡ **GPU-optional** | CuPy backend for large workloads; CPU is default for small N (see [GPU Statement](#gpu-statement)) |
 
 ---
 
-## Operator Dashboard
+## Local Metriplane Console
 
-The browser-based Operator Dashboard guides you through every step — environment check, camera scan, calibration, zone drawing, live fusion, and session export — with no command-line required after initial setup.
+The browser-based console links the full local Metriplane workflow: Operator Setup,
+Live State, Sentinel Command Center, Evidence Review, and Integrations. After the
+local stack is running, safe actions are available from the UI through
+the allowlisted runner API.
 
 <p align="center">
   <img src="docs/assets/Operator.png" alt="MetriPlane Operator Dashboard" width="900">
 </p>
 
-**Start the dashboard:**
+**Start the local console:**
 
 ```bash
-python -m metriplane.runner.service --host 127.0.0.1 --port 9000 &
-python -m http.server 8088 --directory web/dashboard
-# → open http://localhost:8088/operator.html
+metriplane start
+# open http://localhost:8088/web/dashboard/index.html
+# starts runner :9000, dashboard :8088, health/metrics :8000, websocket :8765
 ```
 
 Full runbook: [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) · Multi-camera setup: [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md)
@@ -117,7 +127,7 @@ metriplane sentinel run \
   --runs-dir ~/metriplane-runs
 
 python -m http.server 8088 --directory web/dashboard
-# open http://localhost:8088/command_center_live.html
+# open http://localhost:8088/index.html, then choose Command Center
 ```
 
 Operator-facing docs:
@@ -126,6 +136,35 @@ Operator-facing docs:
 [`docs/command_center_dashboard.md`](docs/command_center_dashboard.md),
 [`docs/camera_trust.md`](docs/camera_trust.md), and
 [`docs/operator_assistant.md`](docs/operator_assistant.md).
+
+---
+
+## Evidence Review
+
+Metriplane turns a replayed assembly-cell state stream into a physical event
+ledger, Cell Truth Report, incident archive, generated regression test,
+training case, and improvement action. The local tools also generate a static
+dashboard, USD replay export, privacy report, connector payloads, SQLite
+evidence index, multi-cell summary, protocol schemas, field review kit, and
+claim audit.
+
+```bash
+metriplane atlas validate-pack configs/domain_packs/assembly_cell
+metriplane atlas run \
+  --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl \
+  --pack configs/domain_packs/assembly_cell \
+  --out runs/atlas/assembly_cell_missing_tool
+metriplane atlas bundle verify runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+metriplane atlas test runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
+metriplane atlas dashboard build --run-dir runs/atlas/assembly_cell_missing_tool
+metriplane atlas lake build --root runs/atlas --db runs/atlas/evidence_lake.sqlite
+```
+
+Evidence Review is observe-only and asset/process focused. It does not control robots or
+machines, certify safety, approve quality release, recognize people, or claim
+marker-free tracking.
+
+Docs: [`docs/atlas/README.md`](docs/atlas/README.md).
 
 ---
 
@@ -340,9 +379,8 @@ Demo-generated CSV and checksum artifacts are written under `runs/demo-evidence/
 ./tools/mp.sh preflight                  # 1. verify system
 
 # 2. open Operator Dashboard for guided calibration
-python -m metriplane.runner.service --host 127.0.0.1 --port 9000 &
-python -m http.server 8088 --directory web/dashboard &
-# → http://localhost:8088/operator.html → Step 5: Calibrate
+metriplane start --operator
+# http://localhost:8088/web/dashboard/operator.html -> Step 5: Calibrate
 
 ./tools/mp.sh run-fusion cpu 60 session_001   # 3. run fusion (60 s)
 ```
@@ -371,6 +409,12 @@ python -m metriplane.cli doctor                # import + dependency check
 ./tools/mp.sh gpu-smoke                        # GPU smoke test
 ./tools/mp.sh gpu-equivalence                  # CPU vs GPU output equality
 ./tools/mp.sh gpu-benchmark                    # CPU vs GPU performance
+
+# Evidence Review
+metriplane atlas validate-pack configs/domain_packs/assembly_cell
+metriplane atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out runs/atlas/assembly_cell_missing_tool
+metriplane atlas bundle verify runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+metriplane atlas test runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
 
 # Docker
 ./tools/docker_demo_up.sh                      # start dummy-mode Docker demo
@@ -402,13 +446,14 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 | [`docs/calibration_runbook.md`](docs/calibration_runbook.md) | Camera calibration step-by-step |
 | [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) | Web dashboard operator guide |
 | [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md) | Multi-camera dashboard setup |
-| [`docs/physical_observability.md`](docs/physical_observability.md) | 0.2.0 product architecture and claim boundaries |
+| [`docs/physical_observability.md`](docs/physical_observability.md) | Architecture and claim boundaries |
 | [`docs/object_registry.md`](docs/object_registry.md) | Named objects, types, tags, and registry loading |
 | [`docs/trace_store.md`](docs/trace_store.md) | Trace summaries, speed/dwell/idle metrics, and exports |
 | [`docs/events.md`](docs/events.md) | Operational event and alert schema |
 | [`docs/contracts.md`](docs/contracts.md) | Sentinel spatial contract language |
 | [`docs/sentinel.md`](docs/sentinel.md) | Observe-only Sentinel runtime |
 | [`docs/command_center_dashboard.md`](docs/command_center_dashboard.md) | Command Center operator UI/API |
+| [`docs/atlas/README.md`](docs/atlas/README.md) | Evidence workflow quickstart, protocol, domain packs, and limits |
 | [`docs/schema.md`](docs/schema.md) | `FrameStateModel` v1.0 field reference |
 | [`docs/frames.md`](docs/frames.md) | Coordinate systems: pixel, camera, world |
 | [`docs/backpressure.md`](docs/backpressure.md) | Bounded queue design |
@@ -443,6 +488,7 @@ Measured results: [`docs/gpu_compute_backend.md`](docs/gpu_compute_backend.md) �
 - **Fusion jitter** (`fusion_jitter_001.csv`): `max_error_m` is NaN — ground-truth absolute position comparison was not run. Jitter stability (std) is measured and reported.
 - **Large session files** (JSONL) are not included in git due to size; SHA256 checksums are in `evidence/manifest.csv`.
 - **Sentinel** is observe-only. It emits events, incidents, forecasts, and evidence; it is not a certified safety controller and does not actuate robots or machines.
+- **Evidence Review** is observe-only and asset/process focused. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking.
 - **ROS 2, Isaac, Omniverse, Jetson, and exporter paths** are integration/deployment surfaces unless a specific checked-in evidence artifact says otherwise.
 
 ---

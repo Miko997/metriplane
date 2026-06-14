@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.process_model.v1
+process_id: line_clearance_evidence
+work_order_type: line_clearance
+steps:
+  - step_id: previous_batch_removed
+    label: Previous batch removed from line
+    expected_asset_types: [batch_tote]
+    required_zone: quarantine_zone
+  - step_id: clearance_tag_present
+    label: Clearance tag present at line station
+    required_assets: [clearance_tag_1]
+    required_station: line_station
+    max_wait_s: 20.0

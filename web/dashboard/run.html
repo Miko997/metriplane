@@ -1,0 +1,93 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetriPlane - Run</title>
+  <meta name="description" content="Start MetriPlane demo, live, replay, and diagnostic runs from the browser.">
+  <link rel="stylesheet" href="style.css?v=20260613-onemp-1">
+</head>
+<body class="vt-page vt-product-page missing-atlas-artifacts">
+  <nav class="mp-product-nav" aria-label="MetriPlane status">
+    <a class="mp-product-brand" href="index.html">
+      <span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span>
+      <span class="brand-wordmark">Metri<span class="brand-accent">Plane</span></span>
+    </a>
+    <div class="mp-product-nav-title">Run</div>
+    <div class="mp-product-nav-state"><span class="live-dot"></span><span data-runner-status>checking runner</span><code data-runner-detail>localhost :9000</code></div>
+  </nav>
+  <div class="mp-console-frame">
+    <aside class="mp-console-sidebar" aria-label="MetriPlane sections">
+      <a href="index.html">Start</a><a href="operator.html">Setup</a><a class="active" href="run.html">Run</a><a href="runtime.html">Live View</a><a href="report.html">Cell Report</a><a href="command_center_live.html">Command Center</a><a href="atlas.html">Evidence</a><a href="integrations.html">Integrations</a><a href="benchmarks.html">Benchmarks</a><a href="settings.html">Settings</a><a href="help.html">Help</a>
+    </aside>
+    <main class="mp-product-shell">
+      <section class="mp-product-band mp-page-header">
+        <div>
+          <div class="mp-kicker">Run control</div>
+          <h1>Start demo, live, or replay work.</h1>
+          <p>Choose the safest next action. The demo path works without cameras and creates data for Live View, Cell Report, and Evidence.</p>
+        </div>
+        <div class="mp-hero-actions">
+          <button class="btn btn-primary" type="button" data-command-id="run-demo-replay">Run Demo Replay</button>
+          <a class="btn btn-secondary" href="operator.html">Start Live Camera Setup</a>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Current state</div><h2>What can I do now?</h2></div><span class="mp-status-chip" data-atlas-status>build demo first</span></div>
+        <div class="mp-metric-grid">
+          <div class="mp-metric"><span>Runner</span><strong data-runner-status>checking</strong></div>
+          <div class="mp-metric"><span>Current run</span><strong data-atlas-field="run_id">-</strong></div>
+          <div class="mp-metric"><span>Events</span><strong data-atlas-field="events">-</strong></div>
+          <div class="mp-metric"><span>Issues</span><strong data-atlas-field="incidents">-</strong></div>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Actions</div><h2>Run from the browser</h2></div></div>
+        <div class="mp-command-grid">
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Camera-free</span><h3>Run Demo Replay</h3></div><button class="btn btn-primary btn-sm" type="button" data-command-id="run-demo-replay">Run</button></div>
+            <p>Builds the included sample replay, incident review, report data, evidence archive, and USD export.</p>
+            <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre>
+            <div class="mp-card-actions"><a class="btn btn-secondary btn-sm" href="runtime.html">Open Live View</a><a class="btn btn-secondary btn-sm" href="command_center_live.html">Command Center</a><a class="btn btn-secondary btn-sm requires-atlas" href="report.html">Open Report</a></div>
+          </article>
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Cameras</span><h3>Live Camera Run</h3></div><a class="btn btn-secondary btn-sm" href="operator.html">Setup</a></div>
+            <p>Use the guided setup wizard to select cameras, calibrate the workspace, set zones, and start live fusion.</p>
+            <div class="mp-job-row"><span>requires setup</span><small>camera and workspace profile</small></div>
+          </article>
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Replay</span><h3>Verify replay determinism</h3></div><button class="btn btn-secondary btn-sm" type="button" data-command-id="deterministic-replay">Run</button></div>
+            <p>Checks that a recorded session reproduces the same object positions and events.</p>
+            <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre>
+          </article>
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>History</span><h3>Latest generated evidence</h3></div><a class="btn btn-secondary btn-sm requires-atlas" href="atlas.html">Open</a></div>
+            <p>Review generated report, archive, regression, protocol, connector, and simulation outputs.</p>
+            <div class="mp-job-row"><span data-atlas-status>build demo first</span><small data-atlas-field="run_id">-</small></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <details class="mp-advanced-details">
+          <summary>Advanced details</summary>
+          <div class="mp-artifact-grid">
+            <a class="mp-artifact-link" href="../../tools/run_ui_demo_replay.py"><span>Command helper</span><strong>Open script</strong></a>
+            <a class="mp-artifact-link" href="../../metriplane/runner/allowlist.py"><span>Action registry</span><strong>Open allowlist</strong></a>
+            <a class="mp-artifact-link requires-atlas" href="atlas_run/atlas_manifest.json"><span>Run data</span><strong>Open manifest</strong></a>
+            <a class="mp-artifact-link" href="../../docs/operator_ui_runbook.md"><span>Runbook</span><strong>Open guide</strong></a>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script src="product_actions.js?v=20260613-onemp-1"></script>
+</body>
+</html>

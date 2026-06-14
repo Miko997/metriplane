@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """metriplane.pipeline.bounded_queue
 
 A small, dependency-free bounded queue with explicit drop/backpressure policies.

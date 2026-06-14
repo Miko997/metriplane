@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 [project]
 name = "metriplane"
 version = "0.2.0"

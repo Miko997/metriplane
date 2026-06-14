@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Risk Forecasting
 
 Metriplane Sentinel can emit **short-horizon risk forecasts**: predictions that an object

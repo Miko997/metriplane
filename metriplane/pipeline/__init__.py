@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Pipeline utilities (M9.2).
 
 This module is intentionally small and dependency-free.

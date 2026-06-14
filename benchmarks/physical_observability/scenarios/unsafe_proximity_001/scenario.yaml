@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 id: unsafe_proximity_001
 description: a cart and a human proxy come within the unsafe distance threshold
 duration_s: 3

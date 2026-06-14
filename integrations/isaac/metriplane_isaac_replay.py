@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Open a Metriplane USD replay inside Isaac Sim (requires Isaac/omni.isaac).
 
 This is a thin loader: it exports the .usda (via metriplane_to_usd) if needed, then opens

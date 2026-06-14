@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Jetson / Edge Deployment
 
 Metriplane runs on NVIDIA Jetson-class edge hardware. The replay-only path needs no camera

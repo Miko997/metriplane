@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Physical Observability Benchmark (Metriplane-Bench)
 
 Metriplane-Bench is a reproducible suite that scores the physical-observability pipeline

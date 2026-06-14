@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Edge latency benchmark.
 
 Replays a session through the rule engine and measures FPS, per-frame latency

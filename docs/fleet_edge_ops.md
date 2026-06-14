@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Fleet Edge Ops
 
 For multi-node deployments, each Metriplane node can emit periodic **heartbeats** carrying

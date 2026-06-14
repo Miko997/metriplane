@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Operator UI Final Smoke Test — Evaluation Summary
 
 **Evidence ID**: `operator_ui_final_smoke_001`  

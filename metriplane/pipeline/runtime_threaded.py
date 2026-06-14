@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """metriplane.pipeline.runtime_threaded
 
 A small threaded pipeline runner using :class:`~metriplane.pipeline.bounded_queue.BoundedQueue`.

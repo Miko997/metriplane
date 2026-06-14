@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Physical Regression Tests
 
 Metriplane can turn a real-world physical incident into a **replayable regression test**.

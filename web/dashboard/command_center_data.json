@@ -1,11 +1,11 @@
 {
   "summary": {
-    "run_id": "sentinel_demo",
+    "run_id": "metriplane_demo",
     "objects_count": 3,
     "alerts_count": 5,
     "open_incidents_count": 0,
     "incidents_count": 5,
-    "latest_run_dir": "/home/miko/metriplane-runs/sentinel_demo",
+    "latest_run_dir": "/home/miko/metriplane-runs/metriplane_demo",
     "health": {
       "overall": "OK"
     }
@@ -45,7 +45,7 @@
   "incidents": [
     {
       "incident_id": "inc_0001",
-      "run_id": "sentinel_demo",
+      "run_id": "metriplane_demo",
       "rule_id": "no_asset_in_exit_lane",
       "severity": "critical",
       "status": "closed",
@@ -66,7 +66,7 @@
     },
     {
       "incident_id": "inc_0002",
-      "run_id": "sentinel_demo",
+      "run_id": "metriplane_demo",
       "rule_id": "human_proxy_distance",
       "severity": "critical",
       "status": "closed",
@@ -88,7 +88,7 @@
     },
     {
       "incident_id": "inc_0003",
-      "run_id": "sentinel_demo",
+      "run_id": "metriplane_demo",
       "rule_id": "no_asset_in_exit_lane",
       "severity": "critical",
       "status": "closed",
@@ -109,7 +109,7 @@
     },
     {
       "incident_id": "inc_0004",
-      "run_id": "sentinel_demo",
+      "run_id": "metriplane_demo",
       "rule_id": "exit_lane_blocked",
       "severity": "warning",
       "status": "closed",
@@ -130,7 +130,7 @@
     },
     {
       "incident_id": "inc_0005",
-      "run_id": "sentinel_demo",
+      "run_id": "metriplane_demo",
       "rule_id": "human_proxy_distance",
       "severity": "critical",
       "status": "closed",
@@ -162,14 +162,14 @@
       ],
       "zone": "exit_lane",
       "detail": {
-        "contract_id": "sentinel_demo_warehouse",
+        "contract_id": "metriplane_demo_warehouse",
         "rule_type": "forbidden_zone",
         "contract_severity": "critical",
         "observed_value": "exit_lane",
         "threshold_value": "exit_lane",
         "explanation": "pallet_01 entered forbidden zone exit_lane"
       },
-      "run_id": "sentinel_demo"
+      "run_id": "metriplane_demo"
     },
     {
       "alert_id": "cevt_000002",
@@ -182,14 +182,14 @@
       ],
       "zone": "main",
       "detail": {
-        "contract_id": "sentinel_demo_warehouse",
+        "contract_id": "metriplane_demo_warehouse",
         "rule_type": "minimum_distance",
         "contract_severity": "critical",
         "observed_value": 0.3,
         "threshold_value": 0.6,
         "explanation": "cart_01 and human_proxy_01 within 0.3m (< 0.6m)"
       },
-      "run_id": "sentinel_demo"
+      "run_id": "metriplane_demo"
     },
     {
       "alert_id": "cevt_000003",
@@ -201,14 +201,14 @@
       ],
       "zone": "exit_lane",
       "detail": {
-        "contract_id": "sentinel_demo_warehouse",
+        "contract_id": "metriplane_demo_warehouse",
         "rule_type": "forbidden_zone",
         "contract_severity": "critical",
         "observed_value": "exit_lane",
         "threshold_value": "exit_lane",
         "explanation": "pallet_01 entered forbidden zone exit_lane"
       },
-      "run_id": "sentinel_demo"
+      "run_id": "metriplane_demo"
     },
     {
       "alert_id": "cevt_000004",
@@ -220,14 +220,14 @@
       ],
       "zone": "exit_lane",
       "detail": {
-        "contract_id": "sentinel_demo_warehouse",
+        "contract_id": "metriplane_demo_warehouse",
         "rule_type": "zone_occupancy_duration",
         "contract_severity": "warning",
         "observed_value": 5.0,
         "threshold_value": 5.0,
         "explanation": "pallet_01 occupied exit_lane for 5.0s"
       },
-      "run_id": "sentinel_demo"
+      "run_id": "metriplane_demo"
     },
     {
       "alert_id": "cevt_000005",
@@ -240,14 +240,14 @@
       ],
       "zone": "main",
       "detail": {
-        "contract_id": "sentinel_demo_warehouse",
+        "contract_id": "metriplane_demo_warehouse",
         "rule_type": "minimum_distance",
         "contract_severity": "critical",
         "observed_value": 0.3,
         "threshold_value": 0.6,
         "explanation": "cart_01 and human_proxy_01 within 0.3m (< 0.6m)"
       },
-      "run_id": "sentinel_demo"
+      "run_id": "metriplane_demo"
     }
   ],
   "traces": [

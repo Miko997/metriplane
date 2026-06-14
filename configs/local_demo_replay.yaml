@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+# Camera-free local runtime used by `metriplane start`.
+# It feeds the Runtime Console, health endpoint, metrics endpoint, and WebSocket
+# from bundled demo data so the full localhost product opens with live signals.
+
+target_fps: 30
+
+ws_host: 127.0.0.1
+ws_port: 8765
+metrics_host: 127.0.0.1
+metrics_port: 8000
+
+source_mode: replay
+replay_input: datasets/demo/session_001.jsonl
+replay_speed: 1.0
+replay_loop: true
+
+health:
+  enabled: true

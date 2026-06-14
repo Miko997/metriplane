@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+  - contract_id: required_tool_before_fastening
+    kind: process_asset_presence
+    process_step_id: torque_driver_available
+    required_asset_id: torque_driver_1
+    station_id: station_a
+    max_wait_s: 30.0
+    severity: warning
+    note: Observe-only process contract; does not stop or control equipment.
+  - contract_id: tagged_assets_only
+    kind: claim_boundary
+    note: Demo uses tagged planar objects and makes no marker-free recognition claim.

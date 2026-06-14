@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane → Omniverse USD Replay
 
 Generate a Metriplane USD replay scene for NVIDIA Omniverse. The `.usda` produced here is

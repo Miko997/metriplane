@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """GPU/CPU fusion scaling benchmark.
 
 Answers honestly: for which N does GPU break even, what is the host-device transfer

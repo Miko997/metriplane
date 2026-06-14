@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.privacy_config.v1
+default_mode: video_free
+raw_video:
+  include_in_bundles: false
+  allowed_extensions: [.mp4, .mov, .avi, .mkv, .webm]
+identity:
+  forbidden_fields: [face_id, person_id, worker_id, biometric_id, name]
+retention:
+  default: derived_state_and_reports_only

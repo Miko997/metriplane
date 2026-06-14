@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.workspace.v1
+cell_id: cell_training_lab_a
+units: meters
+zones:
+  - zone_id: training_infeed
+    zone_type: inbound_material
+    label: Training infeed
+    polygon: [[0.0, 0.0], [1.4, 0.0], [1.4, 1.0], [0.0, 1.0]]
+  - zone_id: training_station_zone
+    zone_type: work_station
+    label: Training station
+    polygon: [[1.6, 0.0], [3.6, 0.0], [3.6, 1.8], [1.6, 1.8]]
+stations:
+  - station_id: training_station
+    zone_id: training_station_zone
+    label: Training station

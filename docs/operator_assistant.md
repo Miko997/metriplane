@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Grounded Operator Assistant
 
 `metriplane ask` answers natural-language questions about a run **from structured

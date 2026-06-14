@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # GPU Scaling Benchmark
 
 An honest CPU vs GPU scaling study for Metriplane's fusion compute block. It answers: for

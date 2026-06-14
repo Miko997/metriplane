@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Event export throughput benchmark.
 
 Generates synthetic events and measures events/sec to JSONL and to an in-memory mock

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Tests that the metrics/health HTTP server returns CORS headers on all responses.
 
 Covers:

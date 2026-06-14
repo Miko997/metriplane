@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Physical Observability
 
 Metriplane 0.2.0 turns calibrated camera state into a measured operating layer

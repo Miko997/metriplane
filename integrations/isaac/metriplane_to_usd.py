@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Export Metriplane traces + incidents into a USD (.usda) replay scene.
 
 Pure Python, no NVIDIA software required. The output `.usda` is a 2D floor replay that can
@@ -63,7 +66,7 @@ def load_traces(run_dir: str | Path) -> tuple[list[ObjectTrack], str | None]:
 
     run = Path(run_dir)
     session = _find(run, ["session_excerpt.jsonl", "session.jsonl",
-                          "traces/object_traces.jsonl"])
+                          "state_segment.jsonl", "traces/object_traces.jsonl"])
     if session is None:
         raise FileNotFoundError(f"no session JSONL found under {run}")
     reg = _registry_map(run)

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+// SPDX-License-Identifier: MIT
+
 // Static Command Center snapshot - renders command_center_data.json (produced by
 // `metriplane command-center export`). Themed to match the site; for the live version
 // with replay use command_center_live.html.

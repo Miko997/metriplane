@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Parquet exporter: convert run-dir JSONL artifacts into Parquet for batch analytics.
 
 Requires an optional engine (pyarrow or fastparquet via pandas). If neither is available,

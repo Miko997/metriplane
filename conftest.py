@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Root conftest.py — prepends repo root to sys.path so the local
 metriplane package shadows any older system-installed copy.
 

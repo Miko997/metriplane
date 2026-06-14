@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Paper B Canonical Evidence
 
 This file is the single source of truth for the Paper B benchmark manuscript evidence campaign.

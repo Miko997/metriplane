@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 from __future__ import annotations
 
 from metriplane.forecasting.projector import project_path

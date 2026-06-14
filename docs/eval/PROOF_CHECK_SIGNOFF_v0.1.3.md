@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane v0.1.3 Proof Check Signoff
 
 Release name: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release

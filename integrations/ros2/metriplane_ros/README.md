@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # metriplane_ros — ROS 2 Bridge
 
 A ROS 2 package that subscribes to the Metriplane WebSocket stream and republishes each

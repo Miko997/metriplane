@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+  - object_id: "1"
+    asset_id: kit_bin_1
+    asset_type: kit_bin
+    label: Kit bin 1
+    work_order_id: WO-ASM-001
+    expected_zones: [kitting_lane, station_a_work]
+    properties:
+      owner: material_flow
+  - object_id: "7"
+    asset_id: workpiece_7
+    asset_type: workpiece
+    label: Pump housing 7
+    work_order_id: WO-ASM-001
+    material_id: MAT-HOUSING-A
+    expected_stations: [station_a]
+    properties:
+      lot: LOT-42A
+  - object_id: "12"
+    asset_id: torque_driver_1
+    asset_type: tool
+    label: Torque driver 1
+    tool_id: TD-18NM-01
+    expected_stations: [station_a]
+    expected_zones: [tool_shadow, station_a_work]
+    properties:
+      calibration_due: "2026-09-01"
+  - object_id: "21"
+    asset_id: quality_gauge_1
+    asset_type: gauge
+    label: Quality gauge 1
+    tool_id: QG-BORE-01
+    expected_stations: [station_a]
+    properties:
+      calibration_due: "2026-08-15"

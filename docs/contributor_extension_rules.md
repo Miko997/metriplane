@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Contributor Extension Rules
 
 These rules keep Metriplane extensions compatible with the 0.2.0 release

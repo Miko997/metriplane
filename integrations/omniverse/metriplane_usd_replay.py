@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Generate a Metriplane USD replay for Omniverse.
 
 This delegates to the Isaac exporter (the .usda is plain USD and opens in Omniverse USD

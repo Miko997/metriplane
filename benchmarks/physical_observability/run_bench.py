@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Metriplane-Bench runner.
 
 Evaluates physical-observability scenarios (replay determinism, rule-alert and incident

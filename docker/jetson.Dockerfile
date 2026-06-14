@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # Jetson / edge deployment image for Metriplane (replay-first).
 #
 # Default base is a slim Python image so the replay-only path builds anywhere.

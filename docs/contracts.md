@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Spatial Contracts
 
 Metriplane Sentinel can evaluate **spatial contracts** in observer mode. A contract is a

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Isaac / Omniverse Replay
 
 Metriplane can export camera-tracked object traces and incidents into a USD (`.usda`)

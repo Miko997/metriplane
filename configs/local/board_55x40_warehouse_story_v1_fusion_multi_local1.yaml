@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 cameras:
 - device: /dev/video0
   mapping_file: calib/profiles/board_55x40_warehouse_story_v1_fusion/cam0/mapping_raw.yaml

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Dashboard Multi-Camera Fusion Runbook
 
 **Purpose**: Run live 2-camera fusion and view it in the dashboard
@@ -6,14 +11,20 @@
 
 ---
 
-## ⚡ One-command Start (Recommended)
+## ⚡ One-command Start
 
 ```bash
 cd <repo>
 source .venv/bin/activate
 
-# Start runner + dashboard + live fusion, open browser
+# Start runner + dashboard, open browser
+metriplane start --open
+
+# Start runner + dashboard + camera-free demo runtime, open browser
 metriplane start --live --open
+
+# Start runner + dashboard + camera-backed fusion, open browser
+metriplane start --live --config configs/fusion_health_300fps.yaml --open
 
 # Check all endpoints (works even without state file)
 metriplane status
@@ -25,15 +36,15 @@ metriplane stop
 metriplane cleanup          # removes Metriplane orphans only
 
 # Restart in one command (cleans orphans automatically):
-metriplane restart --live --open
+metriplane restart --config configs/fusion_health_300fps.yaml --open
 
 # Without venv activation:
-./tools/start_metriplane.sh --live --open
+./tools/start_metriplane.sh --open
 ./tools/start_metriplane.sh stop
 ./tools/start_metriplane.sh cleanup
 ```
 
-The launcher starts runner (port 9000), static dashboard server (port 8088), and fusion (ports 8000/8765) and opens `http://127.0.0.1:8088/web/dashboard/` automatically.
+The launcher starts the runner (port 9000) and static dashboard server (port 8088), then opens `http://127.0.0.1:8088/web/dashboard/` automatically. Runtime streams on ports 8000/8765 start only when you click the Setup/Run workflow or pass `--live`, so demo pages and Command Center are not overwritten by an automatic startup run.
 
 **Stop guarantees port release:** uses `os.killpg()` (process group kill) and polls until all owned ports are unbound. `restart` automatically runs cleanup if ports are still occupied after stop.
 

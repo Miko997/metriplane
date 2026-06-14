@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane Development Guide
 
 **Purpose**: Local developer workflow and environment setup for Metriplane
@@ -27,14 +32,18 @@ python -m metriplane.cli doctor
 After installation, bring up the full local stack with a single command:
 
 ```bash
-# Dashboard only (runner + static server, opens browser)
+# Full local stack: runner and dashboard. Runtime sessions are started
+# intentionally from Setup, Run, or with --live.
 metriplane start --open
 
-# Dashboard + live fusion (camera required)
+# Start an immediate camera-free runtime stream, if you explicitly want one
 metriplane start --live --open
 
-# Dashboard + operator UI
-metriplane start --operator --no-live
+# Camera-backed runtime, after setup has valid cameras/profile
+metriplane start --live --config configs/fusion_health_300fps.yaml --open
+
+# Open directly to the setup wizard
+metriplane start --operator
 
 # Status
 metriplane status
@@ -49,16 +58,17 @@ metriplane stop
 |---------|------|-------------|
 | Dashboard runner | 9000 | REST API for operator commands |
 | Static dashboard server | 8088 | Serves `web/dashboard/` and `evidence/` from repo root |
-| Fusion runtime (--live) | 8000/8765 | Metrics, health, WebSocket stream |
+| Runtime stream | 8000/8765 | Metrics, health, WebSocket stream; starts from Setup, Run, or `--live` |
 
 ### Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--live` | off | Also start live fusion |
+| `--live` | off | Start runtime stream immediately |
+| `--no-live` | on | Start only dashboard and runner |
 | `--backend cpu\|gpu` | cpu | Fusion compute backend |
-| `--config PATH` | `configs/fusion_health_300fps.yaml` | Fusion config |
-| `--duration-s N` | 7200 | Stop fusion after N seconds |
+| `--config PATH` | `configs/local_demo_replay.yaml` | Runtime config |
+| `--duration-s N` | 7200 | Stop camera-fusion runtime after N seconds |
 | `--run-id TEXT` | auto | Override run ID |
 | `--dashboard-port N` | 8088 | Web server port |
 | `--runner-port N` | 9000 | Runner API port |

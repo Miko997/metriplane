@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Regenerate release manifest and aggregate checksums from the staged tree."""
 
 from __future__ import annotations

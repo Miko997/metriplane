@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Multi-Camera Calibration Runbook
 
 **Purpose**: Re-calibrate planar mapping for multi-camera fusion after cameras have been physically moved

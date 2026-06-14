@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+// SPDX-License-Identifier: MIT
+
 // Metriplane Dashboard V1 - app.js
 // Pure vanilla JavaScript - no dependencies
 
@@ -59,24 +62,24 @@ function connectWebSocket() {
 
         ws.onerror = (error) => {
             console.error('[WS] Error:', error);
-            updateStatus('ws', 'offline', 'Error');
+            updateStatus('ws', 'standby', 'Standby');
         };
 
         ws.onclose = () => {
             console.log('[WS] Disconnected');
-            updateStatus('ws', 'offline', 'Disconnected');
+            updateStatus('ws', 'standby', 'Standby');
             scheduleReconnect();
         };
     } catch (err) {
         console.error('[WS] Connection failed:', err);
-        updateStatus('ws', 'offline', 'Failed');
+        updateStatus('ws', 'standby', 'Standby');
         scheduleReconnect();
     }
 }
 
 function scheduleReconnect() {
     if (wsReconnectTimer) return;
-    updateStatus('ws', 'reconnecting', 'Reconnecting...');
+    updateStatus('ws', 'standby', 'Standby');
     wsReconnectTimer = setTimeout(() => {
         wsReconnectTimer = null;
         connectWebSocket();
@@ -185,7 +188,7 @@ async function fetchHealth() {
         updateStatus('health', 'online', 'Online');
     } catch (err) {
         console.error('[Health] Fetch error:', err);
-        updateStatus('health', 'offline', 'Offline');
+        updateStatus('health', 'standby', 'Standby');
         updateHealth(null);
     }
 }
@@ -198,7 +201,7 @@ function updateHealth(data) {
     if (!data) {
         overallEl.textContent = '—';
         overallEl.className = 'badge';
-        componentsEl.innerHTML = '<p class="empty">Endpoint offline</p>';
+        componentsEl.innerHTML = '<p class="empty">No runtime session active</p>';
         timestampEl.textContent = '—';
         return;
     }
@@ -256,7 +259,7 @@ async function fetchMetrics() {
         updateStatus('metrics', 'online', 'Online');
     } catch (err) {
         console.error('[Metrics] Fetch error:', err);
-        updateStatus('metrics', 'offline', 'Offline');
+        updateStatus('metrics', 'standby', 'Standby');
         updateMetrics(null);
     }
 }
@@ -266,8 +269,8 @@ function updateMetrics(text) {
     const summaryEl = document.getElementById('metrics-summary');
 
     if (!text) {
-        rawEl.textContent = 'Endpoint offline';
-        summaryEl.innerHTML = '<div class="empty-state">Metrics endpoint unavailable</div>';
+        rawEl.textContent = 'No runtime session active';
+        summaryEl.innerHTML = '<div class="empty-state">No runtime session active</div>';
         return;
     }
 

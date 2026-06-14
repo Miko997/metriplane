@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+  - contract_id: evidence_not_quality_release
+    kind: claim_boundary
+    note: Atlas can assemble evidence for review; it does not approve product release.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # metriplane/config/models.py (or wherever your config schema lives)
 
 from pydantic import BaseModel, Field, AliasChoices

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Sentinel Mode
 
 Metriplane Sentinel is a **non-invasive physical-space auditor**. It watches object

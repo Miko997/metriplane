@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Batch replay fusion benchmark.
 
 Replays a session JSONL, grouping frames into batches and running fusion-like

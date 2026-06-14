@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 
 : "${METRICS_URL:?Set METRICS_URL like http://127.0.0.1:8000}"

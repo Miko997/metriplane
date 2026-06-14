@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Scalable Event Pipeline
 
 Metriplane can export traces, alerts, incidents, and frames to high-volume sinks for batch

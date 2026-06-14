@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Run the ROS 2 bridge adapter tests as part of the core suite (no ROS required).
 
 The adapters live in the standalone integrations/ros2 package; we load the module by

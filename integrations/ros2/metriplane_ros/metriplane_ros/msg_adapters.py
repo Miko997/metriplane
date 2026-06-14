@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Pure, ROS-free adapters that turn Metriplane WebSocket/JSONL frames into the JSON
 payloads published on ROS 2 topics. Kept free of rclpy so they are unit-testable in CI
 without a ROS 2 installation.

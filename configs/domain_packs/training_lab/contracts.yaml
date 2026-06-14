@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+  - contract_id: replay_training_no_blame
+    kind: training_boundary
+    note: Training material should describe observable process context, not blame people.

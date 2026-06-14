@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
 Dashboard V2 Runner HTTP Service
 
@@ -5,7 +8,9 @@ Provides REST API for controlled command execution.
 Uses Python stdlib only (http.server). Binds to localhost only.
 """
 
+import errno
 import json
+import sys
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -321,7 +326,22 @@ def start_runner(host="127.0.0.1", port=9000):
         host: Bind address (default: 127.0.0.1, localhost only)
         port: Port number (default: 9000)
     """
-    server = ThreadingHTTPServer((host, port), RunnerHTTPHandler)
+    try:
+        server = ThreadingHTTPServer((host, port), RunnerHTTPHandler)
+    except OSError as exc:
+        if exc.errno == errno.EADDRINUSE:
+            print(
+                f"[Runner] Port {port} is already in use on {host}.",
+                file=sys.stderr,
+            )
+            print(
+                "[Runner] Use `python -m metriplane.cli status` to inspect, "
+                "`python -m metriplane.cli cleanup` for orphaned MetriPlane services, "
+                "or start with `--port` set to a free port.",
+                file=sys.stderr,
+            )
+            return 98
+        raise
     print(f"[Runner] Metriplane Dashboard Runner v2.0")
     print(f"[Runner] Repository root: {executor.repo_root}")
     print(f"[Runner] Serving on http://{host}:{port}")
@@ -333,6 +353,7 @@ def start_runner(host="127.0.0.1", port=9000):
     except KeyboardInterrupt:
         print("\n[Runner] Shutting down...")
         server.shutdown()
+    return 0
 
 
 if __name__ == "__main__":
@@ -354,4 +375,4 @@ if __name__ == "__main__":
     )
     
     args = parser.parse_args()
-    start_runner(host=args.host, port=args.port)
+    raise SystemExit(start_runner(host=args.host, port=args.port))

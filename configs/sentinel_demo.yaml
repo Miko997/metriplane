@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # Sentinel shadow-auditor demo config.
 # Runs the spatial contract package over a replay session, no cameras required.
 replay_input: tests/fixtures/contracts/sentinel_minimal_session.jsonl

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Camera Trust & Placement Advisor
 
 Metriplane scores camera reliability and zone coverage from structured observations, and

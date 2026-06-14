@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # Rich Sentinel operator demo: 3 moving objects, 2 cameras (one degraded),
 # producing multiple incidents + camera trust + forecasting. No camera needed (replay).
 replay_input: tests/fixtures/contracts/operator_demo_session.jsonl

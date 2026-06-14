@@ -1,4 +1,7 @@
-// Metriplane Command Center (live). Reads the runner's read-only /operator/* endpoints,
+// SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+// SPDX-License-Identifier: MIT
+
+// MetriPlane Command Center (live). Reads the runner's read-only /operator/* endpoints,
 // auto-refreshes the latest run, animates the run as a replay on the 2D map (highlighting
 // incidents as they happen), and answers grounded questions. No CLI needed.
 
@@ -25,15 +28,17 @@ async function postJSON(p, b) {
 
 async function refresh() {
   try {
-    const [summary, incidents, trust, frames] = await Promise.all([
+    const [summary, incidents, trust, frames, traces] = await Promise.all([
       getJSON("/operator/live-summary"),
       getJSON("/operator/incidents"),
       getJSON("/operator/camera-trust"),
       getJSON("/operator/frames"),
+      getJSON("/operator/traces"),
     ]);
     renderStats(summary);
     renderIncidents(incidents.incidents || []);
     renderTimeline(incidents.incidents || []);
+    renderTraces(traces.traces || []);
     renderCameraTrust(trust.camera_trust);
     loadReplay(frames);
   } catch (e) {
@@ -399,6 +404,14 @@ function renderObjects(objects) {
     o.object_id, typeChip(o.type), o.zone,
     o.x_m != null ? o.x_m.toFixed(2) : null,
     o.y_m != null ? o.y_m.toFixed(2) : null,
+  ]));
+}
+function renderTraces(traces) {
+  fillTable("traces", traces.map((t) => [
+    t.object_id,
+    typeChip(t.type),
+    t.duration_s != null ? `${Number(t.duration_s).toFixed(1)}s` : "--",
+    t.distance_m != null ? `${Number(t.distance_m).toFixed(2)} m` : "--",
   ]));
 }
 function renderTimeline(incidents) {

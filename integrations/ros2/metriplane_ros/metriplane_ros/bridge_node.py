@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Metriplane → ROS 2 bridge node.
 
 Connects to the Metriplane WebSocket stream, and re-publishes each frame (and its alerts /

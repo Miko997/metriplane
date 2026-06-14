@@ -1,5 +1,10 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -92,3 +97,34 @@ def test_get_endpoints_no_data_safe(api, monkeypatch, tmp_path):
     st, data = api.route("GET", "/operator/objects", {})
     assert st == 200
     assert data["objects"] == []
+
+
+def test_latest_command_center_run_prefers_incident_artifacts(api, monkeypatch, tmp_path):
+    runs_root = tmp_path / "metriplane-runs"
+    generic = runs_root / "new_generic_runtime"
+    command_center = runs_root / "older_command_center"
+    generic.mkdir(parents=True)
+    command_center.mkdir(parents=True)
+    generic.joinpath("session.jsonl").write_text('{"type":"run_header"}\n', encoding="utf-8")
+    command_center.joinpath("incident.json").write_text(
+        json.dumps({
+            "incident_id": "INC-TEST",
+            "run_id": "command_center_run",
+            "status": "open",
+            "severity": "warning",
+            "title": "test incident",
+            "summary": "test incident",
+        }),
+        encoding="utf-8",
+    )
+    os.utime(command_center, (1000, 1000))
+    os.utime(generic, (2000, 2000))
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    st, data = api.route("GET", "/operator/live-summary", {})
+
+    assert st == 200
+    assert data["run_id"] == "command_center_run"
+    assert data["incidents_count"] == 1

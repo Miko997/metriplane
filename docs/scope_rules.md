@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Product Scope
 
 This document defines the supported public-release scope for MetriPlane and the evidence boundaries for Paper B.

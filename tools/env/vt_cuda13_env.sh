@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # Source this AFTER activating the venv:
 #   source ~/metriplane-venv/bin/activate
 #   source tools/env/vt_cuda13_env.sh

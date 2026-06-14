@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
 Metriplane Operator API
 
@@ -499,6 +502,18 @@ class OperatorAPI:
         if not name.startswith("local_"):
             name = f"local_{name}"
 
+        if not isinstance(cameras, list) or not cameras:
+            return 400, {"error": "cameras must be a non-empty list containing cam0 and optionally cam1"}
+        for cam in cameras:
+            if cam not in ("cam0", "cam1"):
+                return 400, {
+                    "error": (
+                        "Invalid camera role in profile. Use camera role names "
+                        "'cam0' and optionally 'cam1'; device paths are selected "
+                        "in the camera scan step and written into the run config."
+                    )
+                }
+
         profile_dir = _profile_dir(self.repo_root, name)
 
         if profile_dir.exists() and not overwrite:
@@ -534,8 +549,7 @@ class OperatorAPI:
         # ── Create directories ────────────────────────────────────────────────
         profile_dir.mkdir(parents=True, exist_ok=True)
         for cam in cameras:
-            if cam in ("cam0", "cam1"):
-                (profile_dir / cam).mkdir(exist_ok=True)
+            (profile_dir / cam).mkdir(exist_ok=True)
 
         # ── Write anchors.yaml ────────────────────────────────────────────────
         anchors_path = profile_dir / "anchors.yaml"
@@ -551,8 +565,7 @@ class OperatorAPI:
 
         created_dirs = [str(profile_dir.relative_to(self.repo_root))]
         for cam in cameras:
-            if cam in ("cam0", "cam1"):
-                created_dirs.append(str((profile_dir / cam).relative_to(self.repo_root)))
+            created_dirs.append(str((profile_dir / cam).relative_to(self.repo_root)))
 
         return 200, {
             "profile": name,
@@ -1127,15 +1140,28 @@ class OperatorAPI:
             if any(p == r or r in p.parents for r in self._cc_allowed_roots()) and p.is_dir():
                 return p
             return None
-        # fall back to the latest run under ~/metriplane-runs that actually has
-        # Sentinel artifacts (skip empty/launcher dirs).
+        # Fall back to the latest run under ~/metriplane-runs. Prefer runs with
+        # Command Center/Sentinel artifacts so a generic runtime session does not
+        # hide the incident demo or an operator review run.
         runs_root = Path.home() / "metriplane-runs"
         if not runs_root.exists():
             return None
-        markers = ("incident.json", "session.jsonl", "session_excerpt.jsonl",
-                   "sentinel_summary.json")
-        dirs = [d for d in runs_root.iterdir()
-                if d.is_dir() and any((d / m).exists() for m in markers)]
+        command_center_markers = (
+            "incident.json",
+            "sentinel_summary.json",
+            "camera_trust.json",
+            "alerts.jsonl",
+            "objects.yaml",
+        )
+        generic_runtime_markers = ("session_excerpt.jsonl", "session.jsonl")
+
+        def with_markers(markers: tuple[str, ...]) -> list[Path]:
+            return [
+                d for d in runs_root.iterdir()
+                if d.is_dir() and any((d / marker).exists() for marker in markers)
+            ]
+
+        dirs = with_markers(command_center_markers) or with_markers(generic_runtime_markers)
         if not dirs:
             return None
         dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)

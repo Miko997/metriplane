@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Read-only Command Center data readers.
 
 Pure functions that read a run directory or incident bundle and return JSON-serializable

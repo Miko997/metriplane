@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # External Reproduction Note Template
 
 Please complete this after running the MetriPlane v0.1.4 reviewer path.

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 
 PROFILE="${1:-board_55x40_warehouse_story_v1_fusion}"

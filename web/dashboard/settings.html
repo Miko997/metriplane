@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetriPlane - Settings</title>
+  <meta name="description" content="MetriPlane local runner, ports, paths, profiles, and cleanup controls.">
+  <link rel="stylesheet" href="style.css?v=20260613-onemp-1">
+</head>
+<body class="vt-page vt-product-page missing-atlas-artifacts">
+  <nav class="mp-product-nav" aria-label="MetriPlane status">
+    <a class="mp-product-brand" href="index.html"><span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span><span class="brand-wordmark">Metri<span class="brand-accent">Plane</span></span></a>
+    <div class="mp-product-nav-title">Settings</div>
+    <div class="mp-product-nav-state"><span class="live-dot"></span><span data-runner-status>checking runner</span><code data-runner-detail>localhost :9000</code></div>
+  </nav>
+  <div class="mp-console-frame">
+    <aside class="mp-console-sidebar" aria-label="MetriPlane sections">
+      <a href="index.html">Start</a><a href="operator.html">Setup</a><a href="run.html">Run</a><a href="runtime.html">Live View</a><a href="report.html">Cell Report</a><a href="command_center_live.html">Command Center</a><a href="atlas.html">Evidence</a><a href="integrations.html">Integrations</a><a href="benchmarks.html">Benchmarks</a><a class="active" href="settings.html">Settings</a><a href="help.html">Help</a>
+    </aside>
+    <main class="mp-product-shell">
+      <section class="mp-product-band mp-page-header">
+        <div><div class="mp-kicker">Local controls</div><h1>Settings and diagnostics</h1><p>Check the local runner, ports, generated files, profiles, and safe cleanup status without hunting through terminal output.</p></div>
+        <div class="mp-hero-actions"><button class="btn btn-primary" type="button" data-command-id="doctor">Run Doctor</button><button class="btn btn-secondary" type="button" data-command-id="cleanup">Check stale processes</button></div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Status</div><h2>Local services</h2></div></div>
+        <div class="mp-metric-grid">
+          <div class="mp-metric"><span>Runner</span><strong data-runner-status>checking</strong></div>
+          <div class="mp-metric"><span>Runner port</span><strong>9000</strong></div>
+          <div class="mp-metric"><span>Dashboard port</span><strong>8088</strong></div>
+          <div class="mp-metric"><span>Evidence status</span><strong data-atlas-status>build demo first</strong></div>
+        </div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-command-grid">
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>System</span><h3>Doctor</h3></div><button class="btn btn-primary btn-sm" type="button" data-command-id="doctor">Run</button></div><p>Checks Python, git, GPU visibility, and local package health.</p><div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>System</span><h3>Preflight</h3></div><button class="btn btn-secondary btn-sm" type="button" data-command-id="preflight">Run</button></div><p>Checks dependencies and local configuration before real camera work.</p><div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>Cameras</span><h3>Scan local devices</h3></div><button class="btn btn-secondary btn-sm" type="button" data-command-id="list-cameras">Run</button></div><p>Lists visible camera devices without starting a live run.</p><div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>Ports</span><h3>Check stale processes</h3></div><button class="btn btn-secondary btn-sm" type="button" data-command-id="cleanup">Run</button></div><p>Reports or clears stale MetriPlane processes while keeping this active browser runner online.</p><div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>Profiles</span><h3>Camera setup profiles</h3></div><a class="btn btn-secondary btn-sm" href="operator.html">Open</a></div><p>Profiles, anchors, zones, and run settings are managed in Setup.</p><div class="mp-job-row"><span>browser path</span><small>Setup page</small></div></article>
+        </div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Runner activity</div><h2>Recent jobs</h2></div></div>
+        <div class="mp-job-history" data-jobs-list><div class="mp-empty-line">Checking runner jobs...</div></div>
+      </section>
+      <section class="mp-product-band">
+        <details class="mp-advanced-details" open>
+          <summary>Advanced details</summary>
+          <div class="mp-artifact-grid">
+            <a class="mp-artifact-link" href="../../metriplane/runner/allowlist.py"><span>Action registry</span><strong>Open allowlist</strong></a>
+            <a class="mp-artifact-link" href="../../docs/operator_ui_runbook.md"><span>Runbook</span><strong>Open operator guide</strong></a>
+            <a class="mp-artifact-link" href="../../config.example.yaml"><span>Config</span><strong>Open example</strong></a>
+            <a class="mp-artifact-link" href="../../calib/"><span>Calibration</span><strong>Open folder</strong></a>
+          </div>
+        </details>
+      </section>
+    </main>
+  </div>
+  <script src="product_actions.js?v=20260613-onemp-1"></script>
+</body>
+</html>

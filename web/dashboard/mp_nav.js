@@ -1,12 +1,22 @@
-// Shared Metriplane view switcher.
+// SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+// SPDX-License-Identifier: MIT
+
+// Shared MetriPlane view switcher.
 // App shells get navigation inside their existing rail/sidebar so it never floats
 // over controls. Plain scrollable pages get an in-flow top rail.
 (function () {
   const LINKS = [
+    ["index.html", "Start"],
+    ["operator.html", "Setup"],
+    ["run.html", "Run"],
+    ["runtime.html", "Live View"],
+    ["report.html", "Cell Report"],
     ["command_center_live.html", "Command Center"],
-    ["operator.html", "Operator Setup"],
-    ["runtime.html", "Runtime Console"],
-    ["index.html", "System Dashboard"],
+    ["atlas.html", "Evidence"],
+    ["integrations.html", "Integrations"],
+    ["benchmarks.html", "Benchmarks"],
+    ["settings.html", "Settings"],
+    ["help.html", "Help"],
   ];
 
   const here = (location.pathname.split("/").pop() || "index.html").toLowerCase();
@@ -152,11 +162,11 @@
     const bar = document.createElement("nav");
     bar.id = "mp-shared-nav";
     bar.className = "mp-shared-nav";
-    bar.setAttribute("aria-label", "Metriplane views");
+    bar.setAttribute("aria-label", "MetriPlane views");
 
     const brand = document.createElement("span");
     brand.className = "mp-shared-nav-brand";
-    brand.textContent = "Metriplane";
+    brand.textContent = "MetriPlane";
     bar.appendChild(brand);
 
     const links = document.createElement("div");
@@ -241,6 +251,8 @@
   function mount() {
     addStyles();
     const body = document.body;
+
+    if (body.classList.contains("vt-product-page")) return;
 
     if (body.classList.contains("vt-landing-page")) {
       patchLandingNav();

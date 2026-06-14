@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Changelog
 
 All notable changes to Metriplane are documented here.
@@ -6,7 +11,16 @@ All notable changes to Metriplane are documented here.
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added
+
+- Added the 0.2.0 Atlas Cell Black Box foundation: domain packs, deterministic assembly-cell demo replay, reality graph, physical event ledger, Cell Truth Report, dashboard, USDA replay export, evidence bundle v3, generated regression tests, training cases, improvement actions, saved queries, SQLite evidence lake, connector exports, edge helpers, multi-cell comparison, privacy reports, protocol export, pilot kit, freeze audit, and Atlas-Bench core.
+- Added Atlas documentation for quickstart, domain packs, Open Atlas Protocol v1, privacy/claim boundaries, and the 0.2.0 phase matrix.
+- Added phase evidence files for Atlas phases 24-50 with explicit local status and limitations.
+
+### Safety and scope
+
+- Atlas is observe-only and asset/process focused. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking.
+- External pilots, hardware appliance packaging, full USD/Isaac replay, and network connectors remain explicitly scoped for future work unless separate evidence is added.
 
 ---
 

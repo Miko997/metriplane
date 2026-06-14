@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Audit the MetriPlane v0.2.0 release evidence manifest, checksums, and docs."""
 
 from __future__ import annotations

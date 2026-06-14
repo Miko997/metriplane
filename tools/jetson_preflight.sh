@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # Jetson / edge preflight check for Metriplane.
 # Verifies OS/arch, Python, camera devices, NVIDIA tooling, ports, and import.
 # Usage: tools/jetson_preflight.sh [--json]

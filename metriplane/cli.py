@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 from __future__ import annotations
 
 import argparse
@@ -254,10 +257,10 @@ def _main_doctor(argv: list[str]) -> int:
 
 _LAUNCHER_FLAGS_HELP = """\
 Launcher flags (shared by start and restart):
-  --live              Also start live fusion runtime
-  --no-live           Dashboard only, no fusion (default)
+  --live              Start runtime stream immediately
+  --no-live           Dashboard/runner only, no runtime stream (default)
   --backend cpu|gpu   Compute backend for fusion (default: cpu)
-  --config PATH       Fusion config YAML (default: configs/fusion_health_300fps.yaml)
+  --config PATH       Runtime config YAML (default: configs/local_demo_replay.yaml)
   --duration-s INT    Stop fusion after N seconds (default: 7200)
   --run-id TEXT       Override run ID (default: live_YYYYMMDD_HHMMSS)
   --dashboard-port N  Dashboard web server port (default: 8088)
@@ -277,13 +280,13 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
     )
     if name in ("start", "restart"):
         p.add_argument("--live", action="store_true", default=False,
-                       help="Also start live fusion runtime (default: off)")
+                       help="Start runtime stream immediately (default: off)")
         p.add_argument("--no-live", dest="live", action="store_false",
-                       help="Dashboard only — no fusion (default)")
+                       help="Dashboard/runner only — no runtime stream (default)")
         p.add_argument("--backend", choices=["cpu", "gpu"], default="cpu",
                        help="Fusion compute backend (default: cpu)")
-        p.add_argument("--config", default="configs/fusion_health_300fps.yaml",
-                       help="Fusion config YAML")
+        p.add_argument("--config", default="configs/local_demo_replay.yaml",
+                       help="Runtime config YAML")
         p.add_argument("--duration-s", type=float, default=7200,
                        dest="duration_s", help="Stop fusion after N seconds (default: 7200)")
         p.add_argument("--run-id", default=None, dest="run_id",
@@ -299,7 +302,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
         p.add_argument("--no-open", action="store_false", dest="open_browser",
                        help="Do not open browser")
         p.add_argument("--operator", action="store_true", default=False,
-                       help="Open operator.html instead of runtime dashboard")
+                       help="Open operator.html instead of the Metriplane home console")
     return p
 
 
@@ -414,6 +417,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "traces":
         from metriplane.trace.cli_traces import main_traces
         return main_traces(argv[1:])
+    if argv and argv[0] == "atlas":
+        from metriplane.atlas.cli import main as atlas_main
+        return atlas_main(argv[1:])
     if argv and argv[0] == "start":
         return _main_start(argv[1:])
     if argv and argv[0] == "stop":
