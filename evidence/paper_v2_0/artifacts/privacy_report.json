@@ -1,0 +1,13 @@
+{
+  "biometric_free": true,
+  "identity_key_hits": [],
+  "limitations": [
+    "String scan is a repository-level guard, not legal compliance advice.",
+    "Deployment privacy review is still required."
+  ],
+  "raw_video_files": [],
+  "retention_default": "derived_state_and_reports_only",
+  "run_dir": "runs/atlas/assembly_cell_missing_tool",
+  "schema_version": "metriplane.atlas.privacy_report.v1",
+  "video_free": true
+}

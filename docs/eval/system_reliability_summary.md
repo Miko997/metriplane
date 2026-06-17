@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane System Reliability Summary
 
 **Purpose**: Determinism, backpressure, and provenance evidence for Paper B

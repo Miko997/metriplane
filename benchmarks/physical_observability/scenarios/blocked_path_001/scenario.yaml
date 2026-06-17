@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+id: blocked_path_001
+description: pallet sits in the exit lane long enough to block the path
+duration_s: 6
+expected:
+  alerts:
+    - pallet_blocks_exit
+  incidents:
+    - blocked_path

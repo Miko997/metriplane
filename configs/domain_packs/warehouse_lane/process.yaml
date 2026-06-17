@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.process_model.v1
+process_id: warehouse_lane_flow
+work_order_type: logistics
+steps:
+  - step_id: cart_enters_lane
+    label: Cart enters lane
+    expected_asset_types: [cart]
+    required_zone: lane_entry
+  - step_id: pallet_reaches_lane
+    label: Pallet reaches lane body
+    expected_asset_types: [pallet]
+    required_zone: lane_body
+  - step_id: cart_reaches_exit
+    label: Cart reaches exit
+    expected_asset_types: [cart]
+    required_zone: lane_exit

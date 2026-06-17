@@ -1,0 +1,179 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetriPlane - Command Center</title>
+  <link rel="stylesheet" href="style.css?v=20260506-theme">
+  <link rel="stylesheet" href="command_center.css">
+</head>
+<body class="vt-cc-page">
+  <div class="cc-layout">
+    <aside class="cc-rail">
+      <div class="cc-rail-brand">
+        <div class="sidebar-brand-logo cc-rail-logo">
+          <img src="icons/metriplane-coordinate-grid.svg" alt="MetriPlane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <span class="logo-letter" style="display:none">M</span>
+        </div>
+        <div class="sidebar-brand-text cc-rail-brand-text">
+          <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">Plane</span></span>
+          <span class="sidebar-brand-sub">Command Center</span>
+        </div>
+      </div>
+
+      <div class="cc-rail-section">
+        <div class="cc-rail-label">Mode</div>
+        <div class="cc-rail-state">
+          <span class="cc-state-dot"></span>
+          <span>Observe only</span>
+        </div>
+      </div>
+
+      <div class="cc-rail-section">
+        <div class="cc-rail-label">Runner</div>
+        <code class="cc-rail-code" id="runner-url">http://localhost:9000</code>
+      </div>
+
+      <div class="cc-rail-section">
+        <div class="cc-rail-label">Demo</div>
+        <button id="build-command-center-sample-btn" class="btn-mp full" type="button" data-command-id="sentinel-demo">Build Command Center Sample</button>
+        <div id="run-demo-status" class="cc-run-status"></div>
+      </div>
+
+      <div class="cc-rail-section cc-rail-metrics">
+        <div class="cc-rail-pair"><span>Refresh</span><b>5s</b></div>
+        <div class="cc-rail-pair"><span>Access</span><b>Read-only</b></div>
+        <div class="cc-rail-pair"><span>Source</span><b>Latest run</b></div>
+      </div>
+    </aside>
+
+    <div class="cc-content">
+      <header class="cc-header">
+        <div class="cc-heading">
+          <div class="cc-kicker"><span class="live-dot"></span> MetriPlane</div>
+          <div class="cc-title-row">
+            <h1 class="cc-title">Command Center</h1>
+            <span class="cc-mode cc-mode-live">Live</span>
+          </div>
+        </div>
+        <div class="cc-stats" id="stats"></div>
+      </header>
+
+      <main class="cc-main">
+        <section class="cc-primary">
+          <section class="panel cc-map-panel">
+            <div class="panel-header cc-panel-header-strong">
+              <h2>Replay Map</h2>
+              <span class="panel-subtitle" id="map-sub">Waiting for run data</span>
+            </div>
+            <div class="cc-map-wrap">
+              <div class="cc-map-frame">
+                <svg id="map" viewBox="0 0 480 360" preserveAspectRatio="xMidYMid meet"></svg>
+              </div>
+              <div class="cc-map-meta">
+                <div class="cc-legend" id="legend"></div>
+                <span class="time" id="time">--</span>
+              </div>
+              <div class="cc-replay">
+                <button id="play-btn" class="btn-mp ghost" type="button">Play</button>
+                <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Replay frame">
+              </div>
+            </div>
+          </section>
+
+          <section class="panel cc-assistant-panel">
+            <div class="panel-header">
+              <h2>Assistant</h2>
+              <span class="panel-subtitle">Run-grounded</span>
+            </div>
+            <div class="cc-ask-row">
+              <input id="ask-input" type="text" placeholder="Ask about incidents, rules, or camera trust">
+              <button id="ask-btn" class="btn-mp" type="button">Ask</button>
+            </div>
+            <div class="cc-ask-answer" id="ask-answer"></div>
+          </section>
+        </section>
+
+        <section class="cc-stack">
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Incidents</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table cc-incident-table" id="incidents">
+                <thead>
+                  <tr><th>Id</th><th>Rule</th><th>Severity</th><th>Objects</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel cc-panel cc-timeline-panel">
+            <div class="panel-header">
+              <h2>Event Timeline</h2>
+            </div>
+            <div class="cc-timeline" id="timeline"></div>
+          </section>
+
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Trace Summary</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table" id="traces">
+                <thead>
+                  <tr><th>Object</th><th>Marker</th><th>Duration</th><th>Distance</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Objects</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table" id="objects">
+                <thead>
+                  <tr><th>Name</th><th>Type</th><th>Zone</th><th>X</th><th>Y</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel cc-panel">
+            <div class="panel-header">
+              <h2>Camera Trust</h2>
+            </div>
+            <div class="table-wrapper">
+              <table class="data-table compact cc-table" id="camera-trust">
+                <thead>
+                  <tr><th>Camera</th><th>Status</th><th>Score</th><th>Dropout</th><th>Delta</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="cc-note" id="ct-recs"></div>
+          </section>
+        </section>
+      </main>
+
+      <footer class="cc-foot">
+        <span>Helper: <code>./tools/command_center_up.sh</code></span>
+        <a href="command_center.html">Open snapshot</a>
+      </footer>
+    </div>
+  </div>
+
+  <script src="command_center_live.js"></script>
+  <script src="mp_nav.js"></script>
+</body>
+</html>

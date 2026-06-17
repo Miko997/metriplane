@@ -1,0 +1,20 @@
+feature/release-v0.2.0
+44bed6d85786675c5581154f588a7ad2529c85d6
+## feature/release-v0.2.0...origin/feature/release-v0.2.0
+ M .zenodo.json
+ M ARTIFACTS.md
+ M CHANGELOG.md
+ M CITATION.cff
+ M README.md
+ M docs/eval/evidence_matrix.md
+?? dist/
+?? docs/paper/
+?? docs/review_kit/
+?? evidence/paper_v2_0/
+commit 44bed6d85786675c5581154f588a7ad2529c85d6
+Author:     Miko Parkkinen <141511110+Miko997@users.noreply.github.com>
+AuthorDate: Sun Jun 14 21:57:27 2026 +0300
+Commit:     Miko Parkkinen <141511110+Miko997@users.noreply.github.com>
+CommitDate: Sun Jun 14 21:58:19 2026 +0300
+
+    ci: run UI audit without mutating release evidence

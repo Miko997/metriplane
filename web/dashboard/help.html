@@ -1,0 +1,68 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetriPlane - Help</title>
+  <meta name="description" content="MetriPlane quickstart, glossary, troubleshooting, and limits.">
+  <link rel="stylesheet" href="style.css?v=20260613-onemp-1">
+</head>
+<body class="vt-page vt-product-page missing-atlas-artifacts">
+  <nav class="mp-product-nav" aria-label="MetriPlane status">
+    <a class="mp-product-brand" href="index.html"><span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span><span class="brand-wordmark">Metri<span class="brand-accent">Plane</span></span></a>
+    <div class="mp-product-nav-title">Help</div>
+    <div class="mp-product-nav-state"><span class="live-dot"></span><span data-runner-status>checking runner</span><code data-runner-detail>localhost :9000</code></div>
+  </nav>
+  <div class="mp-console-frame">
+    <aside class="mp-console-sidebar" aria-label="MetriPlane sections">
+      <a href="index.html">Start</a><a href="operator.html">Setup</a><a href="run.html">Run</a><a href="runtime.html">Live View</a><a href="report.html">Cell Report</a><a href="command_center_live.html">Command Center</a><a href="atlas.html">Evidence</a><a href="integrations.html">Integrations</a><a href="benchmarks.html">Benchmarks</a><a href="settings.html">Settings</a><a class="active" href="help.html">Help</a>
+    </aside>
+    <main class="mp-product-shell">
+      <section class="mp-product-band mp-page-header">
+        <div><div class="mp-kicker">Help center</div><h1>Use MetriPlane without terminal guesswork.</h1><p>Start with the demo replay, then move to camera setup only when you understand the output.</p></div>
+        <div class="mp-hero-actions"><button class="btn btn-primary" type="button" data-command-id="run-demo-replay">Run Demo Replay</button><a class="btn btn-secondary" href="../../docs/operator_ui_runbook.md">Open full runbook</a></div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Quickstart</div><h2>Recommended path</h2></div></div>
+        <div class="mp-checklist">
+          <div><span>01</span><strong>Start MetriPlane</strong><small>Use one command: <code>metriplane start</code>.</small></div>
+          <div><span>02</span><strong>Run Demo Replay</strong><small>Creates movement, report, evidence, and export data without cameras.</small></div>
+          <div><span>03</span><strong>Read Cell Report</strong><small>Use the report to understand what happened before opening raw files.</small></div>
+          <div><span>04</span><strong>Review Evidence</strong><small>Verify, replay, export proof, or open advanced artifacts.</small></div>
+          <div><span>05</span><strong>Set Up Cameras</strong><small>Use Setup when you are ready for a real workspace.</small></div>
+        </div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Glossary</div><h2>Plain labels and technical names</h2></div></div>
+        <div class="mp-feature-grid">
+          <article class="mp-capability"><span>Recorded Session</span><strong>Technical: JSONL</strong><p>A saved stream of frames that can be replayed.</p></article>
+          <article class="mp-capability"><span>Live Stream</span><strong>Technical: WebSocket</strong><p>The live frame connection used by browser views and clients.</p></article>
+          <article class="mp-capability"><span>Workspace Calibration</span><strong>Technical: homography</strong><p>The mapping from camera pixels to real-world floor coordinates.</p></article>
+          <article class="mp-capability"><span>Printed Tracking Tags</span><strong>Technical: ArUco</strong><p>Markers MetriPlane uses to identify important items.</p></article>
+          <article class="mp-capability"><span>Run Settings</span><strong>Technical: config</strong><p>The selected cameras, profiles, zones, and runtime options.</p></article>
+          <article class="mp-capability"><span>Evidence List</span><strong>Technical: manifest</strong><p>The local list of generated proof files and checksums.</p></article>
+        </div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Troubleshooting</div><h2>Common fixes</h2></div></div>
+        <div class="mp-command-grid">
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>Runner offline</span><h3>Start local stack</h3></div><a class="btn btn-secondary btn-sm" href="settings.html">Settings</a></div><p>Run <code>metriplane start</code>. If the port is stuck, use Check stale processes in Settings.</p></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>No report</span><h3>Build demo data</h3></div><button class="btn btn-primary btn-sm" type="button" data-command-id="run-demo-replay">Run</button></div><p>The report and evidence pages need either demo data or a live run.</p><div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>Cameras missing</span><h3>Use camera-free path first</h3></div><a class="btn btn-secondary btn-sm" href="run.html">Run</a></div><p>MetriPlane can show its value without cameras. Set up cameras later from Setup.</p></article>
+          <article class="mp-action-card"><div class="mp-action-head"><div><span>Integration missing</span><h3>Check external tool</h3></div><a class="btn btn-secondary btn-sm" href="integrations.html">Integrations</a></div><p>ROS 2, Docker, Isaac, and Omniverse are external tools. The UI distinguishes export support from installed runtimes.</p></article>
+        </div>
+      </section>
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Limits</div><h2>What MetriPlane does not claim</h2></div></div>
+        <p class="mp-muted-copy">MetriPlane is observe-only. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking. Integrations are available when their external tools are installed.</p>
+      </section>
+    </main>
+  </div>
+  <script src="product_actions.js?v=20260613-onemp-1"></script>
+</body>
+</html>

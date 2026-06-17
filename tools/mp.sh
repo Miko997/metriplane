@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 
 export PYTHONUTF8="${PYTHONUTF8:-1}"
@@ -85,18 +88,63 @@ latest_run_dir() {
   ls -td "$RUNS"/"${prefix}"* 2>/dev/null | head -n 1 || true
 }
 
+session_has_frames() {
+  local session="$1"
+  python - "$session" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file():
+    raise SystemExit(1)
+
+header_types = {"header", "run_header", "provenance"}
+try:
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            if (rec.get("type") or rec.get("record_type")) in header_types:
+                continue
+            if "ts" in rec or "ts_ns" in rec:
+                raise SystemExit(0)
+except OSError:
+    raise SystemExit(1)
+raise SystemExit(1)
+PY
+}
+
 pick_session() {
   # priority:
   # 1) explicit arg
-  # 2) newest session.jsonl under RUNS
+  # 2) newest session.jsonl under RUNS that contains at least one frame
   # 3) demo dataset if exists
   local explicit="${1:-}"
-  if [ -n "$explicit" ]; then echo "$explicit"; return 0; fi
-  local newest
-  newest="$(ls -td "$RUNS"/*/session.jsonl 2>/dev/null | head -n 1 || true)"
-  if [ -n "$newest" ]; then echo "$newest"; return 0; fi
+  if [ -n "$explicit" ]; then
+    session_has_frames "$explicit" || die "session has no replay frames: $explicit"
+    echo "$explicit"
+    return 0
+  fi
+  local newest=""
+  while IFS= read -r newest; do
+    [ -n "$newest" ] || continue
+    if session_has_frames "$newest"; then
+      echo "$newest"
+      return 0
+    fi
+  done < <(ls -t "$RUNS"/*/session.jsonl 2>/dev/null || true)
   if [ -f "$ROOT/datasets/demo/session_001.jsonl" ]; then
-    echo "$ROOT/datasets/demo/session_001.jsonl"; return 0
+    session_has_frames "$ROOT/datasets/demo/session_001.jsonl" || die "demo session has no replay frames: $ROOT/datasets/demo/session_001.jsonl"
+    echo "$ROOT/datasets/demo/session_001.jsonl"
+    return 0
   fi
   die "No session.jsonl found. Pass one: ./tools/mp.sh deterministic-replay /path/to/session.jsonl"
 }
@@ -270,12 +318,67 @@ cmd_provenance() {
   activate
   cd "$ROOT"
 
-  echo "=== run provenance (meta.json + run header) ==="
-  python -m metriplane.run_fusion \
-    --config "$CONFIG" \
-    --runs-dir "$RUNS" \
-    --run-id "provenance_run_001" \
-    --duration-s 10
+  echo "=== run provenance (camera-free meta.json + run header) ==="
+  python - "$RUNS" "$ROOT/datasets/demo/session_001.jsonl" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from metriplane.config import Config
+from metriplane.provenance.run_provenance import create_run_context, is_header_record, open_jsonl_writer
+
+runs_dir = Path(sys.argv[1])
+source_session = Path(sys.argv[2])
+if not source_session.is_file():
+    raise SystemExit(f"demo session not found: {source_session}")
+
+cfg = Config(
+    source_mode="replay",
+    replay_input=str(source_session),
+    replay_loop=False,
+    profile="camera_free_demo",
+    target_fps=30,
+    runs_dir=str(runs_dir),
+)
+ctx = create_run_context(
+    cfg,
+    config_path=Path("datasets/demo/session_001.jsonl"),
+    argv=["./tools/mp.sh", "provenance"],
+    run_id="provenance_run_001",
+    runs_dir=str(runs_dir),
+)
+
+writer = open_jsonl_writer(primary_path=ctx.session_jsonl, mirror_path=None)
+writer.write(ctx.header_record())
+
+frames = 0
+with source_session.open("r", encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        rec = json.loads(line)
+        if not isinstance(rec, dict) or is_header_record(rec):
+            continue
+        rec = dict(rec)
+        rec["run_id"] = ctx.run_id
+        rec["config_hash"] = ctx.config_hash
+        rec["git_commit"] = ctx.git.commit
+        rec.setdefault("schema_version", "1.0")
+        writer.write(rec)
+        frames += 1
+        if frames >= 5:
+            break
+
+writer.close()
+if frames == 0:
+    raise SystemExit(f"demo session has no replay frames: {source_session}")
+
+print(f"camera_free=true")
+print(f"source_session={source_session}")
+print(f"frames_written={frames}")
+print(f"run_dir={ctx.run_dir}")
+PY
 
   local run_dir
   run_dir="$(latest_run_dir provenance_run_001)"

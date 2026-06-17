@@ -1,0 +1,2 @@
+data: '{"incident_id":"inc_manual_001","summary":"manual smoke incident"}'
+---

@@ -1,0 +1,24 @@
+[
+  {
+    "incident_id": "inc_0001",
+    "run_id": "INC-DIST-001",
+    "rule_id": "cart_person_distance",
+    "severity": "critical",
+    "status": "closed",
+    "opened_ts": 2.0,
+    "closed_ts": 2.0,
+    "duration_s": 0.0,
+    "object_ids": [
+      "cart_01",
+      "human_proxy_01"
+    ],
+    "zones": [
+      "main"
+    ],
+    "summary": "cart_01, human_proxy_01 triggered cart_person_distance in main for 0.0s",
+    "alert_ids": [
+      "alert_000001"
+    ],
+    "evidence": {}
+  }
+]

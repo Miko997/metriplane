@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.workspace.v1
+cell_id: cell_warehouse_lane_a
+units: meters
+zones:
+  - zone_id: lane_entry
+    zone_type: lane_entry
+    label: Lane entry
+    polygon: [[0.0, 0.0], [1.2, 0.0], [1.2, 1.4], [0.0, 1.4]]
+  - zone_id: lane_body
+    zone_type: travel_lane
+    label: Main travel lane
+    polygon: [[1.2, 0.0], [4.8, 0.0], [4.8, 1.4], [1.2, 1.4]]
+  - zone_id: lane_exit
+    zone_type: lane_exit
+    label: Lane exit
+    polygon: [[4.8, 0.0], [6.0, 0.0], [6.0, 1.4], [4.8, 1.4]]
+stations:
+  - station_id: lane_station
+    zone_id: lane_body
+    label: Warehouse lane

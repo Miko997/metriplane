@@ -1,0 +1,14 @@
+
+Files:             metriplane_ros2_manual_bag_2026_06_14_0.mcap
+Bag size:          28.7 KiB
+Storage id:        mcap
+ROS Distro:        jazzy
+Duration:          5.516165240s
+Start:             Jun 14 2026 20:47:34.819822165 (1781459254.819822165)
+End:               Jun 14 2026 20:47:40.335987405 (1781459260.335987405)
+Messages:          112
+Topic information: Topic: /metriplane/alerts | Type: std_msgs/msg/String | Count: 28 | Serialization Format: cdr
+                   Topic: /metriplane/frame_state | Type: std_msgs/msg/String | Count: 56 | Serialization Format: cdr
+                   Topic: /metriplane/incidents | Type: std_msgs/msg/String | Count: 28 | Serialization Format: cdr
+Service:           0
+Service information:

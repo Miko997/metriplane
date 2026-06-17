@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane Schema v1.0 (Locked)
 
 ## Purpose
@@ -20,6 +25,7 @@ All fields, types, and optionality rules are defined in the Python code. This do
 - `frame_id` (int) — monotonically increasing per run
 - `objects` (list[ObjectStateModel]) — tracked objects (legacy: first camera or fused)
 - `events` (list[ZoneEventModel]) — zone enter/exit events
+- `alerts` (list[dict]) — optional operational/Sentinel alerts; defaults to an empty list
 - `metrics` (dict | null) — optional metrics snapshot
 
 ### M9 Provenance Fields (optional, populated at runtime)
@@ -31,6 +37,14 @@ All fields, types, and optionality rules are defined in the Python code. This do
 ### M8 Multi-Camera Fusion Fields (optional)
 - `fused` (list[ObjectStateModel] | null) — fused observations across cameras
 - `raw_per_camera` (list[CameraFrameModel] | null) — per-camera raw observations
+
+### Metriplane 0.2.0 Operational Layers (optional)
+- Object registry metadata may be carried in `ObjectStateModel.extra` or
+  resolved downstream by the registry.
+- Sentinel alerts are additive and do not replace zone events.
+- Contract, incident, forecast, camera-trust, and assistant records live in
+  downstream modules and evidence bundles rather than changing the required
+  frame-state fields.
 
 ---
 

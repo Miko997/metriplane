@@ -1,11 +1,17 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Evidence Matrix
 
+**Current software release**: `v0.2.0`
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
 **Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
-**Tests**: 193/193 passing as of initial public release evidence.
+**Tests**: 580/580 passing in the captured v0.2.0 release-gate run (`evidence/paper_v2_0/test_output.txt`).
 
 Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidence exists but should not be promoted into a primary Paper B quantitative claim.
 
@@ -33,6 +39,22 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 | Manifest and checksums | Manifest rows and aggregate checksum file | YES | `evidence/manifest.csv`, `evidence/CHECKSUMS.sha256` | Checksum verification is expected to pass with `sha256sum -c evidence/CHECKSUMS.sha256`. |
 | Large session provenance | Session hash in manifest when JSONL is outside Git | PARTIAL | `evidence/manifest.csv` | Large JSONL sessions may be archived outside Git; verify archived copies against manifest checksums. |
 | Paper B canonical release tag | Paper B source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | Canonical source/evidence release for Paper B; `v0.1.2` was the prior canonical evidence release; `v0.1.0` was the initial public release. |
+
+## MetriPlane 0.2.0 Operational Evidence
+
+| Claim | Required evidence | Found? | Actual artifact path(s) | Quality assessment |
+|---|---|---|---|---|
+| Named physical objects | Object registry config, tests, and proof | YES | `configs/objects.example.yaml`, `tests/test_object_registry.py`, `evidence/experiments/object_registry_001.md` | Marker IDs can resolve to object IDs, types, labels, and tags while preserving unknown-ID fallback. |
+| Trace summaries | Trace store tests and proof | YES | `tests/test_trace_store.py`, `evidence/experiments/trace_store_001.md` | Distance, speed, zones, point count, and gaps are derived from replay state. |
+| Spatial contracts | Contract model/engine/CLI tests and proof | YES | `tests/test_contract_*.py`, `evidence/experiments/spatial_contract_language_001.md` | Contract validation and replay testing cover core rule types. |
+| Sentinel observe-only runtime | Runtime tests and summary evidence | YES | `tests/test_sentinel_*.py`, `evidence/experiments/sentinel_runtime_001.md` | `control_enabled=false`; replay-only auditor path writes status and summary artifacts. |
+| Incidents and bundles | Incident/evidence tests and checked-in bundle | YES | `tests/test_incident_engine.py`, `tests/test_evidence_bundles.py`, `evidence/incidents/INC-0001/` | Incidents are grouped and packaged with checksums/reports for replay review. |
+| Physical regression | Regression runner tests and proof | YES | `tests/test_physical_regression_runner.py`, `evidence/experiments/physical_regression_tests_001.md` | Bundle expectations can be replayed with pass/fail reports. |
+| Forecasting | Forecast tests and proof | YES | `tests/test_forecasting_*.py`, `evidence/experiments/risk_forecasting_001.md` | Short-horizon risk projections are downstream and non-mutating. |
+| Counterfactuals | Counterfactual tests and proof | YES | `tests/test_counterfactual_*.py`, `evidence/experiments/counterfactual_reports_001.md` | Threshold, speed, and object-removal variants are reported separately from originals. |
+| Camera trust | Analyzer/model/recommendation tests and proof | YES | `tests/test_camera_trust_*.py`, `evidence/experiments/camera_trust_001.md` | Dropout and disagreement metrics are summarized with placement recommendations. |
+| Local operator assistant | Retrieval/intent/citation tests and proof | YES | `tests/test_assistant_*.py`, `evidence/experiments/operator_assistant_001.md` | Answers are local and cite checked-in incident/trace/trust artifacts. |
+| Command Center | API/endpoint tests and UI proof | YES | `tests/test_operator_command_center_*.py`, `evidence/experiments/command_center_ui_001.md` | Read-only browser/API path exposes state, incidents, traces, trust, and assistant answers. |
 
 ## Case Study Evidence
 

@@ -1,0 +1,3 @@
+No raw Omniverse open log captured for the 2026-06-14 manual smoke.
+No Omniverse screenshot captured into the repository.
+Maintainer reported manual Omniverse testing, but this directory only contains generated USD checksum/content evidence.

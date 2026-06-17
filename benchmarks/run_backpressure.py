@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """Backpressure / bounded-queue benchmark (M9.2).
 
 This benchmark intentionally overloads a staged pipeline so we can observe:

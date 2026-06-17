@@ -1,0 +1,293 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetriPlane - Evidence Review</title>
+  <meta name="description" content="MetriPlane evidence review for event ledgers, incident archives, regressions, reports, simulator replay, and integration outputs.">
+  <link rel="stylesheet" href="style.css?v=20260613-onemp-1">
+</head>
+<body class="vt-page vt-product-page vt-atlas-page missing-atlas-artifacts">
+  <nav class="mp-product-nav" aria-label="MetriPlane status">
+    <a class="mp-product-brand" href="index.html">
+      <span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span>
+      <span class="brand-wordmark">Metri<span class="brand-accent">Plane</span></span>
+    </a>
+    <div class="mp-product-nav-title">Evidence</div>
+    <div class="mp-product-nav-state">
+      <span class="live-dot"></span>
+      <span data-runner-status>checking runner</span>
+      <code data-runner-detail>localhost :9000</code>
+    </div>
+  </nav>
+
+  <div class="mp-console-frame">
+    <aside class="mp-console-sidebar" aria-label="MetriPlane sections">
+      <a href="index.html">Start</a>
+      <a href="operator.html">Setup</a>
+      <a href="run.html">Run</a>
+      <a href="runtime.html">Live View</a>
+      <a href="report.html">Cell Report</a>
+      <a href="command_center_live.html">Command Center</a>
+      <a class="active" href="atlas.html">Evidence</a>
+      <a href="integrations.html">Integrations</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="settings.html">Settings</a>
+      <a href="help.html">Help</a>
+    </aside>
+
+  <main class="mp-product-shell">
+    <section class="mp-product-hero mp-atlas-hero">
+      <div class="mp-product-hero-copy">
+        <div class="mp-kicker">MetriPlane evidence workspace</div>
+        <h1>Evidence Review</h1>
+        <p>
+          Turn a replayed operation into a clear record: event ledger, incident archive,
+          regression case, privacy report, simulator replay, and review dashboard.
+        </p>
+        <div class="mp-hero-actions">
+          <button class="btn btn-primary" type="button" data-command-id="atlas-demo">
+            Build sample run
+          </button>
+          <a class="btn btn-secondary requires-atlas" href="report.html">
+            Open cell report
+          </a>
+          <a class="btn btn-secondary requires-atlas" href="atlas_run/atlas_dashboard.html">
+            Open evidence dashboard
+          </a>
+          <a class="btn btn-secondary requires-atlas" href="atlas_run/cell_truth_report.html">
+            Open truth report
+          </a>
+        </div>
+      </div>
+
+      <div class="mp-atlas-map" aria-label="MetriPlane evidence flow">
+        <div class="mp-atlas-node input">
+          <span>Input</span>
+          <strong>session + rules</strong>
+          <small>objects, zones, work order, process constraints</small>
+        </div>
+        <div class="mp-atlas-arrow"></div>
+        <div class="mp-atlas-node core">
+          <span>MetriPlane</span>
+          <strong>physical event ledger</strong>
+          <small>what happened, where, when, and why it matters</small>
+        </div>
+        <div class="mp-atlas-arrow"></div>
+        <div class="mp-atlas-node output">
+          <span>Output</span>
+          <strong>audit-ready evidence</strong>
+          <small>dashboard, archive, regression, USD replay, protocol files</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="mp-product-band">
+      <div class="mp-section-head">
+        <div>
+          <div class="mp-kicker">Current local evidence run</div>
+          <h2>Generated workspace</h2>
+        </div>
+        <span class="mp-status-chip" data-atlas-status>build evidence sample first</span>
+      </div>
+      <div class="mp-metric-grid">
+        <div class="mp-metric"><span>Run</span><strong data-atlas-field="run_id">-</strong></div>
+        <div class="mp-metric"><span>Cell</span><strong data-atlas-field="cell_id">-</strong></div>
+        <div class="mp-metric"><span>Events</span><strong data-atlas-field="events">-</strong></div>
+        <div class="mp-metric"><span>Incidents</span><strong data-atlas-field="incidents">-</strong></div>
+        <div class="mp-metric"><span>Deviations</span><strong data-atlas-field="deviations">-</strong></div>
+        <div class="mp-metric"><span>Frames</span><strong data-atlas-field="frames">-</strong></div>
+      </div>
+      <div class="mp-artifact-grid">
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/atlas_dashboard.html">
+          <span>Dashboard</span><strong>Open generated UI</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/cell_truth_report.html">
+          <span>Truth report</span><strong>cell_truth_report.html</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/evidence_bundles/INC-0001.zip">
+          <span>Incident archive</span><strong>INC-0001.zip</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/regression_tests/INC-0001.yaml">
+          <span>Regression</span><strong>INC-0001.yaml</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/privacy_report.json">
+          <span>Privacy report</span><strong>privacy_report.json</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/connectors/rest_snapshot.json">
+          <span>REST snapshot</span><strong>rest_snapshot.json</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/omniverse/metriplane_replay.usda">
+          <span>USD replay</span><strong>metriplane_replay.usda</strong>
+        </a>
+        <a class="mp-artifact-link requires-atlas" href="atlas_run/protocol/open_atlas_protocol_index.json">
+          <span>Protocol</span><strong>Open protocol index</strong>
+        </a>
+      </div>
+    </section>
+
+    <section class="mp-product-band">
+      <div class="mp-section-head">
+        <div>
+          <div class="mp-kicker">Actions</div>
+          <h2>Run evidence actions from the UI</h2>
+        </div>
+        <span class="mp-runner-url">Runner: <code data-runner-url>http://localhost:9000</code></span>
+      </div>
+
+      <div class="mp-command-grid">
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>01</span><h3>Build evidence workspace</h3></div>
+            <button class="btn btn-primary btn-sm" type="button" data-command-id="atlas-demo">Run</button>
+          </div>
+          <p>Create the local evidence run and publish all primary review files into this dashboard folder.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>02</span><h3>Validate rule workspace</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-validate-pack">Run</button>
+          </div>
+          <p>Check that the cell rules, asset registry, workspace, and process model are valid.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>03</span><h3>Verify incident archive</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-verify-demo" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Verify the incident archive contents and checksums before using it as review or regression input.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>04</span><h3>Replay regression</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-regression-demo" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Replay the generated incident regression and confirm the expected deviation is still detected.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>05</span><h3>Query event ledger</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-query-demo-events" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Return the run's physical events as JSON so an operator can inspect the actual sequence.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>06</span><h3>Build evidence index</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-lake-build" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Index generated run, event, and incident artifacts into a local SQLite evidence index.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>07</span><h3>Export protocol</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-protocol-export" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Write protocol schema and index artifacts for external tool interchange.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>08</span><h3>Edge readiness</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-edge-doctor" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Check local edge-appliance readiness signals for the generated evidence directory.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>09</span><h3>Create field review kit</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-pilot-kit" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Create the checklist, script, and review templates used for an external cell review.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>10</span><h3>Build audit snapshot</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-freeze-build" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Produce a local claim audit and review-note snapshot for the evidence foundation.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>11</span><h3>Export USD replay</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="integration-omniverse-export" data-needs-atlas="true">Run</button>
+          </div>
+          <p>Write a USD replay scene for Omniverse USD Composer or Isaac Sim.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+
+        <article class="mp-action-card">
+          <div class="mp-action-head">
+            <div><span>12</span><h3>Check ROS adapters</h3></div>
+            <button class="btn btn-secondary btn-sm" type="button" data-command-id="integration-ros2-check">Run</button>
+          </div>
+          <p>Run the ROS-free adapter checks that map MetriPlane frames into bridge messages.</p>
+          <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div>
+          <pre data-job-output></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="mp-product-band">
+      <div class="mp-section-head">
+        <div>
+          <div class="mp-kicker">Where this fits</div>
+          <h2>One MetriPlane workflow</h2>
+        </div>
+      </div>
+      <div class="mp-workflow-grid">
+        <a class="mp-workflow-card" href="operator.html">
+          <span>01</span><h3>Set up cameras and zones</h3><p>Operator Setup creates calibrated world coordinates and runtime config.</p>
+        </a>
+        <a class="mp-workflow-card" href="runtime.html">
+          <span>02</span><h3>Watch live metric state</h3><p>Live State shows fused objects, telemetry, health, and evidence streams.</p>
+        </a>
+        <a class="mp-workflow-card" href="command_center_live.html">
+          <span>03</span><h3>Investigate incidents</h3><p>Command Center makes incidents, forecasts, camera trust, and Q&A readable.</p>
+        </a>
+        <a class="mp-workflow-card active" href="atlas.html">
+          <span>04</span><h3>Review evidence</h3><p>Evidence Review turns a run into reusable records, tests, exports, and review artifacts.</p>
+        </a>
+      </div>
+    </section>
+  </main>
+  </div>
+
+  <script src="product_actions.js?v=20260613-onemp-1"></script>
+</body>
+</html>

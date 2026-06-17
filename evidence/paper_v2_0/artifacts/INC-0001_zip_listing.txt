@@ -1,0 +1,21 @@
+Archive:  evidence/paper_v2_0/atlas_run/evidence_bundles/INC-0001.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+     1309  2026-06-17 17:27   checksums.sha256
+     1051  2026-06-17 17:27   configs/assets.yaml
+      598  2026-06-17 17:27   configs/contracts.yaml
+      667  2026-06-17 17:27   configs/process.yaml
+      175  2026-06-17 17:27   configs/work_orders.csv
+      894  2026-06-17 17:27   configs/workspace.yaml
+     1152  2026-06-17 17:27   event_timeline.jsonl
+      653  2026-06-17 17:27   incident.json
+      150  2026-06-17 17:27   limitations.md
+      697  2026-06-17 17:27   manifest.json
+      271  2026-06-17 17:27   process_trace_excerpt.json
+      160  2026-06-17 17:27   provenance/command.txt
+    12767  2026-06-17 17:27   reality_graph_excerpt.json
+      124  2026-06-17 17:27   replay_command.sh
+     2234  2026-06-17 17:27   reports/cell_truth_report.md
+     3186  2026-06-17 17:27   state_segment.jsonl
+---------                     -------
+    26088                     16 files

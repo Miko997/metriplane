@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+  - contract_id: robot_observe_only_boundary
+    kind: claim_boundary
+    note: Atlas records robot-cell evidence and does not control robot motion.

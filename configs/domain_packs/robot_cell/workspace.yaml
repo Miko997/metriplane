@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.workspace.v1
+cell_id: cell_robot_a
+units: meters
+zones:
+  - zone_id: robot_infeed
+    zone_type: inbound_material
+    label: Robot infeed
+    polygon: [[0.0, 0.0], [1.4, 0.0], [1.4, 1.2], [0.0, 1.2]]
+  - zone_id: robot_work_envelope
+    zone_type: robot_station
+    label: Robot work envelope
+    polygon: [[1.6, 0.0], [3.6, 0.0], [3.6, 2.0], [1.6, 2.0]]
+  - zone_id: robot_outfeed
+    zone_type: outbound_material
+    label: Robot outfeed
+    polygon: [[3.8, 0.0], [5.0, 0.0], [5.0, 1.2], [3.8, 1.2]]
+stations:
+  - station_id: robot_station
+    zone_id: robot_work_envelope
+    label: Robot station

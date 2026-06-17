@@ -1,0 +1,83 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MetriPlane - Cell Report</title>
+  <meta name="description" content="Plain-language report of movement, events, issues, and proof for the latest MetriPlane run.">
+  <link rel="stylesheet" href="style.css?v=20260613-onemp-1">
+</head>
+<body class="vt-page vt-product-page missing-atlas-artifacts">
+  <nav class="mp-product-nav" aria-label="MetriPlane status">
+    <a class="mp-product-brand" href="index.html"><span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span><span class="brand-wordmark">Metri<span class="brand-accent">Plane</span></span></a>
+    <div class="mp-product-nav-title">Cell Report</div>
+    <div class="mp-product-nav-state"><span class="live-dot"></span><span data-runner-status>checking runner</span><code data-runner-detail>localhost :9000</code></div>
+  </nav>
+  <div class="mp-console-frame">
+    <aside class="mp-console-sidebar" aria-label="MetriPlane sections">
+      <a href="index.html">Start</a><a href="operator.html">Setup</a><a href="run.html">Run</a><a href="runtime.html">Live View</a><a class="active" href="report.html">Cell Report</a><a href="command_center_live.html">Command Center</a><a href="atlas.html">Evidence</a><a href="integrations.html">Integrations</a><a href="benchmarks.html">Benchmarks</a><a href="settings.html">Settings</a><a href="help.html">Help</a>
+    </aside>
+    <main class="mp-product-shell">
+      <section class="mp-product-band mp-page-header">
+        <div>
+          <div class="mp-kicker">Latest report</div>
+          <h1>What happened in this run</h1>
+          <p>A plain-language report of movement, delays, events, and proof. Build the demo replay if no report is ready yet.</p>
+        </div>
+        <div class="mp-hero-actions">
+          <a class="btn btn-primary requires-atlas" href="atlas_run/cell_truth_report.html">Open Full Report</a>
+          <button class="btn btn-secondary" type="button" data-command-id="run-demo-replay">Run Demo Replay</button>
+          <a class="btn btn-secondary" href="command_center_live.html">Open Command Center</a>
+          <a class="btn btn-secondary requires-atlas" href="atlas_run/evidence_bundles/INC-0001.zip">Export Proof</a>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Executive summary</div><h2>Run summary</h2></div><span class="mp-status-chip" data-atlas-status>build demo first</span></div>
+        <div class="mp-metric-grid">
+          <div class="mp-metric"><span>Run</span><strong data-atlas-field="run_id">-</strong></div>
+          <div class="mp-metric"><span>Workspace</span><strong data-atlas-field="cell_id">-</strong></div>
+          <div class="mp-metric"><span>Events found</span><strong data-atlas-field="events">-</strong></div>
+          <div class="mp-metric"><span>Issues found</span><strong data-atlas-field="incidents">-</strong></div>
+          <div class="mp-metric"><span>Frames reviewed</span><strong data-atlas-field="frames">-</strong></div>
+          <div class="mp-metric"><span>Proof status</span><strong data-atlas-status>build demo first</strong></div>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Key findings</div><h2>What needs attention</h2></div></div>
+        <div class="mp-feature-grid">
+          <article class="mp-feature-card"><img src="icons/metriplane-zones-events.svg" alt=""><div><span>Zone issue</span><h3>Exit lane occupancy</h3></div><p>The sample run includes a blocked or occupied exit lane event for review.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-object-tracking.svg" alt=""><div><span>Asset check</span><h3>Expected item missing</h3></div><p>The evidence workflow flags when a required asset is missing from the expected area.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-replay-logs.svg" alt=""><div><span>Proof</span><h3>Replayable archive ready</h3></div><p>The incident archive can be verified and replayed before sharing.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-integration-ready.svg" alt=""><div><span>Next action</span><h3>Export to simulation</h3></div><p>Use the USD replay for 3D review if external NVIDIA tooling is installed.</p></article>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">Timeline and proof</div><h2>Review path</h2></div></div>
+        <div class="mp-two-col">
+          <div class="mp-checklist">
+            <div><span>00:00</span><strong>Run starts</strong><small>Workspace state is read from the included recorded session.</small></div>
+            <div><span>00:03</span><strong>Objects are observed</strong><small>Tracked items enter zones and build a movement history.</small></div>
+            <div><span>00:05</span><strong>Issue is detected</strong><small>Rules flag the missing item / lane occupancy case.</small></div>
+            <div><span>After</span><strong>Evidence is generated</strong><small>Report, archive, regression, and export artifacts become available.</small></div>
+          </div>
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Proof</span><h3>Report actions</h3></div><a class="btn btn-primary btn-sm requires-atlas" href="atlas_run/cell_truth_report.html">Open</a></div>
+            <p>Open the full HTML report, verify the archive, or jump to Evidence for advanced files.</p>
+            <div class="mp-card-actions"><button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-verify-demo" data-needs-atlas="true">Verify</button><a class="btn btn-secondary btn-sm requires-atlas" href="atlas.html">Evidence</a></div>
+            <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="product_actions.js?v=20260613-onemp-1"></script>
+</body>
+</html>

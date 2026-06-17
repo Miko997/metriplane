@@ -1,0 +1,3 @@
+{"alert_id":"alert_000001","rule_id":"no_cart_in_exit_lane","severity":"warning","ts":1.0,"object_ids":["cart_01"],"zone":"exit_lane","detail":{},"run_id":"INC-0001"}
+{"alert_id":"alert_000002","rule_id":"no_cart_in_exit_lane","severity":"warning","ts":2.0,"object_ids":["cart_01"],"zone":"exit_lane","detail":{},"run_id":"INC-0001"}
+{"alert_id":"alert_000003","rule_id":"no_cart_in_exit_lane","severity":"warning","ts":3.0,"object_ids":["cart_01"],"zone":"exit_lane","detail":{},"run_id":"INC-0001"}

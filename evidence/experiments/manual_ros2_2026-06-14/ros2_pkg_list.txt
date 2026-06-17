@@ -1,0 +1,8 @@
+ROS_DISTRO=jazzy
+ros2=/opt/ros/jazzy/bin/ros2
+colcon=/usr/bin/colcon
+metriplane_ros
+rclpy
+rosbag2
+rosbag2_py
+std_msgs

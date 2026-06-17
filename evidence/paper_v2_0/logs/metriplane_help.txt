@@ -1,0 +1,14 @@
+usage: metriplane [-h] [--config CONFIG] [--profile PROFILE] [--run-id RUN_ID]
+                  [--runs-dir RUNS_DIR] [--fault FAULT]
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      Path to YAML config
+  --profile PROFILE    Calibration profile name (defaults to
+                       calib/active_profile.yaml). Profile maps to
+                       calib/profiles/<profile>/...
+  --run-id RUN_ID      Optional run id override (otherwise auto).
+  --runs-dir RUNS_DIR  Override runs base dir (default: /data/runs in docker,
+                       ./runs on host). Example: --runs-dir ~/metriplane-runs
+  --fault FAULT        Fault injection (repeatable). Example: --fault
+                       ws_send_fail_after_s=12

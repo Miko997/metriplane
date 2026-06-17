@@ -1,0 +1,80 @@
+#usda 1.0
+(
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "MetriPlaneAtlasReplay"
+{
+    custom string schema_version = "metriplane.atlas.twinverify_usda.v1"
+    custom string run_id = "atlas_assembly_missing_tool_001"
+    custom string cell_id = "cell_assembly_a"
+    custom string limitation = "Replay-derived planar state; no Isaac latency or safety claim."
+    def Xform "Zones"
+    {
+        def Xform "kitting_lane"
+        {
+            custom string zone_type = "inbound_material"
+            custom point3f[] polygon = [(0.000, 0.000, 0), (1.800, 0.000, 0), (1.800, 1.200, 0), (0.000, 1.200, 0)]
+        }
+        def Xform "station_a_work"
+        {
+            custom string zone_type = "work_station"
+            custom point3f[] polygon = [(2.000, 0.000, 0), (4.400, 0.000, 0), (4.400, 1.800, 0), (2.000, 1.800, 0)]
+        }
+        def Xform "tool_shadow"
+        {
+            custom string zone_type = "tool_storage"
+            custom point3f[] polygon = [(2.000, 2.000, 0), (3.000, 2.000, 0), (3.000, 2.600, 0), (2.000, 2.600, 0)]
+        }
+        def Xform "outbound_buffer"
+        {
+            custom string zone_type = "outbound_material"
+            custom point3f[] polygon = [(4.600, 0.000, 0), (5.800, 0.000, 0), (5.800, 1.200, 0), (4.600, 1.200, 0)]
+        }
+    }
+    def Xform "Assets"
+    {
+        def Xform "kit_bin_1"
+        {
+            custom string asset_type = "kit_bin"
+            custom string motion_samples = "0.000: (0.800, 0.400, 0.000)"
+            custom string zone_samples = "0.000:kitting_lane"
+            double3 xformOp:translate = (0.800, 0.400, 0.000)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        def Xform "torque_driver_1"
+        {
+            custom string asset_type = "tool"
+            custom string motion_samples = "70.000: (2.600, 0.700, 0.000)"
+            custom string zone_samples = "70.000:station_a_work"
+            double3 xformOp:translate = (2.600, 0.700, 0.000)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        def Xform "quality_gauge_1"
+        {
+            custom string asset_type = "gauge"
+            custom string motion_samples = "70.000: (2.500, 0.900, 0.000)"
+            custom string zone_samples = "70.000:station_a_work"
+            double3 xformOp:translate = (2.500, 0.900, 0.000)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        def Xform "workpiece_7"
+        {
+            custom string asset_type = "workpiece"
+            custom string motion_samples = "10.000: (2.800, 0.800, 0.000), 20.000: (2.900, 0.800, 0.000), 55.000: (3.000, 0.800, 0.000), 70.000: (3.100, 0.800, 0.000)"
+            custom string zone_samples = "10.000:station_a_work, 20.000:station_a_work, 55.000:station_a_work, 70.000:station_a_work"
+            double3 xformOp:translate = (2.800, 0.800, 0.000)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+    def Xform "Incidents"
+    {
+        def Xform "INC-0001"
+        {
+            custom string incident_type = "missing_tool_caused_delay"
+            custom string title = "torque_driver_1 missing during Torque driver available before fastening"
+            custom string event_ids = "evt_0003, evt_0004"
+        }
+    }
+}

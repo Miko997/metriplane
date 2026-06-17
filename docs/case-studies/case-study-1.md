@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Case Study 1: Multi-Camera Zone Analytics
 
 **Purpose**: Demonstrate MetriPlane's camera-first planar zone analytics workflow

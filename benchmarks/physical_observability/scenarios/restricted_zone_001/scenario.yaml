@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+id: restricted_zone_001
+description: a cart briefly enters a restricted exit lane
+duration_s: 5
+expected:
+  alerts:
+    - no_cart_in_exit_lane
+  incidents:
+    - restricted_zone_entry

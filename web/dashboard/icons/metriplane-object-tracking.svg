@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="object-tracking-title object-tracking-desc">
   <title id="object-tracking-title">Object Tracking</title>
   <desc id="object-tracking-desc">Tracked object ID, bounding geometry, and motion state.</desc>

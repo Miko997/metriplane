@@ -1,12 +1,47 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Changelog
 
-All notable changes to Metriplane are documented here.
+All notable changes to MetriPlane are documented here.
 
 ---
 
 ## [Unreleased]
 
-No unreleased changes yet.
+No unreleased changes.
+
+---
+
+## [0.2.0] — 2026-06-17 — Physical Observability, Evidence Bundles, and Command Center
+
+### Added
+
+- Added Sentinel observe-only auditing over replayed physical-space state.
+- Added spatial contracts, rule validation, incident grouping, short-horizon risk forecasting, and evidence bundles.
+- Added physical regression tests, counterfactual incident reports, camera trust analysis, and a local grounded operator assistant.
+- Added the Command Center UI/API for read-only inspection of objects, incidents, traces, trust, and operator questions.
+- Added object registry, trace store, operational events, query CLI, MetriPlane-Bench scenarios, Jetson deployment notes, fleet heartbeat artifacts, and scalable event exporters.
+- Added the Atlas Cell Black Box / Evidence Review foundation: domain packs, deterministic assembly-cell demo replay, reality graph, physical event ledger, Cell Truth Report, dashboard, USDA replay export, evidence bundle v3, generated regression tests, training cases, improvement actions, saved queries, SQLite evidence lake, connector exports, edge helpers, multi-cell comparison, privacy reports, protocol export, pilot kit, freeze audit, and Atlas-Bench core.
+- Added Atlas documentation for quickstart, domain packs, Open Atlas Protocol v1, privacy/claim boundaries, and the 0.2.0 phase matrix.
+- Added phase evidence files for Atlas phases 24-50 with explicit local status and limitations.
+- Added ROS 2, Isaac, and Omniverse adapter/example surfaces for downstream integration.
+
+### Changed
+
+- Promoted MetriPlane from a camera-to-coordinate demo into a physical-observability and evidence platform.
+- Expanded automated coverage to 580 passing tests for the 0.2.0 release.
+- Preserved the historical v0.1.3 benchmark evidence baseline while adding 0.2.0 operational evidence.
+
+### Safety and scope
+
+- Sentinel is observe-only. It does not control robots, machines, or safety systems.
+- Atlas is observe-only and asset/process focused. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking.
+- 0.2.0 remains planar XY and marker/fiducial based.
+- Hardware-specific integrations are documented honestly as adapters or deployment paths unless separate measured evidence is included.
+- External pilots, hardware appliance packaging, full USD/Isaac replay, and network connectors remain explicitly scoped for future work unless separate evidence is added.
 
 ---
 
@@ -33,7 +68,7 @@ No unreleased changes yet.
 
 ### Summary
 
-First public release of Metriplane. The system was developed privately through milestones M1–M9 and is now released as an open-source project under the MIT license.
+First public release of MetriPlane. The system was developed privately through milestones M1-M9 and is now released as an open-source project under the MIT license.
 
 ### Features included
 

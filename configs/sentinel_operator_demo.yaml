@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+# Rich Sentinel operator demo: 3 moving objects, 2 cameras (one degraded),
+# producing multiple incidents + camera trust + forecasting. No camera needed (replay).
+replay_input: tests/fixtures/contracts/operator_demo_session.jsonl
+
+sentinel:
+  enabled: true
+  mode: shadow_auditor
+  contracts_file: configs/contracts/sentinel_demo.yaml
+  objects_file: configs/objects.example.yaml
+  zones_file: configs/zones.demo.yaml
+  export_summary: true
+  fail_fast_on_contract_error: true
+  camera_trust:
+    enabled: true
+  forecasting:
+    enabled: true
+    horizon_s: 2.0
+    step_s: 0.2
+    min_confidence: 0.55

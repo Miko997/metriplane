@@ -1,0 +1,187 @@
+{
+  "schema_version": "1.0",
+  "bundle_path": "evidence/incidents/INC-DIST-001",
+  "incident_id": "inc_0001",
+  "original_summary": {
+    "rule_id": "cart_person_distance",
+    "severity": "critical",
+    "objects": [
+      "cart_01",
+      "human_proxy_01"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "cf_001",
+      "transform": {
+        "type": "rule_threshold_sweep",
+        "target": "cart_person_distance",
+        "params": {
+          "field": "min_distance_m",
+          "value": 0.1
+        }
+      },
+      "pass": true,
+      "original_incident_present": false,
+      "observed_incidents": [],
+      "summary": "cart_person_distance.min_distance_m=0.1: original incident not detected",
+      "metrics": {
+        "incident_count": 0
+      }
+    },
+    {
+      "case_id": "cf_002",
+      "transform": {
+        "type": "rule_threshold_sweep",
+        "target": "cart_person_distance",
+        "params": {
+          "field": "min_distance_m",
+          "value": 0.2
+        }
+      },
+      "pass": true,
+      "original_incident_present": false,
+      "observed_incidents": [],
+      "summary": "cart_person_distance.min_distance_m=0.2: original incident not detected",
+      "metrics": {
+        "incident_count": 0
+      }
+    },
+    {
+      "case_id": "cf_003",
+      "transform": {
+        "type": "rule_threshold_sweep",
+        "target": "cart_person_distance",
+        "params": {
+          "field": "min_distance_m",
+          "value": 0.3
+        }
+      },
+      "pass": true,
+      "original_incident_present": false,
+      "observed_incidents": [],
+      "summary": "cart_person_distance.min_distance_m=0.3: original incident not detected",
+      "metrics": {
+        "incident_count": 0
+      }
+    },
+    {
+      "case_id": "cf_004",
+      "transform": {
+        "type": "rule_threshold_sweep",
+        "target": "cart_person_distance",
+        "params": {
+          "field": "min_distance_m",
+          "value": 0.4
+        }
+      },
+      "pass": true,
+      "original_incident_present": true,
+      "observed_incidents": [
+        {
+          "rule_id": "cart_person_distance",
+          "severity": "critical",
+          "objects": [
+            "cart_01",
+            "human_proxy_01"
+          ]
+        }
+      ],
+      "summary": "cart_person_distance.min_distance_m=0.4: original incident still detected",
+      "metrics": {
+        "incident_count": 1
+      }
+    },
+    {
+      "case_id": "cf_005",
+      "transform": {
+        "type": "rule_threshold_sweep",
+        "target": "cart_person_distance",
+        "params": {
+          "field": "min_distance_m",
+          "value": 0.5
+        }
+      },
+      "pass": true,
+      "original_incident_present": true,
+      "observed_incidents": [
+        {
+          "rule_id": "cart_person_distance",
+          "severity": "critical",
+          "objects": [
+            "cart_01",
+            "human_proxy_01"
+          ]
+        }
+      ],
+      "summary": "cart_person_distance.min_distance_m=0.5: original incident still detected",
+      "metrics": {
+        "incident_count": 1
+      }
+    },
+    {
+      "case_id": "cf_006",
+      "transform": {
+        "type": "rule_threshold_sweep",
+        "target": "cart_person_distance",
+        "params": {
+          "field": "min_distance_m",
+          "value": 0.6
+        }
+      },
+      "pass": true,
+      "original_incident_present": true,
+      "observed_incidents": [
+        {
+          "rule_id": "cart_person_distance",
+          "severity": "critical",
+          "objects": [
+            "cart_01",
+            "human_proxy_01"
+          ]
+        }
+      ],
+      "summary": "cart_person_distance.min_distance_m=0.6: original incident still detected",
+      "metrics": {
+        "incident_count": 1
+      }
+    },
+    {
+      "case_id": "cf_007",
+      "transform": {
+        "type": "object_speed_scale",
+        "target": "human_proxy_01",
+        "params": {
+          "factor": 0.5
+        }
+      },
+      "pass": true,
+      "original_incident_present": false,
+      "observed_incidents": [],
+      "summary": "human_proxy_01 speed x0.5: original incident not detected",
+      "metrics": {
+        "incident_count": 0
+      }
+    },
+    {
+      "case_id": "cf_008",
+      "transform": {
+        "type": "object_remove",
+        "target": "human_proxy_01",
+        "params": {}
+      },
+      "pass": true,
+      "original_incident_present": false,
+      "observed_incidents": [],
+      "summary": "remove human_proxy_01: original incident not detected",
+      "metrics": {
+        "incident_count": 0
+      }
+    }
+  ],
+  "limitations": [
+    "Geometric replay transform only; not a physics simulation.",
+    "Speed scaling assumes constant scaling of displacement from first frame.",
+    "Results show detection under the transform, not causal proof."
+  ]
+}

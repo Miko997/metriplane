@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "run_id": "INC-DIST-001",
+    "objects_count": 2,
+    "alerts_count": 1,
+    "open_incidents_count": 0,
+    "incidents_count": 1,
+    "latest_run_dir": "evidence/incidents/INC-DIST-001",
+    "health": {
+      "overall": "OK"
+    }
+  },
+  "objects": [
+    {
+      "object_id": "cart_01",
+      "marker_id": "7",
+      "type": "cart",
+      "zone": "main",
+      "x_m": 0.0,
+      "y_m": 0.0,
+      "speed_mps": null,
+      "last_ts": 2.0
+    },
+    {
+      "object_id": "human_proxy_01",
+      "marker_id": "3",
+      "type": "human_proxy",
+      "zone": "main",
+      "x_m": 0.3,
+      "y_m": 0.0,
+      "speed_mps": null,
+      "last_ts": 2.0
+    }
+  ],
+  "incidents": [
+    {
+      "incident_id": "inc_0001",
+      "run_id": "INC-DIST-001",
+      "rule_id": "cart_person_distance",
+      "severity": "critical",
+      "status": "closed",
+      "opened_ts": 2.0,
+      "closed_ts": 2.0,
+      "duration_s": 0.0,
+      "object_ids": [
+        "cart_01",
+        "human_proxy_01"
+      ],
+      "zones": [
+        "main"
+      ],
+      "summary": "cart_01, human_proxy_01 triggered cart_person_distance in main for 0.0s",
+      "alert_ids": [
+        "alert_000001"
+      ],
+      "evidence": {}
+    }
+  ],
+  "events": [
+    {
+      "alert_id": "alert_000001",
+      "rule_id": "cart_person_distance",
+      "severity": "critical",
+      "ts": 2.0,
+      "object_ids": [
+        "cart_01",
+        "human_proxy_01"
+      ],
+      "zone": "main",
+      "detail": {
+        "distance_m": 0.3
+      },
+      "run_id": "INC-DIST-001"
+    }
+  ],
+  "traces": [
+    {
+      "object_id": "cart_01",
+      "marker_id": "7",
+      "duration_s": 2.0,
+      "total_distance_m": 0.0,
+      "max_speed_mps": 0.0,
+      "zones_visited": [
+        "main"
+      ],
+      "dwell_by_zone": {
+        "main": 2.0
+      },
+      "point_count": 3,
+      "gap_count": 0
+    },
+    {
+      "object_id": "human_proxy_01",
+      "marker_id": "3",
+      "duration_s": 2.0,
+      "total_distance_m": 1.0,
+      "max_speed_mps": 0.0,
+      "zones_visited": [
+        "main"
+      ],
+      "dwell_by_zone": {
+        "main": 2.0
+      },
+      "point_count": 3,
+      "gap_count": 0
+    }
+  ]
+}

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 # tools/start_metriplane.sh — Metriplane one-command launcher (no venv activation required)
 #
 # Usage (from any directory, no `source .venv/bin/activate` needed):
 #   ./tools/start_metriplane.sh [args...]
-#   ./tools/start_metriplane.sh --live --open
-#   ./tools/start_metriplane.sh --operator --no-live
+#   ./tools/start_metriplane.sh --open
+#   ./tools/start_metriplane.sh --live --config configs/fusion_health_300fps.yaml --open
+#   ./tools/start_metriplane.sh --operator
 #   ./tools/start_metriplane.sh stop
 #   ./tools/start_metriplane.sh status
 #   ./tools/start_metriplane.sh cleanup

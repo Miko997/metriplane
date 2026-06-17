@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane GPU Compute Summary
 
 **Purpose**: CPU/GPU fusion-compute evidence for Paper B

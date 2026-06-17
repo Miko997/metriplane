@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.workspace.v1
+cell_id: cell_line_clearance_a
+units: meters
+zones:
+  - zone_id: line_infeed
+    zone_type: inbound_material
+    label: Line infeed
+    polygon: [[0.0, 0.0], [1.4, 0.0], [1.4, 1.4], [0.0, 1.4]]
+  - zone_id: line_station_zone
+    zone_type: line_station
+    label: Line station
+    polygon: [[1.6, 0.0], [3.8, 0.0], [3.8, 1.8], [1.6, 1.8]]
+  - zone_id: quarantine_zone
+    zone_type: quarantine
+    label: Quarantine zone
+    polygon: [[4.0, 0.0], [5.0, 0.0], [5.0, 1.0], [4.0, 1.0]]
+stations:
+  - station_id: line_station
+    zone_id: line_station_zone
+    label: Line station

@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+# Jetson / edge compose for Metriplane.
+#   Replay (default):  docker compose -f docker/compose.jetson.yaml up
+#   Live camera:       docker compose -f docker/compose.jetson.yaml --profile live up
+services:
+  metriplane-replay:
+    build:
+      context: ..
+      dockerfile: docker/jetson.Dockerfile
+    image: metriplane-jetson
+    ports:
+      - "8000:8000"
+    environment:
+      - METRIPLANE_COMPUTE_BACKEND=cpu
+    # Default CMD runs the replay demo.
+
+  metriplane-live:
+    profiles: ["live"]
+    build:
+      context: ..
+      dockerfile: docker/jetson.Dockerfile
+    image: metriplane-jetson
+    ports:
+      - "8000:8000"
+    # Camera pass-through (adjust device index for your hardware):
+    devices:
+      - "/dev/video0:/dev/video0"
+    environment:
+      # On Jetson with CUDA, set to gpu; falls back to cpu if unavailable.
+      - METRIPLANE_COMPUTE_BACKEND=gpu
+    command: ["python", "-m", "metriplane.cli", "--config", "config.example.yaml"]

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" color="#64DED6" role="img" aria-labelledby="floor-state-title floor-state-desc">
   <title id="floor-state-title">Floor State</title>
   <desc id="floor-state-desc">Industrial floor state represented as a metric telemetry layer.</desc>

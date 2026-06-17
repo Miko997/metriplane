@@ -1,10 +1,13 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
 Metriplane Local Stack Launcher — v2
 
 Manages the three local processes:
   - dashboard runner service  (127.0.0.1:9000)
   - static dashboard web server (127.0.0.1:8088, serves from repo root)
-  - optional live fusion runtime (127.0.0.1:8000 metrics, ws://127.0.0.1:8765)
+  - optional runtime stream (127.0.0.1:8000 metrics/health, ws://127.0.0.1:8765)
 
 State: ~/.cache/metriplane/launcher-state.json
 Logs:  ~/metriplane-runs/_launcher/<timestamp>/{runner,dashboard,fusion}.log
@@ -44,7 +47,7 @@ _DEFAULT_RUNNER_HOST = "127.0.0.1"
 _DEFAULT_RUNNER_PORT = 9000
 _DEFAULT_DASHBOARD_PORT = 8088
 _DEFAULT_DASHBOARD_HOST = "127.0.0.1"
-_DEFAULT_FUSION_CONFIG = "configs/fusion_health_300fps.yaml"
+_DEFAULT_FUSION_CONFIG = "configs/local_demo_replay.yaml"
 _DEFAULT_DURATION_S = 7200
 _DEFAULT_RUNS_DIR = str(Path.home() / "metriplane-runs")
 
@@ -56,6 +59,7 @@ _METRIPLANE_KNOWN_PORTS = [8000, 8765, 9000, 8088]
 # our dashboard server on port 8088, not arbitrary http servers.
 _METRIPLANE_SAFE_PATTERNS = [
     "metriplane.runner.service",
+    "metriplane.run",
     "metriplane.run_fusion",
     "run_fusion",
     "metriplane.cli",
@@ -289,17 +293,36 @@ def _start_dashboard(*, host: str, port: int, log_file: Path, repo_root: Path) -
     return _launch(cmd, log_file, repo_root)
 
 
+def _runtime_module_for_config(config: str, repo_root: Path) -> str:
+    cfg_path = Path(config)
+    if not cfg_path.is_absolute():
+        cfg_path = repo_root / cfg_path
+    try:
+        from metriplane.config import load_config
+
+        cfg = load_config(cfg_path)
+    except Exception:
+        return "metriplane.run_fusion"
+
+    mode = str(getattr(cfg, "source_mode", "camera") or "camera").strip().lower()
+    if mode in ("replay", "dummy"):
+        return "metriplane.run"
+    return "metriplane.run_fusion"
+
+
 def _start_fusion(*, config: str, run_id: str, runs_dir: str, duration_s: float,
                    backend: str, log_file: Path, repo_root: Path) -> subprocess.Popen:
     env = dict(os.environ)
-    env["METRIPLANE_COMPUTE_BACKEND"] = "gpu_cupy" if backend == "gpu" else "cpu_numpy"
+    env["METRIPLANE_COMPUTE_BACKEND"] = "gpu" if backend == "gpu" else "cpu"
+    module = _runtime_module_for_config(config, repo_root)
     cmd = [
-        sys.executable, "-m", "metriplane.run_fusion",
+        sys.executable, "-m", module,
         "--config", config,
         "--run-id", run_id,
         "--runs-dir", runs_dir,
-        "--duration-s", str(duration_s),
     ]
+    if module == "metriplane.run_fusion":
+        cmd.extend(["--duration-s", str(duration_s)])
     return _launch(cmd, log_file, repo_root, env=env)
 
 
@@ -418,8 +441,19 @@ def cmd_start(
                     print(f"   Owner: pid={owner['pid']}  cmd={owner['cmdline'][:80]}")
                 print(f"   Try: lsof -nP -iTCP:{port} -sTCP:LISTEN  or  metriplane status")
             return 1
-    if live and _is_port_in_use("127.0.0.1", 8000):
-        print("\n⚠️  Port 8000 (metrics) already in use — fusion may fail to bind.")
+    if live:
+        for port, pname in [(8000, "health/metrics"), (8765, "websocket")]:
+            if _is_port_in_use("127.0.0.1", port):
+                owner = _find_port_owner(port)
+                if owner and owner["safe_to_kill"]:
+                    print(f"\n⚠️  Port {port} ({pname}) held by orphaned Metriplane process "
+                          f"(pid={owner['pid']}). Run `metriplane cleanup` to remove it.")
+                else:
+                    print(f"\n❌ Port {port} ({pname}) is in use by an unknown process.")
+                    if owner:
+                        print(f"   Owner: pid={owner['pid']}  cmd={owner['cmdline'][:80]}")
+                    print(f"   Try: lsof -nP -iTCP:{port} -sTCP:LISTEN  or  metriplane status")
+                return 1
 
     # --- Start runner ---
     print(f"\n▶  Starting runner on http://{runner_host}:{runner_port}/")
@@ -443,26 +477,27 @@ def cmd_start(
         return 1
     print(f"  ✅ Dashboard OK  (pid={dp.pid})")
 
-    # --- Start fusion (optional) ---
+    # --- Start runtime stream ---
     fusion_entry: dict[str, Any] | None = None
     effective_run_id = run_id or f"live_{timestamp}"
     if live:
-        if _is_port_in_use("127.0.0.1", 8000):
-            print("  ⚠️  Skipping fusion start — port 8000 already in use")
+        print(f"▶  Starting runtime stream  (config={config}, run_id={effective_run_id})")
+        fp = _start_fusion(config=config, run_id=effective_run_id,
+                           runs_dir=runs_dir, duration_s=duration_s,
+                           backend=backend, log_file=log_d / "fusion.log",
+                           repo_root=repo_root)
+        fusion_entry = _make_proc_entry(fp)
+        fusion_entry.update({"run_id": effective_run_id, "config": config,
+                              "backend": backend, "duration_s": duration_s})
+        metrics_ready = _wait_for_port("127.0.0.1", 8000, timeout=8.0)
+        ws_ready = _wait_for_port("127.0.0.1", 8765, timeout=4.0)
+        if metrics_ready and ws_ready:
+            print(f"  ✅ Runtime OK  (pid={fp.pid})")
         else:
-            print(f"▶  Starting fusion  (config={config}, run_id={effective_run_id})")
-            fp = _start_fusion(config=config, run_id=effective_run_id,
-                               runs_dir=runs_dir, duration_s=duration_s,
-                               backend=backend, log_file=log_d / "fusion.log",
-                               repo_root=repo_root)
-            fusion_entry = _make_proc_entry(fp)
-            fusion_entry.update({"run_id": effective_run_id, "config": config,
-                                  "backend": backend, "duration_s": duration_s})
-            if _wait_for_port("127.0.0.1", 8000, timeout=6.0):
-                print(f"  ✅ Fusion OK  (pid={fp.pid})")
-            else:
-                print(f"  ⚠️  Fusion started (pid={fp.pid}) but port 8000 not yet ready")
-                print(f"     Log: {log_d / 'fusion.log'}")
+            print(f"  ⚠️  Runtime started (pid={fp.pid}) but not all endpoints are ready")
+            print(f"     Health/Metrics ready: {metrics_ready}")
+            print(f"     WebSocket ready     : {ws_ready}")
+            print(f"     Log: {log_d / 'fusion.log'}")
 
     # --- Save state ---
     new_state: dict[str, Any] = {
@@ -478,20 +513,22 @@ def cmd_start(
     _save_state(new_state)
 
     # --- Print URLs ---
-    dash_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/"
+    dash_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/index.html"
     op_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/operator.html"
     open_url = op_url if operator else dash_url
 
     print(f"\n{'='*60}")
     print("✅  Metriplane stack is running")
     print(f"{'='*60}")
-    print(f"  Dashboard    : {dash_url}")
+    print(f"  Console      : {dash_url}")
     print(f"  Operator UI  : {op_url}")
     print(f"  Runner API   : http://{runner_host}:{runner_port}/status")
     if live and fusion_entry:
         print(f"  Health       : http://127.0.0.1:8000/health")
         print(f"  Metrics      : http://127.0.0.1:8000/metrics")
         print(f"  WebSocket    : ws://127.0.0.1:8765")
+    elif not live:
+        print("  Runtime      : idle until Setup or Run starts a session")
     print(f"\n  Logs         : {log_d}/")
     print(f"  State        : {_STATE_FILE}")
     print(f"\n  Stop with    : metriplane stop")
@@ -653,7 +690,10 @@ def cmd_restart(
         cmd_stop()
     else:
         # Even without state, hunt for known orphaned VT processes
-        needs_cleanup = any(_is_port_in_use("127.0.0.1", p) for p in [runner_port, dashboard_port])
+        cleanup_ports = [runner_port, dashboard_port]
+        if live:
+            cleanup_ports.extend([8000, 8765])
+        needs_cleanup = any(_is_port_in_use("127.0.0.1", p) for p in cleanup_ports)
         if needs_cleanup:
             print("ℹ️   No launcher state but Metriplane ports are occupied — running cleanup …")
             cmd_cleanup()
@@ -733,7 +773,7 @@ def cmd_status() -> int:
         frun  = fusion_info.get("run_id", "unknown")
         print(f"  Fusion       : {_pid_badge(fpid, fpgid)}  run_id={frun}")
     else:
-        print("  Fusion       : — not in state (use `metriplane start --live`)")
+        print("  Runtime      : — idle until Setup or Run starts a session")
 
     # Always show health/metrics/WS port status
     print(f"    Health     : http://127.0.0.1:8000/health  {_http_badge('http://127.0.0.1:8000/health')}")

@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.edge_config.v1
+runs_root: runs/atlas
+retention:
+  keep_last_runs: 20
+  mode: plan_only
+resources:
+  min_free_mb: 512
+autostart:
+  mode: documentation_only
+  note: Use docs/atlas/phase_43_edge_appliance_mode.md as the deployment template.

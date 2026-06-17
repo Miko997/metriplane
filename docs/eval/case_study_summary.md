@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # MetriPlane Case Study 1 Summary
 
 **Purpose**: Movement-session zone analytics and marker-continuity evidence

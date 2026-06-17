@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
 Tests for _resolve_python_executable(), _check_cv2_available(), and the
 cv2 preflight that gates /operator/calibrate, /operator/validate-alignment,

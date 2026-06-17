@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+objects:
+  - object_id: cart_01
+    marker_id: 7
+    type: cart
+    display_name: Cart 01
+    dimensions_m: [0.40, 0.30]
+    tags: [mobile, test_asset]
+
+  - object_id: pallet_01
+    marker_id: 12
+    type: pallet
+    display_name: Pallet 01
+    dimensions_m: [0.60, 0.40]
+    tags: [load]
+
+  - object_id: human_proxy_01
+    marker_id: 3
+    type: human_proxy
+    display_name: Human Proxy 01
+    dimensions_m: [0.30, 0.30]
+    tags: [person]

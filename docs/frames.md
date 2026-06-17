@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Metriplane Coordinate Frames
 
 **Purpose**: Define coordinate frame conventions for Metriplane v1.0  

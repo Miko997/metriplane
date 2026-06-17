@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <p align="center">
   <img src="docs/assets/metriplane.png" alt="MetriPlane" width="760">
 </p>
@@ -5,7 +10,7 @@
 <h1 align="center">MetriPlane</h1>
 
 <p align="center">
-  <strong>Turn ordinary cameras into metric object-state streams — ArUco + planar homography → real-time world-coordinate tracking and zone analytics.</strong>
+  <strong>Open-source physical observability for workcells: replayable evidence bundles, regression tests, and read-only operator review from calibrated planar state.</strong>
 </p>
 
 <p align="center">
@@ -23,6 +28,7 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
   <a href="#operator-dashboard">Operator Dashboard</a> ·
+  <a href="#evidence-review">Evidence Review</a> ·
   <a href="#citation">Citation</a> ·
   <a href="#public-release">Release</a> ·
   <a href="#benchmark-evidence-and-reproducibility">Evidence</a> ·
@@ -34,23 +40,34 @@
 
 ## Citation
 
-MetriPlane v0.1.4 is archived on Zenodo as a repository-stabilized open research software release:
+MetriPlane v0.2.0 is the current release and the main SoftwareX paper artifact.
+It adds Sentinel, Atlas Evidence Review, and observe-only physical-space
+auditing while preserving the historical v0.1.3/v0.1.4 benchmark and Zenodo
+evidence lineage.
 
+The historical DOI-archived baseline is v0.1.4.
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20631037.svg)](https://doi.org/10.5281/zenodo.20631037)
 
-Please cite:
+Please cite the v0.2.0 paper artifact as:
 
-Parkkinen, M. (2026). *MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, and Zone Analytics* (v0.1.4). Zenodo. https://doi.org/10.5281/zenodo.20631037
+Parkkinen, M. (2026). *MetriPlane v0.2.0: Open-Source Physical Observability for Workcell Evidence, Replay, and Regression Testing*.
 
 ---
 
 ## Public release
 
-Current citable software release: [`v0.1.4`](https://github.com/Miko997/metriplane/releases/tag/v0.1.4), archived on Zenodo at DOI [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
+Current release: `v0.2.0`.
 
-The v0.1.4 release is a repository-stabilized open research software release. It preserves the v0.1.3 benchmark evidence values, removes duplicate root package/module shadows, adds a tracked demo replay fixture for clean-clone deterministic replay, and packages the artifact for reviewer inspection and reproducible software-paper submission.
+The v0.2.0 release expands MetriPlane from camera-to-coordinate streaming into
+an observe-only physical-observability platform: named objects, trace summaries,
+spatial contracts, incidents, replayable evidence bundles, physical regression
+tests, camera trust, experimental local forecast reports, experimental grounded
+evidence Q&A, and the Command Center UI.
 
-The earlier v0.1.3 release remains the historical benchmark-evidence release. Benchmark evidence is treated as supplemental release evidence, not as a peer-reviewed publication.
+The earlier v0.1.3 release remains the historical benchmark-evidence release,
+and v0.1.4 remains the historical DOI-archived repository-stabilized baseline.
+The v0.2.0 release is the main SoftwareX paper artifact. Benchmark evidence is
+treated as supplemental release evidence, not as a peer-reviewed publication.
 
 ---
 
@@ -62,32 +79,97 @@ The earlier v0.1.3 release remains the historical benchmark-evidence release. Be
 | 📐 **Metric world coordinates** | Pixel positions mapped to real-world cm/m via planar homography |
 | 🔀 **Multi-camera fusion** | Kalman-filtered sensor fusion across multiple views |
 | 🗺️ **Zone analytics** | Polygon zones with enter / exit / dwell event streams |
+| 🧭 **Sentinel observe-only auditing** | Spatial contracts, incidents, forecasts, evidence bundles, and regression tests without robot-control integration |
 | 📡 **WebSocket streaming** | Real-time `FrameStateModel` JSON on `ws://host:8765` |
 | 🎞️ **Deterministic replay** | Bit-exact JSONL replay for regression testing and demos |
 | 🖥️ **Operator dashboard** | Browser-based wizard: scan cameras → calibrate → run → export |
+| 🧩 **Command Center** | Read-only operator view for map state, incidents, traces, trust, and grounded answers |
+| 🧾 **Evidence Review** | Replayable physical event ledger, Cell Truth Report, incident archive, regression test, training case, and improvement action for one workcell |
 | 🐳 **Docker ready** | One-command `docker-compose up` demo — no camera needed |
 | 🔬 **Evidence-backed** | Benchmark claims backed by evidence artifacts, manifest rows, and checksums |
 | ⚡ **GPU-optional** | CuPy backend for large workloads; CPU is default for small N (see [GPU Statement](#gpu-statement)) |
 
 ---
 
-## Operator Dashboard
+## Local MetriPlane Console
 
-The browser-based Operator Dashboard guides you through every step — environment check, camera scan, calibration, zone drawing, live fusion, and session export — with no command-line required after initial setup.
+The browser-based console links the full local MetriPlane workflow: Operator Setup,
+Live State, Sentinel Command Center, Evidence Review, and Integrations. After the
+local stack is running, safe actions are available from the UI through
+the allowlisted runner API.
 
 <p align="center">
   <img src="docs/assets/Operator.png" alt="MetriPlane Operator Dashboard" width="900">
 </p>
 
-**Start the dashboard:**
+**Start the local console:**
 
 ```bash
-python -m metriplane.runner.service --host 127.0.0.1 --port 9000 &
-python -m http.server 8088 --directory web/dashboard
-# → open http://localhost:8088/operator.html
+metriplane start
+# open http://localhost:8088/web/dashboard/index.html
+# starts runner :9000 and dashboard :8088
+# runtime stream, health/metrics :8000, and websocket :8765 start only with --live or from a run action
+metriplane start --live
+# also starts the runtime stream for live-state pages
 ```
 
 Full runbook: [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) · Multi-camera setup: [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md)
+
+---
+
+## Sentinel and Command Center
+
+Sentinel is the 0.2.0 observe-only control-room layer. It evaluates spatial
+contracts over camera-derived object state, records incidents, emits
+experimental local forecast reports for near-future rule violations, scores
+camera trust, and packages local evidence without touching robot or
+machine-controller code.
+
+```bash
+metriplane sentinel run \
+  --config configs/sentinel_demo.yaml \
+  --run-id sentinel_demo_001 \
+  --runs-dir ~/metriplane-runs
+
+python -m http.server 8088 --directory web/dashboard
+# open http://localhost:8088/index.html, then choose Command Center
+```
+
+Operator-facing docs:
+[`docs/sentinel.md`](docs/sentinel.md),
+[`docs/contracts.md`](docs/contracts.md),
+[`docs/command_center_dashboard.md`](docs/command_center_dashboard.md),
+[`docs/camera_trust.md`](docs/camera_trust.md), and
+[`docs/operator_assistant.md`](docs/operator_assistant.md).
+
+---
+
+## Evidence Review
+
+MetriPlane turns a replayed assembly-cell state stream into a physical event
+ledger, Cell Truth Report, incident archive, generated regression test,
+training case, and improvement action. The local tools also generate a static
+dashboard, USD replay export, privacy report, connector payloads, SQLite
+evidence index, multi-cell summary, protocol schemas, field review kit, and
+claim audit.
+
+```bash
+metriplane atlas validate-pack configs/domain_packs/assembly_cell
+metriplane atlas run \
+  --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl \
+  --pack configs/domain_packs/assembly_cell \
+  --out runs/atlas/assembly_cell_missing_tool
+metriplane atlas bundle verify runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+metriplane atlas test runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
+metriplane atlas dashboard build --run-dir runs/atlas/assembly_cell_missing_tool
+metriplane atlas lake build --root runs/atlas --db runs/atlas/evidence_lake.sqlite
+```
+
+Evidence Review is observe-only and asset/process focused. It does not control robots or
+machines, certify safety, approve quality release, recognize people, or claim
+marker-free tracking.
+
+Docs: [`docs/atlas/README.md`](docs/atlas/README.md).
 
 ---
 
@@ -144,7 +226,12 @@ curl http://localhost:8000/health | jq
 ./tools/docker_clean.sh              # clean up
 ```
 
-Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim.
+Historical Docker proof validates dummy-mode startup, health, and WebSocket
+message flow in `evidence/experiments/docker_demo_proof_001.md`. The
+v0.2.0 paper package also captures a Docker dummy-mode local smoke: build/start,
+health endpoint JSON, and cleanup logs. This is bounded smoke evidence only and
+is not promoted as benchmark, production-runtime, live-camera, replay-mode,
+reliability, or safety evidence.
 
 See [`docker/docker_quickstart.md`](docker/docker_quickstart.md) for live-camera mode and GPU pass-through.
 
@@ -193,7 +280,7 @@ The canonical Python package is `metriplane/`. Root `tools/` contains the suppor
 
 ## Benchmark evidence and reproducibility
 
-The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). Other summaries are non-authoritative convenience summaries. Benchmark claims are anchored to the public evidence campaign and direct artifacts listed below. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv).
+The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`](docs/eval/CANONICAL_EVIDENCE.md). For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are non-authoritative convenience summaries. Benchmark claims are anchored to the public evidence campaign and direct artifacts listed below. Large JSONL sessions are not stored in Git; their hashes are recorded in [`evidence/manifest.csv`](evidence/manifest.csv).
 
 | Benchmark result | Reported value | Direct artifact | Regenerate / verify |
 |---|---:|---|---|
@@ -207,7 +294,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl SESSION_JSONL --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
 | CPU/GPU fusion performance | GPU backend correct but slower than CPU for tested N=1-1000 fusion-compute workloads; CPU remains default for current workloads | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | `./tools/mp.sh gpu-benchmark` |
 | Zone dwell / transitions | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | `python tools/zones_report_jsonl.py SESSION_JSONL --out evidence/experiments --prefix case_study_1_movement` |
-| Docker / demo proof | Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | `./tools/docker_demo_up.sh` |
+| Docker / demo proof | Historical dummy-mode Docker proof exists; the v0.2.0 paper package also captures Docker dummy-mode local smoke: build/start, health endpoint JSON, and cleanup logs. Smoke evidence only; not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md), [`docs/paper/claim_evidence_table.md`](docs/paper/claim_evidence_table.md) | `./tools/docker_demo_up.sh` |
 | Operator UI smoke evidence | Operator UI final smoke: 10-step workflow passed; 1,797 frames; analytics exported | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md) | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
 
 For a compact artifact index, see [ARTIFACTS.md](ARTIFACTS.md). For the full evidence manifest, see [`evidence/manifest.csv`](evidence/manifest.csv).
@@ -233,13 +320,18 @@ asyncio.run(main())
 
 Schema documented in [`docs/schema.md`](docs/schema.md).
 
-### NVIDIA Omniverse *(external / experimental)*
+### NVIDIA Omniverse / Isaac
 
-Scripts in `tools/omniverse/` demonstrate consuming the WebSocket stream in an Omniverse USD scene. **No live integration latency is measured or claimed.** See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+Export adapters under `integrations/isaac/` and `integrations/omniverse/`
+convert replay traces into USD/OpenUSD scenes for inspection. These are replay
+and adapter surfaces unless separately measured. See
+[`docs/isaac_omniverse_replay.md`](docs/isaac_omniverse_replay.md).
 
-### ROS 2 *(external / experimental)*
+### ROS 2
 
-WebSocket frames can be bridged to ROS 2 topics via `rosbridge_server` or a custom subscriber node. Zone events map naturally to ROS 2 lifecycle events. Implementation is user-provided. See [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
+The `integrations/ros2/metriplane_ros/` package adapts MetriPlane frame state
+and alert events into ROS 2-friendly messages. It is an adapter, not a robot
+controller. See [`docs/ros2_bridge.md`](docs/ros2_bridge.md).
 
 ---
 
@@ -266,7 +358,7 @@ Full details: [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md)
 ```bash
 source .venv/bin/activate
 pip install pytest pytest-asyncio pydantic websockets   # if not already installed
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q   # 193 tests
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 ```
 
 > **Note**: The `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` flag prevents conflicts with ROS 2 pytest plugins if installed system-wide. See [`docs/development.md`](docs/development.md) and [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) for troubleshooting details.
@@ -297,9 +389,8 @@ Demo-generated CSV and checksum artifacts are written under `runs/demo-evidence/
 ./tools/mp.sh preflight                  # 1. verify system
 
 # 2. open Operator Dashboard for guided calibration
-python -m metriplane.runner.service --host 127.0.0.1 --port 9000 &
-python -m http.server 8088 --directory web/dashboard &
-# → http://localhost:8088/operator.html → Step 5: Calibrate
+metriplane start --operator
+# http://localhost:8088/web/dashboard/operator.html -> Step 5: Calibrate
 
 ./tools/mp.sh run-fusion cpu 60 session_001   # 3. run fusion (60 s)
 ```
@@ -328,6 +419,12 @@ python -m metriplane.cli doctor                # import + dependency check
 ./tools/mp.sh gpu-smoke                        # GPU smoke test
 ./tools/mp.sh gpu-equivalence                  # CPU vs GPU output equality
 ./tools/mp.sh gpu-benchmark                    # CPU vs GPU performance
+
+# Evidence Review
+metriplane atlas validate-pack configs/domain_packs/assembly_cell
+metriplane atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out runs/atlas/assembly_cell_missing_tool
+metriplane atlas bundle verify runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+metriplane atlas test runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
 
 # Docker
 ./tools/docker_demo_up.sh                      # start dummy-mode Docker demo
@@ -359,6 +456,14 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 | [`docs/calibration_runbook.md`](docs/calibration_runbook.md) | Camera calibration step-by-step |
 | [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) | Web dashboard operator guide |
 | [`docs/dashboard_multicam_runbook.md`](docs/dashboard_multicam_runbook.md) | Multi-camera dashboard setup |
+| [`docs/physical_observability.md`](docs/physical_observability.md) | Architecture and claim boundaries |
+| [`docs/object_registry.md`](docs/object_registry.md) | Named objects, types, tags, and registry loading |
+| [`docs/trace_store.md`](docs/trace_store.md) | Trace summaries, speed/dwell/idle metrics, and exports |
+| [`docs/events.md`](docs/events.md) | Operational event and alert schema |
+| [`docs/contracts.md`](docs/contracts.md) | Sentinel spatial contract language |
+| [`docs/sentinel.md`](docs/sentinel.md) | Observe-only Sentinel runtime |
+| [`docs/command_center_dashboard.md`](docs/command_center_dashboard.md) | Command Center operator UI/API |
+| [`docs/atlas/README.md`](docs/atlas/README.md) | Evidence workflow quickstart, protocol, domain packs, and limits |
 | [`docs/schema.md`](docs/schema.md) | `FrameStateModel` v1.0 field reference |
 | [`docs/frames.md`](docs/frames.md) | Coordinate systems: pixel, camera, world |
 | [`docs/backpressure.md`](docs/backpressure.md) | Bounded queue design |
@@ -378,8 +483,11 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 |---|---|
 | ✅ In scope | Camera ingest, ArUco detection, planar homography mapping, multi-camera fusion, zone analytics, WebSocket streaming, JSONL recording, Docker deployment |
 | ✅ Verified integration surface | WebSocket stream (`ws://host:8765`) — measured and claimed |
-| ⚡ External / experimental | NVIDIA Omniverse extension and ROS 2 bridge are community integration examples — **no live latency measurements claimed** |
-| ❌ Not in scope | Cloud infrastructure, multi-site federation, non-ArUco markers, tracking without a calibrated board |
+| ⚡ Adapter surfaces | ROS 2, Isaac, Omniverse, exporters, and Jetson deployment are integration paths unless separately measured |
+| ❌ Not in scope | Certified safety control, robot actuation, cloud dependency, non-ArUco markers, tracking without a calibrated board |
+
+Do not expose the local runner on `:9000` to untrusted networks. It is a
+localhost operator/development service with an allowlisted command API.
 
 ### GPU Statement
 
@@ -392,7 +500,10 @@ Measured results: [`docs/gpu_compute_backend.md`](docs/gpu_compute_backend.md) �
 - **Onboarding evidence** (`evidence/onboarding/onboarding_001.md`) was performed on the development machine with a warm pip cache — install time on a cold cache will be slower.
 - **Fusion jitter** (`fusion_jitter_001.csv`): `max_error_m` is NaN — ground-truth absolute position comparison was not run. Jitter stability (std) is measured and reported.
 - **Large session files** (JSONL) are not included in git due to size; SHA256 checksums are in `evidence/manifest.csv`.
-- **Omniverse and ROS 2** integrations are external/experimental — no live latency measurements are claimed.
+- **Sentinel** is observe-only. It emits events, incidents, forecasts, and evidence; it is not a certified safety controller and does not actuate robots or machines.
+- **Evidence Review** is observe-only and asset/process focused. It does not control machines, certify safety, approve quality release, recognize people, or claim marker-free tracking.
+- **ROS 2, Isaac, Omniverse, Jetson, and exporter paths** are integration/deployment surfaces unless a specific checked-in evidence artifact says otherwise.
+- **Command Center and Evidence Review are operator review tools**, not production collision-avoidance, certified safety, or quality-release systems.
 
 ---
 
@@ -421,4 +532,4 @@ MIT License — see [LICENSE](LICENSE).
 
 ---
 
-*MetriPlane — open research software for camera-first planar metric state streaming, replay, and zone analytics.*
+*MetriPlane — open-source physical observability for workcell evidence, replay, and regression testing.*

@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "run_id": "camtrust",
+  "frames_analyzed": 5,
+  "camera_scores": {
+    "cam0": {
+      "camera_id": "cam0",
+      "score": 1.0,
+      "status": "OK",
+      "frames_seen": 5,
+      "detections_total": 5,
+      "dropout_rate": 0.0,
+      "mean_disagreement_m": 0.0,
+      "p95_disagreement_m": 0.0,
+      "mean_confidence": 0.912,
+      "notes": []
+    },
+    "cam1": {
+      "camera_id": "cam1",
+      "score": 0.1,
+      "status": "FAILED",
+      "frames_seen": 2,
+      "detections_total": 2,
+      "dropout_rate": 0.6,
+      "mean_disagreement_m": 0.0832,
+      "p95_disagreement_m": 0.0943,
+      "mean_confidence": 0.525,
+      "notes": [
+        "high dropout 0.60",
+        "large disagreement 8.3cm"
+      ]
+    }
+  },
+  "zone_scores": {
+    "main": {
+      "zone": "main",
+      "score": 1.0,
+      "frames_with_objects": 5,
+      "camera_observation_counts": {
+        "cam0": 5,
+        "cam1": 2
+      },
+      "weak_cameras": [
+        "cam1"
+      ],
+      "notes": []
+    }
+  },
+  "recommendations": [
+    "cam1 has high dropout (60%); check cable, focus, occlusion, or device index.",
+    "cam1 disagrees with the fused estimate by 8.3 cm; re-run calibration / alignment validation."
+  ]
+}

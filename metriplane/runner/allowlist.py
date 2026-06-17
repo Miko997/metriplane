@@ -1,12 +1,24 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
-Command allowlist for Dashboard V2 Runner
+Command allowlist for the local MetriPlane runner
 
 Defines safe, pre-approved commands that can be executed via the dashboard.
 No arbitrary command execution allowed.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
+import sys
 from typing import List, Optional
+
+_RUNS_DIR = str(Path.home() / "metriplane-runs")
+_ATLAS_UI_RUN = "web/dashboard/atlas_run"
+_ATLAS_UI_BUNDLE_DIR = f"{_ATLAS_UI_RUN}/evidence_bundles/INC-0001"
+_ATLAS_UI_BUNDLE = f"{_ATLAS_UI_RUN}/evidence_bundles/INC-0001.zip"
+_ATLAS_UI_REGRESSION = f"{_ATLAS_UI_RUN}/regression_tests/INC-0001.yaml"
+_PYTHON = sys.executable
 
 
 @dataclass
@@ -27,10 +39,20 @@ class AllowedCommand:
 ALLOWLIST: List[AllowedCommand] = [
     # Runnable commands
     AllowedCommand(
+        id="run-demo-replay",
+        title="Run Demo Replay",
+        description="Build the camera-free demo replay, Command Center sample, evidence workspace, and USD export",
+        command=[_PYTHON, "tools/run_ui_demo_replay.py"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=120,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
         id="doctor",
         title="Doctor",
         description="Run health diagnostics across 8 system checks",
-        command=["python", "-m", "metriplane.cli", "doctor"],
+        command=[_PYTHON, "-m", "metriplane.cli", "doctor"],
         enabled=True,
         disabled_reason=None,
         timeout_s=30
@@ -118,32 +140,237 @@ ALLOWLIST: List[AllowedCommand] = [
     AllowedCommand(
         id="provenance",
         title="Provenance Check",
-        description="M9.4: Verify run_id, config_hash, and git commit stamping",
+        description="M9.4: Verify run_id, config_hash, and git commit stamping without opening cameras",
         command=["./tools/mp.sh", "provenance"],
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
-        requires_cameras=True
+        requires_cameras=False
     ),
     AllowedCommand(
         id="timing-breakdown",
-        title="Timing Breakdown",
-        description="M9.5: Measure per-stage latencies across pipeline",
-        command=["./tools/mp.sh", "timing-breakdown"],
+        title="Camera-Free Latency Check",
+        description="Measure replay/rule-engine latency without opening local cameras",
+        command=[_PYTHON, "tools/run_ui_timing_check.py"],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
-        requires_cameras=True
+        requires_cameras=False
     ),
     AllowedCommand(
         id="list-cameras",
         title="List Cameras",
         description="Discover available v4l2 camera devices (JSON output)",
-        command=["python", "tools/list_cameras.py"],
+        command=[_PYTHON, "tools/list_cameras.py"],
         enabled=True,
         disabled_reason=None,
         timeout_s=20,
         requires_cameras=False
+    ),
+    # Command Center sample: one-click replay that populates the incident view.
+    AllowedCommand(
+        id="sentinel-demo",
+        title="Build Command Center Sample",
+        description="Run the camera-free incident sample and write a run the Command Center can display",
+        command=[_PYTHON, "-m", "metriplane.cli", "sentinel", "run",
+                 "--config", "configs/sentinel_operator_demo.yaml",
+                 "--run-id", "metriplane_demo", "--runs-dir", _RUNS_DIR],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=60,
+        requires_cameras=False
+    ),
+    # MetriPlane evidence actions. These write only generated,
+    # gitignored dashboard artifacts under web/dashboard/atlas_run.
+    AllowedCommand(
+        id="atlas-validate-pack",
+        title="Validate Evidence Rules",
+        description="Validate the checked-in assembly-cell evidence rules",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "validate-pack",
+                 "configs/domain_packs/assembly_cell"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=30,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-demo",
+        title="Build Evidence Sample",
+        description="Run the MetriPlane evidence workflow over the assembly-cell sample and publish local dashboard artifacts",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "run",
+                 "--session-jsonl", "datasets/demo/atlas/assembly_cell_missing_tool.jsonl",
+                 "--pack", "configs/domain_packs/assembly_cell",
+                 "--out", _ATLAS_UI_RUN,
+                 "--run-id", "metriplane_sample"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=90,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-verify-demo",
+        title="Verify Incident Archive",
+        description="Verify checksums and required contents for the generated incident evidence archive",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "bundle", "verify",
+                 _ATLAS_UI_BUNDLE],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-regression-demo",
+        title="Replay Evidence Regression",
+        description="Replay the generated physical regression spec for the incident",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "test",
+                 _ATLAS_UI_REGRESSION, "--json"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-query-demo-events",
+        title="Query Event Ledger",
+        description="Return the run's physical event ledger as JSON",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "query", "events",
+                 "--run-dir", _ATLAS_UI_RUN, "--json"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=30,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-lake-build",
+        title="Build Evidence Index",
+        description="Index generated manifests, incidents, and events into a local SQLite evidence index",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "lake", "build",
+                 "--root", _ATLAS_UI_RUN,
+                 "--db", f"{_ATLAS_UI_RUN}/evidence_lake.sqlite"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-protocol-export",
+        title="Export Protocol Files",
+        description="Write local protocol schema/index artifacts for external interchange",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "protocol", "export",
+                 "--out", f"{_ATLAS_UI_RUN}/protocol"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-pilot-kit",
+        title="Create Field Review Kit",
+        description="Create external review checklist, script, and review templates",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "pilot", "kit",
+                 "--out", f"{_ATLAS_UI_RUN}/pilot_kit"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=30,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-freeze-build",
+        title="Build Audit Snapshot",
+        description="Build a local evidence audit and review-note snapshot",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "freeze", "build",
+                 "--root", ".",
+                 "--out", f"{_ATLAS_UI_RUN}/evidence_freeze"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="atlas-edge-doctor",
+        title="Run Edge Readiness",
+        description="Check generated evidence storage and edge-appliance readiness signals",
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "edge", "doctor",
+                 "--runs-root", _ATLAS_UI_RUN,
+                 "--min-free-mb", "64"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=30,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="integration-omniverse-export",
+        title="Export Omniverse USD Replay",
+        description="Write a USD replay scene from the current MetriPlane evidence run",
+        command=[_PYTHON, "-m", "integrations.omniverse.metriplane_usd_replay",
+                 "--run-dir", _ATLAS_UI_BUNDLE_DIR,
+                 "--out", f"{_ATLAS_UI_RUN}/omniverse/metriplane_replay.usda"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="integration-isaac-export",
+        title="Export Isaac USD Replay",
+        description="Write a USD replay scene compatible with Isaac Sim",
+        command=[_PYTHON, "-m", "integrations.isaac.metriplane_to_usd",
+                 "--run-dir", _ATLAS_UI_BUNDLE_DIR,
+                 "--out", f"{_ATLAS_UI_RUN}/isaac/metriplane_replay.usda"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="integration-ros2-check",
+        title="Check ROS 2 Bridge Adapters",
+        description="Run ROS-free checks for the MetriPlane ROS 2 message adapters",
+        command=[_PYTHON, "tools/check_ros2_adapters.py"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=45,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="docker-check",
+        title="Check Docker",
+        description="Check whether Docker is available for the local demo container path",
+        command=["docker", "--version"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=20,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="docker-demo-up",
+        title="Start Docker Demo",
+        description="Start the camera-free Docker demo if Docker is installed",
+        command=["./tools/docker_demo_up.sh"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=120,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="docker-stop",
+        title="Stop Docker Demo",
+        description="Stop local MetriPlane Docker demo containers",
+        command=["./tools/docker_stop.sh"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=60,
+        requires_cameras=False,
+    ),
+    AllowedCommand(
+        id="cleanup",
+        title="Check Stale Processes",
+        description="Runner-safe cleanup check that keeps the active UI stack online",
+        command=[_PYTHON, "tools/ui_safe_cleanup.py"],
+        enabled=True,
+        disabled_reason=None,
+        timeout_s=30,
+        requires_cameras=False,
     ),
 ]
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 from metriplane.schema import ObjectStateModel
 from metriplane.zone_analytics import ZoneAnalytics
 from metriplane.zones import Zone, ZoneMap

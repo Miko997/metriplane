@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 
 # Metriplane DEMO_ALL: "run everything and map PASS/FAIL"

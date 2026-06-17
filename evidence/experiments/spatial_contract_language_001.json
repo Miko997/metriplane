@@ -1,0 +1,11 @@
+{
+  "phase": 16,
+  "contract_id": "sentinel_demo_warehouse",
+  "rules_count": 4,
+  "observed_events": 2,
+  "observed_incidents": 2,
+  "expected_incidents": 2,
+  "false_positives": 0,
+  "missed": 0,
+  "pass": true
+}

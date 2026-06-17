@@ -1,11 +1,16 @@
 <!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Metriplane — Runtime Console</title>
+  <title>MetriPlane - Live View</title>
   <!-- Runtime Console: moved from index.html -->
-  <link rel="stylesheet" href="style.css?v=20260506-theme">
+  <link rel="stylesheet" href="style.css?v=20260614-runtime-standby">
 </head>
 <body class="vt-page vt-runtime-page">
 
@@ -13,17 +18,54 @@
 <aside class="sidebar">
   <div class="sidebar-brand">
     <div class="sidebar-brand-logo">
-      <img src="icons/metriplane-coordinate-grid.svg" alt="Metriplane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <img src="icons/metriplane-coordinate-grid.svg" alt="MetriPlane" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
       <span class="logo-letter" style="display:none">M</span>
     </div>
     <div class="sidebar-brand-text">
-      <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">plane</span></span>
+      <span class="sidebar-brand-name brand-wordmark">Metri<span class="brand-accent">Plane</span></span>
       <span class="sidebar-brand-sub">Runtime Console</span>
     </div>
   </div>
 
+  <div class="sidebar-section mp-nav-sidebar-section" id="mp-shared-nav">
+    <div class="sidebar-section-label">Views</div>
+    <a href="index.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span> Start
+    </a>
+    <a href="operator.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-homography-calibration.svg" alt=""></span> Setup
+    </a>
+    <a href="run.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-camera-video.svg" alt=""></span> Run
+    </a>
+    <a href="runtime.html" class="nav-item active">
+      <span class="nav-icon"><img src="icons/metriplane-state-stream.svg" alt=""></span> Live View
+    </a>
+    <a href="report.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-dashboard-metrics.svg" alt=""></span> Cell Report
+    </a>
+    <a href="command_center_live.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-health-monitor.svg" alt=""></span> Command Center
+    </a>
+    <a href="atlas.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-replay-logs.svg" alt=""></span> Evidence
+    </a>
+    <a href="integrations.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-api-bridge.svg" alt=""></span> Integrations
+    </a>
+    <a href="benchmarks.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-dashboard-metrics.svg" alt=""></span> Benchmarks
+    </a>
+    <a href="settings.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-observability-health.svg" alt=""></span> Settings
+    </a>
+    <a href="help.html" class="nav-item">
+      <span class="nav-icon"><img src="icons/metriplane-schema-first.svg" alt=""></span> Help
+    </a>
+  </div>
+
   <div class="sidebar-section">
-    <div class="sidebar-section-label">Overview</div>
+    <div class="sidebar-section-label">Runtime</div>
     <a href="#live-state" class="nav-item active" data-section="live-state">
       <span class="nav-icon"><img src="icons/metriplane-state-stream.svg" alt=""></span> Live State
     </a>
@@ -35,26 +77,12 @@
     </a>
   </div>
 
-  <div class="sidebar-section">
-    <div class="sidebar-section-label">Operator</div>
-    <a href="operator.html" class="nav-item">
-      <span class="nav-icon"><img src="icons/metriplane-homography-calibration.svg" alt=""></span> Setup Wizard
-    </a>
-  </div>
-
-  <div class="sidebar-section">
-    <div class="sidebar-section-label">Diagnostics</div>
-    <a href="#runbook" class="nav-item" data-section="runbook">
-      <span class="nav-icon"><img src="icons/metriplane-dashboard-metrics.svg" alt=""></span> Benchmarks
-    </a>
-  </div>
-
   <!-- Bottom CTA -->
   <div style="flex:1"></div>
   <div class="sidebar-cta">
-    <div class="sidebar-cta-title">New to Metriplane?</div>
-    <div class="sidebar-cta-sub">Use the guided wizard to calibrate cameras, define zones, and start a live run.</div>
-    <a href="operator.html" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">Open Operator Setup</a>
+    <div class="sidebar-cta-title">Need live controls?</div>
+    <div class="sidebar-cta-sub">Use Command Center for incidents, replay, camera trust, and assistant context.</div>
+    <a href="command_center_live.html" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">Open Command Center</a>
     <a href="../../docs/operator_ui_runbook.md" target="_blank" style="display:block;text-align:center;margin-top:8px;font-size:10px;color:var(--text-muted);text-decoration:none;">View Runbook</a>
   </div>
 </aside>
@@ -67,20 +95,20 @@
     <span class="topbar-title">Live State</span>
     <span class="topbar-sub">Real-time fused world state and system telemetry</span>
 
-    <div class="status-chip" id="ws-status-item" data-state="offline">
+    <div class="status-chip" id="ws-status-item" data-state="standby">
       <span class="chip-dot" id="ws-indicator"></span>
       <span class="chip-label">WebSocket</span>
-      <span class="chip-value" id="ws-status">offline</span>
+      <span class="chip-value" id="ws-status">standby</span>
     </div>
-    <div class="status-chip" id="health-status-item" data-state="offline">
+    <div class="status-chip" id="health-status-item" data-state="standby">
       <span class="chip-dot" id="health-indicator"></span>
       <span class="chip-label">Health</span>
-      <span class="chip-value" id="health-status">runner offline</span>
+      <span class="chip-value" id="health-status">standby</span>
     </div>
-    <div class="status-chip" id="metrics-status-item" data-state="offline">
+    <div class="status-chip" id="metrics-status-item" data-state="standby">
       <span class="chip-dot" id="metrics-indicator"></span>
       <span class="chip-label">Metrics</span>
-      <span class="chip-value" id="metrics-status">offline</span>
+      <span class="chip-value" id="metrics-status">standby</span>
     </div>
     <div class="status-chip" id="manifest-status-item" data-state="idle">
       <span class="chip-dot" id="manifest-indicator"></span>
@@ -246,9 +274,8 @@
           </div>
         </div>
 
-        <!-- Operator Setup CTA -->
+        <!-- Runbook CTA -->
         <div style="padding:0 20px 20px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="operator.html" class="btn btn-primary" style="text-decoration:none;">Open Operator Setup</a>
           <a href="../../docs/operator_ui_runbook.md" target="_blank" class="btn btn-secondary" style="text-decoration:none;">View Full Runbook</a>
         </div>
 
@@ -320,8 +347,8 @@
         </div>
         <div id="health-components" class="health-components">
           <div class="empty-state">
-            Health endpoint offline
-            <div class="empty-state-hint"><a href="operator.html" style="color:var(--accent)">Run Preflight in Operator Setup</a></div>
+            No runtime session active
+            <div class="empty-state-hint"><a href="operator.html" style="color:var(--accent)">Start from Operator Setup</a></div>
           </div>
         </div>
         <div class="panel-footer">
@@ -335,7 +362,7 @@
           <h2>Metrics Snapshot</h2>
         </div>
         <div id="metrics-summary" class="metrics-cards">
-          <div class="empty-state">Metrics offline</div>
+          <div class="empty-state">No runtime session active</div>
         </div>
         <details class="metrics-details">
           <summary>Raw metrics</summary>
@@ -381,7 +408,7 @@
   <footer class="footer">
     Metri<span style="color:var(--mp-primary-bright)">plane</span> v0.1.0 &nbsp;·&nbsp;
     <a href="index.html">Home</a> &nbsp;·&nbsp;
-    <a href="operator.html">Operator Setup</a> &nbsp;·&nbsp;
+    <a href="command_center_live.html">Command Center</a> &nbsp;·&nbsp;
     <a href="../../docs/operator_ui_runbook.md" target="_blank">Runbook</a>
   </footer>
 
@@ -390,6 +417,7 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=20260506-theme"></script>
+<script src="app.js?v=20260614-runtime-standby"></script>
+  <script src="mp_nav.js?v=20260614-runtime-standby"></script>
 </body>
 </html>

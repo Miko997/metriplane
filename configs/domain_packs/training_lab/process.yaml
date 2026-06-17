@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.process_model.v1
+process_id: training_lab_case
+work_order_type: training
+steps:
+  - step_id: training_kit_arrives
+    label: Training kit arrives
+    expected_asset_types: [kit_bin]
+    required_zone: training_infeed
+  - step_id: training_tool_ready
+    label: Training tool ready before simulated operation
+    required_assets: [training_tool_1]
+    required_station: training_station
+    max_wait_s: 10.0

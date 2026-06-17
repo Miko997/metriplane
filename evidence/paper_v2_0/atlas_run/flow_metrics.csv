@@ -1,0 +1,3 @@
+metric,key,value
+station_occupancy_s,station_a,60.0
+wait_time_s,torque_driver_available,35.0

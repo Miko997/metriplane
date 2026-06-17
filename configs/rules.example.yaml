@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+rules:
+  - id: no_cart_in_exit_lane
+    type: forbidden_zone
+    object_filter:
+      type: cart
+    zone: exit_lane
+    severity: warning
+
+  - id: pallet_blocks_exit
+    type: max_dwell
+    object_filter:
+      type: pallet
+    zone: exit_lane
+    max_duration_s: 5.0
+    severity: critical
+
+  - id: cart_person_distance
+    type: min_distance
+    object_filter_a:
+      type: cart
+    object_filter_b:
+      type: human_proxy
+    min_distance_m: 0.60
+    severity: critical
+
+  - id: speed_limit_main
+    type: speed_limit
+    object_filter:
+      type: cart
+    max_speed_mps: 1.5
+    severity: warning

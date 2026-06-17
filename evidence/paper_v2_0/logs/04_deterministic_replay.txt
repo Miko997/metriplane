@@ -1,0 +1,10 @@
+=== deterministic replay (fixed-step) ===
+session=<repo>/runs/provenance_run_001-5/session.jsonl
+[metriplane replay] wrote /tmp/out1.jsonl
+[metriplane replay] wrote /tmp/out2.jsonl
+[determinism] wrote: /tmp/replay_determinism.csv
+{'frames_compared': 2, 'object_pairs_compared': 6, 'mean_pos_diff_cm': 0.0, 'max_pos_diff_cm': 0.0, 'event_mismatch_count': 0, 'pass': 'true'}
+frames_compared,object_pairs_compared,mean_pos_diff_cm,max_pos_diff_cm,event_mismatch_count,pass
+2,6,0.0,0.0,0,true
+69552f145699644383136af2ce504e18353ba219d43b3f2bb1aac97e3a0b7f33  <repo>/runs/demo-evidence/replay_determinism.csv
+OUTDIR=<repo>/runs/demo-evidence

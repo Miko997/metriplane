@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+  - contract_id: material_flow_not_people_tracking
+    kind: privacy_boundary
+    note: This pack is for carts, pallets, and totes; it avoids worker identity claims.

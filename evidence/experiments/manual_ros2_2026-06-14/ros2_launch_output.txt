@@ -1,0 +1,23 @@
+[INFO] [launch]: All log files can be found below /home/miko/.ros/log/2026-06-14-20-47-26-974480-miko-21796-2252-20700-814388
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [metriplane_bridge-1]: process started with pid [814413]
+[metriplane_bridge-1] [INFO] [1781459247.206293275] [metriplane_bridge]: connected to ws://127.0.0.1:8765
+[metriplane_bridge-1] Traceback (most recent call last):
+[metriplane_bridge-1]   File "/tmp/metriplane_ros_ws/install/metriplane_ros/lib/metriplane_ros/metriplane_bridge", line 33, in <module>
+[metriplane_bridge-1]     sys.exit(load_entry_point('metriplane-ros==0.2.0', 'console_scripts', 'metriplane_bridge')())
+[metriplane_bridge-1]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[metriplane_bridge-1]   File "/tmp/metriplane_ros_ws/install/metriplane_ros/lib/python3.12/site-packages/metriplane_ros/bridge_node.py", line 116, in main
+[metriplane_bridge-1]     rclpy.spin(node)
+[metriplane_bridge-1]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py", line 247, in spin
+[metriplane_bridge-1]     executor.spin_once()
+[metriplane_bridge-1]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 845, in spin_once
+[metriplane_bridge-1]     self._spin_once_impl(timeout_sec)
+[metriplane_bridge-1]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 829, in _spin_once_impl
+[metriplane_bridge-1]     handler, entity, node = self.wait_for_ready_callbacks(
+[metriplane_bridge-1]                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[metriplane_bridge-1]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 799, in wait_for_ready_callbacks
+[metriplane_bridge-1]     return next(self._cb_iter)
+[metriplane_bridge-1]            ^^^^^^^^^^^^^^^^^^^
+[metriplane_bridge-1]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 707, in _wait_for_ready_callbacks
+[metriplane_bridge-1]     raise ExternalShutdownException()
+[metriplane_bridge-1] rclpy.executors.ExternalShutdownException

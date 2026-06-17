@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
 Tests for Metriplane launcher v2 (metriplane/launcher.py) and CLI subcommands.
 
@@ -35,6 +38,7 @@ from pathlib import Path
 import pytest
 
 from metriplane.launcher import (
+    _DEFAULT_FUSION_CONFIG,
     _clear_state,
     _find_repo_root,
     _get_pgid,
@@ -45,8 +49,11 @@ from metriplane.launcher import (
     _load_state,
     _make_proc_entry,
     _read_cmdline,
+    _runtime_module_for_config,
     _save_state,
+    _start_fusion,
     _wait_for_port_free,
+    cmd_start,
     cmd_cleanup,
     cmd_status,
     cmd_stop,
@@ -116,6 +123,8 @@ class TestCLIHelp:
             cli_main(["start", "--help"])
         out = capsys.readouterr().out
         assert "--live" in out
+        assert "default: off" in out
+        assert "configs/local_demo_replay.yaml" in out
 
     def test_start_help_mentions_no_open(self, capsys):
         with pytest.raises(SystemExit):
@@ -133,6 +142,44 @@ class TestCLIHelp:
 # ---------------------------------------------------------------------------
 # stop / status / cleanup with no state
 # ---------------------------------------------------------------------------
+
+class TestLauncherDefaults:
+    def test_start_defaults_to_runtime_idle(self):
+        assert cmd_start.__kwdefaults__["live"] is False
+
+    def test_default_config_is_camera_free_demo(self):
+        assert _DEFAULT_FUSION_CONFIG == "configs/local_demo_replay.yaml"
+        assert Path(_DEFAULT_FUSION_CONFIG).is_file()
+
+    def test_demo_config_uses_replay_runtime(self):
+        assert _runtime_module_for_config(_DEFAULT_FUSION_CONFIG, Path.cwd()) == "metriplane.run"
+
+    def test_camera_config_uses_fusion_runtime(self):
+        assert _runtime_module_for_config("configs/fusion_health_300fps.yaml", Path.cwd()) == "metriplane.run_fusion"
+
+    def test_launcher_sets_supported_compute_backend_env(self, monkeypatch, tmp_path):
+        captured = {}
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["cmd"] = cmd
+            captured["env"] = env
+            return object()
+
+        monkeypatch.setattr("metriplane.launcher._launch", fake_launch)
+        monkeypatch.setattr("metriplane.launcher._runtime_module_for_config", lambda config, repo_root: "metriplane.run")
+
+        _start_fusion(
+            config="configs/local_demo_replay.yaml",
+            run_id="test",
+            runs_dir=str(tmp_path),
+            duration_s=1.0,
+            backend="gpu",
+            log_file=tmp_path / "fusion.log",
+            repo_root=Path.cwd(),
+        )
+
+        assert captured["env"]["METRIPLANE_COMPUTE_BACKEND"] == "gpu"
+
 
 class TestNoState:
     def setup_method(self):
@@ -341,6 +388,9 @@ class TestIsVtSafeToKill:
 
     def test_run_fusion_is_safe(self):
         assert _is_vt_safe_to_kill("/home/user/.venv/bin/python -m metriplane.run_fusion") is True
+
+    def test_replay_runtime_is_safe(self):
+        assert _is_vt_safe_to_kill("/home/user/.venv/bin/python -m metriplane.run --config configs/local_demo_replay.yaml") is True
 
     def test_unknown_process_not_safe(self):
         assert _is_vt_safe_to_kill("nginx -g daemon off") is False

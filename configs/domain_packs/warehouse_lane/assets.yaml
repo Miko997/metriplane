@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+  - object_id: "41"
+    asset_id: tugger_cart_1
+    asset_type: cart
+    label: Tugger cart 1
+    expected_zones: [lane_entry, lane_body, lane_exit]
+  - object_id: "42"
+    asset_id: pallet_1
+    asset_type: pallet
+    label: Pallet 1
+    expected_zones: [lane_body, lane_exit]
+  - object_id: "43"
+    asset_id: staging_bin_1
+    asset_type: bin
+    label: Staging bin 1
+    expected_zones: [lane_entry]

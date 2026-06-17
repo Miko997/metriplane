@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Audit the Paper B v0.1.3 evidence manifest, checksums, and docs."""
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+"""Audit the MetriPlane v0.2.0 release evidence manifest, checksums, and docs."""
 
 from __future__ import annotations
 
 import csv
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -14,7 +18,7 @@ from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASE_TAG = "v0.1.3"
+RELEASE_TAG = "v0.2.0"
 MANIFEST_PATH = ROOT / "evidence" / "manifest.csv"
 CHECKSUMS_PATH = ROOT / "evidence" / "CHECKSUMS.sha256"
 CANONICAL_TITLE = (
@@ -42,18 +46,7 @@ REQUIRED_MANIFEST_COLUMNS = {
 # The manifest cannot also pin its own final digest without becoming
 # self-referential, so this is the one explicit coverage exemption.
 CHECKSUM_MANIFEST_EXEMPTIONS = {"evidence/manifest.csv"}
-RELEASE_TREE_PATHS = (
-    "README.md",
-    "ARTIFACTS.md",
-    "CITATION.cff",
-    "docs/eval",
-    "docs/references/reference_audit.md",
-    "docs/scope_rules.md",
-    "docs/gpu_compute_backend.md",
-    "docs/pipeline_backpressure.md",
-    "evidence",
-    "scripts/audit_evidence.py",
-)
+RELEASE_TREE_PATHS = (".",)
 
 
 def rel(path: Path) -> str:
@@ -67,6 +60,9 @@ def read_csv_rows(path: str) -> list[dict[str, str]]:
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
+    if path.is_symlink():
+        digest.update(os.readlink(path).encode("utf-8"))
+        return digest.hexdigest()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
@@ -320,7 +316,9 @@ def release_tree_paths() -> set[str]:
     return {
         path.decode("utf-8")
         for path in result.stdout.split(b"\0")
-        if path and not path.decode("utf-8").endswith("/CHECKSUMS.sha256")
+        if path
+        and not path.decode("utf-8").endswith("/CHECKSUMS.sha256")
+        and not (ROOT / path.decode("utf-8")).is_symlink()
     }
 
 

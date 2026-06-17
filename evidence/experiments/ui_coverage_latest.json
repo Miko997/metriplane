@@ -1,0 +1,3269 @@
+{
+  "generated_at": "2026-06-14T18:38:28+00:00",
+  "summary": {
+    "total_discovered_features": 138,
+    "ui_full": 63,
+    "ui_partial": 16,
+    "ui_copy_command_only": 12,
+    "ui_disabled_with_reason": 0,
+    "ui_missing": 0,
+    "cli_only_documented": 47,
+    "planned_only": 0,
+    "broken_buttons": 0,
+    "unsupported_claims_found": 0,
+    "duplicate_html_ids": 0,
+    "js_syntax_errors": 0,
+    "js_syntax_check_unavailable": 0,
+    "buttons_with_duplicate_command_id_on_same_card": 0,
+    "data_needs_atlas_buttons_never_enabled": 0,
+    "read_only_fallback_endpoints": 6,
+    "critical_bugs": 0,
+    "high_bugs": 0
+  },
+  "actions": [
+    {
+      "action_id": "runner.run-demo-replay",
+      "feature_name": "Run Demo Replay",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON tools/run_ui_demo_replay.py",
+      "ui_route": "web/dashboard/help.html; web/dashboard/help.html; web/dashboard/index.html; web/dashboard/index.html; web/dashboard/report.html; web/dashboard/run.html; web/dashboard/run.html",
+      "ui_label": "Run Demo Replay; Run; Run Demo Replay; Run; Run Demo Replay; Run Demo Replay; Run",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "Build the camera-free demo replay, Command Center sample, evidence workspace, and USD export",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/help.html",
+          "label": "Run Demo Replay",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/help.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/index.html",
+          "label": "Run Demo Replay",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/index.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/report.html",
+          "label": "Run Demo Replay",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/run.html",
+          "label": "Run Demo Replay",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/run.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.doctor",
+      "feature_name": "Doctor",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli doctor",
+      "ui_route": "web/dashboard/index.html; web/dashboard/settings.html; web/dashboard/settings.html",
+      "ui_label": "Check System; Run Doctor; Run",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "Run health diagnostics across 8 system checks",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/index.html",
+          "label": "Check System",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/settings.html",
+          "label": "Run Doctor",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/settings.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.preflight",
+      "feature_name": "Preflight",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh preflight",
+      "ui_route": "web/dashboard/settings.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "Check system dependencies and configuration",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/settings.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.deterministic-replay",
+      "feature_name": "Deterministic Replay",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh deterministic-replay",
+      "ui_route": "web/dashboard/benchmarks.html; web/dashboard/benchmarks.html; web/dashboard/run.html",
+      "ui_label": "Run Deterministic Replay; Run; Run",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "M9.1: Verify bit-exact reproducibility across runs",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run Deterministic Replay",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/run.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.backpressure",
+      "feature_name": "Backpressure Test",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh backpressure",
+      "ui_route": "web/dashboard/benchmarks.html; web/dashboard/benchmarks.html",
+      "ui_label": "Run Backpressure; Run",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "M9.2: Test graceful degradation under synthetic load",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run Backpressure",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.gpu-smoke",
+      "feature_name": "GPU Smoke Test",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh gpu-smoke",
+      "ui_route": "web/dashboard/benchmarks.html; web/dashboard/integrations.html",
+      "ui_label": "Run; Check GPU",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "M9.6: Verify CuPy and CUDA device availability",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Check GPU",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.gpu-benchmark",
+      "feature_name": "GPU Benchmark",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh gpu-benchmark",
+      "ui_route": "web/dashboard/benchmarks.html; web/dashboard/integrations.html",
+      "ui_label": "Run; Benchmark",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "M9.6: Compare CPU vs GPU compute backend performance",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Benchmark",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.health-degrade-cam1",
+      "feature_name": "Health Degradation",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh health-degrade-cam1",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P1",
+      "notes": "Requires second capture-capable camera",
+      "source": "allowlist",
+      "enabled": false,
+      "disabled_reason": "Requires second capture-capable camera",
+      "ui_matches": []
+    },
+    {
+      "action_id": "runner.gpu-equivalence",
+      "feature_name": "GPU Equivalence Test",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh gpu-equivalence",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P1",
+      "notes": "Requires visible ArUco markers in test session",
+      "source": "allowlist",
+      "enabled": false,
+      "disabled_reason": "Requires visible ArUco markers in test session",
+      "ui_matches": []
+    },
+    {
+      "action_id": "runner.run-fusion",
+      "feature_name": "Run Fusion",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh run-fusion cpu 60 test",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P1",
+      "notes": "Hardware/configuration dependent - use CLI directly",
+      "source": "allowlist",
+      "enabled": false,
+      "disabled_reason": "Hardware/configuration dependent - use CLI directly",
+      "ui_matches": []
+    },
+    {
+      "action_id": "runner.provenance",
+      "feature_name": "Provenance Check",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/mp.sh provenance",
+      "ui_route": "web/dashboard/benchmarks.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "M9.4: Verify run_id, config_hash, and git commit stamping without opening cameras",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.timing-breakdown",
+      "feature_name": "Camera-Free Latency Check",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON tools/run_ui_timing_check.py",
+      "ui_route": "web/dashboard/benchmarks.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Measure replay/rule-engine latency without opening local cameras",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/benchmarks.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.list-cameras",
+      "feature_name": "List Cameras",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON tools/list_cameras.py",
+      "ui_route": "web/dashboard/settings.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "Discover available v4l2 camera devices (JSON output)",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/settings.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.sentinel-demo",
+      "feature_name": "Build Command Center Sample",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli sentinel run --config configs/sentinel_operator_demo.yaml --run-id metriplane_demo --runs-dir _RUNS_DIR",
+      "ui_route": "web/dashboard/command_center_live.html",
+      "ui_label": "Build Command Center Sample",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "Run the camera-free incident sample and write a run the Command Center can display",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/command_center_live.html",
+          "label": "Build Command Center Sample",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-validate-pack",
+      "feature_name": "Validate Evidence Rules",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas validate-pack configs/domain_packs/assembly_cell",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Validate the checked-in assembly-cell evidence rules",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-demo",
+      "feature_name": "Build Evidence Sample",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out _ATLAS_UI_RUN --run-id metriplane_sample",
+      "ui_route": "web/dashboard/atlas.html; web/dashboard/atlas.html",
+      "ui_label": "Build sample run; Run",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Run the MetriPlane evidence workflow over the assembly-cell sample and publish local dashboard artifacts",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Build sample run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-verify-demo",
+      "feature_name": "Verify Incident Archive",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas bundle verify _ATLAS_UI_BUNDLE",
+      "ui_route": "web/dashboard/atlas.html; web/dashboard/report.html",
+      "ui_label": "Run; Verify",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Verify checksums and required contents for the generated incident evidence archive",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/report.html",
+          "label": "Verify",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-regression-demo",
+      "feature_name": "Replay Evidence Regression",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas test _ATLAS_UI_REGRESSION --json",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Replay the generated physical regression spec for the incident",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-query-demo-events",
+      "feature_name": "Query Event Ledger",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas query events --run-dir _ATLAS_UI_RUN --json",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Return the run's physical event ledger as JSON",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-lake-build",
+      "feature_name": "Build Evidence Index",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas lake build --root _ATLAS_UI_RUN --db f'{_ATLAS_UI_RUN}/evidence_lake.sqlite'",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Index generated manifests, incidents, and events into a local SQLite evidence index",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-protocol-export",
+      "feature_name": "Export Protocol Files",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas protocol export --out f'{_ATLAS_UI_RUN}/protocol'",
+      "ui_route": "web/dashboard/atlas.html; web/dashboard/integrations.html",
+      "ui_label": "Run; Export protocol",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Write local protocol schema/index artifacts for external interchange",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Export protocol",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-pilot-kit",
+      "feature_name": "Create Field Review Kit",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas pilot kit --out f'{_ATLAS_UI_RUN}/pilot_kit'",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Create external review checklist, script, and review templates",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-freeze-build",
+      "feature_name": "Build Audit Snapshot",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas freeze build --root . --out f'{_ATLAS_UI_RUN}/evidence_freeze'",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Build a local evidence audit and review-note snapshot",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.atlas-edge-doctor",
+      "feature_name": "Run Edge Readiness",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m metriplane.cli atlas edge doctor --runs-root _ATLAS_UI_RUN --min-free-mb 64",
+      "ui_route": "web/dashboard/atlas.html",
+      "ui_label": "Run",
+      "coverage_status": "ui_full",
+      "risk": "P2",
+      "notes": "Check generated evidence storage and edge-appliance readiness signals",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.integration-omniverse-export",
+      "feature_name": "Export Omniverse USD Replay",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m integrations.omniverse.metriplane_usd_replay --run-dir _ATLAS_UI_BUNDLE_DIR --out f'{_ATLAS_UI_RUN}/omniverse/metriplane_replay.usda'",
+      "ui_route": "web/dashboard/atlas.html; web/dashboard/integrations.html; web/dashboard/integrations.html",
+      "ui_label": "Run; Export USD Scene; Export Omniverse USD",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Write a USD replay scene from the current MetriPlane evidence run",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Export USD Scene",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Export Omniverse USD",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.integration-isaac-export",
+      "feature_name": "Export Isaac USD Replay",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON -m integrations.isaac.metriplane_to_usd --run-dir _ATLAS_UI_BUNDLE_DIR --out f'{_ATLAS_UI_RUN}/isaac/metriplane_replay.usda'",
+      "ui_route": "web/dashboard/integrations.html",
+      "ui_label": "Export Isaac USD",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Write a USD replay scene compatible with Isaac Sim",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Export Isaac USD",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.integration-ros2-check",
+      "feature_name": "Check ROS 2 Bridge Adapters",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON tools/check_ros2_adapters.py",
+      "ui_route": "web/dashboard/atlas.html; web/dashboard/integrations.html; web/dashboard/integrations.html",
+      "ui_label": "Run; Check ROS 2; Check ROS 2",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Run ROS-free checks for the MetriPlane ROS 2 message adapters",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/atlas.html",
+          "label": "Run",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Check ROS 2",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Check ROS 2",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.docker-check",
+      "feature_name": "Check Docker",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "docker --version",
+      "ui_route": "web/dashboard/integrations.html",
+      "ui_label": "Check Docker",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Check whether Docker is available for the local demo container path",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Check Docker",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.docker-demo-up",
+      "feature_name": "Start Docker Demo",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/docker_demo_up.sh",
+      "ui_route": "web/dashboard/integrations.html",
+      "ui_label": "Start demo",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Start the camera-free Docker demo if Docker is installed",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Start demo",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.docker-stop",
+      "feature_name": "Stop Docker Demo",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "./tools/docker_stop.sh",
+      "ui_route": "web/dashboard/integrations.html",
+      "ui_label": "Stop",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Stop local MetriPlane Docker demo containers",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/integrations.html",
+          "label": "Stop",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "runner.cleanup",
+      "feature_name": "Check Stale Processes",
+      "source_path": "metriplane/runner/allowlist.py",
+      "command_or_endpoint": "_PYTHON tools/ui_safe_cleanup.py",
+      "ui_route": "web/dashboard/settings.html; web/dashboard/settings.html",
+      "ui_label": "Check stale processes; Run",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "Runner-safe cleanup check that keeps the active UI stack online",
+      "source": "allowlist",
+      "enabled": true,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/settings.html",
+          "label": "Check stale processes",
+          "kind": "button"
+        },
+        {
+          "file": "web/dashboard/settings.html",
+          "label": "Run",
+          "kind": "button"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.ask",
+      "feature_name": "metriplane ask",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli ask",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli ask",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli ask",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.atlas",
+      "feature_name": "metriplane atlas",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli atlas",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli atlas",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli atlas",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.camera-trust",
+      "feature_name": "metriplane camera-trust",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli camera-trust",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli camera-trust",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli camera-trust",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.cleanup",
+      "feature_name": "metriplane cleanup",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli cleanup",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli cleanup",
+      "coverage_status": "ui_partial",
+      "risk": "P0",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli cleanup",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.command-center",
+      "feature_name": "metriplane command-center",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli command-center",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli command-center",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli command-center",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.contracts",
+      "feature_name": "metriplane contracts",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli contracts",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Lower-level CLI surface; keep in Help/advanced docs.",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "cli.counterfactual",
+      "feature_name": "metriplane counterfactual",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli counterfactual",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Lower-level CLI surface; keep in Help/advanced docs.",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "cli.doctor",
+      "feature_name": "metriplane doctor",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli doctor",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "cli.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P0",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "cli.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.incidents",
+      "feature_name": "metriplane incidents",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli incidents",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli incidents",
+      "coverage_status": "ui_partial",
+      "risk": "P2",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli incidents",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.objects",
+      "feature_name": "metriplane objects",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli objects",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli objects",
+      "coverage_status": "ui_partial",
+      "risk": "P2",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli objects",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.query",
+      "feature_name": "metriplane query",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli query",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli query",
+      "coverage_status": "ui_partial",
+      "risk": "P2",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli query",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.replay",
+      "feature_name": "metriplane replay",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli replay",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli replay",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli replay",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.restart",
+      "feature_name": "metriplane restart",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli restart",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Lower-level CLI surface; keep in Help/advanced docs.",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "cli.rules",
+      "feature_name": "metriplane rules",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli rules",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli rules",
+      "coverage_status": "ui_partial",
+      "risk": "P2",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli rules",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.sentinel",
+      "feature_name": "metriplane sentinel",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli sentinel",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli sentinel",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli sentinel",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.start",
+      "feature_name": "metriplane start",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli start",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli start",
+      "coverage_status": "ui_partial",
+      "risk": "P0",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli start",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.status",
+      "feature_name": "metriplane status",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli status",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli status",
+      "coverage_status": "ui_partial",
+      "risk": "P0",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli status",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.stop",
+      "feature_name": "metriplane stop",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli stop",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli stop",
+      "coverage_status": "ui_partial",
+      "risk": "P0",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli stop",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.test",
+      "feature_name": "metriplane test",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli test",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli test",
+      "coverage_status": "ui_partial",
+      "risk": "P2",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli test",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "cli.traces",
+      "feature_name": "metriplane traces",
+      "source_path": "metriplane/cli.py",
+      "command_or_endpoint": "python -m metriplane.cli traces",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "python -m metriplane.cli traces",
+      "coverage_status": "ui_partial",
+      "risk": "P1",
+      "notes": "",
+      "source": "cli",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "python -m metriplane.cli traces",
+          "kind": "copy/help"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.env",
+      "feature_name": "Operator GET /env",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/env",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/env",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/env",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.cameras",
+      "feature_name": "Operator GET /cameras",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/cameras",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/cameras",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/cameras",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.profiles",
+      "feature_name": "Operator GET /profiles",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/profiles",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/profiles",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/profiles",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.configs",
+      "feature_name": "Operator GET /configs",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/configs",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/configs",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/configs",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.latest_run",
+      "feature_name": "Operator GET /latest-run",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/latest-run",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/latest-run",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/latest-run",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.runner_status",
+      "feature_name": "Operator GET /runner-status",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/runner-status",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/runner-status",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/runner-status",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.live_summary",
+      "feature_name": "Operator GET /live-summary",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/live-summary",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/live-summary",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/live-summary",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.objects",
+      "feature_name": "Operator GET /objects",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/objects",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/objects",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/objects",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.incidents",
+      "feature_name": "Operator GET /incidents",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/incidents",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/incidents",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/incidents",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.traces",
+      "feature_name": "Operator GET /traces",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/traces",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/traces",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/traces",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.camera_trust",
+      "feature_name": "Operator GET /camera-trust",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/camera-trust",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/camera-trust",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/camera-trust",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.get.frames",
+      "feature_name": "Operator GET /frames",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "GET /operator/frames",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /operator/frames",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /operator/frames",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.create_profile",
+      "feature_name": "Operator POST /create-profile",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/create-profile",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/create-profile",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/create-profile",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.write_zones",
+      "feature_name": "Operator POST /write-zones",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/write-zones",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/write-zones",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/write-zones",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.save_config",
+      "feature_name": "Operator POST /save-config",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/save-config",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/save-config",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/save-config",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.start_fusion",
+      "feature_name": "Operator POST /start-fusion",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/start-fusion",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/start-fusion",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/start-fusion",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.calibrate",
+      "feature_name": "Operator POST /calibrate",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/calibrate",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/calibrate",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/calibrate",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.validate_alignment",
+      "feature_name": "Operator POST /validate-alignment",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/validate-alignment",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/validate-alignment",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/validate-alignment",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.validate_alignment_full",
+      "feature_name": "Operator POST /validate-alignment-full",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/validate-alignment-full",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/validate-alignment-full",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/validate-alignment-full",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.generate_report",
+      "feature_name": "Operator POST /generate-report",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/generate-report",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/generate-report",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/generate-report",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.checksum",
+      "feature_name": "Operator POST /checksum",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/checksum",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/checksum",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/checksum",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.live_summary",
+      "feature_name": "Operator POST /live-summary",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/live-summary",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/live-summary",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by read-only GET fallback for an observe-only endpoint.",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/live-summary",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.objects",
+      "feature_name": "Operator POST /objects",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/objects",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/objects",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by read-only GET fallback for an observe-only endpoint.",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/objects",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.incidents",
+      "feature_name": "Operator POST /incidents",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/incidents",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/incidents",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by read-only GET fallback for an observe-only endpoint.",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/incidents",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.traces",
+      "feature_name": "Operator POST /traces",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/traces",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/traces",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by read-only GET fallback for an observe-only endpoint.",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/traces",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.camera_trust",
+      "feature_name": "Operator POST /camera-trust",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/camera-trust",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/camera-trust",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by read-only GET fallback for an observe-only endpoint.",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/camera-trust",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.frames",
+      "feature_name": "Operator POST /frames",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/frames",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/frames",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by read-only GET fallback for an observe-only endpoint.",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/frames",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.operator.post.ask",
+      "feature_name": "Operator POST /ask",
+      "source_path": "metriplane/runner/operator_api.py",
+      "command_or_endpoint": "POST /operator/ask",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /operator/ask",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "operator_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /operator/ask",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.runner.status",
+      "feature_name": "Runner status",
+      "source_path": "metriplane/runner/service.py",
+      "command_or_endpoint": "GET /status",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /status",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "runner_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /status",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.runner.commands",
+      "feature_name": "Runner action registry",
+      "source_path": "metriplane/runner/service.py",
+      "command_or_endpoint": "GET /commands",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /commands",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "runner_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /commands",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.runner.jobs",
+      "feature_name": "Recent runner jobs",
+      "source_path": "metriplane/runner/service.py",
+      "command_or_endpoint": "GET /jobs",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /jobs",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "runner_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /jobs",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.runner.job_detail",
+      "feature_name": "Runner job detail",
+      "source_path": "metriplane/runner/service.py",
+      "command_or_endpoint": "GET /jobs/<id>",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "GET /jobs/<id>",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "runner_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "GET /jobs/<id>",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.runner.execute",
+      "feature_name": "Execute allowlisted command",
+      "source_path": "metriplane/runner/service.py",
+      "command_or_endpoint": "POST /execute",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /execute",
+      "coverage_status": "ui_full",
+      "risk": "P0",
+      "notes": "",
+      "source": "runner_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /execute",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "api.runner.cancel_job",
+      "feature_name": "Cancel running job",
+      "source_path": "metriplane/runner/service.py",
+      "command_or_endpoint": "POST /jobs/<id>/cancel",
+      "ui_route": "web/dashboard/*.js",
+      "ui_label": "POST /jobs/<id>/cancel",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "",
+      "source": "runner_api",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*.js",
+          "label": "POST /jobs/<id>/cancel",
+          "kind": "api"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.analyze_id_stability_jsonl",
+      "feature_name": "Analyze Id Stability Jsonl",
+      "source_path": "tools/analyze_id_stability_jsonl.py",
+      "command_or_endpoint": "python tools/analyze_id_stability_jsonl.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "analyze_id_stability_jsonl.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "analyze_id_stability_jsonl.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.analyze_session_metrics",
+      "feature_name": "Analyze Session Metrics",
+      "source_path": "tools/analyze_session_metrics.py",
+      "command_or_endpoint": "python tools/analyze_session_metrics.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.audit_ui_functionality",
+      "feature_name": "Audit Ui Functionality",
+      "source_path": "tools/audit_ui_functionality.py",
+      "command_or_endpoint": "python tools/audit_ui_functionality.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.calibrate_intrinsics_chessboard",
+      "feature_name": "Calibrate Intrinsics Chessboard",
+      "source_path": "tools/calibrate_intrinsics_chessboard.py",
+      "command_or_endpoint": "python tools/calibrate_intrinsics_chessboard.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "calibrate_intrinsics_chessboard.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "calibrate_intrinsics_chessboard.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.calibrate_planar_homography",
+      "feature_name": "Calibrate Planar Homography",
+      "source_path": "tools/calibrate_planar_homography.py",
+      "command_or_endpoint": "python tools/calibrate_planar_homography.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "calibrate_planar_homography.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "calibrate_planar_homography.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.check_ros2_adapters",
+      "feature_name": "Check Ros2 Adapters",
+      "source_path": "tools/check_ros2_adapters.py",
+      "command_or_endpoint": "python tools/check_ros2_adapters.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.debug_alignment",
+      "feature_name": "Debug Alignment",
+      "source_path": "tools/debug_alignment.py",
+      "command_or_endpoint": "python tools/debug_alignment.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "debug_alignment.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "debug_alignment.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.list_cameras",
+      "feature_name": "List Cameras",
+      "source_path": "tools/list_cameras.py",
+      "command_or_endpoint": "python tools/list_cameras.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "list_cameras.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P1",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "list_cameras.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.plot_compute_backend_comparison",
+      "feature_name": "Plot Compute Backend Comparison",
+      "source_path": "tools/plot_compute_backend_comparison.py",
+      "command_or_endpoint": "python tools/plot_compute_backend_comparison.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.preview_world_overlay",
+      "feature_name": "Preview World Overlay",
+      "source_path": "tools/preview_world_overlay.py",
+      "command_or_endpoint": "python tools/preview_world_overlay.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.preview_world_overlay_multi",
+      "feature_name": "Preview World Overlay Multi",
+      "source_path": "tools/preview_world_overlay_multi.py",
+      "command_or_endpoint": "python tools/preview_world_overlay_multi.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.preview_world_overlay_multi_ws",
+      "feature_name": "Preview World Overlay Multi Ws",
+      "source_path": "tools/preview_world_overlay_multi_ws.py",
+      "command_or_endpoint": "python tools/preview_world_overlay_multi_ws.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.preview_zones_overlay",
+      "feature_name": "Preview Zones Overlay",
+      "source_path": "tools/preview_zones_overlay.py",
+      "command_or_endpoint": "python tools/preview_zones_overlay.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.report_alignment",
+      "feature_name": "Report Alignment",
+      "source_path": "tools/report_alignment.py",
+      "command_or_endpoint": "python tools/report_alignment.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "report_alignment.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "report_alignment.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.run_fusion_preview",
+      "feature_name": "Run Fusion Preview",
+      "source_path": "tools/run_fusion_preview.py",
+      "command_or_endpoint": "python tools/run_fusion_preview.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.run_fusion_yaml",
+      "feature_name": "Run Fusion Yaml",
+      "source_path": "tools/run_fusion_yaml.py",
+      "command_or_endpoint": "python tools/run_fusion_yaml.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.run_live_yaml",
+      "feature_name": "Run Live Yaml",
+      "source_path": "tools/run_live_yaml.py",
+      "command_or_endpoint": "python tools/run_live_yaml.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.run_ui_demo_replay",
+      "feature_name": "Run Ui Demo Replay",
+      "source_path": "tools/run_ui_demo_replay.py",
+      "command_or_endpoint": "python tools/run_ui_demo_replay.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "run_ui_demo_replay.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P1",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "run_ui_demo_replay.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.run_ui_timing_check",
+      "feature_name": "Run Ui Timing Check",
+      "source_path": "tools/run_ui_timing_check.py",
+      "command_or_endpoint": "python tools/run_ui_timing_check.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.session_health_summary",
+      "feature_name": "Session Health Summary",
+      "source_path": "tools/session_health_summary.py",
+      "command_or_endpoint": "python tools/session_health_summary.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.ui_safe_cleanup",
+      "feature_name": "Ui Safe Cleanup",
+      "source_path": "tools/ui_safe_cleanup.py",
+      "command_or_endpoint": "python tools/ui_safe_cleanup.py",
+      "ui_route": "metriplane/runner/allowlist.py",
+      "ui_label": "runner action",
+      "coverage_status": "ui_full",
+      "risk": "P1",
+      "notes": "Covered by a runner allowlist command.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "metriplane/runner/allowlist.py",
+          "label": "runner action",
+          "kind": "allowlist"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.ws_replay_jsonl",
+      "feature_name": "Ws Replay Jsonl",
+      "source_path": "tools/ws_replay_jsonl.py",
+      "command_or_endpoint": "python tools/ws_replay_jsonl.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.ws_smoke_client",
+      "feature_name": "Ws Smoke Client",
+      "source_path": "tools/ws_smoke_client.py",
+      "command_or_endpoint": "python tools/ws_smoke_client.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.ws_viewer_multi",
+      "feature_name": "Ws Viewer Multi",
+      "source_path": "tools/ws_viewer_multi.py",
+      "command_or_endpoint": "python tools/ws_viewer_multi.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.zones_report_jsonl",
+      "feature_name": "Zones Report Jsonl",
+      "source_path": "tools/zones_report_jsonl.py",
+      "command_or_endpoint": "python tools/zones_report_jsonl.py",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "zones_report_jsonl.py",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "zones_report_jsonl.py",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.command_center_up",
+      "feature_name": "Command Center Up",
+      "source_path": "tools/command_center_up.sh",
+      "command_or_endpoint": "tools/command_center_up.sh",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "command_center_up.sh",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "command_center_up.sh",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.dashboard_runner",
+      "feature_name": "Dashboard Runner",
+      "source_path": "tools/dashboard_runner.sh",
+      "command_or_endpoint": "tools/dashboard_runner.sh",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "dashboard_runner.sh",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "dashboard_runner.sh",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.demo4_everything",
+      "feature_name": "Demo4 Everything",
+      "source_path": "tools/demo4_everything.sh",
+      "command_or_endpoint": "tools/demo4_everything.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.docker_clean",
+      "feature_name": "Docker Clean",
+      "source_path": "tools/docker_clean.sh",
+      "command_or_endpoint": "tools/docker_clean.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.docker_demo_up",
+      "feature_name": "Docker Demo Up",
+      "source_path": "tools/docker_demo_up.sh",
+      "command_or_endpoint": "tools/docker_demo_up.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.docker_dummy_up",
+      "feature_name": "Docker Dummy Up",
+      "source_path": "tools/docker_dummy_up.sh",
+      "command_or_endpoint": "tools/docker_dummy_up.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.docker_live_up",
+      "feature_name": "Docker Live Up",
+      "source_path": "tools/docker_live_up.sh",
+      "command_or_endpoint": "tools/docker_live_up.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.docker_smoke_test",
+      "feature_name": "Docker Smoke Test",
+      "source_path": "tools/docker_smoke_test.sh",
+      "command_or_endpoint": "tools/docker_smoke_test.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.docker_stop",
+      "feature_name": "Docker Stop",
+      "source_path": "tools/docker_stop.sh",
+      "command_or_endpoint": "tools/docker_stop.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.jetson_preflight",
+      "feature_name": "Jetson Preflight",
+      "source_path": "tools/jetson_preflight.sh",
+      "command_or_endpoint": "tools/jetson_preflight.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.mp",
+      "feature_name": "Mp",
+      "source_path": "tools/mp.sh",
+      "command_or_endpoint": "tools/mp.sh",
+      "ui_route": "web/dashboard/*",
+      "ui_label": "mp.sh",
+      "coverage_status": "ui_copy_command_only",
+      "risk": "P2",
+      "notes": "",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": [
+        {
+          "file": "web/dashboard/*",
+          "label": "mp.sh",
+          "kind": "link/copy"
+        }
+      ]
+    },
+    {
+      "action_id": "tool.proof_m8_fusion",
+      "feature_name": "Proof M8 Fusion",
+      "source_path": "tools/proof_m8_fusion.sh",
+      "command_or_endpoint": "tools/proof_m8_fusion.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.run_demo_all",
+      "feature_name": "Run Demo All",
+      "source_path": "tools/run_demo_all.sh",
+      "command_or_endpoint": "tools/run_demo_all.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.start_metriplane",
+      "feature_name": "Start Metriplane",
+      "source_path": "tools/start_metriplane.sh",
+      "command_or_endpoint": "tools/start_metriplane.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.validate-replay",
+      "feature_name": "Validate Replay",
+      "source_path": "tools/validate-replay.sh",
+      "command_or_endpoint": "tools/validate-replay.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.verify_m1_m6",
+      "feature_name": "Verify M1 M6",
+      "source_path": "tools/verify_m1_m6.sh",
+      "command_or_endpoint": "tools/verify_m1_m6.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "tool.verify_m6_offline",
+      "feature_name": "Verify M6 Offline",
+      "source_path": "tools/verify_m6_offline.sh",
+      "command_or_endpoint": "tools/verify_m6_offline.sh",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "tool",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.edge_latency",
+      "feature_name": "Edge Latency",
+      "source_path": "benchmarks/edge_latency.py",
+      "command_or_endpoint": "python benchmarks/edge_latency.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.event_throughput",
+      "feature_name": "Event Throughput",
+      "source_path": "benchmarks/event_throughput.py",
+      "command_or_endpoint": "python benchmarks/event_throughput.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.gpu_batch_replay",
+      "feature_name": "Gpu Batch Replay",
+      "source_path": "benchmarks/gpu_batch_replay.py",
+      "command_or_endpoint": "python benchmarks/gpu_batch_replay.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.gpu_fusion_scaling",
+      "feature_name": "Gpu Fusion Scaling",
+      "source_path": "benchmarks/gpu_fusion_scaling.py",
+      "command_or_endpoint": "python benchmarks/gpu_fusion_scaling.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_backpressure",
+      "feature_name": "Run Backpressure",
+      "source_path": "benchmarks/run_backpressure.py",
+      "command_or_endpoint": "python benchmarks/run_backpressure.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_compute_backend_comparison",
+      "feature_name": "Run Compute Backend Comparison",
+      "source_path": "benchmarks/run_compute_backend_comparison.py",
+      "command_or_endpoint": "python benchmarks/run_compute_backend_comparison.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_compute_equivalence",
+      "feature_name": "Run Compute Equivalence",
+      "source_path": "benchmarks/run_compute_equivalence.py",
+      "command_or_endpoint": "python benchmarks/run_compute_equivalence.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_fusion_jitter",
+      "feature_name": "Run Fusion Jitter",
+      "source_path": "benchmarks/run_fusion_jitter.py",
+      "command_or_endpoint": "python benchmarks/run_fusion_jitter.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_latency_breakdown",
+      "feature_name": "Run Latency Breakdown",
+      "source_path": "benchmarks/run_latency_breakdown.py",
+      "command_or_endpoint": "python benchmarks/run_latency_breakdown.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_mapping_error",
+      "feature_name": "Run Mapping Error",
+      "source_path": "benchmarks/run_mapping_error.py",
+      "command_or_endpoint": "python benchmarks/run_mapping_error.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    },
+    {
+      "action_id": "benchmark.run_replay_determinism",
+      "feature_name": "Run Replay Determinism",
+      "source_path": "benchmarks/run_replay_determinism.py",
+      "command_or_endpoint": "python benchmarks/run_replay_determinism.py",
+      "ui_route": "-",
+      "ui_label": "-",
+      "coverage_status": "cli_only_documented",
+      "risk": "P2",
+      "notes": "Developer/diagnostic script; not a primary localhost workflow.",
+      "source": "benchmark",
+      "enabled": null,
+      "disabled_reason": null,
+      "ui_matches": []
+    }
+  ],
+  "ui": {
+    "command_buttons": [
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Build sample run",
+        "kind": "button",
+        "command_id": "atlas-demo",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-demo",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-validate-pack",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-verify-demo",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-regression-demo",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-query-demo-events",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-lake-build",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-protocol-export",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-edge-doctor",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-pilot-kit",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "atlas-freeze-build",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "integration-omniverse-export",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/atlas.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "integration-ros2-check",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run Deterministic Replay",
+        "kind": "button",
+        "command_id": "deterministic-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run Backpressure",
+        "kind": "button",
+        "command_id": "backpressure",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "deterministic-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "backpressure",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "timing-breakdown",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "provenance",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "gpu-smoke",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/benchmarks.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "gpu-benchmark",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/command_center_live.html",
+        "label": "Build Command Center Sample",
+        "kind": "button",
+        "command_id": "sentinel-demo",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/help.html",
+        "label": "Run Demo Replay",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/help.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/index.html",
+        "label": "Run Demo Replay",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/index.html",
+        "label": "Check System",
+        "kind": "button",
+        "command_id": "doctor",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/index.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Check ROS 2",
+        "kind": "button",
+        "command_id": "integration-ros2-check",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Export USD Scene",
+        "kind": "button",
+        "command_id": "integration-omniverse-export",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Check ROS 2",
+        "kind": "button",
+        "command_id": "integration-ros2-check",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Export Omniverse USD",
+        "kind": "button",
+        "command_id": "integration-omniverse-export",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Export Isaac USD",
+        "kind": "button",
+        "command_id": "integration-isaac-export",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Check Docker",
+        "kind": "button",
+        "command_id": "docker-check",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Start demo",
+        "kind": "button",
+        "command_id": "docker-demo-up",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Stop",
+        "kind": "button",
+        "command_id": "docker-stop",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Check GPU",
+        "kind": "button",
+        "command_id": "gpu-smoke",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Benchmark",
+        "kind": "button",
+        "command_id": "gpu-benchmark",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/integrations.html",
+        "label": "Export protocol",
+        "kind": "button",
+        "command_id": "atlas-protocol-export",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/report.html",
+        "label": "Run Demo Replay",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/report.html",
+        "label": "Verify",
+        "kind": "button",
+        "command_id": "atlas-verify-demo",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": true
+      },
+      {
+        "file": "web/dashboard/run.html",
+        "label": "Run Demo Replay",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/run.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "run-demo-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/run.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "deterministic-replay",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/settings.html",
+        "label": "Run Doctor",
+        "kind": "button",
+        "command_id": "doctor",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/settings.html",
+        "label": "Check stale processes",
+        "kind": "button",
+        "command_id": "cleanup",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/settings.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "doctor",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/settings.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "preflight",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/settings.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "list-cameras",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      },
+      {
+        "file": "web/dashboard/settings.html",
+        "label": "Run",
+        "kind": "button",
+        "command_id": "cleanup",
+        "disabled": false,
+        "title": "",
+        "needs_atlas": false
+      }
+    ],
+    "endpoint_calls": [
+      "GET /commands",
+      "GET /jobs",
+      "GET /jobs/",
+      "GET /jobs/<id>",
+      "GET /operator/camera-trust",
+      "GET /operator/cameras",
+      "GET /operator/configs",
+      "GET /operator/env",
+      "GET /operator/frames",
+      "GET /operator/incidents",
+      "GET /operator/latest-run",
+      "GET /operator/live-summary",
+      "GET /operator/objects",
+      "GET /operator/profiles",
+      "GET /operator/runner-status",
+      "GET /operator/traces",
+      "GET /status",
+      "POST /execute",
+      "POST /jobs/",
+      "POST /operator/ask",
+      "POST /operator/calibrate",
+      "POST /operator/checksum",
+      "POST /operator/create-profile",
+      "POST /operator/generate-report",
+      "POST /operator/save-config",
+      "POST /operator/start-fusion",
+      "POST /operator/validate-alignment",
+      "POST /operator/validate-alignment-full",
+      "POST /operator/write-zones"
+    ],
+    "copy_commands": [
+      "./tools/mp.sh backpressure",
+      "./tools/mp.sh deterministic-replay",
+      "./tools/mp.sh gpu-benchmark",
+      "./tools/mp.sh preflight",
+      "CONFIG=configs/fusion_health_cam0_local.yaml ./tools/mp.sh timing-breakdown",
+      "python -m metriplane.cli doctor"
+    ],
+    "quality": {
+      "duplicate_html_ids": [],
+      "js_syntax_errors": [],
+      "js_syntax_check_unavailable": false,
+      "buttons_with_duplicate_command_id_on_same_card": [],
+      "data_needs_atlas_buttons_never_enabled": [],
+      "read_only_fallback_endpoints": [
+        {
+          "action_id": "api.operator.post.live_summary",
+          "endpoint": "POST /operator/live-summary",
+          "notes": "Covered by read-only GET fallback for an observe-only endpoint."
+        },
+        {
+          "action_id": "api.operator.post.objects",
+          "endpoint": "POST /operator/objects",
+          "notes": "Covered by read-only GET fallback for an observe-only endpoint."
+        },
+        {
+          "action_id": "api.operator.post.incidents",
+          "endpoint": "POST /operator/incidents",
+          "notes": "Covered by read-only GET fallback for an observe-only endpoint."
+        },
+        {
+          "action_id": "api.operator.post.traces",
+          "endpoint": "POST /operator/traces",
+          "notes": "Covered by read-only GET fallback for an observe-only endpoint."
+        },
+        {
+          "action_id": "api.operator.post.camera_trust",
+          "endpoint": "POST /operator/camera-trust",
+          "notes": "Covered by read-only GET fallback for an observe-only endpoint."
+        },
+        {
+          "action_id": "api.operator.post.frames",
+          "endpoint": "POST /operator/frames",
+          "notes": "Covered by read-only GET fallback for an observe-only endpoint."
+        }
+      ]
+    }
+  }
+}

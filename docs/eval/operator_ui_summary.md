@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # Operator UI End-to-End Smoke Test — Summary
 
 **Date**: 2026-04-28  

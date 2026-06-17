@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 profile: board_55x40_warehouse_story_v1_fusion
 
 ws_host: 0.0.0.0

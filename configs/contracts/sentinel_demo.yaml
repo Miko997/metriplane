@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: "1.0"
+contract_id: sentinel_demo_warehouse
+name: Sentinel demo warehouse rules
+units: meters
+
+subjects:
+  human_proxy:
+    object_types: [human_proxy]
+  movable_assets:
+    object_types: [cart, pallet]
+
+rules:
+  - id: no_asset_in_exit_lane
+    type: forbidden_zone
+    subject: movable_assets
+    zones: [exit_lane]
+    severity: critical
+    cooldown_s: 5
+
+  - id: human_proxy_distance
+    type: minimum_distance
+    subject_a: human_proxy
+    subject_b: movable_assets
+    distance_m: 0.60
+    min_duration_s: 0.30
+    severity: critical
+    cooldown_s: 3
+
+  - id: exit_lane_blocked
+    type: zone_occupancy_duration
+    subject: movable_assets
+    zones: [exit_lane]
+    max_duration_s: 5.0
+    severity: warning
+    cooldown_s: 10
+
+  - id: wrong_way_packing_lane
+    type: forbidden_direction
+    subject: movable_assets
+    zones: [packing_lane]
+    allowed_direction: left_to_right
+    min_speed_mps: 0.05
+    severity: warning
+    cooldown_s: 5

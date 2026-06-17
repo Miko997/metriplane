@@ -1,0 +1,1 @@
+usage: metriplane_bridge [--ros-args -p ws_url:=ws://127.0.0.1:8765 -p frame_topic:=/metriplane/frame_state -p alerts_topic:=/metriplane/alerts -p incidents_topic:=/metriplane/incidents]

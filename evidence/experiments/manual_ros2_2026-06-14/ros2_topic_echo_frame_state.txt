@@ -1,0 +1,2 @@
+data: '{"frame_id":2,"objects":[{"id":"cart_01","pos_world":[1.1,2.0,0.0],"zone":"main"}],"timestamp":0.1}'
+---

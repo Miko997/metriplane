@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 """
 Metriplane Operator API
 
@@ -31,6 +34,14 @@ SAFE_CAMERA_RE = re.compile(r"^(/dev/video\d+|/dev/v4l/by-id/[a-zA-Z0-9_.:-]+|\d
 
 def _valid_name(name: str) -> bool:
     return bool(SAFE_NAME_RE.match(name))
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def _safe_camera(cam: str) -> bool:
@@ -142,7 +153,7 @@ def _validate_config_relative(repo_root: Path, config: str) -> Optional[Path]:
     config = config.lstrip("./")
     path = (repo_root / config).resolve()
     configs_root = (repo_root / "configs").resolve()
-    if not str(path).startswith(str(configs_root)):
+    if not _is_relative_to(path, configs_root):
         return None
     return path
 
@@ -247,6 +258,19 @@ class OperatorAPI:
                     return self._get_latest_run()
                 if sub == "/runner-status":
                     return self._get_runner_status()
+                # ── Sentinel command-center (read-only views) ──────────────
+                if sub == "/live-summary":
+                    return self._cc_live_summary({})
+                if sub == "/objects":
+                    return self._cc_objects({})
+                if sub == "/incidents":
+                    return self._cc_incidents({})
+                if sub == "/traces":
+                    return self._cc_traces({})
+                if sub == "/camera-trust":
+                    return self._cc_camera_trust({})
+                if sub == "/frames":
+                    return self._cc_frames({})
             elif method == "POST":
                 if sub == "/create-profile":
                     return self._create_profile(body)
@@ -266,6 +290,20 @@ class OperatorAPI:
                     return self._generate_report(body)
                 if sub == "/checksum":
                     return self._checksum(body)
+                if sub == "/live-summary":
+                    return self._cc_live_summary(body)
+                if sub == "/objects":
+                    return self._cc_objects(body)
+                if sub == "/incidents":
+                    return self._cc_incidents(body)
+                if sub == "/traces":
+                    return self._cc_traces(body)
+                if sub == "/camera-trust":
+                    return self._cc_camera_trust(body)
+                if sub == "/frames":
+                    return self._cc_frames(body)
+                if sub == "/ask":
+                    return self._cc_ask(body)
         except Exception as exc:
             return 500, {"error": f"Internal error: {exc}"}
 
@@ -472,6 +510,18 @@ class OperatorAPI:
         if not name.startswith("local_"):
             name = f"local_{name}"
 
+        if not isinstance(cameras, list) or not cameras:
+            return 400, {"error": "cameras must be a non-empty list containing cam0 and optionally cam1"}
+        for cam in cameras:
+            if cam not in ("cam0", "cam1"):
+                return 400, {
+                    "error": (
+                        "Invalid camera role in profile. Use camera role names "
+                        "'cam0' and optionally 'cam1'; device paths are selected "
+                        "in the camera scan step and written into the run config."
+                    )
+                }
+
         profile_dir = _profile_dir(self.repo_root, name)
 
         if profile_dir.exists() and not overwrite:
@@ -507,8 +557,7 @@ class OperatorAPI:
         # ── Create directories ────────────────────────────────────────────────
         profile_dir.mkdir(parents=True, exist_ok=True)
         for cam in cameras:
-            if cam in ("cam0", "cam1"):
-                (profile_dir / cam).mkdir(exist_ok=True)
+            (profile_dir / cam).mkdir(exist_ok=True)
 
         # ── Write anchors.yaml ────────────────────────────────────────────────
         anchors_path = profile_dir / "anchors.yaml"
@@ -524,8 +573,7 @@ class OperatorAPI:
 
         created_dirs = [str(profile_dir.relative_to(self.repo_root))]
         for cam in cameras:
-            if cam in ("cam0", "cam1"):
-                created_dirs.append(str((profile_dir / cam).relative_to(self.repo_root)))
+            created_dirs.append(str((profile_dir / cam).relative_to(self.repo_root)))
 
         return 200, {
             "profile": name,
@@ -977,7 +1025,7 @@ class OperatorAPI:
         # Validate session path: must be in ~/metriplane-runs/ or absolute path resolving there
         session = Path(session_path).expanduser().resolve()
         runs_root = (Path.home() / "metriplane-runs").resolve()
-        if not str(session).startswith(str(runs_root)):
+        if not _is_relative_to(session, runs_root):
             return 400, {"error": "session must be a path under ~/metriplane-runs/"}
         if not session.exists():
             return 404, {"error": f"Session file not found: {session}"}
@@ -1051,10 +1099,7 @@ class OperatorAPI:
         evidence_root = (self.repo_root / "evidence").resolve()
 
         # Only checksum files in ~/metriplane-runs/ or evidence/
-        if not (
-            str(file_path).startswith(str(runs_root))
-            or str(file_path).startswith(str(evidence_root))
-        ):
+        if not (_is_relative_to(file_path, runs_root) or _is_relative_to(file_path, evidence_root)):
             return 400, {"error": "Can only checksum files under ~/metriplane-runs/ or evidence/"}
 
         if not file_path.exists():
@@ -1078,3 +1123,119 @@ class OperatorAPI:
             "size_mb": size_mb,
             "size_bytes": stat.st_size,
         }
+
+    # ── Sentinel command-center (read-only views) ──────────────────────────────
+    #
+    # These expose the Sentinel artifacts (objects, incidents, traces, camera trust)
+    # and the grounded assistant to the operator dashboard. All read-only. A run dir
+    # may be passed explicitly (validated to live under ~/metriplane-runs or the repo
+    # evidence/ tree); otherwise the latest run under ~/metriplane-runs is used.
+
+    def _cc_allowed_roots(self) -> list[Path]:
+        return [
+            (Path.home() / "metriplane-runs").resolve(),
+            (self.repo_root / "evidence").resolve(),
+            (self.repo_root / "runs").resolve(),
+        ]
+
+    def _cc_resolve_run_dir(self, body: Dict) -> Optional[Path]:
+        requested = (body or {}).get("run_dir")
+        if requested:
+            p = Path(requested).expanduser().resolve()
+            if any(p == r or r in p.parents for r in self._cc_allowed_roots()) and p.is_dir():
+                return p
+            return None
+        # Fall back to the latest run under ~/metriplane-runs. Prefer runs with
+        # Command Center/Sentinel artifacts so a generic runtime session does not
+        # hide the incident demo or an operator review run.
+        runs_root = Path.home() / "metriplane-runs"
+        if not runs_root.exists():
+            return None
+        command_center_markers = (
+            "incident.json",
+            "sentinel_summary.json",
+            "camera_trust.json",
+            "alerts.jsonl",
+            "objects.yaml",
+        )
+        generic_runtime_markers = ("session_excerpt.jsonl", "session.jsonl")
+
+        def with_markers(markers: tuple[str, ...]) -> list[Path]:
+            return [
+                d for d in runs_root.iterdir()
+                if d.is_dir() and any((d / marker).exists() for marker in markers)
+            ]
+
+        dirs = with_markers(command_center_markers) or with_markers(generic_runtime_markers)
+        if not dirs:
+            return None
+        dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        return dirs[0].resolve()
+
+    def _cc_live_summary(self, body: Dict) -> Tuple[int, Dict]:
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"run_dir": None, "objects_count": 0, "incidents_count": 0,
+                         "alerts_count": 0, "open_incidents_count": 0,
+                         "health": {"overall": "NO_DATA"}}
+        from metriplane.runner.command_center_api import get_live_summary
+        return 200, get_live_summary(run)
+
+    def _cc_objects(self, body: Dict) -> Tuple[int, Dict]:
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"objects": []}
+        from metriplane.runner.command_center_api import get_objects
+        return 200, {"objects": get_objects(run), "run_dir": str(run)}
+
+    def _cc_incidents(self, body: Dict) -> Tuple[int, Dict]:
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"incidents": []}
+        from metriplane.runner.command_center_api import get_incidents
+        return 200, {"incidents": get_incidents(run), "run_dir": str(run)}
+
+    def _cc_traces(self, body: Dict) -> Tuple[int, Dict]:
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"traces": []}
+        from metriplane.runner.command_center_api import get_traces
+        object_id = (body or {}).get("object_id")
+        return 200, {"traces": get_traces(run, object_id), "run_dir": str(run)}
+
+    def _cc_camera_trust(self, body: Dict) -> Tuple[int, Dict]:
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"camera_trust": None}
+        from metriplane.camera_trust.export import read_camera_trust_report
+        ct = run / "camera_trust.json"
+        if not ct.exists():
+            return 200, {"camera_trust": None, "run_dir": str(run),
+                         "note": "no camera_trust.json in this run"}
+        try:
+            return 200, {"camera_trust": read_camera_trust_report(ct).model_dump(),
+                         "run_dir": str(run)}
+        except Exception as exc:
+            return 200, {"camera_trust": None, "error": str(exc)}
+
+    def _cc_frames(self, body: Dict) -> Tuple[int, Dict]:
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"frames": [], "incidents": []}
+        from metriplane.runner.command_center_api import get_frames
+        data = get_frames(run)
+        data["run_dir"] = str(run)
+        return 200, data
+
+    def _cc_ask(self, body: Dict) -> Tuple[int, Dict]:
+        question = (body or {}).get("question", "").strip()
+        if not question:
+            return 400, {"error": "missing 'question'"}
+        run = self._cc_resolve_run_dir(body)
+        if run is None:
+            return 200, {"answer": "No run data available to answer from.",
+                         "intent": "unknown", "citations": [], "limitations":
+                         ["no run dir resolved"]}
+        from metriplane.assistant.answer import answer_question
+        ans = answer_question(question, run)
+        return 200, ans.model_dump()

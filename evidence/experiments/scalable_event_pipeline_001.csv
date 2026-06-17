@@ -1,0 +1,3 @@
+backend,n_events,duration_s,events_per_s,p50_publish_ms,p95_publish_ms
+mock,100000,0.0134,7449642.5,7e-05,8.1e-05
+jsonl,100000,0.2267,441091.9,0.002064,0.002344

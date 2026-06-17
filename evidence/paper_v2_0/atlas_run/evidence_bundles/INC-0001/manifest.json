@@ -1,0 +1,26 @@
+{
+  "bundle_id": "bundle_INC-0001",
+  "incident_id": "INC-0001",
+  "limitations": [
+    "planar_xy_state",
+    "tracked_or_tagged_assets_required",
+    "not_certified_safety_or_quality_decision_system"
+  ],
+  "required_files": [
+    "manifest.json",
+    "incident.json",
+    "event_timeline.jsonl",
+    "state_segment.jsonl",
+    "reality_graph_excerpt.json",
+    "process_trace_excerpt.json",
+    "configs/assets.yaml",
+    "configs/workspace.yaml",
+    "configs/process.yaml",
+    "reports/cell_truth_report.md",
+    "checksums.sha256",
+    "replay_command.sh",
+    "limitations.md"
+  ],
+  "run_id": "atlas_assembly_missing_tool_001",
+  "schema_version": "metriplane.atlas.evidence_bundle.v1"
+}

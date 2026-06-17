@@ -1,0 +1,11 @@
+{
+  "active_missing": {},
+  "completed_steps": [
+    "kit_arrives",
+    "workpiece_at_station_a",
+    "torque_driver_available"
+  ],
+  "run_id": "atlas_assembly_missing_tool_001",
+  "schema_version": "metriplane.atlas.process_trace.v1",
+  "work_order_id": "WO-ASM-001"
+}

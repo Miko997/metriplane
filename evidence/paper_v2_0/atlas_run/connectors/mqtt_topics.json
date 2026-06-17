@@ -1,0 +1,8 @@
+{
+  "schema_version": "metriplane.atlas.mqtt_topic_plan.v1",
+  "status": "topic_plan_only",
+  "topics": [
+    "metriplane/atlas/cell_assembly_a/atlas_assembly_missing_tool_001/events",
+    "metriplane/atlas/cell_assembly_a/atlas_assembly_missing_tool_001/incidents"
+  ]
+}

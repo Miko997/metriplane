@@ -1,0 +1,6 @@
+ts,object_id,marker_id,x_m,y_m,speed_mps,zone,run_id
+0.0,cart_01,7,0.0,0.0,,main,INC-0001
+1.0,cart_01,7,1.0,0.0,,exit_lane,INC-0001
+2.0,cart_01,7,1.1,0.0,,exit_lane,INC-0001
+3.0,cart_01,7,1.2,0.0,,exit_lane,INC-0001
+4.0,cart_01,7,2.0,0.0,,main,INC-0001

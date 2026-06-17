@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.process_model.v1
+process_id: robot_cell_observe_only
+work_order_type: robot_tending
+steps:
+  - step_id: tray_loaded
+    label: Tray loaded before robot cycle
+    expected_asset_types: [tray]
+    required_station: robot_station
+  - step_id: fixture_available
+    label: Fixture present before pick
+    required_assets: [end_effector_fixture_1]
+    required_station: robot_station
+    max_wait_s: 15.0

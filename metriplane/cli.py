@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 from __future__ import annotations
 
 import argparse
@@ -139,7 +142,18 @@ def _check_git_commit() -> tuple[str, str]:
         commit = result.stdout.strip()
         return ("PASS", f"Git commit {commit}")
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return ("FAIL", "Git commit not available")
+        return ("WARN", "Git commit not available outside a source checkout")
+
+
+def _cwd_looks_like_source_checkout() -> bool:
+    pyproject = Path("pyproject.toml")
+    if not pyproject.exists():
+        return False
+    try:
+        text = pyproject.read_text(encoding="utf-8").lower()
+    except OSError:
+        return True
+    return "name = \"metriplane\"" in text or "name = 'metriplane'" in text
 
 
 def _check_vt_sh_exists() -> tuple[str, str]:
@@ -147,6 +161,8 @@ def _check_vt_sh_exists() -> tuple[str, str]:
     path = Path("tools/mp.sh")
     if path.exists():
         return ("PASS", "tools/mp.sh exists")
+    if not _cwd_looks_like_source_checkout():
+        return ("WARN", "tools/mp.sh not found outside a source checkout")
     return ("FAIL", "tools/mp.sh not found")
 
 
@@ -155,6 +171,8 @@ def _check_config_exists() -> tuple[str, str]:
     path = Path("configs/fusion_health_300fps.yaml")
     if path.exists():
         return ("PASS", "configs/fusion_health_300fps.yaml exists")
+    if not _cwd_looks_like_source_checkout():
+        return ("WARN", "configs/fusion_health_300fps.yaml not found outside a source checkout")
     return ("FAIL", "configs/fusion_health_300fps.yaml not found")
 
 
@@ -254,10 +272,10 @@ def _main_doctor(argv: list[str]) -> int:
 
 _LAUNCHER_FLAGS_HELP = """\
 Launcher flags (shared by start and restart):
-  --live              Also start live fusion runtime
-  --no-live           Dashboard only, no fusion (default)
+  --live              Start runtime stream immediately
+  --no-live           Dashboard/runner only, no runtime stream (default)
   --backend cpu|gpu   Compute backend for fusion (default: cpu)
-  --config PATH       Fusion config YAML (default: configs/fusion_health_300fps.yaml)
+  --config PATH       Runtime config YAML (default: configs/local_demo_replay.yaml)
   --duration-s INT    Stop fusion after N seconds (default: 7200)
   --run-id TEXT       Override run ID (default: live_YYYYMMDD_HHMMSS)
   --dashboard-port N  Dashboard web server port (default: 8088)
@@ -277,13 +295,13 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
     )
     if name in ("start", "restart"):
         p.add_argument("--live", action="store_true", default=False,
-                       help="Also start live fusion runtime (default: off)")
+                       help="Start runtime stream immediately (default: off)")
         p.add_argument("--no-live", dest="live", action="store_false",
-                       help="Dashboard only — no fusion (default)")
+                       help="Dashboard/runner only — no runtime stream (default)")
         p.add_argument("--backend", choices=["cpu", "gpu"], default="cpu",
                        help="Fusion compute backend (default: cpu)")
-        p.add_argument("--config", default="configs/fusion_health_300fps.yaml",
-                       help="Fusion config YAML")
+        p.add_argument("--config", default="configs/local_demo_replay.yaml",
+                       help="Runtime config YAML")
         p.add_argument("--duration-s", type=float, default=7200,
                        dest="duration_s", help="Stop fusion after N seconds (default: 7200)")
         p.add_argument("--run-id", default=None, dest="run_id",
@@ -299,7 +317,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
         p.add_argument("--no-open", action="store_false", dest="open_browser",
                        help="Do not open browser")
         p.add_argument("--operator", action="store_true", default=False,
-                       help="Open operator.html instead of runtime dashboard")
+                       help="Open operator.html instead of the Metriplane home console")
     return p
 
 
@@ -378,6 +396,45 @@ def main(argv: list[str] | None = None) -> int:
     # Fast-path commands that need no logging setup
     if argv and argv[0] == "doctor":
         return _main_doctor(argv[1:])
+    if argv and argv[0] == "objects":
+        from metriplane.sentinel.cli_registry import main_objects
+        return main_objects(argv[1:])
+    if argv and argv[0] == "rules":
+        from metriplane.sentinel.cli_rules import main_rules
+        return main_rules(argv[1:])
+    if argv and argv[0] == "incidents":
+        from metriplane.sentinel.cli_incidents import main_incidents
+        return main_incidents(argv[1:])
+    if argv and argv[0] == "query":
+        from metriplane.sentinel.cli_query import main_query
+        return main_query(argv[1:])
+    if argv and argv[0] == "contracts":
+        from metriplane.contracts.cli import main as contracts_main
+        return contracts_main(argv[1:])
+    if argv and argv[0] == "sentinel":
+        from metriplane.sentinel.cli_runtime import main_sentinel
+        return main_sentinel(argv[1:])
+    if argv and argv[0] == "test":
+        from metriplane.testing.cli import main_test
+        return main_test(argv[1:])
+    if argv and argv[0] == "counterfactual":
+        from metriplane.counterfactuals.cli import main_counterfactual
+        return main_counterfactual(argv[1:])
+    if argv and argv[0] == "command-center":
+        from metriplane.runner.cli_command_center import main_command_center
+        return main_command_center(argv[1:])
+    if argv and argv[0] == "camera-trust":
+        from metriplane.camera_trust.cli import main_camera_trust
+        return main_camera_trust(argv[1:])
+    if argv and argv[0] == "ask":
+        from metriplane.assistant.cli import main_ask
+        return main_ask(argv[1:])
+    if argv and argv[0] == "traces":
+        from metriplane.trace.cli_traces import main_traces
+        return main_traces(argv[1:])
+    if argv and argv[0] == "atlas":
+        from metriplane.atlas.cli import main as atlas_main
+        return atlas_main(argv[1:])
     if argv and argv[0] == "start":
         return _main_start(argv[1:])
     if argv and argv[0] == "stop":

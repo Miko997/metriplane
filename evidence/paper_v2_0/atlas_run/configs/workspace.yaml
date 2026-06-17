@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.workspace.v1
+cell_id: cell_assembly_a
+units: meters
+zones:
+  - zone_id: kitting_lane
+    zone_type: inbound_material
+    label: Kitting lane
+    polygon: [[0.0, 0.0], [1.8, 0.0], [1.8, 1.2], [0.0, 1.2]]
+  - zone_id: station_a_work
+    zone_type: work_station
+    label: Station A work envelope
+    polygon: [[2.0, 0.0], [4.4, 0.0], [4.4, 1.8], [2.0, 1.8]]
+  - zone_id: tool_shadow
+    zone_type: tool_storage
+    label: Tool shadow board
+    polygon: [[2.0, 2.0], [3.0, 2.0], [3.0, 2.6], [2.0, 2.6]]
+  - zone_id: outbound_buffer
+    zone_type: outbound_material
+    label: Outbound buffer
+    polygon: [[4.6, 0.0], [5.8, 0.0], [5.8, 1.2], [4.6, 1.2]]
+stations:
+  - station_id: station_a
+    zone_id: station_a_work
+    label: Assembly station A
+    properties:
+      takt_s: 60

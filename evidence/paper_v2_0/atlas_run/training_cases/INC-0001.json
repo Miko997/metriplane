@@ -1,0 +1,31 @@
+{
+  "evidence_links": [
+    "event:evt_0003",
+    "event:evt_0004"
+  ],
+  "limitations": [
+    "planar_xy_state",
+    "tracked_or_tagged_assets_required",
+    "not_certified_safety_or_quality_decision_system"
+  ],
+  "quiz_questions": [
+    {
+      "answer": "The linked event timeline, state segment, and incident bundle.",
+      "question": "Which evidence should be checked before changing the process?"
+    },
+    {
+      "answer": "No. It supports process improvement from tracked physical evidence.",
+      "question": "Does this report prove individual blame?"
+    }
+  ],
+  "schema_version": "metriplane.atlas.training_case.v1",
+  "title": "Training case: torque_driver_1 missing during Torque driver available before fastening",
+  "training_case_id": "training_INC-0001",
+  "what_happened": "Torque driver available before fastening waited because torque_driver_1 was absent.",
+  "what_to_do_next": [
+    "Review the evidence bundle.",
+    "Confirm the expected tool/material staging rule.",
+    "Use the regression test before changing the process or layout."
+  ],
+  "why_it_matters": "The event shows where a process expectation and physical reality diverged."
+}

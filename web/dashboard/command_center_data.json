@@ -1,0 +1,302 @@
+{
+  "summary": {
+    "run_id": "metriplane_demo",
+    "objects_count": 3,
+    "alerts_count": 5,
+    "open_incidents_count": 0,
+    "incidents_count": 5,
+    "latest_run_dir": "/home/miko/metriplane-runs/metriplane_demo",
+    "health": {
+      "overall": "OK"
+    }
+  },
+  "objects": [
+    {
+      "object_id": "cart_01",
+      "marker_id": "7",
+      "type": "cart",
+      "zone": "main",
+      "x_m": 1.0,
+      "y_m": 1.0,
+      "speed_mps": null,
+      "last_ts": 6.0
+    },
+    {
+      "object_id": "pallet_01",
+      "marker_id": "12",
+      "type": "pallet",
+      "zone": "exit_lane",
+      "x_m": 4.0,
+      "y_m": 0.0,
+      "speed_mps": null,
+      "last_ts": 6.0
+    },
+    {
+      "object_id": "human_proxy_01",
+      "marker_id": "3",
+      "type": "human_proxy",
+      "zone": "main",
+      "x_m": 1.3,
+      "y_m": 1.0,
+      "speed_mps": null,
+      "last_ts": 6.0
+    }
+  ],
+  "incidents": [
+    {
+      "incident_id": "inc_0001",
+      "run_id": "metriplane_demo",
+      "rule_id": "no_asset_in_exit_lane",
+      "severity": "critical",
+      "status": "closed",
+      "opened_ts": 0.0,
+      "closed_ts": 0.0,
+      "duration_s": 0.0,
+      "object_ids": [
+        "pallet_01"
+      ],
+      "zones": [
+        "exit_lane"
+      ],
+      "summary": "pallet_01 triggered no_asset_in_exit_lane in exit_lane for 0.0s",
+      "alert_ids": [
+        "cevt_000001"
+      ],
+      "evidence": {}
+    },
+    {
+      "incident_id": "inc_0002",
+      "run_id": "metriplane_demo",
+      "rule_id": "human_proxy_distance",
+      "severity": "critical",
+      "status": "closed",
+      "opened_ts": 3.0,
+      "closed_ts": 3.0,
+      "duration_s": 0.0,
+      "object_ids": [
+        "cart_01",
+        "human_proxy_01"
+      ],
+      "zones": [
+        "main"
+      ],
+      "summary": "cart_01, human_proxy_01 triggered human_proxy_distance in main for 0.0s",
+      "alert_ids": [
+        "cevt_000002"
+      ],
+      "evidence": {}
+    },
+    {
+      "incident_id": "inc_0003",
+      "run_id": "metriplane_demo",
+      "rule_id": "no_asset_in_exit_lane",
+      "severity": "critical",
+      "status": "closed",
+      "opened_ts": 5.0,
+      "closed_ts": 5.0,
+      "duration_s": 0.0,
+      "object_ids": [
+        "pallet_01"
+      ],
+      "zones": [
+        "exit_lane"
+      ],
+      "summary": "pallet_01 triggered no_asset_in_exit_lane in exit_lane for 0.0s",
+      "alert_ids": [
+        "cevt_000003"
+      ],
+      "evidence": {}
+    },
+    {
+      "incident_id": "inc_0004",
+      "run_id": "metriplane_demo",
+      "rule_id": "exit_lane_blocked",
+      "severity": "warning",
+      "status": "closed",
+      "opened_ts": 5.0,
+      "closed_ts": 5.0,
+      "duration_s": 0.0,
+      "object_ids": [
+        "pallet_01"
+      ],
+      "zones": [
+        "exit_lane"
+      ],
+      "summary": "pallet_01 triggered exit_lane_blocked in exit_lane for 0.0s",
+      "alert_ids": [
+        "cevt_000004"
+      ],
+      "evidence": {}
+    },
+    {
+      "incident_id": "inc_0005",
+      "run_id": "metriplane_demo",
+      "rule_id": "human_proxy_distance",
+      "severity": "critical",
+      "status": "closed",
+      "opened_ts": 6.0,
+      "closed_ts": 6.0,
+      "duration_s": 0.0,
+      "object_ids": [
+        "cart_01",
+        "human_proxy_01"
+      ],
+      "zones": [
+        "main"
+      ],
+      "summary": "cart_01, human_proxy_01 triggered human_proxy_distance in main for 0.0s",
+      "alert_ids": [
+        "cevt_000005"
+      ],
+      "evidence": {}
+    }
+  ],
+  "events": [
+    {
+      "alert_id": "cevt_000001",
+      "rule_id": "no_asset_in_exit_lane",
+      "severity": "critical",
+      "ts": 0.0,
+      "object_ids": [
+        "pallet_01"
+      ],
+      "zone": "exit_lane",
+      "detail": {
+        "contract_id": "metriplane_demo_warehouse",
+        "rule_type": "forbidden_zone",
+        "contract_severity": "critical",
+        "observed_value": "exit_lane",
+        "threshold_value": "exit_lane",
+        "explanation": "pallet_01 entered forbidden zone exit_lane"
+      },
+      "run_id": "metriplane_demo"
+    },
+    {
+      "alert_id": "cevt_000002",
+      "rule_id": "human_proxy_distance",
+      "severity": "critical",
+      "ts": 3.0,
+      "object_ids": [
+        "cart_01",
+        "human_proxy_01"
+      ],
+      "zone": "main",
+      "detail": {
+        "contract_id": "metriplane_demo_warehouse",
+        "rule_type": "minimum_distance",
+        "contract_severity": "critical",
+        "observed_value": 0.3,
+        "threshold_value": 0.6,
+        "explanation": "cart_01 and human_proxy_01 within 0.3m (< 0.6m)"
+      },
+      "run_id": "metriplane_demo"
+    },
+    {
+      "alert_id": "cevt_000003",
+      "rule_id": "no_asset_in_exit_lane",
+      "severity": "critical",
+      "ts": 5.0,
+      "object_ids": [
+        "pallet_01"
+      ],
+      "zone": "exit_lane",
+      "detail": {
+        "contract_id": "metriplane_demo_warehouse",
+        "rule_type": "forbidden_zone",
+        "contract_severity": "critical",
+        "observed_value": "exit_lane",
+        "threshold_value": "exit_lane",
+        "explanation": "pallet_01 entered forbidden zone exit_lane"
+      },
+      "run_id": "metriplane_demo"
+    },
+    {
+      "alert_id": "cevt_000004",
+      "rule_id": "exit_lane_blocked",
+      "severity": "warning",
+      "ts": 5.0,
+      "object_ids": [
+        "pallet_01"
+      ],
+      "zone": "exit_lane",
+      "detail": {
+        "contract_id": "metriplane_demo_warehouse",
+        "rule_type": "zone_occupancy_duration",
+        "contract_severity": "warning",
+        "observed_value": 5.0,
+        "threshold_value": 5.0,
+        "explanation": "pallet_01 occupied exit_lane for 5.0s"
+      },
+      "run_id": "metriplane_demo"
+    },
+    {
+      "alert_id": "cevt_000005",
+      "rule_id": "human_proxy_distance",
+      "severity": "critical",
+      "ts": 6.0,
+      "object_ids": [
+        "cart_01",
+        "human_proxy_01"
+      ],
+      "zone": "main",
+      "detail": {
+        "contract_id": "metriplane_demo_warehouse",
+        "rule_type": "minimum_distance",
+        "contract_severity": "critical",
+        "observed_value": 0.3,
+        "threshold_value": 0.6,
+        "explanation": "cart_01 and human_proxy_01 within 0.3m (< 0.6m)"
+      },
+      "run_id": "metriplane_demo"
+    }
+  ],
+  "traces": [
+    {
+      "object_id": "cart_01",
+      "marker_id": "7",
+      "duration_s": 6.0,
+      "total_distance_m": 1.4142,
+      "max_speed_mps": 0.0,
+      "zones_visited": [
+        "main"
+      ],
+      "dwell_by_zone": {
+        "main": 6.0
+      },
+      "point_count": 7,
+      "gap_count": 0
+    },
+    {
+      "object_id": "human_proxy_01",
+      "marker_id": "3",
+      "duration_s": 6.0,
+      "total_distance_m": 2.6349,
+      "max_speed_mps": 0.0,
+      "zones_visited": [
+        "office",
+        "main"
+      ],
+      "dwell_by_zone": {
+        "office": 2.0,
+        "main": 4.0
+      },
+      "point_count": 7,
+      "gap_count": 0
+    },
+    {
+      "object_id": "pallet_01",
+      "marker_id": "12",
+      "duration_s": 6.0,
+      "total_distance_m": 0.0,
+      "max_speed_mps": 0.0,
+      "zones_visited": [
+        "exit_lane"
+      ],
+      "dwell_by_zone": {
+        "exit_lane": 6.0
+      },
+      "point_count": 7,
+      "gap_count": 0
+    }
+  ]
+}

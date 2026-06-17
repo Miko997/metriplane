@@ -1,0 +1,56 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    upAxis = "Z"
+    timeCodesPerSecond = 30.0
+    startTimeCode = 0
+    endTimeCode = 4
+    customLayerData = {
+        string metriplane_run_id = "INC-0001"
+        string metriplane_source = "evidence/incidents/INC-0001"
+        string metriplane_coordinate_mapping = "USD_X=X, USD_Y=Y, USD_Z=0 (2D floor)"
+    }
+)
+
+def Xform "World"
+{
+    def Cube "Floor"
+    {
+        double size = 1
+        float3 xformOp:scale = (20, 20, 0.01)
+        uniform token[] xformOpOrder = ["xformOp:scale"]
+        color3f[] primvars:displayColor = [(0.15, 0.15, 0.18)]
+    }
+
+    def Xform "Objects"
+    {
+        def Sphere "cart_01"
+        {
+            double radius = 0.2
+            custom string metriplane:object_id = "cart_01"
+            custom string metriplane:type = "cart"
+            color3f[] primvars:displayColor = [(0.2, 0.5, 0.9)]
+            double3 xformOp:translate.timeSamples = {
+                0: (0.0, 0.0, 0),
+                1: (1.0, 0.0, 0),
+                2: (1.1, 0.0, 0),
+                3: (1.2, 0.0, 0),
+                4: (2.0, 0.0, 0),
+            }
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "Incidents"
+    {
+        def Cube "inc_0001"
+        {
+            double size = 0.4
+            color3f[] primvars:displayColor = [(1, 0, 0)]
+            custom string metriplane:incident_id = "inc_0001"
+            custom string metriplane:summary = "cart_01 triggered no_cart_in_exit_lane in exit_lane for 2.0s"
+            float3 xformOp:translate = (0.0, 0.0, 0.5)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # M9.2 — Bounded queues + backpressure (Systems Demo 2)
 
 This document explains **what M9.2 does**, **what the benchmark result proves**, and **how to view backpressure metrics live**.
