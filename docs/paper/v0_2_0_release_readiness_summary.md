@@ -49,7 +49,7 @@ RUNS=evidence/paper_v2_0/runs ./tools/mp.sh deterministic-replay datasets/demo/s
 - Event log, graph, and trace: `physical_event_log.jsonl`, `reality_graph.json`, `process_trace.json`
 - Distribution build logs: `evidence/paper_v2_0/logs/python_build.txt`, `logs/twine_check.txt`
 - Distribution checksums: `evidence/paper_v2_0/artifacts/dist_checksums.sha256`
-- Docker dummy-mode local smoke logs: `evidence/paper_v2_0/logs/16_docker_demo_up.txt`, `logs/17_docker_health.json`, `logs/18_docker_clean.txt`
+- Docker local replay/demo smoke logs: `evidence/paper_v2_0/logs/16_docker_demo_up.txt`, `logs/17_docker_health.json`, `logs/18_docker_clean.txt`
 - Paper docs: `docs/paper/`
 - Reviewer kit: `docs/review_kit/`
 
@@ -59,6 +59,6 @@ RUNS=evidence/paper_v2_0/runs ./tools/mp.sh deterministic-replay datasets/demo/s
 - Required procedural stop: create the GitHub tag only after reviewing and committing this diff.
 - Required procedural stop: create the Zenodo archive only from the tagged release, then update final DOI references.
 - Required SoftwareX stop: ensure manuscript claims stay within `docs/paper/claim_evidence_table.md`.
-- Integration boundary: Docker dummy-mode local smoke was captured in the v0.2.0 paper package: build/start, health endpoint JSON, and cleanup. This is bounded smoke evidence only and is not promoted as benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. Isaac Sim remains NOT RUN.
+- Integration boundary: Docker local replay/demo smoke was captured in the v0.2.0 paper package: build/start, health endpoint JSON, and cleanup. This is bounded smoke evidence only and is not promoted as benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. Isaac Sim remains NOT RUN.
 - Omniverse boundary: keep Omniverse bounded to USDA/export evidence unless a raw Omniverse open log or screenshot is added.
 - Packaging status: `python -m build` produced the v0.2.0 sdist/wheel and `twine check dist/*` passes without warnings after adding release metadata.

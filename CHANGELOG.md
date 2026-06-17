@@ -28,12 +28,14 @@ No unreleased changes.
 - Added Atlas documentation for quickstart, domain packs, Open Atlas Protocol v1, privacy/claim boundaries, and the 0.2.0 phase matrix.
 - Added phase evidence files for Atlas phases 24-50 with explicit local status and limitations.
 - Added ROS 2, Isaac, and Omniverse adapter/example surfaces for downstream integration.
+- Archived the v0.2.0 software release on Zenodo: `10.5281/zenodo.20736619`.
 
 ### Changed
 
 - Promoted MetriPlane from a camera-to-coordinate demo into a physical-observability and evidence platform.
 - Expanded automated coverage to 580 passing tests for the 0.2.0 release.
 - Preserved the historical v0.1.3 benchmark evidence baseline while adding 0.2.0 operational evidence.
+- Documented v0.1.4 as the historical DOI-archived baseline: `10.5281/zenodo.20631037`.
 
 ### Safety and scope
 

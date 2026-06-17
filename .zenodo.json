@@ -11,7 +11,7 @@
       "type": "Researcher"
     }
   ],
-  "description": "MetriPlane v0.2.0 is open-source physical observability software for workcell evidence, replay, and regression testing. The software maps tagged/fiducial assets into calibrated planar XY state, evaluates spatial contracts, emits incidents, builds replayable evidence bundles, generates physical regression tests and Cell Truth Reports, and exposes read-only review workflows. This software record does not claim peer-reviewed publication. It remains scoped to planar/tagged assets and does not claim marker-free tracking, full 3D reconstruction, safety-certified industrial control, robot or machine control, quality-release approval, or measured production runtime behavior for Docker, Isaac Sim, ROS 2, or Omniverse unless separately evidenced.",
+  "description": "MetriPlane v0.2.0 is open-source physical observability software for workcell evidence, replay, and regression testing. The DOI-archived v0.2.0 software record is https://doi.org/10.5281/zenodo.20736619, with record page https://zenodo.org/records/20736619. The software maps tagged/fiducial assets into calibrated planar XY state, evaluates spatial contracts, emits incidents, builds replayable evidence bundles, generates physical regression tests and Cell Truth Reports, and exposes read-only review workflows. This software record does not claim peer-reviewed publication. It remains scoped to planar/tagged assets and does not claim marker-free tracking, full 3D reconstruction, safety-certified industrial control, robot or machine control, quality-release approval, or measured production runtime behavior for Docker, Isaac Sim, ROS 2, or Omniverse unless separately evidenced.",
   "keywords": [
     "research software",
     "digital twins",
@@ -32,6 +32,21 @@
     {
       "identifier": "https://github.com/Miko997/metriplane",
       "relation": "isSupplementTo",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://doi.org/10.5281/zenodo.20736619",
+      "relation": "isIdenticalTo",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://zenodo.org/records/20736619",
+      "relation": "isIdenticalTo",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://github.com/Miko997/metriplane/releases/tag/v0.2.0",
+      "relation": "isIdenticalTo",
       "resource_type": "software"
     },
     {

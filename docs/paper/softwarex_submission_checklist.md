@@ -18,23 +18,24 @@ SPDX-License-Identifier: MIT
 - [x] Captured dashboard build output.
 - [x] Captured Python package build output.
 - [x] Captured `twine check dist/*` output.
-- [x] Checked Docker smoke logs; Docker remains attempted but not validated/promoted as current benchmark or production-runtime evidence.
+- [x] Captured Docker local replay/demo smoke logs; bounded smoke evidence only, not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence.
 - [x] Added paper reproduction, claim-evidence, limitations, and release-readiness docs.
 - [x] Added reviewer kit walkthrough.
+- [x] GitHub Release `v0.2.0` exists.
+- [x] Zenodo v0.2.0 DOI minted: `10.5281/zenodo.20736619`.
+- [x] Final DOI references updated.
 
-## Required Before Tag And Zenodo
+## Completed Release Procedure
 
-- [ ] Review the working-tree diff.
-- [ ] Commit the release evidence/documentation package.
-- [ ] Push the release branch.
-- [ ] Create the GitHub release tag only after review.
-- [ ] Archive the tagged release on Zenodo.
-- [ ] Update any final DOI references after Zenodo mints the v0.2.0 DOI.
+- [x] GitHub release tag and release record exist.
+- [x] Zenodo archive exists for v0.2.0.
+- [x] v0.1.4 remains documented as the historical DOI baseline, not the v0.2.0 artifact.
 
 ## SoftwareX Paper Package
 
 - [ ] Confirm manuscript text cites only claims in `docs/paper/claim_evidence_table.md`.
 - [ ] Include or reference `evidence/paper_v2_0/` as the reproducibility package.
 - [ ] Keep integration language bounded to observe-only adapters unless new runtime evidence is added.
-- [ ] Keep v0.1.4 described as the historical DOI baseline, not the v0.2.0 artifact.
-- [ ] Keep Docker bounded to attempted local smoke evidence unless complete reviewer-approved lifecycle evidence is promoted.
+- [ ] Keep Docker bounded to local replay/demo smoke evidence unless new benchmark or production-runtime evidence is generated.
+- [ ] Complete external reproduction review, if required.
+- [ ] Submit the SoftwareX manuscript.

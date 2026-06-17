@@ -15,9 +15,9 @@ based so reviewers can reproduce it without hardware.
 - The Atlas assembly-cell evidence covers one checked-in deterministic replay and one domain pack.
 - The Cell Truth Report is derived from replayed planar state, not raw video judgement.
 - The deterministic replay evidence uses a small checked-in demo session for this package.
-- Docker dummy-mode local smoke was captured after the package was created: build/start, health endpoint JSON, and cleanup logs. This is bounded smoke evidence only and is not promoted as benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence.
+- Docker local replay/demo smoke was captured after the package was created: build/start, health endpoint JSON, and cleanup. This is bounded smoke evidence only and is not promoted as benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence.
 - Isaac Sim runtime was not run for this package.
 - Existing ROS 2 runtime evidence is a one-maintainer-environment smoke, not a latency or production-runtime claim.
 - Existing Omniverse evidence is partial unless a raw simulator-open log or screenshot is added.
 - The package build and `twine check` pass after adding release metadata; distribution files are generated locally under `dist/` and should not be added to git.
-- The v0.2.0 branch remains a release candidate until the GitHub tag and Zenodo archive are created.
+- v0.2.0 is the current public DOI-archived release and main SoftwareX paper artifact. The SoftwareX paper is not claimed as accepted or peer-reviewed here.

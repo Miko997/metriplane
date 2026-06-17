@@ -21,7 +21,7 @@ or Zenodo archival.
 - Dashboard build: pass
 - Package build: wheel and sdist built
 - Twine check: pass
-- Docker dummy-mode local smoke: build/start, health endpoint JSON, and cleanup logs captured after package creation; bounded smoke evidence only, not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence
+- Docker local replay/demo smoke: build/start, health endpoint JSON, and cleanup logs captured after package creation; bounded smoke evidence only, not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence
 
 ## Important Files
 
@@ -46,7 +46,7 @@ or Zenodo archival.
 
 ## Boundaries
 
-This package includes Docker dummy-mode local smoke evidence only. It does not
+This package includes Docker local replay/demo smoke evidence only. It does not
 add Docker benchmark, production-runtime, live-camera, replay-mode, reliability,
 or safety evidence, nor Isaac Sim runtime, safety certification, robot or
 machine control, quality-release approval, or marker-free tracking evidence.

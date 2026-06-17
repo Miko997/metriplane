@@ -5,9 +5,12 @@ SPDX-License-Identifier: MIT
 
 # MetriPlane Evidence Matrix
 
-**Current software release**: `v0.2.0`
-**Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
-**Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
+**Current software release**: [`v0.2.0`](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
+**Current DOI-archived release**: [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619)
+**Current release name**: MetriPlane v0.2.0 — Physical Observability, Evidence Bundles, and Command Center
+**Main SoftwareX paper artifact**: `v0.2.0`
+**Historical benchmark evidence release**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
+**Historical DOI-archived baseline**: [`v0.1.4`](https://doi.org/10.5281/zenodo.20631037)
 **Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
@@ -34,11 +37,11 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 
 | Claim | Required evidence | Found? | Actual artifact path(s) | Quality assessment |
 |---|---|---|---|---|
-| Docker quickstart proof | Executed proof with health and WebSocket message flow | YES | `evidence/experiments/docker_demo_proof_001.md` | Dummy-mode startup, health, and WebSocket message flow validated. Replay-mode behavior is not used as a benchmark claim. |
+| Docker quickstart proof | Executed proof with health and WebSocket message flow | YES | `evidence/experiments/docker_demo_proof_001.md`, `evidence/paper_v2_0/logs/17_docker_health.json` | Historical local demo startup, health, and WebSocket message flow validated. The v0.2.0 paper package also captures Docker local replay/demo smoke: build/start, health endpoint JSON, and cleanup. Smoke evidence only; not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. |
 | Operator UI proof | Step-by-step validated run | YES | `evidence/experiments/operator_ui_final_smoke_001.md` | 10-step workflow passed; smoke evidence, not tracking-accuracy benchmark evidence. |
 | Manifest and checksums | Manifest rows and aggregate checksum file | YES | `evidence/manifest.csv`, `evidence/CHECKSUMS.sha256` | Checksum verification is expected to pass with `sha256sum -c evidence/CHECKSUMS.sha256`. |
 | Large session provenance | Session hash in manifest when JSONL is outside Git | PARTIAL | `evidence/manifest.csv` | Large JSONL sessions may be archived outside Git; verify archived copies against manifest checksums. |
-| Paper B canonical release tag | Paper B source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | Canonical source/evidence release for Paper B; `v0.1.2` was the prior canonical evidence release; `v0.1.0` was the initial public release. |
+| Historical benchmark evidence release | Benchmark source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | v0.1.3 remains the historical benchmark evidence release; v0.2.0 is the current public release and main SoftwareX paper artifact. Benchmark evidence is supplemental release evidence, not a peer-reviewed publication claim. |
 
 ## MetriPlane 0.2.0 Operational Evidence
 
@@ -82,7 +85,8 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 |---|---|
 | Display name | Use MetriPlane. |
 | Package/repo/CLI references | Use `metriplane` where referring to package, repo, or commands. |
-| Paper B canonical release | Use `v0.1.3` and <https://github.com/Miko997/metriplane/releases/tag/v0.1.3>; mention `v0.1.2` as the prior canonical evidence release and `v0.1.0` as the initial public release. |
+| Current release and DOI | Use `v0.2.0` and DOI `10.5281/zenodo.20736619` for the current public release and main SoftwareX paper artifact. |
+| Historical benchmark and DOI lineage | Use `v0.1.3` as the historical benchmark evidence release, `v0.1.4` / `10.5281/zenodo.20631037` as the historical DOI-archived baseline, `v0.1.2` as the prior canonical evidence release, and `v0.1.0` as the initial public release. |
 | GPU claim | CPU faster than GPU for current N=1-1000 fusion-compute benchmark; no full-pipeline GPU acceleration claim. |
 | Zone claim | Four zones and 112 transitions from current CSVs. |
 | Mapping claim | 0.63 cm mean and 1.07 cm max from `mapping_error_001.csv`. |

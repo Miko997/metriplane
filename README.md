@@ -40,13 +40,17 @@ SPDX-License-Identifier: MIT
 
 ## Citation
 
-MetriPlane v0.2.0 is the current release and the main SoftwareX paper artifact.
+MetriPlane v0.2.0 is the current public release and the main SoftwareX paper artifact.
 It adds Sentinel, Atlas Evidence Review, and observe-only physical-space
 auditing while preserving the historical v0.1.3/v0.1.4 benchmark and Zenodo
 evidence lineage.
 
-The historical DOI-archived baseline is v0.1.4.
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20631037.svg)](https://doi.org/10.5281/zenodo.20631037)
+Current DOI-archived release: v0.2.0 at [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619).
+Zenodo record: [`https://zenodo.org/records/20736619`](https://zenodo.org/records/20736619).
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
+
+The historical DOI-archived baseline is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
 
 Please cite the v0.2.0 paper artifact as:
 
@@ -75,19 +79,19 @@ treated as supplemental release evidence, not as a peer-reviewed publication.
 
 | Feature | What it means |
 |---|---|
-| 📷 **Any USB or RTSP camera** | No LiDAR, no depth sensor — a printed ArUco board and a USB camera are enough |
-| 📐 **Metric world coordinates** | Pixel positions mapped to real-world cm/m via planar homography |
-| 🔀 **Multi-camera fusion** | Kalman-filtered sensor fusion across multiple views |
-| 🗺️ **Zone analytics** | Polygon zones with enter / exit / dwell event streams |
-| 🧭 **Sentinel observe-only auditing** | Spatial contracts, incidents, forecasts, evidence bundles, and regression tests without robot-control integration |
-| 📡 **WebSocket streaming** | Real-time `FrameStateModel` JSON on `ws://host:8765` |
-| 🎞️ **Deterministic replay** | Bit-exact JSONL replay for regression testing and demos |
-| 🖥️ **Operator dashboard** | Browser-based wizard: scan cameras → calibrate → run → export |
-| 🧩 **Command Center** | Read-only operator view for map state, incidents, traces, trust, and grounded answers |
-| 🧾 **Evidence Review** | Replayable physical event ledger, Cell Truth Report, incident archive, regression test, training case, and improvement action for one workcell |
-| 🐳 **Docker ready** | One-command `docker-compose up` demo — no camera needed |
-| 🔬 **Evidence-backed** | Benchmark claims backed by evidence artifacts, manifest rows, and checksums |
-| ⚡ **GPU-optional** | CuPy backend for large workloads; CPU is default for small N (see [GPU Statement](#gpu-statement)) |
+| **Any USB or RTSP camera** | No LiDAR, no depth sensor — a printed ArUco board and a USB camera are enough |
+| **Metric world coordinates** | Pixel positions mapped to real-world cm/m via planar homography |
+| **Multi-camera fusion** | Kalman-filtered sensor fusion across multiple views |
+| **Zone analytics** | Polygon zones with enter / exit / dwell event streams |
+| **Sentinel observe-only auditing** | Spatial contracts, incidents, forecasts, evidence bundles, and regression tests without robot-control integration |
+| **WebSocket streaming** | Real-time `FrameStateModel` JSON on `ws://host:8765` |
+| **Deterministic replay** | Bit-exact JSONL replay for regression testing and demos |
+| **Operator dashboard** | Browser-based wizard: scan cameras → calibrate → run → export |
+| **Command Center** | Read-only operator view for map state, incidents, traces, trust, and grounded answers |
+| **Evidence Review** | Replayable physical event ledger, Cell Truth Report, incident archive, regression test, training case, and improvement action for one workcell |
+| **Docker ready** | One-command local replay/demo smoke path; no camera needed |
+| **Evidence-backed** | Benchmark claims backed by evidence artifacts, manifest rows, and checksums |
+| **GPU-optional** | CuPy backend for large workloads; CPU is default for small N (see [GPU Statement](#gpu-statement)) |
 
 ---
 
@@ -221,16 +225,16 @@ pip install -e .
 ### Option B: Docker (fastest start)
 
 ```bash
-./tools/docker_demo_up.sh            # start dummy-mode backend
+./tools/docker_demo_up.sh            # start local replay/demo backend
 curl http://localhost:8000/health | jq
 ./tools/docker_clean.sh              # clean up
 ```
 
-Historical Docker proof validates dummy-mode startup, health, and WebSocket
+Historical Docker proof validates local demo startup, health, and WebSocket
 message flow in `evidence/experiments/docker_demo_proof_001.md`. The
-v0.2.0 paper package also captures a Docker dummy-mode local smoke: build/start,
-health endpoint JSON, and cleanup logs. This is bounded smoke evidence only and
-is not promoted as benchmark, production-runtime, live-camera, replay-mode,
+v0.2.0 paper package also captures Docker local replay/demo smoke: build/start,
+health endpoint JSON, and cleanup. This is bounded smoke evidence only and is
+not promoted as benchmark, production-runtime, live-camera, replay-mode,
 reliability, or safety evidence.
 
 See [`docker/docker_quickstart.md`](docker/docker_quickstart.md) for live-camera mode and GPU pass-through.
@@ -294,7 +298,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl SESSION_JSONL --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
 | CPU/GPU fusion performance | GPU backend correct but slower than CPU for tested N=1-1000 fusion-compute workloads; CPU remains default for current workloads | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | `./tools/mp.sh gpu-benchmark` |
 | Zone dwell / transitions | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | `python tools/zones_report_jsonl.py SESSION_JSONL --out evidence/experiments --prefix case_study_1_movement` |
-| Docker / demo proof | Historical dummy-mode Docker proof exists; the v0.2.0 paper package also captures Docker dummy-mode local smoke: build/start, health endpoint JSON, and cleanup logs. Smoke evidence only; not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md), [`docs/paper/claim_evidence_table.md`](docs/paper/claim_evidence_table.md) | `./tools/docker_demo_up.sh` |
+| Docker / demo proof | Historical local demo Docker proof exists; the v0.2.0 paper package also captures Docker local replay/demo smoke: build/start, health endpoint JSON, and cleanup. Smoke evidence only; not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md), [`docs/paper/claim_evidence_table.md`](docs/paper/claim_evidence_table.md) | `./tools/docker_demo_up.sh` |
 | Operator UI smoke evidence | Operator UI final smoke: 10-step workflow passed; 1,797 frames; analytics exported | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md) | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
 
 For a compact artifact index, see [ARTIFACTS.md](ARTIFACTS.md). For the full evidence manifest, see [`evidence/manifest.csv`](evidence/manifest.csv).
@@ -427,7 +431,7 @@ metriplane atlas bundle verify runs/atlas/assembly_cell_missing_tool/evidence_bu
 metriplane atlas test runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
 
 # Docker
-./tools/docker_demo_up.sh                      # start dummy-mode Docker demo
+./tools/docker_demo_up.sh                      # start local replay/demo Docker path
 ./tools/docker_live_up.sh                      # start live camera mode
 ./tools/docker_stop.sh                         # stop containers
 ```
@@ -481,10 +485,10 @@ Experiment-oriented sample configs are kept in `configs/examples/`.
 
 | | |
 |---|---|
-| ✅ In scope | Camera ingest, ArUco detection, planar homography mapping, multi-camera fusion, zone analytics, WebSocket streaming, JSONL recording, Docker deployment |
-| ✅ Verified integration surface | WebSocket stream (`ws://host:8765`) — measured and claimed |
-| ⚡ Adapter surfaces | ROS 2, Isaac, Omniverse, exporters, and Jetson deployment are integration paths unless separately measured |
-| ❌ Not in scope | Certified safety control, robot actuation, cloud dependency, non-ArUco markers, tracking without a calibrated board |
+| In scope | Camera ingest, ArUco detection, planar homography mapping, multi-camera fusion, zone analytics, WebSocket streaming, JSONL recording, Docker deployment |
+| Verified integration surface | WebSocket stream (`ws://host:8765`) — measured and claimed |
+| Adapter surfaces | ROS 2, Isaac, Omniverse, exporters, and Jetson deployment are integration paths unless separately measured |
+| Not in scope | Certified safety control, robot actuation, cloud dependency, non-ArUco markers, tracking without a calibrated board |
 
 Do not expose the local runner on `:9000` to untrusted networks. It is a
 localhost operator/development service with an allowlisted command API.

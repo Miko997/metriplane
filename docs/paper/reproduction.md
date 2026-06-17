@@ -6,7 +6,9 @@ SPDX-License-Identifier: MIT
 # Reproducing The v0.2.0 Paper Evidence
 
 This guide reproduces the local evidence package for the v0.2.0 SoftwareX
-paper artifact. The current package was captured on branch
+paper artifact and current DOI-archived public release:
+`10.5281/zenodo.20736619` (`https://zenodo.org/records/20736619`).
+The evidence package was captured on branch
 `feature/release-v0.2.0` at commit
 `44bed6d85786675c5581154f588a7ad2529c85d6`.
 
@@ -59,7 +61,7 @@ RUNS=evidence/paper_v2_0/runs ./tools/mp.sh deterministic-replay datasets/demo/s
 - Bundle verification: JSON result with `"pass": true`.
 - Regression test: JSON result with `"pass": true`.
 - Package build: `metriplane-0.2.0.tar.gz` and `metriplane-0.2.0-py3-none-any.whl`.
-- Twine check: both distributions pass, with warnings about missing long description metadata.
+- Twine check: both distributions pass.
 
 ## Scope
 
