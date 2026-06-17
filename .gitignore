@@ -5,6 +5,7 @@
 .venv/
 __pycache__/
 *.pyc
+dist/
 
 # Metriplane outputs
 runs/
@@ -83,6 +84,11 @@ configs/*_local.yaml
 !evidence/incidents/**/*.md
 !evidence/incidents/**/*.html
 !evidence/incidents/**/*.sh
+
+# v0.2.0 paper evidence package, including captured dashboard screenshot.
+!evidence/paper_v2_0/
+!evidence/paper_v2_0/**/
+!evidence/paper_v2_0/**
 
 !evidence/experiments/assistant_demo/
 !evidence/experiments/assistant_demo/**/

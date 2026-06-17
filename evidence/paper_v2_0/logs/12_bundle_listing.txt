@@ -1,0 +1,21 @@
+Archive:  runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+     1309  2026-06-17 17:38   checksums.sha256
+     1051  2026-06-17 17:38   configs/assets.yaml
+      598  2026-06-17 17:38   configs/contracts.yaml
+      667  2026-06-17 17:38   configs/process.yaml
+      175  2026-06-17 17:38   configs/work_orders.csv
+      894  2026-06-17 17:38   configs/workspace.yaml
+     1152  2026-06-17 17:38   event_timeline.jsonl
+      653  2026-06-17 17:38   incident.json
+      150  2026-06-17 17:38   limitations.md
+      697  2026-06-17 17:38   manifest.json
+      271  2026-06-17 17:38   process_trace_excerpt.json
+      176  2026-06-17 17:38   provenance/command.txt
+    12767  2026-06-17 17:38   reality_graph_excerpt.json
+      124  2026-06-17 17:38   replay_command.sh
+     2258  2026-06-17 17:38   reports/cell_truth_report.md
+     3186  2026-06-17 17:38   state_segment.jsonl
+---------                     -------
+    26128                     16 files

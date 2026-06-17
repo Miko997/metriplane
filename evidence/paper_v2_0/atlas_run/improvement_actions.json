@@ -1,0 +1,17 @@
+[
+  {
+    "action_id": "act_0001",
+    "action_type": "add_required_tool_check",
+    "caveat": "Recommendation is derived from replay evidence and is not a guaranteed causal fix without before/after validation.",
+    "cited_event_ids": [
+      "evt_0003",
+      "evt_0004"
+    ],
+    "cited_incident_ids": [
+      "INC-0001"
+    ],
+    "rationale": "INC-0001 shows a required asset was absent while a process step waited. Add a visible pre-step tool/material check.",
+    "schema_version": "metriplane.atlas.improvement_action.v1",
+    "title": "Add a required-tool staging check"
+  }
+]

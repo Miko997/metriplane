@@ -1,0 +1,987 @@
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - setuptools >= 40.8.0
+* Getting build dependencies for sdist...
+running egg_info
+writing metriplane.egg-info/PKG-INFO
+writing dependency_links to metriplane.egg-info/dependency_links.txt
+writing entry points to metriplane.egg-info/entry_points.txt
+writing requirements to metriplane.egg-info/requires.txt
+writing top-level names to metriplane.egg-info/top_level.txt
+reading manifest file 'metriplane.egg-info/SOURCES.txt'
+adding license file 'LICENSE'
+adding license file 'NOTICE'
+adding license file 'AUTHORS.md'
+writing manifest file 'metriplane.egg-info/SOURCES.txt'
+* Building sdist...
+running sdist
+running egg_info
+writing metriplane.egg-info/PKG-INFO
+writing dependency_links to metriplane.egg-info/dependency_links.txt
+writing entry points to metriplane.egg-info/entry_points.txt
+writing requirements to metriplane.egg-info/requires.txt
+writing top-level names to metriplane.egg-info/top_level.txt
+reading manifest file 'metriplane.egg-info/SOURCES.txt'
+adding license file 'LICENSE'
+adding license file 'NOTICE'
+adding license file 'AUTHORS.md'
+writing manifest file 'metriplane.egg-info/SOURCES.txt'
+running check
+creating metriplane-0.2.0
+creating metriplane-0.2.0/integrations
+creating metriplane-0.2.0/integrations/isaac
+creating metriplane-0.2.0/integrations/omniverse
+creating metriplane-0.2.0/integrations/ros2/metriplane_ros
+creating metriplane-0.2.0/integrations/ros2/metriplane_ros/launch
+creating metriplane-0.2.0/integrations/ros2/metriplane_ros/metriplane_ros
+creating metriplane-0.2.0/integrations/ros2/metriplane_ros/tests
+creating metriplane-0.2.0/metriplane
+creating metriplane-0.2.0/metriplane-omniverse-ext/tools
+creating metriplane-0.2.0/metriplane.egg-info
+creating metriplane-0.2.0/metriplane/assistant
+creating metriplane-0.2.0/metriplane/atlas
+creating metriplane-0.2.0/metriplane/backends
+creating metriplane-0.2.0/metriplane/calibration
+creating metriplane-0.2.0/metriplane/camera
+creating metriplane-0.2.0/metriplane/camera_trust
+creating metriplane-0.2.0/metriplane/compute
+creating metriplane-0.2.0/metriplane/config
+creating metriplane-0.2.0/metriplane/contracts
+creating metriplane-0.2.0/metriplane/counterfactuals
+creating metriplane-0.2.0/metriplane/exporters
+creating metriplane-0.2.0/metriplane/fleet
+creating metriplane-0.2.0/metriplane/forecasting
+creating metriplane-0.2.0/metriplane/fusion
+creating metriplane-0.2.0/metriplane/mapping
+creating metriplane-0.2.0/metriplane/observability
+creating metriplane-0.2.0/metriplane/pipeline
+creating metriplane-0.2.0/metriplane/preview
+creating metriplane-0.2.0/metriplane/provenance
+creating metriplane-0.2.0/metriplane/recording
+creating metriplane-0.2.0/metriplane/replay
+creating metriplane-0.2.0/metriplane/runner
+creating metriplane-0.2.0/metriplane/sentinel
+creating metriplane-0.2.0/metriplane/streaming
+creating metriplane-0.2.0/metriplane/system
+creating metriplane-0.2.0/metriplane/testing
+creating metriplane-0.2.0/metriplane/time
+creating metriplane-0.2.0/metriplane/trace
+creating metriplane-0.2.0/tests
+copying files to metriplane-0.2.0...
+copying AUTHORS.md -> metriplane-0.2.0
+copying LICENSE -> metriplane-0.2.0
+copying NOTICE -> metriplane-0.2.0
+copying README.md -> metriplane-0.2.0
+copying pyproject.toml -> metriplane-0.2.0
+copying integrations/__init__.py -> metriplane-0.2.0/integrations
+copying integrations/isaac/__init__.py -> metriplane-0.2.0/integrations/isaac
+copying integrations/isaac/metriplane_isaac_replay.py -> metriplane-0.2.0/integrations/isaac
+copying integrations/isaac/metriplane_to_usd.py -> metriplane-0.2.0/integrations/isaac
+copying integrations/omniverse/__init__.py -> metriplane-0.2.0/integrations/omniverse
+copying integrations/omniverse/metriplane_usd_replay.py -> metriplane-0.2.0/integrations/omniverse
+copying integrations/ros2/metriplane_ros/setup.py -> metriplane-0.2.0/integrations/ros2/metriplane_ros
+copying integrations/ros2/metriplane_ros/launch/bridge.launch.py -> metriplane-0.2.0/integrations/ros2/metriplane_ros/launch
+copying integrations/ros2/metriplane_ros/metriplane_ros/__init__.py -> metriplane-0.2.0/integrations/ros2/metriplane_ros/metriplane_ros
+copying integrations/ros2/metriplane_ros/metriplane_ros/bridge_node.py -> metriplane-0.2.0/integrations/ros2/metriplane_ros/metriplane_ros
+copying integrations/ros2/metriplane_ros/metriplane_ros/msg_adapters.py -> metriplane-0.2.0/integrations/ros2/metriplane_ros/metriplane_ros
+copying integrations/ros2/metriplane_ros/tests/test_msg_adapters.py -> metriplane-0.2.0/integrations/ros2/metriplane_ros/tests
+copying metriplane/__init__.py -> metriplane-0.2.0/metriplane
+copying metriplane/cli.py -> metriplane-0.2.0/metriplane
+copying metriplane/config.py -> metriplane-0.2.0/metriplane
+copying metriplane/launcher.py -> metriplane-0.2.0/metriplane
+copying metriplane/logging.py -> metriplane-0.2.0/metriplane
+copying metriplane/metrics.py -> metriplane-0.2.0/metriplane
+copying metriplane/models.py -> metriplane-0.2.0/metriplane
+copying metriplane/overlay.py -> metriplane-0.2.0/metriplane
+copying metriplane/run.py -> metriplane-0.2.0/metriplane
+copying metriplane/run_fusion.py -> metriplane-0.2.0/metriplane
+copying metriplane/schema.py -> metriplane-0.2.0/metriplane
+copying metriplane/state.py -> metriplane-0.2.0/metriplane
+copying metriplane/tracking.py -> metriplane-0.2.0/metriplane
+copying metriplane/video_overlay.py -> metriplane-0.2.0/metriplane
+copying metriplane/zone_analytics.py -> metriplane-0.2.0/metriplane
+copying metriplane/zones.py -> metriplane-0.2.0/metriplane
+copying metriplane-omniverse-ext/tools/live_ws_playback.py -> metriplane-0.2.0/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/m6_warehouse_story_factory_v2.py -> metriplane-0.2.0/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/m6_warehouse_story_v1.py -> metriplane-0.2.0/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/metriplane_warehouse_story.py -> metriplane-0.2.0/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/offline_playback.py -> metriplane-0.2.0/metriplane-omniverse-ext/tools
+copying metriplane.egg-info/PKG-INFO -> metriplane-0.2.0/metriplane.egg-info
+copying metriplane.egg-info/SOURCES.txt -> metriplane-0.2.0/metriplane.egg-info
+copying metriplane.egg-info/dependency_links.txt -> metriplane-0.2.0/metriplane.egg-info
+copying metriplane.egg-info/entry_points.txt -> metriplane-0.2.0/metriplane.egg-info
+copying metriplane.egg-info/requires.txt -> metriplane-0.2.0/metriplane.egg-info
+copying metriplane.egg-info/top_level.txt -> metriplane-0.2.0/metriplane.egg-info
+copying metriplane/assistant/__init__.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/answer.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/citations.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/cli.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/intents.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/models.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/providers.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/assistant/retrieval.py -> metriplane-0.2.0/metriplane/assistant
+copying metriplane/atlas/__init__.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/bench.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/bundles.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/cli.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/connectors.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/dashboard.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/domain_packs.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/edge.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/event_ledger.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/evidence_lake.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/freeze.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/improvement.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/models.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/multicell.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/pilot.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/privacy.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/process_model.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/protocol.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/query.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/reality_graph.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/regression.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/reports.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/runtime.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/training.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/usd.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/atlas/validation.py -> metriplane-0.2.0/metriplane/atlas
+copying metriplane/backends/aruco_backend.py -> metriplane-0.2.0/metriplane/backends
+copying metriplane/calibration/__init__.py -> metriplane-0.2.0/metriplane/calibration
+copying metriplane/calibration/camera.py -> metriplane-0.2.0/metriplane/calibration
+copying metriplane/calibration/intrinsics.py -> metriplane-0.2.0/metriplane/calibration
+copying metriplane/camera/rtsp.py -> metriplane-0.2.0/metriplane/camera
+copying metriplane/camera/usb.py -> metriplane-0.2.0/metriplane/camera
+copying metriplane/camera/usb_multi.py -> metriplane-0.2.0/metriplane/camera
+copying metriplane/camera/v4l_resolve.py -> metriplane-0.2.0/metriplane/camera
+copying metriplane/camera_trust/__init__.py -> metriplane-0.2.0/metriplane/camera_trust
+copying metriplane/camera_trust/analyzer.py -> metriplane-0.2.0/metriplane/camera_trust
+copying metriplane/camera_trust/cli.py -> metriplane-0.2.0/metriplane/camera_trust
+copying metriplane/camera_trust/export.py -> metriplane-0.2.0/metriplane/camera_trust
+copying metriplane/camera_trust/models.py -> metriplane-0.2.0/metriplane/camera_trust
+copying metriplane/camera_trust/recommendations.py -> metriplane-0.2.0/metriplane/camera_trust
+copying metriplane/compute/__init__.py -> metriplane-0.2.0/metriplane/compute
+copying metriplane/compute/cpu_numpy.py -> metriplane-0.2.0/metriplane/compute
+copying metriplane/compute/gpu_cupy.py -> metriplane-0.2.0/metriplane/compute
+copying metriplane/compute/interface.py -> metriplane-0.2.0/metriplane/compute
+copying metriplane/compute/select.py -> metriplane-0.2.0/metriplane/compute
+copying metriplane/config/__init__.py -> metriplane-0.2.0/metriplane/config
+copying metriplane/config/models.py -> metriplane-0.2.0/metriplane/config
+copying metriplane/config/profile.py -> metriplane-0.2.0/metriplane/config
+copying metriplane/contracts/__init__.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/cli.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/engine.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/evaluate.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/expectations.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/load.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/models.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/contracts/validate.py -> metriplane-0.2.0/metriplane/contracts
+copying metriplane/counterfactuals/__init__.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/counterfactuals/cli.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/counterfactuals/evaluator.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/counterfactuals/models.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/counterfactuals/report.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/counterfactuals/rule_sweep.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/counterfactuals/transforms.py -> metriplane-0.2.0/metriplane/counterfactuals
+copying metriplane/exporters/__init__.py -> metriplane-0.2.0/metriplane/exporters
+copying metriplane/exporters/base.py -> metriplane-0.2.0/metriplane/exporters
+copying metriplane/exporters/kafka.py -> metriplane-0.2.0/metriplane/exporters
+copying metriplane/exporters/mqtt.py -> metriplane-0.2.0/metriplane/exporters
+copying metriplane/exporters/parquet.py -> metriplane-0.2.0/metriplane/exporters
+copying metriplane/exporters/webhook.py -> metriplane-0.2.0/metriplane/exporters
+copying metriplane/fleet/__init__.py -> metriplane-0.2.0/metriplane/fleet
+copying metriplane/fleet/agent.py -> metriplane-0.2.0/metriplane/fleet
+copying metriplane/fleet/exporters.py -> metriplane-0.2.0/metriplane/fleet
+copying metriplane/fleet/heartbeat.py -> metriplane-0.2.0/metriplane/fleet
+copying metriplane/forecasting/__init__.py -> metriplane-0.2.0/metriplane/forecasting
+copying metriplane/forecasting/engine.py -> metriplane-0.2.0/metriplane/forecasting
+copying metriplane/forecasting/export.py -> metriplane-0.2.0/metriplane/forecasting
+copying metriplane/forecasting/models.py -> metriplane-0.2.0/metriplane/forecasting
+copying metriplane/forecasting/projector.py -> metriplane-0.2.0/metriplane/forecasting
+copying metriplane/forecasting/velocity.py -> metriplane-0.2.0/metriplane/forecasting
+copying metriplane/fusion/__init__.py -> metriplane-0.2.0/metriplane/fusion
+copying metriplane/fusion/fuse_xy.py -> metriplane-0.2.0/metriplane/fusion
+copying metriplane/fusion/kalman_cv.py -> metriplane-0.2.0/metriplane/fusion
+copying metriplane/mapping/__init__.py -> metriplane-0.2.0/metriplane/mapping
+copying metriplane/mapping/planar.py -> metriplane-0.2.0/metriplane/mapping
+copying metriplane/mapping/planar_multi.py -> metriplane-0.2.0/metriplane/mapping
+copying metriplane/observability/__init__.py -> metriplane-0.2.0/metriplane/observability
+copying metriplane/observability/timing.py -> metriplane-0.2.0/metriplane/observability
+copying metriplane/pipeline/__init__.py -> metriplane-0.2.0/metriplane/pipeline
+copying metriplane/pipeline/bounded_queue.py -> metriplane-0.2.0/metriplane/pipeline
+copying metriplane/pipeline/runtime_threaded.py -> metriplane-0.2.0/metriplane/pipeline
+copying metriplane/preview/live_preview.py -> metriplane-0.2.0/metriplane/preview
+copying metriplane/provenance/__init__.py -> metriplane-0.2.0/metriplane/provenance
+copying metriplane/provenance/run_provenance.py -> metriplane-0.2.0/metriplane/provenance
+copying metriplane/recording/__init__.py -> metriplane-0.2.0/metriplane/recording
+copying metriplane/recording/jsonl.py -> metriplane-0.2.0/metriplane/recording
+copying metriplane/replay/compare_determinism.py -> metriplane-0.2.0/metriplane/replay
+copying metriplane/replay/engine.py -> metriplane-0.2.0/metriplane/replay
+copying metriplane/runner/__init__.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/runner/allowlist.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/runner/cli_command_center.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/runner/command_center_api.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/runner/executor.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/runner/operator_api.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/runner/service.py -> metriplane-0.2.0/metriplane/runner
+copying metriplane/sentinel/__init__.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/bundles.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/cli_incidents.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/cli_query.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/cli_registry.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/cli_rules.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/cli_runtime.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/config.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/engine.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/events.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/export.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/incidents.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/registry.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/rules.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/runtime.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/sentinel/status.py -> metriplane-0.2.0/metriplane/sentinel
+copying metriplane/streaming/ws_server.py -> metriplane-0.2.0/metriplane/streaming
+copying metriplane/streaming/ws_thread.py -> metriplane-0.2.0/metriplane/streaming
+copying metriplane/system/fault_injection.py -> metriplane-0.2.0/metriplane/system
+copying metriplane/system/health.py -> metriplane-0.2.0/metriplane/system
+copying metriplane/system/health_registry.py -> metriplane-0.2.0/metriplane/system
+copying metriplane/testing/__init__.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/cli.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/compare.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/hash.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/load_expected.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/models.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/report.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/testing/runner.py -> metriplane-0.2.0/metriplane/testing
+copying metriplane/time/clock.py -> metriplane-0.2.0/metriplane/time
+copying metriplane/trace/__init__.py -> metriplane-0.2.0/metriplane/trace
+copying metriplane/trace/cli_traces.py -> metriplane-0.2.0/metriplane/trace
+copying metriplane/trace/store.py -> metriplane-0.2.0/metriplane/trace
+copying tests/test_assistant_answer.py -> metriplane-0.2.0/tests
+copying tests/test_assistant_citations.py -> metriplane-0.2.0/tests
+copying tests/test_assistant_intents.py -> metriplane-0.2.0/tests
+copying tests/test_assistant_retrieval.py -> metriplane-0.2.0/tests
+copying tests/test_atlas_core.py -> metriplane-0.2.0/tests
+copying tests/test_atlas_late_phases.py -> metriplane-0.2.0/tests
+copying tests/test_camera_trust_analyzer.py -> metriplane-0.2.0/tests
+copying tests/test_camera_trust_models.py -> metriplane-0.2.0/tests
+copying tests/test_camera_trust_recommendations.py -> metriplane-0.2.0/tests
+copying tests/test_cli_doctor.py -> metriplane-0.2.0/tests
+copying tests/test_compute_select.py -> metriplane-0.2.0/tests
+copying tests/test_contract_cli.py -> metriplane-0.2.0/tests
+copying tests/test_contract_engine.py -> metriplane-0.2.0/tests
+copying tests/test_contract_loader.py -> metriplane-0.2.0/tests
+copying tests/test_contract_models.py -> metriplane-0.2.0/tests
+copying tests/test_counterfactual_evaluator.py -> metriplane-0.2.0/tests
+copying tests/test_counterfactual_models.py -> metriplane-0.2.0/tests
+copying tests/test_counterfactual_rule_sweep.py -> metriplane-0.2.0/tests
+copying tests/test_counterfactual_transforms.py -> metriplane-0.2.0/tests
+copying tests/test_edge_latency.py -> metriplane-0.2.0/tests
+copying tests/test_evidence_bundles.py -> metriplane-0.2.0/tests
+copying tests/test_exporters.py -> metriplane-0.2.0/tests
+copying tests/test_fault_injection.py -> metriplane-0.2.0/tests
+copying tests/test_fleet_agent.py -> metriplane-0.2.0/tests
+copying tests/test_forecasting_engine.py -> metriplane-0.2.0/tests
+copying tests/test_forecasting_projector.py -> metriplane-0.2.0/tests
+copying tests/test_forecasting_runtime.py -> metriplane-0.2.0/tests
+copying tests/test_forecasting_velocity.py -> metriplane-0.2.0/tests
+copying tests/test_gpu_equivalence_extended.py -> metriplane-0.2.0/tests
+copying tests/test_health_registry.py -> metriplane-0.2.0/tests
+copying tests/test_incident_engine.py -> metriplane-0.2.0/tests
+copying tests/test_launcher.py -> metriplane-0.2.0/tests
+copying tests/test_list_cameras.py -> metriplane-0.2.0/tests
+copying tests/test_m9_4_provenance.py -> metriplane-0.2.0/tests
+copying tests/test_mapping_planar.py -> metriplane-0.2.0/tests
+copying tests/test_metrics_cors.py -> metriplane-0.2.0/tests
+copying tests/test_metriplane_bench.py -> metriplane-0.2.0/tests
+copying tests/test_object_registry.py -> metriplane-0.2.0/tests
+copying tests/test_operator_alignment.py -> metriplane-0.2.0/tests
+copying tests/test_operator_camera_resolve.py -> metriplane-0.2.0/tests
+copying tests/test_operator_command_center_api.py -> metriplane-0.2.0/tests
+copying tests/test_operator_command_center_endpoints.py -> metriplane-0.2.0/tests
+copying tests/test_operator_config_schema.py -> metriplane-0.2.0/tests
+copying tests/test_operator_python_exe.py -> metriplane-0.2.0/tests
+copying tests/test_physical_compare.py -> metriplane-0.2.0/tests
+copying tests/test_physical_expected_models.py -> metriplane-0.2.0/tests
+copying tests/test_physical_regression_runner.py -> metriplane-0.2.0/tests
+copying tests/test_placeholder.py -> metriplane-0.2.0/tests
+copying tests/test_query_cli.py -> metriplane-0.2.0/tests
+copying tests/test_record_replay.py -> metriplane-0.2.0/tests
+copying tests/test_release_fixture_integrity.py -> metriplane-0.2.0/tests
+copying tests/test_ros2_msg_adapters.py -> metriplane-0.2.0/tests
+copying tests/test_ros2_packaging.py -> metriplane-0.2.0/tests
+copying tests/test_rule_engine.py -> metriplane-0.2.0/tests
+copying tests/test_schema.py -> metriplane-0.2.0/tests
+copying tests/test_sentinel_config.py -> metriplane-0.2.0/tests
+copying tests/test_sentinel_events.py -> metriplane-0.2.0/tests
+copying tests/test_sentinel_export.py -> metriplane-0.2.0/tests
+copying tests/test_sentinel_status.py -> metriplane-0.2.0/tests
+copying tests/test_trace_store.py -> metriplane-0.2.0/tests
+copying tests/test_usd_export_adapter.py -> metriplane-0.2.0/tests
+copying tests/test_ws_server_import.py -> metriplane-0.2.0/tests
+copying tests/test_zone_analytics.py -> metriplane-0.2.0/tests
+copying tests/test_zones.py -> metriplane-0.2.0/tests
+copying metriplane.egg-info/SOURCES.txt -> metriplane-0.2.0/metriplane.egg-info
+Writing metriplane-0.2.0/setup.cfg
+Creating tar archive
+removing 'metriplane-0.2.0' (and everything under it)
+* Building wheel from sdist
+* Creating isolated environment: venv+pip...
+* Installing packages in isolated environment:
+  - setuptools >= 40.8.0
+* Getting build dependencies for wheel...
+running egg_info
+writing metriplane.egg-info/PKG-INFO
+writing dependency_links to metriplane.egg-info/dependency_links.txt
+writing entry points to metriplane.egg-info/entry_points.txt
+writing requirements to metriplane.egg-info/requires.txt
+writing top-level names to metriplane.egg-info/top_level.txt
+reading manifest file 'metriplane.egg-info/SOURCES.txt'
+adding license file 'LICENSE'
+adding license file 'NOTICE'
+adding license file 'AUTHORS.md'
+writing manifest file 'metriplane.egg-info/SOURCES.txt'
+* Building wheel...
+running bdist_wheel
+running build
+running build_py
+creating build/lib/integrations
+copying integrations/__init__.py -> build/lib/integrations
+creating build/lib/metriplane
+copying metriplane/video_overlay.py -> build/lib/metriplane
+copying metriplane/run_fusion.py -> build/lib/metriplane
+copying metriplane/run.py -> build/lib/metriplane
+copying metriplane/zones.py -> build/lib/metriplane
+copying metriplane/logging.py -> build/lib/metriplane
+copying metriplane/overlay.py -> build/lib/metriplane
+copying metriplane/cli.py -> build/lib/metriplane
+copying metriplane/tracking.py -> build/lib/metriplane
+copying metriplane/config.py -> build/lib/metriplane
+copying metriplane/launcher.py -> build/lib/metriplane
+copying metriplane/zone_analytics.py -> build/lib/metriplane
+copying metriplane/models.py -> build/lib/metriplane
+copying metriplane/schema.py -> build/lib/metriplane
+copying metriplane/metrics.py -> build/lib/metriplane
+copying metriplane/__init__.py -> build/lib/metriplane
+copying metriplane/state.py -> build/lib/metriplane
+creating build/lib/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/m6_warehouse_story_factory_v2.py -> build/lib/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/live_ws_playback.py -> build/lib/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/m6_warehouse_story_v1.py -> build/lib/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/offline_playback.py -> build/lib/metriplane-omniverse-ext/tools
+copying metriplane-omniverse-ext/tools/metriplane_warehouse_story.py -> build/lib/metriplane-omniverse-ext/tools
+creating build/lib/integrations/isaac
+copying integrations/isaac/metriplane_to_usd.py -> build/lib/integrations/isaac
+copying integrations/isaac/metriplane_isaac_replay.py -> build/lib/integrations/isaac
+copying integrations/isaac/__init__.py -> build/lib/integrations/isaac
+creating build/lib/integrations/omniverse
+copying integrations/omniverse/__init__.py -> build/lib/integrations/omniverse
+copying integrations/omniverse/metriplane_usd_replay.py -> build/lib/integrations/omniverse
+creating build/lib/integrations/ros2/metriplane_ros
+copying integrations/ros2/metriplane_ros/setup.py -> build/lib/integrations/ros2/metriplane_ros
+creating build/lib/integrations/ros2/metriplane_ros/tests
+copying integrations/ros2/metriplane_ros/tests/test_msg_adapters.py -> build/lib/integrations/ros2/metriplane_ros/tests
+creating build/lib/integrations/ros2/metriplane_ros/launch
+copying integrations/ros2/metriplane_ros/launch/bridge.launch.py -> build/lib/integrations/ros2/metriplane_ros/launch
+creating build/lib/integrations/ros2/metriplane_ros/metriplane_ros
+copying integrations/ros2/metriplane_ros/metriplane_ros/bridge_node.py -> build/lib/integrations/ros2/metriplane_ros/metriplane_ros
+copying integrations/ros2/metriplane_ros/metriplane_ros/msg_adapters.py -> build/lib/integrations/ros2/metriplane_ros/metriplane_ros
+copying integrations/ros2/metriplane_ros/metriplane_ros/__init__.py -> build/lib/integrations/ros2/metriplane_ros/metriplane_ros
+creating build/lib/metriplane/forecasting
+copying metriplane/forecasting/export.py -> build/lib/metriplane/forecasting
+copying metriplane/forecasting/velocity.py -> build/lib/metriplane/forecasting
+copying metriplane/forecasting/projector.py -> build/lib/metriplane/forecasting
+copying metriplane/forecasting/engine.py -> build/lib/metriplane/forecasting
+copying metriplane/forecasting/models.py -> build/lib/metriplane/forecasting
+copying metriplane/forecasting/__init__.py -> build/lib/metriplane/forecasting
+creating build/lib/metriplane/sentinel
+copying metriplane/sentinel/cli_incidents.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/cli_query.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/cli_registry.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/registry.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/events.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/config.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/export.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/engine.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/rules.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/cli_runtime.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/incidents.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/status.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/cli_rules.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/runtime.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/bundles.py -> build/lib/metriplane/sentinel
+copying metriplane/sentinel/__init__.py -> build/lib/metriplane/sentinel
+creating build/lib/metriplane/camera
+copying metriplane/camera/rtsp.py -> build/lib/metriplane/camera
+copying metriplane/camera/v4l_resolve.py -> build/lib/metriplane/camera
+copying metriplane/camera/usb.py -> build/lib/metriplane/camera
+copying metriplane/camera/usb_multi.py -> build/lib/metriplane/camera
+creating build/lib/metriplane/fusion
+copying metriplane/fusion/kalman_cv.py -> build/lib/metriplane/fusion
+copying metriplane/fusion/fuse_xy.py -> build/lib/metriplane/fusion
+copying metriplane/fusion/__init__.py -> build/lib/metriplane/fusion
+creating build/lib/metriplane/contracts
+copying metriplane/contracts/cli.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/validate.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/evaluate.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/engine.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/load.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/models.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/expectations.py -> build/lib/metriplane/contracts
+copying metriplane/contracts/__init__.py -> build/lib/metriplane/contracts
+creating build/lib/metriplane/provenance
+copying metriplane/provenance/run_provenance.py -> build/lib/metriplane/provenance
+copying metriplane/provenance/__init__.py -> build/lib/metriplane/provenance
+creating build/lib/metriplane/camera_trust
+copying metriplane/camera_trust/recommendations.py -> build/lib/metriplane/camera_trust
+copying metriplane/camera_trust/cli.py -> build/lib/metriplane/camera_trust
+copying metriplane/camera_trust/analyzer.py -> build/lib/metriplane/camera_trust
+copying metriplane/camera_trust/export.py -> build/lib/metriplane/camera_trust
+copying metriplane/camera_trust/models.py -> build/lib/metriplane/camera_trust
+copying metriplane/camera_trust/__init__.py -> build/lib/metriplane/camera_trust
+creating build/lib/metriplane/assistant
+copying metriplane/assistant/cli.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/intents.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/answer.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/models.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/retrieval.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/citations.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/__init__.py -> build/lib/metriplane/assistant
+copying metriplane/assistant/providers.py -> build/lib/metriplane/assistant
+creating build/lib/metriplane/preview
+copying metriplane/preview/live_preview.py -> build/lib/metriplane/preview
+creating build/lib/metriplane/replay
+copying metriplane/replay/engine.py -> build/lib/metriplane/replay
+copying metriplane/replay/compare_determinism.py -> build/lib/metriplane/replay
+creating build/lib/metriplane/backends
+copying metriplane/backends/aruco_backend.py -> build/lib/metriplane/backends
+creating build/lib/metriplane/atlas
+copying metriplane/atlas/process_model.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/bench.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/query.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/improvement.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/cli.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/connectors.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/dashboard.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/reality_graph.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/event_ledger.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/multicell.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/domain_packs.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/models.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/usd.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/protocol.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/training.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/regression.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/runtime.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/freeze.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/evidence_lake.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/bundles.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/edge.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/pilot.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/validation.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/privacy.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/__init__.py -> build/lib/metriplane/atlas
+copying metriplane/atlas/reports.py -> build/lib/metriplane/atlas
+creating build/lib/metriplane/observability
+copying metriplane/observability/timing.py -> build/lib/metriplane/observability
+copying metriplane/observability/__init__.py -> build/lib/metriplane/observability
+creating build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/rule_sweep.py -> build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/cli.py -> build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/evaluator.py -> build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/transforms.py -> build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/report.py -> build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/models.py -> build/lib/metriplane/counterfactuals
+copying metriplane/counterfactuals/__init__.py -> build/lib/metriplane/counterfactuals
+creating build/lib/metriplane/exporters
+copying metriplane/exporters/webhook.py -> build/lib/metriplane/exporters
+copying metriplane/exporters/parquet.py -> build/lib/metriplane/exporters
+copying metriplane/exporters/kafka.py -> build/lib/metriplane/exporters
+copying metriplane/exporters/mqtt.py -> build/lib/metriplane/exporters
+copying metriplane/exporters/base.py -> build/lib/metriplane/exporters
+copying metriplane/exporters/__init__.py -> build/lib/metriplane/exporters
+creating build/lib/metriplane/streaming
+copying metriplane/streaming/ws_thread.py -> build/lib/metriplane/streaming
+copying metriplane/streaming/ws_server.py -> build/lib/metriplane/streaming
+creating build/lib/metriplane/config
+copying metriplane/config/profile.py -> build/lib/metriplane/config
+copying metriplane/config/models.py -> build/lib/metriplane/config
+copying metriplane/config/__init__.py -> build/lib/metriplane/config
+creating build/lib/metriplane/runner
+copying metriplane/runner/executor.py -> build/lib/metriplane/runner
+copying metriplane/runner/command_center_api.py -> build/lib/metriplane/runner
+copying metriplane/runner/allowlist.py -> build/lib/metriplane/runner
+copying metriplane/runner/cli_command_center.py -> build/lib/metriplane/runner
+copying metriplane/runner/service.py -> build/lib/metriplane/runner
+copying metriplane/runner/operator_api.py -> build/lib/metriplane/runner
+copying metriplane/runner/__init__.py -> build/lib/metriplane/runner
+creating build/lib/metriplane/compute
+copying metriplane/compute/interface.py -> build/lib/metriplane/compute
+copying metriplane/compute/gpu_cupy.py -> build/lib/metriplane/compute
+copying metriplane/compute/select.py -> build/lib/metriplane/compute
+copying metriplane/compute/cpu_numpy.py -> build/lib/metriplane/compute
+copying metriplane/compute/__init__.py -> build/lib/metriplane/compute
+creating build/lib/metriplane/time
+copying metriplane/time/clock.py -> build/lib/metriplane/time
+creating build/lib/metriplane/fleet
+copying metriplane/fleet/agent.py -> build/lib/metriplane/fleet
+copying metriplane/fleet/exporters.py -> build/lib/metriplane/fleet
+copying metriplane/fleet/heartbeat.py -> build/lib/metriplane/fleet
+copying metriplane/fleet/__init__.py -> build/lib/metriplane/fleet
+creating build/lib/metriplane/calibration
+copying metriplane/calibration/camera.py -> build/lib/metriplane/calibration
+copying metriplane/calibration/intrinsics.py -> build/lib/metriplane/calibration
+copying metriplane/calibration/__init__.py -> build/lib/metriplane/calibration
+creating build/lib/metriplane/trace
+copying metriplane/trace/cli_traces.py -> build/lib/metriplane/trace
+copying metriplane/trace/store.py -> build/lib/metriplane/trace
+copying metriplane/trace/__init__.py -> build/lib/metriplane/trace
+creating build/lib/metriplane/system
+copying metriplane/system/health_registry.py -> build/lib/metriplane/system
+copying metriplane/system/health.py -> build/lib/metriplane/system
+copying metriplane/system/fault_injection.py -> build/lib/metriplane/system
+creating build/lib/metriplane/recording
+copying metriplane/recording/jsonl.py -> build/lib/metriplane/recording
+copying metriplane/recording/__init__.py -> build/lib/metriplane/recording
+creating build/lib/metriplane/mapping
+copying metriplane/mapping/planar.py -> build/lib/metriplane/mapping
+copying metriplane/mapping/planar_multi.py -> build/lib/metriplane/mapping
+copying metriplane/mapping/__init__.py -> build/lib/metriplane/mapping
+creating build/lib/metriplane/testing
+copying metriplane/testing/load_expected.py -> build/lib/metriplane/testing
+copying metriplane/testing/runner.py -> build/lib/metriplane/testing
+copying metriplane/testing/cli.py -> build/lib/metriplane/testing
+copying metriplane/testing/report.py -> build/lib/metriplane/testing
+copying metriplane/testing/models.py -> build/lib/metriplane/testing
+copying metriplane/testing/hash.py -> build/lib/metriplane/testing
+copying metriplane/testing/compare.py -> build/lib/metriplane/testing
+copying metriplane/testing/__init__.py -> build/lib/metriplane/testing
+creating build/lib/metriplane/pipeline
+copying metriplane/pipeline/bounded_queue.py -> build/lib/metriplane/pipeline
+copying metriplane/pipeline/runtime_threaded.py -> build/lib/metriplane/pipeline
+copying metriplane/pipeline/__init__.py -> build/lib/metriplane/pipeline
+running egg_info
+writing metriplane.egg-info/PKG-INFO
+writing dependency_links to metriplane.egg-info/dependency_links.txt
+writing entry points to metriplane.egg-info/entry_points.txt
+writing requirements to metriplane.egg-info/requires.txt
+writing top-level names to metriplane.egg-info/top_level.txt
+reading manifest file 'metriplane.egg-info/SOURCES.txt'
+adding license file 'LICENSE'
+adding license file 'NOTICE'
+adding license file 'AUTHORS.md'
+writing manifest file 'metriplane.egg-info/SOURCES.txt'
+installing to build/bdist.linux-x86_64/wheel
+running install
+running install_lib
+creating build/bdist.linux-x86_64/wheel
+creating build/bdist.linux-x86_64/wheel/metriplane-omniverse-ext
+creating build/bdist.linux-x86_64/wheel/metriplane-omniverse-ext/tools
+copying build/lib/metriplane-omniverse-ext/tools/m6_warehouse_story_factory_v2.py -> build/bdist.linux-x86_64/wheel/./metriplane-omniverse-ext/tools
+copying build/lib/metriplane-omniverse-ext/tools/live_ws_playback.py -> build/bdist.linux-x86_64/wheel/./metriplane-omniverse-ext/tools
+copying build/lib/metriplane-omniverse-ext/tools/m6_warehouse_story_v1.py -> build/bdist.linux-x86_64/wheel/./metriplane-omniverse-ext/tools
+copying build/lib/metriplane-omniverse-ext/tools/offline_playback.py -> build/bdist.linux-x86_64/wheel/./metriplane-omniverse-ext/tools
+copying build/lib/metriplane-omniverse-ext/tools/metriplane_warehouse_story.py -> build/bdist.linux-x86_64/wheel/./metriplane-omniverse-ext/tools
+creating build/bdist.linux-x86_64/wheel/integrations
+creating build/bdist.linux-x86_64/wheel/integrations/ros2
+creating build/bdist.linux-x86_64/wheel/integrations/ros2/metriplane_ros
+creating build/bdist.linux-x86_64/wheel/integrations/ros2/metriplane_ros/tests
+copying build/lib/integrations/ros2/metriplane_ros/tests/test_msg_adapters.py -> build/bdist.linux-x86_64/wheel/./integrations/ros2/metriplane_ros/tests
+copying build/lib/integrations/ros2/metriplane_ros/setup.py -> build/bdist.linux-x86_64/wheel/./integrations/ros2/metriplane_ros
+creating build/bdist.linux-x86_64/wheel/integrations/ros2/metriplane_ros/launch
+copying build/lib/integrations/ros2/metriplane_ros/launch/bridge.launch.py -> build/bdist.linux-x86_64/wheel/./integrations/ros2/metriplane_ros/launch
+creating build/bdist.linux-x86_64/wheel/integrations/ros2/metriplane_ros/metriplane_ros
+copying build/lib/integrations/ros2/metriplane_ros/metriplane_ros/bridge_node.py -> build/bdist.linux-x86_64/wheel/./integrations/ros2/metriplane_ros/metriplane_ros
+copying build/lib/integrations/ros2/metriplane_ros/metriplane_ros/msg_adapters.py -> build/bdist.linux-x86_64/wheel/./integrations/ros2/metriplane_ros/metriplane_ros
+copying build/lib/integrations/ros2/metriplane_ros/metriplane_ros/__init__.py -> build/bdist.linux-x86_64/wheel/./integrations/ros2/metriplane_ros/metriplane_ros
+creating build/bdist.linux-x86_64/wheel/integrations/isaac
+copying build/lib/integrations/isaac/metriplane_to_usd.py -> build/bdist.linux-x86_64/wheel/./integrations/isaac
+copying build/lib/integrations/isaac/metriplane_isaac_replay.py -> build/bdist.linux-x86_64/wheel/./integrations/isaac
+copying build/lib/integrations/isaac/__init__.py -> build/bdist.linux-x86_64/wheel/./integrations/isaac
+creating build/bdist.linux-x86_64/wheel/integrations/omniverse
+copying build/lib/integrations/omniverse/__init__.py -> build/bdist.linux-x86_64/wheel/./integrations/omniverse
+copying build/lib/integrations/omniverse/metriplane_usd_replay.py -> build/bdist.linux-x86_64/wheel/./integrations/omniverse
+copying build/lib/integrations/__init__.py -> build/bdist.linux-x86_64/wheel/./integrations
+creating build/bdist.linux-x86_64/wheel/metriplane
+copying build/lib/metriplane/video_overlay.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/forecasting
+copying build/lib/metriplane/forecasting/export.py -> build/bdist.linux-x86_64/wheel/./metriplane/forecasting
+copying build/lib/metriplane/forecasting/velocity.py -> build/bdist.linux-x86_64/wheel/./metriplane/forecasting
+copying build/lib/metriplane/forecasting/projector.py -> build/bdist.linux-x86_64/wheel/./metriplane/forecasting
+copying build/lib/metriplane/forecasting/engine.py -> build/bdist.linux-x86_64/wheel/./metriplane/forecasting
+copying build/lib/metriplane/forecasting/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/forecasting
+copying build/lib/metriplane/forecasting/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/forecasting
+creating build/bdist.linux-x86_64/wheel/metriplane/sentinel
+copying build/lib/metriplane/sentinel/cli_incidents.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/cli_query.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/cli_registry.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/registry.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/events.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/config.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/export.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/engine.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/rules.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/cli_runtime.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/incidents.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/status.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/cli_rules.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/runtime.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/bundles.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/sentinel/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/sentinel
+copying build/lib/metriplane/run_fusion.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/camera
+copying build/lib/metriplane/camera/rtsp.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera
+copying build/lib/metriplane/camera/v4l_resolve.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera
+copying build/lib/metriplane/camera/usb.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera
+copying build/lib/metriplane/camera/usb_multi.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera
+copying build/lib/metriplane/run.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/fusion
+copying build/lib/metriplane/fusion/kalman_cv.py -> build/bdist.linux-x86_64/wheel/./metriplane/fusion
+copying build/lib/metriplane/fusion/fuse_xy.py -> build/bdist.linux-x86_64/wheel/./metriplane/fusion
+copying build/lib/metriplane/fusion/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/fusion
+creating build/bdist.linux-x86_64/wheel/metriplane/contracts
+copying build/lib/metriplane/contracts/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/validate.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/evaluate.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/engine.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/load.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/expectations.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/contracts/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/contracts
+copying build/lib/metriplane/zones.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/provenance
+copying build/lib/metriplane/provenance/run_provenance.py -> build/bdist.linux-x86_64/wheel/./metriplane/provenance
+copying build/lib/metriplane/provenance/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/provenance
+copying build/lib/metriplane/logging.py -> build/bdist.linux-x86_64/wheel/./metriplane
+copying build/lib/metriplane/overlay.py -> build/bdist.linux-x86_64/wheel/./metriplane
+copying build/lib/metriplane/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/camera_trust
+copying build/lib/metriplane/camera_trust/recommendations.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera_trust
+copying build/lib/metriplane/camera_trust/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera_trust
+copying build/lib/metriplane/camera_trust/analyzer.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera_trust
+copying build/lib/metriplane/camera_trust/export.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera_trust
+copying build/lib/metriplane/camera_trust/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera_trust
+copying build/lib/metriplane/camera_trust/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/camera_trust
+creating build/bdist.linux-x86_64/wheel/metriplane/assistant
+copying build/lib/metriplane/assistant/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/intents.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/answer.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/retrieval.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/citations.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+copying build/lib/metriplane/assistant/providers.py -> build/bdist.linux-x86_64/wheel/./metriplane/assistant
+creating build/bdist.linux-x86_64/wheel/metriplane/preview
+copying build/lib/metriplane/preview/live_preview.py -> build/bdist.linux-x86_64/wheel/./metriplane/preview
+creating build/bdist.linux-x86_64/wheel/metriplane/replay
+copying build/lib/metriplane/replay/engine.py -> build/bdist.linux-x86_64/wheel/./metriplane/replay
+copying build/lib/metriplane/replay/compare_determinism.py -> build/bdist.linux-x86_64/wheel/./metriplane/replay
+copying build/lib/metriplane/tracking.py -> build/bdist.linux-x86_64/wheel/./metriplane
+copying build/lib/metriplane/config.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/backends
+copying build/lib/metriplane/backends/aruco_backend.py -> build/bdist.linux-x86_64/wheel/./metriplane/backends
+creating build/bdist.linux-x86_64/wheel/metriplane/atlas
+copying build/lib/metriplane/atlas/process_model.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/bench.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/query.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/improvement.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/connectors.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/dashboard.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/reality_graph.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/event_ledger.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/multicell.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/domain_packs.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/usd.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/protocol.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/training.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/regression.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/runtime.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/freeze.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/evidence_lake.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/bundles.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/edge.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/pilot.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/validation.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/privacy.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+copying build/lib/metriplane/atlas/reports.py -> build/bdist.linux-x86_64/wheel/./metriplane/atlas
+creating build/bdist.linux-x86_64/wheel/metriplane/observability
+copying build/lib/metriplane/observability/timing.py -> build/bdist.linux-x86_64/wheel/./metriplane/observability
+copying build/lib/metriplane/observability/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/observability
+copying build/lib/metriplane/launcher.py -> build/bdist.linux-x86_64/wheel/./metriplane
+copying build/lib/metriplane/zone_analytics.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/rule_sweep.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/evaluator.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/transforms.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/report.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+copying build/lib/metriplane/counterfactuals/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/counterfactuals
+creating build/bdist.linux-x86_64/wheel/metriplane/exporters
+copying build/lib/metriplane/exporters/webhook.py -> build/bdist.linux-x86_64/wheel/./metriplane/exporters
+copying build/lib/metriplane/exporters/parquet.py -> build/bdist.linux-x86_64/wheel/./metriplane/exporters
+copying build/lib/metriplane/exporters/kafka.py -> build/bdist.linux-x86_64/wheel/./metriplane/exporters
+copying build/lib/metriplane/exporters/mqtt.py -> build/bdist.linux-x86_64/wheel/./metriplane/exporters
+copying build/lib/metriplane/exporters/base.py -> build/bdist.linux-x86_64/wheel/./metriplane/exporters
+copying build/lib/metriplane/exporters/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/exporters
+creating build/bdist.linux-x86_64/wheel/metriplane/streaming
+copying build/lib/metriplane/streaming/ws_thread.py -> build/bdist.linux-x86_64/wheel/./metriplane/streaming
+copying build/lib/metriplane/streaming/ws_server.py -> build/bdist.linux-x86_64/wheel/./metriplane/streaming
+creating build/bdist.linux-x86_64/wheel/metriplane/config
+copying build/lib/metriplane/config/profile.py -> build/bdist.linux-x86_64/wheel/./metriplane/config
+copying build/lib/metriplane/config/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/config
+copying build/lib/metriplane/config/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/config
+creating build/bdist.linux-x86_64/wheel/metriplane/runner
+copying build/lib/metriplane/runner/executor.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/runner/command_center_api.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/runner/allowlist.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/runner/cli_command_center.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/runner/service.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/runner/operator_api.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/runner/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/runner
+copying build/lib/metriplane/models.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/compute
+copying build/lib/metriplane/compute/interface.py -> build/bdist.linux-x86_64/wheel/./metriplane/compute
+copying build/lib/metriplane/compute/gpu_cupy.py -> build/bdist.linux-x86_64/wheel/./metriplane/compute
+copying build/lib/metriplane/compute/select.py -> build/bdist.linux-x86_64/wheel/./metriplane/compute
+copying build/lib/metriplane/compute/cpu_numpy.py -> build/bdist.linux-x86_64/wheel/./metriplane/compute
+copying build/lib/metriplane/compute/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/compute
+copying build/lib/metriplane/schema.py -> build/bdist.linux-x86_64/wheel/./metriplane
+copying build/lib/metriplane/metrics.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/time
+copying build/lib/metriplane/time/clock.py -> build/bdist.linux-x86_64/wheel/./metriplane/time
+creating build/bdist.linux-x86_64/wheel/metriplane/fleet
+copying build/lib/metriplane/fleet/agent.py -> build/bdist.linux-x86_64/wheel/./metriplane/fleet
+copying build/lib/metriplane/fleet/exporters.py -> build/bdist.linux-x86_64/wheel/./metriplane/fleet
+copying build/lib/metriplane/fleet/heartbeat.py -> build/bdist.linux-x86_64/wheel/./metriplane/fleet
+copying build/lib/metriplane/fleet/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/fleet
+creating build/bdist.linux-x86_64/wheel/metriplane/calibration
+copying build/lib/metriplane/calibration/camera.py -> build/bdist.linux-x86_64/wheel/./metriplane/calibration
+copying build/lib/metriplane/calibration/intrinsics.py -> build/bdist.linux-x86_64/wheel/./metriplane/calibration
+copying build/lib/metriplane/calibration/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/calibration
+creating build/bdist.linux-x86_64/wheel/metriplane/trace
+copying build/lib/metriplane/trace/cli_traces.py -> build/bdist.linux-x86_64/wheel/./metriplane/trace
+copying build/lib/metriplane/trace/store.py -> build/bdist.linux-x86_64/wheel/./metriplane/trace
+copying build/lib/metriplane/trace/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/trace
+creating build/bdist.linux-x86_64/wheel/metriplane/system
+copying build/lib/metriplane/system/health_registry.py -> build/bdist.linux-x86_64/wheel/./metriplane/system
+copying build/lib/metriplane/system/health.py -> build/bdist.linux-x86_64/wheel/./metriplane/system
+copying build/lib/metriplane/system/fault_injection.py -> build/bdist.linux-x86_64/wheel/./metriplane/system
+creating build/bdist.linux-x86_64/wheel/metriplane/recording
+copying build/lib/metriplane/recording/jsonl.py -> build/bdist.linux-x86_64/wheel/./metriplane/recording
+copying build/lib/metriplane/recording/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/recording
+creating build/bdist.linux-x86_64/wheel/metriplane/mapping
+copying build/lib/metriplane/mapping/planar.py -> build/bdist.linux-x86_64/wheel/./metriplane/mapping
+copying build/lib/metriplane/mapping/planar_multi.py -> build/bdist.linux-x86_64/wheel/./metriplane/mapping
+copying build/lib/metriplane/mapping/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/mapping
+creating build/bdist.linux-x86_64/wheel/metriplane/testing
+copying build/lib/metriplane/testing/load_expected.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/runner.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/cli.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/report.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/models.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/hash.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/compare.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/testing/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/testing
+copying build/lib/metriplane/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane
+creating build/bdist.linux-x86_64/wheel/metriplane/pipeline
+copying build/lib/metriplane/pipeline/bounded_queue.py -> build/bdist.linux-x86_64/wheel/./metriplane/pipeline
+copying build/lib/metriplane/pipeline/runtime_threaded.py -> build/bdist.linux-x86_64/wheel/./metriplane/pipeline
+copying build/lib/metriplane/pipeline/__init__.py -> build/bdist.linux-x86_64/wheel/./metriplane/pipeline
+copying build/lib/metriplane/state.py -> build/bdist.linux-x86_64/wheel/./metriplane
+running install_egg_info
+Copying metriplane.egg-info to build/bdist.linux-x86_64/wheel/./metriplane-0.2.0-py3.12.egg-info
+running install_scripts
+creating build/bdist.linux-x86_64/wheel/metriplane-0.2.0.dist-info/WHEEL
+creating '<repo>/dist/.tmp-o6q1fx3n/metriplane-0.2.0-py3-none-any.whl' and adding 'build/bdist.linux-x86_64/wheel' to it
+adding 'integrations/__init__.py'
+adding 'integrations/isaac/__init__.py'
+adding 'integrations/isaac/metriplane_isaac_replay.py'
+adding 'integrations/isaac/metriplane_to_usd.py'
+adding 'integrations/omniverse/__init__.py'
+adding 'integrations/omniverse/metriplane_usd_replay.py'
+adding 'integrations/ros2/metriplane_ros/setup.py'
+adding 'integrations/ros2/metriplane_ros/launch/bridge.launch.py'
+adding 'integrations/ros2/metriplane_ros/metriplane_ros/__init__.py'
+adding 'integrations/ros2/metriplane_ros/metriplane_ros/bridge_node.py'
+adding 'integrations/ros2/metriplane_ros/metriplane_ros/msg_adapters.py'
+adding 'integrations/ros2/metriplane_ros/tests/test_msg_adapters.py'
+adding 'metriplane/__init__.py'
+adding 'metriplane/cli.py'
+adding 'metriplane/config.py'
+adding 'metriplane/launcher.py'
+adding 'metriplane/logging.py'
+adding 'metriplane/metrics.py'
+adding 'metriplane/models.py'
+adding 'metriplane/overlay.py'
+adding 'metriplane/run.py'
+adding 'metriplane/run_fusion.py'
+adding 'metriplane/schema.py'
+adding 'metriplane/state.py'
+adding 'metriplane/tracking.py'
+adding 'metriplane/video_overlay.py'
+adding 'metriplane/zone_analytics.py'
+adding 'metriplane/zones.py'
+adding 'metriplane/assistant/__init__.py'
+adding 'metriplane/assistant/answer.py'
+adding 'metriplane/assistant/citations.py'
+adding 'metriplane/assistant/cli.py'
+adding 'metriplane/assistant/intents.py'
+adding 'metriplane/assistant/models.py'
+adding 'metriplane/assistant/providers.py'
+adding 'metriplane/assistant/retrieval.py'
+adding 'metriplane/atlas/__init__.py'
+adding 'metriplane/atlas/bench.py'
+adding 'metriplane/atlas/bundles.py'
+adding 'metriplane/atlas/cli.py'
+adding 'metriplane/atlas/connectors.py'
+adding 'metriplane/atlas/dashboard.py'
+adding 'metriplane/atlas/domain_packs.py'
+adding 'metriplane/atlas/edge.py'
+adding 'metriplane/atlas/event_ledger.py'
+adding 'metriplane/atlas/evidence_lake.py'
+adding 'metriplane/atlas/freeze.py'
+adding 'metriplane/atlas/improvement.py'
+adding 'metriplane/atlas/models.py'
+adding 'metriplane/atlas/multicell.py'
+adding 'metriplane/atlas/pilot.py'
+adding 'metriplane/atlas/privacy.py'
+adding 'metriplane/atlas/process_model.py'
+adding 'metriplane/atlas/protocol.py'
+adding 'metriplane/atlas/query.py'
+adding 'metriplane/atlas/reality_graph.py'
+adding 'metriplane/atlas/regression.py'
+adding 'metriplane/atlas/reports.py'
+adding 'metriplane/atlas/runtime.py'
+adding 'metriplane/atlas/training.py'
+adding 'metriplane/atlas/usd.py'
+adding 'metriplane/atlas/validation.py'
+adding 'metriplane/backends/aruco_backend.py'
+adding 'metriplane/calibration/__init__.py'
+adding 'metriplane/calibration/camera.py'
+adding 'metriplane/calibration/intrinsics.py'
+adding 'metriplane/camera/rtsp.py'
+adding 'metriplane/camera/usb.py'
+adding 'metriplane/camera/usb_multi.py'
+adding 'metriplane/camera/v4l_resolve.py'
+adding 'metriplane/camera_trust/__init__.py'
+adding 'metriplane/camera_trust/analyzer.py'
+adding 'metriplane/camera_trust/cli.py'
+adding 'metriplane/camera_trust/export.py'
+adding 'metriplane/camera_trust/models.py'
+adding 'metriplane/camera_trust/recommendations.py'
+adding 'metriplane/compute/__init__.py'
+adding 'metriplane/compute/cpu_numpy.py'
+adding 'metriplane/compute/gpu_cupy.py'
+adding 'metriplane/compute/interface.py'
+adding 'metriplane/compute/select.py'
+adding 'metriplane/config/__init__.py'
+adding 'metriplane/config/models.py'
+adding 'metriplane/config/profile.py'
+adding 'metriplane/contracts/__init__.py'
+adding 'metriplane/contracts/cli.py'
+adding 'metriplane/contracts/engine.py'
+adding 'metriplane/contracts/evaluate.py'
+adding 'metriplane/contracts/expectations.py'
+adding 'metriplane/contracts/load.py'
+adding 'metriplane/contracts/models.py'
+adding 'metriplane/contracts/validate.py'
+adding 'metriplane/counterfactuals/__init__.py'
+adding 'metriplane/counterfactuals/cli.py'
+adding 'metriplane/counterfactuals/evaluator.py'
+adding 'metriplane/counterfactuals/models.py'
+adding 'metriplane/counterfactuals/report.py'
+adding 'metriplane/counterfactuals/rule_sweep.py'
+adding 'metriplane/counterfactuals/transforms.py'
+adding 'metriplane/exporters/__init__.py'
+adding 'metriplane/exporters/base.py'
+adding 'metriplane/exporters/kafka.py'
+adding 'metriplane/exporters/mqtt.py'
+adding 'metriplane/exporters/parquet.py'
+adding 'metriplane/exporters/webhook.py'
+adding 'metriplane/fleet/__init__.py'
+adding 'metriplane/fleet/agent.py'
+adding 'metriplane/fleet/exporters.py'
+adding 'metriplane/fleet/heartbeat.py'
+adding 'metriplane/forecasting/__init__.py'
+adding 'metriplane/forecasting/engine.py'
+adding 'metriplane/forecasting/export.py'
+adding 'metriplane/forecasting/models.py'
+adding 'metriplane/forecasting/projector.py'
+adding 'metriplane/forecasting/velocity.py'
+adding 'metriplane/fusion/__init__.py'
+adding 'metriplane/fusion/fuse_xy.py'
+adding 'metriplane/fusion/kalman_cv.py'
+adding 'metriplane/mapping/__init__.py'
+adding 'metriplane/mapping/planar.py'
+adding 'metriplane/mapping/planar_multi.py'
+adding 'metriplane/observability/__init__.py'
+adding 'metriplane/observability/timing.py'
+adding 'metriplane/pipeline/__init__.py'
+adding 'metriplane/pipeline/bounded_queue.py'
+adding 'metriplane/pipeline/runtime_threaded.py'
+adding 'metriplane/preview/live_preview.py'
+adding 'metriplane/provenance/__init__.py'
+adding 'metriplane/provenance/run_provenance.py'
+adding 'metriplane/recording/__init__.py'
+adding 'metriplane/recording/jsonl.py'
+adding 'metriplane/replay/compare_determinism.py'
+adding 'metriplane/replay/engine.py'
+adding 'metriplane/runner/__init__.py'
+adding 'metriplane/runner/allowlist.py'
+adding 'metriplane/runner/cli_command_center.py'
+adding 'metriplane/runner/command_center_api.py'
+adding 'metriplane/runner/executor.py'
+adding 'metriplane/runner/operator_api.py'
+adding 'metriplane/runner/service.py'
+adding 'metriplane/sentinel/__init__.py'
+adding 'metriplane/sentinel/bundles.py'
+adding 'metriplane/sentinel/cli_incidents.py'
+adding 'metriplane/sentinel/cli_query.py'
+adding 'metriplane/sentinel/cli_registry.py'
+adding 'metriplane/sentinel/cli_rules.py'
+adding 'metriplane/sentinel/cli_runtime.py'
+adding 'metriplane/sentinel/config.py'
+adding 'metriplane/sentinel/engine.py'
+adding 'metriplane/sentinel/events.py'
+adding 'metriplane/sentinel/export.py'
+adding 'metriplane/sentinel/incidents.py'
+adding 'metriplane/sentinel/registry.py'
+adding 'metriplane/sentinel/rules.py'
+adding 'metriplane/sentinel/runtime.py'
+adding 'metriplane/sentinel/status.py'
+adding 'metriplane/streaming/ws_server.py'
+adding 'metriplane/streaming/ws_thread.py'
+adding 'metriplane/system/fault_injection.py'
+adding 'metriplane/system/health.py'
+adding 'metriplane/system/health_registry.py'
+adding 'metriplane/testing/__init__.py'
+adding 'metriplane/testing/cli.py'
+adding 'metriplane/testing/compare.py'
+adding 'metriplane/testing/hash.py'
+adding 'metriplane/testing/load_expected.py'
+adding 'metriplane/testing/models.py'
+adding 'metriplane/testing/report.py'
+adding 'metriplane/testing/runner.py'
+adding 'metriplane/time/clock.py'
+adding 'metriplane/trace/__init__.py'
+adding 'metriplane/trace/cli_traces.py'
+adding 'metriplane/trace/store.py'
+adding 'metriplane-0.2.0.dist-info/licenses/AUTHORS.md'
+adding 'metriplane-0.2.0.dist-info/licenses/LICENSE'
+adding 'metriplane-0.2.0.dist-info/licenses/NOTICE'
+adding 'metriplane-omniverse-ext/tools/live_ws_playback.py'
+adding 'metriplane-omniverse-ext/tools/m6_warehouse_story_factory_v2.py'
+adding 'metriplane-omniverse-ext/tools/m6_warehouse_story_v1.py'
+adding 'metriplane-omniverse-ext/tools/metriplane_warehouse_story.py'
+adding 'metriplane-omniverse-ext/tools/offline_playback.py'
+adding 'metriplane-0.2.0.dist-info/METADATA'
+adding 'metriplane-0.2.0.dist-info/WHEEL'
+adding 'metriplane-0.2.0.dist-info/entry_points.txt'
+adding 'metriplane-0.2.0.dist-info/top_level.txt'
+adding 'metriplane-0.2.0.dist-info/RECORD'
+removing build/bdist.linux-x86_64/wheel
+Successfully built metriplane-0.2.0.tar.gz and metriplane-0.2.0-py3-none-any.whl

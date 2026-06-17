@@ -1,0 +1,6 @@
+{
+  "bundle": "evidence/paper_v2_0/atlas_run/evidence_bundles/INC-0001.zip",
+  "errors": [],
+  "pass": true,
+  "schema_version": "metriplane.atlas.bundle_verifier.v1"
+}

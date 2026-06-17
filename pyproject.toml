@@ -4,7 +4,12 @@
 [project]
 name = "metriplane"
 version = "0.2.0"
+description = "Open-source physical observability for workcell evidence, replay, and regression testing."
+readme = "README.md"
 requires-python = ">=3.12"
+authors = [
+  { name = "Miko Parkkinen" },
+]
 dependencies = [
   "numpy>=1.26",
   "opencv-python-headless>=4.8",

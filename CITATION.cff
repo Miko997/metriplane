@@ -3,26 +3,24 @@
 
 cff-version: 1.2.0
 message: "If you use MetriPlane, please cite the software release."
-title: "MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, Zone Analytics, and Physical-Space Auditing"
+title: "MetriPlane v0.2.0: Open-Source Physical Observability for Workcell Evidence, Replay, and Regression Testing"
 type: software
 authors:
   - family-names: "Parkkinen"
     given-names: "Miko"
 version: "0.2.0"
-date-released: "2026-06-13"
+date-released: "2026-06-17"
 license: "MIT"
 repository-code: "https://github.com/Miko997/metriplane"
 url: "https://github.com/Miko997/metriplane"
 abstract: >-
-  MetriPlane is open research software for camera-first planar metric state
-  streaming, deterministic replay, zone analytics, and observe-only physical
-  operations auditing. The software detects fiducial markers, maps observations
-  into metric XY coordinates, supports multi-camera fusion and tracking,
-  evaluates spatial contracts, emits incidents, builds replayable evidence
-  bundles, and exposes a read-only Command Center for operator review. The
-  v0.2.0 release adds Sentinel, physical regression testing, camera trust
-  analysis, local operator answers, and integration adapters while preserving
-  the historical v0.1.3 benchmark evidence baseline.
+  MetriPlane v0.2.0 is open-source physical observability software for workcell
+  evidence, replay, and regression testing. It maps tagged/fiducial assets into
+  calibrated planar XY state, evaluates spatial contracts, emits incidents,
+  builds replayable evidence bundles, generates physical regression tests and
+  Cell Truth Reports, and exposes read-only operator review workflows. The
+  release preserves the historical v0.1.3/v0.1.4 evidence lineage while serving
+  as the main SoftwareX paper artifact.
 keywords:
   - research software
   - digital twins

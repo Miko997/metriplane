@@ -7,17 +7,17 @@ SPDX-License-Identifier: MIT
 
 ## Artifact identity
 
-MetriPlane v0.2.0 is the current software release candidate. It adds Sentinel,
-Command Center, physical regression, and operational evidence layers on top of
-the historical camera-to-coordinate benchmark baseline.
+MetriPlane v0.2.0 is the current software release. It adds Sentinel, Command
+Center, physical regression, and operational evidence layers on top of the
+historical camera-to-coordinate benchmark baseline.
 
 - Software release: `v0.2.0`
-- Latest archived DOI release: `v0.1.4` at `10.5281/zenodo.20631037`
+- Historical DOI-archived baseline: `v0.1.4` at `10.5281/zenodo.20631037`
 - Repository: `https://github.com/Miko997/metriplane`
 - License: MIT
 - Benchmark evidence baseline: preserved from `v0.1.3`
 - Benchmark evidence status: supplemental release evidence, not peer-reviewed publication
-- Paper status: no peer-reviewed publication is claimed in this artifact file
+- Paper status: v0.2.0 is the main SoftwareX paper artifact; no accepted peer-reviewed publication is claimed in this artifact file
 
 Historical note: earlier internal planning referred to this evidence as "Paper B". The public artifact should be cited as the MetriPlane software release and benchmark evidence supplement unless a separate peer-reviewed paper is accepted.
 
@@ -48,7 +48,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | CPU/GPU equivalence | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | 13,161 samples; CPU/GPU outputs match at 0.0 cm RMSE and max difference. |
 | CPU/GPU benchmark | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | GPU backend is numerically valid but slower than CPU for tested N=1-1000 fusion-compute workloads. Scope is fusion compute only. |
 | Zone analytics | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions. Applied analytics, not a manually annotated ground-truth zone benchmark. |
-| Docker proof | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | Docker dummy-mode proof; replay-mode behavior is not expanded into a benchmark claim. |
+| Docker proof | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md), [`evidence/paper_v2_0/logs/17_docker_health.json`](evidence/paper_v2_0/logs/17_docker_health.json) | Historical dummy-mode proof exists. The v0.2.0 paper package also captures Docker dummy-mode local smoke: build/start, health endpoint JSON, and cleanup logs. Smoke evidence only; not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. |
 | Operator UI smoke | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md), [`operator_ui_final_smoke_001_zone_events.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_events.csv), [`operator_ui_final_smoke_001_zone_dwell.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_dwell.csv), [`operator_ui_final_smoke_001_zone_transitions.csv`](evidence/experiments/operator_ui_final_smoke_001_zone_transitions.csv) | Workflow smoke evidence, not a tracking-accuracy benchmark. |
 | Release fixtures | [`test_release_fixture_integrity.py`](tests/test_release_fixture_integrity.py), [`tests/fixtures`](tests/fixtures/), [`evidence/incidents/INC-0001`](evidence/incidents/INC-0001/), [`evidence/incidents/INC-DIST-001`](evidence/incidents/INC-DIST-001/) | Small deterministic fixtures required by CI and release tests. Raw local runs and large media remain ignored. |
 | Object registry / traces / events | [`object_registry_001.md`](evidence/experiments/object_registry_001.md), [`trace_store_001.md`](evidence/experiments/trace_store_001.md), [`event_schema_001.md`](evidence/experiments/event_schema_001.md) | Named objects, trace summaries, and typed operational events. |
@@ -58,7 +58,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | Command Center | [`command_center_ui_001.md`](evidence/experiments/command_center_ui_001.md), [`command_center_data.json`](evidence/experiments/command_center/command_center_data.json) | Read-only operator map, incidents, traces, trust, and assistant endpoints. |
 | Evidence Review | [`atlas_phase_24_001.md`](evidence/experiments/atlas_phase_24_001.md) through [`atlas_phase_50_001.md`](evidence/experiments/atlas_phase_50_001.md), [`docs/atlas/README.md`](docs/atlas/README.md), [`assembly_cell_missing_tool.jsonl`](datasets/demo/atlas/assembly_cell_missing_tool.jsonl) | Local evidence workflow: domain packs, physical event ledger, Cell Truth Report, dashboard, USDA replay export, evidence bundle v3, regression, training, query/saved queries, SQLite evidence lake, connectors, edge helpers, multi-cell compare, privacy report, protocol export, pilot kit, freeze audit, and Atlas-Bench core. |
 | Integrations and deployment | [`ros2_bridge_001.md`](evidence/experiments/ros2_bridge_001.md), [`isaac_omniverse_replay_001.md`](evidence/experiments/isaac_omniverse_replay_001.md), [`jetson_edge_deployment_001.md`](evidence/experiments/jetson_edge_deployment_001.md), [`fleet_agent_001.md`](evidence/experiments/fleet_agent_001.md), [`scalable_event_pipeline_001.md`](evidence/experiments/scalable_event_pipeline_001.md) | Adapter and deployment evidence with hardware/tooling limitations documented per artifact. |
-| Manual integration runtime smoke | [`ros2_runtime_manual_2026-06-14.md`](evidence/experiments/ros2_runtime_manual_2026-06-14.md), [`omniverse_runtime_manual_2026-06-14.md`](evidence/experiments/omniverse_runtime_manual_2026-06-14.md) | ROS 2 one-environment smoke passed for bridge build, `ros2 run`, launch, topic echo, and bag capture. Omniverse generated USDA evidence is partial because no raw open log or screenshot was captured. Isaac Sim and Docker runtime were not run in this pass. |
+| Manual integration runtime smoke | [`ros2_runtime_manual_2026-06-14.md`](evidence/experiments/ros2_runtime_manual_2026-06-14.md), [`omniverse_runtime_manual_2026-06-14.md`](evidence/experiments/omniverse_runtime_manual_2026-06-14.md), [`evidence/paper_v2_0/logs/17_docker_health.json`](evidence/paper_v2_0/logs/17_docker_health.json) | ROS 2 one-environment smoke passed for bridge build, `ros2 run`, launch, topic echo, and bag capture. Omniverse generated USDA evidence is partial because no raw open log or screenshot was captured. Docker dummy-mode local smoke was captured in the v0.2.0 paper package, bounded to build/start, health endpoint JSON, and cleanup logs. Isaac Sim runtime was not run. |
 | Manifest/checksums | [`manifest.csv`](evidence/manifest.csv), [`CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256) | Manifest records claim IDs, artifact paths, metrics, current hashes, release tag, and provenance notes; aggregate checksums cover regular files in the release tree. |
 
 ## CPU/GPU performance
@@ -118,10 +118,10 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - The GPU benchmark covers only fusion compute, not camera capture or marker detection.
 - ROS 2 manual runtime smoke is one maintainer environment only; it does not establish latency, reliability, safety, robot-control, or production-runtime claims.
 - Omniverse USDA generation is evidenced, but no raw Omniverse open log or screenshot is captured in this pass.
-- Atlas USD/Isaac, external pilots, hardware appliance packaging, Docker runtime, and network connectors remain future work unless separately evidenced.
+- Atlas USD/Isaac, external pilots, hardware appliance packaging, production Docker runtime, and network connectors remain future work unless separately evidenced. The v0.2.0 paper package Docker evidence is dummy-mode local smoke only.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
-- The latest DOI-archived software release is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). v0.2.0 release archival should be performed after tagging.
+- The historical DOI-archived baseline is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). Record the v0.2.0 DOI after Zenodo archival.
 
 ## Versioning and provenance
 

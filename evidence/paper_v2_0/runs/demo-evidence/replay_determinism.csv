@@ -1,0 +1,2 @@
+frames_compared,object_pairs_compared,mean_pos_diff_cm,max_pos_diff_cm,event_mismatch_count,pass
+24,72,0.0,0.0,0,true

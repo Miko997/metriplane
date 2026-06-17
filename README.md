@@ -10,7 +10,7 @@ SPDX-License-Identifier: MIT
 <h1 align="center">MetriPlane</h1>
 
 <p align="center">
-  <strong>Turn calibrated cameras into metric physical-observability streams, incident evidence, cell review reports, and read-only operator review.</strong>
+  <strong>Open-source physical observability for workcells: replayable evidence bundles, regression tests, and read-only operator review from calibrated planar state.</strong>
 </p>
 
 <p align="center">
@@ -40,33 +40,34 @@ SPDX-License-Identifier: MIT
 
 ## Citation
 
-MetriPlane v0.2.0 is the current software release candidate. It adds Sentinel,
-an observe-only physical-space auditing layer, while preserving the historical
-v0.1.3/v0.1.4 benchmark and Zenodo evidence lineage.
+MetriPlane v0.2.0 is the current release and the main SoftwareX paper artifact.
+It adds Sentinel, Atlas Evidence Review, and observe-only physical-space
+auditing while preserving the historical v0.1.3/v0.1.4 benchmark and Zenodo
+evidence lineage.
 
-The latest archived release with a DOI remains v0.1.4:
+The historical DOI-archived baseline is v0.1.4.
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20631037.svg)](https://doi.org/10.5281/zenodo.20631037)
 
-Please cite:
+Please cite the v0.2.0 paper artifact as:
 
-Parkkinen, M. (2026). *MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, Zone Analytics, and Physical-Space Auditing* (v0.2.0).
+Parkkinen, M. (2026). *MetriPlane v0.2.0: Open-Source Physical Observability for Workcell Evidence, Replay, and Regression Testing*.
 
 ---
 
 ## Public release
 
-Current release candidate: `v0.2.0`.
+Current release: `v0.2.0`.
 
-The v0.2.0 release expands Metriplane from camera-to-coordinate streaming into
+The v0.2.0 release expands MetriPlane from camera-to-coordinate streaming into
 an observe-only physical-observability platform: named objects, trace summaries,
 spatial contracts, incidents, replayable evidence bundles, physical regression
 tests, camera trust, experimental local forecast reports, experimental grounded
 evidence Q&A, and the Command Center UI.
 
 The earlier v0.1.3 release remains the historical benchmark-evidence release,
-and v0.1.4 remains the latest DOI-archived repository-stabilized release.
-Benchmark evidence is treated as supplemental release evidence, not as a
-peer-reviewed publication.
+and v0.1.4 remains the historical DOI-archived repository-stabilized baseline.
+The v0.2.0 release is the main SoftwareX paper artifact. Benchmark evidence is
+treated as supplemental release evidence, not as a peer-reviewed publication.
 
 ---
 
@@ -90,9 +91,9 @@ peer-reviewed publication.
 
 ---
 
-## Local Metriplane Console
+## Local MetriPlane Console
 
-The browser-based console links the full local Metriplane workflow: Operator Setup,
+The browser-based console links the full local MetriPlane workflow: Operator Setup,
 Live State, Sentinel Command Center, Evidence Review, and Integrations. After the
 local stack is running, safe actions are available from the UI through
 the allowlisted runner API.
@@ -145,7 +146,7 @@ Operator-facing docs:
 
 ## Evidence Review
 
-Metriplane turns a replayed assembly-cell state stream into a physical event
+MetriPlane turns a replayed assembly-cell state stream into a physical event
 ledger, Cell Truth Report, incident archive, generated regression test,
 training case, and improvement action. The local tools also generate a static
 dashboard, USD replay export, privacy report, connector payloads, SQLite
@@ -225,7 +226,12 @@ curl http://localhost:8000/health | jq
 ./tools/docker_clean.sh              # clean up
 ```
 
-Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim.
+Historical Docker proof validates dummy-mode startup, health, and WebSocket
+message flow in `evidence/experiments/docker_demo_proof_001.md`. The
+v0.2.0 paper package also captures a Docker dummy-mode local smoke: build/start,
+health endpoint JSON, and cleanup logs. This is bounded smoke evidence only and
+is not promoted as benchmark, production-runtime, live-camera, replay-mode,
+reliability, or safety evidence.
 
 See [`docker/docker_quickstart.md`](docker/docker_quickstart.md) for live-camera mode and GPU pass-through.
 
@@ -288,7 +294,7 @@ The benchmark evidence table is maintained in [`docs/eval/CANONICAL_EVIDENCE.md`
 | CPU/GPU equivalence | 13,161 samples; 0.0 cm RMSE diff; 0.0 cm max diff | [`compute_equivalence_001.csv`](evidence/experiments/compute_equivalence_001.csv) | `python benchmarks/run_compute_equivalence.py --session-jsonl SESSION_JSONL --out-csv evidence/experiments/compute_equivalence_001.csv --method weighted --require-gpu` |
 | CPU/GPU fusion performance | GPU backend correct but slower than CPU for tested N=1-1000 fusion-compute workloads; CPU remains default for current workloads | [`gpu_benchmark_001.csv`](evidence/experiments/gpu_benchmark_001.csv), [`gpu_summary.md`](docs/eval/gpu_summary.md) | `./tools/mp.sh gpu-benchmark` |
 | Zone dwell / transitions | Four zones (`bl`, `br`, `tl`, `tr`); 877.85 object-seconds dwell; 112 transitions | [`case_study_1_movement_zone_dwell.csv`](evidence/experiments/case_study_1_movement_zone_dwell.csv), [`case_study_1_movement_zone_dwell_by_zone.csv`](evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv), [`case_study_1_movement_zone_transitions.csv`](evidence/experiments/case_study_1_movement_zone_transitions.csv), [`case_study_1_movement_zone_events.csv`](evidence/experiments/case_study_1_movement_zone_events.csv) | `python tools/zones_report_jsonl.py SESSION_JSONL --out evidence/experiments --prefix case_study_1_movement` |
-| Docker / demo proof | Docker proof validates dummy-mode startup, health, and WebSocket message flow. Replay-mode behavior is not used as a benchmark claim. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md) | `./tools/docker_demo_up.sh` |
+| Docker / demo proof | Historical dummy-mode Docker proof exists; the v0.2.0 paper package also captures Docker dummy-mode local smoke: build/start, health endpoint JSON, and cleanup logs. Smoke evidence only; not benchmark, production-runtime, live-camera, replay-mode, reliability, or safety evidence. | [`docker_demo_proof_001.md`](evidence/experiments/docker_demo_proof_001.md), [`docs/paper/claim_evidence_table.md`](docs/paper/claim_evidence_table.md) | `./tools/docker_demo_up.sh` |
 | Operator UI smoke evidence | Operator UI final smoke: 10-step workflow passed; 1,797 frames; analytics exported | [`operator_ui_final_smoke_001.md`](evidence/experiments/operator_ui_final_smoke_001.md) | See [`docs/operator_ui_runbook.md`](docs/operator_ui_runbook.md) |
 
 For a compact artifact index, see [ARTIFACTS.md](ARTIFACTS.md). For the full evidence manifest, see [`evidence/manifest.csv`](evidence/manifest.csv).
@@ -323,7 +329,7 @@ and adapter surfaces unless separately measured. See
 
 ### ROS 2
 
-The `integrations/ros2/metriplane_ros/` package adapts Metriplane frame state
+The `integrations/ros2/metriplane_ros/` package adapts MetriPlane frame state
 and alert events into ROS 2-friendly messages. It is an adapter, not a robot
 controller. See [`docs/ros2_bridge.md`](docs/ros2_bridge.md).
 
@@ -526,4 +532,4 @@ MIT License — see [LICENSE](LICENSE).
 
 ---
 
-*MetriPlane — open research software for camera-first planar metric state streaming, replay, and zone analytics.*
+*MetriPlane — open-source physical observability for workcell evidence, replay, and regression testing.*

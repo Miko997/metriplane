@@ -5,13 +5,13 @@ SPDX-License-Identifier: MIT
 
 # MetriPlane Evidence Matrix
 
-**Current software release candidate**: `v0.2.0`
+**Current software release**: `v0.2.0`
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
 **Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
 **Canonical evidence**: [`CANONICAL_EVIDENCE.md`](CANONICAL_EVIDENCE.md)
-**Tests**: 520/520 passing in the v0.2.0 release branch.
+**Tests**: 580/580 passing in the captured v0.2.0 release-gate run (`evidence/paper_v2_0/test_output.txt`).
 
 Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidence exists but should not be promoted into a primary Paper B quantitative claim.
 
@@ -40,7 +40,7 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 | Large session provenance | Session hash in manifest when JSONL is outside Git | PARTIAL | `evidence/manifest.csv` | Large JSONL sessions may be archived outside Git; verify archived copies against manifest checksums. |
 | Paper B canonical release tag | Paper B source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | Canonical source/evidence release for Paper B; `v0.1.2` was the prior canonical evidence release; `v0.1.0` was the initial public release. |
 
-## Metriplane 0.2.0 Operational Evidence
+## MetriPlane 0.2.0 Operational Evidence
 
 | Claim | Required evidence | Found? | Actual artifact path(s) | Quality assessment |
 |---|---|---|---|---|

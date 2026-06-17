@@ -1,0 +1,7 @@
+run_id,event_id,ts,event_type,severity,asset_id,zone_id,station_id,process_step_id,message
+atlas_assembly_missing_tool_001,evt_0001,0.0,step_completed,info,kit_bin_1,kitting_lane,,kit_arrives,Kit arrives at the cell completed.
+atlas_assembly_missing_tool_001,evt_0002,10.0,step_completed,info,workpiece_7,station_a_work,station_a,workpiece_at_station_a,Workpiece arrives at station A completed.
+atlas_assembly_missing_tool_001,evt_0003,20.0,required_asset_missing,warning,torque_driver_1,,station_a,torque_driver_available,torque_driver_1 was not present for Torque driver available before fastening.
+atlas_assembly_missing_tool_001,evt_0004,55.0,step_delayed,warning,torque_driver_1,,station_a,torque_driver_available,Torque driver available before fastening waited 35.0 s for torque_driver_1.
+atlas_assembly_missing_tool_001,evt_0005,70.0,required_asset_present,info,torque_driver_1,station_a_work,station_a,torque_driver_available,Torque driver 1 was present for Torque driver available before fastening.
+atlas_assembly_missing_tool_001,evt_0006,70.0,step_completed,info,torque_driver_1,station_a_work,station_a,torque_driver_available,Torque driver available before fastening completed.

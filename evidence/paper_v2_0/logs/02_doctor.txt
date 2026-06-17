@@ -1,0 +1,14 @@
+Metriplane Doctor - Environment Check
+==================================================
+✅ PASS: Python 3.12.3
+✅ PASS: metriplane import successful
+✅ PASS: Git commit 44bed6d
+✅ PASS: tools/mp.sh exists
+✅ PASS: configs/fusion_health_300fps.yaml exists
+✅ PASS: Ports 8000, 8001, 8765 available
+✅ PASS: Camera devices found: /dev/video0, /dev/video1
+✅ PASS: GPU available: NVIDIA GeForce RTX 5070 Ti
+==================================================
+Summary: 8 passed, 0 warnings, 0 failed
+
+✅ All checks passed! Metriplane is ready.

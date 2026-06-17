@@ -1,0 +1,18 @@
+expected_events:
+- asset_id: torque_driver_1
+  event_type: required_asset_missing
+  process_step_id: torque_driver_available
+  severity: warning
+- asset_id: torque_driver_1
+  event_type: step_delayed
+  process_step_id: torque_driver_available
+  severity: warning
+expected_incidents:
+- incident_type: missing_tool_caused_delay
+  severity: warning
+schema_version: metriplane.atlas.regression_test.v1
+source_bundle: runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+test_id: missing_tool_caused_delay_INC-0001
+tolerances:
+  duration_s: 1.0
+  event_time_s: 0.5

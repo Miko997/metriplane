@@ -1,0 +1,35 @@
+{
+  "artifacts": {
+    "atlas_dashboard": "evidence/paper_v2_0/atlas_run/atlas_dashboard.html",
+    "cell_truth_report_html": "evidence/paper_v2_0/atlas_run/cell_truth_report.html",
+    "cell_truth_report_md": "evidence/paper_v2_0/atlas_run/cell_truth_report.md",
+    "connector_exports": "evidence/paper_v2_0/atlas_run/connectors",
+    "deviations": "evidence/paper_v2_0/atlas_run/deviations.jsonl",
+    "evidence_bundles": "evidence/paper_v2_0/atlas_run/evidence_bundles",
+    "flow_metrics_csv": "evidence/paper_v2_0/atlas_run/flow_metrics.csv",
+    "improvement_actions": "evidence/paper_v2_0/atlas_run/improvement_actions.json",
+    "incidents": "evidence/paper_v2_0/atlas_run/incidents.jsonl",
+    "metrics": "evidence/paper_v2_0/atlas_run/metrics.json",
+    "physical_event_log": "evidence/paper_v2_0/atlas_run/physical_event_log.jsonl",
+    "privacy_report": "evidence/paper_v2_0/atlas_run/privacy_report.json",
+    "process_trace": "evidence/paper_v2_0/atlas_run/process_trace.json",
+    "reality_graph": "evidence/paper_v2_0/atlas_run/reality_graph.json",
+    "regression_tests": "evidence/paper_v2_0/atlas_run/regression_tests",
+    "training_cases": "evidence/paper_v2_0/atlas_run/training_cases",
+    "twinverify_usda": "evidence/paper_v2_0/atlas_run/twinverify_replay.usda"
+  },
+  "cell_id": "cell_assembly_a",
+  "deviation_count": 1,
+  "domain_pack": "configs/domain_packs/assembly_cell",
+  "event_count": 6,
+  "frame_count": 5,
+  "incident_count": 1,
+  "limitations": [
+    "planar_xy_state",
+    "tracked_or_tagged_assets_required",
+    "not_certified_safety_or_quality_decision_system"
+  ],
+  "run_id": "atlas_assembly_missing_tool_001",
+  "schema_version": "metriplane.atlas.run_manifest.v1",
+  "source_session_jsonl": "datasets/demo/atlas/assembly_cell_missing_tool.jsonl"
+}

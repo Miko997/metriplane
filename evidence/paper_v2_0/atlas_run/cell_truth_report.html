@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MetriPlane Cell Truth Report</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d11;
+      --panel: #10171d;
+      --panel-2: #121b22;
+      --line: #24343e;
+      --line-soft: rgba(93, 220, 211, 0.18);
+      --text: #e8eef2;
+      --muted: #9cb1ba;
+      --accent: #64ded6;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 40px 24px; background: var(--bg); color: var(--text);
+           font: 14px/1.55 Inter, system-ui, sans-serif; }
+    main { max-width: 1180px; margin: 0 auto; }
+    h1, h2 { color: #ffffff; letter-spacing: 0; }
+    h1 { font-size: clamp(30px, 4vw, 46px); line-height: 1.05; margin: 0 0 28px; }
+    h2 { margin: 32px 0 14px; border-top: 1px solid var(--line); padding-top: 22px; }
+    p { margin: 8px 0; background: var(--panel); border: 1px solid var(--line);
+        border-radius: 6px; padding: 10px 12px; }
+    code { color: var(--accent); font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .bullet { display: flex; gap: 8px; align-items: baseline; }
+    .bullet::before { content: "•"; color: var(--accent); font-weight: 700; }
+    .report-table-wrap { overflow-x: auto; margin: 12px 0 20px; border: 1px solid var(--line);
+                         border-radius: 8px; background: var(--panel); }
+    .report-table { width: 100%; border-collapse: collapse; min-width: 720px; table-layout: fixed; }
+    .report-table th { color: var(--accent); background: var(--panel-2); text-align: left;
+                       font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    .report-table th, .report-table td { padding: 12px 14px; border-bottom: 1px solid var(--line-soft);
+                                         vertical-align: top; overflow-wrap: anywhere; }
+    .report-table tr:last-child td { border-bottom: 0; }
+    .report-table td { color: #d6e3e8; }
+  </style>
+</head>
+<body><main>
+<h1>Cell Truth Report</h1>
+
+<h2>Executive summary</h2>
+
+<p class="bullet">Observed duration: 70.0 s.</p>
+<p class="bullet">Physical events recorded: 6.</p>
+<p class="bullet">Process deviations detected: 1.</p>
+<p class="bullet">Incidents generated: 1.</p>
+<p class="bullet">Evidence bundles generated: 1.</p>
+<p class="bullet">This report is derived from replayed planar state, not raw video judgement.</p>
+
+<h2>Timeline</h2>
+
+<p class="bullet">0.0: Kit arrives at the cell completed. (<code>evt_0001</code>)</p>
+<p class="bullet">10.0: Workpiece arrives at station A completed. (<code>evt_0002</code>)</p>
+<p class="bullet">20.0: torque_driver_1 was not present for Torque driver available before fastening. (<code>evt_0003</code>)</p>
+<p class="bullet">55.0: Torque driver available before fastening waited 35.0 s for torque_driver_1. (<code>evt_0004</code>)</p>
+<p class="bullet">70.0: Torque driver 1 was present for Torque driver available before fastening. (<code>evt_0005</code>)</p>
+<p class="bullet">70.0: Torque driver available before fastening completed. (<code>evt_0006</code>)</p>
+
+<h2>Time loss table</h2>
+
+<div class="report-table-wrap"><table class="report-table"><thead><tr><th>issue</th><th>asset</th><th>station/zone</th><th>duration</th><th>evidence</th></tr></thead><tbody><tr><td>Torque driver available before fastening waited 35.0 s for torque_driver_1.</td><td>torque_driver_1</td><td>station_a</td><td>35.0 s</td><td>frame:4, step:torque_driver_available</td></tr></tbody></table></div>
+
+<h2>Deviations</h2>
+
+<div class="report-table-wrap"><table class="report-table"><thead><tr><th>deviation</th><th>severity</th><th>process step</th><th>assets</th><th>evidence</th></tr></thead><tbody><tr><td>missing_required_asset</td><td>warning</td><td>torque_driver_available</td><td>torque_driver_1</td><td>evt_0003, evt_0004</td></tr></tbody></table></div>
+
+<h2>Incidents and evidence</h2>
+
+<div class="report-table-wrap"><table class="report-table"><thead><tr><th>incident</th><th>severity</th><th>summary</th><th>events</th></tr></thead><tbody><tr><td>INC-0001: torque_driver_1 missing during Torque driver available before fastening</td><td>warning</td><td>Torque driver available before fastening waited because torque_driver_1 was absent.</td><td>evt_0003, evt_0004</td></tr></tbody></table></div>
+
+<h2>Training and improvement</h2>
+
+<p class="bullet">Add a required-tool staging check: INC-0001 shows a required asset was absent while a process step waited. Add a visible pre-step tool/material check. Caveat: Recommendation is derived from replay evidence and is not a guaranteed causal fix without before/after validation.</p>
+
+<h2>Artifact links</h2>
+
+<p class="bullet">Event ledger: <code>evidence/paper_v2_0/atlas_run/physical_event_log.jsonl</code></p>
+<p class="bullet">Reality graph: <code>evidence/paper_v2_0/atlas_run/reality_graph.json</code></p>
+<p class="bullet">Regression tests: <code>evidence/paper_v2_0/atlas_run/regression_tests</code></p>
+
+<h2>Limitations</h2>
+
+<p class="bullet">This report is derived from calibrated planar state streams.</p>
+<p class="bullet">It depends on tracked/tagged assets.</p>
+<p class="bullet">It is not a certified safety or quality decision system.</p>
+</main></body></html>

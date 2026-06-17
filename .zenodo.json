@@ -1,7 +1,7 @@
 {
-  "title": "MetriPlane: Open Research Software for Camera-First Planar Metric State Streaming, Replay, and Zone Analytics",
+  "title": "MetriPlane v0.2.0: Open-Source Physical Observability for Workcell Evidence, Replay, and Regression Testing",
   "upload_type": "software",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "access_right": "open",
   "license": "mit",
   "language": "eng",
@@ -11,7 +11,7 @@
       "type": "Researcher"
     }
   ],
-  "description": "MetriPlane is open research software for camera-first planar metric state streaming, deterministic replay, and zone analytics. The software detects fiducial markers, maps observations into metric XY coordinates, supports multi-camera fusion and tracking, computes zone analytics, streams schema-versioned WebSocket state, records JSONL sessions, and packages reproducibility artifacts such as manifests, checksums, and deterministic replay workflows. The software is scoped to planar XY tracking with fiducial marker IDs and does not claim marker-free object tracking, full 3D reconstruction, safety-certified industrial control, or measured end-to-end ROS 2 / Omniverse integration latency.",
+  "description": "MetriPlane v0.2.0 is open-source physical observability software for workcell evidence, replay, and regression testing. The software maps tagged/fiducial assets into calibrated planar XY state, evaluates spatial contracts, emits incidents, builds replayable evidence bundles, generates physical regression tests and Cell Truth Reports, and exposes read-only review workflows. This software record does not claim peer-reviewed publication. It remains scoped to planar/tagged assets and does not claim marker-free tracking, full 3D reconstruction, safety-certified industrial control, robot or machine control, quality-release approval, or measured production runtime behavior for Docker, Isaac Sim, ROS 2, or Omniverse unless separately evidenced.",
   "keywords": [
     "research software",
     "digital twins",
@@ -24,7 +24,9 @@
     "ArUco",
     "planar homography",
     "reproducibility",
-    "benchmark evidence"
+    "benchmark evidence",
+    "evidence review",
+    "physical regression"
   ],
   "related_identifiers": [
     {
@@ -34,12 +36,12 @@
     },
     {
       "identifier": "https://github.com/Miko997/metriplane/tree/v0.1.4",
-      "relation": "isSupplementTo",
+      "relation": "isNewVersionOf",
       "resource_type": "software"
     },
     {
       "identifier": "https://doi.org/10.5281/zenodo.20631037",
-      "relation": "isIdenticalTo",
+      "relation": "isNewVersionOf",
       "resource_type": "software"
     }
   ]

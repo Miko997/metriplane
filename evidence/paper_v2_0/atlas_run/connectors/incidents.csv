@@ -1,0 +1,2 @@
+incident_id,incident_type,severity,title,summary,work_order_id
+INC-0001,missing_tool_caused_delay,warning,torque_driver_1 missing during Torque driver available before fastening,Torque driver available before fastening waited because torque_driver_1 was absent.,WO-ASM-001

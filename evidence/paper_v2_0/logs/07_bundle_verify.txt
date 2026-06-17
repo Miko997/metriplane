@@ -1,0 +1,6 @@
+{
+  "bundle": "runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip",
+  "errors": [],
+  "pass": true,
+  "schema_version": "metriplane.atlas.bundle_verifier.v1"
+}

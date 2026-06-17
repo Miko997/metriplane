@@ -1,0 +1,2 @@
+work_order_id,process_id,product,planned_start,planned_end,priority
+WO-ASM-001,assembly_cell_missing_tool_demo,pump_housing_a,2026-06-13T08:00:00Z,2026-06-13T08:10:00Z,normal

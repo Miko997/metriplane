@@ -1,0 +1,456 @@
+{
+  "edges": [
+    {
+      "id": "station_in_zone:station:station_a:zone:station_a_work:",
+      "properties": {},
+      "source_id": "station:station_a",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": null,
+      "type": "station_in_zone"
+    },
+    {
+      "id": "asset_required_for_step:asset:torque_driver_1:step:torque_driver_available:",
+      "properties": {},
+      "source_id": "asset:torque_driver_1",
+      "target_id": "step:torque_driver_available",
+      "ts_end": null,
+      "ts_start": null,
+      "type": "asset_required_for_step"
+    },
+    {
+      "id": "asset_in_zone:asset:kit_bin_1:zone:kitting_lane:0.000",
+      "properties": {},
+      "source_id": "asset:kit_bin_1",
+      "target_id": "zone:kitting_lane",
+      "ts_end": null,
+      "ts_start": 0.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "event_involves_asset:event:evt_0001:asset:kit_bin_1:",
+      "properties": {},
+      "source_id": "event:evt_0001",
+      "target_id": "asset:kit_bin_1",
+      "ts_end": null,
+      "ts_start": 0.0,
+      "type": "event_involves_asset"
+    },
+    {
+      "id": "event_about_step:event:evt_0001:step:kit_arrives:",
+      "properties": {},
+      "source_id": "event:evt_0001",
+      "target_id": "step:kit_arrives",
+      "ts_end": null,
+      "ts_start": 0.0,
+      "type": "event_about_step"
+    },
+    {
+      "id": "asset_in_zone:asset:workpiece_7:zone:station_a_work:10.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": 10.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "asset_at_station:asset:workpiece_7:station:station_a:10.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "station:station_a",
+      "ts_end": null,
+      "ts_start": 10.0,
+      "type": "asset_at_station"
+    },
+    {
+      "id": "event_involves_asset:event:evt_0002:asset:workpiece_7:",
+      "properties": {},
+      "source_id": "event:evt_0002",
+      "target_id": "asset:workpiece_7",
+      "ts_end": null,
+      "ts_start": 10.0,
+      "type": "event_involves_asset"
+    },
+    {
+      "id": "event_about_step:event:evt_0002:step:workpiece_at_station_a:",
+      "properties": {},
+      "source_id": "event:evt_0002",
+      "target_id": "step:workpiece_at_station_a",
+      "ts_end": null,
+      "ts_start": 10.0,
+      "type": "event_about_step"
+    },
+    {
+      "id": "asset_in_zone:asset:workpiece_7:zone:station_a_work:20.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": 20.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "asset_at_station:asset:workpiece_7:station:station_a:20.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "station:station_a",
+      "ts_end": null,
+      "ts_start": 20.0,
+      "type": "asset_at_station"
+    },
+    {
+      "id": "event_involves_asset:event:evt_0003:asset:torque_driver_1:",
+      "properties": {},
+      "source_id": "event:evt_0003",
+      "target_id": "asset:torque_driver_1",
+      "ts_end": null,
+      "ts_start": 20.0,
+      "type": "event_involves_asset"
+    },
+    {
+      "id": "event_about_step:event:evt_0003:step:torque_driver_available:",
+      "properties": {},
+      "source_id": "event:evt_0003",
+      "target_id": "step:torque_driver_available",
+      "ts_end": null,
+      "ts_start": 20.0,
+      "type": "event_about_step"
+    },
+    {
+      "id": "asset_in_zone:asset:workpiece_7:zone:station_a_work:55.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": 55.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "asset_at_station:asset:workpiece_7:station:station_a:55.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "station:station_a",
+      "ts_end": null,
+      "ts_start": 55.0,
+      "type": "asset_at_station"
+    },
+    {
+      "id": "event_involves_asset:event:evt_0004:asset:torque_driver_1:",
+      "properties": {},
+      "source_id": "event:evt_0004",
+      "target_id": "asset:torque_driver_1",
+      "ts_end": null,
+      "ts_start": 55.0,
+      "type": "event_involves_asset"
+    },
+    {
+      "id": "event_about_step:event:evt_0004:step:torque_driver_available:",
+      "properties": {},
+      "source_id": "event:evt_0004",
+      "target_id": "step:torque_driver_available",
+      "ts_end": null,
+      "ts_start": 55.0,
+      "type": "event_about_step"
+    },
+    {
+      "id": "asset_in_zone:asset:workpiece_7:zone:station_a_work:70.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "asset_at_station:asset:workpiece_7:station:station_a:70.000",
+      "properties": {},
+      "source_id": "asset:workpiece_7",
+      "target_id": "station:station_a",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "asset_at_station"
+    },
+    {
+      "id": "asset_in_zone:asset:torque_driver_1:zone:station_a_work:70.000",
+      "properties": {},
+      "source_id": "asset:torque_driver_1",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "asset_at_station:asset:torque_driver_1:station:station_a:70.000",
+      "properties": {},
+      "source_id": "asset:torque_driver_1",
+      "target_id": "station:station_a",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "asset_at_station"
+    },
+    {
+      "id": "asset_in_zone:asset:quality_gauge_1:zone:station_a_work:70.000",
+      "properties": {},
+      "source_id": "asset:quality_gauge_1",
+      "target_id": "zone:station_a_work",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "asset_in_zone"
+    },
+    {
+      "id": "asset_at_station:asset:quality_gauge_1:station:station_a:70.000",
+      "properties": {},
+      "source_id": "asset:quality_gauge_1",
+      "target_id": "station:station_a",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "asset_at_station"
+    },
+    {
+      "id": "event_involves_asset:event:evt_0005:asset:torque_driver_1:",
+      "properties": {},
+      "source_id": "event:evt_0005",
+      "target_id": "asset:torque_driver_1",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "event_involves_asset"
+    },
+    {
+      "id": "event_about_step:event:evt_0005:step:torque_driver_available:",
+      "properties": {},
+      "source_id": "event:evt_0005",
+      "target_id": "step:torque_driver_available",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "event_about_step"
+    },
+    {
+      "id": "event_involves_asset:event:evt_0006:asset:torque_driver_1:",
+      "properties": {},
+      "source_id": "event:evt_0006",
+      "target_id": "asset:torque_driver_1",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "event_involves_asset"
+    },
+    {
+      "id": "event_about_step:event:evt_0006:step:torque_driver_available:",
+      "properties": {},
+      "source_id": "event:evt_0006",
+      "target_id": "step:torque_driver_available",
+      "ts_end": null,
+      "ts_start": 70.0,
+      "type": "event_about_step"
+    },
+    {
+      "id": "incident_has_event:incident:INC-0001:event:evt_0003:",
+      "properties": {},
+      "source_id": "incident:INC-0001",
+      "target_id": "event:evt_0003",
+      "ts_end": null,
+      "ts_start": null,
+      "type": "incident_has_event"
+    },
+    {
+      "id": "incident_has_event:incident:INC-0001:event:evt_0004:",
+      "properties": {},
+      "source_id": "incident:INC-0001",
+      "target_id": "event:evt_0004",
+      "ts_end": null,
+      "ts_start": null,
+      "type": "incident_has_event"
+    }
+  ],
+  "entities": [
+    {
+      "id": "asset:kit_bin_1",
+      "label": "Kit bin 1",
+      "properties": {
+        "asset_type": "kit_bin",
+        "object_id": "1",
+        "work_order_id": "WO-ASM-001"
+      },
+      "type": "asset"
+    },
+    {
+      "id": "asset:quality_gauge_1",
+      "label": "Quality gauge 1",
+      "properties": {
+        "asset_type": "gauge",
+        "object_id": "21",
+        "work_order_id": null
+      },
+      "type": "asset"
+    },
+    {
+      "id": "asset:torque_driver_1",
+      "label": "Torque driver 1",
+      "properties": {
+        "asset_type": "tool",
+        "object_id": "12",
+        "work_order_id": null
+      },
+      "type": "asset"
+    },
+    {
+      "id": "asset:workpiece_7",
+      "label": "Pump housing 7",
+      "properties": {
+        "asset_type": "workpiece",
+        "object_id": "7",
+        "work_order_id": "WO-ASM-001"
+      },
+      "type": "asset"
+    },
+    {
+      "id": "zone:kitting_lane",
+      "label": "Kitting lane",
+      "properties": {
+        "zone_type": "inbound_material"
+      },
+      "type": "zone"
+    },
+    {
+      "id": "zone:outbound_buffer",
+      "label": "Outbound buffer",
+      "properties": {
+        "zone_type": "outbound_material"
+      },
+      "type": "zone"
+    },
+    {
+      "id": "zone:station_a_work",
+      "label": "Station A work envelope",
+      "properties": {
+        "zone_type": "work_station"
+      },
+      "type": "zone"
+    },
+    {
+      "id": "zone:tool_shadow",
+      "label": "Tool shadow board",
+      "properties": {
+        "zone_type": "tool_storage"
+      },
+      "type": "zone"
+    },
+    {
+      "id": "station:station_a",
+      "label": "Assembly station A",
+      "properties": {
+        "zone_id": "station_a_work"
+      },
+      "type": "station"
+    },
+    {
+      "id": "step:kit_arrives",
+      "label": "Kit arrives at the cell",
+      "properties": {
+        "required_assets": [],
+        "required_station": null,
+        "required_zone": "kitting_lane"
+      },
+      "type": "process_step"
+    },
+    {
+      "id": "step:torque_driver_available",
+      "label": "Torque driver available before fastening",
+      "properties": {
+        "required_assets": [
+          "torque_driver_1"
+        ],
+        "required_station": "station_a",
+        "required_zone": null
+      },
+      "type": "process_step"
+    },
+    {
+      "id": "step:workpiece_at_station_a",
+      "label": "Workpiece arrives at station A",
+      "properties": {
+        "required_assets": [],
+        "required_station": "station_a",
+        "required_zone": null
+      },
+      "type": "process_step"
+    },
+    {
+      "id": "work_order:WO-ASM-001",
+      "label": "WO-ASM-001",
+      "properties": {},
+      "type": "work_order"
+    },
+    {
+      "id": "event:evt_0001",
+      "label": "step_completed",
+      "properties": {
+        "message": "Kit arrives at the cell completed.",
+        "severity": "info"
+      },
+      "type": "event"
+    },
+    {
+      "id": "event:evt_0002",
+      "label": "step_completed",
+      "properties": {
+        "message": "Workpiece arrives at station A completed.",
+        "severity": "info"
+      },
+      "type": "event"
+    },
+    {
+      "id": "event:evt_0003",
+      "label": "required_asset_missing",
+      "properties": {
+        "message": "torque_driver_1 was not present for Torque driver available before fastening.",
+        "severity": "warning"
+      },
+      "type": "event"
+    },
+    {
+      "id": "event:evt_0004",
+      "label": "step_delayed",
+      "properties": {
+        "message": "Torque driver available before fastening waited 35.0 s for torque_driver_1.",
+        "severity": "warning"
+      },
+      "type": "event"
+    },
+    {
+      "id": "event:evt_0005",
+      "label": "required_asset_present",
+      "properties": {
+        "message": "Torque driver 1 was present for Torque driver available before fastening.",
+        "severity": "info"
+      },
+      "type": "event"
+    },
+    {
+      "id": "event:evt_0006",
+      "label": "step_completed",
+      "properties": {
+        "message": "Torque driver available before fastening completed.",
+        "severity": "info"
+      },
+      "type": "event"
+    },
+    {
+      "id": "incident:INC-0001",
+      "label": "torque_driver_1 missing during Torque driver available before fastening",
+      "properties": {
+        "severity": "warning",
+        "summary": "Torque driver available before fastening waited because torque_driver_1 was absent."
+      },
+      "type": "incident"
+    }
+  ],
+  "graph_id": "graph_atlas_assembly_missing_tool_001",
+  "limitations": [
+    "planar_xy_state",
+    "tracked_or_tagged_assets_required",
+    "not_certified_safety_or_quality_decision_system"
+  ],
+  "run_id": "atlas_assembly_missing_tool_001",
+  "schema_version": "metriplane.atlas.reality_graph.v1"
+}

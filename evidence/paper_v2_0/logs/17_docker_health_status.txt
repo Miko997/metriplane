@@ -1,0 +1,1 @@
+Docker health endpoint OK on attempt 2

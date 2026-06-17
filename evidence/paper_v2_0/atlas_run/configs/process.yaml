@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+schema_version: metriplane.atlas.process_model.v1
+process_id: assembly_cell_missing_tool_demo
+work_order_type: assembly
+steps:
+  - step_id: kit_arrives
+    label: Kit arrives at the cell
+    expected_asset_types: [kit_bin]
+    required_zone: kitting_lane
+  - step_id: workpiece_at_station_a
+    label: Workpiece arrives at station A
+    expected_asset_types: [workpiece]
+    required_station: station_a
+  - step_id: torque_driver_available
+    label: Torque driver available before fastening
+    required_assets: [torque_driver_1]
+    required_station: station_a
+    max_wait_s: 30.0

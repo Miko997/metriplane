@@ -1,0 +1,56 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 419B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.25kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm
+#3 DONE 0.4s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 591B done
+#4 DONE 0.0s
+
+#5 [1/9] FROM docker.io/library/python:3.12-slim-bookworm@sha256:76d4b7b6305788c6b4c6a19d6a22a3921bf802e9af4d5e1e5bd771208dba74bf
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 79.12kB 0.0s done
+#6 DONE 0.0s
+
+#7 [8/9] RUN pip install .
+#7 CACHED
+
+#8 [5/9] COPY pyproject.toml ./
+#8 CACHED
+
+#9 [7/9] COPY . /app
+#9 CACHED
+
+#10 [2/9] RUN apt-get update  && apt-get install -y --no-install-recommends       ca-certificates       curl       git       libgl1       libglib2.0-0       libsm6       libxext6       libxrender1  && rm -rf /var/lib/apt/lists/*
+#10 CACHED
+
+#11 [4/9] WORKDIR /app
+#11 CACHED
+
+#12 [3/9] RUN useradd --create-home --uid 10001 --shell /bin/bash metriplane
+#12 CACHED
+
+#13 [6/9] RUN pip install --upgrade pip setuptools wheel
+#13 CACHED
+
+#14 [9/9] RUN mkdir -p /data/runs /data/datasets /data/evidence  && chown -R metriplane:metriplane /data
+#14 CACHED
+
+#15 exporting to image
+#15 exporting layers done
+#15 writing image sha256:bf674d5b1e778eaf82302e9243787a444ac9332f42eb9c303fc1cbc3baa51d8f done
+#15 naming to docker.io/library/metriplane-core-metriplane_demo done
+#15 DONE 0.0s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+NAME                                IMAGE                             COMMAND                  SERVICE           CREATED                  STATUS                  PORTS
+metriplane-core-metriplane_demo-1   metriplane-core-metriplane_demo   "metriplane --config…"   metriplane_demo   Less than a second ago   Up Less than a second   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp, 0.0.0.0:8765->8765/tcp, [::]:8765->8765/tcp

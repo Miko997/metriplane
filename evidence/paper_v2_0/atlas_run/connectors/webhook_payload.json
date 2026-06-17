@@ -1,0 +1,9 @@
+{
+  "cell_id": "cell_assembly_a",
+  "event": "atlas.run.completed",
+  "event_count": 6,
+  "incident_count": 1,
+  "report": "evidence/paper_v2_0/atlas_run/cell_truth_report.html",
+  "run_id": "atlas_assembly_missing_tool_001",
+  "schema_version": "metriplane.atlas.webhook_payload.v1"
+}
