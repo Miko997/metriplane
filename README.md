@@ -11,6 +11,11 @@ SPDX-License-Identifier: MIT
 
 Open-source workcell black box for replayable physical evidence.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release: v0.2.0](https://img.shields.io/badge/release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
+[![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
+
 ## Official Links
 
 - Official site: https://www.metriplane.com/
@@ -23,6 +28,10 @@ Open-source workcell black box for replayable physical evidence.
 ## Summary
 
 Metriplane v0.2.0 is an open-source physical-observability artifact for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression tests. The current release is observe-only and camera-free for reproduction.
+
+## Why this exists
+
+Robotics teams often need more than raw logs after an incident. Metriplane explores a structured evidence layer where replayed workcell state becomes an inspectable incident bundle, a verification target, and a generated regression test.
 
 ## Evidence Workflow
 
@@ -79,7 +88,7 @@ metriplane atlas test \
 
 - observe-only
 - local-first
-- replay/camera-oriented
+- replay-first, camera-compatible
 - bounded workcell scoped
 - research-software oriented
 - focused on evidence, not robot control
@@ -151,6 +160,7 @@ metriplane atlas test \
 - Prerequisites: [docs/PREREQUISITES.md](docs/PREREQUISITES.md)
 - Evidence matrix: [docs/eval/evidence_matrix.md](docs/eval/evidence_matrix.md)
 - Integration notes: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
+- Previous detailed README archive: [docs/archive/README_pre_website_refresh.md](docs/archive/README_pre_website_refresh.md)
 
 ## License
 
