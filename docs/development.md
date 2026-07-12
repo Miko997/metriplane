@@ -87,26 +87,26 @@ Logs live in `~/metriplane-runs/_launcher/<timestamp>/`.
 
 **Both patterns are supported**:
 
-**Option A**: `.venv` in project root (gitignored):
+**In-project environment**: `.venv` in project root (gitignored):
 ```bash
 cd <repo>
 python3 -m venv .venv
 ```
 
-**Option B**: Named venv outside project (known-good workflow):
+**External environment**: Named venv outside project (known-good workflow):
 ```bash
 python3 -m venv ~/metriplane-venv
 ```
 
-**Note**: Current known-good workflow uses `~/metriplane-venv` (Option B). Either works.
+**Note**: Current known-good workflow uses `~/metriplane-venv`. Either pattern works.
 
 ### 2. Activate Environment
 
 ```bash
-# Option A: in-project venv
+# In-project venv
 source .venv/bin/activate
 
-# Option B: external venv (known-good)
+# External venv (known-good)
 source ~/metriplane-venv/bin/activate
 ```
 

@@ -120,16 +120,11 @@ If you use or evaluate Metriplane v0.2.0, cite the archived release:
 
 https://doi.org/10.5281/zenodo.20736619
 
-## SoftwareX Artifact and Provenance
+## Reproducibility and Archived Release
 
-The SoftwareX manuscript evaluates the archived Metriplane v0.2.0 GitHub/Zenodo
-release. Current `main` contains later documentation maintenance and is not the
-archived software artifact.
-
-- Artifact decision: [docs/softwarex_submission_artifact.md](docs/softwarex_submission_artifact.md)
-- Release provenance: [docs/softwarex_release_provenance.md](docs/softwarex_release_provenance.md)
-- Claim/evidence matrix: [docs/softwarex_claim_evidence_matrix.md](docs/softwarex_claim_evidence_matrix.md)
-- Repository audit: [docs/softwarex_repository_audit.md](docs/softwarex_repository_audit.md)
+The SoftwareX manuscript evaluates the archived Metriplane v0.2.0 release.
+Reproduction commands, expected outputs, and evidence provenance are documented
+in [docs/softwarex_reproducibility.md](docs/softwarex_reproducibility.md).
 
 ## Repository Orientation
 
@@ -169,6 +164,7 @@ metriplane atlas test \
 - Physical observability scope: [docs/physical_observability.md](docs/physical_observability.md)
 - Development setup: [docs/development.md](docs/development.md)
 - Prerequisites: [docs/PREREQUISITES.md](docs/PREREQUISITES.md)
+- SoftwareX reproducibility: [docs/softwarex_reproducibility.md](docs/softwarex_reproducibility.md)
 - Evidence matrix: [docs/eval/evidence_matrix.md](docs/eval/evidence_matrix.md)
 - Integration notes: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
 - Previous detailed README archive: [docs/archive/README_pre_website_refresh.md](docs/archive/README_pre_website_refresh.md)

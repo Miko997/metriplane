@@ -21,7 +21,7 @@ nvidia-smi
 
 ## Python install
 
-### Option A: install a CuPy wheel that matches your CUDA driver
+### Install a CuPy wheel that matches your CUDA driver
 
 CuPy wheels are distributed per CUDA major version (examples):
 
