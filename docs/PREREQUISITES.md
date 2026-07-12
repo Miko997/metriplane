@@ -432,7 +432,7 @@ async def bridge():
             # (implement using rclpy.Node)
 ```
 
-**Full integration guide**: See planned `docs/INTEGRATION.md`.
+**Full integration guide**: See `docs/INTEGRATIONS.md`.
 
 ---
 
@@ -463,7 +463,7 @@ The Omniverse extension connects to `ws://localhost:8765` and:
 - Creates USD prims for each tracked object
 - Updates transforms in real-time
 
-**Integration guide**: See planned `docs/INTEGRATION.md`.
+**Integration guide**: See `docs/INTEGRATIONS.md`.
 
 ---
 
@@ -513,7 +513,7 @@ After completing prerequisites:
 
 1. **Run preflight check**: `./tools/mp.sh preflight`
 2. **Try Docker demo**: `./tools/docker_demo_up.sh` (no camera required)
-3. **Try quickstart commands**: See [README.md](../README.md#-quickstart-3-commands)
+3. **Try quickstart commands**: See [README.md](../README.md#quick-reproduction-path)
 4. **Configure cameras**: Edit `calib/profiles/<profile>/cam*/mapping.yaml`
 5. **Run live demo**: `./tools/mp.sh run-fusion cpu 10 my_first_run`
 
@@ -521,9 +521,9 @@ After completing prerequisites:
 
 ## Support
 
-- **Documentation**: [docs/development.md)
-- **Health check**: [docs/PREREQUISITES.md)
-- **Release audit**: [docs/scope_rules.md)
+- **Documentation**: [docs/development.md](development.md)
+- **Health check**: [docs/PREREQUISITES.md](PREREQUISITES.md)
+- **Release audit**: [docs/scope_rules.md](scope_rules.md)
 - **GitHub Issues**: Report bugs or ask questions
 
 ---

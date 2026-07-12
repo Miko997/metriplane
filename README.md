@@ -120,6 +120,17 @@ If you use or evaluate Metriplane v0.2.0, cite the archived release:
 
 https://doi.org/10.5281/zenodo.20736619
 
+## SoftwareX Artifact and Provenance
+
+The SoftwareX manuscript evaluates the archived Metriplane v0.2.0 GitHub/Zenodo
+release. Current `main` contains later documentation maintenance and is not the
+archived software artifact.
+
+- Artifact decision: [docs/softwarex_submission_artifact.md](docs/softwarex_submission_artifact.md)
+- Release provenance: [docs/softwarex_release_provenance.md](docs/softwarex_release_provenance.md)
+- Claim/evidence matrix: [docs/softwarex_claim_evidence_matrix.md](docs/softwarex_claim_evidence_matrix.md)
+- Repository audit: [docs/softwarex_repository_audit.md](docs/softwarex_repository_audit.md)
+
 ## Repository Orientation
 
 The public Python package and command-line entry points remain named `metriplane`.

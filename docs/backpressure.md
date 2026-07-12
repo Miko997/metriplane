@@ -71,7 +71,7 @@ python benchmarks/run_backpressure.py \
 Outputs:
 
 - `evidence/experiments/backpressure_001.csv` (summary)
-- `evidence/experiments/backpressure_001_timeseries.csv` (time series)
+- `evidence/experiments/backpressure_timeseries_001.csv` (time series)
 
 Expected results under overload:
 
@@ -79,6 +79,7 @@ Expected results under overload:
 - `drops_total` increases (for `keep_latest` / `drop_oldest`)
 - threads remain alive and benchmark completes
 
-## Systems Demo 2 — suggested shot list
+## Systems Demo 2 — related proof
 
-See `evidence/demos/metriplane_systems_demo_2.md`.
+See `evidence/experiments/docker_demo_proof_001.md` for the checked-in local
+demo proof.

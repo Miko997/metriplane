@@ -27,7 +27,7 @@ SPDX-License-Identifier: MIT
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> ·
-  <a href="#operator-dashboard">Operator Dashboard</a> ·
+  <a href="#local-metriplane-console">Operator Dashboard</a> ·
   <a href="#evidence-review">Evidence Review</a> ·
   <a href="#citation">Citation</a> ·
   <a href="#public-release">Release</a> ·
