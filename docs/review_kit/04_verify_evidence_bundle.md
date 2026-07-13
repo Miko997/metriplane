@@ -6,14 +6,9 @@ SPDX-License-Identifier: MIT
 # Verify Evidence Bundle
 
 ```bash
-.venv/bin/metriplane atlas bundle verify evidence/paper_v2_0/atlas_run/evidence_bundles/INC-0001.zip
+metriplane atlas bundle verify \
+  /tmp/metriplane-softwarex-atlas/evidence_bundles/INC-0001.zip
 ```
-
-Captured output:
-
-- `evidence/paper_v2_0/logs/bundle_verify.txt`
-- `evidence/paper_v2_0/artifacts/INC-0001_zip_listing.txt`
-- `evidence/paper_v2_0/artifacts/INC-0001_zip.sha256`
 
 Expected result:
 
@@ -25,5 +20,6 @@ Expected result:
 }
 ```
 
-Bundle verification checks required contents and checksums. It is not a general
-malware scan.
+Bundle verification checks required contents, schema, checksums, and incident
+event references. It establishes local archive structure and integrity; it is
+not physical validation, certification, or a general malware scan.
