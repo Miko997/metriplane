@@ -124,8 +124,14 @@ jobs:
 
   evidence-audit:
     runs-on: ubuntu-latest
+    env:
+      METRIPLANE_V020_TAG: "v0.2.0"
+      METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-python@v5
         with:
@@ -136,10 +142,45 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      - name: Verify evidence manifest and checksums
+      - name: Verify current copies of frozen v0.2.0 evidence payload
+        shell: bash
         run: |
-          sha256sum -c evidence/CHECKSUMS.sha256 --quiet
-          python scripts/audit_evidence.py
+          set -euo pipefail
+          tag_commit="$(git rev-parse "${METRIPLANE_V020_TAG}^{commit}")"
+          if [[ "$tag_commit" != "$METRIPLANE_V020_COMMIT" ]]; then
+            echo "${METRIPLANE_V020_TAG} resolves to $tag_commit, expected $METRIPLANE_V020_COMMIT" >&2
+            exit 1
+          fi
+
+          frozen_checksums="$(mktemp)"
+          git show "${METRIPLANE_V020_COMMIT}:evidence/paper_v2_0/CHECKSUMS.sha256" \
+            | awk '$2 != "evidence/paper_v2_0/README.md"' \
+            > "$frozen_checksums"
+          test -s "$frozen_checksums"
+
+          # The paper-evidence README is documentation and may be maintained on main.
+          # Every other path in the archived checksum list is frozen evidence payload.
+          sha256sum -c "$frozen_checksums" --quiet
+
+      - name: Verify archived v0.2.0 release tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          worktree_parent="$(mktemp -d)"
+          archive_tree="$worktree_parent/v0.2.0"
+          cleanup() {
+            git worktree remove --force "$archive_tree" >/dev/null 2>&1 || true
+            rm -rf "$worktree_parent"
+          }
+          trap cleanup EXIT
+
+          git worktree add --detach "$archive_tree" "$METRIPLANE_V020_COMMIT"
+          (
+            cd "$archive_tree"
+            test "$(git rev-parse HEAD)" = "$METRIPLANE_V020_COMMIT"
+            sha256sum -c evidence/CHECKSUMS.sha256 --quiet
+            python scripts/audit_evidence.py
+          )
 
   ros2-adapter-static:
     runs-on: ubuntu-latest
