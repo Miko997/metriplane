@@ -27,11 +27,11 @@ Open-source workcell black box for replayable physical evidence.
 
 ## Summary
 
-Metriplane v0.2.0 is an open-source physical-observability artifact for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression tests. The current release is observe-only and camera-free for reproduction.
+Metriplane v0.2.0 is an open-source physical-observability artifact for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression checks. The current release is observe-only and camera-free for reproduction.
 
 ## Why this exists
 
-Robotics teams often need more than raw logs after an incident. Metriplane explores a structured evidence layer where replayed workcell state becomes an inspectable incident bundle, a verification target, and a generated regression test.
+Robotics teams often need more than raw logs after an incident. Metriplane explores a structured evidence layer where replayed workcell state becomes an inspectable incident bundle, a verification target, and a generated regression check.
 
 ## Evidence Workflow
 
@@ -42,7 +42,7 @@ replayed workcell state
 → Cell Truth Report
 → evidence bundle
 → bundle verification
-→ generated regression test
+→ generated regression check
 ```
 
 ## Current v0.2.0 Evidence Result
@@ -55,7 +55,7 @@ The author-run evidence package included in the archived release records:
 - 1 incident
 - 35.0 second missing-tool delay
 - bundle verify: pass=true
-- generated regression test: PASS
+- generated regression check: PASS
 
 ## Quick Reproduction Path
 
@@ -124,7 +124,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 
 ## Relationship to ROS Bags and Logs
 
-Robotics teams often debug incidents using recorded sensor data, ROS bags, logs, traces, and simulation replays. Those artifacts are valuable raw evidence. Metriplane is not a replacement for ROS bags or logs. It explores the next structured layer: incident context, evidence bundle, verification result, and generated regression test.
+Robotics teams often debug incidents using recorded sensor data, ROS bags, logs, traces, and simulation replays. Those artifacts are valuable raw evidence. Metriplane is not a replacement for ROS bags or logs. It explores the next structured layer: incident context, evidence bundle, verification result, and generated regression check.
 
 ## External Feedback
 
