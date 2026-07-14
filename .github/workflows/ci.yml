@@ -12,10 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      METRIPLANE_V020_TAG: "v0.2.0"
+      METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -52,10 +57,87 @@ jobs:
         run: |
           python tools/check_ros2_adapters.py
 
-      - name: Verify release evidence checksums
+      - name: Verify current copies of frozen v0.2.0 evidence payload
+        shell: bash
         run: |
-          sha256sum -c evidence/CHECKSUMS.sha256 --quiet
-          python scripts/audit_evidence.py
+          set -euo pipefail
+          tag_commit="$(git rev-parse "${METRIPLANE_V020_TAG}^{commit}")"
+          if [[ "$tag_commit" != "$METRIPLANE_V020_COMMIT" ]]; then
+            echo "${METRIPLANE_V020_TAG} resolves to $tag_commit, expected $METRIPLANE_V020_COMMIT" >&2
+            exit 1
+          fi
+
+          expected_files="$(mktemp)"
+          current_files="$(mktemp)"
+          frozen_checksums="$(mktemp)"
+          cleanup() {
+            rm -f "$expected_files" "$current_files" "$frozen_checksums"
+          }
+          trap cleanup EXIT
+
+          git ls-tree -r --name-only "$METRIPLANE_V020_COMMIT" \
+            -- evidence/paper_v2_0 \
+            | grep -v '^evidence/paper_v2_0/README.md$' \
+            | LC_ALL=C sort > "$expected_files"
+          git ls-files -- evidence/paper_v2_0 \
+            | grep -v '^evidence/paper_v2_0/README.md$' \
+            | LC_ALL=C sort > "$current_files"
+          test -s "$expected_files"
+          test -s "$current_files"
+
+          if ! diff -u "$expected_files" "$current_files"; then
+            echo "Tracked evidence/paper_v2_0 file set differs from frozen v0.2.0 release" >&2
+            exit 1
+          fi
+
+          # Freeze the approved current copies of evidence inventory metadata.
+          # The exact-tag step below independently verifies the archived copies.
+          while read -r expected_sha inventory_path; do
+            if ! git ls-files --error-unmatch -- "$inventory_path" >/dev/null; then
+              echo "Frozen evidence inventory is missing or untracked: $inventory_path" >&2
+              exit 1
+            fi
+            current_sha="$(sha256sum "$inventory_path" | awk '{print $1}')"
+            if [[ "$current_sha" != "$expected_sha" ]]; then
+              echo "Frozen evidence inventory changed: $inventory_path" >&2
+              echo "expected sha256: $expected_sha" >&2
+              echo "current sha256:  $current_sha" >&2
+              exit 1
+            fi
+          done <<'INVENTORY_SHA256'
+          d7c2f2b2caa215901aeb8d92772fe277a454f0c5e15f1152c27fd064177850ad evidence/CHECKSUMS.sha256
+          22d1a8731e80c1d8b141ea95e7ce65d4edc37a97b84ece66740d78bed21b47d9 evidence/manifest.csv
+          e9b50087fc6ec961bfa089771604c77d6d411c092f44d306306b80852f3c04a6 evidence/paper_v2_0/CHECKSUMS.sha256
+          INVENTORY_SHA256
+
+          git show "${METRIPLANE_V020_COMMIT}:evidence/paper_v2_0/CHECKSUMS.sha256" \
+            | awk '$2 != "evidence/paper_v2_0/README.md"' \
+            > "$frozen_checksums"
+          test -s "$frozen_checksums"
+
+          # The paper-evidence README is documentation and may be maintained on main.
+          # Every other path in the archived checksum list is frozen evidence payload.
+          sha256sum -c "$frozen_checksums" --quiet
+
+      - name: Verify archived v0.2.0 release tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          worktree_parent="$(mktemp -d)"
+          archive_tree="$worktree_parent/v0.2.0"
+          cleanup() {
+            git worktree remove --force "$archive_tree" >/dev/null 2>&1 || true
+            rm -rf "$worktree_parent"
+          }
+          trap cleanup EXIT
+
+          git worktree add --detach "$archive_tree" "$METRIPLANE_V020_COMMIT"
+          (
+            cd "$archive_tree"
+            test "$(git rev-parse HEAD)" = "$METRIPLANE_V020_COMMIT"
+            sha256sum -c evidence/CHECKSUMS.sha256 --quiet
+            python scripts/audit_evidence.py
+          )
 
       - name: Check shell script syntax
         run: |

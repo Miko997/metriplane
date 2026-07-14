@@ -27,11 +27,11 @@ Open-source workcell black box for replayable physical evidence.
 
 ## Summary
 
-Metriplane v0.2.0 is an open-source physical-observability artifact for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression tests. The current release is observe-only and camera-free for reproduction.
+Metriplane v0.2.0 is an open-source physical-observability artifact for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression checks. The current release is observe-only and camera-free for reproduction.
 
 ## Why this exists
 
-Robotics teams often need more than raw logs after an incident. Metriplane explores a structured evidence layer where replayed workcell state becomes an inspectable incident bundle, a verification target, and a generated regression test.
+Robotics teams often need more than raw logs after an incident. Metriplane explores a structured evidence layer where replayed workcell state becomes an inspectable incident bundle, a verification target, and a generated regression check.
 
 ## Evidence Workflow
 
@@ -42,10 +42,12 @@ replayed workcell state
 → Cell Truth Report
 → evidence bundle
 → bundle verification
-→ generated regression test
+→ generated regression check
 ```
 
 ## Current v0.2.0 Evidence Result
+
+The author-run evidence package included in the archived release records:
 
 - 580 tests passed
 - deterministic replay pass=true
@@ -53,35 +55,51 @@ replayed workcell state
 - 1 incident
 - 35.0 second missing-tool delay
 - bundle verify: pass=true
-- generated regression test: PASS
+- generated regression check: PASS
 
 ## Quick Reproduction Path
 
+The core SoftwareX reproduction is camera-free, uses the exact `v0.2.0` tag,
+and writes rerun outputs to temporary directories rather than the archived
+evidence package.
+
 ```bash
-git clone https://github.com/Miko997/metriplane.git
+git clone --branch v0.2.0 --depth 1 https://github.com/Miko997/metriplane.git
 cd metriplane
-git checkout v0.2.0
 
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+python -m pip install --upgrade pip
+python -m pip install -e .
 
 python -m metriplane.cli doctor
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
-./tools/mp.sh deterministic-replay
+
+RUNS=/tmp/metriplane-softwarex-runs \
+  ./tools/mp.sh deterministic-replay datasets/demo/session_001.jsonl
 
 metriplane atlas validate-pack configs/domain_packs/assembly_cell
-
 metriplane atlas run \
   --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl \
   --pack configs/domain_packs/assembly_cell \
-  --out runs/atlas/assembly_cell_missing_tool
+  --out /tmp/metriplane-softwarex-atlas \
+  --overwrite
 
 metriplane atlas bundle verify \
-  runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
+  /tmp/metriplane-softwarex-atlas/evidence_bundles/INC-0001.zip
 
 metriplane atlas test \
-  runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
+  /tmp/metriplane-softwarex-atlas/regression_tests/INC-0001.yaml \
+  --json
+```
+
+The full maintainer gate is separate from the core artifact path and adds test
+and browser dependencies:
+
+```bash
+python -m pip install -e .
+python -m pip install pytest playwright
+python -m playwright install chromium --with-deps
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 ```
 
 ## What Metriplane Is
@@ -106,7 +124,7 @@ metriplane atlas test \
 
 ## Relationship to ROS Bags and Logs
 
-Robotics teams often debug incidents using recorded sensor data, ROS bags, logs, traces, and simulation replays. Those artifacts are valuable raw evidence. Metriplane is not a replacement for ROS bags or logs. It explores the next structured layer: incident context, evidence bundle, verification result, and generated regression test.
+Robotics teams often debug incidents using recorded sensor data, ROS bags, logs, traces, and simulation replays. Those artifacts are valuable raw evidence. Metriplane is not a replacement for ROS bags or logs. It explores the next structured layer: incident context, evidence bundle, verification result, and generated regression check.
 
 ## External Feedback
 
@@ -140,23 +158,13 @@ The public Python package and command-line entry points remain named `metriplane
 | Docs | `docs/` | Technical documentation and runbooks |
 | Web UI | `web/` | Local operator and review interfaces |
 
-## Key Local Commands
+## Canonical SoftwareX Commands
 
-```bash
-python -m metriplane.cli doctor
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
-./tools/mp.sh deterministic-replay
-
-metriplane atlas validate-pack configs/domain_packs/assembly_cell
-metriplane atlas run \
-  --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl \
-  --pack configs/domain_packs/assembly_cell \
-  --out runs/atlas/assembly_cell_missing_tool
-metriplane atlas bundle verify \
-  runs/atlas/assembly_cell_missing_tool/evidence_bundles/INC-0001.zip
-metriplane atlas test \
-  runs/atlas/assembly_cell_missing_tool/regression_tests/INC-0001.yaml
-```
+Use the **Quick Reproduction Path** above for the camera-free core artifact.
+The same commands, expected outputs, evidence provenance, and the separate
+maintainer-gate sequence are maintained in
+[docs/softwarex_reproducibility.md](docs/softwarex_reproducibility.md) and the
+[review kit](docs/review_kit/00_start_here.md).
 
 ## Documentation
 

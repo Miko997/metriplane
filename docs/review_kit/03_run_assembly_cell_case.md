@@ -8,29 +8,23 @@ SPDX-License-Identifier: MIT
 Validate the domain pack:
 
 ```bash
-.venv/bin/metriplane atlas validate-pack configs/domain_packs/assembly_cell
+metriplane atlas validate-pack configs/domain_packs/assembly_cell
 ```
 
-Run the replay:
+Run the replay into a temporary directory:
 
 ```bash
-.venv/bin/metriplane atlas run \
+metriplane atlas run \
   --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl \
   --pack configs/domain_packs/assembly_cell \
-  --out evidence/paper_v2_0/atlas_run \
+  --out /tmp/metriplane-softwarex-atlas \
   --overwrite
 ```
 
-Captured output:
+Expected result: 6 physical events, 1 process deviation, and 1 incident for
+missing `torque_driver_1` during the configured process step. The rerun creates
+the report, event ledger, incident record, evidence bundle, and generated
+regression YAML under `/tmp/metriplane-softwarex-atlas`.
 
-- `evidence/paper_v2_0/logs/atlas_validate_pack.txt`
-- `evidence/paper_v2_0/logs/atlas_assembly_cell_run.txt`
-- `evidence/paper_v2_0/atlas_run/cell_truth_report.md`
-- `evidence/paper_v2_0/atlas_run/cell_truth_report.html`
-- `evidence/paper_v2_0/atlas_run/atlas_dashboard.html`
-- `evidence/paper_v2_0/atlas_run/physical_event_log.jsonl`
-- `evidence/paper_v2_0/atlas_run/reality_graph.json`
-- `evidence/paper_v2_0/atlas_run/process_trace.json`
-
-Expected result: 6 physical events and 1 incident for missing
-`torque_driver_1` during the required process step.
+The immutable author-run artifacts included with the release remain under
+`evidence/paper_v2_0/atlas_run/`.
