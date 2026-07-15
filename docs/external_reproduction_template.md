@@ -5,7 +5,8 @@ SPDX-License-Identifier: MIT
 
 # External Reproduction Note Template
 
-Please complete this after running the MetriPlane v0.1.4 reviewer path.
+Please complete this after running the [Metriplane v0.2.0 reviewer
+path](review_kit/00_start_here.md).
 
 ## Person
 
@@ -13,7 +14,10 @@ Please complete this after running the MetriPlane v0.1.4 reviewer path.
 - Role/title:
 - Organization:
 - Email or public profile:
-- Permission to cite name in immigration/evidence packet: yes/no
+- Permission to cite or summarize this reproduction publicly:
+  - [ ] Yes, with name
+  - [ ] Yes, anonymously
+  - [ ] No
 - Permission to acknowledge in publication or repository: yes/no
 
 ## Environment
@@ -22,35 +26,14 @@ Please complete this after running the MetriPlane v0.1.4 reviewer path.
 - Operating system:
 - Python version:
 - Docker version, if used:
-- MetriPlane release or commit:
+- Metriplane release or commit:
 
 ## Commands run
 
-Linux/macOS:
-
-```bash
-git clone https://github.com/Miko997/metriplane.git
-cd metriplane
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-python -m metriplane.cli doctor
-./tools/mp.sh deterministic-replay
-```
-
-Windows Git Bash:
-
-```bash
-git clone https://github.com/Miko997/metriplane.git
-cd metriplane
-python -m venv .venv
-source .venv/Scripts/activate
-pip install -e .
-python -m metriplane.cli doctor
-./tools/mp.sh deterministic-replay
-```
-
-Use Git Bash or WSL on Windows, not plain Command Prompt, because `tools/mp.sh` is a Bash script.
+Follow the [SoftwareX reproduction guide](softwarex_reproducibility.md) and
+record the commands and results from the current run. Windows users must run
+the workflow inside WSL2 Ubuntu; the Bash commands are not intended for native
+Command Prompt or PowerShell.
 
 Optional Docker path:
 
