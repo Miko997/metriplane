@@ -26,7 +26,7 @@ path](review_kit/00_start_here.md).
 - Operating system:
 - Python version:
 - Docker version, if used:
-- MetriPlane release or commit:
+- Metriplane release or commit:
 
 ## Commands run
 

@@ -20,7 +20,8 @@ Paper title: **Benchmarking Camera-First Planar Digital Twins: A Reproducible Pr
 
 For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are non-authoritative convenience summaries.
 
-No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed yet.
+No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed
+for the historical Paper B v0.1.3 artifact.
 
 ## Benchmark Artifacts
 

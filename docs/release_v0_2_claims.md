@@ -3,9 +3,9 @@ SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# MetriPlane v0.2.0 Claim Boundaries
+# Metriplane v0.2.0 Claim Boundaries
 
-This table is the claim map for the archived public MetriPlane v0.2.0 release.
+This table is the claim map for the archived public Metriplane v0.2.0 release.
 It separates validated local behavior from adapter surfaces and
 environment-specific work.
 
