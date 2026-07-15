@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Summary of public evidence artifacts, supported Paper B claims, and known limitations.
 
-**Current software release candidate**: `v0.2.0`
+**Current software release**: [`v0.2.0`](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
 **Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)

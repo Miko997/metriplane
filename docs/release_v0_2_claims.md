@@ -5,8 +5,8 @@ SPDX-License-Identifier: MIT
 
 # MetriPlane v0.2.0 Claim Boundaries
 
-This table is the release-candidate claim map for the local MetriPlane
-v0.2.0 branch. It separates validated local behavior from adapter surfaces and
+This table is the claim map for the archived public MetriPlane v0.2.0 release.
+It separates validated local behavior from adapter surfaces and
 environment-specific work.
 
 Static UI/API release gate: **PASS**

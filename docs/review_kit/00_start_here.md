@@ -10,6 +10,11 @@ This review kit provides a camera-free path through the archived Metriplane
 outputs to temporary directories. The checked-in author-run evidence remains
 unchanged under `evidence/paper_v2_0/`.
 
+Windows users must run this workflow inside WSL2 Ubuntu; its Bash commands are
+not intended for native Command Prompt or PowerShell. Before cloning, follow
+the [platform and clean-run
+preflight](../softwarex_reproducibility.md#platform-and-clean-run-preflight).
+
 Recommended order:
 
 1. Install the exact tag with `docs/review_kit/01_install.md`.
