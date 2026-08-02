@@ -4,7 +4,7 @@ SPDX-License-Identifier: MIT
 -->
 
 <p align="center">
-  <img src="docs/assets/metriplane.png" alt="Metriplane" width="760">
+  <img src="docs/assets/metriplane-hero.jpg" alt="Metriplane — replayable physical evidence for workcells" width="100%">
 </p>
 
 # Metriplane
