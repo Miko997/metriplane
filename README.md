@@ -4,21 +4,23 @@ SPDX-License-Identifier: MIT
 -->
 
 <p align="center">
-  <img src="docs/assets/metriplane-hero.jpg" alt="Metriplane — replayable physical evidence for workcells" width="100%">
+  <img src="https://raw.githubusercontent.com/Miko997/metriplane/main/docs/assets/metriplane-hero.jpg" alt="Metriplane — replayable physical evidence for workcells" width="100%">
 </p>
 
 # Metriplane
 
 Open-source workcell black box for replayable physical evidence.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release: v0.2.0](https://img.shields.io/badge/release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Miko997/metriplane/blob/main/LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/metriplane.svg)](https://pypi.org/project/metriplane/)
+[![Research release: v0.2.0](https://img.shields.io/badge/research%20release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
 
 ## Official Links
 
 - Official site: https://www.metriplane.com/
+- Python package: https://pypi.org/project/metriplane/
 - 3-minute v0.2.0 demo: https://www.youtube.com/watch?v=7U5nbBbGGbw
 - v0.2.0 release: https://github.com/Miko997/metriplane/releases/tag/v0.2.0
 - Zenodo DOI: https://doi.org/10.5281/zenodo.20736619
@@ -27,7 +29,34 @@ Open-source workcell black box for replayable physical evidence.
 
 ## Summary
 
-Metriplane v0.2.0 is an open-source physical-observability artifact for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression checks. The current release is observe-only and camera-free for reproduction.
+Metriplane's frozen v0.2.0 research artifact is an open-source physical-observability system for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression checks. The v0.2.1 packaging release makes the core Python package and command-line interfaces installable from PyPI without changing the frozen v0.2.0 paper evidence.
+
+## Install from PyPI
+
+Metriplane requires Python 3.12 or newer.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "metriplane==0.2.1"
+
+metriplane doctor
+metriplane atlas protocol export --out metriplane-protocol
+```
+
+The PyPI distribution contains the core Python packages and command-line entry
+points. Repository assets are intentionally not embedded in the wheel:
+
+- checked-in demo datasets and domain-pack configurations
+- the local web dashboard
+- maintainer helper scripts
+- frozen paper evidence and reproduction records
+
+Use the exact source checkout in the reproduction section below when a command
+refers to `datasets/`, `configs/`, `web/`, `tools/`, or `evidence/`.
+When run from the wheel, doctor warnings about those source-checkout paths are
+expected and do not mean the package installation failed.
 
 ## Why this exists
 
@@ -142,7 +171,7 @@ https://doi.org/10.5281/zenodo.20736619
 
 The SoftwareX manuscript evaluates the archived Metriplane v0.2.0 release.
 Reproduction commands, expected outputs, and evidence provenance are documented
-in [docs/softwarex_reproducibility.md](docs/softwarex_reproducibility.md).
+in [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/softwarex_reproducibility.md).
 
 ## Repository Orientation
 
@@ -163,20 +192,21 @@ The public Python package and command-line entry points remain named `metriplane
 Use the **Quick Reproduction Path** above for the camera-free core artifact.
 The same commands, expected outputs, evidence provenance, and the separate
 maintainer-gate sequence are maintained in
-[docs/softwarex_reproducibility.md](docs/softwarex_reproducibility.md) and the
-[review kit](docs/review_kit/00_start_here.md).
+[docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/softwarex_reproducibility.md) and the
+[review kit](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/review_kit/00_start_here.md).
 
 ## Documentation
 
-- Atlas evidence workflow: [docs/atlas/README.md](docs/atlas/README.md)
-- Physical observability scope: [docs/physical_observability.md](docs/physical_observability.md)
-- Development setup: [docs/development.md](docs/development.md)
-- Prerequisites: [docs/PREREQUISITES.md](docs/PREREQUISITES.md)
-- SoftwareX reproducibility: [docs/softwarex_reproducibility.md](docs/softwarex_reproducibility.md)
-- Evidence matrix: [docs/eval/evidence_matrix.md](docs/eval/evidence_matrix.md)
-- Integration notes: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
-- Previous detailed README archive: [docs/archive/README_pre_website_refresh.md](docs/archive/README_pre_website_refresh.md)
+- Atlas evidence workflow: [docs/atlas/README.md](https://github.com/Miko997/metriplane/blob/main/docs/atlas/README.md)
+- Physical observability scope: [docs/physical_observability.md](https://github.com/Miko997/metriplane/blob/main/docs/physical_observability.md)
+- Development setup: [docs/development.md](https://github.com/Miko997/metriplane/blob/main/docs/development.md)
+- Prerequisites: [docs/PREREQUISITES.md](https://github.com/Miko997/metriplane/blob/main/docs/PREREQUISITES.md)
+- SoftwareX reproducibility: [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/softwarex_reproducibility.md)
+- Evidence matrix: [docs/eval/evidence_matrix.md](https://github.com/Miko997/metriplane/blob/main/docs/eval/evidence_matrix.md)
+- Integration notes: [docs/INTEGRATIONS.md](https://github.com/Miko997/metriplane/blob/main/docs/INTEGRATIONS.md)
+- PyPI release runbook: [docs/releasing.md](https://github.com/Miko997/metriplane/blob/main/docs/releasing.md)
+- Previous detailed README archive: [docs/archive/README_pre_website_refresh.md](https://github.com/Miko997/metriplane/blob/main/docs/archive/README_pre_website_refresh.md)
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](https://github.com/Miko997/metriplane/blob/main/LICENSE).

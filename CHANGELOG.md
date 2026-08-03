@@ -15,6 +15,27 @@ No unreleased changes.
 
 ---
 
+## [0.2.1] — 2026-08-03 — PyPI packaging and release automation
+
+### Added
+
+- Added explicit PEP 517 build-system metadata and complete PyPI project links.
+- Added a trusted-publishing workflow that stages the exact distributions on TestPyPI, verifies the installed package, and then promotes the same artifacts to PyPI after environment approval.
+- Added an exact release runbook for the first PyPI publication and later releases.
+
+### Changed
+
+- Exported the package version as `metriplane.__version__` and made it the single source for distribution metadata.
+- Switched the OpenCV dependency to `opencv-contrib-python-headless`, which includes the ArUco APIs used by Metriplane.
+- Strengthened the wheel gate with strict metadata validation, dependency checking, version checking, ArUco import checking, and a command executed outside the source checkout.
+- Clarified which features work from the PyPI wheel and which reproducibility assets require a source checkout.
+
+### Evidence scope
+
+- This is a packaging and delivery release. It does not alter the frozen v0.2.0 paper evidence, reported measurements, or associated DOI.
+
+---
+
 ## [0.2.0] — 2026-06-17 — Physical Observability, Evidence Bundles, and Command Center
 
 ### Added
