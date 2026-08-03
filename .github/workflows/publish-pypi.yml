@@ -1,0 +1,204 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Publish Python distributions
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  gates:
+    name: Run required release gates
+    uses: ./.github/workflows/release-gates.yml
+
+  build:
+    name: Test and build distributions
+    needs: gates
+    runs-on: ubuntu-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify tag and package versions agree
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(python -c 'import metriplane; print(metriplane.__version__)')"
+          test "$tag_version" = "$package_version"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Run test suite
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . pytest setuptools
+          python -m pip check
+          python -m pytest -q
+
+      - name: Build and validate distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: Smoke-test the wheel outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel_path="$(realpath dist/*.whl)"
+          smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
+          python -m venv "$smoke_venv"
+          "$smoke_venv/bin/python" -m pip install --upgrade pip
+          "$smoke_venv/bin/python" -m pip install "$wheel_path"
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/python" -m pip check
+          "$smoke_venv/bin/metriplane" doctor
+          "$smoke_venv/bin/metriplane" atlas protocol export --out protocol-smoke
+          test -s protocol-smoke/open_atlas_protocol_index.json
+          "$smoke_venv/bin/python" -c "import cv2; assert hasattr(cv2, 'aruco')"
+          VERSION="${GITHUB_REF_NAME#v}" "$smoke_venv/bin/python" -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/metriplane
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-testpypi:
+    name: Verify TestPyPI installation
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies from PyPI
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "numpy>=1.26" "opencv-contrib-python-headless>=4.8" "PyYAML>=6.0" "websockets>=12.0" "pydantic>=2.0"
+
+      - name: Install the tagged package from TestPyPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          for attempt in {1..12}; do
+            if python -m pip install \
+              --index-url https://test.pypi.org/simple/ \
+              --no-deps \
+              "metriplane==${version}"; then
+              break
+            fi
+            if [[ "$attempt" -eq 12 ]]; then
+              echo "TestPyPI did not serve metriplane==${version} in time" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Run installed-package checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip check
+          VERSION="${GITHUB_REF_NAME#v}" python -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
+          python -c "import cv2; assert hasattr(cv2, 'aruco')"
+          cd "$RUNNER_TEMP"
+          metriplane atlas protocol export --out protocol-testpypi
+          test -s protocol-testpypi/open_atlas_protocol_index.json
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: verify-testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/metriplane
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish the verified distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+
+  verify-pypi:
+    name: Verify PyPI installation
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install the tagged package from PyPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          python -m pip install --upgrade pip
+          for attempt in {1..12}; do
+            if python -m pip install --no-cache-dir "metriplane==${version}"; then
+              break
+            fi
+            if [[ "$attempt" -eq 12 ]]; then
+              echo "PyPI did not serve metriplane==${version} in time" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Run production installation checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip check
+          VERSION="${GITHUB_REF_NAME#v}" python -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
+          python -c "import cv2; assert hasattr(cv2, 'aruco')"
+          cd "$RUNNER_TEMP"
+          metriplane atlas protocol export --out protocol-pypi
+          test -s protocol-pypi/open_atlas_protocol_index.json

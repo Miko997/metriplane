@@ -4,13 +4,15 @@
 name: Release Gates
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches:
       - main
       - feature/release-v0.2.0
-    tags:
-      - "v*"
+
+permissions:
+  contents: read
 
 jobs:
   fixture-integrity:
@@ -18,9 +20,9 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -47,9 +49,9 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -79,9 +81,9 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -99,28 +101,35 @@ jobs:
   package-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
       - name: Build source and wheel distributions
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build
+          python -m pip install build twine
           python -m build
+          python -m twine check --strict dist/*
 
       - name: Install wheel in fresh venv outside checkout
         run: |
-          python -m venv /tmp/metriplane-wheel-smoke
-          /tmp/metriplane-wheel-smoke/bin/python -m pip install --upgrade pip
-          /tmp/metriplane-wheel-smoke/bin/python -m pip install dist/*.whl
-          cd /tmp
-          /tmp/metriplane-wheel-smoke/bin/metriplane doctor
-          /tmp/metriplane-wheel-smoke/bin/python -c "import metriplane"
-          /tmp/metriplane-wheel-smoke/bin/python -c "import integrations.isaac.metriplane_to_usd"
-          /tmp/metriplane-wheel-smoke/bin/python -c "import integrations.omniverse.metriplane_usd_replay"
+          wheel_path="$(realpath dist/*.whl)"
+          smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
+          python -m venv "$smoke_venv"
+          "$smoke_venv/bin/python" -m pip install --upgrade pip
+          "$smoke_venv/bin/python" -m pip install "$wheel_path"
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/python" -m pip check
+          "$smoke_venv/bin/metriplane" doctor
+          "$smoke_venv/bin/metriplane" atlas protocol export --out protocol-smoke
+          test -s protocol-smoke/open_atlas_protocol_index.json
+          "$smoke_venv/bin/python" -c "import cv2; assert hasattr(cv2, 'aruco')"
+          "$smoke_venv/bin/python" -c "import importlib.metadata as md, metriplane; assert metriplane.__version__ == md.version('metriplane')"
+          "$smoke_venv/bin/python" -c "import integrations.isaac.metriplane_to_usd"
+          "$smoke_venv/bin/python" -c "import integrations.omniverse.metriplane_usd_replay"
 
   evidence-audit:
     runs-on: ubuntu-latest
@@ -128,12 +137,12 @@ jobs:
       METRIPLANE_V020_TAG: "v0.2.0"
       METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -229,9 +238,9 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
