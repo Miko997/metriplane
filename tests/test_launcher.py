@@ -411,6 +411,20 @@ class TestReadCmdline:
         assert len(cmdline) > 0
         assert "python" in cmdline.lower() or "pytest" in cmdline.lower()
 
+    def test_falls_back_to_ps_without_proc(self, monkeypatch):
+        def proc_unavailable(_path):
+            raise OSError("/proc is unavailable")
+
+        def fake_run(command, **kwargs):
+            assert command == ["ps", "-ww", "-p", "123", "-o", "command="]
+            assert kwargs["timeout"] == 3
+            return subprocess.CompletedProcess(command, 0, stdout="python -m pytest\n")
+
+        monkeypatch.setattr(Path, "read_bytes", proc_unavailable)
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        assert _read_cmdline(123) == "python -m pytest"
+
     def test_dead_pid_returns_empty(self):
         proc = subprocess.Popen([sys.executable, "-c", "pass"])
         proc.wait()

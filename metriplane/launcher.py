@@ -122,10 +122,29 @@ def _get_pgid(pid: int) -> int | None:
 
 
 def _read_cmdline(pid: int) -> str:
-    """Return space-joined cmdline from /proc/{pid}/cmdline, or ''."""
+    """Return the process command line, or ``""`` when it cannot be read."""
     try:
-        data = Path(f"/proc/{pid}/cmdline").read_bytes()
+        pid_value = int(pid)
+        proc_path = (
+            Path("/proc/self/cmdline")
+            if pid_value == os.getpid()
+            else Path(f"/proc/{pid_value}/cmdline")
+        )
+        data = proc_path.read_bytes()
         return " ".join(a for a in data.decode(errors="replace").split("\x00") if a)
+    except Exception:
+        pass
+
+    # macOS and other POSIX systems do not expose Linux's /proc filesystem.
+    try:
+        result = subprocess.run(
+            ["ps", "-ww", "-p", str(int(pid)), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
     except Exception:
         return ""
 
