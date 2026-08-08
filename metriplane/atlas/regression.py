@@ -3,17 +3,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from collections.abc import Iterator
+from typing import Any, TypeVar
 import zipfile
 
 import yaml
 
 from metriplane.atlas.bundles import safe_extract, verify_bundle
 from metriplane.atlas.models import AtlasIncident, RegressionSpec
+
+
+_TActual = TypeVar("_TActual")
 
 
 @contextmanager
@@ -73,21 +77,35 @@ def run_regression(spec_path: str | Path) -> dict:
         if errors:
             return _result(spec, errors)
 
-    for expected in spec.expected_events:
-        if not any(_event_matches(expected, actual) for actual in actual_events):
+    event_matches = _maximum_one_to_one_matching(
+        spec.expected_events,
+        actual_events,
+        _event_matches,
+    )
+    for index, expected in enumerate(spec.expected_events):
+        if index not in event_matches:
             errors.append(f"missing expected event: {expected}")
-    for expected in spec.expected_incidents:
-        matches = [
+    incident_matches = _maximum_one_to_one_matching(
+        spec.expected_incidents,
+        actual_incidents,
+        _incident_matches,
+    )
+    for index, expected in enumerate(spec.expected_incidents):
+        if index in incident_matches:
+            continue
+        same_type = [
             incident for incident in actual_incidents
             if incident.incident_type == expected.get("incident_type")
         ]
-        if not matches:
+        if not same_type:
             errors.append(f"missing expected incident type: {expected.get('incident_type')}")
             continue
         if expected.get("severity") and not any(
-            incident.severity == expected.get("severity") for incident in matches
+            incident.severity == expected.get("severity") for incident in same_type
         ):
             errors.append(f"incident severity mismatch: {expected.get('severity')}")
+            continue
+        errors.append(f"missing distinct expected incident: {expected}")
     return _result(spec, errors)
 
 
@@ -133,11 +151,47 @@ def _replay_bundle_logic(root: Path, spec: RegressionSpec, errors: list[str]) ->
     return actual_events, actual_incidents
 
 
-def _event_matches(expected: dict, actual: dict) -> bool:
+def _maximum_one_to_one_matching(
+    expected: Sequence[dict[str, Any]],
+    actual: Sequence[_TActual],
+    predicate: Callable[[dict[str, Any], _TActual], bool],
+) -> dict[int, int]:
+    """Return a maximum mapping from expected indexes to unique actual indexes."""
+    actual_to_expected: dict[int, int] = {}
+
+    def assign(expected_index: int, seen_actual: set[int]) -> bool:
+        for actual_index, actual_item in enumerate(actual):
+            if actual_index in seen_actual or not predicate(
+                expected[expected_index], actual_item
+            ):
+                continue
+            seen_actual.add(actual_index)
+            previous_expected = actual_to_expected.get(actual_index)
+            if previous_expected is None or assign(previous_expected, seen_actual):
+                actual_to_expected[actual_index] = expected_index
+                return True
+        return False
+
+    for expected_index in range(len(expected)):
+        assign(expected_index, set())
+
+    return {
+        expected_index: actual_index
+        for actual_index, expected_index in actual_to_expected.items()
+    }
+
+
+def _event_matches(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
     for key in ("event_type", "asset_id", "process_step_id", "severity", "zone_id", "station_id"):
         if expected.get(key) is not None and expected.get(key) != actual.get(key):
             return False
     return True
+
+
+def _incident_matches(expected: dict[str, Any], actual: AtlasIncident) -> bool:
+    if actual.incident_type != expected.get("incident_type"):
+        return False
+    return not expected.get("severity") or actual.severity == expected.get("severity")
 
 
 def _result(spec: RegressionSpec, errors: list[str]) -> dict:
