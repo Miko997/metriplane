@@ -106,7 +106,10 @@ def test_atlas_runtime_generates_replayable_cell_black_box_artifacts(tmp_path: P
 def test_atlas_output_guard_classifies_generated_dirs() -> None:
     assert _safe_generated_out_dir(Path("web/dashboard/atlas_run")) is True
     assert _safe_generated_out_dir(Path("runs/atlas/release_gate")) is True
-    assert _safe_generated_out_dir(ROOT / "not_generated_release_output") is False
+    # Keep the negative case outside /tmp even when the repository itself was
+    # cloned there, as is common for isolated macOS reproduction runs.
+    non_generated_dir = Path(ROOT.anchor) / "not_generated_release_output"
+    assert _safe_generated_out_dir(non_generated_dir) is False
 
 
 def test_atlas_regression_replays_mutated_state_segment(tmp_path: Path) -> None:

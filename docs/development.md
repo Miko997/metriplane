@@ -18,7 +18,8 @@ SPDX-License-Identifier: MIT
 cd <repo>
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+python -m pip install -e .
+python -m pip install pytest
 
 # Validate
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
