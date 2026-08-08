@@ -394,6 +394,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Fast-path commands that need no logging setup
+    if argv and argv[0] == "demo":
+        from metriplane.demo import main as demo_main
+        return demo_main(argv[1:])
     if argv and argv[0] == "doctor":
         return _main_doctor(argv[1:])
     if argv and argv[0] == "objects":

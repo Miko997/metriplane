@@ -87,6 +87,13 @@ version = { attr = "metriplane.__version__" }
 where = ["."]
 include = ["metriplane*", "integrations*"]
 
+[tool.setuptools.package-data]
+"metriplane.demo" = [
+  "assets/*.jsonl",
+  "assets/assembly_cell/*.yaml",
+  "assets/assembly_cell/*.csv",
+]
+
 [project.scripts]
 metriplane = "metriplane.cli:main"
 metriplane-run = "metriplane.run:main"
