@@ -171,7 +171,7 @@ https://doi.org/10.5281/zenodo.20736619
 
 The SoftwareX manuscript evaluates the archived Metriplane v0.2.0 release.
 Reproduction commands, expected outputs, and evidence provenance are documented
-in [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/softwarex_reproducibility.md).
+in [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md).
 
 ## Repository Orientation
 
@@ -192,7 +192,7 @@ The public Python package and command-line entry points remain named `metriplane
 Use the **Quick Reproduction Path** above for the camera-free core artifact.
 The same commands, expected outputs, evidence provenance, and the separate
 maintainer-gate sequence are maintained in
-[docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/softwarex_reproducibility.md) and the
+[docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md) and the
 [review kit](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/review_kit/00_start_here.md).
 
 ## Documentation
@@ -201,7 +201,7 @@ maintainer-gate sequence are maintained in
 - Physical observability scope: [docs/physical_observability.md](https://github.com/Miko997/metriplane/blob/main/docs/physical_observability.md)
 - Development setup: [docs/development.md](https://github.com/Miko997/metriplane/blob/main/docs/development.md)
 - Prerequisites: [docs/PREREQUISITES.md](https://github.com/Miko997/metriplane/blob/main/docs/PREREQUISITES.md)
-- SoftwareX reproducibility: [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/v0.2.0/docs/softwarex_reproducibility.md)
+- SoftwareX reproducibility: [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md)
 - Evidence matrix: [docs/eval/evidence_matrix.md](https://github.com/Miko997/metriplane/blob/main/docs/eval/evidence_matrix.md)
 - Integration notes: [docs/INTEGRATIONS.md](https://github.com/Miko997/metriplane/blob/main/docs/INTEGRATIONS.md)
 - PyPI release runbook: [docs/releasing.md](https://github.com/Miko997/metriplane/blob/main/docs/releasing.md)
