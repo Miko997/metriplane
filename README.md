@@ -21,9 +21,11 @@ Open-source workcell black box for replayable physical evidence.
 
 - Official site: https://www.metriplane.com/
 - Python package: https://pypi.org/project/metriplane/
+- Product roadmap: [ROADMAP.md](ROADMAP.md)
 - 3-minute v0.2.0 demo: https://www.youtube.com/watch?v=7U5nbBbGGbw
 - v0.2.0 release: https://github.com/Miko997/metriplane/releases/tag/v0.2.0
 - Zenodo DOI: https://doi.org/10.5281/zenodo.20736619
+- SSRN manuscript preprint: https://doi.org/10.2139/ssrn.7166858
 - External reproduction issue: https://github.com/Miko997/metriplane/issues/6
 - Short feedback form: https://docs.google.com/forms/d/e/1FAIpQLSfnMZ4b3fSVVtwA89hZt3A09gf85eLfhW00FDD76TGRLNpirQ/viewform
 

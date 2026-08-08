@@ -12,6 +12,7 @@ SPDX-License-Identifier: MIT
 - Git tag: `v0.2.0`
 - Tag commit: `8e35ed5bb20837f7dc46354777407b848d7ce17a`
 - Zenodo DOI: `10.5281/zenodo.20736619`
+- SSRN manuscript preprint DOI: `10.2139/ssrn.7166858`
 - License: MIT
 - Included author-run evidence package: `evidence/paper_v2_0/`
 
