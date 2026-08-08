@@ -126,11 +126,11 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _safe_generated_out_dir(out_dir: Path) -> bool:
+    """Return whether an existing output may be replaced without ``--overwrite``."""
     resolved = out_dir.resolve()
     allowed_roots = [
         Path("web/dashboard/atlas_run").resolve(),
         Path("runs/atlas").resolve(),
-        Path("/tmp").resolve(),
     ]
     return any(resolved == root or _is_relative_to(resolved, root) for root in allowed_roots)
 
