@@ -119,6 +119,78 @@ def _compare_records(
     return total, mismatches, notes
 
 
+def _equivalence_frame_key(rec: dict[str, Any], fallback_index: int) -> tuple[str, Any]:
+    """Return the recorded frame identity, excluding generated replay clock fields."""
+    for field in ("frame_id", "ts_ns", "ts"):
+        value = rec.get(field)
+        if value is not None:
+            return (field, value)
+    return ("index", fallback_index)
+
+
+def _object_ids(rec: dict[str, Any], field: str) -> set[str] | None:
+    value = rec.get(field)
+    if not isinstance(value, list):
+        return None
+    return {
+        str(obj.get("id"))
+        for obj in value
+        if isinstance(obj, dict) and obj.get("id") not in (None, "")
+    }
+
+
+def _equivalence_structure_errors(
+    live_records: list[dict[str, Any]],
+    replay_records: list[dict[str, Any]],
+    *,
+    max_notes: int = 10,
+) -> list[str]:
+    notes: list[str] = []
+    if not live_records or not replay_records:
+        notes.append(
+            f"empty_comparison:live_frames={len(live_records)}:replay_frames={len(replay_records)}"
+        )
+        return notes
+
+    if len(live_records) != len(replay_records):
+        notes.append(
+            f"frame_count_mismatch:live={len(live_records)}:replay={len(replay_records)}"
+        )
+
+    live_keys = [_equivalence_frame_key(rec, i) for i, rec in enumerate(live_records)]
+    replay_keys = [_equivalence_frame_key(rec, i) for i, rec in enumerate(replay_records)]
+    if live_keys != replay_keys:
+        missing_live = sorted(set(replay_keys) - set(live_keys), key=repr)
+        missing_replay = sorted(set(live_keys) - set(replay_keys), key=repr)
+
+        def summarize(keys: list[tuple[str, Any]]) -> str:
+            shown = keys[:max_notes]
+            suffix = f" (+{len(keys) - len(shown)} more)" if len(keys) > len(shown) else ""
+            return f"{shown}{suffix}"
+
+        notes.append(
+            f"frame_key_mismatch:missing_in_live={summarize(missing_live)}:"
+            f"missing_in_replay={summarize(missing_replay)}"
+        )
+
+    for i, (live, replay) in enumerate(zip(live_records, replay_records), start=1):
+        for field in ("objects", "fused"):
+            live_ids = _object_ids(live, field)
+            replay_ids = _object_ids(replay, field)
+            if live_ids is None and replay_ids is None:
+                continue
+            if live_ids != replay_ids:
+                notes.append(
+                    f"object_ids_mismatch:line={i}:field={field}:"
+                    f"missing_in_live={sorted((replay_ids or set()) - (live_ids or set()))}:"
+                    f"missing_in_replay={sorted((live_ids or set()) - (replay_ids or set()))}"
+                )
+                if len(notes) >= max_notes:
+                    return notes
+
+    return notes
+
+
 @dataclass(frozen=True)
 class ReportRow:
     input_path: str
@@ -194,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     replay_records = list(_iter_non_header_records(out1))
 
     frames_total = min(len(live_records), len(replay_records))
+    structure_errors = _equivalence_structure_errors(live_records, replay_records)
 
     # "Exact" equivalence ignoring only ts_sim_ns (but preserving list order)
     _, mism_exact, _ = _compare_records(
@@ -211,7 +284,15 @@ def main(argv: list[str] | None = None) -> int:
         sort_objects=True,
     )
 
-    passed = (replay_mismatches == 0) and (mism_sorted == 0)
+    passed = (
+        replay_mismatches == 0
+        and mism_sorted == 0
+        and not structure_errors
+    )
+
+    notes = str(tmp_dir)
+    if structure_errors:
+        notes += "; " + "; ".join(structure_errors)
 
     row = ReportRow(
         input_path=str(in_path),
@@ -225,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         replay2_sha256=sha2,
         replay_mismatches=int(replay_mismatches),
         pass_=bool(passed),
-        notes=str(tmp_dir),
+        notes=notes,
     )
 
     with out_csv.open("w", encoding="utf-8", newline="") as f:
@@ -268,9 +349,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[determinism] replay_mismatches={replay_mismatches}")
     print(f"[equivalence] mismatches_exact={mism_exact} (ignoring ts_sim_ns only)")
     print(f"[equivalence] mismatches_sorted={mism_sorted} (ignoring ts_sim_ns + sorting object lists)")
+    for note in structure_errors:
+        print(f"[equivalence] {note}")
     print(f"[result] PASS={str(passed).lower()}")
     print(f"[report] {out_csv}")
-    return 0
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

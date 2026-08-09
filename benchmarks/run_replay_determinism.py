@@ -8,8 +8,12 @@ import argparse
 import csv
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
+
+
+HEADER_TYPES = {"header", "run_header", "provenance"}
 
 
 def iter_jsonl(path: Path) -> Iterator[Dict[str, Any]]:
@@ -19,7 +23,10 @@ def iter_jsonl(path: Path) -> Iterator[Dict[str, Any]]:
             if not line:
                 continue
             rec = json.loads(line)
+            record_type = None
             if isinstance(rec, dict):
+                record_type = rec.get("type") or rec.get("record_type")
+            if isinstance(rec, dict) and record_type not in HEADER_TYPES:
                 yield rec
 
 
@@ -66,20 +73,30 @@ def compare(a_path: Path, b_path: Path) -> Dict[str, Any]:
     a_map: Dict[int, Dict[str, Any]] = {}
     b_map: Dict[int, Dict[str, Any]] = {}
 
+    duplicate_a: list[int] = []
+    duplicate_b: list[int] = []
     for i, fr in enumerate(a_frames):
-        if isinstance(fr, dict):
-            a_map[frame_key(fr, i)] = fr
+        key = frame_key(fr, i)
+        if key in a_map:
+            duplicate_a.append(key)
+        a_map[key] = fr
     for i, fr in enumerate(b_frames):
-        if isinstance(fr, dict):
-            b_map[frame_key(fr, i)] = fr
+        key = frame_key(fr, i)
+        if key in b_map:
+            duplicate_b.append(key)
+        b_map[key] = fr
 
-    keys = sorted(set(a_map.keys()) & set(b_map.keys()))
-    if not keys:
-        raise SystemExit("No overlapping frames between A and B (by ts_sim_ns/frame_id).")
+    a_keys = set(a_map)
+    b_keys = set(b_map)
+    keys = sorted(a_keys & b_keys)
+    missing_in_a = sorted(b_keys - a_keys)
+    missing_in_b = sorted(a_keys - b_keys)
 
     diffs_cm: List[float] = []
     event_mismatch_count = 0
     compared_pairs = 0
+    object_id_mismatch_count = 0
+    object_id_mismatches: list[str] = []
 
     for k in keys:
         fa = a_map[k]
@@ -87,7 +104,18 @@ def compare(a_path: Path, b_path: Path) -> Dict[str, Any]:
         oa = objects_by_id(fa)
         ob = objects_by_id(fb)
 
-        all_ids = sorted(set(oa.keys()) & set(ob.keys()))
+        ids_a = set(oa)
+        ids_b = set(ob)
+        missing_objects_in_a = sorted(ids_b - ids_a)
+        missing_objects_in_b = sorted(ids_a - ids_b)
+        if missing_objects_in_a or missing_objects_in_b:
+            object_id_mismatch_count += 1
+            if len(object_id_mismatches) < 10:
+                object_id_mismatches.append(
+                    f"frame={k}:missing_in_a={missing_objects_in_a}:missing_in_b={missing_objects_in_b}"
+                )
+
+        all_ids = sorted(ids_a & ids_b)
         for oid in all_ids:
             pa = pos_xy_cm(oa[oid])
             pb = pos_xy_cm(ob[oid])
@@ -107,7 +135,7 @@ def compare(a_path: Path, b_path: Path) -> Dict[str, Any]:
     mean_pos_diff_cm = (sum(diffs_cm) / len(diffs_cm)) if diffs_cm else 0.0
     max_pos_diff_cm = max(diffs_cm) if diffs_cm else 0.0
 
-    return {
+    result: Dict[str, Any] = {
         "frames_compared": len(keys),
         "object_pairs_compared": compared_pairs,
         "mean_pos_diff_cm": mean_pos_diff_cm,
@@ -115,19 +143,49 @@ def compare(a_path: Path, b_path: Path) -> Dict[str, Any]:
         "event_mismatch_count": event_mismatch_count,
     }
 
+    structure_ok = (
+        bool(a_frames)
+        and bool(b_frames)
+        and len(a_frames) == len(b_frames)
+        and not duplicate_a
+        and not duplicate_b
+        and not missing_in_a
+        and not missing_in_b
+        and object_id_mismatch_count == 0
+    )
+    if not structure_ok:
+        # Preserve the historical six-column CSV for successful canonical runs;
+        # append diagnostics only when a comparison is structurally invalid.
+        result.update(
+            {
+                "comparison_valid": False,
+                "frames_a": len(a_frames),
+                "frames_b": len(b_frames),
+                "missing_frame_count_in_a": len(missing_in_a),
+                "missing_frame_count_in_b": len(missing_in_b),
+                "missing_frame_keys_in_a": missing_in_a[:10],
+                "missing_frame_keys_in_b": missing_in_b[:10],
+                "duplicate_frame_keys_in_a": sorted(set(duplicate_a))[:10],
+                "duplicate_frame_keys_in_b": sorted(set(duplicate_b))[:10],
+                "object_id_mismatch_count": object_id_mismatch_count,
+                "object_id_mismatches": object_id_mismatches,
+            }
+        )
+    return result
 
-def main() -> None:
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--a", type=Path, required=True, help="First output JSONL")
     ap.add_argument("--b", type=Path, required=True, help="Second output JSONL")
     ap.add_argument("--out", type=Path, required=True, help="CSV output path")
     ap.add_argument("--max-pos-diff-cm", type=float, default=0.0, help="Threshold for pass")
     ap.add_argument("--allow-zone-mismatch", action="store_true", help="Ignore zone mismatches for pass")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     res = compare(args.a, args.b)
 
-    pass_ok = True
+    pass_ok = bool(res.get("comparison_valid", True))
     if res["max_pos_diff_cm"] > args.max_pos_diff_cm:
         pass_ok = False
     if (not args.allow_zone_mismatch) and res["event_mismatch_count"] != 0:
@@ -144,7 +202,11 @@ def main() -> None:
 
     print(f"[determinism] wrote: {args.out}")
     print(out_row)
+    if not pass_ok:
+        print("[determinism] comparison failed", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

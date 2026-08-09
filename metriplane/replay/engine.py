@@ -27,13 +27,16 @@ def _decimal_seconds_to_ns(value: Any) -> int:
 
 
 def _get_record_ts_ns(rec: Dict[str, Any]) -> int:
-    # Prefer integer ns if it exists.
+    # ts_sim_ns is the authoritative deterministic replay clock when present.
+    if "ts_sim_ns" in rec and isinstance(rec["ts_sim_ns"], int):
+        return int(rec["ts_sim_ns"])
+    # Older recordings used ts_ns, then floating-point seconds in ts.
     if "ts_ns" in rec and isinstance(rec["ts_ns"], int):
         return int(rec["ts_ns"])
     # Fall back to float seconds.
     if "ts" in rec:
         return _decimal_seconds_to_ns(rec["ts"])
-    raise KeyError("Record has no ts_ns or ts field")
+    raise KeyError("Record has no ts_sim_ns, ts_ns or ts field")
 
 
 def _is_header_record(rec: Dict[str, Any]) -> bool:
@@ -80,17 +83,20 @@ def iter_input_frames(path: Path) -> Iterator[Dict[str, Any]]:
 def _load_frames_with_rel_ts(path: Path) -> List[Tuple[int, Dict[str, Any]]]:
     frames: List[Tuple[int, Dict[str, Any]]] = []
     ts0: Optional[int] = None
+    previous_ts_ns: Optional[int] = None
 
     for rec in iter_input_frames(path):
         ts_ns = _get_record_ts_ns(rec)
+        if previous_ts_ns is not None and ts_ns < previous_ts_ns:
+            raise ValueError(
+                f"Non-monotonic timestamps in input: {path} "
+                f"({ts_ns} follows {previous_ts_ns})"
+            )
         if ts0 is None:
             ts0 = ts_ns
         rel = ts_ns - ts0
-        if rel < 0:
-            # Defensive: recorded timestamps should be non-decreasing.
-            # If they are not, determinism can be compromised.
-            raise ValueError(f"Non-monotonic timestamps in input: {path}")
         frames.append((rel, rec))
+        previous_ts_ns = ts_ns
 
     if not frames:
         raise ValueError(f"No frames found in input JSONL: {path}")
