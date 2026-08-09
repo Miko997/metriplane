@@ -13,8 +13,8 @@ The Python package requires Python 3.12 or 3.13.
 
 | Environment | Python | Current validation | Support statement |
 | --- | --- | --- | --- |
-| Ubuntu Linux | 3.12, 3.13 | Automated repository run on each Python version: 923 passed, 1 optional GPU test skipped; installed-wheel camera-free demo; owner Ubuntu 24.04/Python 3.12 run | Camera-free and core repository workflows are fully tested. Live-camera use additionally requires local V4L2 hardware and configuration. |
-| macOS | 3.12, 3.13 | Camera-free repository run on each Python version: 922 passed, 2 optional browser/GPU tests skipped; installed-wheel demo | Camera-free core workflows are tested. No live-camera support claim is made. |
+| Ubuntu Linux | 3.12, 3.13 | Automated repository run on each Python version: 926 passed, 1 optional GPU test skipped; installed-wheel camera-free demo; owner Ubuntu 24.04/Python 3.12 run | Camera-free and core repository workflows are fully tested. Live-camera use additionally requires local V4L2 hardware and configuration. |
+| macOS | 3.12, 3.13 | Camera-free repository run on each Python version: 925 passed, 2 optional browser/GPU tests skipped; installed-wheel demo | Camera-free core workflows are tested. No live-camera support claim is made. |
 | WSL2 Ubuntu 24.04 | 3.12.3 (manual) | Owner-run installed-wheel check on 2026-08-09: `pip check`, version, doctor, six-event/one-incident demo, bundle verification, regression check, and a second headless demo all passed; install-to-report took 7 seconds | The installed-wheel camera-free and headless path is manually validated. This is not full-suite coverage. Automatic browser opening is not claimed because the test environment had no default HTML handler; omit `--open` or open the report path manually. |
 | Native Windows | — | Not tested or implemented as a supported path | Unsupported and not advertised. |
 

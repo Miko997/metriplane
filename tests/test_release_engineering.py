@@ -122,8 +122,8 @@ def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
     environments = SUPPORTED_ENVIRONMENTS.read_text(encoding="utf-8")
     validation = WSL2_VALIDATION.read_text(encoding="utf-8")
 
-    assert "923 passed, 1 optional GPU test skipped" in environments
-    assert "922 passed, 2 optional browser/GPU tests skipped" in environments
+    assert "926 passed, 1 optional GPU test skipped" in environments
+    assert "925 passed, 2 optional browser/GPU tests skipped" in environments
     assert "815 passed" not in environments
     assert "814 passed" not in environments
 
