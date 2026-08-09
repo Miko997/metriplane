@@ -9,22 +9,49 @@ All notable changes to Metriplane are documented here.
 
 ---
 
-## [Unreleased]
+## [0.3.0] — release date TBD — Usability and adoption
+
+> **RELEASE CANDIDATE — UNPUBLISHED.** Replace `TBD` with the
+> owner-confirmed ISO release date before this release-candidate pull request is
+> merged. No `v0.3.0` tag or production publication is implied by this entry.
 
 ### Added
 
-- Added a wheel-contained, camera-free `metriplane demo --open` path that produces
-  and verifies an incident report, evidence bundle, and generated regression check.
-- Added built-wheel demo coverage across Ubuntu and macOS with Python 3.12 and 3.13.
+- Added a package-contained, camera-free `metriplane demo --open` path that turns
+  the recorded missing-torque-driver scenario into an incident timeline, an
+  Incident Report, a verified evidence bundle, and a repeatable regression check.
+- Added package-resource checks and installed-wheel/source-distribution smoke
+  tests so the bundled session, process rules, and report templates work outside
+  a source checkout and offline after installation.
+- Added `metriplane --version` and a clearer `metriplane doctor` result that
+  distinguishes required demo readiness from optional camera, GPU, and
+  source-checkout capabilities.
+- Added a documentation front door, an after-demo tutorial for supported recorded
+  workcell data, troubleshooting, support boundaries, and exact-version citation
+  guidance.
+- Added contribution, support, security, conduct, issue-form, and pull-request
+  guidance for privacy-conscious community participation.
+- Added built-wheel demo coverage across Ubuntu and macOS with Python 3.12 and
+  3.13, plus a reusable build-once release workflow that validates the wheel and
+  source distribution independently.
 
 ### Changed
 
-- Made the root help screen expose the primary demo, Atlas, runtime, and
-  verification commands.
+- Made the root help screen lead with the complete demo and installation doctor,
+  while keeping advanced Atlas, runtime, and verification commands available.
+- Rewrote the README first screen, demo output, active report headings, and current
+  UI copy around the missing-tool incident in plain language. Active product copy
+  now uses “Metriplane” while compatibility-sensitive identifiers remain stable.
+- Made the intended published quickstart
+  `python -m pip install "metriplane==0.3.0"` followed by
+  `metriplane demo --open`.
+- Made output replacement explicit: demo, run, bundle, and example-export paths
+  no longer silently replace an existing destination.
 - Made fixed replay clocks authoritative across Atlas, Sentinel, contracts, and
   trace output, and clarified the privacy export as deterministic pseudonymization.
-- Expanded full-suite CI to Linux and macOS on Python 3.12 and 3.13; native
-  Windows remains outside the supported platform scope.
+- Defined support accurately: Linux/Ubuntu receives the full suite; macOS receives
+  the bundled camera-free demo gates; WSL2 remains unadvertised pending a clean
+  owner-run candidate check; native Windows remains unsupported and unadvertised.
 
 ### Fixed
 
@@ -38,6 +65,24 @@ All notable changes to Metriplane are documented here.
   rollback, cancellation races, and unsafe local runner requests.
 - Strengthened domain-pack, frame, rule, expected-result, and persisted-config
   validation, including non-finite values and credential redaction.
+
+### Security and integrity
+
+- Made evidence verification fail closed for corrupted, incomplete, unsafe,
+  contradictory, missing, or stale inputs so they cannot produce a false bundle
+  or regression pass.
+- Added a verified private GitHub security-advisory reporting route and guidance
+  that keeps sensitive vulnerability details out of public issues.
+- Preserved the frozen v0.2.0 evidence, checksums, DOI metadata, and tag without
+  presentation-only rewrites.
+
+### Research scope
+
+- This release adds usability, packaging, documentation, and hardening. It does
+  not add new measurements or change a paper evaluation boundary.
+- The SoftwareX research artifact remains frozen at v0.2.0 with DOI
+  `10.5281/zenodo.20736619`; the TIM evaluated software boundary remains v0.1.3.
+  No v0.3.0 DOI is claimed.
 
 ---
 

@@ -5,33 +5,29 @@ SPDX-License-Identifier: MIT
 
 # Quickstart
 
-This preview turns the bundled missing-tool recording into an Incident Report,
-a verified evidence bundle, and a passing repeatable regression check. It needs
-Python 3.12 or 3.13, but no camera, GPU, Docker, ROS, or network connection after
-installation.
+This quickstart turns the bundled missing-tool recording into an Incident
+Report, a verified evidence bundle, and a passing repeatable regression check.
+It needs Python 3.12 or 3.13, but no camera, GPU, Docker, ROS, or network
+connection after installation.
 
-## Install the current preview
+## Install Metriplane v0.3.0
 
-Metriplane v0.3.0 is not published yet. PyPI still serves v0.2.1, which does not
-contain `metriplane demo`. Until the release, install current `main` in a virtual
-environment:
+In a supported Python environment, install the exact release and run the demo:
 
 ```bash
-git clone https://github.com/Miko997/metriplane.git
-cd metriplane
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install .
-metriplane doctor
+python -m pip install "metriplane==0.3.0"
 metriplane demo --open
 ```
 
-This source-checkout installation is a **manual pre-release path**. Release gates
-exercise the bundled demo from a built wheel on Ubuntu and macOS with Python
-3.12/3.13, but they do not claim that the current source-preview sequence is a
-published-package quickstart. Opening the visible browser window is also a local
-manual check.
+Release gates exercise the bundled demo from a built wheel on Ubuntu and macOS
+with Python 3.12/3.13. Opening the visible browser window is also a local manual
+check.
+
+You can check the installed package before running the example:
+
+```bash
+metriplane doctor
+```
 
 `metriplane doctor` should finish with:
 
@@ -65,18 +61,6 @@ metriplane demo
 
 The analysis still runs and prints the report path. Browser-opening failure is
 nonfatal; open the printed `file://` address later.
-
-## Planned published-package path
-
-After v0.3.0 is actually published, the final installation path will be:
-
-```bash
-python -m pip install "metriplane==0.3.0"
-metriplane demo --open
-```
-
-These two commands describe the planned release path. They are **not** a claim
-that v0.3.0 can currently be installed from PyPI.
 
 ## Next step
 

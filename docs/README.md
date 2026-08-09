@@ -17,14 +17,19 @@ an assembly step. Metriplane identifies six events, groups one incident, reports
 a 35.0-second delay, verifies the saved evidence, and passes the generated
 repeatable check.
 
+```bash
+python -m pip install "metriplane==0.3.0"
+metriplane demo --open
+```
+
 [Run the camera-free quickstart](user-guide/quickstart.md), then follow the
 [five-to-ten-minute tutorial](user-guide/use-your-own-run.md) to inspect the
 example inputs and use the supported recorded-run interface.
 
 ## Start here
 
-- [Quickstart](user-guide/quickstart.md): install the current preview and open
-  the first Incident Report.
+- [Quickstart](user-guide/quickstart.md): install v0.3.0 and open the first
+  Incident Report.
 - [What Metriplane does](user-guide/what-metriplane-does.md): understand the
   problem, result, terms, and limits in ordinary language.
 - [Missing-tool example](user-guide/missing-tool-example.md): see the concrete
@@ -53,7 +58,6 @@ Metriplane is open-source robotics incident replay and regression testing for
 bounded workcells. It analyzes recorded state; it does **not** control machinery,
 certify safety or quality, or prove that physical measurements were accurate.
 
-The public PyPI package remains v0.2.1 while v0.3.0 is prepared. Documentation
-that uses `metriplane demo` is explicitly a current-`main` preview until v0.3.0
-is published. See [Research artifacts](user-guide/research-artifacts.md) for the
-separate frozen v0.2.0 and v0.1.3 research boundaries.
+The package quickstart is for v0.3.0. See
+[Research artifacts](user-guide/research-artifacts.md) for the separate frozen
+v0.2.0 and v0.1.3 research boundaries.

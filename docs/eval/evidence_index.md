@@ -7,7 +7,8 @@ SPDX-License-Identifier: MIT
 
 Summary of public evidence artifacts, supported Paper B claims, and known limitations.
 
-**Latest installable package**: `v0.2.1`
+**Usability and adoption software release**: `v0.3.0` (no DOI; not a new measurement boundary)
+**Published packaging predecessor**: `v0.2.1`
 **Frozen DOI research artifact**: [`v0.2.0`](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
@@ -22,7 +23,8 @@ Paper title: **Benchmarking Camera-First Planar Digital Twins: A Reproducible Pr
 For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md in release v0.1.3. Other summaries are non-authoritative convenience summaries.
 
 No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed
-for the historical Paper B v0.1.3 artifact.
+for the historical Paper B v0.1.3 artifact. The v0.2.0 DOI must not be assigned
+to v0.3.0, and no v0.3.0 output produced these measurements.
 
 ## Benchmark Artifacts
 

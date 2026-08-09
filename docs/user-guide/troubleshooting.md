@@ -7,8 +7,8 @@ SPDX-License-Identifier: MIT
 
 ## Python is unsupported
 
-Metriplane supports Python 3.12 and 3.13. Python 3.11 and Python 3.14 or newer
-are rejected for the current package line.
+Metriplane v0.3.0 supports Python 3.12 and 3.13. Python 3.11 and Python 3.14 or
+newer are rejected.
 
 ```bash
 python3 --version
@@ -26,11 +26,9 @@ Do not install into the operating system's managed Python and do not use
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install .
+python -m pip install "metriplane==0.3.0"
+metriplane demo --open
 ```
-
-For the pre-release demo, run those commands inside a current-`main` source
-checkout. PyPI v0.2.1 does not yet contain `metriplane demo`.
 
 ## Doctor reports optional capabilities are absent
 
