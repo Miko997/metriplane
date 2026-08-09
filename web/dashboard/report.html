@@ -8,72 +8,112 @@ SPDX-License-Identifier: MIT
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Metriplane - Cell Report</title>
+  <title>Metriplane - Incident Report</title>
   <meta name="description" content="Plain-language report of movement, events, issues, and proof for the latest Metriplane run.">
   <link rel="stylesheet" href="style.css?v=20260613-onemp-1">
 </head>
 <body class="vt-page vt-product-page missing-atlas-artifacts">
   <nav class="mp-product-nav" aria-label="Metriplane status">
-    <a class="mp-product-brand" href="index.html"><span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span><span class="brand-wordmark">Metri<span class="brand-accent">Plane</span></span></a>
-    <div class="mp-product-nav-title">Cell Report</div>
+    <a class="mp-product-brand" href="index.html"><span class="mp-product-brand-mark"><img src="icons/metriplane-coordinate-grid.svg" alt=""></span><span class="brand-wordmark">Metri<span class="brand-accent">plane</span></span></a>
+    <div class="mp-product-nav-title">Incident Report</div>
     <div class="mp-product-nav-state"><span class="live-dot"></span><span data-runner-status>checking runner</span><code data-runner-detail>localhost :9000</code></div>
   </nav>
   <div class="mp-console-frame">
     <aside class="mp-console-sidebar" aria-label="Metriplane sections">
-      <a href="index.html">Start</a><a href="operator.html">Setup</a><a href="run.html">Run</a><a href="runtime.html">Live View</a><a class="active" href="report.html">Cell Report</a><a href="command_center_live.html">Command Center</a><a href="atlas.html">Evidence</a><a href="integrations.html">Integrations</a><a href="benchmarks.html">Benchmarks</a><a href="settings.html">Settings</a><a href="help.html">Help</a>
+      <a href="index.html">Start</a><a href="operator.html">Setup</a><a href="run.html">Run</a><a href="runtime.html">Live View</a><a class="active" href="report.html">Incident Report</a><a href="command_center_live.html">Command Center</a><a href="atlas.html">Evidence</a><a href="integrations.html">Integrations</a><a href="benchmarks.html">Benchmarks</a><a href="settings.html">Settings</a><a href="help.html">Help</a>
     </aside>
     <main class="mp-product-shell">
       <section class="mp-product-band mp-page-header">
         <div>
-          <div class="mp-kicker">Latest report</div>
-          <h1>What happened in this run</h1>
-          <p>A plain-language report of movement, delays, events, and proof. Build the demo replay if no report is ready yet.</p>
+          <h1>Incident Report</h1>
+          <div class="mp-kicker">Formal artifact: Cell Truth Report</div>
+          <p>A recorded run is a saved sequence of object positions and timestamps. Start here to understand what happened, why it was flagged, and what can be checked again.</p>
         </div>
         <div class="mp-hero-actions">
-          <a class="btn btn-primary requires-atlas" href="atlas_run/cell_truth_report.html">Open Full Report</a>
+          <a class="btn btn-primary requires-atlas" href="atlas_run/cell_truth_report.html">Open Generated Incident Report</a>
           <button class="btn btn-secondary" type="button" data-command-id="run-demo-replay">Run Demo Replay</button>
           <a class="btn btn-secondary" href="command_center_live.html">Open Command Center</a>
-          <a class="btn btn-secondary requires-atlas" href="atlas_run/evidence_bundles/INC-0001.zip">Export Proof</a>
+          <a class="btn btn-secondary requires-atlas" href="atlas_run/evidence_bundles/INC-0001.zip">Download Evidence Bundle</a>
         </div>
       </section>
 
       <section class="mp-product-band">
-        <div class="mp-section-head"><div><div class="mp-kicker">Executive summary</div><h2>Run summary</h2></div><span class="mp-status-chip" data-atlas-status>build demo first</span></div>
+        <div class="mp-section-head"><div><div class="mp-kicker">01</div><h2>What happened</h2></div><span class="mp-status-chip" data-atlas-status>build demo first</span></div>
+        <p>An event is one observed change in the recorded run. An incident groups related events that need review.</p>
         <div class="mp-metric-grid">
           <div class="mp-metric"><span>Run</span><strong data-atlas-field="run_id">-</strong></div>
           <div class="mp-metric"><span>Workspace</span><strong data-atlas-field="cell_id">-</strong></div>
           <div class="mp-metric"><span>Events found</span><strong data-atlas-field="events">-</strong></div>
           <div class="mp-metric"><span>Issues found</span><strong data-atlas-field="incidents">-</strong></div>
           <div class="mp-metric"><span>Frames reviewed</span><strong data-atlas-field="frames">-</strong></div>
-          <div class="mp-metric"><span>Proof status</span><strong data-atlas-status>build demo first</strong></div>
+          <div class="mp-metric"><span>Evidence status</span><strong data-atlas-status>build demo first</strong></div>
         </div>
       </section>
 
       <section class="mp-product-band">
-        <div class="mp-section-head"><div><div class="mp-kicker">Key findings</div><h2>What needs attention</h2></div></div>
+        <div class="mp-section-head"><div><div class="mp-kicker">02</div><h2>Why it was flagged</h2></div></div>
         <div class="mp-feature-grid">
-          <article class="mp-feature-card"><img src="icons/metriplane-zones-events.svg" alt=""><div><span>Zone issue</span><h3>Exit lane occupancy</h3></div><p>The sample run includes a blocked or occupied exit lane event for review.</p></article>
-          <article class="mp-feature-card"><img src="icons/metriplane-object-tracking.svg" alt=""><div><span>Asset check</span><h3>Expected item missing</h3></div><p>The evidence workflow flags when a required asset is missing from the expected area.</p></article>
-          <article class="mp-feature-card"><img src="icons/metriplane-replay-logs.svg" alt=""><div><span>Proof</span><h3>Replayable archive ready</h3></div><p>The incident archive can be verified and replayed before sharing.</p></article>
-          <article class="mp-feature-card"><img src="icons/metriplane-integration-ready.svg" alt=""><div><span>Next action</span><h3>Export to simulation</h3></div><p>Use the USD replay for 3D review if external NVIDIA tooling is installed.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-zones-events.svg" alt=""><div><span>Process rules</span><h3>Expected conditions</h3></div><p>Process rules describe expected steps, required objects and locations, and allowed waiting times.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-object-tracking.svg" alt=""><div><span>Sample incident</span><h3>Required tool was missing</h3></div><p>The torque driver was absent at station A for longer than the configured 30-second wait limit.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-replay-logs.svg" alt=""><div><span>Recorded result</span><h3>35-second delay</h3></div><p>The run records when the tool became absent, when the wait limit was exceeded, and when the tool returned.</p></article>
+          <article class="mp-feature-card"><img src="icons/metriplane-integration-ready.svg" alt=""><div><span>Boundary</span><h3>Evidence, not root-cause proof</h3></div><p>The report shows the rule, observations, and timing. It does not claim a certified causal or safety decision.</p></article>
         </div>
       </section>
 
       <section class="mp-product-band">
-        <div class="mp-section-head"><div><div class="mp-kicker">Timeline and proof</div><h2>Review path</h2></div></div>
+        <div class="mp-section-head"><div><div class="mp-kicker">03</div><h2>When it happened</h2></div></div>
         <div class="mp-two-col">
           <div class="mp-checklist">
-            <div><span>00:00</span><strong>Run starts</strong><small>Workspace state is read from the included recorded session.</small></div>
-            <div><span>00:03</span><strong>Objects are observed</strong><small>Tracked items enter zones and build a movement history.</small></div>
-            <div><span>00:05</span><strong>Issue is detected</strong><small>Rules flag the missing item / lane occupancy case.</small></div>
-            <div><span>After</span><strong>Evidence is generated</strong><small>Report, archive, regression, and export artifacts become available.</small></div>
+            <div><span>00:00</span><strong>Kit arrives</strong><small>The recorded assembly-cell run begins.</small></div>
+            <div><span>00:10</span><strong>Workpiece reaches station A</strong><small>The next expected process step becomes relevant.</small></div>
+            <div><span>00:20</span><strong>Torque driver is absent</strong><small>The required-tool rule begins waiting.</small></div>
+            <div><span>00:55</span><strong>Delay is recorded</strong><small>The configured 30-second wait limit has been exceeded by 5 seconds.</small></div>
+            <div><span>01:10</span><strong>Torque driver returns</strong><small>The tool-present event and step completion are recorded.</small></div>
           </div>
           <article class="mp-action-card">
-            <div class="mp-action-head"><div><span>Proof</span><h3>Report actions</h3></div><a class="btn btn-primary btn-sm requires-atlas" href="atlas_run/cell_truth_report.html">Open</a></div>
-            <p>Open the full HTML report, verify the archive, or jump to Evidence for advanced files.</p>
+            <div class="mp-action-head"><div><span>Full timeline</span><h3>Technical event records remain available</h3></div><a class="btn btn-primary btn-sm requires-atlas" href="atlas_run/cell_truth_report.html">Open</a></div>
+            <p>The generated report includes each timestamp, message, object identifier, event ID, and event type.</p>
             <div class="mp-card-actions"><button class="btn btn-secondary btn-sm" type="button" data-command-id="atlas-verify-demo" data-needs-atlas="true">Verify</button><a class="btn btn-secondary btn-sm requires-atlas" href="atlas.html">Evidence</a></div>
             <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre>
           </article>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">04</div><h2>Evidence that was saved</h2></div></div>
+        <div class="mp-two-col">
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Evidence bundle</span><h3>Checksummed incident archive</h3></div><a class="btn btn-primary btn-sm requires-atlas" href="atlas_run/evidence_bundles/INC-0001.zip">Download</a></div>
+            <p>An evidence bundle is a ZIP containing the incident report and supporting records, plus checksums used to detect changed files.</p>
+          </article>
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Supporting records</span><h3>Events, incident, and recorded state</h3></div><a class="btn btn-secondary btn-sm requires-atlas" href="atlas.html">View files</a></div>
+            <p>Technical filenames and machine-readable records remain available for engineering review and integration.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">05</div><h2>Repeatable check that was generated</h2></div></div>
+        <div class="mp-two-col">
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Regression check</span><h3>Replay the saved incident</h3></div><button class="btn btn-primary btn-sm" type="button" data-command-id="atlas-regression-demo" data-needs-atlas="true">Run check</button></div>
+            <p>A regression check is a generated test that confirms the expected events and incident still appear within declared timing tolerances.</p>
+            <div class="mp-job-row"><span data-job-status>idle</span><small data-job-detail></small></div><pre data-job-output></pre>
+          </article>
+          <article class="mp-action-card">
+            <div class="mp-action-head"><div><span>Deterministic replay</span><h3>Use saved inputs and time</h3></div><a class="btn btn-secondary btn-sm requires-atlas" href="atlas_run/regression_tests/INC-0001.yaml">Open check</a></div>
+            <p>Deterministic replay uses the same saved inputs and recorded time sequence instead of live timing, so repeated evaluations can be compared consistently.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="mp-product-band">
+        <div class="mp-section-head"><div><div class="mp-kicker">06</div><h2>Limits of this result</h2></div></div>
+        <div class="mp-checklist">
+          <div><span>Scope</span><strong>Tracked planar objects</strong><small>The result depends on the objects and process rules supplied for this recorded run.</small></div>
+          <div><span>Cause</span><strong>No root-cause claim</strong><small>The timing and rule violation are evidence; suggested follow-ups still require before-and-after validation.</small></div>
+          <div><span>Authority</span><strong>Observe-only</strong><small>Metriplane does not control machinery or make certified safety or quality decisions.</small></div>
         </div>
       </section>
     </main>

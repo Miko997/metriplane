@@ -139,23 +139,51 @@ jobs:
           "$smoke_venv/bin/python" -c "import integrations.isaac.metriplane_to_usd"
           "$smoke_venv/bin/python" -c "import integrations.omniverse.metriplane_usd_replay"
           "$smoke_venv/bin/python" -c "import importlib.metadata as md; assert all(not str(path).startswith('integrations/ros2/') for path in (md.files('metriplane') or []))"
-          demo_out="${RUNNER_TEMP}/metriplane-demo-smoke"
-          SMOKE_VENV="$smoke_venv" DEMO_OUT="$demo_out" "$smoke_venv/bin/python" - <<'PY'
+          smoke_workspace="${RUNNER_TEMP}/metriplane-quickstart-smoke"
+          browser_stub="${RUNNER_TEMP}/metriplane-browser-stub"
+          browser_uri_file="${RUNNER_TEMP}/metriplane-browser-uri.txt"
+          mkdir -p "$smoke_workspace"
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'set -eu' \
+            ': "${METRIPLANE_BROWSER_URI_FILE:?}"' \
+            'printf "%s\\n" "$1" > "$METRIPLANE_BROWSER_URI_FILE"' \
+            > "$browser_stub"
+          chmod +x "$browser_stub"
+          METRIPLANE_BROWSER_URI_FILE="$browser_uri_file" \
+            BROWSER="$browser_stub" \
+            SMOKE_VENV="$smoke_venv" \
+            SMOKE_WORKSPACE="$smoke_workspace" \
+            "$smoke_venv/bin/python" - <<'PY'
           import os
           from pathlib import Path
           import subprocess
+          import sys
 
           command = [
               str(Path(os.environ["SMOKE_VENV"]) / "bin" / "metriplane"),
               "demo",
-              "--out",
-              os.environ["DEMO_OUT"],
+              "--open",
           ]
-          subprocess.run(command, check=True, timeout=120)
+          completed = subprocess.run(
+              command,
+              check=True,
+              cwd=os.environ["SMOKE_WORKSPACE"],
+              timeout=120,
+              text=True,
+              capture_output=True,
+          )
+          print(completed.stdout, end="")
+          print(completed.stderr, end="", file=sys.stderr)
+          if "Browser: opened report" not in completed.stdout:
+              raise RuntimeError("installed-wheel demo did not dispatch its report URI")
           PY
+          demo_out="$smoke_workspace/metriplane-demo"
           test -s "$demo_out/cell_truth_report.html"
           test -s "$demo_out/evidence_bundles/INC-0001.zip"
           test -s "$demo_out/regression_tests/INC-0001.yaml"
+          expected_report_uri="$(REPORT_PATH="$demo_out/cell_truth_report.html" "$smoke_venv/bin/python" -c 'import os; from pathlib import Path; print(Path(os.environ["REPORT_PATH"]).resolve().as_uri())')"
+          test "$(<"$browser_uri_file")" = "$expected_report_uri"
           "$smoke_venv/bin/metriplane" atlas bundle verify \
             "$demo_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
           "$smoke_venv/bin/metriplane" atlas test \

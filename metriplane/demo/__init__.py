@@ -147,23 +147,37 @@ def _open_report(report_path: Path) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="metriplane demo",
-        description="Run the bundled camera-free incident-to-regression demo.",
+        description=(
+            "Run a complete built-in example, from a recorded incident to a "
+            "verified report and a repeatable check. No camera is needed."
+        ),
     )
     parser.add_argument(
-        "--out", type=Path, default=None, help="Write results to DIR", metavar="DIR"
+        "--out",
+        type=Path,
+        default=None,
+        help="Save the report, evidence, and repeatable check in DIR",
+        metavar="DIR",
     )
     parser.add_argument(
         "--open",
         action="store_true",
         dest="open_report",
-        help="Open the HTML report after a successful run",
+        help="Open the finished HTML report in your browser",
     )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
 
     out_dir = (args.out.expanduser().resolve() if args.out else _next_default_out_dir())
-    print("Metriplane demo: missing required tool in an assembly cell")
-    print("Input: bundled camera-free object-state session")
-    print(f"Output: {out_dir}")
+    print("Metriplane bundled demo")
+    print()
+    print("Scenario:")
+    print("A required torque driver is missing during an assembly step.")
+    print("The fastening step is delayed by 35.0 seconds.")
+    print()
+    print("Input:")
+    print("Timestamped object positions and process rules.")
+    print()
+    print(f"Output folder: {out_dir}")
     print()
 
     try:
@@ -177,13 +191,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Output: {out_dir}", file=sys.stderr)
         return 1
 
-    print(
-        f"PASS  Incident analysis: {result.event_count} events, "
-        f"{result.incident_count} incident"
-    )
+    print("Result:")
+    print(f"PASS  Incident timeline: {result.event_count} events")
+    print(f"PASS  Incident report: {result.incident_count} incident")
     print("PASS  Evidence bundle: verified")
-    print("PASS  Regression check: passed")
-    print(f"Report: {result.report_path}")
+    print("PASS  Repeatable regression check: passed")
+    print()
+    print("Report:")
+    print(result.report_path)
+    print()
+    print("The generated check can be run again after the software or process rules change.")
 
     if args.open_report:
         if _open_report(result.report_path):

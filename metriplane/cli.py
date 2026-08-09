@@ -18,19 +18,24 @@ log = logging.getLogger("metriplane.cli")
 def _main_help() -> int:
     """Show the small, stable set of commands most users need first."""
     print(
-        """Metriplane turns recorded workcell state into incident evidence and regression checks.
+        """Metriplane helps explain what went wrong in a recorded robot or assembly workcell run.
+
+It creates a report of what happened, preserves the supporting evidence, and
+builds a repeatable check that can catch the same problem after a change.
 
 Usage:
   metriplane <command> [options]
 
-Primary commands:
-  demo       Run the bundled incident-to-regression example
-  doctor     Check the local installation and optional capabilities
-  atlas      Build, verify, and test Atlas evidence bundles
-  replay     Replay a recorded JSONL session deterministically
-  test       Run physical-observability comparisons
-  incidents  Inspect and verify Sentinel incident bundles
-  run        Start the configured single-camera or replay runtime
+Start here:
+  demo       Run a complete recorded-incident example
+  doctor     Check whether this installation is ready
+
+More commands:
+  atlas      Create, verify, and rerun incident evidence
+  replay     Replay a recorded JSONL timeline the same way every time
+  test       Rerun a bundle and compare its incidents and events with expectations
+  incidents  Find, inspect, and package incidents from a recording
+  run        Process a live camera or a recorded session
 
 Run `metriplane <command> --help` for command-specific options.
 Existing `metriplane --config ...` invocations remain supported as runtime shorthand.
