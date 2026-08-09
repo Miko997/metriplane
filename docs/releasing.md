@@ -15,14 +15,20 @@ merged, every required check is green, and the owner has approved the release
 sequence. Never try to replace a bad published file; fix the problem and use a
 new version.
 
-## Reusable manual product-understanding gate
+## Reusable manual product-understanding check
 
-Before declaring any adoption-focused release candidate ready, run the
+For adoption feedback, run the
 [first-time-user comprehension check](validation/first-time-user-comprehension.md)
 with unfamiliar testers. Record only anonymous, redacted observations for the
 exact candidate commit, version, and material types. Run its calculator and
-carry a pending or failed result into the release blockers; automated checks do
-not substitute for this manual gate.
+report pending, failed, or passing results exactly; automated checks do not
+substitute for human observations.
+
+For v0.3.0, no unfamiliar tester was available before publication. On
+2026-08-09 the owner explicitly deferred this check to a post-release adoption
+follow-up. The retained zero-tester result remains `MANUAL GATE PENDING`, does
+not block the software release, and must not be described as a passing human
+validation.
 
 The structured results file is retained in the repository for release review
 but is explicitly excluded from the generated documentation site.
@@ -67,8 +73,9 @@ the only place that changes the package version.
 4. Confirm supported-environment wording matches executed checks.
 5. Verify that the frozen v0.2.0 evidence, tag, DOI metadata, checksums,
    `CITATION.cff`, and `.zenodo.json` were not rewritten.
-6. Run the human-comprehension gate or record it accurately as an unfinished
-   manual gate.
+6. Run the human-comprehension check when unfamiliar testers are available. For
+   v0.3.0, retain the accurate zero-tester pending record as the explicitly
+   deferred post-release follow-up; do not claim that human validation passed.
 7. Open the pull request and wait for CI, Documentation, and Release Gates.
 
 Do not merge the final candidate, tag it, or publish it until the owner gives
@@ -242,12 +249,16 @@ This section is a preparation checklist, not evidence that v0.3.0 is published.
       `metriplane demo --open`.
 - [ ] Linux Release Gates pass on Python 3.12 and 3.13.
 - [ ] The bundled camera-free demo passes on macOS with Python 3.12 and 3.13.
-- [ ] WSL2 is advertised only if an owner-run clean candidate check is recorded.
+- [x] WSL2 wording is bounded to the recorded Ubuntu 24.04/Python 3.12.3
+      installed-wheel camera-free and headless owner run; automatic browser
+      opening is not claimed.
 - [ ] Native Windows is not advertised.
 - [ ] Wheel and source distribution pass independent clean installations.
 - [ ] The exact artifact SHA-256 manifest is recorded from the workflow run.
 - [ ] Frozen v0.2.0 evidence and research-integrity checks pass.
-- [ ] Human-comprehension results are recorded, or the manual gate remains open.
+- [x] Human-comprehension results remain an accurate zero-tester pending record;
+      the owner explicitly deferred this non-blocking check to post-release
+      adoption follow-up without claiming that human validation passed.
 - [ ] Final release-candidate pull request has explicit owner approval.
 - [ ] Zenodo automatic archiving is confirmed disabled before GitHub release.
 

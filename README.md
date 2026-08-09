@@ -27,18 +27,10 @@ it does **not** control machinery or make safety or quality decisions.
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
 
-## Try the v0.3.0 preview from current main
-
-The public PyPI package is still v0.2.1 and does not contain `metriplane demo`.
-Until v0.3.0 is published, use the current `main` source preview:
+## Quickstart
 
 ```bash
-git clone https://github.com/Miko997/metriplane.git
-cd metriplane
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install .
+python -m pip install "metriplane==0.3.0"
 metriplane demo --open
 ```
 
@@ -58,19 +50,10 @@ PASS  Incident timeline: 6 events
 PASS  Incident report: 1 incident
 PASS  Evidence bundle: verified
 PASS  Repeatable regression check: passed
-Browser: opened report
+Browser: open request sent
+If no browser opens, use the Report path above.
 Demo complete.
 ```
-
-When v0.3.0 is published, the final package quickstart will be:
-
-```bash
-python -m pip install "metriplane==0.3.0"
-metriplane demo --open
-```
-
-Those package commands are shown as the planned release path; they are not a
-claim that v0.3.0 is already available from PyPI.
 
 ## Input and output
 
@@ -110,9 +93,9 @@ Use Metriplane to:
 
 ## Published versions
 
-- Latest installable PyPI package: `v0.2.1`
+- Current installable software release: `v0.3.0`
 - Frozen DOI-archived research artifact: `v0.2.0`
-- Bundled two-command quickstart: planned for `v0.3.0`
+- TIM evaluated software boundary: `v0.1.3`
 
 ## Official links
 
@@ -125,27 +108,6 @@ Use Metriplane to:
 - SSRN manuscript preprint: https://doi.org/10.2139/ssrn.7166858
 - External reproduction issue: https://github.com/Miko997/metriplane/issues/6
 - Short feedback form: https://docs.google.com/forms/d/e/1FAIpQLSfnMZ4b3fSVVtwA89hZt3A09gf85eLfhW00FDD76TGRLNpirQ/viewform
-
-The current PyPI package can be installed with:
-
-```bash
-python -m pip install "metriplane==0.2.1"
-
-metriplane doctor
-metriplane atlas protocol export --out metriplane-protocol
-```
-
-The published v0.2.1 wheel predates the bundled demo and intentionally excludes:
-
-- checked-in demo datasets and domain-pack configurations
-- the local web dashboard
-- maintainer helper scripts
-- frozen paper evidence and reproduction records
-
-Use the exact source checkout in the reproduction section below when a command
-refers to `datasets/`, `configs/`, `web/`, `tools/`, or `evidence/`.
-When running v0.2.1, doctor warnings about those source-checkout paths are
-expected and do not mean the package installation failed.
 
 ## Why this exists
 
@@ -163,7 +125,7 @@ replayed workcell state
 → generated regression check
 ```
 
-## Current v0.2.0 Evidence Result
+## Archived v0.2.0 Evidence Result
 
 The author-run evidence package included in the archived release records:
 

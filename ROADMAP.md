@@ -15,10 +15,10 @@ Metriplane turns replayed or calibrated workcell state into an incident timeline
 a human-readable report, a checksummed evidence bundle, local verification, and a
 repeatable regression check.
 
-The immediate adoption target is:
+The v0.3.0 release path is:
 
 ```bash
-pip install metriplane
+python -m pip install "metriplane==0.3.0"
 metriplane demo --open
 ```
 
@@ -30,8 +30,10 @@ a camera, GPU, ROS 2, Docker, or browser-test tooling.
 
 - `v0.2.0` remains the immutable DOI-archived research artifact for the
   SoftwareX submission.
-- `v0.2.1` remains the current packaging release while adoption work is developed.
-- `v0.3.0` is the planned usability and adoption release.
+- `v0.2.1` is the published packaging predecessor; its release record remains
+  historical and is not a v0.3.0 research boundary.
+- `v0.3.0` is the usability and adoption software release. It does not establish
+  a new research measurement or DOI boundary.
 - New and actively maintained product-facing text uses **Metriplane**. Historical
   frozen artifacts are not rewritten solely to change capitalization.
 - Package names, imports, commands, URLs, schema identifiers, and environment
@@ -39,9 +41,10 @@ a camera, GPU, ROS 2, Docker, or browser-test tooling.
 
 ## Maintenance baseline
 
-As of 9 August 2026, PRs #11–#14 and #16 have been merged into `main` as
-stabilization and adoption-foundation work. The current v0.2.1 PyPI artifacts
-remain unchanged; these changes will ship only in a future package release.
+As of 9 August 2026, PRs #11–#14 and #16–#24 have been merged into `main` as
+stabilization, adoption, documentation, release-engineering, and
+community-readiness work. The v0.2.1 PyPI artifacts remain unchanged historical
+release artifacts; v0.3.0 is a separate software release.
 
 | Pull request | Merged outcome |
 | --- | --- |
@@ -50,11 +53,19 @@ remain unchanged; these changes will ship only in a future package release.
 | [#13](https://github.com/Miko997/metriplane/pull/13) | Broken SoftwareX reproducibility links were repaired. |
 | [#14](https://github.com/Miko997/metriplane/pull/14) | Atlas regression expectations now require distinct actual outputs. |
 | [#16](https://github.com/Miko997/metriplane/pull/16) | Bundled demo, root CLI discovery, release-path hardening, and the Ubuntu/macOS Python 3.12/3.13 validation matrix. |
+| [#17](https://github.com/Miko997/metriplane/pull/17) | Accurate environment support boundaries. |
+| [#18](https://github.com/Miko997/metriplane/pull/18) | Human-readable quickstart, demo, CLI, report, and active UI wording. |
+| [#19](https://github.com/Miko997/metriplane/pull/19) | Installed-package discovery, version reporting, doctor checks, and wheel resources. |
+| [#20](https://github.com/Miko997/metriplane/pull/20) | Documentation front door and the supported after-demo tutorial. |
+| [#21](https://github.com/Miko997/metriplane/pull/21) | Concurrent Atlas output no-clobber protection. |
+| [#22](https://github.com/Miko997/metriplane/pull/22) | Owner-runnable first-time-user comprehension protocol and honest empty-results record. |
+| [#23](https://github.com/Miko997/metriplane/pull/23) | Reusable build-once publication pipeline and release/citation preparation. |
+| [#24](https://github.com/Miko997/metriplane/pull/24) | Community support, private security-reporting, conduct, issue, and pull-request policies. |
 
-Future adoption branches start from current `main` and receive fresh checks after
-each rebase.
+The v0.3.0 release incorporates that merged baseline and its own version and
+release-copy changes.
 
-## Phase 1: instant evidence demo
+## Phase 1: instant evidence demo (implemented in v0.3.0)
 
 Goal: make the core value visible from an ordinary PyPI installation.
 
@@ -78,10 +89,12 @@ Completion gate:
 - Repeated runs produce equivalent deterministic results.
 - The built-wheel demo is CI-tested outside a source checkout on Linux and macOS
   with Python 3.12 and 3.13.
-- WSL2 is not advertised for v0.3.0 until a clean manual v0.3.0 run is recorded.
+- WSL2 Ubuntu 24.04 has a bounded owner-run validation for the Python 3.12.3
+  installed-wheel camera-free and headless path. Automatic browser opening is
+  not claimed because the validation environment had no default HTML handler.
   Native Windows remains unsupported and unadvertised.
 
-## Phase 2: discoverable command line and first screen
+## Phase 2: discoverable command line and first screen (implemented in v0.3.0)
 
 Goal: let users understand the primary workflow without reading the source tree.
 
@@ -101,7 +114,7 @@ Completion gate:
 - The first README screen explains the input, output, and scope without requiring
   manuscript context.
 
-## Phase 3: documentation front door
+## Phase 3: documentation front door (implemented in v0.3.0)
 
 Goal: replace the raw documentation directory as the primary navigation surface.
 
@@ -120,15 +133,16 @@ Completion gate:
 - Every quickstart is tested or explicitly marked as manual.
 - No current integration guide requires deprecated tooling.
 
-## Phase 4: supported environments and contribution path
+## Phase 4: supported environments and contribution path (implemented in v0.3.0)
 
 Goal: make expected compatibility and contribution steps explicit.
 
 - Maintain the full supported suite on Linux with Python 3.12 and 3.13.
 - Maintain the macOS camera-free suite and installed-wheel demo on Python 3.12
   and 3.13; do not claim live-camera support without hardware validation.
-- Advertise WSL2 only after a clean manual v0.3.0 run is recorded; archived v0.2.0
-  WSL2 reproduction instructions do not establish v0.3.0 support.
+- Keep the WSL2 claim bounded to the recorded Ubuntu 24.04/Python 3.12.3
+  installed-wheel camera-free and headless run; archived v0.2.0 WSL2
+  reproduction instructions do not establish broader v0.3.0 support.
 - Keep native Windows unsupported and unadvertised until it is explicitly
   implemented and validated.
 - Add issue forms, a pull-request template, `SECURITY.md`, a Code of Conduct, support
@@ -143,7 +157,7 @@ Completion gate:
 - A contributor can set up tests, choose an issue, and prepare a pull request from the
   documented path.
 
-## Phase 5: one ecosystem wedge
+## Phase 5: one ecosystem wedge (future; outside v0.3.0)
 
 Goal: let teams apply Metriplane to recorded data they already have.
 

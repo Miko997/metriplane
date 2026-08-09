@@ -121,15 +121,24 @@ def test_after_demo_tutorial_uses_real_command_sequence() -> None:
     assert offsets == sorted(offsets)
 
 
-def test_preview_install_and_research_boundaries_are_truthful() -> None:
+def test_v030_package_install_and_research_boundaries_are_truthful() -> None:
+    front_door = (DOCS / "README.md").read_text(encoding="utf-8")
     quickstart = (GUIDE / "quickstart.md").read_text(encoding="utf-8")
+    troubleshooting = (GUIDE / "troubleshooting.md").read_text(encoding="utf-8")
     research = (GUIDE / "research-artifacts.md").read_text(encoding="utf-8")
+    exact_quickstart = """```bash
+python -m pip install \"metriplane==0.3.0\"
+metriplane demo --open
+```"""
 
-    assert "v0.3.0 is not published yet" in quickstart
-    assert "PyPI still serves v0.2.1" in quickstart
-    assert "manual pre-release path" in quickstart
-    assert 'python -m pip install "metriplane==0.3.0"' in quickstart
-    assert "not" in quickstart.split("planned release path", 1)[1].lower()
+    assert exact_quickstart in front_door
+    assert exact_quickstart in quickstart
+    assert 'python -m pip install "metriplane==0.3.0"' in troubleshooting
+    for text in (front_door, quickstart, troubleshooting):
+        assert "current-`main`" not in text
+        assert "source preview" not in text.lower()
+        assert "not published" not in text.lower()
+        assert "PyPI still serves v0.2.1" not in text
     assert "10.5281/zenodo.20736619" in research
     assert "10.2139/ssrn.7166858" in research
     assert "v0.1.3" in research

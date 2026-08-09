@@ -9,21 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_readme_first_screen_stages_truthful_v030_quickstart() -> None:
+def test_readme_first_screen_uses_exact_v030_package_quickstart() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     first_screen, separator, _ = readme.partition("## Published versions")
     normalized = " ".join(
         first_screen.replace("`", "").replace("**", "").replace("\n> ", " ").split()
     )
-    source_preview = """```bash
-git clone https://github.com/Miko997/metriplane.git
-cd metriplane
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install .
-metriplane demo --open
-```"""
     release_quickstart = """```bash
 python -m pip install \"metriplane==0.3.0\"
 metriplane demo --open
@@ -36,22 +27,21 @@ metriplane demo --open
     assert "Understand what went wrong in a recorded workcell run" in normalized
     assert "timestamped object positions and process rules" in normalized
     assert "does not control machinery" in normalized
-    assert "public PyPI package is still v0.2.1" in normalized
-    assert source_preview in first_screen
     assert release_quickstart in first_screen
-    assert first_screen.index("current `main` source preview") < first_screen.index(
-        source_preview
-    )
-    assert first_screen.index("When v0.3.0 is published") < first_screen.index(
-        release_quickstart
-    )
-    assert "not a claim that v0.3.0 is already available" in normalized
+    assert first_screen.index("## Quickstart") < first_screen.index(release_quickstart)
+    assert "Current installable software release: `v0.3.0`" in readme
+    assert 'python -m pip install "metriplane==0.2.1"' not in readme
+    assert "current `main`" not in readme
+    assert "preview" not in first_screen.lower()
+    assert "planned" not in first_screen.lower()
+    assert "not published" not in first_screen.lower()
     assert "agent/bundled-demo" not in readme
     assert "PASS  Incident timeline: 6 events" in first_screen
     assert "PASS  Incident report: 1 incident" in first_screen
     assert "PASS  Evidence bundle: verified" in first_screen
     assert "PASS  Repeatable regression check: passed" in first_screen
-    assert "Browser: opened report" in first_screen
+    assert "Browser: open request sent" in first_screen
+    assert "Browser: opened report" not in first_screen
 
 
 def test_readme_explains_the_beginner_input_output_and_terms() -> None:
@@ -94,5 +84,5 @@ def test_release_gate_runs_the_exact_installed_wheel_quickstart() -> None:
     assert 'python-version: ["3.12", "3.13"]' in workflow
     assert '"demo",\n              "--open",' in workflow
     assert 'BROWSER="$browser_stub"' in workflow
-    assert '"Browser: opened report" not in completed.stdout' in workflow
+    assert '"Browser: open request sent" not in completed.stdout' in workflow
     assert 'test "$(<"$browser_uri_file")" = "$expected_report_uri"' in workflow

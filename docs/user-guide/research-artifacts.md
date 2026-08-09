@@ -10,23 +10,23 @@ boundaries. Reproduce and cite the exact version that produced the result.
 
 | Purpose | Exact boundary | Status |
 | --- | --- | --- |
-| Current PyPI package | v0.2.1 | Published package while v0.3.0 is prepared; it predates the bundled `demo` command. |
-| Usability/adoption release | v0.3.0 | Planned, not yet published, tagged, or assigned a DOI. Current-main preview results must not be described as published v0.3.0 results. |
+| Usability and adoption software release | v0.3.0 | Exact software tag `v0.3.0`; no DOI and no new research measurement boundary. |
+| Published packaging predecessor | v0.2.1 | Historical packaging release that predates the bundled `demo` command; it is not a v0.3.0 or research-evidence boundary. |
 | SoftwareX research artifact | v0.2.0 | Frozen tag and DOI archive: [10.5281/zenodo.20736619](https://doi.org/10.5281/zenodo.20736619). |
 | TIM evaluated software boundary | v0.1.3 | Historical measurement boundary; later package behavior must not be attributed to that evaluation. |
 | Manuscript preprint | Paper, cited separately | SSRN DOI: [10.2139/ssrn.7166858](https://doi.org/10.2139/ssrn.7166858). |
 
 The v0.2.0 DOI belongs to the frozen v0.2.0 research artifact. Do **not** attach
 that DOI to v0.3.0 or imply that a v0.3.0 output produced the SoftwareX or TIM
-measurements. No v0.3.0 DOI exists unless a separate archive is created later
-with truthful metadata.
+measurements. No v0.3.0 DOI exists. A later, separately approved archive may add
+one only after its metadata and version boundary are verified.
 
 For the frozen SoftwareX path, use the exact v0.2.0 tag and follow
 [SoftwareX reproducibility](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md)
 or the
 [paper reproduction guide](https://github.com/Miko997/metriplane/blob/main/docs/paper/reproduction.md).
 Those documents preserve historical commands and evidence boundaries; they are
-not current product quickstarts or current environment claims.
+not v0.3.0 product quickstarts or v0.3.0 environment claims.
 
 For the active compatibility statement, use
 [Supported Environments](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md).

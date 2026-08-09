@@ -5,7 +5,8 @@ SPDX-License-Identifier: MIT
 
 # Metriplane Evidence Matrix
 
-**Latest installable package**: `v0.2.1`
+**Usability and adoption software release**: `v0.3.0` (no DOI; not a new measurement boundary)
+**Published packaging predecessor**: `v0.2.1`
 **Frozen DOI research artifact**: [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619)
 **Archived release name**: MetriPlane v0.2.0 — Physical Observability, Evidence Bundles, and Command Center
 **Main SoftwareX paper artifact**: `v0.2.0`
@@ -41,7 +42,7 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 | Operator UI proof | Step-by-step validated run | YES | `evidence/experiments/operator_ui_final_smoke_001.md` | 10-step workflow passed; smoke evidence, not tracking-accuracy benchmark evidence. |
 | Manifest and checksums | Manifest rows and aggregate checksum file | YES | `evidence/manifest.csv`, `evidence/CHECKSUMS.sha256` | Checksum verification is expected to pass with `sha256sum -c evidence/CHECKSUMS.sha256`. |
 | Large session provenance | Session hash in manifest when JSONL is outside Git | PARTIAL | `evidence/manifest.csv` | Large JSONL sessions may be archived outside Git; verify archived copies against manifest checksums. |
-| Historical benchmark evidence release | Benchmark source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | v0.1.3 remains the historical benchmark evidence release; v0.2.0 is the current public release and main SoftwareX paper artifact. Benchmark evidence is supplemental release evidence, not a peer-reviewed publication claim. |
+| Historical benchmark evidence release | Benchmark source/evidence release URL | YES | `https://github.com/Miko997/metriplane/releases/tag/v0.1.3` | v0.1.3 remains the historical benchmark evidence release; v0.2.0 is the frozen DOI-archived SoftwareX paper artifact. Benchmark evidence is supplemental release evidence, not a peer-reviewed publication claim. |
 
 ## MetriPlane 0.2.0 Operational Evidence
 
@@ -83,9 +84,9 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 
 | Check | Expected |
 |---|---|
-| Display name | Use MetriPlane. |
+| Display name | Use Metriplane in active copy; retain MetriPlane inside frozen historical names where changing it would alter provenance. |
 | Package/repo/CLI references | Use `metriplane` where referring to package, repo, or commands. |
-| Current release and DOI | Use `v0.2.0` and DOI `10.5281/zenodo.20736619` for the current public release and main SoftwareX paper artifact. |
+| Frozen research release and DOI | Use `v0.2.0` and DOI `10.5281/zenodo.20736619` only for the frozen SoftwareX research artifact; v0.3.0 has no DOI and did not produce these results. |
 | Historical benchmark and DOI lineage | Use `v0.1.3` as the historical benchmark evidence release, `v0.1.4` / `10.5281/zenodo.20631037` as the historical DOI-archived baseline, `v0.1.2` as the prior canonical evidence release, and `v0.1.0` as the initial public release. |
 | GPU claim | CPU faster than GPU for current N=1-1000 fusion-compute benchmark; no full-pipeline GPU acceleration claim. |
 | Zone claim | Four zones and 112 transitions from current CSVs. |

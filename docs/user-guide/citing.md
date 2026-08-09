@@ -11,16 +11,12 @@ separate version boundaries.
 
 ## Exact v0.3.0 software release
 
-v0.3.0 is being prepared and has no DOI. After it is published, cite its exact
-GitHub release and include the version. Use the publication year and release
-metadata shown on the final release page rather than filling them in early:
+Metriplane v0.3.0 has no DOI. Cite the exact `v0.3.0` GitHub software release;
+if a citation style requires a release date, use the date shown on the release
+record:
 
-> Parkkinen, Miko. (`<release year>`). *Metriplane v0.3.0* [Computer software].
+> Parkkinen, Miko. *Metriplane v0.3.0* [Computer software].
 > GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.3.0
-
-Before publication, cite the exact commit used for a preview and describe it as
-an unreleased source snapshot. Do not describe current-main output as published
-v0.3.0 output.
 
 No v0.3.0 DOI exists. Do not use the v0.2.0 DOI for v0.3.0. If a separate
 v0.3.0 archive is created later, use its DOI only after its metadata and version

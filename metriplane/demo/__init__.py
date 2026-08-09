@@ -332,7 +332,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.open_report:
         if _open_report(result.report_path):
-            print("Browser: opened report")
+            print("Browser: open request sent")
+            print("If no browser opens, use the Report path above.")
         else:
             print(
                 "WARNING: Could not open a browser. Open the report manually:\n"

@@ -7,10 +7,13 @@ SPDX-License-Identifier: MIT
 
 ## Artifact identity
 
-Metriplane v0.2.0 is the frozen DOI-archived research artifact. The latest
-installable PyPI package is v0.2.1; later source changes do not modify the
-v0.2.0 evidence boundary.
+Metriplane v0.3.0 is the usability and adoption software release. Metriplane
+v0.2.0 remains the frozen DOI-archived research artifact, and v0.2.1 remains the
+historical packaging predecessor. The v0.3.0 software release does not modify
+the v0.2.0 evidence or the v0.1.3 measurements.
 
+- Usability and adoption software release: `v0.3.0` (no DOI)
+- Published packaging predecessor: `v0.2.1`
 - Frozen research artifact: `v0.2.0`
 - DOI-archived research artifact: `v0.2.0` at `10.5281/zenodo.20736619`
 - Zenodo record: `https://zenodo.org/records/20736619`
@@ -101,7 +104,7 @@ This benchmark covers fusion compute only. It does not measure camera capture, A
 
 ## Checksums
 
-The aggregate checksum file is [`evidence/CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256). It was generated from regular files in the current public proof surface in this checkout, excluding the aggregate file itself to avoid self-referential hashing.
+The aggregate checksum file is [`evidence/CHECKSUMS.sha256`](evidence/CHECKSUMS.sha256). It was generated from regular files in the frozen public evidence surface represented by this checkout, excluding the aggregate file itself to avoid self-referential hashing.
 
 To verify files that are present locally:
 
@@ -123,7 +126,7 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - Atlas USD/Isaac, external pilots, hardware appliance packaging, production Docker runtime, and network connectors remain future work unless separately evidenced. The v0.2.0 paper package Docker evidence is local replay/demo smoke only.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
-- The current DOI-archived software release is v0.2.0 at [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619), record [`20736619`](https://zenodo.org/records/20736619). The historical DOI-archived baseline is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037).
+- The frozen DOI-archived research release is v0.2.0 at [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619), record [`20736619`](https://zenodo.org/records/20736619). The historical DOI-archived baseline is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). No DOI is claimed for v0.3.0.
 
 ## Versioning and provenance
 
