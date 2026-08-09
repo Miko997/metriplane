@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     bundle_export.add_argument("--incident-id", required=True)
     bundle_export.add_argument("--run-dir", required=True)
     bundle_export.add_argument("--out", required=True)
+    bundle_export.add_argument("--overwrite", action="store_true")
     bundle_verify = bundle_sub.add_parser("verify")
     bundle_verify.add_argument("bundle")
 
@@ -140,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     privacy_anon = privacy_sub.add_parser("anonymize")
     privacy_anon.add_argument("--run-dir", required=True)
     privacy_anon.add_argument("--out", required=True)
+    privacy_anon.add_argument("--overwrite", action="store_true")
 
     improvement = sub.add_parser("improvement", help="Compare Atlas before/after improvement runs")
     improvement_sub = improvement.add_subparsers(dest="improvement_cmd", required=True)
@@ -219,7 +221,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "bundle":
             from metriplane.atlas.bundles import export_bundle, verify_bundle
             if args.bundle_cmd == "export":
-                path = export_bundle(args.run_dir, args.incident_id, args.out)
+                path = export_bundle(
+                    args.run_dir,
+                    args.incident_id,
+                    args.out,
+                    overwrite=args.overwrite,
+                )
                 print(path)
                 return 0
             result = verify_bundle(args.bundle)
@@ -348,7 +355,11 @@ def main(argv: list[str] | None = None) -> int:
             if args.privacy_cmd == "report":
                 print(json.dumps(privacy_report(args.run_dir, args.out), indent=2, sort_keys=True))
                 return 0
-            print(json.dumps(anonymize_run(args.run_dir, args.out), indent=2, sort_keys=True))
+            print(json.dumps(
+                anonymize_run(args.run_dir, args.out, overwrite=args.overwrite),
+                indent=2,
+                sort_keys=True,
+            ))
             return 0
 
         if args.cmd == "improvement":

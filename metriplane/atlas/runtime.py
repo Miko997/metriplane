@@ -11,7 +11,11 @@ from pathlib import Path
 
 from metriplane.schema import FrameStateModel
 
-from metriplane.atlas.domain_packs import DomainPack, load_domain_pack
+from metriplane.atlas.domain_packs import (
+    DomainPack,
+    load_domain_pack,
+    validate_domain_pack,
+)
 from metriplane.atlas.event_ledger import write_events
 from metriplane.atlas.improvement import recommend_actions
 from metriplane.atlas.models import AtlasRunManifest, FlowMetrics
@@ -126,13 +130,15 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _safe_generated_out_dir(out_dir: Path) -> bool:
-    """Return whether an existing output may be replaced without ``--overwrite``."""
-    resolved = out_dir.resolve()
-    allowed_roots = [
-        Path("web/dashboard/atlas_run").resolve(),
-        Path("runs/atlas").resolve(),
-    ]
-    return any(resolved == root or _is_relative_to(resolved, root) for root in allowed_roots)
+    """Existing outputs are never safe to replace without explicit consent."""
+    return False
+
+
+def _remove_output(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
 
 
 def run_atlas(
@@ -145,18 +151,32 @@ def run_atlas(
     session_path = Path(session_jsonl)
     if not session_path.exists():
         raise ValueError(f"session_jsonl does not exist: {session_path}")
-    pack = load_domain_pack(pack_dir)
+    pack_path = Path(pack_dir)
     paths = AtlasRunPaths.from_out_dir(out_dir)
-    if paths.out_dir.exists() and _is_relative_to(session_path, paths.out_dir):
-        raise ValueError("Refusing to overwrite an output directory that contains the source session")
-    if paths.out_dir.exists():
-        # Derived artifacts may be overwritten, but never the source session.
-        if not overwrite and not _safe_generated_out_dir(paths.out_dir):
+    output_resolved = paths.out_dir.resolve()
+    session_resolved = session_path.resolve()
+    pack_resolved = pack_path.resolve()
+    if output_resolved == session_resolved or output_resolved in session_resolved.parents:
+        raise ValueError("refusing output that contains the source session")
+    if (
+        output_resolved == pack_resolved
+        or output_resolved in pack_resolved.parents
+        or pack_resolved in output_resolved.parents
+    ):
+        raise ValueError("refusing output that overlaps the source domain pack")
+
+    pack_errors = validate_domain_pack(pack_path)
+    if pack_errors:
+        details = "\n".join(f"- {error}" for error in pack_errors)
+        raise ValueError(f"invalid domain pack {pack_path}:\n{details}")
+    pack = load_domain_pack(pack_path)
+    if paths.out_dir.exists() or paths.out_dir.is_symlink():
+        if not overwrite:
             raise ValueError(
-                "Refusing to overwrite existing non-generated output directory "
+                "Refusing to overwrite existing output directory "
                 f"without --overwrite: {paths.out_dir}"
             )
-        shutil.rmtree(paths.out_dir)
+        _remove_output(paths.out_dir)
     paths.out_dir.mkdir(parents=True, exist_ok=True)
 
     frames = _iter_frames(session_path)

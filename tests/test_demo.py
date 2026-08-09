@@ -52,8 +52,8 @@ def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatc
 
     spec = yaml.safe_load(regression_path.read_text(encoding="utf-8"))
     source_bundle = Path(spec["source_bundle"])
-    assert source_bundle.is_absolute()
-    assert source_bundle == bundle_path.resolve()
+    assert not source_bundle.is_absolute()
+    assert (regression_path.parent / source_bundle).resolve() == bundle_path.resolve()
 
 
 def test_demo_refuses_existing_output_without_deleting_it(

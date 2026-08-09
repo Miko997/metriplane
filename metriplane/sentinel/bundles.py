@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path, PurePosixPath
+import re
 import shutil
-from pathlib import Path
 
 from metriplane.sentinel.engine import iter_frames
 from metriplane.sentinel.events import (
@@ -20,6 +21,7 @@ from metriplane.trace.store import TraceStore
 # Frames within this many seconds before/after the incident window are kept
 # in the session excerpt, to give the replay context around the event.
 EXCERPT_PAD_S = 2.0
+_CHECKSUM_RE = re.compile(r"^([0-9a-fA-F]{64}) ([ *])(.+)$")
 
 
 def _sha256_file(path: Path) -> str:
@@ -45,22 +47,71 @@ def write_checksums(bundle_dir: Path, exclude: set[str]) -> Path:
     return out
 
 
-def verify_checksums(bundle_dir: Path) -> list[str]:
-    """Return a list of mismatch/missing errors. Empty means all checksums OK."""
+def _safe_checksum_path(value: str) -> str:
+    if not value or "\\" in value or "\x00" in value:
+        raise ValueError(f"unsafe checksum path: {value!r}")
+    path = PurePosixPath(value)
+    if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
+        raise ValueError(f"unsafe checksum path: {value}")
+    return path.as_posix()
+
+
+def verify_checksums(
+    bundle_dir: Path,
+    *,
+    exclude: set[str] | None = None,
+) -> list[str]:
+    """Return integrity errors for the bundle's exact regular-file inventory."""
     errors: list[str] = []
-    checksum_file = bundle_dir / "CHECKSUMS.sha256"
-    if not checksum_file.exists():
+    bundle = Path(bundle_dir)
+    checksum_file = bundle / "CHECKSUMS.sha256"
+    if not checksum_file.is_file() or checksum_file.is_symlink():
         return ["CHECKSUMS.sha256 not found"]
-    for line in checksum_file.read_text().splitlines():
-        line = line.strip()
-        if not line:
+
+    ignored = set(exclude or set())
+    ignored.add("CHECKSUMS.sha256")
+    inventory: set[str] = set()
+    for path in sorted(bundle.rglob("*")):
+        rel = path.relative_to(bundle).as_posix()
+        if path.is_symlink():
+            errors.append(f"bundle symlink is not allowed: {rel}")
+        elif path.is_file() and rel not in ignored:
+            inventory.add(rel)
+        elif not path.is_dir() and not path.is_file():
+            errors.append(f"bundle entry is not a regular file: {rel}")
+
+    recorded: dict[str, str] = {}
+    for line_number, line in enumerate(
+        checksum_file.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
             continue
-        expected, _, rel = line.partition("  ")
-        target = bundle_dir / rel
-        if not target.exists():
-            errors.append(f"missing file: {rel}")
+        match = _CHECKSUM_RE.fullmatch(line)
+        if match is None:
+            errors.append(f"malformed checksum entry on line {line_number}")
             continue
-        actual = _sha256_file(target)
+        expected, _, raw_rel = match.groups()
+        try:
+            rel = _safe_checksum_path(raw_rel)
+        except ValueError as exc:
+            errors.append(f"checksum line {line_number}: {exc}")
+            continue
+        if rel in ignored:
+            errors.append(f"checksum entry is not allowed: {rel}")
+            continue
+        if rel in recorded:
+            errors.append(f"duplicate checksum entry: {rel}")
+            continue
+        recorded[rel] = expected.lower()
+
+    for rel in sorted(inventory - set(recorded)):
+        errors.append(f"file missing checksum entry: {rel}")
+    for rel in sorted(set(recorded) - inventory):
+        errors.append(f"checksum references missing file: {rel}")
+    for rel, expected in recorded.items():
+        if rel not in inventory:
+            continue
+        actual = _sha256_file(bundle / rel)
         if actual != expected:
             errors.append(f"checksum mismatch: {rel}")
     return errors

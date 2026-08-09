@@ -28,6 +28,7 @@ class _Evaluation:
     incidents: list
     p95_ms: float | None
     fingerprint: str
+    rule_types: dict[str, str]
 
 
 def _evaluate(bundle: Path) -> _Evaluation:
@@ -51,7 +52,14 @@ def _evaluate(bundle: Path) -> _Evaluation:
         ordered = sorted(per_frame_ms)
         idx = max(0, int(round(0.95 * (len(ordered) - 1))))
         p95 = ordered[idx]
-    return _Evaluation(alerts, incidents, p95, incidents_fingerprint(incidents))
+    rule_types = {rule.id: rule.type for rule in rules.rules}
+    return _Evaluation(
+        alerts,
+        incidents,
+        p95,
+        incidents_fingerprint(incidents),
+        rule_types,
+    )
 
 
 class PhysicalRegressionRunner:
@@ -78,7 +86,9 @@ class PhysicalRegressionRunner:
         expected = load_expected(expected_file)
 
         if self.verify_checksums:
-            errors = verify_chk(bundle)
+            # expected.yaml is the editable regression oracle, not evidence
+            # captured by the incident bundle's immutable checksum inventory.
+            errors = verify_chk(bundle, exclude={"expected.yaml"})
             checks.append({"check": "checksums", "pass": not errors,
                            "detail": "ok" if not errors else f"{errors}"})
             if errors:
@@ -94,8 +104,12 @@ class PhysicalRegressionRunner:
                            "detail": first.fingerprint[:16] if match
                            else "fingerprint changed across runs"})
 
-        checks.extend(compare_incidents(first.incidents, expected.incidents,
-                                        self.strict_extra_incidents))
+        checks.extend(compare_incidents(
+            first.incidents,
+            expected.incidents,
+            self.strict_extra_incidents,
+            first.rule_types,
+        ))
         checks.extend(compare_events(first.alerts, expected.events,
                                      self.strict_extra_events))
         checks.extend(compare_latency(first.p95_ms, expected))

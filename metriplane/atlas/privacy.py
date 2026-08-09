@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
@@ -55,12 +57,30 @@ def _proxy(value: str, prefix: str = "asset") -> str:
     return f"{prefix}_{digest}"
 
 
-def anonymize_run(run_dir: str | Path, out_dir: str | Path) -> dict:
+def anonymize_run(
+    run_dir: str | Path,
+    out_dir: str | Path,
+    *,
+    overwrite: bool = False,
+) -> dict:
     run = Path(run_dir)
     out = Path(out_dir)
-    if out.exists():
-        shutil.rmtree(out)
-    out.mkdir(parents=True, exist_ok=True)
+    if not run.is_dir():
+        raise ValueError(f"run directory does not exist: {run}")
+    run_resolved = run.resolve()
+    out_resolved = out.resolve()
+    if (
+        run_resolved == out_resolved
+        or run_resolved in out_resolved.parents
+        or out_resolved in run_resolved.parents
+    ):
+        raise ValueError("source run and anonymized output must not overlap")
+    if out.exists() or out.is_symlink():
+        if not overwrite:
+            raise ValueError(
+                f"refusing to replace existing anonymized output without --overwrite: {out}"
+            )
+    out.parent.mkdir(parents=True, exist_ok=True)
     mapping: dict[str, str] = {}
 
     def replace_asset(value: object) -> object:
@@ -73,16 +93,35 @@ def anonymize_run(run_dir: str | Path, out_dir: str | Path) -> dict:
             return mapping[value]
         return value
 
-    for rel in ("physical_event_log.jsonl", "incidents.jsonl", "deviations.jsonl"):
-        rows = _jsonl(run / rel)
-        with (out / rel).open("w", encoding="utf-8") as handle:
-            for row in rows:
-                handle.write(json.dumps(replace_asset(row), sort_keys=True) + "\n")
-    for rel in ("atlas_manifest.json", "metrics.json", "improvement_actions.json"):
-        src = run / rel
-        if src.exists():
-            (out / rel).write_text(json.dumps(replace_asset(json.loads(src.read_text(encoding="utf-8"))), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (out / "asset_proxy_map.json").write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with TemporaryDirectory(prefix=f".{out.name}-", dir=out.parent) as temp_dir:
+        stage = Path(temp_dir) / "anonymized"
+        stage.mkdir()
+        for rel in ("physical_event_log.jsonl", "incidents.jsonl", "deviations.jsonl"):
+            rows = _jsonl(run / rel)
+            with (stage / rel).open("w", encoding="utf-8") as handle:
+                for row in rows:
+                    handle.write(json.dumps(replace_asset(row), sort_keys=True) + "\n")
+        for rel in ("atlas_manifest.json", "metrics.json", "improvement_actions.json"):
+            src = run / rel
+            if src.exists():
+                (stage / rel).write_text(
+                    json.dumps(
+                        replace_asset(json.loads(src.read_text(encoding="utf-8"))),
+                        indent=2,
+                        sort_keys=True,
+                    ) + "\n",
+                    encoding="utf-8",
+                )
+        (stage / "asset_proxy_map.json").write_text(
+            json.dumps(mapping, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        if overwrite and (out.exists() or out.is_symlink()):
+            if out.is_symlink() or out.is_file():
+                out.unlink()
+            else:
+                shutil.rmtree(out)
+        os.replace(stage, out)
     return {
         "schema_version": "metriplane.atlas.anonymized_proxy.v1",
         "source_run_dir": str(run),
