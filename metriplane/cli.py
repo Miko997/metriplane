@@ -15,6 +15,30 @@ from pathlib import Path
 log = logging.getLogger("metriplane.cli")
 
 
+def _main_help() -> int:
+    """Show the small, stable set of commands most users need first."""
+    print(
+        """Metriplane turns recorded workcell state into incident evidence and regression checks.
+
+Usage:
+  metriplane <command> [options]
+
+Primary commands:
+  demo       Run the bundled incident-to-regression example
+  doctor     Check the local installation and optional capabilities
+  atlas      Build, verify, and test Atlas evidence bundles
+  replay     Replay a recorded JSONL session deterministically
+  test       Run physical-observability comparisons
+  incidents  Inspect and verify Sentinel incident bundles
+  run        Start the configured single-camera or replay runtime
+
+Run `metriplane <command> --help` for command-specific options.
+Existing `metriplane --config ...` invocations remain supported as runtime shorthand.
+"""
+    )
+    return 0
+
+
 def _main_run(argv: list[str]) -> int:
     # Lazy imports to allow doctor command to run without dependencies
     from metriplane.config import load_config
@@ -393,6 +417,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Fast-path commands that need no logging setup
+    if argv in (["-h"], ["--help"]):
+        return _main_help()
     if argv and argv[0] == "demo":
         from metriplane.demo import main as demo_main
         return demo_main(argv[1:])
@@ -447,6 +473,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_status(argv[1:])
     if argv and argv[0] == "cleanup":
         return _main_cleanup(argv[1:])
+    if argv and argv[0] == "run":
+        return _main_run(argv[1:])
 
     # Setup logging for run and replay commands
     from metriplane.logging import setup_logging
