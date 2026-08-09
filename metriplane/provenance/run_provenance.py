@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import secrets
 import socket
 import subprocess
@@ -24,6 +25,7 @@ from metriplane.config import Config, resolve_profile
 
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
+_SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def is_header_record(obj: Any) -> bool:
@@ -256,6 +258,11 @@ def create_run_context(
     rid = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "").strip()
     if not rid:
         rid = generate_run_id()
+    if not _SAFE_RUN_ID.fullmatch(rid) or rid in {".", ".."}:
+        raise ValueError(
+            "run_id must be 1-128 letters, numbers, dots, dashes, or underscores "
+            "and cannot contain a path"
+        )
 
     # Where runs live
     base: Path
@@ -266,8 +273,14 @@ def create_run_context(
     else:
         base = data_dir() / "runs"
 
-    # Make run dir unique (avoid overwriting)
-    run_dir = _ensure_unique_run_dir(base / rid)
+    # Make run dir unique (avoid overwriting) and keep it beneath runs_dir.
+    base = base.expanduser().resolve()
+    candidate = (base / rid).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:  # defense in depth; the run-id syntax already rejects separators
+        raise ValueError("run_id resolves outside runs_dir") from exc
+    run_dir = _ensure_unique_run_dir(candidate)
     run_dir.mkdir(parents=True, exist_ok=False)
 
     # IMPORTANT: if we had to suffix, run_id must match directory name
@@ -363,7 +376,15 @@ def open_jsonl_writer(*, primary_path: Path, mirror_path: str | None) -> JsonlWr
                 paths.append(mp)
 
     files: list[TextIO] = []
-    for p in paths:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        files.append(p.open("w", encoding="utf-8", buffering=1))
+    try:
+        for p in paths:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            files.append(p.open("w", encoding="utf-8", buffering=1))
+    except Exception:
+        for handle in files:
+            try:
+                handle.close()
+            except Exception:
+                pass
+        raise
     return JsonlWriter(files, paths)

@@ -278,6 +278,69 @@ def _fusion_cfg(cfg: Config) -> dict[str, Any]:
     f = getattr(cfg, "fusion", None)
     return dict(f) if isinstance(f, dict) else {}
 
+
+def _update_camera_capture_health(
+    *,
+    capture_status: dict[str, dict[str, float | int | bool]],
+    expected_camera_ids: list[str],
+    health: HealthRegistry,
+    fail_after_s: float,
+    target_fps: float,
+) -> dict[str, HealthStatus]:
+    """Update camera health from capture age, not runner polling frequency."""
+    fail_after = max(0.01, float(fail_after_s))
+    nominal_period = 1.0 / max(1.0, float(target_fps))
+    degraded_after = min(fail_after * 0.5, max(0.25, nominal_period * 3.0))
+    result: dict[str, HealthStatus] = {}
+
+    for camera_id in expected_camera_ids:
+        item = capture_status.get(camera_id) or {}
+        age_s = max(0.0, float(item.get("capture_age_s", fail_after)))
+        has_frame = bool(item.get("has_frame", False))
+        component = f"camera.{camera_id}"
+        if age_s >= fail_after:
+            status = HealthStatus.FAILED
+            health.set_failed(component, f"capture stalled for {age_s:.2f}s")
+        elif not has_frame:
+            status = HealthStatus.DEGRADED
+            health.set_degraded(component, f"waiting for first capture ({age_s:.2f}s)")
+        elif age_s >= degraded_after:
+            status = HealthStatus.DEGRADED
+            health.set_degraded(component, f"last capture {age_s:.2f}s ago")
+        else:
+            status = HealthStatus.OK
+            health.set_ok(component)
+        result[camera_id] = status
+
+    return result
+
+
+def _close_fusion_resources(
+    *,
+    preview: Any = None,
+    camera: Any = None,
+    websocket: Any = None,
+    metrics_server: Any = None,
+    recorder: Any = None,
+    timing: Any = None,
+) -> None:
+    """Best-effort, idempotent cleanup for setup and runtime failures."""
+    for resource, method in (
+        (preview, "close"),
+        (camera, "close"),
+        (websocket, "stop"),
+        (metrics_server, "shutdown"),
+        (metrics_server, "server_close"),
+        (recorder, "close"),
+        (timing, "close"),
+    ):
+        if resource is None:
+            continue
+        try:
+            getattr(resource, method)()
+        except Exception:
+            log.debug("cleanup failed for %s.%s", type(resource).__name__, method, exc_info=True)
+
 def run_loop_fusion(
     cfg: Config,
     *,
@@ -326,7 +389,11 @@ def run_loop_fusion(
         else:
             raise
 
-    recorder.write(ctx.header_record())
+    try:
+        recorder.write(ctx.header_record())
+    except Exception:
+        recorder.close()
+        raise
     log.info("M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash)
     log.info("M9.4 recorder paths: %s", ", ".join(str(p) for p in recorder.paths))
 
@@ -347,29 +414,31 @@ def run_loop_fusion(
         cam_stages.append(f"detect.{cid}")
         cam_stages.append(f"map.{cid}")
 
-    timing = StageTiming(
-        enabled=timing_enabled,
-        stages=[
-            "camera.read",
-            "preview",
-            *cam_stages,
-            "fuse",
-            "tracking",
-            "zones",
-            "build.msg",
-            "record.jsonl",
-            "ws.send",
-            "sleep",
-        ],
-        frames_csv_path=ctx.run_dir / "latency_frames.csv",
-        summary_csv_path=ctx.run_dir / "latency_summary.csv",
-        flush_every=int(os.getenv("METRIPLANE_TIMING_FLUSH_EVERY", "250")),
-
-        # add these (nice-to-have)
-        run_id=ctx.run_id,
-        config_hash=ctx.config_hash,
-        git_commit=ctx.git.commit,
-    )
+    try:
+        timing = StageTiming(
+            enabled=timing_enabled,
+            stages=[
+                "camera.read",
+                "preview",
+                *cam_stages,
+                "fuse",
+                "tracking",
+                "zones",
+                "build.msg",
+                "record.jsonl",
+                "ws.send",
+                "sleep",
+            ],
+            frames_csv_path=ctx.run_dir / "latency_frames.csv",
+            summary_csv_path=ctx.run_dir / "latency_summary.csv",
+            flush_every=int(os.getenv("METRIPLANE_TIMING_FLUSH_EVERY", "250")),
+            run_id=ctx.run_id,
+            config_hash=ctx.config_hash,
+            git_commit=ctx.git.commit,
+        )
+    except Exception:
+        recorder.close()
+        raise
 
     if timing_enabled:
         log.info("M9.5 timing: ENABLED frames_csv=%s summary_csv=%s", ctx.run_dir / "latency_frames.csv", ctx.run_dir / "latency_summary.csv")
@@ -381,7 +450,11 @@ def run_loop_fusion(
     health = HealthRegistry()
 
     # M9.6: compute backend selection (CPU NumPy by default; optional GPU via CuPy)
-    compute_backend = select_fusion_backend(getattr(cfg, "compute", None), logger=log, health=health)
+    try:
+        compute_backend = select_fusion_backend(getattr(cfg, "compute", None), logger=log, health=health)
+    except Exception:
+        _close_fusion_resources(preview=preview, recorder=recorder, timing=timing)
+        raise
     log.info("M9.6 compute backend: %s", compute_backend.name)
 
     health.set_ok("process")
@@ -422,14 +495,7 @@ def run_loop_fusion(
         health.set_ok("ws")
     except Exception as e:
         health.set_failed("ws", f"{type(e).__name__}: {e}")
-        try:
-            recorder.close()
-        except Exception:
-            pass
-        try:
-            timing.close()
-        except Exception:
-            pass
+        _close_fusion_resources(preview=preview, websocket=ws, recorder=recorder, timing=timing)
         raise
 
     metrics = MetricsRegistry()
@@ -445,7 +511,11 @@ def run_loop_fusion(
     if health_enabled and "get_health" in inspect.signature(start_metrics_server).parameters:
         start_kwargs["get_health"] = health.snapshot
 
-    start_metrics_server(**start_kwargs)
+    try:
+        metrics_server = start_metrics_server(**start_kwargs)
+    except Exception:
+        _close_fusion_resources(preview=preview, websocket=ws, recorder=recorder, timing=timing)
+        raise
 
     health.set_ok("http.metrics")
     log.info("metrics at http://%s:%d/metrics", cfg.metrics_host, cfg.metrics_port)
@@ -454,7 +524,17 @@ def run_loop_fusion(
     else:
         log.info("health  DISABLED (set health.enabled=true to enable)")
 
-    cameras, mm, skipped = _resolve_multi_mapper_from_cfg(cfg, health=health)
+    try:
+        cameras, mm, skipped = _resolve_multi_mapper_from_cfg(cfg, health=health)
+    except Exception:
+        _close_fusion_resources(
+            preview=preview,
+            websocket=ws,
+            metrics_server=metrics_server,
+            recorder=recorder,
+            timing=timing,
+        )
+        raise
     if skipped:
         health.set_degraded("fusion", f"skipped cameras: {','.join(sorted(skipped))}")
         log.warning("fusion: skipped cameras due to missing mapping/device: %s", ",".join(sorted(skipped)))
@@ -468,7 +548,17 @@ def run_loop_fusion(
     if cfg.zones_file:
         zp = Path(str(cfg.zones_file))
         if zp.is_file():
-            zone_analytics = ZoneAnalytics(load_zones(zp))
+            try:
+                zone_analytics = ZoneAnalytics(load_zones(zp))
+            except Exception:
+                _close_fusion_resources(
+                    preview=preview,
+                    websocket=ws,
+                    metrics_server=metrics_server,
+                    recorder=recorder,
+                    timing=timing,
+                )
+                raise
             health.set_ok("zones")
         else:
             health.set_degraded("zones", f"zones_file not found: {zp}")
@@ -498,6 +588,13 @@ def run_loop_fusion(
     if method in ("best", "best_conf", "best_rmse"):
         method = "nearest"
     if method not in ("avg", "weighted", "nearest", "kalman"):
+        _close_fusion_resources(
+            preview=preview,
+            websocket=ws,
+            metrics_server=metrics_server,
+            recorder=recorder,
+            timing=timing,
+        )
         raise ValueError(f"Unsupported fusion method '{method}'. Use avg|weighted|nearest|kalman.")
 
     z_world = _coerce_float(str(fcfg.get("z_world")) if fcfg.get("z_world") is not None else None, 0.0)
@@ -547,12 +644,21 @@ def run_loop_fusion(
     frames_total = 0
     last_log = time.monotonic()
 
-    last_seen_mon: dict[str, float] = {cid: time.monotonic() for cid in expected_cam_ids}
-
-    det = cv2.aruco.ArucoDetector(
-        cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100),
-        cv2.aruco.DetectorParameters(),
-    )
+    try:
+        det = cv2.aruco.ArucoDetector(
+            cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100),
+            cv2.aruco.DetectorParameters(),
+        )
+    except Exception:
+        _close_fusion_resources(
+            preview=preview,
+            camera=cam,
+            websocket=ws,
+            metrics_server=metrics_server,
+            recorder=recorder,
+            timing=timing,
+        )
+        raise
 
     try:
         cam.open()
@@ -569,11 +675,18 @@ def run_loop_fusion(
             try:
                 frames = cam.read() or []
                 read_ns = time.perf_counter_ns() - t_read0
-                health.set_ok("camera.read")
             except Exception as e:
                 health.set_degraded("camera.read", f"{type(e).__name__}: {e}")
                 time.sleep(0.01)
                 continue
+
+            capture_health = _update_camera_capture_health(
+                capture_status=cam.capture_status(now_monotonic=time.monotonic()),
+                expected_camera_ids=expected_cam_ids,
+                health=health,
+                fail_after_s=cam_missing_fail_after_s,
+                target_fps=float(cfg.target_fps or 30),
+            )
 
             frames_by_cam: dict[str, Any] = {}
             for fr in frames:
@@ -613,9 +726,14 @@ def run_loop_fusion(
                 preview_ns = time.perf_counter_ns() - t_prev0
 
             if not frames_by_cam:
-                health.set_degraded("camera.read", "no frames")
+                if capture_health and all(s == HealthStatus.FAILED for s in capture_health.values()):
+                    health.set_failed("camera.read", "all camera captures stalled")
+                elif any(s != HealthStatus.OK for s in capture_health.values()):
+                    health.set_degraded("camera.read", "waiting for fresh camera capture")
                 time.sleep(0.005)
                 continue
+
+            health.set_ok("camera.read")
 
             frames_total += 1
             frame_id += 1
@@ -632,18 +750,6 @@ def run_loop_fusion(
             timing.add_stage_ns("camera.read", int(read_ns))
             if preview_ns > 0:
                 timing.add_stage_ns("preview", int(preview_ns))
-
-            now_mon = time.monotonic()
-            for cid in expected_cam_ids:
-                if cid in frames_by_cam:
-                    last_seen_mon[cid] = now_mon
-                    health.set_ok(f"camera.{cid}")
-                else:
-                    missing_for = now_mon - float(last_seen_mon.get(cid, now_mon))
-                    if missing_for >= cam_missing_fail_after_s:
-                        health.set_failed(f"camera.{cid}", f"missing for {missing_for:.2f}s")
-                    else:
-                        health.set_degraded(f"camera.{cid}", f"missing for {missing_for:.2f}s")
 
             raw_models: list[CameraFrameModel] = []
             meas_by_oid: dict[str, list[tuple[float, float, float]]] = defaultdict(list)
@@ -935,19 +1041,14 @@ def run_loop_fusion(
     except KeyboardInterrupt:
         log.info("shutdown requested")
     finally:
-        if "preview" in locals() and preview is not None:
-            preview.close()
-
-        cam.close()
-        ws.stop()
-        try:
-            recorder.close()
-        except Exception:
-            pass
-        try:
-            timing.close()
-        except Exception:
-            pass
+        _close_fusion_resources(
+            preview=preview,
+            camera=cam,
+            websocket=ws,
+            metrics_server=metrics_server,
+            recorder=recorder,
+            timing=timing,
+        )
 
 
 

@@ -76,4 +76,16 @@ def load_multi_planar_mapper(
     if not cams:
         raise ValueError("no camera mappers loaded")
 
+    units_by_camera = {
+        camera_id: str(camera.mapper.mapping.units).strip().lower()
+        for camera_id, camera in cams.items()
+    }
+    unique_units = set(units_by_camera.values())
+    if len(unique_units) != 1:
+        detail = ", ".join(
+            f"{camera_id}={units_by_camera[camera_id]}"
+            for camera_id in sorted(units_by_camera)
+        )
+        raise ValueError(f"camera mapping units must match ({detail})")
+
     return MultiPlanarMapper(cams=cams)

@@ -16,8 +16,9 @@ cd "$(dirname "$0")/.."
 # Remove volumes (this clears vt_data)
 docker compose --profile demo --profile dummy --profile live down --remove-orphans --volumes || true
 
-# Safety net: kill anything still binding ports
-docker ps -q --filter "publish=8000" | xargs -r docker rm -f || true
-docker ps -q --filter "publish=8765" | xargs -r docker rm -f || true
+# Safety net: only remove containers owned by this Compose project. Never
+# remove an unrelated container merely because it publishes a Metriplane port.
+docker ps -q --filter "label=com.docker.compose.project=metriplane-core" \
+  | xargs -r docker rm -f || true
 
 ss -lntp | egrep ':8000|:8765' || true

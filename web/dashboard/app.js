@@ -21,6 +21,7 @@ let wsReconnectTimer = null;
 let healthPollTimer = null;
 let metricsPollTimer = null;
 let lastFrameData = null;
+let runnerSessionToken = null;
 
 // Trail tracking: Map<object_id, {points: [{x, y, ts}], lastSeen: timestamp}>
 const objectTrails = new Map();
@@ -184,6 +185,7 @@ async function fetchHealth() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
+        runnerSessionToken = data.session_token || null;
         updateHealth(data);
         updateStatus('health', 'online', 'Online');
     } catch (err) {
@@ -589,10 +591,14 @@ async function runCommand(commandId) {
     }
     
     try {
+        if (!runnerSessionToken) await checkRunnerStatus();
         console.log('[Runner] Sending POST to', `${RUNNER_URL}/execute`);
         const response = await fetch(`${RUNNER_URL}/execute`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Metriplane-Token': runnerSessionToken || '',
+            },
             body: JSON.stringify({ command_id: commandId })
         });
         
@@ -710,8 +716,10 @@ async function cancelCommand(commandId) {
     if (!jobId) return;
     
     try {
+        if (!runnerSessionToken) await checkRunnerStatus();
         const response = await fetch(`${RUNNER_URL}/jobs/${jobId}/cancel`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'X-Metriplane-Token': runnerSessionToken || '' },
         });
         
         if (response.ok) {

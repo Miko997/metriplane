@@ -486,6 +486,43 @@ def launcher_env(tmp_path):
 
 
 class TestStartStatusStop:
+    def test_live_readiness_failure_stops_children_and_does_not_save_state(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        import types
+        import metriplane.launcher as lm
+
+        processes = iter(
+            [types.SimpleNamespace(pid=101), types.SimpleNamespace(pid=102), types.SimpleNamespace(pid=103)]
+        )
+        monkeypatch.setattr(lm, "_STATE_FILE", tmp_path / "launcher-state.json")
+        monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
+        monkeypatch.setattr(lm, "_log_dir_path", lambda runs_dir, timestamp: tmp_path)
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda host, port: False)
+        monkeypatch.setattr(lm, "_start_runner", lambda **kwargs: next(processes))
+        monkeypatch.setattr(lm, "_start_dashboard", lambda **kwargs: next(processes))
+        monkeypatch.setattr(lm, "_start_fusion", lambda **kwargs: next(processes))
+        monkeypatch.setattr(
+            lm,
+            "_wait_for_port",
+            lambda host, port, timeout=8.0, interval=0.2: port not in {8000, 8765},
+        )
+        monkeypatch.setattr(lm, "_wait_for_port_free", lambda port, timeout=8.0, interval=0.15: True)
+        monkeypatch.setattr(lm, "_get_pgid", lambda pid: pid)
+        stopped: list[int] = []
+        monkeypatch.setattr(
+            lm,
+            "_stop_pg",
+            lambda pgid, pid, **kwargs: stopped.append(pid),
+        )
+
+        rc = lm.cmd_start(live=True, open_browser=False)
+
+        assert rc == 1
+        assert stopped == [103, 102, 101]
+        assert not lm._STATE_FILE.exists()
+        assert "stack is running" not in capsys.readouterr().out.lower()
+
     def test_start_returns_zero(self, launcher_env):
         from metriplane.launcher import cmd_start
         rc = cmd_start(

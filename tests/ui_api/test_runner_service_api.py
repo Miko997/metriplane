@@ -32,10 +32,17 @@ def runner_server():
         service.executor = original_executor
 
 
-def request_json(url: str, method: str = "GET", payload: dict | None = None):
+def request_json(
+    url: str,
+    method: str = "GET",
+    payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+):
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json"} if data is not None else {}
-    request = urllib.request.Request(url, data=data, headers=headers, method=method)
+    request_headers = dict(headers or {})
+    if data is not None:
+        request_headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, headers=request_headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, json.loads(response.read().decode("utf-8"))
@@ -51,6 +58,7 @@ def test_status_shape_is_stable():
     assert payload["status"] in {"idle", "running"}
     assert "repo_root" in payload
     assert "job_history_size" in payload
+    assert payload["session_token"]
 
 
 def test_commands_shape_exposes_allowlist_metadata():
@@ -72,6 +80,59 @@ def test_commands_shape_exposes_allowlist_metadata():
 )
 def test_execute_rejects_bad_or_disabled_command_ids(payload: dict, expected: str):
     with runner_server() as base:
-        status, body = request_json(f"{base}/execute", method="POST", payload=payload)
+        _, runner_status = request_json(f"{base}/status")
+        status, body = request_json(
+            f"{base}/execute",
+            method="POST",
+            payload=payload,
+            headers={service.TOKEN_HEADER: runner_status["session_token"]},
+        )
     assert status == 400
     assert expected in body["error"]
+
+
+def test_mutating_request_requires_session_token():
+    with runner_server() as base:
+        status, body = request_json(f"{base}/execute", method="POST", payload={"command_id": "doctor"})
+    assert status == 403
+    assert "session token" in body["error"]
+
+
+def test_trusted_origin_is_echoed_and_untrusted_origin_is_rejected():
+    trusted = "http://127.0.0.1:8088"
+    with runner_server() as base:
+        request = urllib.request.Request(f"{base}/status", headers={"Origin": trusted})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert response.headers["Access-Control-Allow-Origin"] == trusted
+            token = json.loads(response.read())["session_token"]
+
+        status, body = request_json(
+            f"{base}/execute",
+            method="POST",
+            payload={"command_id": "doctor"},
+            headers={
+                "Origin": "https://attacker.example",
+                service.TOKEN_HEADER: token,
+            },
+        )
+    assert status == 403
+    assert body["error"] == "Untrusted browser origin"
+
+
+def test_request_body_size_is_limited():
+    with runner_server() as base:
+        _, runner_status = request_json(f"{base}/status")
+        status, body = request_json(
+            f"{base}/execute",
+            method="POST",
+            headers={
+                service.TOKEN_HEADER: runner_status["session_token"],
+                "Content-Length": str(service.MAX_REQUEST_BODY_BYTES + 1),
+            },
+        )
+    assert status == 413
+    assert "too large" in body["error"]
+
+
+def test_runner_refuses_non_loopback_bind():
+    assert service.start_runner("0.0.0.0", 0) == 64

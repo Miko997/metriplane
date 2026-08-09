@@ -9,13 +9,58 @@ Uses subprocess without shell=True for security.
 """
 
 import subprocess
+import signal
 import threading
-import time
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from collections import deque
 import os
 import pathlib
+
+
+def _popen_group_options() -> dict[str, Any]:
+    if os.name == "posix":
+        return {"start_new_session": True}
+    if os.name == "nt":
+        return {"creationflags": int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))}
+    return {}
+
+
+def _signal_process_group(process: subprocess.Popen, *, force: bool) -> None:
+    """Stop a job and its children on POSIX, with portable fallbacks."""
+    if process.poll() is not None:
+        return
+    if os.name == "posix":
+        sig = signal.SIGKILL if force else signal.SIGTERM
+        try:
+            os.killpg(os.getpgid(process.pid), sig)
+            return
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    elif os.name == "nt":
+        taskkill = ["taskkill", "/PID", str(process.pid), "/T"]
+        if force:
+            taskkill.append("/F")
+        try:
+            subprocess.run(taskkill, capture_output=True, timeout=5, check=False)
+            return
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    try:
+        process.kill() if force else process.terminate()
+    except (ProcessLookupError, OSError):
+        pass
+
+
+def _terminate_process_group(process: subprocess.Popen, *, grace_s: float = 0.5) -> None:
+    _signal_process_group(process, force=False)
+    try:
+        process.wait(timeout=max(0.0, grace_s))
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    _signal_process_group(process, force=True)
 
 
 def find_repo_root() -> pathlib.Path:
@@ -151,7 +196,8 @@ class CommandExecutor:
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=str(self.repo_root),
-                env=os.environ.copy()  # Inherit environment
+                env=os.environ.copy(),  # Inherit environment
+                **_popen_group_options(),
             )
             print(f"[Executor] Subprocess spawned, PID: {process.pid}")
             
@@ -159,6 +205,18 @@ class CommandExecutor:
             with self.lock:
                 if job["status"] == "running":
                     job["process"] = process
+                    cancelled_before_start = False
+                else:
+                    cancelled_before_start = job["status"] == "cancelled"
+
+            if cancelled_before_start:
+                _terminate_process_group(process)
+                stdout, stderr = process.communicate()
+                with self.lock:
+                    job["stdout"] = stdout
+                    job["stderr"] += stderr
+                    job["exit_code"] = process.returncode
+                return
             
             # Wait with timeout
             try:
@@ -168,32 +226,36 @@ class CommandExecutor:
                 
                 with self.lock:
                     job["stdout"] = stdout
-                    job["stderr"] = stderr
+                    job["stderr"] += stderr
                     job["exit_code"] = exit_code
-                    job["status"] = "succeeded" if exit_code == 0 else "failed"
-                    job["completed_at"] = datetime.now()
+                    if job["status"] != "cancelled":
+                        job["status"] = "succeeded" if exit_code == 0 else "failed"
+                        job["completed_at"] = datetime.now()
                     
             except subprocess.TimeoutExpired:
                 # Kill on timeout
-                process.kill()
+                _terminate_process_group(process)
                 try:
                     stdout, stderr = process.communicate(timeout=5)
-                except:
+                except subprocess.SubprocessError:
                     stdout, stderr = "", ""
                 
                 with self.lock:
                     job["stdout"] = stdout
-                    job["stderr"] = stderr + "\n[TIMEOUT: Command exceeded {}s limit]".format(timeout_s)
+                    job["stderr"] += stderr
                     job["exit_code"] = -1
-                    job["status"] = "timed_out"
-                    job["completed_at"] = datetime.now()
+                    if job["status"] != "cancelled":
+                        job["stderr"] += "\n[TIMEOUT: Command exceeded {}s limit]".format(timeout_s)
+                        job["status"] = "timed_out"
+                        job["completed_at"] = datetime.now()
                     
         except Exception as e:
             with self.lock:
-                job["status"] = "failed"
-                job["stderr"] = f"Execution error: {str(e)}"
-                job["exit_code"] = -1
-                job["completed_at"] = datetime.now()
+                if job["status"] != "cancelled":
+                    job["status"] = "failed"
+                    job["stderr"] = f"Execution error: {str(e)}"
+                    job["exit_code"] = -1
+                    job["completed_at"] = datetime.now()
     
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -290,6 +352,7 @@ class CommandExecutor:
         Cancel running job by job_id.
         Returns True if cancelled, False if not found or not running.
         """
+        process: subprocess.Popen | None
         with self.lock:
             if not self.current_job or self.current_job["job_id"] != job_id:
                 return False
@@ -298,25 +361,18 @@ class CommandExecutor:
                 return False
             
             process = self.current_job.get("process")
-            if process:
-                try:
-                    # Try graceful termination first
-                    process.terminate()
-                    # Give it 2 seconds
-                    time.sleep(0.1)
-                    if process.poll() is None:
-                        # Still running, force kill
-                        process.kill()
-                    
-                    self.current_job["status"] = "cancelled"
-                    self.current_job["completed_at"] = datetime.now()
-                    self.current_job["stderr"] += "\n[CANCELLED by user]"
-                    return True
-                except Exception as e:
-                    self.current_job["stderr"] += f"\n[Cancel failed: {e}]"
-                    return False
-            
-            return False
+            self.current_job["status"] = "cancelled"
+            self.current_job["completed_at"] = datetime.now()
+            self.current_job["stderr"] += "\n[CANCELLED by user]"
+
+        if process is not None:
+            try:
+                _terminate_process_group(process)
+            except Exception as exc:
+                with self.lock:
+                    if self.current_job and self.current_job["job_id"] == job_id:
+                        self.current_job["stderr"] += f"\n[Cancel cleanup failed: {exc}]"
+        return True
     
     def clear_completed_job(self):
         """Clear current job if it's completed (for cleanup)"""

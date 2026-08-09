@@ -18,11 +18,22 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const W = 480, H = 360, PAD = 34;
 
 let replay = { frames: [], incidents: [], workspace: null, bounds: null, i: 0, playing: false, timer: null };
+let runnerSessionToken = null;
 
-async function getJSON(p) { const r = await fetch(RUNNER + p); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); }
+async function getJSON(p) {
+  const r = await fetch(RUNNER + p);
+  if (!r.ok) throw new Error(p + " " + r.status);
+  const data = await r.json();
+  if (data.session_token) runnerSessionToken = data.session_token;
+  return data;
+}
 async function postJSON(p, b) {
+  if (!runnerSessionToken) await getJSON("/status");
   const r = await fetch(RUNNER + p, { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) });
+    headers: {
+      "Content-Type": "application/json",
+      "X-Metriplane-Token": runnerSessionToken || "",
+    }, body: JSON.stringify(b || {}) });
   return r.json();
 }
 

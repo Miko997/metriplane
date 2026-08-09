@@ -22,10 +22,15 @@ class WsServerThread:
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
         self._server: Any = None
+        self._startup_error: BaseException | None = None
 
     def start(self) -> None:
         if self._thread is not None:
-            return
+            if self._thread.is_alive():
+                return
+            self._thread = None
+        self._ready.clear()
+        self._startup_error = None
 
         def _runner() -> None:
             loop = asyncio.new_event_loop()
@@ -35,6 +40,9 @@ class WsServerThread:
                 self._server = loop.run_until_complete(start_server(self.host, self.port))
                 self._ready.set()
                 loop.run_forever()
+            except BaseException as exc:
+                self._startup_error = exc
+                self._ready.set()
             finally:
                 try:
                     if self._server is not None:
@@ -51,14 +59,29 @@ class WsServerThread:
         self._thread.start()
 
         if not self._ready.wait(timeout=5.0):
+            self.stop()
             raise RuntimeError("WS server failed to start (timeout)")
+        if self._startup_error is not None:
+            error = self._startup_error
+            self.stop()
+            raise RuntimeError(f"WS server failed to start: {error}") from error
 
         log.info("ws thread started on ws://%s:%d", self.host, self.port)
 
     def stop(self) -> None:
-        if self._loop is None:
-            return
-        self._loop.call_soon_threadsafe(self._loop.stop)
+        loop = self._loop
+        thread = self._thread
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(loop.stop)
+            except RuntimeError:
+                pass
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5.0)
+        self._thread = None
+        self._loop = None
+        self._server = None
+        self._ready.clear()
 
     def send_frame(self, fr: FrameStateModel) -> None:
         if self._loop is None:

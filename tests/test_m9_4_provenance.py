@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from metriplane.config import Config
 from metriplane.provenance.run_provenance import create_run_context, open_jsonl_writer
 
@@ -58,3 +60,20 @@ def test_header_record_written_first_line(tmp_path: Path, monkeypatch) -> None:
     assert obj["type"] == "run_header"
     assert obj["run_id"] == ctx.run_id
     assert obj["config_hash"] == ctx.config_hash
+
+
+@pytest.mark.parametrize("run_id", ["../escape", "nested/run", "..", "bad id"])
+def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: str) -> None:
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    cfg = Config(source_mode="dummy", target_fps=5, runs_dir=str(tmp_path / "runs"))
+
+    with pytest.raises(ValueError, match="run_id"):
+        create_run_context(
+            cfg,
+            config_path=None,
+            argv=[],
+            run_id=run_id,
+            runs_dir=str(tmp_path / "runs"),
+        )
+
+    assert not (tmp_path / "escape").exists()
