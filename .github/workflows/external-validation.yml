@@ -6,6 +6,8 @@ name: External Validation
 on:
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   manual-runtime:
     name: Manual external runtime validation
