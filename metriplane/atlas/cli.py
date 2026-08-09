@@ -24,7 +24,6 @@ def main(argv: list[str] | None = None) -> int:
 
     run_pack = sub.add_parser("run-pack", help="Run a named checked-in domain pack")
     run_pack.add_argument("pack_name")
-    run_pack.add_argument("--demo", action="store_true")
     run_pack.add_argument("--out", required=True)
     run_pack.add_argument("--session-jsonl", default=None)
     run_pack.add_argument("--overwrite", action="store_true")
@@ -38,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     bundle_export.add_argument("--incident-id", required=True)
     bundle_export.add_argument("--run-dir", required=True)
     bundle_export.add_argument("--out", required=True)
+    bundle_export.add_argument("--overwrite", action="store_true")
     bundle_verify = bundle_sub.add_parser("verify")
     bundle_verify.add_argument("bundle")
 
@@ -137,9 +137,14 @@ def main(argv: list[str] | None = None) -> int:
     privacy_report = privacy_sub.add_parser("report")
     privacy_report.add_argument("--run-dir", required=True)
     privacy_report.add_argument("--out", default=None)
-    privacy_anon = privacy_sub.add_parser("anonymize")
-    privacy_anon.add_argument("--run-dir", required=True)
-    privacy_anon.add_argument("--out", required=True)
+    privacy_pseudo = privacy_sub.add_parser(
+        "pseudonymize",
+        aliases=["anonymize"],
+        help="Create a deterministic pseudonymized export (anonymize is a compatibility alias)",
+    )
+    privacy_pseudo.add_argument("--run-dir", required=True)
+    privacy_pseudo.add_argument("--out", required=True)
+    privacy_pseudo.add_argument("--overwrite", action="store_true")
 
     improvement = sub.add_parser("improvement", help="Compare Atlas before/after improvement runs")
     improvement_sub = improvement.add_subparsers(dest="improvement_cmd", required=True)
@@ -193,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             from metriplane.atlas.runtime import run_atlas
             manifest = run_atlas(args.session_jsonl, args.pack, args.out, args.run_id, overwrite=args.overwrite)
             print(f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}")
-            print(f"report: {manifest.artifacts['cell_truth_report_html']}")
+            print(f"report: {Path(args.out) / manifest.artifacts['cell_truth_report_html']}")
             return 0
 
         if args.cmd == "run-pack":
@@ -201,11 +206,19 @@ def main(argv: list[str] | None = None) -> int:
                 pack = Path("configs/domain_packs") / args.pack_name
             else:
                 pack = Path("configs/domain_packs/assembly_cell")
-            session = args.session_jsonl or "datasets/demo/atlas/assembly_cell_missing_tool.jsonl"
+            if args.session_jsonl:
+                session = args.session_jsonl
+            elif args.pack_name == "assembly_cell":
+                session = "datasets/demo/atlas/assembly_cell_missing_tool.jsonl"
+            else:
+                raise ValueError(
+                    "--session-jsonl is required for non-assembly domain packs; "
+                    "the assembly demo session is not valid for this pack"
+                )
             from metriplane.atlas.runtime import run_atlas
             manifest = run_atlas(session, pack, args.out, run_id=f"{args.pack_name}_demo", overwrite=args.overwrite)
             print(f"run_id={manifest.run_id} events={manifest.event_count} incidents={manifest.incident_count}")
-            print(f"report: {manifest.artifacts['cell_truth_report_html']}")
+            print(f"report: {Path(args.out) / manifest.artifacts['cell_truth_report_html']}")
             return 0
 
         if args.cmd == "report":
@@ -219,7 +232,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "bundle":
             from metriplane.atlas.bundles import export_bundle, verify_bundle
             if args.bundle_cmd == "export":
-                path = export_bundle(args.run_dir, args.incident_id, args.out)
+                path = export_bundle(
+                    args.run_dir,
+                    args.incident_id,
+                    args.out,
+                    overwrite=args.overwrite,
+                )
                 print(path)
                 return 0
             result = verify_bundle(args.bundle)
@@ -344,11 +362,15 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.cmd == "privacy":
-            from metriplane.atlas.privacy import anonymize_run, privacy_report
+            from metriplane.atlas.privacy import privacy_report, pseudonymize_run
             if args.privacy_cmd == "report":
                 print(json.dumps(privacy_report(args.run_dir, args.out), indent=2, sort_keys=True))
                 return 0
-            print(json.dumps(anonymize_run(args.run_dir, args.out), indent=2, sort_keys=True))
+            print(json.dumps(
+                pseudonymize_run(args.run_dir, args.out, overwrite=args.overwrite),
+                indent=2,
+                sort_keys=True,
+            ))
             return 0
 
         if args.cmd == "improvement":

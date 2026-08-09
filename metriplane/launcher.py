@@ -290,25 +290,71 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
 
 
 def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) -> subprocess.Popen:
-    """Launch a subprocess in a new session (new process group). Returns Popen."""
-    fh = open(log_file, "w")
-    return subprocess.Popen(
-        cmd,
-        stdout=fh,
-        stderr=fh,
-        cwd=str(cwd),
-        env=env,
-        start_new_session=True,
-    )
+    """Launch a subprocess in a new session and process group. Returns Popen."""
+    with open(log_file, "w") as fh:
+        return subprocess.Popen(
+            cmd,
+            stdout=fh,
+            stderr=fh,
+            cwd=str(cwd),
+            env=env,
+            start_new_session=True,
+        )
 
 
-def _start_runner(*, host: str, port: int, log_file: Path, repo_root: Path) -> subprocess.Popen:
-    cmd = [sys.executable, "-m", "metriplane.runner.service", "--host", host, "--port", str(port)]
+def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:
+    """Print a short child log tail after a readiness failure."""
+    try:
+        content = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        print(f"     Could not read log: {exc}")
+        return
+    if not content:
+        print("     Log is empty.")
+        return
+    print("     Last log lines:")
+    for line in content[-max(1, int(lines)):]:
+        print(f"       {line}")
+
+
+def _start_runner(
+    *,
+    host: str,
+    port: int,
+    dashboard_host: str,
+    dashboard_port: int,
+    log_file: Path,
+    repo_root: Path,
+) -> subprocess.Popen:
+    cmd = [
+        sys.executable,
+        "-m",
+        "metriplane.runner.service",
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--trusted-origin",
+        f"http://{dashboard_host}:{dashboard_port}",
+        "--trusted-origin",
+        f"http://localhost:{dashboard_port}",
+        "--trusted-origin",
+        f"http://127.0.0.1:{dashboard_port}",
+    ]
     return _launch(cmd, log_file, repo_root)
 
 
 def _start_dashboard(*, host: str, port: int, log_file: Path, repo_root: Path) -> subprocess.Popen:
-    cmd = [sys.executable, "-m", "http.server", str(port), "--bind", host, "--directory", str(repo_root)]
+    cmd = [
+        sys.executable,
+        "-m",
+        "metriplane._local_http",
+        str(port),
+        "--bind",
+        host,
+        "--directory",
+        str(repo_root),
+    ]
     return _launch(cmd, log_file, repo_root)
 
 
@@ -439,6 +485,7 @@ def cmd_start(
             print("⚠️  Metriplane launcher is already running.")
             print("   Use `metriplane stop` first, or `metriplane status` to inspect.")
             return 1
+        _clear_state()
 
     repo_root = _find_repo_root()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -477,10 +524,16 @@ def cmd_start(
     # --- Start runner ---
     print(f"\n▶  Starting runner on http://{runner_host}:{runner_port}/")
     rp = _start_runner(host=runner_host, port=runner_port,
+                       dashboard_host=dashboard_host, dashboard_port=dashboard_port,
                        log_file=log_d / "runner.log", repo_root=repo_root)
     if not _wait_for_port(runner_host, runner_port, timeout=8.0):
         print(f"  ❌ Runner did not start within 8s (pid={rp.pid})")
-        print(f"     Log: {log_d / 'runner.log'}")
+        runner_log = log_d / "runner.log"
+        print(f"     Log: {runner_log}")
+        returncode = rp.poll()
+        if returncode is not None:
+            print(f"     Runner exited with status {returncode}")
+        _print_log_tail(runner_log)
         _stop_pg(rp.pid, rp.pid, name="runner")
         return 1
     print(f"  ✅ Runner OK  (pid={rp.pid})")
@@ -513,10 +566,20 @@ def cmd_start(
         if metrics_ready and ws_ready:
             print(f"  ✅ Runtime OK  (pid={fp.pid})")
         else:
-            print(f"  ⚠️  Runtime started (pid={fp.pid}) but not all endpoints are ready")
+            print(f"  ❌ Runtime failed readiness checks (pid={fp.pid})")
             print(f"     Health/Metrics ready: {metrics_ready}")
             print(f"     WebSocket ready     : {ws_ready}")
             print(f"     Log: {log_d / 'fusion.log'}")
+            _stop_pg(_get_pgid(fp.pid) or fp.pid, fp.pid, use_sigint=True, name="fusion")
+            _stop_pg(_get_pgid(dp.pid) or dp.pid, dp.pid, name="dashboard")
+            _stop_pg(_get_pgid(rp.pid) or rp.pid, rp.pid, name="runner")
+            _wait_for_port_free(8000, timeout=3.0)
+            _wait_for_port_free(8765, timeout=3.0)
+            _wait_for_port_free(dashboard_port, timeout=3.0)
+            _wait_for_port_free(runner_port, timeout=3.0)
+            _clear_state()
+            print("  ❌ Stack start aborted; all launcher children were stopped")
+            return 1
 
     # --- Save state ---
     new_state: dict[str, Any] = {

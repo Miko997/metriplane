@@ -128,7 +128,9 @@ def test_multicell_privacy_pilot_and_improvement(tmp_path: Path) -> None:
     assert report["video_free"] is True
     anon = anonymize_run(before, tmp_path / "anon")
     assert anon["mapped_values"] > 0
-    assert (tmp_path / "anon" / "asset_proxy_map.json").exists()
+    assert anon["mapping_exported"] is False
+    assert not (tmp_path / "anon" / "asset_proxy_map.json").exists()
+    assert (tmp_path / "anon" / "privacy_metadata.json").exists()
 
     pilot = create_pilot_kit(tmp_path / "pilot")
     assert len(pilot["files"]) == 4

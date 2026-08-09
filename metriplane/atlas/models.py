@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 ASSET_REGISTRY_SCHEMA = "metriplane.atlas.asset_registry.v1"
@@ -108,11 +108,13 @@ class WorkOrderModel(BaseModel):
 
 
 class AtlasEvent(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     schema_version: Literal["metriplane.atlas.event.v1"] = EVENT_SCHEMA
     event_id: str
     run_id: str
     ts: float
-    frame_id: int
+    frame_id: int = Field(strict=True, ge=0)
     event_type: str
     severity: Literal["info", "warning", "critical"] = "info"
     message: str
@@ -141,6 +143,8 @@ class AtlasDeviation(BaseModel):
 
 
 class AtlasIncident(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     schema_version: Literal["metriplane.atlas.incident.v1"] = INCIDENT_SCHEMA
     incident_id: str
     incident_type: str
@@ -153,6 +157,12 @@ class AtlasIncident(BaseModel):
     event_ids: list[str] = Field(default_factory=list)
     summary: str
     limitations: list[str] = Field(default_factory=lambda: list(ATLAS_LIMITATIONS))
+
+    @model_validator(mode="after")
+    def _ordered_times(self):
+        if self.end_ts < self.start_ts:
+            raise ValueError("incident end_ts must be greater than or equal to start_ts")
+        return self
 
 
 class Entity(BaseModel):

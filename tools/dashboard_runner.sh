@@ -44,11 +44,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "$HOST" == "0.0.0.0" || "$HOST" == "::" ]]; then
-    STATUS_HOST="127.0.0.1"
-else
-    STATUS_HOST="$HOST"
+if [[ "$HOST" != "127.0.0.1" && "$HOST" != "localhost" && "$HOST" != "::1" ]]; then
+    echo "Runner only accepts a loopback bind address (127.0.0.1, localhost, or ::1)." >&2
+    exit 64
 fi
+STATUS_HOST="$HOST"
 
 runner_status() {
     python - "$STATUS_HOST" "$PORT" <<'PY'

@@ -155,161 +155,44 @@ Alternative smoke test script: `tools/ws_smoke_client.py`
 
 ## Omniverse Integration
 
-### Status: External Component
+### Status: Experimental USD export
 
-**Current State**: ⚠️ **Separate/Local Component** (not tracked in Metriplane core repo, not pinned to releases)
+The repository contains checked-in, read-only USD replay exporters:
 
-**Location**: `metriplane-omniverse-ext/` directory exists locally but is not part of the Metriplane core repository. It is a separate component that must be version-pinned and published independently before v1.0 public release.
+- `integrations/isaac/metriplane_to_usd.py`
+- `integrations/isaac/metriplane_isaac_replay.py`
+- `integrations/omniverse/metriplane_usd_replay.py`
+- `tools/omniverse/m6_warehouse_story_v1.py`
 
-**What Exists**:
-- Omniverse extension package with USD scene synchronization
-- WebSocket client consuming `ws://localhost:8765`
-- Demo scripts in `tools/omniverse/` folder
-- Warehouse visualization example (`m6_warehouse_story_v1.py`)
+These tools generate USD from recorded Metriplane output. They are not an
+Omniverse extension and do not require the retired Omniverse Launcher. Open the
+generated USD with a currently supported NVIDIA application such as Isaac Sim
+or a Kit-based application installed through NVIDIA's current distribution
+channels.
 
-**What is NOT Verified**:
-- ❌ Extension not tested against Metriplane v1.0 schema changes
-- ❌ No automated integration tests
-- ❌ No version pinning between Metriplane and extension
-- ❌ Setup documentation incomplete
-
-### Expected Setup Assumptions
-
-**Prerequisites**:
-1. NVIDIA Omniverse Launcher installed
-2. Omniverse Kit or Create (tested version: unknown)
-3. Python extension development enabled in Omniverse
-4. Metriplane WebSocket backend running (`ws://localhost:8765`)
-
-**Extension Installation** (anticipated, not documented):
-```bash
-# Clone extension (URL not finalized)
-git clone <metriplane-omniverse-ext-url>
-
-# Link to Omniverse extensions directory
-# (method depends on Omniverse version)
-```
-
-### Smoke Test Checklist (Omniverse)
-
-**Before Public Release, Verify**:
-
-- [ ] **Extension loads** in Omniverse Kit/Create without errors
-- [ ] **WebSocket connection** succeeds to `ws://localhost:8765`
-- [ ] **USD prims created** for each object in `FrameStateModel.objects[]`
-- [ ] **Transform updates** in real-time (30 FPS minimum)
-- [ ] **Coordinate mapping** from Metriplane world XY → USD stage coordinates
-- [ ] **Zone visualization** (if implemented)
-- [ ] **Extension survives** Metriplane backend restart
-- [ ] **Schema version check**: Extension validates `schema_version: "1.0"`
-- [ ] **Graceful degradation**: Extension handles WebSocket disconnect
-- [ ] **Performance**: No significant frame drops with 5+ objects tracked
-- [ ] **Documentation**: Extension README with setup steps
-- [ ] **Version pinning**: Extension declares compatible Metriplane version
-
-**Current Status**: ❌ **NOT VERIFIED** for v1.0
-
-### Compatibility Requirements for Public Release
-
-**Before releasing Metriplane v1.0**, the Omniverse extension must:
-
-1. **Extract from embedded repo**: Convert `metriplane-omniverse-ext/` to:
-   - Separate GitHub repository, OR
-   - Git submodule with explicit version tag
-
-2. **Version compatibility**: Document which Metriplane schema versions extension supports
-
-3. **Installation guide**: Complete `docs/INTEGRATIONS.md` with Omniverse section
-
-4. **Smoke test passing**: All checklist items above verified
-
-**Recommended Action**: Mark Omniverse integration as "Community/Experimental" until fully validated.
+The core CI checks exporter syntax and deterministic output. End-to-end Isaac
+Sim rendering remains a manual external validation step.
 
 ---
 
 ## ROS 2 Integration
 
-### Status: External Component (Example Code Only)
+### Status: Official source-distributed bridge
 
-**Current State**: ⚠️ **No Official Bridge** (user-implemented)
+The official ROS 2 Jazzy bridge lives at
+`integrations/ros2/metriplane_ros/`. It includes `package.xml`, a Python node,
+message adapters, a launch file, and ROS-free adapter tests. It republishes the
+Metriplane WebSocket stream on:
 
-**What Exists**:
-- References to ROS 2 in `tools/run_demo_all.sh` (sources ROS setup)
-- Conceptual bridge example in PREREQUISITES.md
-- ROS 2 Jazzy compatibility tested (Ubuntu 24.04)
+- `/metriplane/frame_state`
+- `/metriplane/alerts`
+- `/metriplane/incidents`
 
-**What Does NOT Exist**:
-- ❌ No ROS 2 package (`package.xml`, CMakeLists.txt, launch files)
-- ❌ No custom ROS 2 message types
-- ❌ No published ROS 2 bridge node
-- ❌ No TF broadcaster for world→object transforms
-- ❌ No RViz visualization plugins
-
-### Expected Setup Assumptions (User-Implemented Bridge)
-
-**Prerequisites**:
-1. ROS 2 Jazzy installed (`/opt/ros/jazzy/`)
-2. `rosbridge_server` or custom Python node with `websockets`
-3. Metriplane WebSocket backend running (`ws://localhost:8765`)
-
-**Example Bridge Pattern** (user must implement):
-```python
-import asyncio
-import websockets
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import String  # Or custom msg type
-
-class MetriplaneBridge(Node):
-    def __init__(self):
-        super().__init__('metriplane_bridge')
-        self.publisher = self.create_publisher(String, 'metriplane/frames', 10)
-    
-    async def connect_to_metriplane(self):
-        async with websockets.connect('ws://localhost:8765') as ws:
-            while rclpy.ok():
-                frame_json = await ws.recv()
-                msg = String()
-                msg.data = frame_json
-                self.publisher.publish(msg)
-                self.get_logger().info(f"Published frame")
-
-# User must implement async/ROS 2 spin integration
-```
-
-### Smoke Test Checklist (ROS 2)
-
-**If User Implements Bridge, Verify**:
-
-- [ ] **ROS 2 environment** sourced without breaking Metriplane tests
-- [ ] **Bridge node** connects to `ws://localhost:8765`
-- [ ] **Topic publishing**: `ros2 topic echo /metriplane/frames` shows data
-- [ ] **TF frames** (if implemented): `ros2 run tf2_tools view_frames`
-- [ ] **RViz visualization** (if implemented): Objects render in RViz
-- [ ] **Latency acceptable**: WebSocket → ROS 2 publish < 50ms
-- [ ] **Graceful degradation**: Bridge handles Metriplane restart
-- [ ] **Launch file** (if provided): `ros2 launch ...` works
-- [ ] **Message type** (if custom): Compiled and sourced correctly
-
-**Current Status**: ❌ **NO OFFICIAL BRIDGE** - users must implement
-
-### Compatibility Requirements for Public Release
-
-**If Metriplane project provides official ROS 2 bridge**, it must:
-
-1. **Create separate package**: `metriplane_ros2_bridge/` with:
-   - `package.xml` (ROS 2 package manifest)
-   - Python node or C++ node
-   - Launch files for common setups
-   - RViz config files (optional)
-
-2. **Version compatibility**: Declare ROS 2 distro compatibility (Jazzy, Humble, etc.)
-
-3. **Testing**: ROS 2 integration tests (may use `launch_testing`)
-
-4. **Documentation**: `docs/INTEGRATIONS.md` ROS 2 section (this file)
-
-**Current Recommendation**: Document ROS 2 as "Community Integration" until official bridge exists.
+The bridge is deliberately packaged separately from the core PyPI wheel so a
+normal `pip install metriplane` does not require ROS. Copy it into a ROS 2
+workspace and build it with `colcon`; see [ros2_bridge.md](ros2_bridge.md) for
+the exact commands and limitations. TF, custom message types, and RViz plugins
+are not currently provided.
 
 ---
 
@@ -394,18 +277,15 @@ Metriplane operates **standalone** by default. Integrations are purely optional.
 ### Current Integration Constraints
 
 1. **Omniverse Extension**:
-   - ❌ **Not version-pinned** to Metriplane releases
-   - ❌ **Schema version compatibility** not enforced
-   - ❌ **No automated tests** for extension vs Metriplane
-   - ⚠️ Embedded as git-in-git (needs extraction, see PUBLIC_RELEASE_AUDIT.md)
-   - ℹ️ Warehouse demo scripts exist but setup not fully documented
+   - ℹ️ Metriplane provides USD exporters, not an Omniverse extension
+   - ⚠️ Isaac Sim rendering is a manual external validation step
+   - ℹ️ The deprecated Omniverse Launcher is not part of the setup path
 
 2. **ROS 2 Bridge**:
-   - ❌ **No official bridge node** provided by Metriplane project
+   - ✅ Official source-distributed Jazzy bridge and launch file
    - ❌ **No custom ROS 2 message types** defined
    - ❌ **No TF broadcaster** for world→object transforms
-   - ⚠️ ROS 2 pytest plugin conflicts with Metriplane tests
-   - ℹ️ Users expected to implement bridge using example code
+   - ⚠️ End-to-end ROS runtime validation remains manual
 
 3. **WebSocket Protocol**:
    - ⚠️ **No authentication/authorization** (assumes trusted network)
@@ -437,9 +317,9 @@ Metriplane operates **standalone** by default. Integrations are purely optional.
 | Docker demo | ⚠️ Available | **Needs v1.0 verification** | Unknown | `./tools/docker_demo_up.sh` workflow available |
 | HTTP metrics | ⚠️ Available | **Needs v1.0 verification** | Unknown | Prometheus endpoint exists |
 | HTTP health | ⚠️ Available | **Needs v1.0 verification** | Unknown | Health endpoint exists |
-| Omniverse extension | ⚠️ Partial | **UNTESTED** | Unknown, pre-M9 | Warehouse demo worked in past, not reverified |
-| ROS 2 bridge | ❌ No | **NOT PROVIDED** | N/A | User-implemented only |
-| RViz visualization | ❌ No | **NOT PROVIDED** | N/A | Requires ROS 2 bridge first |
+| USD replay export | ✅ Static tested | **EXPERIMENTAL** | current source | Isaac/Omniverse exporters are checked in; rendering is manual |
+| ROS 2 bridge | ✅ Static tested | **SOURCE DISTRIBUTED** | current source | Jazzy bridge; runtime smoke is manual |
+| RViz visualization | ❌ No | **NOT PROVIDED** | N/A | No TF or marker publisher yet |
 
 ### Schema Compatibility
 
@@ -453,15 +333,13 @@ Metriplane operates **standalone** by default. Integrations are purely optional.
 
 ## Pre-Release Integration Checklist
 
-### For Metriplane v1.0 Public Release
+### For a future stable integration release
 
 **Must Complete Before Release**:
 
-- [ ] **Extract Omniverse extension** from embedded repo (see PUBLIC_RELEASE_AUDIT.md)
-- [ ] **Test Omniverse extension** against v1.0 schema (`FrameStateModel` v1.0)
-- [ ] **Document Omniverse setup** (installation, configuration, smoke test)
-- [ ] **Pin extension version** or mark as "Community/Experimental"
-- [ ] **Document ROS 2 bridge** as user-implemented (provide example code)
+- [ ] **Run USD output in a supported Isaac Sim release**
+- [ ] **Run the ROS 2 Jazzy bridge end to end**
+- [ ] **Record the exact external-tool versions used**
 - [ ] **Create fallback documentation** for users without Omniverse/ROS 2
 - [ ] **Add schema version checking** recommendation to client integration guide
 - [ ] **Document WebSocket security** limitations (no auth, no TLS)

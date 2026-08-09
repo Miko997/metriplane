@@ -6,6 +6,7 @@
   const DONE = new Set(["succeeded", "failed", "timed_out", "cancelled"]);
   const jobs = new Map();
   const commandRegistry = new Map();
+  let runnerSessionToken = null;
 
   function all(selector) {
     return Array.from(document.querySelectorAll(selector));
@@ -46,6 +47,18 @@
   }
 
   async function jsonFetch(url, options) {
+    options = options ? { ...options } : {};
+    if ((options.method || "GET").toUpperCase() !== "GET") {
+      if (!runnerSessionToken) {
+        const statusResponse = await fetch(`${RUNNER}/status`, { cache: "no-store" });
+        const statusData = await statusResponse.json();
+        runnerSessionToken = statusData.session_token || null;
+      }
+      options.headers = {
+        ...(options.headers || {}),
+        "X-Metriplane-Token": runnerSessionToken || "",
+      };
+    }
     const res = await fetch(url, options);
     let data = {};
     try {
@@ -53,6 +66,7 @@
     } catch (err) {
       data = {};
     }
+    if (data.session_token) runnerSessionToken = data.session_token;
     if (!res.ok) {
       throw new Error(data.error || `${res.status} ${res.statusText}`);
     }

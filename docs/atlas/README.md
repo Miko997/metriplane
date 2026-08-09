@@ -3,13 +3,13 @@ SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# MetriPlane Atlas
+# Metriplane Atlas
 
-MetriPlane Atlas is part of the 0.2.0 product foundation built around one practical
+Metriplane Atlas is part of the 0.2.0 product foundation built around one practical
 wedge first:
 
 ```text
-MetriPlane Cell Black Box -> Industrial Reality Graph -> Atlas platform
+Metriplane Cell Black Box -> Industrial Reality Graph -> Atlas platform
 ```
 
 The Cell Black Box turns a replayed `FrameStateModel` stream and a domain pack

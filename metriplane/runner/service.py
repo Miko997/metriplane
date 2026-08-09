@@ -9,13 +9,20 @@ Uses Python stdlib only (http.server). Binds to localhost only.
 """
 
 import errno
+import hmac
+import ipaddress
 import json
+import os
+import secrets
+import socket
 import sys
 import time
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from typing import Dict, Any
+
+from metriplane._local_http import LocalHTTPServer
 
 from .allowlist import ALLOWLIST, get_command, validate_command_id
 from .executor import CommandExecutor, find_repo_root
@@ -26,6 +33,54 @@ from .operator_api import OperatorAPI
 executor = CommandExecutor()
 operator_api = OperatorAPI(executor=executor, repo_root=find_repo_root())
 start_time = time.time()
+MAX_REQUEST_BODY_BYTES = 1024 * 1024
+TOKEN_HEADER = "X-Metriplane-Token"
+
+
+def _default_trusted_origins() -> set[str]:
+    configured = {
+        item.strip().rstrip("/")
+        for item in os.getenv("METRIPLANE_RUNNER_TRUSTED_ORIGINS", "").split(",")
+        if item.strip()
+    }
+    configured.update({"http://127.0.0.1:8088", "http://localhost:8088"})
+    return configured
+
+
+trusted_origins = _default_trusted_origins()
+runner_session_token = secrets.token_urlsafe(32)
+
+
+class RequestBodyError(ValueError):
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = int(status)
+
+
+def _address_is_loopback(value: str) -> bool:
+    """Accept native and IPv4-mapped loopback address literals."""
+    try:
+        address = ipaddress.ip_address(str(value).split("%", 1)[0])
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool(mapped is not None and mapped.is_loopback)
+
+
+def _is_loopback_bind_host(host: str, port: int) -> bool:
+    """Validate a bind host without resolving numeric address literals."""
+    if _address_is_loopback(host):
+        return True
+    try:
+        addresses = {
+            info[4][0]
+            for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        }
+    except OSError:
+        return False
+    return bool(addresses) and all(_address_is_loopback(address) for address in addresses)
 
 
 class RunnerHTTPHandler(BaseHTTPRequestHandler):
@@ -36,18 +91,25 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
         print(f"[Runner] {self.address_string()} - {format % args}")
     
     def add_cors_headers(self):
-        """Add CORS headers to all responses"""
-        self.send_header("Access-Control-Allow-Origin", "*")
+        """Allow browser access only from the local dashboard origin."""
+        origin = (self.headers.get("Origin") or "").rstrip("/")
+        if not origin or origin not in trusted_origins:
+            return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", f"Content-Type, {TOKEN_HEADER}")
     
     def send_json(self, status_code: int, data: Dict[str, Any]):
         """Send JSON response with CORS headers"""
+        payload = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
         self.add_cors_headers()
         self.end_headers()
-        self.wfile.write(json.dumps(data, default=str).encode())
+        self.wfile.write(payload)
     
     def send_error_json(self, status_code: int, message: str):
         """Send JSON error response with CORS headers"""
@@ -55,21 +117,64 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
     
     def do_OPTIONS(self):
         """Handle CORS preflight for all paths"""
-        self.send_response(200)
+        if not self._client_is_loopback():
+            self.send_error_json(403, "Runner accepts loopback clients only")
+            return
+        origin = (self.headers.get("Origin") or "").rstrip("/")
+        if not origin or origin not in trusted_origins:
+            self.send_error_json(403, "Untrusted browser origin")
+            return
+        self.send_response(204)
         self.add_cors_headers()
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _client_is_loopback(self) -> bool:
+        try:
+            return ipaddress.ip_address(self.client_address[0]).is_loopback
+        except ValueError:
+            return False
+
+    def _authorize_mutation(self) -> bool:
+        if not self._client_is_loopback():
+            self.send_error_json(403, "Runner accepts loopback clients only")
+            return False
+        origin = (self.headers.get("Origin") or "").rstrip("/")
+        if origin and origin not in trusted_origins:
+            self.send_error_json(403, "Untrusted browser origin")
+            return False
+        supplied = self.headers.get(TOKEN_HEADER, "")
+        if not hmac.compare_digest(supplied, runner_session_token):
+            self.send_error_json(403, "Missing or invalid runner session token")
+            return False
+        return True
     
     def _read_body(self) -> dict:
         """Read and parse JSON request body."""
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError as exc:
+            raise RequestBodyError(400, "Invalid Content-Length") from exc
+        if content_length < 0:
+            raise RequestBodyError(400, "Invalid Content-Length")
+        if content_length > MAX_REQUEST_BODY_BYTES:
+            raise RequestBodyError(413, "Request body is too large")
         if content_length == 0:
             return {}
-        raw = self.rfile.read(content_length).decode("utf-8")
-        return json.loads(raw)
+        try:
+            raw = self.rfile.read(content_length).decode("utf-8")
+            value = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RequestBodyError(400, "Invalid JSON body") from exc
+        if not isinstance(value, dict):
+            raise RequestBodyError(400, "JSON body must be an object")
+        return value
 
     def do_GET(self):
         """Handle GET requests"""
+        if not self._client_is_loopback():
+            self.send_error_json(403, "Runner accepts loopback clients only")
+            return
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -99,22 +204,25 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         """Handle POST requests"""
+        if not self._authorize_mutation():
+            return
         parsed = urlparse(self.path)
         path = parsed.path
 
+        try:
+            body = self._read_body()
+        except RequestBodyError as exc:
+            self.send_error_json(exc.status, str(exc))
+            return
+
         # ── Operator API ───────────────────────────────────────────────────────
         if path.startswith("/operator/"):
-            try:
-                body = self._read_body()
-            except Exception:
-                self.send_error_json(400, "Invalid JSON body")
-                return
             status, data = operator_api.route("POST", path, body)
             self.send_json(status, data)
             return
 
         if path == "/execute":
-            self.handle_post_execute()
+            self.handle_post_execute(body)
         elif path.startswith("/jobs/") and path.endswith("/cancel"):
             # Extract job_id from path: /jobs/<job_id>/cancel
             parts = path.split("/")
@@ -152,7 +260,8 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
             "last_completed_job": last_completed,
             "job_history_size": len(executor.job_history),
             "uptime_s": round(time.time() - start_time, 2),
-            "repo_root": str(executor.repo_root)
+            "repo_root": str(executor.repo_root),
+            "session_token": runner_session_token,
         })
     
     def handle_get_commands(self):
@@ -200,23 +309,11 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
             "total": len(jobs)
         })
     
-    def handle_post_execute(self):
+    def handle_post_execute(self, data: dict):
         """POST /execute"""
         print(f"[Runner] POST /execute received")
         
         try:
-            # Read request body
-            content_length = int(self.headers.get('Content-Length', 0))
-            print(f"[Runner] Content-Length: {content_length}")
-            
-            if content_length == 0:
-                self.send_error_json(400, "Missing request body")
-                return
-            
-            body = self.rfile.read(content_length).decode('utf-8')
-            print(f"[Runner] Body: {body[:100]}")
-            
-            data = json.loads(body)
             command_id = data.get("command_id")
             print(f"[Runner] Command ID: {command_id}")
             
@@ -268,9 +365,6 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
                 print(f"[Runner] Conflict: {e}")
                 self.send_error_json(409, str(e))
                 
-        except json.JSONDecodeError as e:
-            print(f"[Runner] JSON decode error: {e}")
-            self.send_error_json(400, "Invalid JSON")
         except Exception as e:
             print(f"[Runner] Unexpected error: {e}")
             import traceback
@@ -318,7 +412,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
             self.send_error_json(404, f"Job not found or not running: {job_id}")
 
 
-def start_runner(host="127.0.0.1", port=9000):
+def start_runner(host="127.0.0.1", port=9000, *, allowed_origins: list[str] | None = None):
     """
     Start runner service on localhost only.
     
@@ -326,8 +420,19 @@ def start_runner(host="127.0.0.1", port=9000):
         host: Bind address (default: 127.0.0.1, localhost only)
         port: Port number (default: 9000)
     """
+    if not _is_loopback_bind_host(host, port):
+        print("[Runner] Refusing non-loopback bind address. Use 127.0.0.1 or ::1.", file=sys.stderr)
+        return 64
+
+    global runner_session_token, trusted_origins, start_time
+    runner_session_token = secrets.token_urlsafe(32)
+    start_time = time.time()
+    trusted_origins = _default_trusted_origins()
+    if allowed_origins:
+        trusted_origins.update(origin.rstrip("/") for origin in allowed_origins if origin)
+
     try:
-        server = ThreadingHTTPServer((host, port), RunnerHTTPHandler)
+        server = LocalHTTPServer((host, port), RunnerHTTPHandler)
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:
             print(
@@ -336,7 +441,7 @@ def start_runner(host="127.0.0.1", port=9000):
             )
             print(
                 "[Runner] Use `python -m metriplane.cli status` to inspect, "
-                "`python -m metriplane.cli cleanup` for orphaned MetriPlane services, "
+                "`python -m metriplane.cli cleanup` for orphaned Metriplane services, "
                 "or start with `--port` set to a free port.",
                 file=sys.stderr,
             )
@@ -373,6 +478,12 @@ if __name__ == "__main__":
         default=9000,
         help="Port number (default: 9000)"
     )
+    parser.add_argument(
+        "--trusted-origin",
+        action="append",
+        default=[],
+        help="Dashboard origin allowed to call the local runner (repeatable)",
+    )
     
     args = parser.parse_args()
-    raise SystemExit(start_runner(host=args.host, port=args.port))
+    raise SystemExit(start_runner(host=args.host, port=args.port, allowed_origins=args.trusted_origin))

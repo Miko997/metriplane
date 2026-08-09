@@ -27,13 +27,16 @@ def _decimal_seconds_to_ns(value: Any) -> int:
 
 
 def _get_record_ts_ns(rec: Dict[str, Any]) -> int:
-    # Prefer integer ns if it exists.
+    # ts_sim_ns is the authoritative deterministic replay clock when present.
+    if "ts_sim_ns" in rec and isinstance(rec["ts_sim_ns"], int):
+        return int(rec["ts_sim_ns"])
+    # Older recordings used ts_ns, then floating-point seconds in ts.
     if "ts_ns" in rec and isinstance(rec["ts_ns"], int):
         return int(rec["ts_ns"])
     # Fall back to float seconds.
     if "ts" in rec:
         return _decimal_seconds_to_ns(rec["ts"])
-    raise KeyError("Record has no ts_ns or ts field")
+    raise KeyError("Record has no ts_sim_ns, ts_ns or ts field")
 
 
 def _is_header_record(rec: Dict[str, Any]) -> bool:
@@ -59,38 +62,46 @@ class EngineConfig:
     clock: ClockMode = "replay"          # "replay" | "fixed"
     dt_ms: Optional[int] = None          # required if clock="fixed"
     run_id: str = "replay"
-    speed: Optional[float] = None        # only used if you implement throttling
+    speed: Optional[float] = None        # compatibility only; file output is unpaced
     output_max_frames: Optional[int] = None  # helpful for quick debug
 
 
 def iter_input_frames(path: Path) -> Iterator[Dict[str, Any]]:
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
-            rec = json.loads(line)
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSONL at {path}:{line_number}: {exc}") from exc
             if isinstance(rec, dict) and _is_header_record(rec):
                 continue
             if not isinstance(rec, dict):
-                continue
+                raise ValueError(
+                    f"Invalid JSONL record at {path}:{line_number}: expected an object"
+                )
             yield rec
 
 
 def _load_frames_with_rel_ts(path: Path) -> List[Tuple[int, Dict[str, Any]]]:
     frames: List[Tuple[int, Dict[str, Any]]] = []
     ts0: Optional[int] = None
+    previous_ts_ns: Optional[int] = None
 
     for rec in iter_input_frames(path):
         ts_ns = _get_record_ts_ns(rec)
+        if previous_ts_ns is not None and ts_ns < previous_ts_ns:
+            raise ValueError(
+                f"Non-monotonic timestamps in input: {path} "
+                f"({ts_ns} follows {previous_ts_ns})"
+            )
         if ts0 is None:
             ts0 = ts_ns
         rel = ts_ns - ts0
-        if rel < 0:
-            # Defensive: recorded timestamps should be non-decreasing.
-            # If they are not, determinism can be compromised.
-            raise ValueError(f"Non-monotonic timestamps in input: {path}")
         frames.append((rel, rec))
+        previous_ts_ns = ts_ns
 
     if not frames:
         raise ValueError(f"No frames found in input JSONL: {path}")
@@ -104,6 +115,8 @@ def iter_replay_outputs(cfg: EngineConfig) -> Iterator[Dict[str, Any]]:
         raise ValueError(f"Unknown clock mode: {cfg.clock}")
 
     max_frames = cfg.output_max_frames
+    if max_frames is not None and max_frames <= 0:
+        raise ValueError("output_max_frames must be greater than zero")
 
     if cfg.clock == "replay":
         clock = ReplayClock(0)

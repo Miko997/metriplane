@@ -48,6 +48,7 @@ from metriplane.launcher import (
     _is_vt_safe_to_kill,
     _load_state,
     _make_proc_entry,
+    _print_log_tail,
     _read_cmdline,
     _runtime_module_for_config,
     _save_state,
@@ -180,6 +181,24 @@ class TestLauncherDefaults:
 
         assert captured["env"]["METRIPLANE_COMPUTE_BACKEND"] == "gpu"
 
+    def test_dashboard_uses_no_dns_local_server(self, monkeypatch, tmp_path):
+        import metriplane.launcher as lm
+
+        captured = {}
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["cmd"] = cmd
+            return object()
+
+        monkeypatch.setattr(lm, "_launch", fake_launch)
+        lm._start_dashboard(
+            host="127.0.0.1",
+            port=8088,
+            log_file=tmp_path / "dashboard.log",
+            repo_root=Path.cwd(),
+        )
+
+        assert captured["cmd"][1:3] == ["-m", "metriplane._local_http"]
 
 class TestNoState:
     def setup_method(self):
@@ -445,6 +464,18 @@ class TestFindRepoRoot:
         assert isinstance(_find_repo_root(), Path)
 
 
+def test_print_log_tail_reports_only_requested_lines(tmp_path, capsys):
+    log_file = tmp_path / "runner.log"
+    log_file.write_text("first\nsecond\nthird\n", encoding="utf-8")
+
+    _print_log_tail(log_file, lines=2)
+
+    output = capsys.readouterr().out
+    assert "first" not in output
+    assert "second" in output
+    assert "third" in output
+
+
 # ---------------------------------------------------------------------------
 # Integration: start → status → stop → port free (no-live, no-open, free ports)
 # ---------------------------------------------------------------------------
@@ -486,6 +517,43 @@ def launcher_env(tmp_path):
 
 
 class TestStartStatusStop:
+    def test_live_readiness_failure_stops_children_and_does_not_save_state(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        import types
+        import metriplane.launcher as lm
+
+        processes = iter(
+            [types.SimpleNamespace(pid=101), types.SimpleNamespace(pid=102), types.SimpleNamespace(pid=103)]
+        )
+        monkeypatch.setattr(lm, "_STATE_FILE", tmp_path / "launcher-state.json")
+        monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
+        monkeypatch.setattr(lm, "_log_dir_path", lambda runs_dir, timestamp: tmp_path)
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda host, port: False)
+        monkeypatch.setattr(lm, "_start_runner", lambda **kwargs: next(processes))
+        monkeypatch.setattr(lm, "_start_dashboard", lambda **kwargs: next(processes))
+        monkeypatch.setattr(lm, "_start_fusion", lambda **kwargs: next(processes))
+        monkeypatch.setattr(
+            lm,
+            "_wait_for_port",
+            lambda host, port, timeout=8.0, interval=0.2: port not in {8000, 8765},
+        )
+        monkeypatch.setattr(lm, "_wait_for_port_free", lambda port, timeout=8.0, interval=0.15: True)
+        monkeypatch.setattr(lm, "_get_pgid", lambda pid: pid)
+        stopped: list[int] = []
+        monkeypatch.setattr(
+            lm,
+            "_stop_pg",
+            lambda pgid, pid, **kwargs: stopped.append(pid),
+        )
+
+        rc = lm.cmd_start(live=True, open_browser=False)
+
+        assert rc == 1
+        assert stopped == [103, 102, 101]
+        assert not lm._STATE_FILE.exists()
+        assert "stack is running" not in capsys.readouterr().out.lower()
+
     def test_start_returns_zero(self, launcher_env):
         from metriplane.launcher import cmd_start
         rc = cmd_start(

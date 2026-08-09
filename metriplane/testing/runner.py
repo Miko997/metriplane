@@ -28,6 +28,7 @@ class _Evaluation:
     incidents: list
     p95_ms: float | None
     fingerprint: str
+    rule_types: dict[str, str]
 
 
 def _evaluate(bundle: Path) -> _Evaluation:
@@ -39,11 +40,15 @@ def _evaluate(bundle: Path) -> _Evaluation:
     engine = RuleEngine(rules, registry)
     alerts: list[RuleAlert] = []
     per_frame_ms: list[float] = []
+    frame_count = 0
     for frame in iter_frames(session):
-        observed = frame.fused if frame.fused else frame.objects
+        frame_count += 1
         t0 = time.perf_counter()
         alerts.extend(engine.process_frame(frame))
         per_frame_ms.append((time.perf_counter() - t0) * 1000.0)
+
+    if frame_count == 0:
+        raise ValueError("session_excerpt.jsonl contains no valid frames")
 
     incidents = build_incidents(alerts)
     p95 = None
@@ -51,7 +56,14 @@ def _evaluate(bundle: Path) -> _Evaluation:
         ordered = sorted(per_frame_ms)
         idx = max(0, int(round(0.95 * (len(ordered) - 1))))
         p95 = ordered[idx]
-    return _Evaluation(alerts, incidents, p95, incidents_fingerprint(incidents))
+    rule_types = {rule.id: rule.type for rule in rules.rules}
+    return _Evaluation(
+        alerts,
+        incidents,
+        p95,
+        incidents_fingerprint(incidents),
+        rule_types,
+    )
 
 
 class PhysicalRegressionRunner:
@@ -63,22 +75,75 @@ class PhysicalRegressionRunner:
         self.strict_extra_events = strict_extra_events
 
     def run_bundle(self, bundle_path: str | Path) -> PhysicalRegressionResult:
-        from metriplane.sentinel.bundles import verify_checksums as verify_chk
-
         bundle = Path(bundle_path)
+        try:
+            return self._run_bundle(bundle)
+        except Exception as exc:
+            return PhysicalRegressionResult(
+                bundle_path=str(bundle),
+                **{"pass": False},
+                checks=[
+                    {
+                        "check": "bundle.input",
+                        "pass": False,
+                        "detail": f"{type(exc).__name__}: {exc}",
+                    }
+                ],
+            )
+
+    def _run_bundle(self, bundle: Path) -> PhysicalRegressionResult:
+        from metriplane.sentinel.bundles import (
+            UNSIGNED_DERIVED_SIDECARS,
+            validate_bundle_evidence,
+            verify_checksums,
+        )
+        from metriplane.sentinel.events import read_incidents_json
+
         checks: list[dict] = []
 
+        if bundle.is_symlink() or not bundle.is_dir():
+            raise ValueError(f"bundle directory does not exist: {bundle}")
+
         expected_file = bundle / "expected.yaml"
-        if not expected_file.exists():
+        if expected_file.is_symlink() or not expected_file.is_file():
             return PhysicalRegressionResult(
                 bundle_path=str(bundle), **{"pass": False},
                 checks=[{"check": "expected.yaml", "pass": False,
                          "detail": "expected.yaml not found in bundle"}],
             )
         expected = load_expected(expected_file)
+        if not expected.incidents and not expected.events:
+            return PhysicalRegressionResult(
+                bundle_path=str(bundle),
+                **{"pass": False},
+                checks=[
+                    {
+                        "check": "expected.semantic_oracle",
+                        "pass": False,
+                        "detail": (
+                            "expected.yaml must require at least one incident or event"
+                        ),
+                    }
+                ],
+            )
+
+        evidence_errors = validate_bundle_evidence(bundle)
+        checks.append(
+            {
+                "check": "bundle.input",
+                "pass": not evidence_errors,
+                "detail": "ok" if not evidence_errors else f"{evidence_errors}",
+            }
+        )
+        if evidence_errors:
+            return PhysicalRegressionResult(
+                bundle_path=str(bundle), **{"pass": False}, checks=checks
+            )
 
         if self.verify_checksums:
-            errors = verify_chk(bundle)
+            errors = verify_checksums(
+                bundle, exclude=set(UNSIGNED_DERIVED_SIDECARS)
+            )
             checks.append({"check": "checksums", "pass": not errors,
                            "detail": "ok" if not errors else f"{errors}"})
             if errors:
@@ -87,6 +152,25 @@ class PhysicalRegressionRunner:
 
         first = _evaluate(bundle)
 
+        stored_incident = read_incidents_json(bundle / "incident.json")[0]
+        reference_match = any(
+            incident.rule_id == stored_incident.rule_id
+            and incident.run_id == stored_incident.run_id
+            and list(incident.alert_ids) == list(stored_incident.alert_ids)
+            for incident in first.incidents
+        )
+        checks.append(
+            {
+                "check": "bundle.replayed_references",
+                "pass": reference_match,
+                "detail": (
+                    "run_id and alert IDs reproduced"
+                    if reference_match
+                    else "stored run_id or alert IDs did not reproduce"
+                ),
+            }
+        )
+
         if expected.replay.deterministic_hash_match:
             second = _evaluate(bundle)
             match = first.fingerprint == second.fingerprint
@@ -94,8 +178,12 @@ class PhysicalRegressionRunner:
                            "detail": first.fingerprint[:16] if match
                            else "fingerprint changed across runs"})
 
-        checks.extend(compare_incidents(first.incidents, expected.incidents,
-                                        self.strict_extra_incidents))
+        checks.extend(compare_incidents(
+            first.incidents,
+            expected.incidents,
+            self.strict_extra_incidents,
+            first.rule_types,
+        ))
         checks.extend(compare_events(first.alerts, expected.events,
                                      self.strict_extra_events))
         checks.extend(compare_latency(first.p95_ms, expected))

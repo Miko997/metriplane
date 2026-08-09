@@ -74,5 +74,6 @@ appear. Use `--skip-checksums` to evaluate a bundle whose non-evaluated files ch
 
 - The runner evaluates offline (no camera/WebSocket); it replays `session_excerpt.jsonl`
   through the rule + incident engines.
-- Incident matching uses rule_id/severity/objects/zones, not the descriptive `type` label.
+- Incident matching enforces the expected `type` by resolving the incident's rule type,
+  then checks any requested rule ID, severity, objects, and zones.
 - Bundles are treated as data — no code in a bundle is executed.

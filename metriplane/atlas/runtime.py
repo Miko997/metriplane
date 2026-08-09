@@ -5,13 +5,20 @@ from __future__ import annotations
 
 import csv
 import json
+import math
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from metriplane.schema import FrameStateModel
 
-from metriplane.atlas.domain_packs import DomainPack, load_domain_pack
+from metriplane.atlas.domain_packs import (
+    DomainPack,
+    load_domain_pack,
+    validate_domain_pack,
+)
 from metriplane.atlas.event_ledger import write_events
 from metriplane.atlas.improvement import recommend_actions
 from metriplane.atlas.models import AtlasRunManifest, FlowMetrics
@@ -29,6 +36,7 @@ class AtlasRunPaths:
     incidents: Path
     reality_graph: Path
     process_trace: Path
+    state_segment: Path
     manifest: Path
     metrics: Path
     flow_csv: Path
@@ -53,6 +61,7 @@ class AtlasRunPaths:
             incidents=root / "incidents.jsonl",
             reality_graph=root / "reality_graph.json",
             process_trace=root / "process_trace.json",
+            state_segment=root / "state_segment.jsonl",
             manifest=root / "atlas_manifest.json",
             metrics=root / "metrics.json",
             flow_csv=root / "flow_metrics.csv",
@@ -83,6 +92,7 @@ def _jsonl_dump(path: Path, rows: list[object]) -> None:
 
 def _iter_frames(path: str | Path) -> list[FrameStateModel]:
     frames: list[FrameStateModel] = []
+    previous_time: float | None = None
     for line_number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
@@ -93,12 +103,35 @@ def _iter_frames(path: str | Path) -> list[FrameStateModel]:
         if data.get("type") == "run_header":
             continue
         try:
-            frames.append(FrameStateModel.model_validate(data))
+            frame = FrameStateModel.model_validate(data)
+            evaluation_time = _frame_time(frame)
         except Exception as exc:
             raise ValueError(f"invalid FrameStateModel on line {line_number}: {exc}") from exc
+        if previous_time is not None and evaluation_time < previous_time:
+            raise ValueError(
+                "non-monotonic frame time on line "
+                f"{line_number}: {evaluation_time} follows {previous_time}"
+            )
+        previous_time = evaluation_time
+        frames.append(frame)
     if not frames:
         raise ValueError(f"no frame records found in {path}")
     return frames
+
+
+def _frame_time(frame: FrameStateModel) -> float:
+    """Return the validated evaluation clock for an Atlas frame."""
+    source_time = float(frame.ts)
+    if not math.isfinite(source_time):
+        raise ValueError("ts must be finite")
+    if frame.ts_sim_ns is None:
+        return source_time
+    if frame.ts_sim_ns < 0:
+        raise ValueError("ts_sim_ns must be non-negative")
+    simulation_time = float(frame.ts_sim_ns) / 1_000_000_000.0
+    if not math.isfinite(simulation_time):
+        raise ValueError("ts_sim_ns is outside the supported range")
+    return simulation_time
 
 
 def _station_for_zone(pack: DomainPack, zone_id: str | None) -> str | None:
@@ -126,13 +159,15 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _safe_generated_out_dir(out_dir: Path) -> bool:
-    """Return whether an existing output may be replaced without ``--overwrite``."""
-    resolved = out_dir.resolve()
-    allowed_roots = [
-        Path("web/dashboard/atlas_run").resolve(),
-        Path("runs/atlas").resolve(),
-    ]
-    return any(resolved == root or _is_relative_to(resolved, root) for root in allowed_roots)
+    """Existing outputs are never safe to replace without explicit consent."""
+    return False
+
+
+def _remove_output(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
 
 
 def run_atlas(
@@ -142,21 +177,95 @@ def run_atlas(
     run_id: str | None = None,
     overwrite: bool = False,
 ) -> AtlasRunManifest:
+    """Build an Atlas run completely before replacing any existing output."""
+    session_path = Path(session_jsonl)
+    pack_path = Path(pack_dir)
+    output = Path(out_dir)
+    output_resolved = output.resolve()
+    session_resolved = session_path.resolve()
+    pack_resolved = pack_path.resolve()
+
+    if output_resolved == session_resolved or output_resolved in session_resolved.parents:
+        raise ValueError("refusing output that contains the source session")
+    if (
+        output_resolved == pack_resolved
+        or output_resolved in pack_resolved.parents
+        or pack_resolved in output_resolved.parents
+    ):
+        raise ValueError("refusing output that overlaps the source domain pack")
+    if output.exists() or output.is_symlink():
+        if not overwrite:
+            raise ValueError(
+                "Refusing to overwrite existing output directory "
+                f"without --overwrite: {output}"
+            )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=f".{output.name}-", dir=output.parent) as temp_dir:
+        temp_root = Path(temp_dir)
+        stage = temp_root / "run"
+        manifest = _run_atlas_in_place(
+            session_path,
+            pack_path,
+            stage,
+            run_id=run_id,
+            overwrite=False,
+        )
+
+        backup = temp_root / "previous"
+        had_previous = output.exists() or output.is_symlink()
+        if had_previous and not overwrite:
+            raise ValueError(
+                "Refusing to overwrite output created while the run was staged "
+                f"without --overwrite: {output}"
+            )
+        if had_previous:
+            os.replace(output, backup)
+        try:
+            os.replace(stage, output)
+        except Exception:
+            if had_previous and (backup.exists() or backup.is_symlink()):
+                os.replace(backup, output)
+            raise
+    return manifest
+
+
+def _run_atlas_in_place(
+    session_jsonl: str | Path,
+    pack_dir: str | Path,
+    out_dir: str | Path,
+    run_id: str | None = None,
+    overwrite: bool = False,
+) -> AtlasRunManifest:
     session_path = Path(session_jsonl)
     if not session_path.exists():
         raise ValueError(f"session_jsonl does not exist: {session_path}")
-    pack = load_domain_pack(pack_dir)
+    pack_path = Path(pack_dir)
     paths = AtlasRunPaths.from_out_dir(out_dir)
-    if paths.out_dir.exists() and _is_relative_to(session_path, paths.out_dir):
-        raise ValueError("Refusing to overwrite an output directory that contains the source session")
-    if paths.out_dir.exists():
-        # Derived artifacts may be overwritten, but never the source session.
-        if not overwrite and not _safe_generated_out_dir(paths.out_dir):
+    output_resolved = paths.out_dir.resolve()
+    session_resolved = session_path.resolve()
+    pack_resolved = pack_path.resolve()
+    if output_resolved == session_resolved or output_resolved in session_resolved.parents:
+        raise ValueError("refusing output that contains the source session")
+    if (
+        output_resolved == pack_resolved
+        or output_resolved in pack_resolved.parents
+        or pack_resolved in output_resolved.parents
+    ):
+        raise ValueError("refusing output that overlaps the source domain pack")
+
+    pack_errors = validate_domain_pack(pack_path)
+    if pack_errors:
+        details = "\n".join(f"- {error}" for error in pack_errors)
+        raise ValueError(f"invalid domain pack {pack_path}:\n{details}")
+    pack = load_domain_pack(pack_path)
+    if paths.out_dir.exists() or paths.out_dir.is_symlink():
+        if not overwrite:
             raise ValueError(
-                "Refusing to overwrite existing non-generated output directory "
+                "Refusing to overwrite existing output directory "
                 f"without --overwrite: {paths.out_dir}"
             )
-        shutil.rmtree(paths.out_dir)
+        _remove_output(paths.out_dir)
     paths.out_dir.mkdir(parents=True, exist_ok=True)
 
     frames = _iter_frames(session_path)
@@ -169,34 +278,41 @@ def run_atlas(
     asset_by_object = pack.assets.by_object_id()
     events = []
     state_segment_rows: list[dict] = []
-    first_ts = frames[0].ts
-    last_ts = frames[-1].ts
+    first_ts = _frame_time(frames[0])
+    last_ts = _frame_time(frames[-1])
     station_occupancy: dict[str, float] = {}
     last_station_by_asset: dict[str, tuple[str, float]] = {}
 
     for frame in frames:
-        objects = frame.fused if frame.fused else frame.objects
+        frame_time = _frame_time(frame)
+        objects = frame.fused if frame.fused is not None else frame.objects
         observations: list[AssetObservation] = []
+        observed_asset_ids: set[str] = set()
         for obj in objects:
             asset = asset_by_object.get(obj.id)
             if asset is None:
                 continue
+            observed_asset_ids.add(asset.asset_id)
             zone_id = obj.zone
             station_id = _station_for_zone(pack, zone_id)
             observations.append(AssetObservation(
                 asset=asset,
-                ts=frame.ts,
+                ts=frame_time,
                 frame_id=frame.frame_id,
                 zone_id=zone_id,
                 station_id=station_id,
             ))
-            graph.add_observation(asset.asset_id, zone_id, station_id, frame.ts)
+            graph.add_observation(asset.asset_id, zone_id, station_id, frame_time)
             if station_id:
                 prev = last_station_by_asset.get(asset.asset_id)
                 if prev and prev[0] == station_id:
-                    station_occupancy[station_id] = station_occupancy.get(station_id, 0.0) + max(0.0, frame.ts - prev[1])
-                last_station_by_asset[asset.asset_id] = (station_id, frame.ts)
-        emitted = evaluator.update(observations, frame.ts, frame.frame_id)
+                    station_occupancy[station_id] = station_occupancy.get(station_id, 0.0) + max(0.0, frame_time - prev[1])
+                last_station_by_asset[asset.asset_id] = (station_id, frame_time)
+            else:
+                last_station_by_asset.pop(asset.asset_id, None)
+        for asset_id in set(last_station_by_asset) - observed_asset_ids:
+            last_station_by_asset.pop(asset_id, None)
+        emitted = evaluator.update(observations, frame_time, frame.frame_id)
         events.extend(emitted)
         for event in emitted:
             graph.add_event(event)
@@ -217,10 +333,15 @@ def run_atlas(
         "work_order_id": work_order_id,
         "completed_steps": evaluator.completed_steps,
         "active_missing": {
-            step: {"start_ts": start, "event_ids": event_ids}
+            step: {
+                "asset_id": evaluator.active_missing_asset.get(step),
+                "start_ts": start,
+                "event_ids": event_ids,
+            }
             for step, (start, event_ids) in sorted(evaluator.active_missing.items())
         },
     })
+    _jsonl_dump(paths.state_segment, state_segment_rows)
 
     wait_time = {
         deviation.process_step_id or deviation.deviation_id: deviation.duration_s or 0.0
@@ -247,24 +368,28 @@ def run_atlas(
     actions = recommend_actions(evaluator.incidents)
     _json_dump(paths.improvement_actions, [action.model_dump() for action in actions])
 
+    def artifact_path(path: Path) -> str:
+        return path.relative_to(paths.out_dir).as_posix()
+
     artifacts = {
-        "physical_event_log": str(paths.event_log),
-        "deviations": str(paths.deviations),
-        "incidents": str(paths.incidents),
-        "reality_graph": str(paths.reality_graph),
-        "process_trace": str(paths.process_trace),
-        "metrics": str(paths.metrics),
-        "flow_metrics_csv": str(paths.flow_csv),
-        "cell_truth_report_md": str(paths.report_md),
-        "cell_truth_report_html": str(paths.report_html),
-        "evidence_bundles": str(paths.bundles_dir),
-        "regression_tests": str(paths.regression_dir),
-        "training_cases": str(paths.training_dir),
-        "improvement_actions": str(paths.improvement_actions),
-        "atlas_dashboard": str(paths.dashboard_html),
-        "twinverify_usda": str(paths.twinverify_usda),
-        "privacy_report": str(paths.privacy_report),
-        "connector_exports": str(paths.connector_dir),
+        "physical_event_log": artifact_path(paths.event_log),
+        "deviations": artifact_path(paths.deviations),
+        "incidents": artifact_path(paths.incidents),
+        "reality_graph": artifact_path(paths.reality_graph),
+        "process_trace": artifact_path(paths.process_trace),
+        "state_segment": artifact_path(paths.state_segment),
+        "metrics": artifact_path(paths.metrics),
+        "flow_metrics_csv": artifact_path(paths.flow_csv),
+        "cell_truth_report_md": artifact_path(paths.report_md),
+        "cell_truth_report_html": artifact_path(paths.report_html),
+        "evidence_bundles": artifact_path(paths.bundles_dir),
+        "regression_tests": artifact_path(paths.regression_dir),
+        "training_cases": artifact_path(paths.training_dir),
+        "improvement_actions": artifact_path(paths.improvement_actions),
+        "atlas_dashboard": artifact_path(paths.dashboard_html),
+        "twinverify_usda": artifact_path(paths.twinverify_usda),
+        "privacy_report": artifact_path(paths.privacy_report),
+        "connector_exports": artifact_path(paths.connector_dir),
     }
     manifest = AtlasRunManifest(
         run_id=run_id,

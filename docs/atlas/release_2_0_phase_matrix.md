@@ -32,7 +32,7 @@ factory data are represented as honest repo artifacts and claim boundaries.
 | 42 | Implemented | CSV exports plus read-only REST snapshot, webhook payload, and MQTT topic plan artifacts. |
 | 43 | Implemented locally | Edge doctor, resource checks, retention plan, edge bundle, and autostart docs. |
 | 44 | Implemented | Multi-cell run index and cross-cell comparison reports by `cell_id`. |
-| 45 | Implemented | Video-free privacy report, identity-key scan, retention config, and anonymized proxy export. |
+| 45 | Implemented | Video-free privacy report, identity-key scan, retention config, and explicitly pseudonymized proxy export. |
 | 46 | Implemented | Rule-based recommendations plus before/after replay comparison with caveats. |
 | 47 | Pilot kit implemented | Checklist, questionnaires, success-report template, and reproduction notes; external users still required. |
 | 48 | Implemented | `metriplane atlas bench core` covers run/report/bundle/regression summary. |

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 // SPDX-License-Identifier: MIT
 
-// Shared MetriPlane view switcher.
+// Shared Metriplane view switcher.
 // App shells get navigation inside their existing rail/sidebar so it never floats
 // over controls. Plain scrollable pages get an in-flow top rail.
 (function () {
@@ -162,11 +162,11 @@
     const bar = document.createElement("nav");
     bar.id = "mp-shared-nav";
     bar.className = "mp-shared-nav";
-    bar.setAttribute("aria-label", "MetriPlane views");
+    bar.setAttribute("aria-label", "Metriplane views");
 
     const brand = document.createElement("span");
     brand.className = "mp-shared-nav-brand";
-    brand.textContent = "MetriPlane";
+    brand.textContent = "Metriplane";
     bar.appendChild(brand);
 
     const links = document.createElement("div");

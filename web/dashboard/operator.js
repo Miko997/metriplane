@@ -8,6 +8,7 @@
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const RUNNER = 'http://localhost:9000';
+let runnerSessionToken = null;
 
 // ── Embedded Runbook Data ─────────────────────────────────────────────────────
 // Shown in the right panel; one entry per step number.
@@ -177,13 +178,23 @@ function setActiveProfile(name) {
 
 async function opApi(method, path, body) {
   try {
+    if (method !== 'GET' && !runnerSessionToken) {
+      const statusResp = await fetch(RUNNER + '/status', { cache: 'no-store' });
+      const status = await statusResp.json();
+      runnerSessionToken = status.session_token || null;
+    }
     const opts = {
       method,
       headers: { 'Content-Type': 'application/json' },
     };
+    if (method !== 'GET' && runnerSessionToken) {
+      opts.headers['X-Metriplane-Token'] = runnerSessionToken;
+    }
     if (body && method !== 'GET') opts.body = JSON.stringify(body);
     const resp = await fetch(RUNNER + path, opts);
-    return await resp.json();
+    const data = await resp.json();
+    if (data.session_token) runnerSessionToken = data.session_token;
+    return data;
   } catch (e) {
     return { error: String(e) };
   }
@@ -1520,9 +1531,13 @@ async function runPreflightDrawer(command) {
   hidePreflightSummary();
 
   try {
+    if (!runnerSessionToken) await opApi('GET', '/status');
     const resp = await fetch(`${RUNNER}/execute`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Metriplane-Token': runnerSessionToken || '',
+      },
       body: JSON.stringify({ command_id: command }),
     });
     if (!resp.ok) {

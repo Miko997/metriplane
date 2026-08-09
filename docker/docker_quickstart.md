@@ -18,7 +18,7 @@ Run Metriplane without installing Python locally.
 ## 1) Demo replay (no camera, uses dataset JSONL)
 
 ```bash
-cd metriplane/metriplane-core
+cd metriplane
 ./tools/docker_demo_up.sh
 curl -fsS http://localhost:8000/metrics | head
 ```

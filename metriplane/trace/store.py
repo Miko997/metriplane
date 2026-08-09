@@ -65,7 +65,7 @@ class TraceStore:
             return f"marker_{raw_id}"
 
     def load_session(self, session_path: str | Path) -> None:
-        from metriplane.schema import FrameStateModel
+        from metriplane.schema import FrameStateModel, frame_time_s
         self._points = []
         run_id: str | None = None
         for line in Path(session_path).read_text().splitlines():
@@ -79,7 +79,7 @@ class TraceStore:
                 continue
             if frame.run_id:
                 run_id = frame.run_id
-            objects = frame.fused if frame.fused else frame.objects
+            objects = frame.fused if frame.fused is not None else frame.objects
             for obj in objects:
                 x_m = obj.pos_world[0] if obj.pos_world else None
                 y_m = obj.pos_world[1] if obj.pos_world else None
@@ -88,7 +88,7 @@ class TraceStore:
                     vx, vy = obj.vel_world[0], obj.vel_world[1]
                     speed = math.sqrt(vx * vx + vy * vy)
                 self._points.append(TracePoint(
-                    ts=frame.ts,
+                    ts=frame_time_s(frame),
                     object_id=self._resolve(obj.id),
                     marker_id=obj.id,
                     x_m=x_m,

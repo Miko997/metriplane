@@ -3,9 +3,9 @@ SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# MetriPlane Local Console
+# Metriplane Local Console
 
-`web/dashboard/` is the localhost console for MetriPlane.
+`web/dashboard/` is the localhost console for Metriplane.
 
 It links the major workflows into one UI:
 

@@ -23,7 +23,11 @@ def _read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def dashboard_payload(run_dir: str | Path) -> dict:
+def dashboard_payload(
+    run_dir: str | Path,
+    *,
+    displayed_run_dir: str | None = None,
+) -> dict:
     run = Path(run_dir)
     manifest = _read_json(run / "atlas_manifest.json", {})
     metrics = _read_json(run / "metrics.json", {})
@@ -35,7 +39,7 @@ def dashboard_payload(run_dir: str | Path) -> dict:
     training = sorted(path.name for path in (run / "training_cases").glob("*.md"))
     return {
         "schema_version": "metriplane.atlas.dashboard_payload.v1",
-        "run_dir": str(run),
+        "run_dir": displayed_run_dir if displayed_run_dir is not None else str(run),
         "manifest": manifest,
         "metrics": metrics,
         "events": events,
@@ -55,7 +59,7 @@ def dashboard_payload(run_dir: str | Path) -> dict:
 def build_dashboard(run_dir: str | Path, out_html: str | Path | None = None) -> Path:
     run = Path(run_dir)
     out = Path(out_html) if out_html else run / "atlas_dashboard.html"
-    payload = dashboard_payload(run)
+    payload = dashboard_payload(run, displayed_run_dir=".")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render_dashboard_html(payload), encoding="utf-8")
     return out

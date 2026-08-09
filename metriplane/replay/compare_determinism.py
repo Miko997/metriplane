@@ -7,11 +7,16 @@ import argparse
 import csv
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, Optional, Tuple
 
+from pydantic import ValidationError
+
 from metriplane.replay.engine import EngineConfig, iter_replay_outputs, write_outputs_jsonl
+from metriplane.schema import FrameStateModel
 
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
@@ -39,13 +44,18 @@ def _read_first_header(path: Path) -> dict[str, Any] | None:
 
 def _iter_non_header_records(path: Path) -> Iterator[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
-            obj = json.loads(line)
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSONL at {path}:{line_number}: {exc}") from exc
             if not isinstance(obj, dict):
-                continue
+                raise ValueError(
+                    f"Invalid JSONL record at {path}:{line_number}: expected an object"
+                )
             if _is_header_record(obj):
                 continue
             yield obj
@@ -119,6 +129,179 @@ def _compare_records(
     return total, mismatches, notes
 
 
+def _equivalence_frame_key(rec: dict[str, Any], fallback_index: int) -> tuple[str, Any]:
+    """Return the recorded frame identity, excluding generated replay clock fields."""
+    for field in ("frame_id", "ts_ns", "ts"):
+        value = rec.get(field)
+        if value is not None:
+            try:
+                hash(value)
+            except TypeError:
+                # Structural validation rejects this value; keeping the key
+                # hashable lets the comparison report the error instead of
+                # crashing while it builds identity sets.
+                value = repr(value)
+            return (field, value)
+    return ("index", fallback_index)
+
+
+def _object_ids(rec: dict[str, Any], field: str) -> set[str] | None:
+    value = rec.get(field)
+    if not isinstance(value, list):
+        return None
+    return {
+        str(obj.get("id"))
+        for obj in value
+        if isinstance(obj, dict) and obj.get("id") not in (None, "")
+    }
+
+
+def _record_validation_note(
+    rec: dict[str, Any],
+    *,
+    side: str,
+    line_number: int,
+) -> str | None:
+    try:
+        FrameStateModel.model_validate(rec)
+    except ValidationError as exc:
+        first = exc.errors(include_url=False)[0]
+        location = ".".join(str(part) for part in first.get("loc", ())) or "record"
+        return (
+            f"invalid_frame:{side}:line={line_number}:field={location}:"
+            f"{first.get('msg', 'validation failed')}"
+        )
+    return None
+
+
+def _duplicate_object_notes(
+    rec: dict[str, Any],
+    *,
+    side: str,
+    line_number: int,
+) -> list[str]:
+    notes: list[str] = []
+
+    def inspect(value: Any, field: str) -> None:
+        if not isinstance(value, list):
+            return
+        ids = [
+            obj["id"].strip()
+            for obj in value
+            if isinstance(obj, dict)
+            and isinstance(obj.get("id"), str)
+            and obj["id"].strip()
+        ]
+        for object_id, count in Counter(ids).items():
+            if count > 1:
+                notes.append(
+                    f"duplicate_object_id:{side}:line={line_number}:"
+                    f"field={field}:id={object_id!r}"
+                )
+
+    inspect(rec.get("objects"), "objects")
+    inspect(rec.get("fused"), "fused")
+    raw_per_camera = rec.get("raw_per_camera")
+    if isinstance(raw_per_camera, list):
+        for camera_index, camera in enumerate(raw_per_camera):
+            if isinstance(camera, dict):
+                inspect(camera.get("objects"), f"raw_per_camera[{camera_index}].objects")
+    return notes
+
+
+def _duplicate_frame_key_notes(
+    keys: list[tuple[str, Any]],
+    *,
+    side: str,
+) -> list[str]:
+    # ``repr`` also makes malformed, unhashable fallback values safe to diagnose;
+    # frame validation separately rejects those values.
+    rendered = [repr(key) for key in keys]
+    return [
+        f"duplicate_frame_identity:{side}:key={key}"
+        for key, count in Counter(rendered).items()
+        if count > 1
+    ]
+
+
+def _equivalence_structure_errors(
+    live_records: list[dict[str, Any]],
+    replay_records: list[dict[str, Any]],
+    *,
+    max_notes: int = 10,
+) -> list[str]:
+    notes: list[str] = []
+    if not live_records or not replay_records:
+        notes.append(
+            f"empty_comparison:live_frames={len(live_records)}:replay_frames={len(replay_records)}"
+        )
+        return notes
+
+    if len(live_records) != len(replay_records):
+        notes.append(
+            f"frame_count_mismatch:live={len(live_records)}:replay={len(replay_records)}"
+        )
+
+    live_keys = [_equivalence_frame_key(rec, i) for i, rec in enumerate(live_records)]
+    replay_keys = [_equivalence_frame_key(rec, i) for i, rec in enumerate(replay_records)]
+
+    for side, records, keys in (
+        ("live", live_records, live_keys),
+        ("replay", replay_records, replay_keys),
+    ):
+        for line_number, rec in enumerate(records, start=1):
+            validation_note = _record_validation_note(
+                rec,
+                side=side,
+                line_number=line_number,
+            )
+            if validation_note is not None:
+                notes.append(validation_note)
+            notes.extend(
+                _duplicate_object_notes(
+                    rec,
+                    side=side,
+                    line_number=line_number,
+                )
+            )
+            if len(notes) >= max_notes:
+                return notes[:max_notes]
+        notes.extend(_duplicate_frame_key_notes(keys, side=side))
+        if len(notes) >= max_notes:
+            return notes[:max_notes]
+
+    if live_keys != replay_keys:
+        missing_live = sorted(set(replay_keys) - set(live_keys), key=repr)
+        missing_replay = sorted(set(live_keys) - set(replay_keys), key=repr)
+
+        def summarize(keys: list[tuple[str, Any]]) -> str:
+            shown = keys[:max_notes]
+            suffix = f" (+{len(keys) - len(shown)} more)" if len(keys) > len(shown) else ""
+            return f"{shown}{suffix}"
+
+        notes.append(
+            f"frame_key_mismatch:missing_in_live={summarize(missing_live)}:"
+            f"missing_in_replay={summarize(missing_replay)}"
+        )
+
+    for i, (live, replay) in enumerate(zip(live_records, replay_records), start=1):
+        for field in ("objects", "fused"):
+            live_ids = _object_ids(live, field)
+            replay_ids = _object_ids(replay, field)
+            if live_ids is None and replay_ids is None:
+                continue
+            if live_ids != replay_ids:
+                notes.append(
+                    f"object_ids_mismatch:line={i}:field={field}:"
+                    f"missing_in_live={sorted((replay_ids or set()) - (live_ids or set()))}:"
+                    f"missing_in_replay={sorted((live_ids or set()) - (replay_ids or set()))}"
+                )
+                if len(notes) >= max_notes:
+                    return notes
+
+    return notes
+
+
 @dataclass(frozen=True)
 class ReportRow:
     input_path: str
@@ -149,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-frames", type=int, default=None, help="Optional cap for quick runs")
 
     args = ap.parse_args(argv)
+
+    if args.max_frames is not None and args.max_frames <= 0:
+        ap.error("--max-frames must be greater than zero")
 
     in_path = Path(args.input)
     if not in_path.is_file():
@@ -190,10 +376,15 @@ def main(argv: list[str] | None = None) -> int:
     replay_mismatches = 0 if sha1 == sha2 else 1
 
     # --- Live vs replay equivalence ---
-    live_records = list(_iter_non_header_records(in_path))
-    replay_records = list(_iter_non_header_records(out1))
+    if args.max_frames is None:
+        live_records = list(_iter_non_header_records(in_path))
+        replay_records = list(_iter_non_header_records(out1))
+    else:
+        live_records = list(islice(_iter_non_header_records(in_path), args.max_frames))
+        replay_records = list(islice(_iter_non_header_records(out1), args.max_frames))
 
     frames_total = min(len(live_records), len(replay_records))
+    structure_errors = _equivalence_structure_errors(live_records, replay_records)
 
     # "Exact" equivalence ignoring only ts_sim_ns (but preserving list order)
     _, mism_exact, _ = _compare_records(
@@ -211,7 +402,15 @@ def main(argv: list[str] | None = None) -> int:
         sort_objects=True,
     )
 
-    passed = (replay_mismatches == 0) and (mism_sorted == 0)
+    passed = (
+        replay_mismatches == 0
+        and mism_sorted == 0
+        and not structure_errors
+    )
+
+    notes = str(tmp_dir)
+    if structure_errors:
+        notes += "; " + "; ".join(structure_errors)
 
     row = ReportRow(
         input_path=str(in_path),
@@ -225,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         replay2_sha256=sha2,
         replay_mismatches=int(replay_mismatches),
         pass_=bool(passed),
-        notes=str(tmp_dir),
+        notes=notes,
     )
 
     with out_csv.open("w", encoding="utf-8", newline="") as f:
@@ -268,9 +467,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[determinism] replay_mismatches={replay_mismatches}")
     print(f"[equivalence] mismatches_exact={mism_exact} (ignoring ts_sim_ns only)")
     print(f"[equivalence] mismatches_sorted={mism_sorted} (ignoring ts_sim_ns + sorting object lists)")
+    for note in structure_errors:
+        print(f"[equivalence] {note}")
     print(f"[result] PASS={str(passed).lower()}")
     print(f"[report] {out_csv}")
-    return 0
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

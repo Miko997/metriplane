@@ -278,6 +278,80 @@ def _fusion_cfg(cfg: Config) -> dict[str, Any]:
     f = getattr(cfg, "fusion", None)
     return dict(f) if isinstance(f, dict) else {}
 
+
+def _update_camera_capture_health(
+    *,
+    capture_status: dict[str, dict[str, float | int | bool]],
+    expected_camera_ids: list[str],
+    health: HealthRegistry,
+    fail_after_s: float,
+    target_fps: float,
+) -> dict[str, HealthStatus]:
+    """Update camera health from capture age, not runner polling frequency."""
+    fail_after = max(0.01, float(fail_after_s))
+    nominal_period = 1.0 / max(1.0, float(target_fps))
+    degraded_after = min(fail_after * 0.5, max(0.25, nominal_period * 3.0))
+    result: dict[str, HealthStatus] = {}
+
+    for camera_id in expected_camera_ids:
+        item = capture_status.get(camera_id) or {}
+        age_s = max(0.0, float(item.get("capture_age_s", fail_after)))
+        has_frame = bool(item.get("has_frame", False))
+        component = f"camera.{camera_id}"
+        if age_s >= fail_after:
+            status = HealthStatus.FAILED
+            health.set_failed(component, f"capture stalled for {age_s:.2f}s")
+        elif not has_frame:
+            status = HealthStatus.DEGRADED
+            health.set_degraded(component, f"waiting for first capture ({age_s:.2f}s)")
+        elif age_s >= degraded_after:
+            status = HealthStatus.DEGRADED
+            health.set_degraded(component, f"last capture {age_s:.2f}s ago")
+        else:
+            status = HealthStatus.OK
+            health.set_ok(component)
+        result[camera_id] = status
+
+    return result
+
+
+def _close_fusion_resources(
+    *,
+    preview: Any = None,
+    camera: Any = None,
+    websocket: Any = None,
+    metrics_server: Any = None,
+    recorder: Any = None,
+    timing: Any = None,
+) -> None:
+    """Best-effort, idempotent cleanup for setup and runtime failures."""
+    for resource, method in (
+        (preview, "close"),
+        (camera, "close"),
+        (websocket, "stop"),
+        (metrics_server, "shutdown"),
+        (metrics_server, "server_close"),
+        (recorder, "close"),
+        (timing, "close"),
+    ):
+        if resource is None:
+            continue
+        try:
+            getattr(resource, method)()
+        except Exception:
+            log.debug("cleanup failed for %s.%s", type(resource).__name__, method, exc_info=True)
+
+
+@dataclass
+class _FusionResources:
+    preview: Any = None
+    camera: Any = None
+    websocket: Any = None
+    metrics_server: Any = None
+    recorder: Any = None
+    timing: Any = None
+
+
 def run_loop_fusion(
     cfg: Config,
     *,
@@ -288,13 +362,50 @@ def run_loop_fusion(
     run_id: str | None = None,
     runs_dir: str | None = None,
     duration_s: float = 0.0,
-) -> None:
+) -> int:
+    resources = _FusionResources()
+    try:
+        return _run_loop_fusion_impl(
+            cfg,
+            clock=clock,
+            fault_args=fault_args,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+            duration_s=duration_s,
+            _resources=resources,
+        )
+    finally:
+        _close_fusion_resources(
+            preview=resources.preview,
+            camera=resources.camera,
+            websocket=resources.websocket,
+            metrics_server=resources.metrics_server,
+            recorder=resources.recorder,
+            timing=resources.timing,
+        )
+
+
+def _run_loop_fusion_impl(
+    cfg: Config,
+    *,
+    clock: Clock | None = None,
+    fault_args: list[str] | None = None,
+    config_path: Path | None = None,
+    argv: list[str] | None = None,
+    run_id: str | None = None,
+    runs_dir: str | None = None,
+    duration_s: float = 0.0,
+    _resources: _FusionResources,
+) -> int:
     if clock is None:
         clock = RealTimeClock()
     # Fill per-camera mapping/intrinsics from profile/cam0 + cam1 if missing.
     preview = None
     if os.getenv("METRIPLANE_SHOW_PREVIEW", "0") == "1" and LivePreview is not None:
         preview = LivePreview(scale=float(os.getenv("METRIPLANE_PREVIEW_SCALE", "1.0")))
+        _resources.preview = preview
 
     cfg = apply_profile_defaults(cfg)
 
@@ -325,6 +436,7 @@ def run_loop_fusion(
             recorder = open_jsonl_writer(primary_path=ctx.session_jsonl, mirror_path=None)
         else:
             raise
+    _resources.recorder = recorder
 
     recorder.write(ctx.header_record())
     log.info("M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash)
@@ -364,12 +476,11 @@ def run_loop_fusion(
         frames_csv_path=ctx.run_dir / "latency_frames.csv",
         summary_csv_path=ctx.run_dir / "latency_summary.csv",
         flush_every=int(os.getenv("METRIPLANE_TIMING_FLUSH_EVERY", "250")),
-
-        # add these (nice-to-have)
         run_id=ctx.run_id,
         config_hash=ctx.config_hash,
         git_commit=ctx.git.commit,
     )
+    _resources.timing = timing
 
     if timing_enabled:
         log.info("M9.5 timing: ENABLED frames_csv=%s summary_csv=%s", ctx.run_dir / "latency_frames.csv", ctx.run_dir / "latency_summary.csv")
@@ -381,7 +492,9 @@ def run_loop_fusion(
     health = HealthRegistry()
 
     # M9.6: compute backend selection (CPU NumPy by default; optional GPU via CuPy)
-    compute_backend = select_fusion_backend(getattr(cfg, "compute", None), logger=log, health=health)
+    compute_backend = select_fusion_backend(
+        getattr(cfg, "compute", None), logger=log, health=health
+    )
     log.info("M9.6 compute backend: %s", compute_backend.name)
 
     health.set_ok("process")
@@ -417,19 +530,12 @@ def run_loop_fusion(
         )
 
     ws = WsServerThread(host=cfg.ws_host, port=cfg.ws_port)
+    _resources.websocket = ws
     try:
         ws.start()
         health.set_ok("ws")
     except Exception as e:
         health.set_failed("ws", f"{type(e).__name__}: {e}")
-        try:
-            recorder.close()
-        except Exception:
-            pass
-        try:
-            timing.close()
-        except Exception:
-            pass
         raise
 
     metrics = MetricsRegistry()
@@ -445,7 +551,8 @@ def run_loop_fusion(
     if health_enabled and "get_health" in inspect.signature(start_metrics_server).parameters:
         start_kwargs["get_health"] = health.snapshot
 
-    start_metrics_server(**start_kwargs)
+    metrics_server = start_metrics_server(**start_kwargs)
+    _resources.metrics_server = metrics_server
 
     health.set_ok("http.metrics")
     log.info("metrics at http://%s:%d/metrics", cfg.metrics_host, cfg.metrics_port)
@@ -484,6 +591,7 @@ def run_loop_fusion(
         fourcc="MJPG",
         require_all=False,
     )
+    _resources.camera = cam
 
     # -----------------------------
     # Fusion config (authoritative: cfg.fusion dict)
@@ -547,8 +655,6 @@ def run_loop_fusion(
     frames_total = 0
     last_log = time.monotonic()
 
-    last_seen_mon: dict[str, float] = {cid: time.monotonic() for cid in expected_cam_ids}
-
     det = cv2.aruco.ArucoDetector(
         cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100),
         cv2.aruco.DetectorParameters(),
@@ -569,11 +675,18 @@ def run_loop_fusion(
             try:
                 frames = cam.read() or []
                 read_ns = time.perf_counter_ns() - t_read0
-                health.set_ok("camera.read")
             except Exception as e:
                 health.set_degraded("camera.read", f"{type(e).__name__}: {e}")
                 time.sleep(0.01)
                 continue
+
+            capture_health = _update_camera_capture_health(
+                capture_status=cam.capture_status(now_monotonic=time.monotonic()),
+                expected_camera_ids=expected_cam_ids,
+                health=health,
+                fail_after_s=cam_missing_fail_after_s,
+                target_fps=float(cfg.target_fps or 30),
+            )
 
             frames_by_cam: dict[str, Any] = {}
             for fr in frames:
@@ -587,7 +700,10 @@ def run_loop_fusion(
                     frames_by_cam.pop("cam1", None)
                 if not cam1_fault_triggered:
                     cam1_fault_triggered = True
-                    health.set_failed("camera.cam1", f"fault injected: cam1_disconnect_after_s={cam1_disconnect_after_s}")
+                health.set_failed(
+                    "camera.cam1",
+                    f"fault injected: cam1_disconnect_after_s={cam1_disconnect_after_s}",
+                )
 
             preview_ns = 0
             if preview is not None:
@@ -613,9 +729,14 @@ def run_loop_fusion(
                 preview_ns = time.perf_counter_ns() - t_prev0
 
             if not frames_by_cam:
-                health.set_degraded("camera.read", "no frames")
+                if capture_health and all(s == HealthStatus.FAILED for s in capture_health.values()):
+                    health.set_failed("camera.read", "all camera captures stalled")
+                elif any(s != HealthStatus.OK for s in capture_health.values()):
+                    health.set_degraded("camera.read", "waiting for fresh camera capture")
                 time.sleep(0.005)
                 continue
+
+            health.set_ok("camera.read")
 
             frames_total += 1
             frame_id += 1
@@ -632,18 +753,6 @@ def run_loop_fusion(
             timing.add_stage_ns("camera.read", int(read_ns))
             if preview_ns > 0:
                 timing.add_stage_ns("preview", int(preview_ns))
-
-            now_mon = time.monotonic()
-            for cid in expected_cam_ids:
-                if cid in frames_by_cam:
-                    last_seen_mon[cid] = now_mon
-                    health.set_ok(f"camera.{cid}")
-                else:
-                    missing_for = now_mon - float(last_seen_mon.get(cid, now_mon))
-                    if missing_for >= cam_missing_fail_after_s:
-                        health.set_failed(f"camera.{cid}", f"missing for {missing_for:.2f}s")
-                    else:
-                        health.set_degraded(f"camera.{cid}", f"missing for {missing_for:.2f}s")
 
             raw_models: list[CameraFrameModel] = []
             meas_by_oid: dict[str, list[tuple[float, float, float]]] = defaultdict(list)
@@ -895,7 +1004,11 @@ def run_loop_fusion(
                         recorder.write(msg.model_dump())
                         health.set_ok("recorder.jsonl")
                     except Exception as e:
-                        health.set_degraded("recorder.jsonl", f"write failed: {type(e).__name__}: {e}")
+                        health.set_failed(
+                            "recorder.jsonl",
+                            f"write failed: {type(e).__name__}: {e}",
+                        )
+                        return 1
 
                 with timing.stage("ws.send"):
                     try:
@@ -934,20 +1047,7 @@ def run_loop_fusion(
 
     except KeyboardInterrupt:
         log.info("shutdown requested")
-    finally:
-        if "preview" in locals() and preview is not None:
-            preview.close()
-
-        cam.close()
-        ws.stop()
-        try:
-            recorder.close()
-        except Exception:
-            pass
-        try:
-            timing.close()
-        except Exception:
-            pass
+    return 0
 
 
 
@@ -976,7 +1076,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
-    run_loop_fusion(
+    return run_loop_fusion(
         cfg,
         fault_args=list(args.fault or []),
         config_path=Path(args.config),
@@ -985,7 +1085,6 @@ def main(argv=None) -> int:
         runs_dir=args.runs_dir,
         duration_s=args.duration_s,
     )
-    return 0
 
 
 if __name__ == "__main__":

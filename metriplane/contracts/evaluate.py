@@ -7,6 +7,7 @@ from pathlib import Path
 
 from metriplane.contracts.engine import ContractEvent, SpatialContractEngine
 from metriplane.contracts.models import SpatialContractPackage
+from metriplane.schema import frame_time_s
 from metriplane.sentinel.engine import iter_frames
 from metriplane.sentinel.registry import ObjectRegistryConfig
 
@@ -22,6 +23,6 @@ def evaluate_contract_session(
     for frame in iter_frames(session_path):
         if frame.run_id and not engine.run_id:
             engine.run_id = frame.run_id
-        observed = frame.fused if frame.fused else frame.objects
-        events.extend(engine.update(frame.ts, observed))
+        observed = frame.fused if frame.fused is not None else frame.objects
+        events.extend(engine.update(frame_time_s(frame), observed))
     return events, engine.run_id

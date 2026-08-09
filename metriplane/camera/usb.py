@@ -12,12 +12,12 @@ log = logging.getLogger("metriplane.camera.usb")
 
 
 class USBCamera:
-    def __init__(self, index: int = 0) -> None:
+    def __init__(self, index: int | str = 0) -> None:
         self.index = index
         self.cap: cv2.VideoCapture | None = None
 
     def open(self) -> None:
-        log.info("opening USB camera index=%d", self.index)
+        log.info("opening USB camera source=%s", self.index)
         self.cap = cv2.VideoCapture(self.index)
         if not self.cap.isOpened():
             self.cap.release()

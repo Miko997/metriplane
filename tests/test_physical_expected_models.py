@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 from metriplane.testing.load_expected import load_expected
 from metriplane.testing.models import (
+    ExpectedEventSpec,
     ExpectedIncidentSpec,
+    ExpectedLatencySpec,
     PhysicalRegressionExpected,
     severity_rank,
 )
@@ -67,3 +69,19 @@ def test_non_mapping_rejected(tmp_path):
     p.write_text("- a\n- b\n")
     with pytest.raises(ValueError):
         load_expected(p)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: ExpectedIncidentSpec(type="test", min_count=-1),
+        lambda: ExpectedIncidentSpec(type="test", min_count=2, max_count=1),
+        lambda: ExpectedEventSpec(min_count=1, max_count=-1),
+        lambda: ExpectedLatencySpec(p95_update_ms_max=float("inf")),
+        lambda: ExpectedLatencySpec(p95_update_ms_max=float("nan")),
+        lambda: ExpectedLatencySpec(p95_update_ms_max=-1.0),
+    ],
+)
+def test_expected_constraints_reject_fail_open_values(factory) -> None:
+    with pytest.raises(ValidationError):
+        factory()

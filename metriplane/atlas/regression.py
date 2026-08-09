@@ -6,6 +6,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 import json
+import math
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
@@ -32,7 +34,8 @@ def _bundle_root(bundle: Path) -> Iterator[Path]:
 
 
 def create_regression_from_bundle(bundle_path: str | Path, out_path: str | Path) -> RegressionSpec:
-    bundle = Path(bundle_path)
+    bundle = Path(bundle_path).resolve()
+    output = Path(out_path)
     with _bundle_root(bundle) as root:
         incident = AtlasIncident.model_validate(json.loads((root / "incident.json").read_text()))
         events = [
@@ -49,6 +52,7 @@ def create_regression_from_bundle(bundle_path: str | Path, out_path: str | Path)
                 "asset_id": event.get("asset_id"),
                 "process_step_id": event.get("process_step_id"),
                 "severity": event.get("severity"),
+                "ts": event.get("ts"),
             }
             for event in events
         ],
@@ -56,23 +60,63 @@ def create_regression_from_bundle(bundle_path: str | Path, out_path: str | Path)
             {
                 "incident_type": incident.incident_type,
                 "severity": incident.severity,
+                "start_ts": incident.start_ts,
+                "end_ts": incident.end_ts,
+                "duration_s": incident.end_ts - incident.start_ts,
             }
         ],
     )
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(out_path).write_text(yaml.safe_dump(spec.model_dump(), sort_keys=True), encoding="utf-8")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        source_bundle = Path(os.path.relpath(bundle, output.parent.resolve())).as_posix()
+    except ValueError:  # Different Windows drives cannot be represented relatively.
+        source_bundle = str(bundle)
+    spec = spec.model_copy(update={"source_bundle": source_bundle})
+    output.write_text(yaml.safe_dump(spec.model_dump(), sort_keys=True), encoding="utf-8")
     return spec
 
 
+def _resolve_source_bundle(spec_path: Path, source_bundle: str) -> Path:
+    source = Path(source_bundle)
+    if source.is_absolute():
+        return source
+    candidates = [(spec_path.parent / source).resolve(), (Path.cwd() / source).resolve()]
+    candidates.extend((parent / source).resolve() for parent in spec_path.parents)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _tolerance(spec: RegressionSpec, name: str, errors: list[str]) -> float:
+    value = spec.tolerances.get(name, 0.0)
+    if not math.isfinite(value) or value < 0:
+        errors.append(f"invalid {name} tolerance: {value}")
+        return 0.0
+    return value
+
+
 def run_regression(spec_path: str | Path) -> dict:
-    spec = RegressionSpec.model_validate(yaml.safe_load(Path(spec_path).read_text()) or {})
-    verify = verify_bundle(spec.source_bundle)
+    spec_file = Path(spec_path).resolve()
+    spec = RegressionSpec.model_validate(yaml.safe_load(spec_file.read_text()) or {})
+    if not spec.expected_events and not spec.expected_incidents:
+        return _result(
+            spec,
+            ["regression must require at least one expected event or incident"],
+        )
+    bundle = _resolve_source_bundle(spec_file, spec.source_bundle)
+    verify = verify_bundle(bundle)
     errors: list[str] = []
     if not verify["pass"]:
         errors.extend(f"bundle: {err}" for err in verify["errors"])
         return _result(spec, errors)
 
-    with _bundle_root(Path(spec.source_bundle)) as root:
+    event_time_tolerance = _tolerance(spec, "event_time_s", errors)
+    duration_tolerance = _tolerance(spec, "duration_s", errors)
+    if errors:
+        return _result(spec, errors)
+
+    with _bundle_root(bundle) as root:
         actual_events, actual_incidents = _replay_bundle_logic(root, spec, errors)
         if errors:
             return _result(spec, errors)
@@ -80,7 +124,9 @@ def run_regression(spec_path: str | Path) -> dict:
     event_matches = _maximum_one_to_one_matching(
         spec.expected_events,
         actual_events,
-        _event_matches,
+        lambda expected, actual: _event_matches(
+            expected, actual, event_time_tolerance
+        ),
     )
     for index, expected in enumerate(spec.expected_events):
         if index not in event_matches:
@@ -88,7 +134,12 @@ def run_regression(spec_path: str | Path) -> dict:
     incident_matches = _maximum_one_to_one_matching(
         spec.expected_incidents,
         actual_incidents,
-        _incident_matches,
+        lambda expected, actual: _incident_matches(
+            expected,
+            actual,
+            event_time_tolerance,
+            duration_tolerance,
+        ),
     )
     for index, expected in enumerate(spec.expected_incidents):
         if index in incident_matches:
@@ -181,17 +232,60 @@ def _maximum_one_to_one_matching(
     }
 
 
-def _event_matches(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
+def _event_matches(
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+    event_time_tolerance: float = 0.0,
+) -> bool:
     for key in ("event_type", "asset_id", "process_step_id", "severity", "zone_id", "station_id"):
         if expected.get(key) is not None and expected.get(key) != actual.get(key):
+            return False
+    if expected.get("ts") is not None:
+        if actual.get("ts") is None:
+            return False
+        if not _within_tolerance(
+            expected["ts"], actual["ts"], event_time_tolerance
+        ):
             return False
     return True
 
 
-def _incident_matches(expected: dict[str, Any], actual: AtlasIncident) -> bool:
+def _incident_matches(
+    expected: dict[str, Any],
+    actual: AtlasIncident,
+    event_time_tolerance: float = 0.0,
+    duration_tolerance: float = 0.0,
+) -> bool:
     if actual.incident_type != expected.get("incident_type"):
         return False
-    return not expected.get("severity") or actual.severity == expected.get("severity")
+    if expected.get("severity") and actual.severity != expected.get("severity"):
+        return False
+    for key in ("start_ts", "end_ts"):
+        if expected.get(key) is not None:
+            if not _within_tolerance(
+                expected[key], getattr(actual, key), event_time_tolerance
+            ):
+                return False
+    if expected.get("duration_s") is not None:
+        actual_duration = actual.end_ts - actual.start_ts
+        if not _within_tolerance(
+            expected["duration_s"], actual_duration, duration_tolerance
+        ):
+            return False
+    return True
+
+
+def _within_tolerance(expected: object, actual: object, tolerance: float) -> bool:
+    try:
+        expected_value = float(expected)
+        actual_value = float(actual)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        math.isfinite(expected_value)
+        and math.isfinite(actual_value)
+        and abs(expected_value - actual_value) <= tolerance
+    )
 
 
 def _result(spec: RegressionSpec, errors: list[str]) -> dict:

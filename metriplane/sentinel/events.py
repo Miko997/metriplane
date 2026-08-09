@@ -6,12 +6,14 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SeverityLevel = Literal["info", "warning", "critical"]
 
 
 class RuleAlert(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     alert_id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     rule_id: str
     severity: SeverityLevel
@@ -23,6 +25,8 @@ class RuleAlert(BaseModel):
 
 
 class IncidentRecord(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     incident_id: str = Field(default_factory=lambda: f"inc_{str(uuid.uuid4())[:6]}")
     run_id: str | None = None
     rule_id: str
@@ -37,13 +41,25 @@ class IncidentRecord(BaseModel):
     alert_ids: list[str] = Field(default_factory=list)
     evidence: dict[str, str] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def _valid_timing(self):
+        if self.closed_ts is not None and self.closed_ts < self.opened_ts:
+            raise ValueError("closed_ts must be greater than or equal to opened_ts")
+        if self.duration_s is not None and self.duration_s < 0:
+            raise ValueError("duration_s must be non-negative")
+        return self
+
     def close(self, closed_ts: float) -> None:
+        if closed_ts < self.opened_ts:
+            raise ValueError("closed_ts must be greater than or equal to opened_ts")
         self.status = "closed"
         self.closed_ts = closed_ts
         self.duration_s = round(closed_ts - self.opened_ts, 3)
 
 
 class OperationalEvent(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     event_type: Literal["alert", "incident_open", "incident_close", "zone_enter", "zone_exit"]
     ts: float
     run_id: str | None = None

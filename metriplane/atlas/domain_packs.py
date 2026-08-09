@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+import math
 from pathlib import Path
 
 import yaml
@@ -45,6 +46,8 @@ def _read_work_orders(path: Path, process_id: str) -> list[WorkOrderModel]:
             if not row.get("work_order_id") or not row.get("process_id"):
                 raise ValueError(f"work order row must include work_order_id and process_id in {path}")
             rows.append(WorkOrderModel(**{k: v for k, v in row.items() if v not in ("", None)}))
+    if not rows:
+        raise ValueError(f"work_orders.csv must contain at least one work order: {path}")
     return rows
 
 
@@ -53,7 +56,15 @@ def load_domain_pack(path: str | Path) -> DomainPack:
     assets = AssetRegistryModel.model_validate(_read_yaml(root / "assets.yaml"))
     workspace = WorkspaceModel.model_validate(_read_yaml(root / "workspace.yaml"))
     process = ProcessModel.model_validate(_read_yaml(root / "process.yaml"))
+    if not process.steps:
+        raise ValueError(f"process must contain at least one step: {root / 'process.yaml'}")
     work_orders = _read_work_orders(root / "work_orders.csv", process.process_id)
+    for work_order in work_orders:
+        if work_order.process_id != process.process_id:
+            raise ValueError(
+                f"work order {work_order.work_order_id} references process "
+                f"{work_order.process_id}, expected {process.process_id}"
+            )
     contracts_path = root / "contracts.yaml"
     return DomainPack(
         root=root,
@@ -74,6 +85,7 @@ def validate_domain_pack(path: str | Path) -> list[str]:
 
     object_ids: set[str] = set()
     asset_ids: set[str] = set()
+    asset_types: set[str] = set()
     for asset in pack.assets.assets:
         if asset.object_id in object_ids:
             errors.append(f"duplicate object_id: {asset.object_id}")
@@ -83,20 +95,157 @@ def validate_domain_pack(path: str | Path) -> list[str]:
         asset_ids.add(asset.asset_id)
         if not asset.asset_type.strip():
             errors.append(f"asset_type is empty for {asset.asset_id}")
+        else:
+            asset_types.add(asset.asset_type)
 
-    zone_ids = {zone.zone_id for zone in pack.workspace.zones}
-    station_ids = {station.station_id for station in pack.workspace.stations}
+    work_order_ids: set[str] = set()
+    for work_order in pack.work_orders:
+        if work_order.work_order_id in work_order_ids:
+            errors.append(f"duplicate work_order_id: {work_order.work_order_id}")
+        work_order_ids.add(work_order.work_order_id)
+    if len(pack.work_orders) > 1:
+        errors.append(
+            "Atlas v1 supports exactly one work order per run; split multi-order inputs"
+        )
+
+    zone_ids: set[str] = set()
+    for zone in pack.workspace.zones:
+        if zone.zone_id in zone_ids:
+            errors.append(f"duplicate zone_id: {zone.zone_id}")
+        zone_ids.add(zone.zone_id)
+
+    station_ids: set[str] = set()
+    station_by_id = {}
+    station_by_zone = {}
     for station in pack.workspace.stations:
+        if station.station_id in station_ids:
+            errors.append(f"duplicate station_id: {station.station_id}")
+        station_ids.add(station.station_id)
+        station_by_id[station.station_id] = station
+        previous_station = station_by_zone.get(station.zone_id)
+        if previous_station is not None:
+            errors.append(
+                f"zone {station.zone_id} is assigned to multiple stations: "
+                f"{previous_station.station_id}, {station.station_id}"
+            )
+        else:
+            station_by_zone[station.zone_id] = station
         if station.zone_id not in zone_ids:
             errors.append(f"station {station.station_id} references unknown zone {station.zone_id}")
 
+    for asset in pack.assets.assets:
+        if asset.work_order_id and asset.work_order_id not in work_order_ids:
+            errors.append(
+                f"asset {asset.asset_id} references unknown work order "
+                f"{asset.work_order_id}"
+            )
+        for zone_id in asset.expected_zones:
+            if zone_id not in zone_ids:
+                errors.append(f"asset {asset.asset_id} references unknown expected zone {zone_id}")
+        for station_id in asset.expected_stations:
+            if station_id not in station_ids:
+                errors.append(
+                    f"asset {asset.asset_id} references unknown expected station {station_id}"
+                )
+
+    step_ids: set[str] = set()
     for step in pack.process.steps:
+        if step.step_id in step_ids:
+            errors.append(f"duplicate step_id: {step.step_id}")
+        step_ids.add(step.step_id)
         if step.required_zone and step.required_zone not in zone_ids:
             errors.append(f"step {step.step_id} references unknown zone {step.required_zone}")
         if step.required_station and step.required_station not in station_ids:
             errors.append(f"step {step.step_id} references unknown station {step.required_station}")
+        if step.required_zone and step.required_station in station_by_id:
+            station = station_by_id[step.required_station]
+            if station.zone_id != step.required_zone:
+                errors.append(
+                    f"step {step.step_id} requires station {step.required_station} "
+                    f"in zone {station.zone_id}, not {step.required_zone}"
+                )
         for required_asset in step.required_assets:
             if required_asset not in asset_ids:
                 errors.append(f"step {step.step_id} references unknown asset {required_asset}")
+        for expected_asset_type in step.expected_asset_types:
+            if expected_asset_type not in asset_types:
+                errors.append(
+                    f"step {step.step_id} references unknown asset type "
+                    f"{expected_asset_type}"
+                )
+        if step.max_wait_s is not None and (
+            not math.isfinite(step.max_wait_s) or step.max_wait_s < 0
+        ):
+            errors.append(f"step {step.step_id} has invalid max_wait_s")
 
+    if pack.contracts_path is not None:
+        errors.extend(
+            _validate_contracts(
+                pack.contracts_path,
+                step_ids=step_ids,
+                asset_ids=asset_ids,
+                station_ids=station_ids,
+                zone_ids=zone_ids,
+            )
+        )
+
+    return errors
+
+
+def _validate_contracts(
+    path: Path,
+    *,
+    step_ids: set[str],
+    asset_ids: set[str],
+    station_ids: set[str],
+    zone_ids: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    try:
+        data = _read_yaml(path)
+    except Exception as exc:
+        return [f"could not parse contracts file {path}: {exc}"]
+    if data.get("schema_version") != "metriplane.atlas.contracts.v1":
+        errors.append(f"unsupported contracts schema_version in {path}")
+    contracts = data.get("contracts")
+    if not isinstance(contracts, list) or not contracts:
+        return errors + [f"contracts must be a nonempty list in {path}"]
+
+    contract_ids: set[str] = set()
+    references = (
+        ("process_step_id", step_ids, "step"),
+        ("required_asset_id", asset_ids, "asset"),
+        ("station_id", station_ids, "station"),
+        ("zone_id", zone_ids, "zone"),
+    )
+    for index, contract in enumerate(contracts, start=1):
+        if not isinstance(contract, dict):
+            errors.append(f"contract {index} must be a mapping in {path}")
+            continue
+        contract_id = contract.get("contract_id")
+        kind = contract.get("kind")
+        if not isinstance(contract_id, str) or not contract_id.strip():
+            errors.append(f"contract {index} has no contract_id in {path}")
+            continue
+        if contract_id in contract_ids:
+            errors.append(f"duplicate contract_id: {contract_id}")
+        contract_ids.add(contract_id)
+        if not isinstance(kind, str) or not kind.strip():
+            errors.append(f"contract {contract_id} has no kind")
+        for field, known, label in references:
+            value = contract.get(field)
+            if value is not None and not isinstance(value, str):
+                errors.append(f"contract {contract_id} has invalid {field}")
+            elif value is not None and value not in known:
+                errors.append(
+                    f"contract {contract_id} references unknown {label} {value}"
+                )
+        max_wait = contract.get("max_wait_s")
+        if max_wait is not None and (
+            isinstance(max_wait, bool)
+            or not isinstance(max_wait, (int, float))
+            or not math.isfinite(max_wait)
+            or max_wait < 0
+        ):
+            errors.append(f"contract {contract_id} has invalid max_wait_s")
     return errors

@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from metriplane.sentinel.engine import RuleEngine, evaluate_session
+from metriplane.sentinel.engine import RuleEngine, evaluate_session, iter_frames
 from metriplane.sentinel.registry import ObjectRegistryConfig, load_registry
 from metriplane.sentinel.rules import (
     ObjectFilter,
@@ -97,6 +97,41 @@ def test_max_dwell_triggers_after_threshold(tmp_path, registry):
     assert len(alerts) == 3
     assert all(a.severity == "critical" for a in alerts)
     assert alerts[0].ts == 5.0
+
+
+def test_fixed_clock_is_authoritative_for_rule_duration(tmp_path, registry):
+    rules = RuleSet(rules=[RuleDefinition(
+        id="pallet_dwell", type="max_dwell",
+        object_filter=ObjectFilter(type="pallet"), zone="exit_lane",
+        max_duration_s=5.0,
+    )])
+    records = [
+        json.loads(make_frame(100.0, 0, [
+            {"id": 12, "pos": [1.0, 0.0, 0.0], "zone": "exit_lane"}
+        ])),
+        json.loads(make_frame(101.0, 1, [
+            {"id": 12, "pos": [1.0, 0.0, 0.0], "zone": "exit_lane"}
+        ])),
+    ]
+    records[0]["ts_sim_ns"] = 0
+    records[1]["ts_sim_ns"] = 6_000_000_000
+    session = write_session(tmp_path, [json.dumps(record) for record in records])
+
+    alerts, _ = evaluate_session(session, rules, registry)
+
+    assert len(alerts) == 1
+    assert alerts[0].ts == 6.0
+
+
+def test_iter_frames_rejects_malformed_non_header_record(tmp_path):
+    session = write_session(tmp_path, [
+        json.dumps({"type": "run_header", "run_id": "run"}),
+        make_frame(0.0, 0, []),
+        "{broken",
+    ])
+
+    with pytest.raises(ValueError, match=r"session\.jsonl:3"):
+        list(iter_frames(session))
 
 
 def test_max_dwell_resets_on_exit(tmp_path, registry):
@@ -256,3 +291,19 @@ def test_fallback_object_id_without_registry(tmp_path):
     ])
     alerts, _ = evaluate_session(session, rules, None)
     assert alerts[0].object_ids == ["marker_99"]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"id": "r", "type": "forbidden_zone"},
+        {"id": "r", "type": "max_dwell", "zone": "main"},
+        {"id": "r", "type": "min_distance", "min_distance_m": float("nan")},
+        {"id": "r", "type": "speed_limit", "max_speed_mps": -1.0},
+        {"id": "r", "type": "missing_object"},
+        {"id": "r", "type": "restricted_transition", "from_zone": "main"},
+    ],
+)
+def test_rules_reject_missing_or_fail_open_conditions(kwargs):
+    with pytest.raises(ValueError):
+        RuleDefinition(**kwargs)

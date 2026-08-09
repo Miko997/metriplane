@@ -4,15 +4,15 @@ SPDX-License-Identifier: MIT
 */
 
 /* ============================================================
-   MetriPlane Dashboard + Operator UI
-   MetriPlane Visual System - Dark Industrial Telemetry Theme
+   Metriplane Dashboard + Operator UI
+   Metriplane Visual System - Dark Industrial Telemetry Theme
    ============================================================ */
 
 /* ---------- Fonts ---------- */
 
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* ---------- MetriPlane Design Tokens ---------- */
+/* ---------- Metriplane Design Tokens ---------- */
 
 :root {
   /* Background scale */
@@ -2814,7 +2814,7 @@ body.vt-landing-page {
   line-height: 1.6;
 }
 
-/* -- MetriPlane platform section -- */
+/* -- Metriplane platform section -- */
 .lp-platform {
   padding: 78px 40px 74px;
   border-bottom: 1px solid var(--mp-border);
@@ -4549,7 +4549,7 @@ body.vt-landing-page {
 }
 
 /* ============================================================
-   MetriPlane console and evidence workspace
+   Metriplane console and evidence workspace
    ============================================================ */
 
 body.vt-product-page {

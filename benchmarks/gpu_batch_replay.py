@@ -23,7 +23,7 @@ def _load_frames(session_path: str):
     from metriplane.sentinel.engine import iter_frames
     frames = []
     for f in iter_frames(session_path):
-        objs = f.fused if f.fused else f.objects
+        objs = f.fused if f.fused is not None else f.objects
         recs = [{"x": o.pos_world[0], "y": o.pos_world[1],
                  "confidence": o.confidence or 1.0, "rmse": 0.01}
                 for o in objs if o.pos_world is not None]

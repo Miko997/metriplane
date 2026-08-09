@@ -11,7 +11,7 @@ from metriplane.config import Config
 from metriplane.run import run_loop
 
 
-def main() -> None:
+def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -26,8 +26,8 @@ def main() -> None:
     data = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
     cfg = Config(**data)
 
-    run_loop(cfg)
+    return run_loop(cfg)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

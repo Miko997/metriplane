@@ -110,7 +110,7 @@ def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
         return []
     registry = _registry(run)
     last = frames[-1]
-    observed = last.fused if last.fused else last.objects
+    observed = last.fused if last.fused is not None else last.objects
     out = []
     for o in observed:
         oid, otype = f"marker_{o.id}", "unknown"
@@ -211,7 +211,7 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
         registry = _registry(run)
         frames_out: list[dict[str, Any]] = []
         for frame in iter_frames(session):
-            observed = frame.fused if frame.fused else frame.objects
+            observed = frame.fused if frame.fused is not None else frame.objects
             objs = []
             for o in observed:
                 oid, otype = f"marker_{o.id}", "unknown"

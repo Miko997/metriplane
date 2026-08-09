@@ -60,10 +60,11 @@ def _run(args) -> int:
         return 1
 
     from metriplane.sentinel.engine import iter_frames
+    from metriplane.schema import frame_time_s
 
     for frame in iter_frames(session_path):
-        observed = frame.fused if frame.fused else frame.objects
-        runtime.update(frame.ts, frame.frame_id, observed, frame=frame)
+        observed = frame.fused if frame.fused is not None else frame.objects
+        runtime.update(frame_time_s(frame), frame.frame_id, observed, frame=frame)
 
     summary_path = runtime.close()
 

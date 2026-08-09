@@ -5,13 +5,39 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
-All notable changes to MetriPlane are documented here.
+All notable changes to Metriplane are documented here.
 
 ---
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Added a wheel-contained, camera-free `metriplane demo --open` path that produces
+  and verifies an incident report, evidence bundle, and generated regression check.
+- Added built-wheel demo coverage across Ubuntu and macOS with Python 3.12 and 3.13.
+
+### Changed
+
+- Made the root help screen expose the primary demo, Atlas, runtime, and
+  verification commands.
+- Made fixed replay clocks authoritative across Atlas, Sentinel, contracts, and
+  trace output, and clarified the privacy export as deterministic pseudonymization.
+- Expanded full-suite CI to Linux and macOS on Python 3.12 and 3.13; native
+  Windows remains outside the supported platform scope.
+
+### Fixed
+
+- Hardened Atlas and Sentinel evidence verification against incomplete checksum
+  inventories, unsafe archives, contradictory records, malformed state, and
+  regression false passes.
+- Made Atlas run, bundle, and pseudonymized-output publication transactional and
+  prevented source/output overlap or implicit destructive replacement.
+- Made replay, live-camera, fusion, launcher, and local-runner failures propagate
+  cleanly, including stale camera frames, truncated primary recordings, startup
+  rollback, cancellation races, and unsafe local runner requests.
+- Strengthened domain-pack, frame, rule, expected-result, and persisted-config
+  validation, including non-finite values and credential redaction.
 
 ---
 

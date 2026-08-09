@@ -109,5 +109,9 @@ configs/*_local.yaml
 !datasets/demo/atlas/**/*.yml
 !datasets/demo/atlas/**/*.csv
 
+# Wheel-contained adoption demo inputs
+!metriplane/demo/assets/assembly_cell_missing_tool.jsonl
+!metriplane/demo/assets/assembly_cell/work_orders.csv
+
 # Local run output accidentally created as literal tilde directory
 /~/

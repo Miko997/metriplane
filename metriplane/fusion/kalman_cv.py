@@ -116,7 +116,7 @@ class MultiObjectKalman:
                 last = ts_f
 
             kf = self._filters[oid_s]
-            dt = float(ts_f - float(last or ts_f))
+            dt = float(ts_f - float(last if last is not None else ts_f))
             if dt > 0:
                 kf.predict(dt, process_sigma=float(self.process_sigma))
 

@@ -22,7 +22,9 @@ CamSource = Union[int, str]
 @dataclass
 class _WorkerState:
     latest: Frame | None = None
-    last_ok_ts: float = 0.0
+    sequence: int = 0
+    last_ok_monotonic: float | None = None
+    started_monotonic: float = 0.0
 
 
 class _USBCamWorker:
@@ -51,7 +53,7 @@ class _USBCamWorker:
         self._got_first = threading.Event()
 
         self._lock = threading.Lock()
-        self._state = _WorkerState()
+        self._state = _WorkerState(started_monotonic=time.monotonic())
 
     def open(self) -> None:
         # Default backend: V4L2 on Linux (more stable than auto)
@@ -93,6 +95,9 @@ class _USBCamWorker:
         self._cap = cap
 
         self._stop.clear()
+        self._got_first.clear()
+        with self._lock:
+            self._state = _WorkerState(started_monotonic=time.monotonic())
         self._thr = threading.Thread(target=self._run, name=f"usbcam-{self.camera_id}", daemon=True)
         self._thr.start()
 
@@ -113,24 +118,43 @@ class _USBCamWorker:
             return
 
         while not self._stop.is_set():
-            ts = time.time()
             ok, frame = cap.read()
             if not ok or frame is None:
                 time.sleep(0.003)
                 continue
 
+            ts = time.time()
+            captured_monotonic = time.monotonic()
             fr = Frame(ts_cam_read=ts, image=frame, camera_id=self.camera_id)
             with self._lock:
                 self._state.latest = fr
-                self._state.last_ok_ts = ts
+                self._state.sequence += 1
+                self._state.last_ok_monotonic = captured_monotonic
             self._got_first.set()
 
     def wait_for_first(self, timeout_s: float = 3.0) -> bool:
         return self._got_first.wait(timeout=timeout_s)
 
-    def latest(self) -> Frame | None:
+    def latest_after(self, sequence: int) -> tuple[int, Frame] | None:
+        """Return the newest capture once, identified by a worker sequence."""
         with self._lock:
-            return self._state.latest
+            if self._state.latest is None or self._state.sequence <= int(sequence):
+                return None
+            return self._state.sequence, self._state.latest
+
+    def capture_status(self, *, now_monotonic: float | None = None) -> dict[str, float | int | bool]:
+        """Return capture age from the monotonic clock, safe from wall-clock jumps."""
+        now = time.monotonic() if now_monotonic is None else float(now_monotonic)
+        with self._lock:
+            last_ok = self._state.last_ok_monotonic
+            started = self._state.started_monotonic
+            sequence = self._state.sequence
+        reference = last_ok if last_ok is not None else started
+        return {
+            "sequence": sequence,
+            "has_frame": last_ok is not None,
+            "capture_age_s": max(0.0, now - reference),
+        }
 
     def close(self) -> None:
         self._stop.set()
@@ -151,7 +175,7 @@ class USBMultiCamera:
     Threaded multi-camera grabber.
 
     - open(): starts worker threads
-    - read(): returns the LATEST frame from each camera (non-blocking)
+    - read(): returns each camera's latest *new* capture once (non-blocking)
 
     cameras: {"cam0": 0, "cam1": "/dev/v4l/by-id/..."} both allowed
     """
@@ -184,10 +208,19 @@ class USBMultiCamera:
             )
             for cid, src in self.cameras.items()
         }
+        self._consumed_sequences: dict[str, int] = {cid: 0 for cid in self.cameras}
 
     def open(self) -> None:
-        for w in self._workers.values():
-            w.open()
+        self._consumed_sequences = {cid: 0 for cid in self.cameras}
+        opened: list[_USBCamWorker] = []
+        try:
+            for w in self._workers.values():
+                w.open()
+                opened.append(w)
+        except Exception:
+            for w in reversed(opened):
+                w.close()
+            raise
 
         # Wait for first frames (so mapping/fusion doesn’t start empty)
         # IMPORTANT: do NOT hard-fail the whole process if one cam is slow.
@@ -210,13 +243,22 @@ class USBMultiCamera:
 
     def read(self) -> list[Frame]:
         frames: list[Frame] = []
-        for w in self._workers.values():
-            fr = w.latest()
-            if fr is not None:
-                frames.append(fr)
+        for cid, w in self._workers.items():
+            item = w.latest_after(self._consumed_sequences.get(cid, 0))
+            if item is None:
+                continue
+            sequence, fr = item
+            self._consumed_sequences[cid] = sequence
+            frames.append(fr)
         # If require_all and one cam is missing this tick, return what we have.
         # Caller can choose to skip fusion for this tick.
         return frames
+
+    def capture_status(self, *, now_monotonic: float | None = None) -> dict[str, dict[str, float | int | bool]]:
+        return {
+            cid: worker.capture_status(now_monotonic=now_monotonic)
+            for cid, worker in self._workers.items()
+        }
 
     def close(self) -> None:
         for w in self._workers.values():

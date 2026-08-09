@@ -73,6 +73,10 @@ jobs:
           "$smoke_venv/bin/metriplane" doctor
           "$smoke_venv/bin/metriplane" atlas protocol export --out protocol-smoke
           test -s protocol-smoke/open_atlas_protocol_index.json
+          "$smoke_venv/bin/metriplane" demo --out demo-wheel-smoke
+          test -s demo-wheel-smoke/cell_truth_report.html
+          test -s demo-wheel-smoke/evidence_bundles/INC-0001.zip
+          test -s demo-wheel-smoke/regression_tests/INC-0001.yaml
           "$smoke_venv/bin/python" -c "import cv2; assert hasattr(cv2, 'aruco')"
           VERSION="${GITHUB_REF_NAME#v}" "$smoke_venv/bin/python" -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
 
@@ -147,6 +151,10 @@ jobs:
           cd "$RUNNER_TEMP"
           metriplane atlas protocol export --out protocol-testpypi
           test -s protocol-testpypi/open_atlas_protocol_index.json
+          metriplane demo --out demo-testpypi
+          test -s demo-testpypi/cell_truth_report.html
+          test -s demo-testpypi/evidence_bundles/INC-0001.zip
+          test -s demo-testpypi/regression_tests/INC-0001.yaml
 
   publish-pypi:
     name: Publish to PyPI
@@ -202,3 +210,7 @@ jobs:
           cd "$RUNNER_TEMP"
           metriplane atlas protocol export --out protocol-pypi
           test -s protocol-pypi/open_atlas_protocol_index.json
+          metriplane demo --out demo-pypi
+          test -s demo-pypi/cell_truth_report.html
+          test -s demo-pypi/evidence_bundles/INC-0001.zip
+          test -s demo-pypi/regression_tests/INC-0001.yaml

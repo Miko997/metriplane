@@ -86,6 +86,29 @@ def test_incident_close():
     assert inc.duration_s == 30.0
 
 
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: RuleAlert(
+            rule_id="r", severity="warning", ts=float("nan"), object_ids=[]
+        ),
+        lambda: IncidentRecord(
+            rule_id="r",
+            severity="warning",
+            opened_ts=2.0,
+            closed_ts=1.0,
+            duration_s=-1.0,
+            object_ids=[],
+            zones=[],
+            summary="invalid",
+        ),
+    ],
+)
+def test_event_models_reject_invalid_timing(factory):
+    with pytest.raises(ValueError):
+        factory()
+
+
 def test_incidents_json_roundtrip(tmp_path):
     inc1 = IncidentRecord(
         rule_id="r1", severity="warning", opened_ts=10.0,
@@ -161,9 +184,11 @@ def test_load_rules_inline(tmp_path):
 rules:
   - id: rule_a
     type: forbidden_zone
+    zone: main
     severity: warning
   - id: rule_b
     type: max_dwell
+    zone: main
     max_duration_s: 5.0
     severity: critical
 """
@@ -179,6 +204,7 @@ def test_validate_rules_ok(tmp_path):
 rules:
   - id: unique_a
     type: forbidden_zone
+    zone: main
   - id: unique_b
     type: speed_limit
     max_speed_mps: 1.0
@@ -193,8 +219,10 @@ def test_validate_rules_duplicate_id(tmp_path):
 rules:
   - id: same_id
     type: forbidden_zone
+    zone: main
   - id: same_id
     type: max_dwell
+    zone: main
     max_duration_s: 3.0
 """
     p = tmp_path / "rules.yaml"

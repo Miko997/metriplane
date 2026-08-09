@@ -17,13 +17,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           fetch-tags: true
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -148,17 +148,21 @@ jobs:
           python -c "import metriplane; print('ok')"
 
   macos-regressions:
-    name: macOS regressions (Python 3.13)
+    name: macOS full suite (Python ${{ matrix.python-version }})
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install test dependencies
         run: |
@@ -166,8 +170,28 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest
 
-      - name: Run macOS regression checks
+      - name: Run full camera-free suite
+        run: python -m pytest -q
+
+  linux-python313:
+    name: Linux full suite (Python 3.13)
+    runs-on: ubuntu-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
         run: |
-          python -m pytest -q \
-            tests/test_atlas_core.py::test_atlas_output_guard_classifies_generated_dirs \
-            tests/test_launcher.py::TestReadCmdline
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest playwright
+          python -m playwright install chromium --with-deps
+
+      - name: Run full suite
+        run: python -m pytest -q

@@ -15,6 +15,30 @@ from pathlib import Path
 log = logging.getLogger("metriplane.cli")
 
 
+def _main_help() -> int:
+    """Show the small, stable set of commands most users need first."""
+    print(
+        """Metriplane turns recorded workcell state into incident evidence and regression checks.
+
+Usage:
+  metriplane <command> [options]
+
+Primary commands:
+  demo       Run the bundled incident-to-regression example
+  doctor     Check the local installation and optional capabilities
+  atlas      Build, verify, and test Atlas evidence bundles
+  replay     Replay a recorded JSONL session deterministically
+  test       Run physical-observability comparisons
+  incidents  Inspect and verify Sentinel incident bundles
+  run        Start the configured single-camera or replay runtime
+
+Run `metriplane <command> --help` for command-specific options.
+Existing `metriplane --config ...` invocations remain supported as runtime shorthand.
+"""
+    )
+    return 0
+
+
 def _main_run(argv: list[str]) -> int:
     # Lazy imports to allow doctor command to run without dependencies
     from metriplane.config import load_config
@@ -58,9 +82,17 @@ def _main_run(argv: list[str]) -> int:
     if args.profile:
         cfg = replace(cfg, profile=str(args.profile))
 
-    log.info("loaded config: %s", cfg)
+    log.info(
+        "loaded config: path=%s profile=%s source_mode=%s camera_backend=%s "
+        "vision_backend=%s",
+        args.config,
+        cfg.profile or "(none)",
+        cfg.source_mode,
+        cfg.camera_backend,
+        cfg.vision_backend,
+    )
 
-    run_loop(
+    return run_loop(
         cfg,
         cli_faults=list(args.fault or []),
         config_path=Path(args.config),
@@ -68,7 +100,6 @@ def _main_run(argv: list[str]) -> int:
         run_id=str(args.run_id) if args.run_id else None,
         runs_dir=str(args.runs_dir) if args.runs_dir else None,
     )
-    return 0
 
 
 def _main_replay(argv: list[str]) -> int:
@@ -80,7 +111,12 @@ def _main_replay(argv: list[str]) -> int:
     p.add_argument("--clock", choices=["replay", "fixed"], default="replay")
     p.add_argument("--dt-ms", type=int, default=None, help="Required when --clock fixed")
     p.add_argument("--run-id", default=None)
-    p.add_argument("--speed", type=float, default=None)
+    p.add_argument(
+        "--speed",
+        type=float,
+        default=None,
+        help="Deprecated compatibility option; deterministic file output is unpaced",
+    )
     p.add_argument(
         "--output-file",
         default=None,
@@ -95,6 +131,13 @@ def _main_replay(argv: list[str]) -> int:
         # Spec rule you gave: output-file mode is the non-interactive path.
         # Keep it strict for now (we can add WS streaming later).
         p.error("--output-file is required for replay CLI in M9.1 (non-interactive determinism mode)")
+
+    if args.speed is not None:
+        print(
+            "WARNING: --speed is retained for compatibility but deterministic "
+            "file output is not wall-clock paced.",
+            file=sys.stderr,
+        )
 
     cfg = EngineConfig(
         input_path=Path(args.input),
@@ -394,6 +437,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Fast-path commands that need no logging setup
+    if argv in (["-h"], ["--help"]):
+        return _main_help()
+    if argv and argv[0] == "demo":
+        from metriplane.demo import main as demo_main
+        return demo_main(argv[1:])
     if argv and argv[0] == "doctor":
         return _main_doctor(argv[1:])
     if argv and argv[0] == "objects":
@@ -445,11 +493,12 @@ def main(argv: list[str] | None = None) -> int:
         return _main_status(argv[1:])
     if argv and argv[0] == "cleanup":
         return _main_cleanup(argv[1:])
-
     # Setup logging for run and replay commands
     from metriplane.logging import setup_logging
     setup_logging()
 
+    if argv and argv[0] == "run":
+        return _main_run(argv[1:])
     if argv and argv[0] == "replay":
         return _main_replay(argv[1:])
     return _main_run(argv)
