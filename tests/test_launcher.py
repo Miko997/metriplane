@@ -181,6 +181,25 @@ class TestLauncherDefaults:
 
         assert captured["env"]["METRIPLANE_COMPUTE_BACKEND"] == "gpu"
 
+    def test_dashboard_uses_no_dns_local_server(self, monkeypatch, tmp_path):
+        import metriplane.launcher as lm
+
+        captured = {}
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["cmd"] = cmd
+            return object()
+
+        monkeypatch.setattr(lm, "_launch", fake_launch)
+        lm._start_dashboard(
+            host="127.0.0.1",
+            port=8088,
+            log_file=tmp_path / "dashboard.log",
+            repo_root=Path.cwd(),
+        )
+
+        assert captured["cmd"][1:3] == ["-m", "metriplane._local_http"]
+
 class TestNoState:
     def setup_method(self):
         _clear_state()

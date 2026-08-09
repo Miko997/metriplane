@@ -17,12 +17,12 @@ import secrets
 import socket
 import sys
 import time
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from socketserver import TCPServer
+from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from typing import Dict, Any
 
+from metriplane._local_http import LocalHTTPServer
 
 from .allowlist import ALLOWLIST, get_command, validate_command_id
 from .executor import CommandExecutor, find_repo_root
@@ -55,16 +55,6 @@ class RequestBodyError(ValueError):
     def __init__(self, status: int, message: str) -> None:
         super().__init__(message)
         self.status = int(status)
-
-
-class LocalRunnerHTTPServer(ThreadingHTTPServer):
-    """Loopback HTTP server that does not perform a reverse-DNS lookup."""
-
-    def server_bind(self) -> None:
-        TCPServer.server_bind(self)
-        host, port = self.server_address[:2]
-        self.server_name = str(host)
-        self.server_port = int(port)
 
 
 def _address_is_loopback(value: str) -> bool:
@@ -442,7 +432,7 @@ def start_runner(host="127.0.0.1", port=9000, *, allowed_origins: list[str] | No
         trusted_origins.update(origin.rstrip("/") for origin in allowed_origins if origin)
 
     try:
-        server = LocalRunnerHTTPServer((host, port), RunnerHTTPHandler)
+        server = LocalHTTPServer((host, port), RunnerHTTPHandler)
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:
             print(

@@ -19,7 +19,7 @@ from metriplane.runner.executor import CommandExecutor
 def runner_server():
     original_executor = service.executor
     service.executor = CommandExecutor()
-    server = service.LocalRunnerHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
+    server = service.LocalHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -166,7 +166,7 @@ def test_local_runner_bind_does_not_require_reverse_dns(monkeypatch):
         raise AssertionError("reverse DNS must not run for a loopback server")
 
     monkeypatch.setattr(service.socket, "getfqdn", fail_lookup)
-    server = service.LocalRunnerHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
+    server = service.LocalHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
     try:
         assert server.server_name == "127.0.0.1"
         assert server.server_port > 0

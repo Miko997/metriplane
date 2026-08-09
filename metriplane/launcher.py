@@ -345,7 +345,16 @@ def _start_runner(
 
 
 def _start_dashboard(*, host: str, port: int, log_file: Path, repo_root: Path) -> subprocess.Popen:
-    cmd = [sys.executable, "-m", "http.server", str(port), "--bind", host, "--directory", str(repo_root)]
+    cmd = [
+        sys.executable,
+        "-m",
+        "metriplane._local_http",
+        str(port),
+        "--bind",
+        host,
+        "--directory",
+        str(repo_root),
+    ]
     return _launch(cmd, log_file, repo_root)
 
 
