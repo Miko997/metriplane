@@ -9,7 +9,7 @@ SPDX-License-Identifier: MIT
   <name>metriplane_ros</name>
   <version>0.2.0</version>
   <description>ROS 2 bridge that republishes Metriplane frames, alerts, and incidents as std_msgs/String JSON topics.</description>
-  <maintainer email="Miko.parkkinen99@gmail.com">Miko Parkkinen</maintainer>
+  <maintainer email="research@metriplane.com">Miko Parkkinen</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_python</buildtool_depend>

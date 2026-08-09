@@ -38,6 +38,12 @@ The example is camera-free, GPU-free, Docker-free, ROS-free, and offline after
 installation. It writes an HTML report and requests that the browser open it.
 Headless users can omit `--open`.
 
+This is a real replay of the package's inspectable recorded JSONL state and
+process rules: Metriplane runs the normal incident engine, writes a fresh
+report and evidence bundle, verifies that bundle, and reruns the generated
+regression check. Copy the exact starter inputs with
+`metriplane demo --export-inputs example-inputs`.
+
 ```text
 Metriplane bundled demo
 
@@ -101,6 +107,7 @@ Use Metriplane to:
 
 - Official site: https://www.metriplane.com/
 - Python package: https://pypi.org/project/metriplane/
+- v0.3.0 software release: https://github.com/Miko997/metriplane/releases/tag/v0.3.0
 - Product roadmap: [ROADMAP.md](ROADMAP.md)
 - 3-minute v0.2.0 demo: https://www.youtube.com/watch?v=7U5nbBbGGbw
 - v0.2.0 release: https://github.com/Miko997/metriplane/releases/tag/v0.2.0

@@ -130,7 +130,7 @@ def test_support_asks_for_reproducible_non_sensitive_information() -> None:
         "metriplane doctor",
         "metriplane demo",
         "smallest synthetic input",
-        "Native Windows is not supported",
+        "broader native-Windows workflows remain",
         "v0.2.0",
         "v0.1.3",
     ):

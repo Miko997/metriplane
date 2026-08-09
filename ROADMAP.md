@@ -92,7 +92,8 @@ Completion gate:
 - WSL2 Ubuntu 24.04 has a bounded owner-run validation for the Python 3.12.3
   installed-wheel camera-free and headless path. Automatic browser opening is
   not claimed because the validation environment had no default HTML handler.
-  Native Windows remains unsupported and unadvertised.
+  One owner-reported native-Windows Command Prompt demo completion is recorded,
+  but it does not establish broader platform support.
 
 ## Phase 2: discoverable command line and first screen (implemented in v0.3.0)
 
@@ -143,8 +144,8 @@ Goal: make expected compatibility and contribution steps explicit.
 - Keep the WSL2 claim bounded to the recorded Ubuntu 24.04/Python 3.12.3
   installed-wheel camera-free and headless run; archived v0.2.0 WSL2
   reproduction instructions do not establish broader v0.3.0 support.
-- Keep native Windows unsupported and unadvertised until it is explicitly
-  implemented and validated.
+- Keep native Windows limited to the owner-reported bundled-demo observation
+  until it receives an explicit environment record and broader validation.
 - Add issue forms, a pull-request template, `SECURITY.md`, a Code of Conduct, support
   guidance, and an actionable contribution guide.
 - Publish bounded starter issues only when their acceptance tests and scope are clear.

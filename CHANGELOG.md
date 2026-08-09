@@ -9,6 +9,15 @@ All notable changes to Metriplane are documented here.
 
 ---
 
+## [Unreleased]
+
+### Security and integrity
+
+- Split production PyPI promotion from the tag-triggered TestPyPI workflow.
+  Production now requires a separate owner-only manual dispatch naming the
+  successful tag run, exact version, and explicit confirmation phrase; the
+  protected environment remains an additional safeguard.
+
 ## [0.3.0] — 2026-08-09 — Usability and adoption
 
 ### Added
@@ -48,8 +57,9 @@ All notable changes to Metriplane are documented here.
 - Defined support accurately: Linux/Ubuntu receives the full suite; macOS receives
   the bundled camera-free demo gates; WSL2 Ubuntu 24.04 has a bounded owner-run
   Python 3.12.3 installed-wheel and headless demo check that completed in seven
-  seconds, without a claim for automatic browser opening; native Windows remains
-  unsupported and unadvertised.
+  seconds, without a claim for automatic browser opening. A later
+  owner-reported native-Windows Command Prompt demo completion is recorded only
+  as a bounded observation, not a broader support claim.
 
 ### Fixed
 

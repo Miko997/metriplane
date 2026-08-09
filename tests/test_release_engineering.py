@@ -23,7 +23,7 @@ def _workflow() -> tuple[dict[str, object], str]:
     return yaml.safe_load(text), text
 
 
-def test_publication_chain_builds_once_and_protects_production() -> None:
+def test_tag_publication_stops_after_verified_testpypi() -> None:
     workflow, text = _workflow()
     jobs = workflow["jobs"]
 
@@ -32,17 +32,85 @@ def test_publication_chain_builds_once_and_protects_production() -> None:
     assert jobs["build"]["needs"] == ["provenance", "gates"]
     assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
-    assert jobs["publish-pypi"]["needs"] == ["provenance", "verify-testpypi"]
-    assert jobs["verify-pypi"]["needs"] == ["provenance", "publish-pypi"]
-    assert jobs["publish-pypi"]["environment"]["name"] == "pypi"
+    for name in (
+        "provenance",
+        "gates",
+        "build",
+        "publish-testpypi",
+        "verify-testpypi",
+    ):
+        assert "github.event_name == 'push'" in jobs[name]["if"]
 
     assert text.count("python -m build --outdir release-artifacts/dist") == 1
     assert "python -m twine check --strict release-artifacts/dist/*" in text
     assert "Install and smoke-test the source distribution independently" in text
     assert text.count("packages-dir: release-artifacts/dist/") == 2
-    assert text.count("find . -maxdepth 1 -type f -printf") == 2
     assert "retention-days: 90" in text
     assert "skip-existing" not in text
+
+
+def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
+    workflow, text = _workflow()
+    jobs = workflow["jobs"]
+    trigger = workflow.get("on", workflow.get(True))
+
+    assert set(trigger) == {"push", "workflow_dispatch"}
+    inputs = trigger["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {"release_run_id", "version", "confirmation"}
+    assert all(item["required"] is True for item in inputs.values())
+
+    request = jobs["validate-production-request"]
+    preflight = jobs["verify-production-artifacts"]
+    publish = jobs["publish-pypi"]
+    verify = jobs["verify-pypi"]
+    for job in (request, preflight, publish, verify):
+        assert "github.event_name == 'workflow_dispatch'" in job["if"]
+    assert preflight["needs"] == "validate-production-request"
+    assert "environment" not in preflight
+    assert publish["needs"] == [
+        "validate-production-request",
+        "verify-production-artifacts",
+    ]
+    assert verify["needs"] == ["validate-production-request", "publish-pypi"]
+    assert publish["environment"]["name"] == "pypi"
+    assert publish["permissions"]["id-token"] == "write"
+
+    required = (
+        'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
+        'test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
+        "publish metriplane ${RELEASE_VERSION} to production",
+        "/actions/runs/${RELEASE_RUN_ID}",
+        "/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100",
+        '"event": "push"',
+        '"path": ".github/workflows/publish-pypi.yml"',
+        '"conclusion": "success"',
+        "Verify TestPyPI artifact identity and installation",
+        '"name") == "python-package-distributions"',
+        "run-id: ${{ inputs.release_run_id }}",
+        "github-token: ${{ github.token }}",
+        "--repository https://test.pypi.org",
+        "--repository https://pypi.org",
+    )
+    assert all(fragment in text for fragment in required)
+
+
+def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
+    workflow, _ = _workflow()
+    jobs = workflow["jobs"]
+
+    for name in (
+        "verify-production-artifacts",
+        "publish-pypi",
+        "verify-pypi",
+    ):
+        uses = [step.get("uses", "") for step in jobs[name]["steps"]]
+        checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
+        download = next(
+            i for i, value in enumerate(uses) if "actions/download-artifact@" in value
+        )
+        assert checkout < download, name
 
 
 def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
@@ -58,11 +126,10 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
         "inspect-sdist",
         "SHA256SUMS",
         "--repository https://test.pypi.org",
-        "--repository https://pypi.org",
     )
     assert all(fragment in text for fragment in required)
-    assert text.count("verify-registry") == 2
-    assert text.count("sha256sum --check ../SHA256SUMS") == 2
+    assert text.count("verify-registry") == 4
+    assert text.count("sha256sum --check ../SHA256SUMS") == 1
 
 
 def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
@@ -73,7 +140,8 @@ def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
     assert "<version>" in text
     assert "one wheel and one source distribution" in text
     assert "source distribution independently" in text
-    assert "Do not approve the `pypi` environment" in text
+    assert "Do not start the production workflow dispatch" in text
+    assert "publish metriplane <version> to production" in text
     assert "Do not merge the final candidate" in text
     assert 'test -z "$(git status --porcelain)"' in text
     assert "Zenodo's GitHub\nintegration will **not** automatically archive v0.3.0" in text
@@ -86,18 +154,18 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     launch = (RELEASES / "v0.3.0-launch-materials.md").read_text(encoding="utf-8")
 
     assert "DRAFT — UNPUBLISHED" not in migration
-    assert "DRAFT — UNPUBLISHED" in notes
-    assert "DRAFT — UNPUBLISHED" in launch
+    assert "DRAFT — UNPUBLISHED" not in notes
+    assert "DRAFT — UNPUBLISHED" not in launch
     assert "v0.3.0 is a usability and adoption release" in migration
     assert "Install and run the exact release with" in migration
     assert "release candidate" not in migration.lower()
-    assert "Release commit: `<fill" in notes
-    assert "Wheel SHA-256: `<fill" in notes
+    assert "Release commit: `e8ee6c63deaee47bd450c5d6c7523d5bd699852a`" in notes
+    assert "4be2c13a5c4118c7e34f45b5b73939fce13e876ea9256bdc0b634c365482e8c9" in notes
+    assert "8df70c5253714890aaf97713a295ab66cca96fa0268104344a5b858b6053cb51" in notes
     assert "Release date: `2026-08-09`" in notes
     assert "v0.3.0 DOI: none" in notes
-    assert "Final main commit: `<full SHA" in launch
-    assert "Zenodo automatic GitHub archiving is confirmed disabled" in launch
-    assert "Use “is available” only after a clean production-PyPI installation" in launch
+    assert "Final main commit: `e8ee6c63deaee47bd450c5d6c7523d5bd699852a`" in launch
+    assert "actions/runs/31322806657" in launch
 
     required_migration_topics = (
         "package and runs without a camera",
@@ -105,7 +173,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
         "do not\nsilently replace",
         "validation is stricter",
         "fail-closed",
-        "Native Windows is not supported",
+        "bundled camera-free demo completed",
         "WSL2 Ubuntu 24.04 has a bounded owner-run",
         "Incident Report",
     )
@@ -141,7 +209,7 @@ def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
         "evidence bundle verification: passed",
         "generated regression check: passed",
         "Automatic browser opening was **not** validated",
-        "Native Windows remains unsupported and unadvertised",
+        "bundled demo completed from Windows Command Prompt",
     ):
         assert expected in validation
 
@@ -196,7 +264,8 @@ def test_changelog_is_dated_and_complete() -> None:
     text = CHANGELOG.read_text(encoding="utf-8")
 
     assert "## [0.3.0] — 2026-08-09 — Usability and adoption" in text
-    assert "## [Unreleased]" not in text
+    assert "## [Unreleased]" in text
+    assert "owner-only manual dispatch" in text
     assert "release date TBD" not in text
     assert "RELEASE CANDIDATE — UNPUBLISHED" not in text
     for topic in (

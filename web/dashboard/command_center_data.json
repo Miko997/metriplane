@@ -5,7 +5,7 @@
     "alerts_count": 5,
     "open_incidents_count": 0,
     "incidents_count": 5,
-    "latest_run_dir": "/home/miko/metriplane-runs/metriplane_demo",
+    "latest_run_dir": "/home/user/metriplane-runs/metriplane_demo",
     "health": {
       "overall": "OK"
     }

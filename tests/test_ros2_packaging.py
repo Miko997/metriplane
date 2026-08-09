@@ -58,6 +58,14 @@ def test_package_xml_declares_ament_python_and_runtime_dependencies():
     assert build_type == "ament_python"
 
 
+def test_ros_package_uses_the_project_contact_address():
+    kwargs = _setup_call_keywords()
+    package = ET.parse(ROS_PACKAGE / "package.xml").getroot()
+
+    assert ast.literal_eval(kwargs["maintainer_email"]) == "research@metriplane.com"
+    assert package.find("maintainer").attrib["email"] == "research@metriplane.com"
+
+
 def test_launch_file_uses_metriplane_bridge_executable_and_expected_parameters():
     text = (ROS_PACKAGE / "launch" / "bridge.launch.py").read_text(encoding="utf-8")
 

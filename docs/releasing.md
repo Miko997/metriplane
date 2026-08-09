@@ -7,8 +7,10 @@ SPDX-License-Identifier: MIT
 
 Metriplane uses PyPI Trusted Publishing. A release tag starts a workflow that
 builds one wheel and one source distribution, records their SHA-256 hashes,
-publishes those exact files to TestPyPI, verifies them, pauses for protected
-production approval, and then publishes the same files to PyPI.
+publishes those exact files to TestPyPI, and verifies them. Production
+publication is a separate owner-only manual dispatch that names the successful
+tag workflow run, version, and an exact confirmation phrase. The `pypi`
+environment is an additional protection layer, not the only approval control.
 
 PyPI files are immutable. Never tag a candidate until its pull request is
 merged, every required check is green, and the owner has approved the release
@@ -40,9 +42,13 @@ but is explicitly excluded from the generated documentation site.
 2. Add an owner-approved required reviewer to `pypi`. Do not require approval
    for `testpypi`, which is the automated staging registry. If the only
    maintainer is also the reviewer, configure the environment so that the
-   authorized owner can approve it without deadlocking the job.
-3. Restrict the `pypi` environment to release tags. Protect `v*` tags against
-   update and deletion with a repository ruleset.
+   authorized owner can approve it without deadlocking the job. The workflow's
+   separate owner-only manual dispatch remains mandatory even if environment
+   protection is absent or misconfigured.
+3. Restrict `testpypi` to release tags and restrict `pypi` to protected
+   `main`. The manual production dispatch rejects any other ref or a stale main
+   commit. Protect `v*` tags against update and deletion with a repository
+   ruleset.
 4. Configure Trusted Publishers for the `metriplane` project in both
    [TestPyPI](https://test.pypi.org/manage/account/publishing/) and
    [PyPI](https://pypi.org/manage/account/publishing/):
@@ -56,7 +62,7 @@ but is explicitly excluded from the generated documentation site.
 
 5. Require two-factor authentication on both registry accounts.
 6. Confirm that GitHub Actions has read access to repository contents and that
-   only the two publishing jobs receive `id-token: write`.
+   only the TestPyPI and production publishing jobs receive `id-token: write`.
 
 No long-lived registry token belongs in GitHub secrets.
 
@@ -179,7 +185,7 @@ The publication workflow rejects:
 - files whose SHA-256 hashes change between build, upload, or registry
   publication.
 
-## Staged publication and protected production approval
+## Staged publication and explicit production promotion
 
 The workflow performs this sequence:
 
@@ -194,15 +200,25 @@ The workflow performs this sequence:
 9. publish those files to TestPyPI;
 10. compare TestPyPI's file hashes with the build manifest and install the
     staged package;
-11. stop at the protected `pypi` environment;
-12. after owner approval, publish the same downloaded files to PyPI;
-13. compare production PyPI's hashes with the same manifest and verify a clean
+11. stop after verified TestPyPI publication;
+12. from the latest `main`, have the owner manually run **Publish Python
+    distributions** with the successful tag workflow run ID, exact version,
+    and exact confirmation
+    `publish metriplane <version> to production`;
+13. verify that the named source run was a successful tag run for the same
+    annotated tag and commit and that it has one unexpired immutable artifact;
+14. re-download that exact artifact set and compare it with TestPyPI before the
+    `pypi` environment is entered;
+15. publish the verified files to PyPI;
+16. compare production PyPI's hashes with the same manifest and verify a clean
     production installation.
 
-Do not approve the `pypi` environment until the TestPyPI verification job is
-green and its version, doctor, demo, bundle-verification, and regression-check
-results have been reviewed. A failed TestPyPI stage means stop, diagnose, and
-prepare a new version if any immutable file was already accepted by a registry.
+Do not start the production workflow dispatch until the TestPyPI verification
+job is green and its version, doctor, demo, bundle-verification, and
+regression-check results have been reviewed. If the environment also pauses,
+approve it only after confirming the dispatch inputs. A failed TestPyPI stage
+means stop, diagnose, and prepare a new version if any immutable file was
+already accepted by a registry.
 
 ## Verify production and finish the release
 
@@ -252,7 +268,8 @@ This section is a preparation checklist, not evidence that v0.3.0 is published.
 - [x] WSL2 wording is bounded to the recorded Ubuntu 24.04/Python 3.12.3
       installed-wheel camera-free and headless owner run; automatic browser
       opening is not claimed.
-- [ ] Native Windows is not advertised.
+- [x] Native Windows wording is limited to one owner-reported bundled-demo
+      completion; broader platform support is not advertised.
 - [ ] Wheel and source distribution pass independent clean installations.
 - [ ] The exact artifact SHA-256 manifest is recorded from the workflow run.
 - [ ] Frozen v0.2.0 evidence and research-integrity checks pass.

@@ -21,9 +21,9 @@ vulnerability or disclose sensitive recordings in a public issue; follow
 Use Python 3.12 or 3.13. The complete suite is tested on Ubuntu with both Python
 versions. The camera-free suite and installed-wheel demo are tested on macOS.
 WSL2 Ubuntu 24.04 has a bounded manual installed-wheel camera-free/headless
-validation, but it is not the complete-suite development path. Native Windows
-is not supported. A camera and GPU are optional for the bundled demo and most
-tests.
+validation, but it is not the complete-suite development path. One reported
+native-Windows demo run does not make Windows a supported development
+environment. A camera and GPU are optional for the bundled demo and most tests.
 
 From a clean clone on Linux or macOS:
 

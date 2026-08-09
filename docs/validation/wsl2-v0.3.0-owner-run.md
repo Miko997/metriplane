@@ -69,4 +69,6 @@ camera-free and headless workflow. It does not establish:
 - live-camera, GPU, ROS 2, Isaac Sim, Docker, or hardware behavior; or
 - native Windows support.
 
-Native Windows remains unsupported and unadvertised.
+This WSL2 run did not validate native Windows. The owner later reported that the
+bundled demo completed from Windows Command Prompt, but no complete environment
+record or broader platform validation was captured.
