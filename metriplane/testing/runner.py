@@ -43,7 +43,6 @@ def _evaluate(bundle: Path) -> _Evaluation:
     frame_count = 0
     for frame in iter_frames(session):
         frame_count += 1
-        observed = frame.fused if frame.fused is not None else frame.objects
         t0 = time.perf_counter()
         alerts.extend(engine.process_frame(frame))
         per_frame_ms.append((time.perf_counter() - t0) * 1000.0)
@@ -95,8 +94,10 @@ class PhysicalRegressionRunner:
     def _run_bundle(self, bundle: Path) -> PhysicalRegressionResult:
         from metriplane.sentinel.bundles import (
             UNSIGNED_DERIVED_SIDECARS,
-            verify_checksums as verify_chk,
+            validate_bundle_evidence,
+            verify_checksums,
         )
+        from metriplane.sentinel.events import read_incidents_json
 
         checks: list[dict] = []
 
@@ -126,8 +127,23 @@ class PhysicalRegressionRunner:
                 ],
             )
 
+        evidence_errors = validate_bundle_evidence(bundle)
+        checks.append(
+            {
+                "check": "bundle.input",
+                "pass": not evidence_errors,
+                "detail": "ok" if not evidence_errors else f"{evidence_errors}",
+            }
+        )
+        if evidence_errors:
+            return PhysicalRegressionResult(
+                bundle_path=str(bundle), **{"pass": False}, checks=checks
+            )
+
         if self.verify_checksums:
-            errors = verify_chk(bundle, exclude=set(UNSIGNED_DERIVED_SIDECARS))
+            errors = verify_checksums(
+                bundle, exclude=set(UNSIGNED_DERIVED_SIDECARS)
+            )
             checks.append({"check": "checksums", "pass": not errors,
                            "detail": "ok" if not errors else f"{errors}"})
             if errors:
@@ -135,6 +151,25 @@ class PhysicalRegressionRunner:
                     bundle_path=str(bundle), **{"pass": False}, checks=checks)
 
         first = _evaluate(bundle)
+
+        stored_incident = read_incidents_json(bundle / "incident.json")[0]
+        reference_match = any(
+            incident.rule_id == stored_incident.rule_id
+            and incident.run_id == stored_incident.run_id
+            and list(incident.alert_ids) == list(stored_incident.alert_ids)
+            for incident in first.incidents
+        )
+        checks.append(
+            {
+                "check": "bundle.replayed_references",
+                "pass": reference_match,
+                "detail": (
+                    "run_id and alert IDs reproduced"
+                    if reference_match
+                    else "stored run_id or alert IDs did not reproduce"
+                ),
+            }
+        )
 
         if expected.replay.deterministic_hash_match:
             second = _evaluate(bundle)

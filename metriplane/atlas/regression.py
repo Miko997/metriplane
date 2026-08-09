@@ -99,6 +99,11 @@ def _tolerance(spec: RegressionSpec, name: str, errors: list[str]) -> float:
 def run_regression(spec_path: str | Path) -> dict:
     spec_file = Path(spec_path).resolve()
     spec = RegressionSpec.model_validate(yaml.safe_load(spec_file.read_text()) or {})
+    if not spec.expected_events and not spec.expected_incidents:
+        return _result(
+            spec,
+            ["regression must require at least one expected event or incident"],
+        )
     bundle = _resolve_source_bundle(spec_file, spec.source_bundle)
     verify = verify_bundle(bundle)
     errors: list[str] = []

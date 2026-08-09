@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from metriplane.sentinel.bundles import (
+    REQUIRED_BUNDLE_FILES,
+    UNSIGNED_DERIVED_SIDECARS,
     create_bundle,
     verify_bundle,
     verify_checksums,
@@ -99,7 +101,10 @@ def test_bundle_verifies_ok(tmp_path, scenario):
 
 
 def _resign_sentinel_bundle(bundle: Path) -> None:
-    write_checksums(bundle, exclude={"CHECKSUMS.sha256"})
+    write_checksums(
+        bundle,
+        exclude={"CHECKSUMS.sha256", *UNSIGNED_DERIVED_SIDECARS},
+    )
 
 
 def test_bundle_verifier_requires_exactly_one_expected_incident(
@@ -136,7 +141,7 @@ def test_bundle_verifier_requires_exactly_one_expected_incident(
         ("opened_ts", 1.25, "opened_ts"),
         ("closed_ts", 3.25, "closed_ts"),
         ("duration_s", 99.0, "duration_s"),
-        ("alert_ids", [], "alert_count"),
+        ("alert_ids", [], "alert IDs"),
     ],
 )
 def test_bundle_verifier_reports_incident_semantic_mismatches(
@@ -164,10 +169,111 @@ def test_bundle_verifier_reports_incident_semantic_mismatches(
     ok, messages = verify_bundle(out)
 
     assert ok is False
-    assert any(
-        f"FAIL incident mismatch: {reported_field} expected" in message
-        for message in messages
+    if field == "alert_ids":
+        assert any(reported_field in message for message in messages)
+    else:
+        assert any(
+            f"FAIL incident mismatch: {reported_field} expected" in message
+            for message in messages
+        )
+
+
+@pytest.mark.parametrize("required_file", REQUIRED_BUNDLE_FILES)
+def test_bundle_verifier_requires_established_evidence_inventory(
+    tmp_path: Path,
+    scenario,
+    required_file: str,
+) -> None:
+    out = tmp_path / "bundle"
+    create_bundle(
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
     )
+    (out / required_file).unlink()
+    if required_file != "CHECKSUMS.sha256":
+        _resign_sentinel_bundle(out)
+
+    ok, messages = verify_bundle(out)
+
+    assert ok is False
+    assert any(required_file in message for message in messages)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("run_id", "wrong-run", "run_id"),
+        ("alert_ids", ["fake-a", "fake-b", "fake-c"], "alert IDs"),
+    ],
+)
+def test_bundle_verifier_cross_checks_stored_incident_references(
+    tmp_path: Path,
+    scenario,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    out = tmp_path / "bundle"
+    create_bundle(
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
+    )
+    incident_path = out / "incident.json"
+    expected = json.loads(incident_path.read_text(encoding="utf-8"))
+    expected[0][field] = value
+    incident_path.write_text(json.dumps(expected), encoding="utf-8")
+    _resign_sentinel_bundle(out)
+
+    ok, messages = verify_bundle(out)
+
+    assert ok is False
+    assert any(message in item for item in messages)
+
+
+def test_bundle_verifier_requires_alert_ids_to_reproduce(
+    tmp_path: Path,
+    scenario,
+) -> None:
+    out = tmp_path / "bundle"
+    create_bundle(
+        incident=scenario["incident"],
+        alerts=scenario["alerts"],
+        out_dir=out,
+        session_path=scenario["session"],
+        objects_path=CONFIG_OBJECTS,
+        rules_path=CONFIG_RULES,
+    )
+    fake_ids = ["fake-a", "fake-b", "fake-c"]
+    incident_path = out / "incident.json"
+    incidents = json.loads(incident_path.read_text(encoding="utf-8"))
+    incidents[0]["alert_ids"] = fake_ids
+    incident_path.write_text(json.dumps(incidents), encoding="utf-8")
+    alerts_path = out / "alerts.jsonl"
+    alerts = [
+        json.loads(line)
+        for line in alerts_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    for alert, fake_id in zip(alerts, fake_ids, strict=True):
+        alert["alert_id"] = fake_id
+    alerts_path.write_text(
+        "\n".join(json.dumps(alert) for alert in alerts) + "\n",
+        encoding="utf-8",
+    )
+    _resign_sentinel_bundle(out)
+
+    ok, messages = verify_bundle(out)
+
+    assert ok is False
+    assert any("alert_ids expected" in message for message in messages)
 
 
 def test_checked_in_bundle_with_editable_regression_oracle_verifies() -> None:

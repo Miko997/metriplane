@@ -9,6 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from metriplane.sentinel.bundles import (
+    UNSIGNED_DERIVED_SIDECARS,
+    write_checksums,
+)
 from metriplane.testing.cli import main_test
 from metriplane.testing.runner import PhysicalRegressionRunner
 
@@ -20,6 +24,13 @@ def bundle_copy(tmp_path):
     dst = tmp_path / "INC-0001"
     shutil.copytree(BUNDLE, dst)
     return dst
+
+
+def _resign_bundle(bundle: Path) -> None:
+    write_checksums(
+        bundle,
+        exclude={"CHECKSUMS.sha256", *UNSIGNED_DERIVED_SIDECARS},
+    )
 
 
 def test_demo_bundle_passes(bundle_copy):
@@ -115,3 +126,71 @@ def test_empty_semantic_oracle_cannot_pass(bundle_copy):
 
     assert result.pass_ is False
     assert result.checks[0]["check"] == "expected.semantic_oracle"
+
+
+def test_missing_required_evidence_cannot_pass(bundle_copy: Path) -> None:
+    (bundle_copy / "report.md").unlink()
+    _resign_bundle(bundle_copy)
+
+    result = PhysicalRegressionRunner().run_bundle(bundle_copy)
+
+    assert result.pass_ is False
+    assert result.checks[0]["check"] == "bundle.input"
+    assert "report.md" in result.checks[0]["detail"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("run_id", "wrong-run", "run_id"),
+        ("alert_ids", ["fake-a", "fake-b", "fake-c"], "alert IDs"),
+    ],
+)
+def test_stored_incident_reference_mismatch_cannot_pass(
+    bundle_copy: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    incident_path = bundle_copy / "incident.json"
+    incidents = json.loads(incident_path.read_text(encoding="utf-8"))
+    incidents[0][field] = value
+    incident_path.write_text(json.dumps(incidents), encoding="utf-8")
+    _resign_bundle(bundle_copy)
+
+    result = PhysicalRegressionRunner().run_bundle(bundle_copy)
+
+    assert result.pass_ is False
+    assert result.checks[0]["check"] == "bundle.input"
+    assert message in result.checks[0]["detail"]
+
+
+def test_consistently_rewritten_alert_ids_do_not_reproduce(
+    bundle_copy: Path,
+) -> None:
+    fake_ids = ["fake-a", "fake-b", "fake-c"]
+    incident_path = bundle_copy / "incident.json"
+    incidents = json.loads(incident_path.read_text(encoding="utf-8"))
+    incidents[0]["alert_ids"] = fake_ids
+    incident_path.write_text(json.dumps(incidents), encoding="utf-8")
+    alerts_path = bundle_copy / "alerts.jsonl"
+    alerts = [
+        json.loads(line)
+        for line in alerts_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    for alert, fake_id in zip(alerts, fake_ids, strict=True):
+        alert["alert_id"] = fake_id
+    alerts_path.write_text(
+        "\n".join(json.dumps(alert) for alert in alerts) + "\n",
+        encoding="utf-8",
+    )
+    _resign_bundle(bundle_copy)
+
+    result = PhysicalRegressionRunner().run_bundle(bundle_copy)
+
+    assert result.pass_ is False
+    assert any(
+        check["check"] == "bundle.replayed_references" and not check["pass"]
+        for check in result.checks
+    )

@@ -274,6 +274,41 @@ def test_atlas_verifier_requires_exact_incident_timeline_event_set(
     )
 
 
+def test_atlas_verifier_rejects_empty_incident_evidence(atlas_run: Path) -> None:
+    bundle = _atlas_bundle_dir(atlas_run)
+    incident_path = bundle / "incident.json"
+    incident = json.loads(incident_path.read_text(encoding="utf-8"))
+    incident["event_ids"] = []
+    incident_path.write_text(json.dumps(incident), encoding="utf-8")
+    (bundle / "event_timeline.jsonl").write_text("", encoding="utf-8")
+    _resign_atlas_bundle(bundle)
+
+    result = verify_bundle(bundle)
+
+    assert result["pass"] is False
+    assert any("at least one timeline event" in error for error in result["errors"])
+
+
+def test_atlas_verifier_rejects_events_outside_incident_window(
+    atlas_run: Path,
+) -> None:
+    bundle = _atlas_bundle_dir(atlas_run)
+    incident = json.loads((bundle / "incident.json").read_text(encoding="utf-8"))
+    timeline = bundle / "event_timeline.jsonl"
+    rows = [json.loads(line) for line in timeline.read_text().splitlines() if line]
+    rows[0]["ts"] = incident["end_ts"] + 1.0
+    timeline.write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+    _resign_atlas_bundle(bundle)
+
+    result = verify_bundle(bundle)
+
+    assert result["pass"] is False
+    assert any("outside incident window" in error for error in result["errors"])
+
+
 def test_atlas_zip_preflight_rejects_duplicate_and_oversized_members(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -800,6 +835,19 @@ def test_atlas_regression_enforces_time_and_duration_tolerances(
     result = run_regression(spec)
 
     assert result["pass"] is False
+
+
+def test_atlas_regression_rejects_empty_semantic_oracle(atlas_run: Path) -> None:
+    spec = atlas_run / "regression_tests" / "INC-0001.yaml"
+    data = yaml.safe_load(spec.read_text(encoding="utf-8"))
+    data["expected_events"] = []
+    data["expected_incidents"] = []
+    spec.write_text(yaml.safe_dump(data, sort_keys=True), encoding="utf-8")
+
+    result = run_regression(spec)
+
+    assert result["pass"] is False
+    assert any("at least one expected" in error for error in result["errors"])
 
 
 @pytest.mark.parametrize(

@@ -540,6 +540,10 @@ def verify_bundle(bundle_path: str | Path) -> dict:
 
                 incident_event_ids = set(incident.event_ids)
                 timeline_event_ids = set(timeline_ids)
+                if not incident.event_ids:
+                    errors.append("incident must reference at least one timeline event")
+                if not events:
+                    errors.append("event timeline must contain at least one event")
                 if incident_event_ids != timeline_event_ids:
                     missing = sorted(incident_event_ids - timeline_event_ids)
                     extra = sorted(timeline_event_ids - incident_event_ids)
@@ -547,6 +551,13 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                         "incident event IDs do not exactly match timeline: "
                         f"missing={missing}, extra={extra}"
                     )
+                for event in events:
+                    if not incident.start_ts <= event.ts <= incident.end_ts:
+                        errors.append(
+                            "timeline event falls outside incident window: "
+                            f"{event.event_id} at {event.ts} not in "
+                            f"[{incident.start_ts}, {incident.end_ts}]"
+                        )
     except Exception as exc:
         message = str(exc).strip() or type(exc).__name__
         errors.append(message)
