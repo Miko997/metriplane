@@ -18,7 +18,7 @@ setup(
     install_requires=["setuptools", "websockets"],
     zip_safe=True,
     maintainer="Miko Parkkinen",
-    maintainer_email="Miko.parkkinen99@gmail.com",
+    maintainer_email="research@metriplane.com",
     description="ROS 2 bridge for Metriplane frames/alerts/incidents.",
     license="MIT",
     entry_points={

@@ -21,7 +21,7 @@ report, verify its bundle, and rerun its generated regression check.
 | Raw-video incident import | Not implemented for v0.3.0 | This workflow starts after object-state estimation and zone classification. |
 | USD / Isaac Sim replay export | Experimental, manual external validation | Repository tools exist, but Isaac Sim is not required and end-to-end rendering is not a v0.3.0 gate. |
 | WSL2 Ubuntu 24.04 | Manually validated, camera-free path | An owner-run Python 3.12.3 installed-wheel check completed in 7 seconds and passed doctor, the six-event/one-incident demo, bundle verification, regression, and a second headless demo. Automatic browser opening is not claimed because that environment had no default HTML handler; omit `--open` or open the printed report path manually. This is not full-suite coverage. |
-| Native Windows | Unsupported | It is neither tested nor advertised. |
+| Native Windows | Demo-only owner report | The owner reports that the bundled camera-free demo completed from Command Prompt. No complete environment record, full suite, or wheel matrix was captured, so broader support is not advertised. |
 
 The authoritative platform matrix is
 [Supported Environments](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md).

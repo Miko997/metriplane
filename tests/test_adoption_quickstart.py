@@ -68,6 +68,23 @@ def test_readme_explains_the_beginner_input_output_and_terms() -> None:
     assert "does not prove that the original physical measurements were accurate" in normalized
 
 
+def test_readme_explains_that_the_demo_runs_the_real_pipeline() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(readme.split())
+
+    for phrase in (
+        "real replay",
+        "inspectable recorded JSONL state",
+        "runs the normal incident engine",
+        "writes a fresh report and evidence bundle",
+        "verifies that bundle",
+        "reruns the generated regression check",
+        "metriplane demo --export-inputs example-inputs",
+        "releases/tag/v0.3.0",
+    ):
+        assert phrase in normalized
+
+
 def test_active_readme_uses_current_product_wordmark() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 

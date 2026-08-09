@@ -7,6 +7,20 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: "Successful tag-publication workflow run ID"
+        required: true
+        type: string
+      version:
+        description: "Exact version to promote, without the v prefix"
+        required: true
+        type: string
+      confirmation:
+        description: "Type: publish metriplane VERSION to production"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,6 +32,7 @@ concurrency:
 jobs:
   provenance:
     name: Verify annotated release tag
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}
@@ -59,11 +74,13 @@ jobs:
 
   gates:
     name: Run required release gates
+    if: github.event_name == 'push'
     needs: provenance
     uses: ./.github/workflows/release-gates.yml
 
   build:
     name: Test and build distributions once
+    if: github.event_name == 'push'
     needs: [provenance, gates]
     runs-on: ubuntu-latest
     env:
@@ -189,6 +206,7 @@ jobs:
 
   publish-testpypi:
     name: Publish exact artifacts to TestPyPI
+    if: github.event_name == 'push'
     needs: [provenance, build]
     runs-on: ubuntu-latest
     environment:
@@ -220,6 +238,7 @@ jobs:
 
   verify-testpypi:
     name: Verify TestPyPI artifact identity and installation
+    if: github.event_name == 'push'
     needs: [provenance, publish-testpypi]
     runs-on: ubuntu-latest
     env:
@@ -308,30 +327,220 @@ jobs:
           assert metriplane.__version__ == metadata.version("metriplane") == expected
           PY
 
+  validate-production-request:
+    name: Validate explicit production-promotion request
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      commit: ${{ steps.request.outputs.commit }}
+      version: ${{ steps.request.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Require owner confirmation and a successful tag workflow
+        id: request
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9._+-]*)?$ ]]
+          test "$CONFIRMATION" = \
+            "publish metriplane ${RELEASE_VERSION} to production"
+
+          tag_ref="refs/tags/v${RELEASE_VERSION}"
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            "+${tag_ref}:${tag_ref}"
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          test "$(git cat-file -t "$tag_ref")" = "tag"
+          tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
+          git merge-base --is-ancestor "$tag_commit" origin/main
+          test "$(git show "${tag_ref}:metriplane/__init__.py" | \
+            sed -n 's/^__version__ = "\([^"]*\)"$/\1/p')" = \
+            "$RELEASE_VERSION"
+
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${RELEASE_RUN_ID}" \
+            > "${RUNNER_TEMP}/source-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${RELEASE_RUN_ID}/artifacts?per_page=100" \
+            > "${RUNNER_TEMP}/source-artifacts.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100" \
+            > "${RUNNER_TEMP}/source-jobs.json"
+
+          SOURCE_COMMIT="$tag_commit" \
+          SOURCE_RUN_JSON="${RUNNER_TEMP}/source-run.json" \
+          SOURCE_ARTIFACTS_JSON="${RUNNER_TEMP}/source-artifacts.json" \
+          SOURCE_JOBS_JSON="${RUNNER_TEMP}/source-jobs.json" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(Path(os.environ["SOURCE_RUN_JSON"]).read_text())
+          expected = {
+              "event": "push",
+              "head_branch": f"v{os.environ['RELEASE_VERSION']}",
+              "head_sha": os.environ["SOURCE_COMMIT"],
+              "path": ".github/workflows/publish-pypi.yml",
+              "status": "completed",
+              "conclusion": "success",
+          }
+          mismatches = {
+              key: (run.get(key), value)
+              for key, value in expected.items()
+              if run.get(key) != value
+          }
+          if mismatches:
+              raise SystemExit(f"source workflow mismatch: {mismatches}")
+
+          payload = json.loads(
+              Path(os.environ["SOURCE_ARTIFACTS_JSON"]).read_text()
+          )
+          artifacts = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == "python-package-distributions"
+              and not item.get("expired", True)
+          ]
+          if len(artifacts) != 1:
+              raise SystemExit(
+                  "source run must contain exactly one unexpired "
+                  "python-package-distributions artifact"
+              )
+
+          jobs_payload = json.loads(
+              Path(os.environ["SOURCE_JOBS_JSON"]).read_text()
+          )
+          verified_jobs = [
+              item
+              for item in jobs_payload.get("jobs", [])
+              if item.get("name")
+              == "Verify TestPyPI artifact identity and installation"
+              and item.get("status") == "completed"
+              and item.get("conclusion") == "success"
+          ]
+          if len(verified_jobs) != 1:
+              raise SystemExit(
+                  "source run must contain exactly one successful "
+                  "TestPyPI verification job"
+              )
+          PY
+
+          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
+  verify-production-artifacts:
+    name: Reverify artifacts before production approval
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate-production-request
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.validate-production-request.outputs.commit }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Reverify the artifact set and TestPyPI identity
+        env:
+          RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/release_artifacts.py verify-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          python tools/release_artifacts.py verify-registry \
+            --repository https://test.pypi.org \
+            --version "$RELEASE_VERSION" \
+            --manifest release-artifacts/SHA256SUMS
+
   publish-pypi:
-    name: Publish the same artifacts to PyPI
-    needs: [provenance, verify-testpypi]
+    name: Publish the verified artifacts to PyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-production-request, verify-production-artifacts]
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/metriplane
     permissions:
+      actions: read
+      contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.validate-production-request.outputs.commit }}
+          persist-credentials: false
+
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: python-package-distributions
           path: release-artifacts/
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
 
-      - name: Reverify the protected production artifact set
-        shell: bash
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Reverify the approved artifact set
+        env:
+          RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
         run: |
-          set -euo pipefail
-          cd release-artifacts/dist
-          diff -u \
-            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
-            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
-          sha256sum --check ../SHA256SUMS
+          python tools/release_artifacts.py verify-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          python tools/release_artifacts.py verify-registry \
+            --repository https://test.pypi.org \
+            --version "$RELEASE_VERSION" \
+            --manifest release-artifacts/SHA256SUMS
 
       - name: Publish the verified distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
@@ -340,19 +549,26 @@ jobs:
 
   verify-pypi:
     name: Verify production artifact identity and installation
-    needs: [provenance, publish-pypi]
+    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-production-request, publish-pypi]
     runs-on: ubuntu-latest
     env:
-      RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
+      RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ needs.validate-production-request.outputs.commit }}
           persist-credentials: false
 
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: python-package-distributions
           path: release-artifacts/
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

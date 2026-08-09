@@ -30,8 +30,9 @@ not v0.3.0 product quickstarts or v0.3.0 environment claims.
 
 For the active compatibility statement, use
 [Supported Environments](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md).
-Archived WSL2 wording in v0.2.0 material does not advertise WSL2 for v0.3.0, and
-native Windows remains unsupported.
+Archived WSL2 wording in v0.2.0 material does not establish the active v0.3.0
+support scope. One owner-reported native-Windows demo completion also does not
+establish a research or broader platform-validation boundary.
 
 Deterministic replay means identical validated inputs and configuration produce
 the same software result. It does not prove physical measurement accuracy,
