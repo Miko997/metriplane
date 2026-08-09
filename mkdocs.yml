@@ -1,0 +1,45 @@
+site_name: Metriplane documentation
+site_description: >-
+  Install Metriplane, understand a recorded bounded-workcell incident, and
+  turn it into a repeatable regression check.
+repo_url: https://github.com/Miko997/metriplane
+repo_name: Miko997/metriplane
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: mkdocs
+
+nav:
+  - Home: README.md
+  - Quickstart: user-guide/quickstart.md
+  - What Metriplane does: user-guide/what-metriplane-does.md
+  - Missing-tool example: user-guide/missing-tool-example.md
+  - Inputs and outputs: user-guide/inputs-and-outputs.md
+  - CLI: user-guide/cli.md
+  - Process rules: user-guide/process-rules.md
+  - Use your own recorded run: user-guide/use-your-own-run.md
+  - Integrations and support: user-guide/integrations.md
+  - Troubleshooting: user-guide/troubleshooting.md
+  - Contributing: user-guide/contributing.md
+  - Research artifacts: user-guide/research-artifacts.md
+
+# The repository retains detailed technical, evaluation, and frozen-reproduction
+# documents outside the first-time-user site. Their source remains available on
+# GitHub; excluding them keeps this strict build focused on the curated front door.
+exclude_docs: |
+  *.md
+  !README.md
+  !user-guide/
+  !user-guide/**
+  archive/**
+  atlas/**
+  benchmarks/**
+  case-studies/**
+  eval/**
+  paper/**
+  qa/**
+  references/**
+  reports/**
+  review_kit/**

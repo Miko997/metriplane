@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -15,7 +17,7 @@ from metriplane.cli import main as metriplane_main
 from metriplane.demo import main as demo_main
 
 
-def test_demo_help_exposes_open_option(capsys) -> None:
+def test_demo_help_exposes_open_and_export_options(capsys) -> None:
     with pytest.raises(SystemExit, match="0"):
         demo_main(["--help"])
 
@@ -29,6 +31,127 @@ def test_demo_help_exposes_open_option(capsys) -> None:
     assert "No camera is needed" in normalized
     assert "Save the report, evidence, and repeatable check in DIR" in normalized
     assert "--open" in normalized
+    assert "--export-inputs" in normalized
+    assert "Copy the example recorded run and process rules into a new DIR" in normalized
+
+
+def test_demo_exports_exact_inspectable_inputs(tmp_path: Path, capsys) -> None:
+    export_dir = tmp_path / "example inputs"
+
+    assert demo_main(["--export-inputs", str(export_dir)]) == 0
+
+    expected_layout = {
+        "session.jsonl": "assets/assembly_cell_missing_tool.jsonl",
+        "domain-pack/assets.yaml": "assets/assembly_cell/assets.yaml",
+        "domain-pack/workspace.yaml": "assets/assembly_cell/workspace.yaml",
+        "domain-pack/process.yaml": "assets/assembly_cell/process.yaml",
+        "domain-pack/contracts.yaml": "assets/assembly_cell/contracts.yaml",
+        "domain-pack/work_orders.csv": "assets/assembly_cell/work_orders.csv",
+    }
+    exported_files = {
+        path.relative_to(export_dir).as_posix()
+        for path in export_dir.rglob("*")
+        if path.is_file()
+    }
+    assert exported_files == set(expected_layout)
+
+    package_root = resources.files("metriplane.demo")
+    for exported_relative, packaged_relative in expected_layout.items():
+        assert (export_dir / exported_relative).read_bytes() == package_root.joinpath(
+            packaged_relative
+        ).read_bytes()
+
+    output = capsys.readouterr().out
+    assert "Metriplane example inputs exported." in output
+    assert f"Recorded run: {export_dir / 'session.jsonl'}" in output
+    assert f"Process rules: {export_dir / 'domain-pack'}" in output
+    assert "metriplane atlas validate-pack" in output
+    assert "metriplane atlas run" in output
+    assert "metriplane atlas bundle verify" in output
+    assert "metriplane atlas test" in output
+
+
+@pytest.mark.parametrize("existing_kind", ["file", "directory", "symlink"])
+def test_demo_export_refuses_every_existing_path_kind(
+    tmp_path: Path, capsys, existing_kind: str
+) -> None:
+    destination = tmp_path / "existing"
+    if existing_kind == "file":
+        destination.write_text("keep", encoding="utf-8")
+    elif existing_kind == "directory":
+        destination.mkdir()
+        (destination / "keep.txt").write_text("keep", encoding="utf-8")
+    else:
+        destination.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+
+    assert demo_main(["--export-inputs", str(destination)]) == 2
+
+    assert "Refusing to replace an existing export path" in capsys.readouterr().err
+    if existing_kind == "file":
+        assert destination.read_text(encoding="utf-8") == "keep"
+    elif existing_kind == "directory":
+        assert (destination / "keep.txt").read_text(encoding="utf-8") == "keep"
+    else:
+        assert destination.is_symlink()
+        assert not destination.exists()
+
+
+def test_demo_export_failure_leaves_no_partial_destination(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    import metriplane.demo as demo
+
+    monkeypatch.setattr(
+        demo,
+        "_DEMO_EXPORT_LAYOUT",
+        (
+            ("assets/assembly_cell_missing_tool.jsonl", "session.jsonl"),
+            ("assets/does-not-exist.yaml", "domain-pack/process.yaml"),
+        ),
+    )
+    destination = tmp_path / "export"
+
+    assert demo_main(["--export-inputs", str(destination)]) == 1
+
+    assert not os.path.lexists(destination)
+    assert list(tmp_path.iterdir()) == []
+    assert "Bundled demo resource is missing" in capsys.readouterr().err
+
+
+def test_demo_export_does_not_replace_destination_created_during_staging(
+    tmp_path: Path, capsys, monkeypatch
+) -> None:
+    destination = tmp_path / "raced-export"
+    original_mkdir = Path.mkdir
+
+    def race_destination_mkdir(path: Path, *args, **kwargs) -> None:
+        if path == destination and not os.path.lexists(path):
+            original_mkdir(path, mode=0o711)
+            (path / "keep.txt").write_text("keep", encoding="utf-8")
+        original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", race_destination_mkdir)
+
+    assert demo_main(["--export-inputs", str(destination)]) == 2
+
+    assert (destination / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert "appeared while exporting" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [
+        ["--out", "run"],
+        ["--open"],
+    ],
+)
+def test_demo_export_rejects_run_and_browser_options(
+    tmp_path: Path, extra_args: list[str]
+) -> None:
+    with pytest.raises(SystemExit, match="2"):
+        demo_main(["--export-inputs", str(tmp_path / "export"), *extra_args])
+
+    assert not (tmp_path / "export").exists()
 
 
 def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatch) -> None:

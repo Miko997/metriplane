@@ -286,15 +286,11 @@ maintainer-gate sequence are maintained in
 
 ## Documentation
 
-- Atlas evidence workflow: [docs/atlas/README.md](https://github.com/Miko997/metriplane/blob/main/docs/atlas/README.md)
-- Physical observability scope: [docs/physical_observability.md](https://github.com/Miko997/metriplane/blob/main/docs/physical_observability.md)
-- Development setup: [docs/development.md](https://github.com/Miko997/metriplane/blob/main/docs/development.md)
-- Prerequisites: [docs/PREREQUISITES.md](https://github.com/Miko997/metriplane/blob/main/docs/PREREQUISITES.md)
-- SoftwareX reproducibility: [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md)
-- Evidence matrix: [docs/eval/evidence_matrix.md](https://github.com/Miko997/metriplane/blob/main/docs/eval/evidence_matrix.md)
-- Integration notes: [docs/INTEGRATIONS.md](https://github.com/Miko997/metriplane/blob/main/docs/INTEGRATIONS.md)
-- PyPI release runbook: [docs/releasing.md](https://github.com/Miko997/metriplane/blob/main/docs/releasing.md)
-- Previous detailed README archive: [docs/archive/README_pre_website_refresh.md](https://github.com/Miko997/metriplane/blob/main/docs/archive/README_pre_website_refresh.md)
+- First-time-user front door: [docs/README.md](https://github.com/Miko997/metriplane/blob/main/docs/README.md)
+- Supported environments: [docs/SUPPORTED_ENVIRONMENTS.md](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md)
+- Development and contribution: [docs/development.md](https://github.com/Miko997/metriplane/blob/main/docs/development.md) and [CONTRIBUTING.md](https://github.com/Miko997/metriplane/blob/main/CONTRIBUTING.md)
+- Technical integration reference: [docs/INTEGRATIONS.md](https://github.com/Miko997/metriplane/blob/main/docs/INTEGRATIONS.md)
+- Exact-version research reproduction: [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md)
 
 ## License
 

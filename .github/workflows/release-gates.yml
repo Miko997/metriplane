@@ -245,6 +245,32 @@ jobs:
           "$smoke_venv/bin/metriplane" atlas test \
             "$demo_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
 
+          exported_inputs="${RUNNER_TEMP}/metriplane-example-inputs"
+          exported_run="${RUNNER_TEMP}/metriplane-example-run"
+          "$smoke_venv/bin/metriplane" demo --export-inputs "$exported_inputs"
+          test -s "$exported_inputs/session.jsonl"
+          test -s "$exported_inputs/domain-pack/assets.yaml"
+          test -s "$exported_inputs/domain-pack/workspace.yaml"
+          test -s "$exported_inputs/domain-pack/process.yaml"
+          test -s "$exported_inputs/domain-pack/contracts.yaml"
+          test -s "$exported_inputs/domain-pack/work_orders.csv"
+          "$smoke_venv/bin/metriplane" atlas validate-pack \
+            "$exported_inputs/domain-pack" | grep -Fq "PASS"
+          exported_run_output="$("$smoke_venv/bin/metriplane" atlas run \
+            --session-jsonl "$exported_inputs/session.jsonl" \
+            --pack "$exported_inputs/domain-pack" \
+            --out "$exported_run")"
+          printf '%s\n' "$exported_run_output"
+          grep -Fq "events=6 incidents=1" <<<"$exported_run_output"
+          report_path="$("$smoke_venv/bin/metriplane" atlas report \
+            --run-dir "$exported_run")"
+          test "$report_path" = "$exported_run/cell_truth_report.html"
+          test -s "$report_path"
+          "$smoke_venv/bin/metriplane" atlas bundle verify \
+            "$exported_run/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
+          "$smoke_venv/bin/metriplane" atlas test \
+            "$exported_run/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
+
   package-smoke:
     name: package-smoke
     if: ${{ always() }}
