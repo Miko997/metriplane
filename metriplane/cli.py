@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import importlib
 import logging
 import socket
 import subprocess
@@ -38,6 +39,7 @@ More commands:
   run        Process a live camera or a recorded session
 
 Run `metriplane <command> --help` for command-specific options.
+Run `metriplane --version` to show the installed package version.
 Existing `metriplane --config ...` invocations remain supported as runtime shorthand.
 """
     )
@@ -160,28 +162,48 @@ def _main_replay(argv: list[str]) -> int:
 
 
 def _check_python_version() -> tuple[str, str]:
-    """Check Python version >= 3.12."""
+    """Check the declared Python 3.12/3.13 compatibility boundary."""
     version = sys.version_info
     version_str = f"{version.major}.{version.minor}.{version.micro}"
-    if version.major == 3 and version.minor >= 12:
+    if version.major == 3 and version.minor in {12, 13}:
         return ("PASS", f"Python {version_str}")
-    return ("FAIL", f"Python {version_str} (requires >= 3.12)")
+    return ("FAIL", f"Python {version_str} (requires Python 3.12 or 3.13)")
 
 
 def _check_import_metriplane() -> tuple[str, str]:
     """Check metriplane import works."""
     try:
         import metriplane  # noqa: F401
+
         return ("PASS", "metriplane import successful")
-    except Exception as e:
-        return ("FAIL", f"metriplane import failed: {e}")
+    except Exception as exc:
+        return ("FAIL", f"metriplane import failed: {exc}")
+
+
+def _check_required_dependencies() -> tuple[str, str]:
+    """Check every declared runtime dependency can be imported."""
+    modules = ("numpy", "cv2", "yaml", "websockets", "pydantic")
+    failures: list[str] = []
+    for module in modules:
+        try:
+            importlib.import_module(module)
+        except Exception as exc:
+            failures.append(f"{module} ({type(exc).__name__})")
+    if failures:
+        return ("FAIL", f"Required dependencies unavailable: {', '.join(failures)}")
+    return ("PASS", f"Required dependencies available ({len(modules)} modules)")
+
+
+def _package_source_root() -> Path:
+    """Return the possible checkout root for the imported package code."""
+    return Path(__file__).resolve().parents[1]
 
 
 def _check_git_commit() -> tuple[str, str]:
-    """Check git commit availability."""
+    """Check the imported package checkout's Git commit availability."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "-C", str(_package_source_root()), "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             check=True,
@@ -190,38 +212,81 @@ def _check_git_commit() -> tuple[str, str]:
         commit = result.stdout.strip()
         return ("PASS", f"Git commit {commit}")
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return ("WARN", "Git commit not available outside a source checkout")
+        return ("WARN", "Git commit not available for the source checkout")
 
 
-def _cwd_looks_like_source_checkout() -> bool:
-    pyproject = Path("pyproject.toml")
-    if not pyproject.exists():
-        return False
+def _check_demo_resources() -> tuple[str, str]:
+    """Check the installed wheel contains every bundled-demo input."""
     try:
-        text = pyproject.read_text(encoding="utf-8").lower()
-    except OSError:
-        return True
-    return "name = \"metriplane\"" in text or "name = 'metriplane'" in text
+        from importlib import resources
+
+        from metriplane.demo import BUNDLED_DEMO_RESOURCES
+
+        package = resources.files("metriplane.demo")
+        missing = [
+            path
+            for path in BUNDLED_DEMO_RESOURCES
+            if not package.joinpath(path).is_file()
+        ]
+    except Exception as exc:
+        return ("FAIL", f"Bundled demo resources could not be inspected: {exc}")
+    if missing:
+        return ("FAIL", f"Bundled demo resources missing: {', '.join(missing)}")
+    return (
+        "PASS",
+        f"Bundled demo resources available ({len(BUNDLED_DEMO_RESOURCES)} files)",
+    )
+
+
+def _installation_context() -> str:
+    """Describe whether doctor is running from an editable checkout or a package."""
+    root = _package_source_root()
+    pyproject = root / "pyproject.toml"
+    try:
+        import json
+        import tomllib
+        from importlib import metadata
+
+        project = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        is_source_checkout = (
+            project.get("project", {}).get("name") == "metriplane"
+            and (root / "metriplane" / "cli.py").is_file()
+        )
+    except Exception:
+        is_source_checkout = False
+    if not is_source_checkout:
+        return "installed distribution"
+
+    try:
+        distribution = metadata.distribution("metriplane")
+        direct_url = distribution.read_text("direct_url.json")
+        if direct_url:
+            payload = json.loads(direct_url)
+            if payload.get("dir_info", {}).get("editable") is True:
+                return "editable source checkout"
+    except Exception:
+        pass
+    return "source checkout"
 
 
 def _check_vt_sh_exists() -> tuple[str, str]:
     """Check tools/mp.sh exists."""
-    path = Path("tools/mp.sh")
+    path = _package_source_root() / "tools/mp.sh"
     if path.exists():
         return ("PASS", "tools/mp.sh exists")
-    if not _cwd_looks_like_source_checkout():
-        return ("WARN", "tools/mp.sh not found outside a source checkout")
-    return ("FAIL", "tools/mp.sh not found")
+    return ("WARN", "tools/mp.sh not found (source-checkout helper, optional)")
 
 
 def _check_config_exists() -> tuple[str, str]:
     """Check configs/fusion_health_300fps.yaml exists."""
-    path = Path("configs/fusion_health_300fps.yaml")
+    path = _package_source_root() / "configs/fusion_health_300fps.yaml"
     if path.exists():
         return ("PASS", "configs/fusion_health_300fps.yaml exists")
-    if not _cwd_looks_like_source_checkout():
-        return ("WARN", "configs/fusion_health_300fps.yaml not found outside a source checkout")
-    return ("FAIL", "configs/fusion_health_300fps.yaml not found")
+    return (
+        "WARN",
+        "configs/fusion_health_300fps.yaml not found "
+        "(source-checkout live-camera example, optional)",
+    )
 
 
 def _check_ports_available() -> tuple[str, str]:
@@ -232,13 +297,18 @@ def _check_ports_available() -> tuple[str, str]:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.bind(("127.0.0.1", port))
-            sock.close()
         except OSError:
             unavailable.append(port)
-    
+        finally:
+            sock.close()
+
     if not unavailable:
         return ("PASS", f"Ports {', '.join(map(str, ports))} available")
-    return ("WARN", f"Ports {', '.join(map(str, unavailable))} in use (may be Metriplane already running)")
+    return (
+        "WARN",
+        f"Ports {', '.join(map(str, unavailable))} in use "
+        "(may be Metriplane already running)",
+    )
 
 
 def _check_video_devices() -> tuple[str, str]:
@@ -247,7 +317,10 @@ def _check_video_devices() -> tuple[str, str]:
     if devices:
         device_list = ", ".join(sorted(devices))
         return ("PASS", f"Camera devices found: {device_list}")
-    return ("WARN", "No /dev/video* devices found (camera optional for replay/docker)")
+    return (
+        "WARN",
+        "No /dev/video* devices found (not needed for the bundled camera-free demo)",
+    )
 
 
 def _check_nvidia_smi() -> tuple[str, str]:
@@ -263,55 +336,77 @@ def _check_nvidia_smi() -> tuple[str, str]:
         gpu_name = result.stdout.strip().split("\n")[0] if result.stdout.strip() else "Unknown GPU"
         return ("PASS", f"GPU available: {gpu_name}")
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return ("WARN", "nvidia-smi not available (GPU optional)")
+        return ("WARN", "nvidia-smi not available (GPU is optional for the bundled demo)")
 
 
 def _main_doctor(argv: list[str]) -> int:
     """Run Metriplane environment checks."""
     p = argparse.ArgumentParser("metriplane doctor")
     p.parse_args(argv)  # No args yet, but keep for future expansion
-    
-    print("Metriplane Doctor - Environment Check")
+
+    print("Metriplane Doctor - Installation Readiness")
     print("=" * 50)
-    
-    checks = [
+    installation_context = _installation_context()
+    print(f"Installation: {installation_context}")
+
+    required_checks = [
         _check_python_version(),
         _check_import_metriplane(),
-        _check_git_commit(),
-        _check_vt_sh_exists(),
-        _check_config_exists(),
+        _check_required_dependencies(),
+        _check_demo_resources(),
+    ]
+    source_checks = (
+        [_check_git_commit(), _check_vt_sh_exists(), _check_config_exists()]
+        if installation_context in {"source checkout", "editable source checkout"}
+        else [
+            (
+                "WARN",
+                "Source-checkout development checks skipped for installed distribution",
+            )
+        ]
+    )
+    optional_checks = [
+        *source_checks,
         _check_ports_available(),
         _check_video_devices(),
         _check_nvidia_smi(),
     ]
-    
+
     status_icons = {
         "PASS": "✅",
         "WARN": "⚠️",
         "FAIL": "❌",
     }
-    
-    for status, message in checks:
+
+    print("Required for the bundled camera-free demo:")
+    for status, message in required_checks:
         icon = status_icons.get(status, "?")
         print(f"{icon} {status}: {message}")
-    
-    print("=" * 50)
-    
-    fail_count = sum(1 for status, _ in checks if status == "FAIL")
-    warn_count = sum(1 for status, _ in checks if status == "WARN")
-    pass_count = sum(1 for status, _ in checks if status == "PASS")
-    
+
+    fail_count = sum(1 for status, _ in required_checks if status == "FAIL")
+    warn_count = sum(1 for status, _ in required_checks if status == "WARN")
+    pass_count = sum(1 for status, _ in required_checks if status == "PASS")
     print(f"Summary: {pass_count} passed, {warn_count} warnings, {fail_count} failed")
-    
+
+    print("\nOptional capabilities:")
+    for status, message in optional_checks:
+        if status == "PASS":
+            print(f"✅ AVAILABLE: {message}")
+        else:
+            print(f"○ OPTIONAL: {message}")
+    optional_available = sum(1 for status, _ in optional_checks if status == "PASS")
+    optional_unavailable = len(optional_checks) - optional_available
+    print(
+        f"Optional: {optional_available} available, "
+        f"{optional_unavailable} unavailable or not configured"
+    )
+    print("=" * 50)
+
     if fail_count > 0:
-        print("\n❌ Doctor found blocking issues. See FAIL items above.")
+        print("\nNot ready for the bundled camera-free demo. See required FAIL items above.")
         return 1
-    elif warn_count > 0:
-        print("\n⚠️  Doctor completed with warnings. Metriplane should work but some features may be limited.")
-        return 0
-    else:
-        print("\n✅ All checks passed! Metriplane is ready.")
-        return 0
+    print("\nReady for the bundled camera-free demo.")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -444,6 +539,11 @@ def main(argv: list[str] | None = None) -> int:
     # Fast-path commands that need no logging setup
     if argv in (["-h"], ["--help"]):
         return _main_help()
+    if argv in (["-V"], ["--version"]):
+        from metriplane import __version__
+
+        print(f"metriplane {__version__}")
+        return 0
     if argv and argv[0] == "demo":
         from metriplane.demo import main as demo_main
         return demo_main(argv[1:])

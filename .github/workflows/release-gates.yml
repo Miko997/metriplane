@@ -118,12 +118,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build twine
           python -m build
+          python - <<'PY'
+          from pathlib import Path
+
+          artifacts = sorted(path for path in Path("dist").iterdir() if path.is_file())
+          wheels = [path for path in artifacts if path.suffix == ".whl"]
+          sdists = [path for path in artifacts if path.name.endswith((".tar.gz", ".zip"))]
+          if len(wheels) != 1 or len(sdists) != 1 or len(artifacts) != 2:
+              raise SystemExit(
+                  "Expected exactly one wheel and one source distribution; found: "
+                  + ", ".join(path.name for path in artifacts)
+              )
+          PY
           python -m twine check --strict dist/*
 
       - name: Install wheel in fresh venv outside checkout
         shell: bash
         run: |
           set -euo pipefail
+          package_version="$(python -c 'import metriplane; print(metriplane.__version__)')"
           wheel_path="$(python -c 'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())')"
           smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
           python -m venv "$smoke_venv"
@@ -131,7 +144,50 @@ jobs:
           "$smoke_venv/bin/python" -m pip install "$wheel_path"
           cd "$RUNNER_TEMP"
           "$smoke_venv/bin/python" -m pip check
-          "$smoke_venv/bin/metriplane" doctor
+          test "$("$smoke_venv/bin/metriplane" --version)" = "metriplane ${package_version}"
+          unrelated_repo="${RUNNER_TEMP}/unrelated-git-checkout"
+          mkdir -p "$unrelated_repo"
+          git -C "$unrelated_repo" init -q
+          cd "$unrelated_repo"
+          doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
+          printf '%s\n' "$doctor_output"
+          grep -Fxq "Installation: installed distribution" <<<"$doctor_output"
+          grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
+          if grep -q "Git commit" <<<"$doctor_output"; then
+            echo "Installed-wheel doctor inspected an unrelated Git checkout" >&2
+            exit 1
+          fi
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/python" - <<'PY'
+          from importlib import metadata, resources
+
+          expected = {
+              "assets/assembly_cell_missing_tool.jsonl",
+              "assets/assembly_cell/assets.yaml",
+              "assets/assembly_cell/contracts.yaml",
+              "assets/assembly_cell/process.yaml",
+              "assets/assembly_cell/work_orders.csv",
+              "assets/assembly_cell/workspace.yaml",
+          }
+          distribution_paths = {
+              str(path) for path in (metadata.files("metriplane") or ())
+          }
+          expected_distribution_paths = {
+              f"metriplane/demo/{path}" for path in expected
+          }
+          packaged_demo_assets = {
+              path
+              for path in distribution_paths
+              if path.startswith("metriplane/demo/assets/")
+          }
+          assert packaged_demo_assets == expected_distribution_paths
+
+          package_root = resources.files("metriplane.demo")
+          missing = sorted(
+              path for path in expected if not package_root.joinpath(path).is_file()
+          )
+          assert not missing, f"missing bundled demo resources: {missing}"
+          PY
           "$smoke_venv/bin/metriplane" atlas protocol export --out protocol-smoke
           test -s protocol-smoke/open_atlas_protocol_index.json
           "$smoke_venv/bin/python" -c "import cv2; assert hasattr(cv2, 'aruco')"

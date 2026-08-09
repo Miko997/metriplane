@@ -26,20 +26,25 @@ const end = text.indexOf('/** Parse pass/warn/fail counts', start);
 if (start < 0 || end < 0) process.exit(2);
 eval(text.slice(start, end));
 
-const stdout = `Metriplane Doctor - Environment Check
+const stdout = `Metriplane Doctor - Installation Readiness
 ==================================================
+Installation: installed distribution
+Required for the bundled camera-free demo:
 ✅ PASS: Python 3.12.3
 ✅ PASS: metriplane import successful
-✅ PASS: Git commit 31dfe7d
-✅ PASS: tools/mp.sh exists
-✅ PASS: configs/fusion_health_300fps.yaml exists
-✅ PASS: Ports 8000, 8001, 8765 available
-✅ PASS: Camera devices found: /dev/video0, /dev/video1
-✅ PASS: GPU available: NVIDIA GeForce RTX 5070 Ti
-==================================================
-Summary: 8 passed, 0 warnings, 0 failed
+✅ PASS: Required dependencies available (5 modules)
+✅ PASS: Bundled demo resources available (6 files)
+Summary: 4 passed, 0 warnings, 0 failed
 
-✅ All checks passed! Metriplane is ready.`;
+Optional capabilities:
+○ OPTIONAL: Source-checkout development checks skipped for installed distribution
+✅ AVAILABLE: Ports 8000, 8001, 8765 available
+○ OPTIONAL: No /dev/video* devices found (not needed for the bundled camera-free demo)
+○ OPTIONAL: nvidia-smi not available (GPU is optional for the bundled demo)
+Optional: 1 available, 3 unavailable or not configured
+==================================================
+
+Ready for the bundled camera-free demo.`;
 
 console.log(JSON.stringify(parsePreflightSummaryCounts(stdout)));
 """
@@ -51,4 +56,4 @@ console.log(JSON.stringify(parsePreflightSummaryCounts(stdout)));
         text=True,
     )
 
-    assert json.loads(result.stdout) == {"passed": 8, "warned": 0, "failed": 0}
+    assert json.loads(result.stdout) == {"passed": 4, "warned": 0, "failed": 0}

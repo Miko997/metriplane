@@ -168,33 +168,47 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --cov=metriplane --cov-report=
 ### System Health Check
 
 ```bash
-python -m metriplane.cli doctor
+metriplane doctor
 ```
 
-**Checks**:
-- Python version
-- metriplane import successful
-- Git commit hash
-- tools/mp.sh exists
-- Config files exist
-- Ports available (8000, 8001, 8765)
-- Camera devices detected
-- GPU availability (if CUDA installed)
+**Required for the bundled camera-free demo**:
+- Python 3.12 or 3.13
+- Metriplane package import
+- Required runtime dependencies
+- All six bundled demo resources
 
-**Expected Output**:
+**Reported as optional capabilities**:
+- Git commit metadata and source-checkout helpers
+- Source-checkout live-camera configuration
+- Ports 8000, 8001, and 8765
+- Camera devices
+- NVIDIA GPU visibility
+
+Missing optional capabilities do not block the bundled demo. The `Summary:` line
+counts only the four required readiness checks; optional results are reported
+separately and vary by environment.
+
+**Example installed-wheel output outside a source checkout**:
 ```
-Metriplane Doctor - Environment Check
+Metriplane Doctor - Installation Readiness
 ==================================================
+Installation: installed distribution
+Required for the bundled camera-free demo:
 ✅ PASS: Python 3.12.3
 ✅ PASS: metriplane import successful
-✅ PASS: Git commit 2240729
-✅ PASS: tools/mp.sh exists
-✅ PASS: configs/fusion_health_300fps.yaml exists
-✅ PASS: Ports 8000, 8001, 8765 available
-✅ PASS: Camera devices found: /dev/video0, /dev/video2
-✅ PASS: GPU available: NVIDIA GeForce RTX 5070 Ti
+✅ PASS: Required dependencies available (5 modules)
+✅ PASS: Bundled demo resources available (6 files)
+Summary: 4 passed, 0 warnings, 0 failed
+
+Optional capabilities:
+○ OPTIONAL: Source-checkout development checks skipped for installed distribution
+✅ AVAILABLE: Ports 8000, 8001, 8765 available
+○ OPTIONAL: No /dev/video* devices found (not needed for the bundled camera-free demo)
+○ OPTIONAL: nvidia-smi not available (GPU is optional for the bundled demo)
+Optional: 1 available, 3 unavailable or not configured
 ==================================================
-Summary: 8 passed, 0 warnings, 0 failed
+
+Ready for the bundled camera-free demo.
 ```
 
 ---

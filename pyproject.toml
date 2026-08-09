@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "metriplane"
 dynamic = ["version"]
-description = "Open-source physical observability for workcell evidence, replay, and regression testing."
+description = "Turn recorded workcell state into incident reports, verified evidence, and repeatable robotics regression checks."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = "MIT"
@@ -18,17 +18,26 @@ authors = [
 ]
 keywords = [
   "robotics",
-  "physical observability",
-  "digital twins",
+  "robotics testing",
+  "incident analysis",
+  "replay",
+  "regression testing",
   "reproducibility",
   "workcells",
+  "simulation",
+  "digital twins",
+  "industrial automation",
+  "physical observability",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Manufacturing",
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -45,6 +54,10 @@ Documentation = "https://www.metriplane.com/install/"
 Repository = "https://github.com/Miko997/metriplane"
 Issues = "https://github.com/Miko997/metriplane/issues"
 Changelog = "https://github.com/Miko997/metriplane/blob/main/CHANGELOG.md"
+Support = "https://github.com/Miko997/metriplane/issues"
+Roadmap = "https://github.com/Miko997/metriplane/blob/main/ROADMAP.md"
+"Research Artifact v0.2.0" = "https://doi.org/10.5281/zenodo.20736619"
+"Research Preprint" = "https://doi.org/10.2139/ssrn.7166858"
 
 [project.optional-dependencies]
 gpu-cuda12x = [
