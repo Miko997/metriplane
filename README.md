@@ -50,7 +50,8 @@ PASS  Incident timeline: 6 events
 PASS  Incident report: 1 incident
 PASS  Evidence bundle: verified
 PASS  Repeatable regression check: passed
-Browser: opened report
+Browser: open request sent
+If no browser opens, use the Report path above.
 Demo complete.
 ```
 

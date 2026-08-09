@@ -40,7 +40,8 @@ metriplane demo --open
     assert "PASS  Incident report: 1 incident" in first_screen
     assert "PASS  Evidence bundle: verified" in first_screen
     assert "PASS  Repeatable regression check: passed" in first_screen
-    assert "Browser: opened report" in first_screen
+    assert "Browser: open request sent" in first_screen
+    assert "Browser: opened report" not in first_screen
 
 
 def test_readme_explains_the_beginner_input_output_and_terms() -> None:
@@ -83,5 +84,5 @@ def test_release_gate_runs_the_exact_installed_wheel_quickstart() -> None:
     assert 'python-version: ["3.12", "3.13"]' in workflow
     assert '"demo",\n              "--open",' in workflow
     assert 'BROWSER="$browser_stub"' in workflow
-    assert '"Browser: opened report" not in completed.stdout' in workflow
+    assert '"Browser: open request sent" not in completed.stdout' in workflow
     assert 'test "$(<"$browser_uri_file")" = "$expected_report_uri"' in workflow

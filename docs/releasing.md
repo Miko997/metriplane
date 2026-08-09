@@ -242,7 +242,9 @@ This section is a preparation checklist, not evidence that v0.3.0 is published.
       `metriplane demo --open`.
 - [ ] Linux Release Gates pass on Python 3.12 and 3.13.
 - [ ] The bundled camera-free demo passes on macOS with Python 3.12 and 3.13.
-- [ ] WSL2 is advertised only if an owner-run clean candidate check is recorded.
+- [x] WSL2 wording is bounded to the recorded Ubuntu 24.04/Python 3.12.3
+      installed-wheel camera-free and headless owner run; automatic browser
+      opening is not claimed.
 - [ ] Native Windows is not advertised.
 - [ ] Wheel and source distribution pass independent clean installations.
 - [ ] The exact artifact SHA-256 manifest is recorded from the workflow run.

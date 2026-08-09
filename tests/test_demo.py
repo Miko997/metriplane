@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import webbrowser
 from importlib import resources
 from pathlib import Path
 
@@ -252,13 +253,33 @@ def test_demo_open_is_best_effort(tmp_path: Path, capsys, monkeypatch) -> None:
     assert demo_main(["--out", str(out_dir), "--open"]) == 0
 
     assert opened == [(out_dir / "cell_truth_report.html").resolve().as_uri()]
-    assert "Browser: opened report" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Browser: open request sent" in output
+    assert "If no browser opens, use the Report path above." in output
+    assert "Browser: opened report" not in output
 
 
 def test_demo_browser_failure_keeps_success(tmp_path: Path, capsys, monkeypatch) -> None:
     monkeypatch.setattr("metriplane.demo.webbrowser.open", lambda *_args, **_kwargs: False)
 
     assert demo_main(["--out", str(tmp_path / "headless"), "--open"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Demo complete." in captured.out
+    assert "Could not open a browser" in captured.err
+    assert (tmp_path / "headless" / "cell_truth_report.html").resolve().as_uri() in captured.err
+
+
+@pytest.mark.parametrize("error", [OSError("no opener"), webbrowser.Error("no browser")])
+def test_demo_browser_error_keeps_success(
+    tmp_path: Path, capsys, monkeypatch, error: Exception
+) -> None:
+    def raise_error(*_args, **_kwargs) -> bool:
+        raise error
+
+    monkeypatch.setattr("metriplane.demo.webbrowser.open", raise_error)
+
+    assert demo_main(["--out", str(tmp_path / "browser-error"), "--open"]) == 0
 
     captured = capsys.readouterr()
     assert "Demo complete." in captured.out

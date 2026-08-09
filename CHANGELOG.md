@@ -50,8 +50,10 @@ All notable changes to Metriplane are documented here.
 - Made fixed replay clocks authoritative across Atlas, Sentinel, contracts, and
   trace output, and clarified the privacy export as deterministic pseudonymization.
 - Defined support accurately: Linux/Ubuntu receives the full suite; macOS receives
-  the bundled camera-free demo gates; WSL2 remains unadvertised pending a clean
-  owner-run candidate check; native Windows remains unsupported and unadvertised.
+  the bundled camera-free demo gates; WSL2 Ubuntu 24.04 has a bounded owner-run
+  Python 3.12.3 installed-wheel and headless demo check that completed in seven
+  seconds, without a claim for automatic browser opening; native Windows remains
+  unsupported and unadvertised.
 
 ### Fixed
 

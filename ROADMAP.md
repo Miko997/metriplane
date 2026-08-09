@@ -89,7 +89,9 @@ Completion gate:
 - Repeated runs produce equivalent deterministic results.
 - The built-wheel demo is CI-tested outside a source checkout on Linux and macOS
   with Python 3.12 and 3.13.
-- WSL2 is not advertised for v0.3.0 until a clean manual v0.3.0 run is recorded.
+- WSL2 Ubuntu 24.04 has a bounded owner-run validation for the Python 3.12.3
+  installed-wheel camera-free and headless path. Automatic browser opening is
+  not claimed because the validation environment had no default HTML handler.
   Native Windows remains unsupported and unadvertised.
 
 ## Phase 2: discoverable command line and first screen (implemented in v0.3.0)
@@ -138,8 +140,9 @@ Goal: make expected compatibility and contribution steps explicit.
 - Maintain the full supported suite on Linux with Python 3.12 and 3.13.
 - Maintain the macOS camera-free suite and installed-wheel demo on Python 3.12
   and 3.13; do not claim live-camera support without hardware validation.
-- Advertise WSL2 only after a clean manual v0.3.0 run is recorded; archived v0.2.0
-  WSL2 reproduction instructions do not establish v0.3.0 support.
+- Keep the WSL2 claim bounded to the recorded Ubuntu 24.04/Python 3.12.3
+  installed-wheel camera-free and headless run; archived v0.2.0 WSL2
+  reproduction instructions do not establish broader v0.3.0 support.
 - Keep native Windows unsupported and unadvertised until it is explicitly
   implemented and validated.
 - Add issue forms, a pull-request template, `SECURITY.md`, a Code of Conduct, support

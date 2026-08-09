@@ -231,7 +231,7 @@ jobs:
           )
           print(completed.stdout, end="")
           print(completed.stderr, end="", file=sys.stderr)
-          if "Browser: opened report" not in completed.stdout:
+          if "Browser: open request sent" not in completed.stdout:
               raise RuntimeError("installed-wheel demo did not dispatch its report URI")
           PY
           demo_out="$smoke_workspace/metriplane-demo"
