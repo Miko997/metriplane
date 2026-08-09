@@ -27,6 +27,7 @@ EXPECTED_NAV = (
     "user-guide/troubleshooting.md",
     "user-guide/contributing.md",
     "user-guide/research-artifacts.md",
+    "user-guide/citing.md",
 )
 
 
@@ -136,9 +137,17 @@ def test_preview_install_and_research_boundaries_are_truthful() -> None:
 
 
 def test_current_front_door_uses_product_casing() -> None:
-    text = _front_door_text()
+    text = "\n".join(
+        (DOCS / path).read_text(encoding="utf-8")
+        for path in EXPECTED_NAV
+        if path != "user-guide/citing.md"
+    )
     assert "MetriPlane" not in text
     assert "agent/bundled-demo" not in text
+
+    citation = (GUIDE / "citing.md").read_text(encoding="utf-8")
+    assert "# Citing Metriplane" in citation
+    assert "MetriPlane v0.2.0" in citation  # Exact frozen artifact title.
 
 
 def test_pack_file_requirements_match_loader_compatibility() -> None:
