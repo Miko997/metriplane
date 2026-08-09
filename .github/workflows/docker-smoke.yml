@@ -6,6 +6,8 @@ name: docker-smoke
 on:
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   docker-smoke:
     runs-on: ubuntu-latest
