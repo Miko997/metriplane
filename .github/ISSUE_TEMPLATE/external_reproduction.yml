@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: External reproduction or user trial
+description: Record a real bundled-demo run or a trial on your own authorized data.
+title: "[Trial]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for recording an actual run. A failed or confusing attempt is
+        useful evidence too. Do not attach a private report, evidence bundle,
+        recording, or identifying workcell data.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: These are results from a run I actually performed; I am not reporting an expected or fabricated result.
+          required: true
+        - label: This report contains no credentials, vulnerability details, personal data, or private workcell data.
+          required: true
+  - type: dropdown
+    id: trial_type
+    attributes:
+      label: Trial type
+      options:
+        - Bundled camera-free demo
+        - My own authorized bounded-workcell data
+        - Exact-version research-artifact reproduction
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Metriplane version and installation
+      description: Paste `metriplane --version` and say whether this was PyPI, a wheel, source checkout, or exact tag.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and version, Python version, and architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Observed results
+      description: Record actual event/incident counts, report creation, bundle verification, and regression result where applicable. Do not attach private artifacts.
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: Time to first useful report
+      description: Give the measured or approximate time and say which.
+      placeholder: Approximately 3 minutes
+  - type: textarea
+    id: first_failure
+    attributes:
+      label: First failed command or point of confusion
+      description: Include the first error and the first unfamiliar term, even if you later succeeded.
+  - type: dropdown
+    id: intervention
+    attributes:
+      label: Did you need help from a maintainer?
+      options:
+        - "No"
+        - Yes, written guidance
+        - Yes, direct interactive help
+    validations:
+      required: true
+  - type: textarea
+    id: understanding
+    attributes:
+      label: What do you think Metriplane does?
+      description: Explain in your own words what goes in, what comes out, and why the repeatable check is useful.
+    validations:
+      required: true
+  - type: checkboxes
+    id: own_data
+    attributes:
+      label: If you used your own data
+      options:
+        - label: I had permission to use it and removed identifying or confidential details from this public report.
+          required: false

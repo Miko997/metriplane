@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Documentation or comprehension problem
+description: Tell us what was inaccurate, missing, or hard to understand.
+title: "[Docs]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for both factual documentation bugs and places where a
+        first-time user cannot understand what Metriplane does or how to use it.
+        Do not include private recordings or security details.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions for this problem.
+          required: true
+        - label: This report contains no vulnerability details or private data.
+          required: true
+  - type: input
+    id: location
+    attributes:
+      label: Page or interface location
+      description: Link the page or name the command, help screen, or report section.
+      placeholder: README quickstart / `metriplane doctor` / Incident Report
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What were you trying to understand or do?
+    validations:
+      required: true
+  - type: textarea
+    id: confusion
+    attributes:
+      label: What was unclear, missing, or inaccurate?
+      description: Quote only the short phrase needed to locate the problem and explain your interpretation.
+    validations:
+      required: true
+  - type: input
+    id: first_term
+    attributes:
+      label: First confusing term
+      description: If terminology was the problem, which term stopped or slowed you first?
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Effect on your task
+      options:
+        - I could not continue
+        - I continued only by guessing or searching elsewhere
+        - I continued, but the explanation was misleading
+        - Minor wording or navigation problem
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested plain-language explanation
+      description: Optional. What wording or example would have made this clear?
+  - type: input
+    id: environment
+    attributes:
+      label: Version and environment
+      description: If commands or platform behavior are involved, include Metriplane version, OS, and Python version.
