@@ -93,8 +93,20 @@ def test_execute_rejects_bad_or_disabled_command_ids(payload: dict, expected: st
 
 def test_mutating_request_requires_session_token():
     with runner_server() as base:
-        status, body = request_json(f"{base}/execute", method="POST", payload={"command_id": "doctor"})
+        request = urllib.request.Request(
+            f"{base}/execute",
+            data=json.dumps({"command_id": "doctor"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            urllib.request.urlopen(request, timeout=5)
+        response = exc_info.value
+        payload = response.read()
+        status = response.code
+        body = json.loads(payload)
     assert status == 403
+    assert int(response.headers["Content-Length"]) == len(payload)
     assert "session token" in body["error"]
 
 
@@ -136,3 +148,15 @@ def test_request_body_size_is_limited():
 
 def test_runner_refuses_non_loopback_bind():
     assert service.start_runner("0.0.0.0", 0) == 64
+
+
+def test_numeric_loopback_validation_does_not_require_name_resolution(monkeypatch):
+    monkeypatch.setattr(
+        service.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("resolver unavailable")),
+    )
+
+    assert service._is_loopback_bind_host("127.0.0.1", 9000) is True
+    assert service._is_loopback_bind_host("::1", 9000) is True
+    assert service._is_loopback_bind_host("::ffff:127.0.0.1", 9000) is True

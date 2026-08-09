@@ -302,6 +302,21 @@ def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) 
     )
 
 
+def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:
+    """Print a short child log tail after a readiness failure."""
+    try:
+        content = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        print(f"     Could not read log: {exc}")
+        return
+    if not content:
+        print("     Log is empty.")
+        return
+    print("     Last log lines:")
+    for line in content[-max(1, int(lines)):]:
+        print(f"       {line}")
+
+
 def _start_runner(
     *,
     host: str,
@@ -504,7 +519,12 @@ def cmd_start(
                        log_file=log_d / "runner.log", repo_root=repo_root)
     if not _wait_for_port(runner_host, runner_port, timeout=8.0):
         print(f"  ❌ Runner did not start within 8s (pid={rp.pid})")
-        print(f"     Log: {log_d / 'runner.log'}")
+        runner_log = log_d / "runner.log"
+        print(f"     Log: {runner_log}")
+        returncode = rp.poll()
+        if returncode is not None:
+            print(f"     Runner exited with status {returncode}")
+        _print_log_tail(runner_log)
         _stop_pg(rp.pid, rp.pid, name="runner")
         return 1
     print(f"  ✅ Runner OK  (pid={rp.pid})")

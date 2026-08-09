@@ -55,6 +55,32 @@ class RequestBodyError(ValueError):
         self.status = int(status)
 
 
+def _address_is_loopback(value: str) -> bool:
+    """Accept native and IPv4-mapped loopback address literals."""
+    try:
+        address = ipaddress.ip_address(str(value).split("%", 1)[0])
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool(mapped is not None and mapped.is_loopback)
+
+
+def _is_loopback_bind_host(host: str, port: int) -> bool:
+    """Validate a bind host without resolving numeric address literals."""
+    if _address_is_loopback(host):
+        return True
+    try:
+        addresses = {
+            info[4][0]
+            for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        }
+    except OSError:
+        return False
+    return bool(addresses) and all(_address_is_loopback(address) for address in addresses)
+
+
 class RunnerHTTPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for runner API"""
     
@@ -74,12 +100,14 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
     
     def send_json(self, status_code: int, data: Dict[str, Any]):
         """Send JSON response with CORS headers"""
+        payload = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.add_cors_headers()
         self.end_headers()
-        self.wfile.write(json.dumps(data, default=str).encode())
+        self.wfile.write(payload)
     
     def send_error_json(self, status_code: int, message: str):
         """Send JSON error response with CORS headers"""
@@ -390,14 +418,7 @@ def start_runner(host="127.0.0.1", port=9000, *, allowed_origins: list[str] | No
         host: Bind address (default: 127.0.0.1, localhost only)
         port: Port number (default: 9000)
     """
-    try:
-        addresses = {
-            info[4][0]
-            for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-        }
-    except OSError:
-        addresses = set()
-    if not addresses or not all(ipaddress.ip_address(address).is_loopback for address in addresses):
+    if not _is_loopback_bind_host(host, port):
         print("[Runner] Refusing non-loopback bind address. Use 127.0.0.1 or ::1.", file=sys.stderr)
         return 64
 

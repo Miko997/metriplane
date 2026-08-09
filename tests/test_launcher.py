@@ -48,6 +48,7 @@ from metriplane.launcher import (
     _is_vt_safe_to_kill,
     _load_state,
     _make_proc_entry,
+    _print_log_tail,
     _read_cmdline,
     _runtime_module_for_config,
     _save_state,
@@ -443,6 +444,18 @@ class TestFindRepoRoot:
 
     def test_returns_path_object(self):
         assert isinstance(_find_repo_root(), Path)
+
+
+def test_print_log_tail_reports_only_requested_lines(tmp_path, capsys):
+    log_file = tmp_path / "runner.log"
+    log_file.write_text("first\nsecond\nthird\n", encoding="utf-8")
+
+    _print_log_tail(log_file, lines=2)
+
+    output = capsys.readouterr().out
+    assert "first" not in output
+    assert "second" in output
+    assert "third" in output
 
 
 # ---------------------------------------------------------------------------
