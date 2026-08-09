@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+blank_issues_enabled: false
+contact_links:
+  - name: Usage questions
+    url: https://github.com/Miko997/metriplane/discussions/categories/q-a
+    about: Ask how to install or use Metriplane in GitHub Discussions Q&A.
+  - name: Ideas and early integration discussion
+    url: https://github.com/Miko997/metriplane/discussions/categories/ideas
+    about: Discuss an idea before filing a scoped integration request.
+  - name: Report a security vulnerability privately
+    url: https://github.com/Miko997/metriplane/security/advisories/new
+    about: Send vulnerability details privately to the Metriplane maintainers.

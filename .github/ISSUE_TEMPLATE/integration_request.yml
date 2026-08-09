@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Integration request
+description: Propose a bounded data-source or workflow integration.
+title: "[Integration]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the user problem and data boundary before proposing architecture.
+        This form is not a commitment that an integration will be added. Do not
+        attach private recordings, credentials, or customer data.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and GitHub Discussions Ideas.
+          required: true
+        - label: I can describe this request without private data or vulnerability details.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What concrete incident-analysis or regression-testing task is difficult today?
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Source system or data format
+      placeholder: Name and exact version or specification URL
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: Minimal input shape
+      description: Describe timestamp, object identifier, position/state, ordering, units, and process-rule information. Use synthetic examples only.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Expected Metriplane outcome
+      description: Which incident timeline, report, verified bundle, or repeatable check should this enable?
+    validations:
+      required: true
+  - type: textarea
+    id: existing_path
+    attributes:
+      label: What have you tried?
+      description: Include existing conversion steps, commands, errors, or a small prototype if available.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: State the smallest useful boundary and what this integration must not claim, prove, or control.
+    validations:
+      required: true
+  - type: input
+    id: upstream
+    attributes:
+      label: Upstream documentation
+      description: Link the authoritative format/API documentation and identify its license or usage terms.
+  - type: checkboxes
+    id: responsibility
+    attributes:
+      label: Data and licensing responsibility
+      options:
+        - label: Any example I provide will be synthetic or data I am authorized to share, with compatible licensing and attribution.
+          required: true

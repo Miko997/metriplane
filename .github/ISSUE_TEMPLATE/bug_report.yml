@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Bug report
+description: Report a reproducible problem in Metriplane.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for a focused report. Do not post vulnerabilities, credentials,
+        private recordings, or identifying workcell data here. Use SECURITY.md for
+        a suspected vulnerability and a synthetic reproducer for ordinary bugs.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions for this problem.
+          required: true
+        - label: This report does not disclose a suspected vulnerability or private data.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Metriplane version
+      description: Paste the output of `metriplane --version` and say whether this is PyPI, a wheel, or a source checkout.
+      placeholder: metriplane x.y.z; installed from ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and version, Python version, and architecture.
+      placeholder: Ubuntu 24.04; Python 3.12.x; x86_64
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: Paste the smallest command that reproduces the problem.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include complete error text as text, with private paths and identifiers redacted.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor and demo results
+      description: Paste relevant `metriplane doctor` output and say whether `metriplane demo` succeeds. Redact private paths.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal synthetic reproducer
+      description: Describe or paste the smallest synthetic input and process-rule fragment needed to reproduce this, if applicable.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data responsibility
+      options:
+        - label: I have removed credentials, personal data, private recordings, customer/site identifiers, and other sensitive material.
+          required: true

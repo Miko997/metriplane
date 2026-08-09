@@ -53,7 +53,7 @@ def test_project_urls_are_current_and_keep_research_versions_distinct() -> None:
         "Repository": "https://github.com/Miko997/metriplane",
         "Issues": "https://github.com/Miko997/metriplane/issues",
         "Changelog": "https://github.com/Miko997/metriplane/blob/main/CHANGELOG.md",
-        "Support": "https://github.com/Miko997/metriplane/issues",
+        "Support": "https://github.com/Miko997/metriplane/blob/main/SUPPORT.md",
         "Roadmap": "https://github.com/Miko997/metriplane/blob/main/ROADMAP.md",
         "Research Artifact v0.2.0": "https://doi.org/10.5281/zenodo.20736619",
         "Research Preprint": "https://doi.org/10.2139/ssrn.7166858",
