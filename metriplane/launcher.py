@@ -13,8 +13,7 @@ State: ~/.cache/metriplane/launcher-state.json
 Logs:  ~/metriplane-runs/_launcher/<timestamp>/{runner,dashboard,fusion}.log
 
 Key design decisions (v2):
-- each child is its own process group leader (PGID = PID)
-  (a fresh-process shim on macOS; start_new_session=True elsewhere)
+- start_new_session=True  → each child is its own process group leader (PGID = PID)
 - os.killpg(pgid, sig)    → kills the entire process group, not just the wrapper
 - state stores both pid and pgid
 - stop: SIGTERM → wait 5s → SIGKILL → poll port-free before clearing state
@@ -291,31 +290,15 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
 
 
 def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) -> subprocess.Popen:
-    """Launch a subprocess in its own process group. Returns Popen."""
-    child_cmd = cmd
-    options: dict[str, Any]
-    if sys.platform == "darwin":
-        # Avoid running process-group or cwd setup between fork and exec after
-        # native libraries have initialized. These options let subprocess use
-        # posix_spawn; normal Python file descriptors are non-inheritable, and
-        # the fresh interpreter then creates its own process group.
-        shim = Path(__file__).with_name("_launcher_child.py").resolve()
-        child_cmd = [
-            sys.executable,
-            str(shim),
-            str(cwd),
-            *cmd,
-        ]
-        options = {"stdin": subprocess.DEVNULL, "close_fds": False}
-    else:
-        options = {"cwd": str(cwd), "start_new_session": True}
+    """Launch a subprocess in a new session and process group. Returns Popen."""
     with open(log_file, "w") as fh:
         return subprocess.Popen(
-            child_cmd,
+            cmd,
             stdout=fh,
             stderr=fh,
+            cwd=str(cwd),
             env=env,
-            **options,
+            start_new_session=True,
         )
 
 
@@ -332,30 +315,6 @@ def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:
     print("     Last log lines:")
     for line in content[-max(1, int(lines)):]:
         print(f"       {line}")
-
-
-def _print_process_status(pid: int) -> None:
-    """Print one bounded process-status row after a readiness failure."""
-    command = [
-        "ps", "-ww", "-p", str(pid),
-        "-o", "pid=,ppid=,pgid=,state=,etime=,command=",
-    ]
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        print(f"     Process status unavailable: {exc}")
-        return
-    row = next((line.strip() for line in result.stdout.splitlines() if line.strip()), "")
-    if row:
-        print(f"     Process: {row[:500]}")
-    else:
-        print("     Process status unavailable.")
 
 
 def _start_runner(
@@ -382,12 +341,7 @@ def _start_runner(
         "--trusted-origin",
         f"http://127.0.0.1:{dashboard_port}",
     ]
-    env = None
-    if sys.platform == "darwin":
-        env = dict(os.environ)
-        env["METRIPLANE_RUNNER_STARTUP_DIAGNOSTICS"] = "1"
-        env["PYTHONUNBUFFERED"] = "1"
-    return _launch(cmd, log_file, repo_root, env=env)
+    return _launch(cmd, log_file, repo_root)
 
 
 def _start_dashboard(*, host: str, port: int, log_file: Path, repo_root: Path) -> subprocess.Popen:
@@ -571,7 +525,6 @@ def cmd_start(
         if returncode is not None:
             print(f"     Runner exited with status {returncode}")
         _print_log_tail(runner_log)
-        _print_process_status(rp.pid)
         _stop_pg(rp.pid, rp.pid, name="runner")
         return 1
     print(f"  ✅ Runner OK  (pid={rp.pid})")

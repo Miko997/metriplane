@@ -8,7 +8,6 @@ import threading
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
-from http.server import ThreadingHTTPServer
 
 import pytest
 
@@ -20,7 +19,7 @@ from metriplane.runner.executor import CommandExecutor
 def runner_server():
     original_executor = service.executor
     service.executor = CommandExecutor()
-    server = ThreadingHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
+    server = service.LocalRunnerHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -160,3 +159,16 @@ def test_numeric_loopback_validation_does_not_require_name_resolution(monkeypatc
     assert service._is_loopback_bind_host("127.0.0.1", 9000) is True
     assert service._is_loopback_bind_host("::1", 9000) is True
     assert service._is_loopback_bind_host("::ffff:127.0.0.1", 9000) is True
+
+
+def test_local_runner_bind_does_not_require_reverse_dns(monkeypatch):
+    def fail_lookup(_host):
+        raise AssertionError("reverse DNS must not run for a loopback server")
+
+    monkeypatch.setattr(service.socket, "getfqdn", fail_lookup)
+    server = service.LocalRunnerHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
+    try:
+        assert server.server_name == "127.0.0.1"
+        assert server.server_port > 0
+    finally:
+        server.server_close()
