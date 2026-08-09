@@ -170,8 +170,14 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest
 
-      - name: Run full camera-free suite
-        run: python -m pytest -q
+      # The launcher deliberately creates a new process session. Keep that
+      # process-boundary test out of the long-lived macOS pytest interpreter,
+      # after native libraries have initialized their own runtime state.
+      - name: Run camera-free suite outside launcher process boundary
+        run: python -m pytest -q --ignore=tests/test_launcher.py
+
+      - name: Run launcher suite in a fresh Python process
+        run: python -m pytest -q tests/test_launcher.py
 
   linux-python313:
     name: Linux full suite (Python 3.13)
