@@ -9,6 +9,7 @@ Uses Python stdlib only (http.server). Binds to localhost only.
 """
 
 import errno
+import faulthandler
 import hmac
 import ipaddress
 import json
@@ -21,6 +22,14 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 from typing import Dict, Any
+
+
+_STARTUP_DIAGNOSTICS = os.getenv("METRIPLANE_RUNNER_STARTUP_DIAGNOSTICS") == "1"
+if _STARTUP_DIAGNOSTICS:
+    # The launcher reads stderr after its 8-second readiness timeout. Schedule
+    # one traceback early enough to identify an import or bind stall.
+    faulthandler.dump_traceback_later(5, repeat=False, file=sys.stderr)
+
 
 from .allowlist import ALLOWLIST, get_command, validate_command_id
 from .executor import CommandExecutor, find_repo_root
@@ -445,6 +454,8 @@ def start_runner(host="127.0.0.1", port=9000, *, allowed_origins: list[str] | No
             )
             return 98
         raise
+    if _STARTUP_DIAGNOSTICS:
+        faulthandler.cancel_dump_traceback_later()
     print(f"[Runner] Metriplane Dashboard Runner v2.0")
     print(f"[Runner] Repository root: {executor.repo_root}")
     print(f"[Runner] Serving on http://{host}:{port}")

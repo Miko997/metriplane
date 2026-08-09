@@ -181,6 +181,30 @@ class TestLauncherDefaults:
 
         assert captured["env"]["METRIPLANE_COMPUTE_BACKEND"] == "gpu"
 
+    def test_runner_enables_bounded_darwin_startup_diagnostics(self, monkeypatch, tmp_path):
+        import metriplane.launcher as lm
+
+        captured = {}
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["env"] = env
+            return object()
+
+        monkeypatch.setattr(lm.sys, "platform", "darwin")
+        monkeypatch.setattr(lm, "_launch", fake_launch)
+
+        lm._start_runner(
+            host="127.0.0.1",
+            port=9000,
+            dashboard_host="127.0.0.1",
+            dashboard_port=8088,
+            log_file=tmp_path / "runner.log",
+            repo_root=Path.cwd(),
+        )
+
+        assert captured["env"]["METRIPLANE_RUNNER_STARTUP_DIAGNOSTICS"] == "1"
+        assert captured["env"]["PYTHONUNBUFFERED"] == "1"
+
 
 class TestNoState:
     def setup_method(self):

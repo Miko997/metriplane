@@ -334,6 +334,30 @@ def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:
         print(f"       {line}")
 
 
+def _print_process_status(pid: int) -> None:
+    """Print one bounded process-status row after a readiness failure."""
+    command = [
+        "ps", "-ww", "-p", str(pid),
+        "-o", "pid=,ppid=,pgid=,state=,etime=,command=",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"     Process status unavailable: {exc}")
+        return
+    row = next((line.strip() for line in result.stdout.splitlines() if line.strip()), "")
+    if row:
+        print(f"     Process: {row[:500]}")
+    else:
+        print("     Process status unavailable.")
+
+
 def _start_runner(
     *,
     host: str,
@@ -358,7 +382,12 @@ def _start_runner(
         "--trusted-origin",
         f"http://127.0.0.1:{dashboard_port}",
     ]
-    return _launch(cmd, log_file, repo_root)
+    env = None
+    if sys.platform == "darwin":
+        env = dict(os.environ)
+        env["METRIPLANE_RUNNER_STARTUP_DIAGNOSTICS"] = "1"
+        env["PYTHONUNBUFFERED"] = "1"
+    return _launch(cmd, log_file, repo_root, env=env)
 
 
 def _start_dashboard(*, host: str, port: int, log_file: Path, repo_root: Path) -> subprocess.Popen:
@@ -542,6 +571,7 @@ def cmd_start(
         if returncode is not None:
             print(f"     Runner exited with status {returncode}")
         _print_log_tail(runner_log)
+        _print_process_status(rp.pid)
         _stop_pg(rp.pid, rp.pid, name="runner")
         return 1
     print(f"  ✅ Runner OK  (pid={rp.pid})")
