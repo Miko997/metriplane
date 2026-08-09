@@ -148,8 +148,12 @@ jobs:
           python -c "import metriplane; print('ok')"
 
   macos-regressions:
-    name: macOS regressions (Python 3.13)
+    name: macOS full suite (Python ${{ matrix.python-version }})
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
@@ -158,7 +162,7 @@ jobs:
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install test dependencies
         run: |
@@ -166,11 +170,8 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest
 
-      - name: Run macOS regression checks
-        run: |
-          python -m pytest -q \
-            tests/test_atlas_core.py::test_atlas_output_guard_classifies_generated_dirs \
-            tests/test_launcher.py::TestReadCmdline
+      - name: Run full camera-free suite
+        run: python -m pytest -q
 
   linux-python313:
     name: Linux full suite (Python 3.13)
