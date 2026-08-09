@@ -31,6 +31,7 @@ def main_incidents(argv: list[str]) -> int:
     bundle.add_argument("--zones", default=None)
     bundle.add_argument("--config", default=None)
     bundle.add_argument("--out", required=True)
+    bundle.add_argument("--overwrite", action="store_true")
 
     verify = sub.add_parser("verify-bundle", help="Verify an evidence bundle")
     verify.add_argument("bundle_dir")
@@ -127,6 +128,7 @@ def _bundle(args) -> int:
         rules_path=args.rules,
         zones_path=args.zones,
         config_path=args.config,
+        overwrite=args.overwrite,
     )
     print(f"Bundle created: {bundle}")
     return 0

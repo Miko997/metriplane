@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -15,7 +17,8 @@ from tempfile import TemporaryDirectory
 import zipfile
 
 from metriplane.atlas.event_ledger import read_events
-from metriplane.atlas.models import AtlasIncident, BundleManifest
+from metriplane.atlas.models import AtlasEvent, AtlasIncident, BundleManifest
+from metriplane.schema import FrameStateModel
 
 
 REQUIRED_BUNDLE_FILES = [
@@ -33,6 +36,23 @@ REQUIRED_BUNDLE_FILES = [
     "replay_command.sh",
     "limitations.md",
 ]
+
+REQUIRED_EXPORT_SOURCE_FILES = (
+    "incidents.jsonl",
+    "physical_event_log.jsonl",
+    "reality_graph.json",
+    "process_trace.json",
+    "configs/assets.yaml",
+    "configs/workspace.yaml",
+    "configs/process.yaml",
+    "cell_truth_report.md",
+)
+OPTIONAL_EXPORT_SOURCE_FILES = (
+    "atlas_manifest.json",
+    "state_segment.jsonl",
+    "configs/contracts.yaml",
+    "configs/work_orders.csv",
+)
 
 MAX_ZIP_MEMBERS = 1024
 MAX_ZIP_MEMBER_BYTES = 128 * 1024 * 1024
@@ -137,6 +157,83 @@ def _remove_path(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def _validate_export_source_file(
+    run: Path,
+    relative_path: str,
+    *,
+    required: bool,
+) -> None:
+    rel = _safe_relative_path(relative_path)
+    current = run
+    for part in PurePosixPath(rel).parts:
+        current /= part
+        if current.is_symlink():
+            raise ValueError(f"source run path must not be a symlink: {rel}")
+
+    if current.exists():
+        if not current.is_file():
+            raise ValueError(f"source run path is not a regular file: {rel}")
+    elif required:
+        raise ValueError(f"source run is missing required file: {rel}")
+
+
+def _validate_export_sources(run: Path) -> None:
+    for relative_path in REQUIRED_EXPORT_SOURCE_FILES:
+        _validate_export_source_file(run, relative_path, required=True)
+    for relative_path in OPTIONAL_EXPORT_SOURCE_FILES:
+        _validate_export_source_file(run, relative_path, required=False)
+
+
+def _validated_state_segment_rows(
+    rows: list[dict] | None,
+    source: Path,
+) -> list[dict]:
+    if rows is None:
+        rows = []
+        for line_number, line in enumerate(
+            source.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"invalid state segment JSON on line {line_number}: {exc}"
+                ) from exc
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"invalid state segment record on line {line_number}: expected object"
+                )
+            rows.append(record)
+    if not rows:
+        raise ValueError("state segment must contain at least one frame")
+
+    validated: list[dict] = []
+    previous_time: float | None = None
+    for index, row in enumerate(rows, start=1):
+        try:
+            frame = FrameStateModel.model_validate(row)
+            if frame.ts_sim_ns is not None:
+                if frame.ts_sim_ns < 0:
+                    raise ValueError("ts_sim_ns must be non-negative")
+                frame_time = float(frame.ts_sim_ns) / 1_000_000_000.0
+            else:
+                frame_time = float(frame.ts)
+        except Exception as exc:
+            raise ValueError(f"invalid state segment frame {index}: {exc}") from exc
+        if not math.isfinite(frame_time):
+            raise ValueError(f"invalid state segment frame {index}: non-finite time")
+        if previous_time is not None and frame_time < previous_time:
+            raise ValueError(
+                f"state segment time decreases at frame {index}: "
+                f"{frame_time} follows {previous_time}"
+            )
+        previous_time = frame_time
+        validated.append(dict(row))
+    return validated
+
+
 def export_bundle(
     run_dir: str | Path,
     incident_id: str,
@@ -146,8 +243,11 @@ def export_bundle(
     overwrite: bool = False,
 ) -> Path:
     run = Path(run_dir)
+    if run.is_symlink():
+        raise ValueError(f"source run directory must not be a symlink: {run}")
     if not run.is_dir():
         raise ValueError(f"run directory does not exist: {run}")
+    _validate_export_sources(run)
     run_manifest = {}
     manifest_path = run / "atlas_manifest.json"
     if manifest_path.exists():
@@ -155,16 +255,32 @@ def export_bundle(
     incident = next((item for item in _load_incidents(run) if item.incident_id == incident_id), None)
     if incident is None:
         raise ValueError(f"incident not found: {incident_id}")
+    state_source = run / "state_segment.jsonl"
+    if state_segment_rows is None and not state_source.is_file():
+        fallback_rel = f"evidence_bundles/{incident_id}/state_segment.jsonl"
+        _validate_export_source_file(run, fallback_rel, required=True)
+        state_source = run / fallback_rel
+    state_segment_rows = _validated_state_segment_rows(
+        state_segment_rows,
+        state_source,
+    )
     out = Path(out_zip)
     if out.suffix.lower() != ".zip":
         raise ValueError(f"bundle output must end in .zip: {out}")
     bundle_dir = out.with_suffix("")
+    run_resolved = run.resolve()
+    generated_bundle_root = (run / "evidence_bundles").resolve()
     for destination in (out, bundle_dir):
         destination_resolved = destination.resolve()
-        run_resolved = run.resolve()
+        inside_source_run = run_resolved in destination_resolved.parents
+        inside_generated_bundle_root = (
+            destination_resolved == generated_bundle_root
+            or generated_bundle_root in destination_resolved.parents
+        )
         if (
             destination_resolved == run_resolved
             or destination_resolved in run_resolved.parents
+            or (inside_source_run and not inside_generated_bundle_root)
         ):
             raise ValueError(f"bundle output would replace its source run: {destination}")
         if destination.exists() or destination.is_symlink():
@@ -188,9 +304,8 @@ def export_bundle(
         with (stage_bundle / "event_timeline.jsonl").open("w", encoding="utf-8") as handle:
             for event in events:
                 handle.write(json.dumps(event.model_dump(), sort_keys=True) + "\n")
-        rows = state_segment_rows or []
         with (stage_bundle / "state_segment.jsonl").open("w", encoding="utf-8") as handle:
-            for row in rows:
+            for row in state_segment_rows:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
         shutil.copyfile(run / "reality_graph.json", stage_bundle / "reality_graph_excerpt.json")
         shutil.copyfile(run / "process_trace.json", stage_bundle / "process_trace_excerpt.json")
@@ -217,13 +332,17 @@ def export_bundle(
             encoding="utf-8",
         )
         (stage_bundle / "provenance" / "command.txt").write_text(
-            f"metriplane atlas bundle export --incident-id {incident_id} --run-dir {run} --out {out}\n",
+            "metriplane atlas bundle export "
+            f"--incident-id {incident_id} --run-dir <atlas-run> --out <bundle.zip>\n",
             encoding="utf-8",
         )
         manifest = BundleManifest(
             bundle_id=f"bundle_{incident_id}",
             incident_id=incident_id,
-            run_id=str(run_manifest.get("run_id") or incident_id),
+            run_id=str(
+                run_manifest.get("run_id")
+                or (events[0].run_id if events else incident_id)
+            ),
             required_files=list(REQUIRED_BUNDLE_FILES),
         )
         _json_dump(stage_bundle / "manifest.json", manifest.model_dump())
@@ -239,11 +358,35 @@ def export_bundle(
                 )
         _zip_dir(stage_bundle, stage_zip)
 
-        if overwrite:
-            _remove_path(out)
-            _remove_path(bundle_dir)
-        shutil.move(str(stage_bundle), str(bundle_dir))
-        os.replace(stage_zip, out)
+        previous: dict[Path, Path] = {}
+        published: list[Path] = []
+        try:
+            destinations = (bundle_dir, out)
+            if not overwrite and any(
+                destination.exists() or destination.is_symlink()
+                for destination in destinations
+            ):
+                raise ValueError(
+                    "refusing to replace bundle output created while staging "
+                    "without --overwrite"
+                )
+            for index, destination in enumerate(destinations):
+                if destination.exists() or destination.is_symlink():
+                    backup = stage_root / f"previous-{index}"
+                    os.replace(destination, backup)
+                    previous[destination] = backup
+            os.replace(stage_bundle, bundle_dir)
+            published.append(bundle_dir)
+            os.replace(stage_zip, out)
+            published.append(out)
+        except Exception:
+            for destination in published:
+                if destination.exists() or destination.is_symlink():
+                    _remove_path(destination)
+            for destination, backup in previous.items():
+                if backup.exists() or backup.is_symlink():
+                    os.replace(backup, destination)
+            raise
     return out
 
 
@@ -306,12 +449,25 @@ def verify_bundle(bundle_path: str | Path) -> dict:
     errors: list[str] = []
     try:
         with _unpack_bundle(bundle) as root:
+            inventory, inventory_errors = _regular_file_inventory(
+                root, "checksums.sha256"
+            )
+            errors.extend(inventory_errors)
             for required in REQUIRED_BUNDLE_FILES:
-                if not (root / required).is_file():
+                required_path = root / required
+                if required_path.is_symlink() or not required_path.is_file():
                     errors.append(f"missing required file: {required}")
             if not errors:
                 manifest = BundleManifest.model_validate(json.loads((root / "manifest.json").read_text()))
-                manifest_required = set(manifest.required_files)
+                manifest_required: set[str] = set()
+                for raw_rel in manifest.required_files:
+                    rel = _safe_relative_path(raw_rel)
+                    if rel in manifest_required:
+                        errors.append(f"duplicate manifest required file: {rel}")
+                        continue
+                    manifest_required.add(rel)
+                    if not (root / rel).is_file():
+                        errors.append(f"manifest references missing required file: {rel}")
                 missing_manifest_entries = set(REQUIRED_BUNDLE_FILES) - manifest_required
                 for rel in sorted(missing_manifest_entries):
                     errors.append(f"manifest omits required file: {rel}")
@@ -319,10 +475,6 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                     root / "checksums.sha256"
                 )
                 errors.extend(checksum_errors)
-                inventory, inventory_errors = _regular_file_inventory(
-                    root, "checksums.sha256"
-                )
-                errors.extend(inventory_errors)
                 for rel in sorted(inventory - set(recorded)):
                     errors.append(f"file missing checksum entry: {rel}")
                 for rel in sorted(set(recorded) - inventory):
@@ -331,15 +483,70 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                     path = root / rel
                     if rel in inventory and sha256_file(path) != digest:
                         errors.append(f"checksum mismatch: {rel}")
-                event_ids = {
-                    json.loads(line)["event_id"]
-                    for line in (root / "event_timeline.jsonl").read_text().splitlines()
-                    if line.strip()
-                }
-                incident = AtlasIncident.model_validate(json.loads((root / "incident.json").read_text()))
-                for event_id in incident.event_ids:
-                    if event_id not in event_ids:
-                        errors.append(f"incident references missing event: {event_id}")
+                try:
+                    _validated_state_segment_rows(
+                        None,
+                        root / "state_segment.jsonl",
+                    )
+                except ValueError as exc:
+                    errors.append(str(exc))
+                events: list[AtlasEvent] = []
+                for line_number, line in enumerate(
+                    (root / "event_timeline.jsonl")
+                    .read_text(encoding="utf-8")
+                    .splitlines(),
+                    start=1,
+                ):
+                    if not line.strip():
+                        continue
+                    try:
+                        events.append(AtlasEvent.model_validate(json.loads(line)))
+                    except Exception as exc:
+                        errors.append(
+                            f"invalid timeline event on line {line_number}: {exc}"
+                        )
+
+                timeline_ids = [event.event_id for event in events]
+                duplicate_timeline_ids = sorted(
+                    event_id
+                    for event_id, count in Counter(timeline_ids).items()
+                    if count > 1
+                )
+                for event_id in duplicate_timeline_ids:
+                    errors.append(f"duplicate timeline event ID: {event_id}")
+
+                incident = AtlasIncident.model_validate(
+                    json.loads((root / "incident.json").read_text(encoding="utf-8"))
+                )
+                if manifest.incident_id != incident.incident_id:
+                    errors.append(
+                        "manifest incident_id does not match incident: "
+                        f"{manifest.incident_id!r} != {incident.incident_id!r}"
+                    )
+                for event in events:
+                    if event.run_id != manifest.run_id:
+                        errors.append(
+                            "manifest run_id does not match timeline event "
+                            f"{event.event_id}: {manifest.run_id!r} != {event.run_id!r}"
+                        )
+
+                duplicate_incident_ids = sorted(
+                    event_id
+                    for event_id, count in Counter(incident.event_ids).items()
+                    if count > 1
+                )
+                for event_id in duplicate_incident_ids:
+                    errors.append(f"duplicate incident event ID: {event_id}")
+
+                incident_event_ids = set(incident.event_ids)
+                timeline_event_ids = set(timeline_ids)
+                if incident_event_ids != timeline_event_ids:
+                    missing = sorted(incident_event_ids - timeline_event_ids)
+                    extra = sorted(timeline_event_ids - incident_event_ids)
+                    errors.append(
+                        "incident event IDs do not exactly match timeline: "
+                        f"missing={missing}, extra={extra}"
+                    )
     except Exception as exc:
         message = str(exc).strip() or type(exc).__name__
         errors.append(message)

@@ -11,7 +11,8 @@ from metriplane.sentinel.rules import RuleSet
 
 def _first_pos(frames: list[FrameStateModel], marker_id: str):
     for f in frames:
-        for o in f.objects:
+        observed = f.fused if f.fused is not None else f.objects
+        for o in observed:
             if str(o.id) == marker_id and o.pos_world is not None:
                 return o.pos_world
     return None
@@ -31,7 +32,7 @@ def scale_object_speed(frames: list[FrameStateModel], marker_id: str,
     for f in frames:
         nf = f.model_copy(deep=True)
         nf.objects = [_scale_obj(o, marker_id, first, factor) for o in nf.objects]
-        if nf.fused:
+        if nf.fused is not None:
             nf.fused = [_scale_obj(o, marker_id, first, factor) for o in nf.fused]
         out.append(nf)
     return out
@@ -51,7 +52,7 @@ def remove_object(frames: list[FrameStateModel], marker_id: str) -> list[FrameSt
     for f in frames:
         nf = f.model_copy(deep=True)
         nf.objects = [o for o in nf.objects if str(o.id) != marker_id]
-        if nf.fused:
+        if nf.fused is not None:
             nf.fused = [o for o in nf.fused if str(o.id) != marker_id]
         out.append(nf)
     return out

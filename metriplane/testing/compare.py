@@ -109,8 +109,14 @@ def compare_events(observed: list[RuleAlert], specs: list[ExpectedEventSpec],
 def compare_latency(p95_ms: float | None,
                     expected: PhysicalRegressionExpected) -> list[dict[str, Any]]:
     limit = expected.latency.p95_update_ms_max
-    if limit is None or p95_ms is None:
+    if limit is None:
         return []
+    if p95_ms is None:
+        return [_check(
+            "latency.p95_update_ms",
+            False,
+            f"no frame timing sample (max {limit}ms)",
+        )]
     ok = p95_ms <= limit
     return [_check("latency.p95_update_ms", ok,
                    f"{round(p95_ms, 3)}ms (max {limit}ms)")]

@@ -238,7 +238,9 @@ def _event_matches(
     if expected.get("ts") is not None:
         if actual.get("ts") is None:
             return False
-        if abs(float(expected["ts"]) - float(actual["ts"])) > event_time_tolerance:
+        if not _within_tolerance(
+            expected["ts"], actual["ts"], event_time_tolerance
+        ):
             return False
     return True
 
@@ -255,13 +257,30 @@ def _incident_matches(
         return False
     for key in ("start_ts", "end_ts"):
         if expected.get(key) is not None:
-            if abs(float(expected[key]) - float(getattr(actual, key))) > event_time_tolerance:
+            if not _within_tolerance(
+                expected[key], getattr(actual, key), event_time_tolerance
+            ):
                 return False
     if expected.get("duration_s") is not None:
         actual_duration = actual.end_ts - actual.start_ts
-        if abs(float(expected["duration_s"]) - actual_duration) > duration_tolerance:
+        if not _within_tolerance(
+            expected["duration_s"], actual_duration, duration_tolerance
+        ):
             return False
     return True
+
+
+def _within_tolerance(expected: object, actual: object, tolerance: float) -> bool:
+    try:
+        expected_value = float(expected)
+        actual_value = float(actual)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        math.isfinite(expected_value)
+        and math.isfinite(actual_value)
+        and abs(expected_value - actual_value) <= tolerance
+    )
 
 
 def _result(spec: RegressionSpec, errors: list[str]) -> dict:

@@ -46,6 +46,24 @@ def test_no_raw_per_camera_safe():
     assert report.camera_scores == {}
 
 
+def test_empty_fused_observations_do_not_resurrect_raw_objects():
+    from metriplane.schema import FrameStateModel, ObjectStateModel
+
+    analyzer = CameraTrustAnalyzer()
+    analyzer.update(
+        FrameStateModel(
+            source_backend="fusion",
+            ts=0.0,
+            frame_id=1,
+            objects=[ObjectStateModel(id="7", zone="raw-only")],
+            fused=[],
+        )
+    )
+
+    report = analyzer.report()
+    assert report.zone_scores == {}
+
+
 def test_report_stable_ordering():
     report = analyze_session(FIXTURE)
     assert list(report.camera_scores.keys()) == ["cam0", "cam1"]

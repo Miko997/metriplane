@@ -31,8 +31,9 @@ def main_test(argv: list[str]) -> int:
 
     if not args.no_write_reports:
         bundle = Path(args.bundle)
-        write_json(result, bundle / "test_result.json")
-        write_md(result, bundle / "test_result.md")
+        if bundle.is_dir() and not bundle.is_symlink():
+            write_json(result, bundle / "test_result.json")
+            write_md(result, bundle / "test_result.md")
     if args.output:
         write_json(result, args.output)
 

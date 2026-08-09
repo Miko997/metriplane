@@ -34,6 +34,7 @@ class ProcessEvaluator:
     _incident_counter: int = 0
     completed_steps: list[str] = field(default_factory=list)
     active_missing: dict[str, tuple[float, list[str]]] = field(default_factory=dict)
+    active_missing_asset: dict[str, str] = field(default_factory=dict)
     emitted_delay_for_step: set[str] = field(default_factory=set)
     deviations: list[AtlasDeviation] = field(default_factory=list)
     incidents: list[AtlasIncident] = field(default_factory=list)
@@ -102,6 +103,7 @@ class ProcessEvaluator:
                     obs.asset, step, obs.zone_id, obs.station_id,
                 ))
             self.active_missing.pop(step.step_id, None)
+            self.active_missing_asset.pop(step.step_id, None)
             self.completed_steps.append(step.step_id)
             events.append(self._event(
                 ts, frame_id, "step_completed", "info",
@@ -114,7 +116,14 @@ class ProcessEvaluator:
             return events
 
         if step.required_assets:
-            missing_asset_id = step.required_assets[0]
+            missing_asset_id = self._first_missing_required_asset(step, by_asset)
+            if missing_asset_id is None:
+                missing_asset_id = step.required_assets[0]
+            active_asset_id = self.active_missing_asset.get(step.step_id)
+            if active_asset_id is not None and active_asset_id != missing_asset_id:
+                self.active_missing.pop(step.step_id, None)
+                self.active_missing_asset.pop(step.step_id, None)
+                self.emitted_delay_for_step.discard(step.step_id)
             start_ts, event_ids = self.active_missing.get(step.step_id, (ts, []))
             if step.step_id not in self.active_missing:
                 asset = self._placeholder_asset(missing_asset_id)
@@ -126,6 +135,7 @@ class ProcessEvaluator:
                 events.append(missing)
                 event_ids = [missing.event_id]
                 self.active_missing[step.step_id] = (start_ts, event_ids)
+                self.active_missing_asset[step.step_id] = missing_asset_id
             threshold = step.max_wait_s or 0.0
             duration = ts - start_ts
             if duration >= threshold and step.step_id not in self.emitted_delay_for_step:
@@ -184,15 +194,22 @@ class ProcessEvaluator:
         step: ProcessStepModel,
         by_asset: dict[str, AssetObservation],
     ) -> bool:
+        return self._first_missing_required_asset(step, by_asset) is None
+
+    def _first_missing_required_asset(
+        self,
+        step: ProcessStepModel,
+        by_asset: dict[str, AssetObservation],
+    ) -> str | None:
         for asset_id in step.required_assets:
             obs = by_asset.get(asset_id)
             if obs is None:
-                return False
+                return asset_id
             if step.required_zone and obs.zone_id != step.required_zone:
-                return False
+                return asset_id
             if step.required_station and obs.station_id != step.required_station:
-                return False
-        return True
+                return asset_id
+        return None
 
     def _event(
         self,

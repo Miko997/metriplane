@@ -55,6 +55,9 @@ def test_cli_writes_result_json(bundle_copy):
     assert data["pass"] is True
     assert (bundle_copy / "test_result.md").exists()
 
+    # Generated result sidecars remain outside the immutable checksum inventory.
+    assert main_test([str(bundle_copy)]) == 0
+
 
 def test_cli_output_flag(tmp_path, bundle_copy):
     out = tmp_path / "result.json"
@@ -71,7 +74,44 @@ def test_cli_returns_one_on_failure(bundle_copy):
     assert rc == 1
 
 
+def test_bad_bundle_inputs_fail_cleanly_without_creating_paths(tmp_path):
+    missing = tmp_path / "typo-bundle"
+
+    result = PhysicalRegressionRunner().run_bundle(missing)
+
+    assert result.pass_ is False
+    assert main_test([str(missing)]) == 1
+    assert not missing.exists()
+
+    malformed = tmp_path / "malformed"
+    malformed.mkdir()
+    (malformed / "expected.yaml").write_text("incidents: [", encoding="utf-8")
+    assert PhysicalRegressionRunner().run_bundle(malformed).pass_ is False
+
+
 def test_determinism_check_present(bundle_copy):
     result = PhysicalRegressionRunner().run_bundle(bundle_copy)
     assert any(c["check"] == "replay.deterministic_hash_match" for c in result.checks)
     assert result.output_hash
+
+
+@pytest.mark.parametrize("contents", ["", "{broken\n"])
+def test_empty_or_malformed_session_excerpt_fails_closed(bundle_copy, contents):
+    (bundle_copy / "session_excerpt.jsonl").write_text(contents, encoding="utf-8")
+
+    result = PhysicalRegressionRunner(verify_checksums=False).run_bundle(bundle_copy)
+
+    assert result.pass_ is False
+    assert any(check["check"] == "bundle.input" for check in result.checks)
+
+
+def test_empty_semantic_oracle_cannot_pass(bundle_copy):
+    (bundle_copy / "expected.yaml").write_text(
+        'schema_version: "1.0"\nexpected: {}\n',
+        encoding="utf-8",
+    )
+
+    result = PhysicalRegressionRunner().run_bundle(bundle_copy)
+
+    assert result.pass_ is False
+    assert result.checks[0]["check"] == "expected.semantic_oracle"

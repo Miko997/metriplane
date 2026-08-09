@@ -76,7 +76,7 @@ def load_traces(run_dir: str | Path) -> tuple[list[ObjectTrack], str | None]:
     for idx, frame in enumerate(iter_frames(session)):
         if frame.run_id:
             run_id = frame.run_id
-        observed = frame.fused if frame.fused else frame.objects
+        observed = frame.fused if frame.fused is not None else frame.objects
         for o in observed:
             if o.pos_world is None:
                 continue

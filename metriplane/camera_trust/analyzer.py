@@ -53,10 +53,11 @@ class CameraTrustAnalyzer:
             self.run_id = frame.run_id
         self._total_frames += 1
 
-        fused = {str(o.id): o for o in (frame.fused or frame.objects)}
+        observed = frame.fused if frame.fused is not None else frame.objects
+        fused = {str(o.id): o for o in observed}
 
         # zone coverage from fused objects
-        for o in (frame.fused or frame.objects):
+        for o in observed:
             if o.zone:
                 za = self._zones.setdefault(o.zone, _ZoneAgg())
                 za.frames_with_objects += 1

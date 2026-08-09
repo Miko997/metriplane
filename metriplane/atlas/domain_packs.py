@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+import math
 from pathlib import Path
 
 import yaml
@@ -84,6 +85,7 @@ def validate_domain_pack(path: str | Path) -> list[str]:
 
     object_ids: set[str] = set()
     asset_ids: set[str] = set()
+    asset_types: set[str] = set()
     for asset in pack.assets.assets:
         if asset.object_id in object_ids:
             errors.append(f"duplicate object_id: {asset.object_id}")
@@ -93,6 +95,18 @@ def validate_domain_pack(path: str | Path) -> list[str]:
         asset_ids.add(asset.asset_id)
         if not asset.asset_type.strip():
             errors.append(f"asset_type is empty for {asset.asset_id}")
+        else:
+            asset_types.add(asset.asset_type)
+
+    work_order_ids: set[str] = set()
+    for work_order in pack.work_orders:
+        if work_order.work_order_id in work_order_ids:
+            errors.append(f"duplicate work_order_id: {work_order.work_order_id}")
+        work_order_ids.add(work_order.work_order_id)
+    if len(pack.work_orders) > 1:
+        errors.append(
+            "Atlas v1 supports exactly one work order per run; split multi-order inputs"
+        )
 
     zone_ids: set[str] = set()
     for zone in pack.workspace.zones:
@@ -101,14 +115,30 @@ def validate_domain_pack(path: str | Path) -> list[str]:
         zone_ids.add(zone.zone_id)
 
     station_ids: set[str] = set()
+    station_by_id = {}
+    station_by_zone = {}
     for station in pack.workspace.stations:
         if station.station_id in station_ids:
             errors.append(f"duplicate station_id: {station.station_id}")
         station_ids.add(station.station_id)
+        station_by_id[station.station_id] = station
+        previous_station = station_by_zone.get(station.zone_id)
+        if previous_station is not None:
+            errors.append(
+                f"zone {station.zone_id} is assigned to multiple stations: "
+                f"{previous_station.station_id}, {station.station_id}"
+            )
+        else:
+            station_by_zone[station.zone_id] = station
         if station.zone_id not in zone_ids:
             errors.append(f"station {station.station_id} references unknown zone {station.zone_id}")
 
     for asset in pack.assets.assets:
+        if asset.work_order_id and asset.work_order_id not in work_order_ids:
+            errors.append(
+                f"asset {asset.asset_id} references unknown work order "
+                f"{asset.work_order_id}"
+            )
         for zone_id in asset.expected_zones:
             if zone_id not in zone_ids:
                 errors.append(f"asset {asset.asset_id} references unknown expected zone {zone_id}")
@@ -127,17 +157,26 @@ def validate_domain_pack(path: str | Path) -> list[str]:
             errors.append(f"step {step.step_id} references unknown zone {step.required_zone}")
         if step.required_station and step.required_station not in station_ids:
             errors.append(f"step {step.step_id} references unknown station {step.required_station}")
+        if step.required_zone and step.required_station in station_by_id:
+            station = station_by_id[step.required_station]
+            if station.zone_id != step.required_zone:
+                errors.append(
+                    f"step {step.step_id} requires station {step.required_station} "
+                    f"in zone {station.zone_id}, not {step.required_zone}"
+                )
         for required_asset in step.required_assets:
             if required_asset not in asset_ids:
                 errors.append(f"step {step.step_id} references unknown asset {required_asset}")
-        if step.max_wait_s is not None and step.max_wait_s < 0:
-            errors.append(f"step {step.step_id} has negative max_wait_s")
-
-    work_order_ids: set[str] = set()
-    for work_order in pack.work_orders:
-        if work_order.work_order_id in work_order_ids:
-            errors.append(f"duplicate work_order_id: {work_order.work_order_id}")
-        work_order_ids.add(work_order.work_order_id)
+        for expected_asset_type in step.expected_asset_types:
+            if expected_asset_type not in asset_types:
+                errors.append(
+                    f"step {step.step_id} references unknown asset type "
+                    f"{expected_asset_type}"
+                )
+        if step.max_wait_s is not None and (
+            not math.isfinite(step.max_wait_s) or step.max_wait_s < 0
+        ):
+            errors.append(f"step {step.step_id} has invalid max_wait_s")
 
     if pack.contracts_path is not None:
         errors.extend(
@@ -164,8 +203,8 @@ def _validate_contracts(
     errors: list[str] = []
     try:
         data = _read_yaml(path)
-    except ValueError as exc:
-        return [str(exc)]
+    except Exception as exc:
+        return [f"could not parse contracts file {path}: {exc}"]
     if data.get("schema_version") != "metriplane.atlas.contracts.v1":
         errors.append(f"unsupported contracts schema_version in {path}")
     contracts = data.get("contracts")
@@ -195,7 +234,9 @@ def _validate_contracts(
             errors.append(f"contract {contract_id} has no kind")
         for field, known, label in references:
             value = contract.get(field)
-            if value is not None and value not in known:
+            if value is not None and not isinstance(value, str):
+                errors.append(f"contract {contract_id} has invalid {field}")
+            elif value is not None and value not in known:
                 errors.append(
                     f"contract {contract_id} references unknown {label} {value}"
                 )
@@ -203,6 +244,7 @@ def _validate_contracts(
         if max_wait is not None and (
             isinstance(max_wait, bool)
             or not isinstance(max_wait, (int, float))
+            or not math.isfinite(max_wait)
             or max_wait < 0
         ):
             errors.append(f"contract {contract_id} has invalid max_wait_s")

@@ -9,21 +9,29 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
-from metriplane.schema import FrameStateModel
+from metriplane.schema import FrameStateModel, frame_time_s
 from metriplane.sentinel.events import RuleAlert
 from metriplane.sentinel.registry import ObjectRegistryConfig
 from metriplane.sentinel.rules import ObjectFilter, RuleDefinition, RuleSet
 
 
 def iter_frames(session_path: str | Path) -> Iterator[FrameStateModel]:
-    """Yield FrameStateModel per JSONL line, skipping blank/unparseable lines."""
-    for line in Path(session_path).read_text().splitlines():
+    """Yield validated frames, rejecting malformed non-header records."""
+    for line_number, line in enumerate(
+        Path(session_path).read_text().splitlines(), start=1
+    ):
         line = line.strip()
         if not line:
             continue
         try:
-            yield FrameStateModel.model_validate(json.loads(line))
-        except Exception:
+            record = json.loads(line)
+            if isinstance(record, dict) and record.get("type") == "run_header":
+                continue
+            yield FrameStateModel.model_validate(record)
+        except Exception as exc:
+            raise ValueError(
+                f"invalid frame record at {session_path}:{line_number}: {exc}"
+            ) from exc
             continue
 
 
@@ -98,8 +106,8 @@ class RuleEngine:
     def process_frame(self, frame: FrameStateModel) -> list[RuleAlert]:
         if frame.run_id and not self.run_id:
             self.run_id = frame.run_id
-        ts = frame.ts
-        observed = frame.fused if frame.fused else frame.objects
+        ts = frame_time_s(frame)
+        observed = frame.fused if frame.fused is not None else frame.objects
 
         for st in self._objects.values():
             st.present = False

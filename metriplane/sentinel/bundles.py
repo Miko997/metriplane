@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+from tempfile import TemporaryDirectory
 
+from metriplane.provenance.run_provenance import redact_persisted_config
+from metriplane.schema import frame_time_s
 from metriplane.sentinel.engine import iter_frames
 from metriplane.sentinel.events import (
     IncidentRecord,
@@ -22,6 +26,9 @@ from metriplane.trace.store import TraceStore
 # in the session excerpt, to give the replay context around the event.
 EXCERPT_PAD_S = 2.0
 _CHECKSUM_RE = re.compile(r"^([0-9a-fA-F]{64}) ([ *])(.+)$")
+UNSIGNED_DERIVED_SIDECARS = frozenset(
+    {"expected.yaml", "test_result.json", "test_result.md"}
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -125,7 +132,7 @@ def _extract_excerpt(session_path: str | Path, start_ts: float, end_ts: float,
     count = 0
     with out_path.open("w", encoding="utf-8") as f:
         for frame in iter_frames(session_path):
-            if lo <= frame.ts <= hi:
+            if lo <= frame_time_s(frame) <= hi:
                 line = frame.model_dump_json(exclude_none=True)
                 f.write(line + "\n")
                 count += 1
@@ -208,8 +215,71 @@ def create_bundle(
     rules_path: str | Path | None = None,
     zones_path: str | Path | None = None,
     config_path: str | Path | None = None,
+    *,
+    overwrite: bool = False,
 ) -> Path:
-    """Build a portable, self-contained evidence bundle for one incident."""
+    """Build a bundle completely before replacing an explicitly approved output."""
+    bundle = Path(out_dir)
+    sources = [session_path, objects_path, rules_path, zones_path, config_path]
+    bundle_resolved = bundle.resolve()
+    for source in sources:
+        if source is None:
+            continue
+        source_path = Path(source)
+        if not source_path.exists():
+            continue
+        source_resolved = source_path.resolve()
+        if bundle_resolved == source_resolved or bundle_resolved in source_resolved.parents:
+            raise ValueError(f"bundle output would replace source input: {source_path}")
+    if bundle.exists() or bundle.is_symlink():
+        if not overwrite:
+            raise ValueError(
+                f"refusing to replace existing bundle without --overwrite: {bundle}"
+            )
+
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=f".{bundle.name}-", dir=bundle.parent) as temp_dir:
+        temp_root = Path(temp_dir)
+        stage = temp_root / "bundle"
+        _create_bundle_in_place(
+            incident,
+            alerts,
+            stage,
+            session_path,
+            objects_path,
+            rules_path,
+            zones_path,
+            config_path,
+        )
+        backup = temp_root / "previous"
+        had_previous = bundle.exists() or bundle.is_symlink()
+        if had_previous and not overwrite:
+            raise ValueError(
+                "refusing to replace bundle created while staging "
+                f"without --overwrite: {bundle}"
+            )
+        if had_previous:
+            os.replace(bundle, backup)
+        try:
+            os.replace(stage, bundle)
+        except Exception:
+            if had_previous and (backup.exists() or backup.is_symlink()):
+                os.replace(backup, bundle)
+            raise
+    return bundle
+
+
+def _create_bundle_in_place(
+    incident: IncidentRecord,
+    alerts: list[RuleAlert],
+    out_dir: str | Path,
+    session_path: str | Path,
+    objects_path: str | Path | None = None,
+    rules_path: str | Path | None = None,
+    zones_path: str | Path | None = None,
+    config_path: str | Path | None = None,
+) -> Path:
+    """Build a portable, self-contained evidence bundle in a fresh directory."""
     bundle = Path(out_dir)
     bundle.mkdir(parents=True, exist_ok=True)
 
@@ -234,10 +304,21 @@ def create_bundle(
         (objects_path, "objects.yaml"),
         (rules_path, "rules.yaml"),
         (zones_path, "zones.yaml"),
-        (config_path, "config.yaml"),
     ):
         if src is not None and Path(src).exists():
             shutil.copyfile(src, bundle / name)
+    if config_path is not None and Path(config_path).exists():
+        try:
+            import yaml
+
+            raw_config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+            sanitized = redact_persisted_config(raw_config)
+            (bundle / "config.yaml").write_text(
+                yaml.safe_dump(sanitized, sort_keys=True),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            raise ValueError(f"cannot sanitize bundle config: {exc}") from exc
 
     # Reports
     md = _render_report_md(incident, incident_alerts, n_frames)
@@ -258,8 +339,8 @@ def verify_bundle(bundle_dir: str | Path) -> tuple[bool, list[str]]:
     """
     Verify a bundle reproduces its incident and its checksums match.
 
-    Returns (ok, messages). ok is True only if both the incident reproduces
-    (same rule_id and object set) and all checksums validate.
+    Returns (ok, messages). ok is True only if the single expected incident
+    reproduces with the same observable semantics and all checksums validate.
     """
     from metriplane.sentinel.engine import evaluate_session
     from metriplane.sentinel.events import read_incidents_json
@@ -271,40 +352,81 @@ def verify_bundle(bundle_dir: str | Path) -> tuple[bool, list[str]]:
     messages: list[str] = []
     ok = True
 
-    # 1. checksums
-    chk_errors = verify_checksums(bundle)
+    # 1. checksums. Regression inputs/results are explicitly derived sidecars,
+    # not immutable incident evidence, and may be regenerated between checks.
+    try:
+        chk_errors = verify_checksums(
+            bundle,
+            exclude=set(UNSIGNED_DERIVED_SIDECARS),
+        )
+    except Exception as exc:
+        return False, [f"FAIL checksum: {type(exc).__name__}: {exc}"]
     if chk_errors:
-        ok = False
         for e in chk_errors:
             messages.append(f"FAIL checksum: {e}")
+        return False, messages
     else:
         messages.append("PASS: checksum verified")
 
     # 2. reproduce incident
-    expected = read_incidents_json(bundle / "incident.json")
-    if not expected:
-        return False, messages + ["FAIL: no incident in bundle"]
-    exp = expected[0]
+    try:
+        expected = read_incidents_json(bundle / "incident.json")
+        if len(expected) != 1:
+            return False, messages + [
+                "FAIL: incident.json must contain exactly one expected incident; "
+                f"found {len(expected)}"
+            ]
+        exp = expected[0]
 
-    rules_path = bundle / "rules.yaml"
-    objects_path = bundle / "objects.yaml"
-    if not rules_path.exists():
-        return False, messages + ["FAIL: rules.yaml missing from bundle"]
+        rules_path = bundle / "rules.yaml"
+        objects_path = bundle / "objects.yaml"
+        if not rules_path.exists():
+            return False, messages + ["FAIL: rules.yaml missing from bundle"]
 
-    ruleset = load_rules(rules_path)
-    registry = load_registry(objects_path) if objects_path.exists() else None
-    alerts, _ = evaluate_session(bundle / "session_excerpt.jsonl", ruleset, registry)
-    incidents = build_incidents(alerts)
+        ruleset = load_rules(rules_path)
+        registry = load_registry(objects_path) if objects_path.exists() else None
+        alerts, _ = evaluate_session(bundle / "session_excerpt.jsonl", ruleset, registry)
+        incidents = build_incidents(alerts)
+    except Exception as exc:
+        return False, messages + [
+            f"FAIL: bundle verification error: {type(exc).__name__}: {exc}"
+        ]
 
-    match = any(
-        inc.rule_id == exp.rule_id
-        and set(inc.object_ids) == set(exp.object_ids)
-        for inc in incidents
-    )
-    if match:
+    if not incidents:
+        return False, messages + ["FAIL: no incident reproduced"]
+
+    def mismatches(inc: IncidentRecord) -> list[str]:
+        expected_objects = set(exp.object_ids)
+        observed_objects = set(inc.object_ids)
+        expected_zones = set(exp.zones)
+        observed_zones = set(inc.zones)
+        fields = (
+            ("rule_id", exp.rule_id, inc.rule_id),
+            ("severity", exp.severity, inc.severity),
+            ("status", exp.status, inc.status),
+            ("object_ids", sorted(expected_objects), sorted(observed_objects)),
+            ("zones", sorted(expected_zones), sorted(observed_zones)),
+            ("opened_ts", exp.opened_ts, inc.opened_ts),
+            ("closed_ts", exp.closed_ts, inc.closed_ts),
+            ("duration_s", exp.duration_s, inc.duration_s),
+            ("alert_count", len(exp.alert_ids), len(inc.alert_ids)),
+        )
+        return [
+            f"{field} expected {expected_value!r}, observed {observed_value!r}"
+            for field, expected_value, observed_value in fields
+            if expected_value != observed_value
+        ]
+
+    candidate_mismatches = [(inc, mismatches(inc)) for inc in incidents]
+    _, best_mismatches = min(candidate_mismatches, key=lambda item: len(item[1]))
+    if not best_mismatches:
         messages.append("PASS: incident reproduced")
     else:
         ok = False
-        messages.append("FAIL: incident not reproduced")
+        messages.append("FAIL: incident not reproduced with expected semantics")
+        messages.extend(
+            f"FAIL incident mismatch: {mismatch}"
+            for mismatch in best_mismatches
+        )
 
     return ok, messages

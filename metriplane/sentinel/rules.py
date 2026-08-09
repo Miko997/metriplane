@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 RuleType = Literal[
     "forbidden_zone",
@@ -41,6 +41,8 @@ class ObjectFilter(BaseModel):
 
 
 class RuleDefinition(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     id: str
     type: RuleType
     severity: SeverityLevel = "warning"
@@ -48,12 +50,31 @@ class RuleDefinition(BaseModel):
     object_filter_a: ObjectFilter | None = None
     object_filter_b: ObjectFilter | None = None
     zone: str | None = None
-    max_duration_s: float | None = None
-    min_distance_m: float | None = None
-    max_speed_mps: float | None = None
+    max_duration_s: float | None = Field(default=None, ge=0.0)
+    min_distance_m: float | None = Field(default=None, ge=0.0)
+    max_speed_mps: float | None = Field(default=None, ge=0.0)
     from_zone: str | None = None
     to_zone: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _required_condition_fields(self):
+        if not self.id.strip():
+            raise ValueError("rule id must not be empty")
+        required: dict[RuleType, tuple[str, ...]] = {
+            "forbidden_zone": ("zone",),
+            "max_dwell": ("zone", "max_duration_s"),
+            "min_distance": ("min_distance_m",),
+            "speed_limit": ("max_speed_mps",),
+            "missing_object": ("max_duration_s",),
+            "restricted_transition": ("from_zone", "to_zone"),
+        }
+        missing = [name for name in required[self.type] if getattr(self, name) is None]
+        if missing:
+            raise ValueError(
+                f"{self.type} rule requires: {', '.join(missing)}"
+            )
+        return self
 
 
 class RuleSet(BaseModel):
