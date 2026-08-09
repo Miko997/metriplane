@@ -49,7 +49,7 @@ def test_project_urls_are_current_and_keep_research_versions_distinct() -> None:
 
     assert urls == {
         "Homepage": "https://www.metriplane.com/",
-        "Documentation": "https://www.metriplane.com/install/",
+        "Documentation": "https://github.com/Miko997/metriplane/blob/main/docs/README.md",
         "Repository": "https://github.com/Miko997/metriplane",
         "Issues": "https://github.com/Miko997/metriplane/issues",
         "Changelog": "https://github.com/Miko997/metriplane/blob/main/CHANGELOG.md",

@@ -6,7 +6,11 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shlex
+import shutil
 import sys
+import tempfile
 import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -18,14 +22,15 @@ from pathlib import Path
 _EXPECTED_EVENT_COUNT = 6
 _EXPECTED_INCIDENT_COUNT = 1
 _RESOURCE_PACKAGE = "metriplane.demo"
-BUNDLED_DEMO_RESOURCES = (
-    "assets/assembly_cell_missing_tool.jsonl",
-    "assets/assembly_cell/assets.yaml",
-    "assets/assembly_cell/contracts.yaml",
-    "assets/assembly_cell/process.yaml",
-    "assets/assembly_cell/work_orders.csv",
-    "assets/assembly_cell/workspace.yaml",
+_DEMO_EXPORT_LAYOUT = (
+    ("assets/assembly_cell_missing_tool.jsonl", "session.jsonl"),
+    ("assets/assembly_cell/assets.yaml", "domain-pack/assets.yaml"),
+    ("assets/assembly_cell/workspace.yaml", "domain-pack/workspace.yaml"),
+    ("assets/assembly_cell/process.yaml", "domain-pack/process.yaml"),
+    ("assets/assembly_cell/contracts.yaml", "domain-pack/contracts.yaml"),
+    ("assets/assembly_cell/work_orders.csv", "domain-pack/work_orders.csv"),
 )
+BUNDLED_DEMO_RESOURCES = tuple(source for source, _target in _DEMO_EXPORT_LAYOUT)
 
 
 class _DemoError(RuntimeError):
@@ -69,6 +74,103 @@ def _bundled_inputs() -> Iterator[tuple[Path, Path]]:
         if missing:
             raise _DemoError(f"Bundled demo resources are missing: {', '.join(missing)}")
         yield session, pack
+
+
+def _path_exists(path: Path) -> bool:
+    """Return true for files, directories, and broken symlinks."""
+    return os.path.lexists(os.fspath(path))
+
+
+def export_demo_inputs(destination: str | Path) -> Path:
+    """Copy the bundled example inputs into a new inspectable directory."""
+    output = Path(destination).expanduser().absolute()
+    if _path_exists(output):
+        raise _DemoError(
+            "Refusing to replace an existing export path. "
+            f"Choose another path or remove it yourself: {output}",
+            exit_code=2,
+        )
+
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise _DemoError(f"Could not create the export parent directory: {exc}") from exc
+    if not output.parent.is_dir():
+        raise _DemoError(f"Export parent is not a directory: {output.parent}")
+
+    # Stage beside the destination so the final rename stays on one filesystem.
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=output.parent)
+    )
+    published = False
+    reserved_output = False
+    try:
+        package_root = resources.files(_RESOURCE_PACKAGE)
+        for source_relative, target_relative in _DEMO_EXPORT_LAYOUT:
+            source = package_root.joinpath(source_relative)
+            if not source.is_file():
+                raise _DemoError(f"Bundled demo resource is missing: {source_relative}")
+            target = staging / target_relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
+
+        # Atomically reserve the destination.  A check followed by rename is not
+        # sufficient on POSIX: renaming a directory can replace an empty directory
+        # created by another process in that window.
+        try:
+            output.mkdir()
+            reserved_output = True
+        except FileExistsError:
+            raise _DemoError(
+                "Refusing to replace an export path that appeared while exporting: "
+                f"{output}",
+                exit_code=2,
+            )
+
+        # The six resources were fully staged before the visible destination was
+        # reserved.  Move the two top-level entries into that owned directory.
+        # This favors race-safe no-clobber behavior over a replace-style rename.
+        for child in staging.iterdir():
+            child.rename(output / child.name)
+        published = True
+    finally:
+        if reserved_output and not published and output.is_dir():
+            shutil.rmtree(output)
+        if not published and staging.is_dir():
+            shutil.rmtree(staging)
+
+    return output
+
+
+def _print_export_next_steps(export_dir: Path) -> None:
+    session = export_dir / "session.jsonl"
+    pack = export_dir / "domain-pack"
+    run_dir = export_dir.with_name(f"{export_dir.name}-run")
+
+    def quote(path: Path) -> str:
+        return shlex.quote(str(path))
+
+    print("Metriplane example inputs exported.")
+    print()
+    print(f"Recorded run: {session}")
+    print(f"Process rules: {pack}")
+    print()
+    print("Inspect or edit these copies, then run:")
+    print(f"  metriplane atlas validate-pack {quote(pack)}")
+    print(
+        "  metriplane atlas run "
+        f"--session-jsonl {quote(session)} --pack {quote(pack)} "
+        f"--out {quote(run_dir)}"
+    )
+    print(f"  metriplane atlas report --run-dir {quote(run_dir)}")
+    print(
+        "  metriplane atlas bundle verify "
+        f"{quote(run_dir / 'evidence_bundles' / 'INC-0001.zip')}"
+    )
+    print(
+        "  metriplane atlas test "
+        f"{quote(run_dir / 'regression_tests' / 'INC-0001.yaml')} --json"
+    )
 
 
 def run_demo(out_dir: str | Path) -> DemoResult:
@@ -156,11 +258,19 @@ def main(argv: list[str] | None = None) -> int:
             "verified report and a repeatable check. No camera is needed."
         ),
     )
-    parser.add_argument(
+    output_options = parser.add_mutually_exclusive_group()
+    output_options.add_argument(
         "--out",
         type=Path,
         default=None,
         help="Save the report, evidence, and repeatable check in DIR",
+        metavar="DIR",
+    )
+    output_options.add_argument(
+        "--export-inputs",
+        type=Path,
+        default=None,
+        help="Copy the example recorded run and process rules into a new DIR",
         metavar="DIR",
     )
     parser.add_argument(
@@ -170,6 +280,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Open the finished HTML report in your browser",
     )
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+
+    if args.export_inputs is not None:
+        if args.open_report:
+            parser.error("--open cannot be combined with --export-inputs")
+        try:
+            export_dir = export_demo_inputs(args.export_inputs)
+        except _DemoError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return exc.exit_code
+        except (OSError, ValueError) as exc:
+            print(f"ERROR: Example inputs could not be exported: {exc}", file=sys.stderr)
+            return 1
+        _print_export_next_steps(export_dir)
+        return 0
 
     out_dir = (args.out.expanduser().resolve() if args.out else _next_default_out_dir())
     print("Metriplane bundled demo")
@@ -220,4 +344,10 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["BUNDLED_DEMO_RESOURCES", "DemoResult", "main", "run_demo"]
+__all__ = [
+    "BUNDLED_DEMO_RESOURCES",
+    "DemoResult",
+    "export_demo_inputs",
+    "main",
+    "run_demo",
+]
