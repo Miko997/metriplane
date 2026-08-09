@@ -14,7 +14,7 @@ Logs:  ~/metriplane-runs/_launcher/<timestamp>/{runner,dashboard,fusion}.log
 
 Key design decisions (v2):
 - each child is its own process group leader (PGID = PID)
-  (process_group=0 on macOS; start_new_session=True elsewhere)
+  (a fresh-process shim on macOS; start_new_session=True elsewhere)
 - os.killpg(pgid, sig)    → kills the entire process group, not just the wrapper
 - state stores both pid and pgid
 - stop: SIGTERM → wait 5s → SIGKILL → poll port-free before clearing state
@@ -292,21 +292,30 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
 
 def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) -> subprocess.Popen:
     """Launch a subprocess in its own process group. Returns Popen."""
-    # GitHub-hosted macOS runners have stalled children created with setsid().
-    # A new process group preserves PGID-based cleanup without a detached session.
-    group_options: dict[str, Any]
+    child_cmd = cmd
+    options: dict[str, Any]
     if sys.platform == "darwin":
-        group_options = {"process_group": 0}
+        # Avoid running process-group or cwd setup between fork and exec after
+        # native libraries have initialized. These options let subprocess use
+        # posix_spawn; normal Python file descriptors are non-inheritable, and
+        # the fresh interpreter then creates its own process group.
+        shim = Path(__file__).with_name("_launcher_child.py").resolve()
+        child_cmd = [
+            sys.executable,
+            str(shim),
+            str(cwd),
+            *cmd,
+        ]
+        options = {"stdin": subprocess.DEVNULL, "close_fds": False}
     else:
-        group_options = {"start_new_session": True}
+        options = {"cwd": str(cwd), "start_new_session": True}
     with open(log_file, "w") as fh:
         return subprocess.Popen(
-            cmd,
+            child_cmd,
             stdout=fh,
             stderr=fh,
-            cwd=str(cwd),
             env=env,
-            **group_options,
+            **options,
         )
 
 

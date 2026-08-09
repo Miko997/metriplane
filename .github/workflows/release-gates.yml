@@ -136,6 +136,7 @@ jobs:
           test -s protocol-smoke/open_atlas_protocol_index.json
           "$smoke_venv/bin/python" -c "import cv2; assert hasattr(cv2, 'aruco')"
           "$smoke_venv/bin/python" -c "import importlib.metadata as md, metriplane; assert metriplane.__version__ == md.version('metriplane')"
+          "$smoke_venv/bin/python" -c "import metriplane._launcher_child"
           "$smoke_venv/bin/python" -c "import integrations.isaac.metriplane_to_usd"
           "$smoke_venv/bin/python" -c "import integrations.omniverse.metriplane_usd_replay"
           "$smoke_venv/bin/python" -c "import importlib.metadata as md; assert all(not str(path).startswith('integrations/ros2/') for path in (md.files('metriplane') or []))"

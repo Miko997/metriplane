@@ -458,20 +458,13 @@ def test_print_log_tail_reports_only_requested_lines(tmp_path, capsys):
     assert "third" in output
 
 
-@pytest.mark.parametrize(
-    ("platform", "expected_option", "unexpected_option"),
-    [
-        ("darwin", {"process_group": 0}, "start_new_session"),
-        ("linux", {"start_new_session": True}, "process_group"),
-    ],
-)
-def test_launch_uses_platform_process_group_options(
-    monkeypatch, tmp_path, platform, expected_option, unexpected_option
-):
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_launch_uses_platform_process_group_options(monkeypatch, tmp_path, platform):
     import metriplane.launcher as lm
 
     captured = {}
     sentinel = object()
+    command = [sys.executable, "-c", "pass"]
 
     def fake_popen(command, **kwargs):
         captured["command"] = command
@@ -481,17 +474,58 @@ def test_launch_uses_platform_process_group_options(
     monkeypatch.setattr(lm.sys, "platform", platform)
     monkeypatch.setattr(lm.subprocess, "Popen", fake_popen)
 
-    result = lm._launch(
-        [sys.executable, "-c", "pass"],
-        tmp_path / "child.log",
-        tmp_path,
-    )
+    result = lm._launch(command, tmp_path / "child.log", tmp_path)
 
     assert result is sentinel
-    for name, value in expected_option.items():
-        assert captured["kwargs"][name] == value
-    assert unexpected_option not in captured["kwargs"]
+    if platform == "darwin":
+        assert captured["command"] == [
+            sys.executable,
+            str(Path(lm.__file__).with_name("_launcher_child.py").resolve()),
+            str(tmp_path),
+            *command,
+        ]
+        assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
+        assert captured["kwargs"]["close_fds"] is False
+        assert "cwd" not in captured["kwargs"]
+        assert "start_new_session" not in captured["kwargs"]
+    else:
+        assert captured["command"] == command
+        assert captured["kwargs"]["cwd"] == str(tmp_path)
+        assert captured["kwargs"]["start_new_session"] is True
+        assert "close_fds" not in captured["kwargs"]
     assert captured["kwargs"]["stdout"].closed
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups")
+def test_darwin_launch_shim_executes_child_in_own_process_group(monkeypatch, tmp_path):
+    import metriplane.launcher as lm
+
+    log_file = tmp_path / "child.log"
+    monkeypatch.setattr(lm.sys, "platform", "darwin")
+    proc = lm._launch(
+        [
+            sys.executable,
+            "-u",
+            "-c",
+            "import time; print('ready', flush=True); time.sleep(30)",
+        ],
+        log_file,
+        tmp_path,
+    )
+    try:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if log_file.read_text(encoding="utf-8") == "ready\n":
+                break
+            time.sleep(0.05)
+        assert log_file.read_text(encoding="utf-8") == "ready\n"
+        assert os.getpgid(proc.pid) == proc.pid
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait(timeout=5)
 
 
 # ---------------------------------------------------------------------------
