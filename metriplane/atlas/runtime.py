@@ -4,15 +4,16 @@
 from __future__ import annotations
 
 import csv
+import ctypes
+import errno
 import json
 import math
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
-from metriplane.schema import FrameStateModel
 
 from metriplane.atlas.domain_packs import (
     DomainPack,
@@ -26,6 +27,7 @@ from metriplane.atlas.process_model import AssetObservation, ProcessEvaluator
 from metriplane.atlas.reality_graph import RealityGraph
 from metriplane.atlas.reports import render_markdown, write_report
 from metriplane.atlas.training import training_case_from_incident, write_training_case
+from metriplane.schema import FrameStateModel
 
 
 @dataclass(frozen=True)
@@ -170,6 +172,68 @@ def _remove_output(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def _raise_rename_error(error_number: int, destination: Path) -> None:
+    raise OSError(error_number, os.strerror(error_number), str(destination))
+
+
+def _rename_directory_no_replace(source: Path, destination: Path) -> None:
+    """Atomically publish a staged directory only if ``destination`` is absent.
+
+    POSIX ``rename`` replaces an existing destination, so an existence check before
+    ``os.replace`` cannot provide no-clobber semantics. Use each supported operating
+    system's exclusive rename operation instead. Unsupported platforms fail closed
+    rather than risk replacing data.
+    """
+    if os.name == "nt":
+        # Windows rename fails when the destination already exists.
+        os.rename(source, destination)
+        return
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    source_bytes = os.fsencode(source)
+    destination_bytes = os.fsencode(destination)
+
+    if sys.platform.startswith("linux"):
+        renameat2 = getattr(libc, "renameat2", None)
+        if renameat2 is None:
+            _raise_rename_error(errno.ENOTSUP, destination)
+        renameat2.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        ]
+        renameat2.restype = ctypes.c_int
+        at_fdcwd = -100
+        rename_noreplace = 1
+        if (
+            renameat2(
+                at_fdcwd,
+                source_bytes,
+                at_fdcwd,
+                destination_bytes,
+                rename_noreplace,
+            )
+            != 0
+        ):
+            _raise_rename_error(ctypes.get_errno(), destination)
+        return
+
+    if sys.platform == "darwin":
+        renamex_np = getattr(libc, "renamex_np", None)
+        if renamex_np is None:
+            _raise_rename_error(errno.ENOTSUP, destination)
+        renamex_np.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        renamex_np.restype = ctypes.c_int
+        rename_excl = 0x00000004
+        if renamex_np(source_bytes, destination_bytes, rename_excl) != 0:
+            _raise_rename_error(ctypes.get_errno(), destination)
+        return
+
+    _raise_rename_error(errno.ENOTSUP, destination)
+
+
 def run_atlas(
     session_jsonl: str | Path,
     pack_dir: str | Path,
@@ -212,21 +276,25 @@ def run_atlas(
             overwrite=False,
         )
 
-        backup = temp_root / "previous"
-        had_previous = output.exists() or output.is_symlink()
-        if had_previous and not overwrite:
-            raise ValueError(
-                "Refusing to overwrite output created while the run was staged "
-                f"without --overwrite: {output}"
-            )
-        if had_previous:
-            os.replace(output, backup)
-        try:
-            os.replace(stage, output)
-        except Exception:
-            if had_previous and (backup.exists() or backup.is_symlink()):
-                os.replace(backup, output)
-            raise
+        if not overwrite:
+            try:
+                _rename_directory_no_replace(stage, output)
+            except FileExistsError as exc:
+                raise ValueError(
+                    "Refusing to overwrite output created while the run was staged "
+                    f"without --overwrite: {output}"
+                ) from exc
+        else:
+            backup = temp_root / "previous"
+            had_previous = output.exists() or output.is_symlink()
+            if had_previous:
+                os.replace(output, backup)
+            try:
+                os.replace(stage, output)
+            except Exception:
+                if had_previous and (backup.exists() or backup.is_symlink()):
+                    os.replace(backup, output)
+                raise
     return manifest
 
 
