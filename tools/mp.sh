@@ -150,10 +150,14 @@ pick_session() {
 }
 
 health_compact() {
-  curl -fsS "$HEALTH_URL" 2>/dev/null | python - <<'PY' || true
-import sys, json
+  python - "$HEALTH_URL" <<'PY' || true
+import json
+import sys
+from urllib.request import urlopen
+
 try:
-  d = json.load(sys.stdin)
+  with urlopen(sys.argv[1], timeout=2.0) as response:
+    d = json.load(response)
   overall = d.get("overall")
   comps = d.get("components", {}) or {}
   cam0 = (comps.get("camera.cam0") or {}).get("status")

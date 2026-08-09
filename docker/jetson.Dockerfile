@@ -7,7 +7,9 @@
 # On Jetson hardware, override BASE_IMAGE with an L4T base that provides CUDA, e.g.:
 #   docker build --build-arg BASE_IMAGE=nvcr.io/nvidia/l4t-base:r36.2.0 \
 #     -f docker/jetson.Dockerfile -t metriplane-jetson .
-ARG BASE_IMAGE=python:3.12-slim
+# Keep the portable default immutable. Hardware-specific overrides should also
+# use a tag plus manifest digest: image:tag@sha256:<digest>.
+ARG BASE_IMAGE=python:3.12-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
 FROM ${BASE_IMAGE}
 
 ENV PYTHONUNBUFFERED=1 \
