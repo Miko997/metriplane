@@ -24,6 +24,7 @@ nav:
   - Troubleshooting: user-guide/troubleshooting.md
   - Contributing: user-guide/contributing.md
   - Research artifacts: user-guide/research-artifacts.md
+  - Citing Metriplane: user-guide/citing.md
 
 # The repository retains detailed technical, evaluation, and frozen-reproduction
 # documents outside the first-time-user site. Their source remains available on
@@ -41,6 +42,7 @@ exclude_docs: |
   paper/**
   qa/**
   references/**
+  releases/**
   reports/**
   review_kit/**
   validation/human-comprehension-results.json

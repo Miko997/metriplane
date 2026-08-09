@@ -16,16 +16,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  provenance:
+    name: Verify annotated release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Reject an unannotated, mismatched, or off-main tag
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_TYPE" = "tag"
+          tag_ref="refs/tags/${GITHUB_REF_NAME}"
+          test "$(git cat-file -t "$tag_ref")" = "tag"
+
+          tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
+          checked_out_commit="$(git rev-parse HEAD)"
+          test "$tag_commit" = "$checked_out_commit"
+
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$tag_commit" origin/main
+
+          package_version="$(python -c \
+            'import metriplane; print(metriplane.__version__)')"
+          test "$GITHUB_REF_NAME" = "v${package_version}"
+
+          printf 'version=%s\n' "$package_version" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+
   gates:
     name: Run required release gates
+    needs: provenance
     uses: ./.github/workflows/release-gates.yml
 
   build:
-    name: Test and build distributions
-    needs: gates
+    name: Test and build distributions once
+    needs: [provenance, gates]
     runs-on: ubuntu-latest
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -37,105 +80,116 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Verify tag and package versions agree
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag_version="${GITHUB_REF_NAME#v}"
-          package_version="$(python -c 'import metriplane; print(metriplane.__version__)')"
-          test "$tag_version" = "$package_version"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-
-      - name: Run test suite
+      - name: Run the complete test suite
         run: |
           python -m pip install --upgrade pip
-          python -m pip install . pytest setuptools
+          python -m pip install . pytest setuptools build twine
           python -m pip check
           python -m pytest -q
 
-      - name: Build and validate distributions
+      - name: Build, inspect, and fingerprint distributions
+        shell: bash
         run: |
-          python -m pip install build twine
-          python -m build
-          python - <<'PY'
-          from pathlib import Path
-
-          artifacts = sorted(path for path in Path("dist").iterdir() if path.is_file())
-          wheels = [path for path in artifacts if path.suffix == ".whl"]
-          sdists = [path for path in artifacts if path.name.endswith((".tar.gz", ".zip"))]
-          if len(wheels) != 1 or len(sdists) != 1 or len(artifacts) != 2:
-              raise SystemExit(
-                  "Expected exactly one wheel and one source distribution; found: "
-                  + ", ".join(path.name for path in artifacts)
-              )
-          PY
-          python -m twine check --strict dist/*
+          set -euo pipefail
+          mkdir -p release-artifacts/dist
+          python -m build --outdir release-artifacts/dist
+          python -m twine check --strict release-artifacts/dist/*
+          python tools/release_artifacts.py create-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          python tools/release_artifacts.py verify-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
+          python tools/release_artifacts.py inspect-sdist \
+            --sdist "$sdist_path" \
+            --version "$RELEASE_VERSION"
+          cat release-artifacts/SHA256SUMS
 
       - name: Smoke-test the wheel outside the checkout
         shell: bash
         run: |
           set -euo pipefail
-          wheel_path="$(realpath dist/*.whl)"
+          wheel_path="$(realpath release-artifacts/dist/*.whl)"
           smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
+          smoke_out="${RUNNER_TEMP}/metriplane-wheel-output"
           python -m venv "$smoke_venv"
           "$smoke_venv/bin/python" -m pip install --upgrade pip
-          "$smoke_venv/bin/python" -m pip install "$wheel_path"
+          "$smoke_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
           cd "$RUNNER_TEMP"
           "$smoke_venv/bin/python" -m pip check
-          test "$("$smoke_venv/bin/metriplane" --version)" = "metriplane ${GITHUB_REF_NAME#v}"
+          test "$("$smoke_venv/bin/metriplane" --version)" = \
+            "metriplane ${RELEASE_VERSION}"
+          "$smoke_venv/bin/metriplane" --help | grep -Fq "demo"
           doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
           printf '%s\n' "$doctor_output"
           grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
-          "$smoke_venv/bin/python" - <<'PY'
-          from importlib import metadata, resources
+          demo_output="$("$smoke_venv/bin/metriplane" demo --out "$smoke_out")"
+          printf '%s\n' "$demo_output"
+          grep -Fq "required torque driver is missing" <<<"$demo_output"
+          grep -Fq "delayed by 35.0 seconds" <<<"$demo_output"
+          grep -Fq "PASS  Incident timeline: 6 events" <<<"$demo_output"
+          grep -Fq "PASS  Incident report: 1 incident" <<<"$demo_output"
+          "$smoke_venv/bin/metriplane" atlas bundle verify \
+            "$smoke_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
+          "$smoke_venv/bin/metriplane" atlas test \
+            "$smoke_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
+          VERSION="$RELEASE_VERSION" "$smoke_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import os
+          import metriplane
 
-          expected = {
-              "assets/assembly_cell_missing_tool.jsonl",
-              "assets/assembly_cell/assets.yaml",
-              "assets/assembly_cell/contracts.yaml",
-              "assets/assembly_cell/process.yaml",
-              "assets/assembly_cell/work_orders.csv",
-              "assets/assembly_cell/workspace.yaml",
-          }
-          distribution_paths = {
-              str(path) for path in (metadata.files("metriplane") or ())
-          }
-          expected_distribution_paths = {
-              f"metriplane/demo/{path}" for path in expected
-          }
-          packaged_demo_assets = {
-              path
-              for path in distribution_paths
-              if path.startswith("metriplane/demo/assets/")
-          }
-          assert packaged_demo_assets == expected_distribution_paths
-
-          package_root = resources.files("metriplane.demo")
-          missing = sorted(
-              path for path in expected if not package_root.joinpath(path).is_file()
-          )
-          assert not missing, f"missing bundled demo resources: {missing}"
+          expected = os.environ["VERSION"]
+          assert metriplane.__version__ == metadata.version("metriplane") == expected
           PY
-          "$smoke_venv/bin/metriplane" atlas protocol export --out protocol-smoke
-          test -s protocol-smoke/open_atlas_protocol_index.json
-          "$smoke_venv/bin/metriplane" demo --out demo-wheel-smoke
-          test -s demo-wheel-smoke/cell_truth_report.html
-          test -s demo-wheel-smoke/evidence_bundles/INC-0001.zip
-          test -s demo-wheel-smoke/regression_tests/INC-0001.yaml
-          "$smoke_venv/bin/python" -c "import cv2; assert hasattr(cv2, 'aruco')"
-          VERSION="${GITHUB_REF_NAME#v}" "$smoke_venv/bin/python" -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
 
-      - name: Upload distributions
+      - name: Install and smoke-test the source distribution independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
+          smoke_venv="${RUNNER_TEMP}/metriplane-sdist-smoke"
+          smoke_out="${RUNNER_TEMP}/metriplane-sdist-output"
+          python -m venv "$smoke_venv"
+          "$smoke_venv/bin/python" -m pip install --upgrade pip
+          "$smoke_venv/bin/python" -m pip install --no-cache-dir "$sdist_path"
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/python" -m pip check
+          test "$("$smoke_venv/bin/metriplane" --version)" = \
+            "metriplane ${RELEASE_VERSION}"
+          doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
+          printf '%s\n' "$doctor_output"
+          grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
+          demo_output="$("$smoke_venv/bin/metriplane" demo --out "$smoke_out")"
+          printf '%s\n' "$demo_output"
+          grep -Fq "PASS  Incident timeline: 6 events" <<<"$demo_output"
+          grep -Fq "PASS  Incident report: 1 incident" <<<"$demo_output"
+          "$smoke_venv/bin/metriplane" atlas bundle verify \
+            "$smoke_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
+          "$smoke_venv/bin/metriplane" atlas test \
+            "$smoke_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
+          VERSION="$RELEASE_VERSION" "$smoke_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import os
+          import metriplane
+
+          expected = os.environ["VERSION"]
+          assert metriplane.__version__ == metadata.version("metriplane") == expected
+          PY
+
+      - name: Upload the immutable release-artifact set
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: python-package-distributions
-          path: dist/
+          path: release-artifacts/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
 
   publish-testpypi:
-    name: Publish to TestPyPI
-    needs: build
+    name: Publish exact artifacts to TestPyPI
+    needs: [provenance, build]
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -146,68 +200,117 @@ jobs:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: python-package-distributions
-          path: dist/
+          path: release-artifacts/
+
+      - name: Verify downloaded artifact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
 
       - name: Publish distributions to TestPyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          packages-dir: release-artifacts/dist/
 
   verify-testpypi:
-    name: Verify TestPyPI installation
-    needs: publish-testpypi
+    name: Verify TestPyPI artifact identity and installation
+    needs: [provenance, publish-testpypi]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
+
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install dependencies from PyPI
+      - name: Match TestPyPI files to the build manifest
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install "numpy>=1.26" "opencv-contrib-python-headless>=4.8" "PyYAML>=6.0" "websockets>=12.0" "pydantic>=2.0"
+          python tools/release_artifacts.py verify-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          python tools/release_artifacts.py verify-registry \
+            --repository https://test.pypi.org \
+            --version "$RELEASE_VERSION" \
+            --manifest release-artifacts/SHA256SUMS
 
       - name: Install the tagged package from TestPyPI
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          verify_venv="${RUNNER_TEMP}/metriplane-testpypi-verify"
+          python -m venv "$verify_venv"
+          "$verify_venv/bin/python" -m pip install --upgrade pip
           for attempt in {1..12}; do
-            if python -m pip install \
+            if "$verify_venv/bin/python" -m pip install \
               --index-url https://test.pypi.org/simple/ \
+              --no-cache-dir \
               --no-deps \
-              "metriplane==${version}"; then
+              "metriplane==${RELEASE_VERSION}"; then
               break
             fi
             if [[ "$attempt" -eq 12 ]]; then
-              echo "TestPyPI did not serve metriplane==${version} in time" >&2
+              echo "TestPyPI did not serve metriplane==${RELEASE_VERSION} in time" >&2
               exit 1
             fi
             sleep 10
           done
+          "$verify_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import subprocess
+          import sys
 
-      - name: Run installed-package checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip check
-          test "$(metriplane --version)" = "metriplane ${GITHUB_REF_NAME#v}"
-          doctor_output="$(metriplane doctor)"
+          requirements = [
+              requirement
+              for requirement in (metadata.requires("metriplane") or ())
+              if "extra ==" not in requirement
+          ]
+          if not requirements:
+              raise SystemExit("installed package exposes no runtime requirements")
+          subprocess.run(
+              [sys.executable, "-m", "pip", "install", *requirements], check=True
+          )
+          PY
+
+          cd "$RUNNER_TEMP"
+          "$verify_venv/bin/python" -m pip check
+          test "$("$verify_venv/bin/metriplane" --version)" = \
+            "metriplane ${RELEASE_VERSION}"
+          doctor_output="$("$verify_venv/bin/metriplane" doctor)"
           printf '%s\n' "$doctor_output"
           grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
-          VERSION="${GITHUB_REF_NAME#v}" python -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
-          python -c "import cv2; assert hasattr(cv2, 'aruco')"
-          cd "$RUNNER_TEMP"
-          metriplane atlas protocol export --out protocol-testpypi
-          test -s protocol-testpypi/open_atlas_protocol_index.json
-          metriplane demo --out demo-testpypi
-          test -s demo-testpypi/cell_truth_report.html
-          test -s demo-testpypi/evidence_bundles/INC-0001.zip
-          test -s demo-testpypi/regression_tests/INC-0001.yaml
+          "$verify_venv/bin/metriplane" demo --out demo-testpypi
+          "$verify_venv/bin/metriplane" atlas bundle verify \
+            demo-testpypi/evidence_bundles/INC-0001.zip | grep -q '"pass": true'
+          "$verify_venv/bin/metriplane" atlas test \
+            demo-testpypi/regression_tests/INC-0001.yaml --json | grep -q '"pass": true'
+          VERSION="$RELEASE_VERSION" "$verify_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import os
+          import metriplane
+
+          expected = os.environ["VERSION"]
+          assert metriplane.__version__ == metadata.version("metriplane") == expected
+          PY
 
   publish-pypi:
-    name: Publish to PyPI
-    needs: verify-testpypi
+    name: Publish the same artifacts to PyPI
+    needs: [provenance, verify-testpypi]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -218,52 +321,91 @@ jobs:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: python-package-distributions
-          path: dist/
+          path: release-artifacts/
+
+      - name: Reverify the protected production artifact set
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
 
       - name: Publish the verified distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: release-artifacts/dist/
 
   verify-pypi:
-    name: Verify PyPI installation
-    needs: publish-pypi
+    name: Verify production artifact identity and installation
+    needs: [provenance, publish-pypi]
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
+
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install the tagged package from PyPI
+      - name: Match PyPI files to the build manifest
+        run: |
+          python tools/release_artifacts.py verify-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          python tools/release_artifacts.py verify-registry \
+            --repository https://pypi.org \
+            --version "$RELEASE_VERSION" \
+            --manifest release-artifacts/SHA256SUMS
+
+      - name: Install the tagged package from production PyPI
         shell: bash
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          python -m pip install --upgrade pip
+          verify_venv="${RUNNER_TEMP}/metriplane-pypi-verify"
+          python -m venv "$verify_venv"
+          "$verify_venv/bin/python" -m pip install --upgrade pip
           for attempt in {1..12}; do
-            if python -m pip install --no-cache-dir "metriplane==${version}"; then
+            if "$verify_venv/bin/python" -m pip install \
+              --no-cache-dir \
+              "metriplane==${RELEASE_VERSION}"; then
               break
             fi
             if [[ "$attempt" -eq 12 ]]; then
-              echo "PyPI did not serve metriplane==${version} in time" >&2
+              echo "PyPI did not serve metriplane==${RELEASE_VERSION} in time" >&2
               exit 1
             fi
             sleep 10
           done
 
-      - name: Run production installation checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip check
-          test "$(metriplane --version)" = "metriplane ${GITHUB_REF_NAME#v}"
-          doctor_output="$(metriplane doctor)"
+          cd "$RUNNER_TEMP"
+          "$verify_venv/bin/python" -m pip check
+          test "$("$verify_venv/bin/metriplane" --version)" = \
+            "metriplane ${RELEASE_VERSION}"
+          doctor_output="$("$verify_venv/bin/metriplane" doctor)"
           printf '%s\n' "$doctor_output"
           grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
-          VERSION="${GITHUB_REF_NAME#v}" python -c "import importlib.metadata as md, metriplane, os; expected = os.environ['VERSION']; assert metriplane.__version__ == md.version('metriplane') == expected"
-          python -c "import cv2; assert hasattr(cv2, 'aruco')"
-          cd "$RUNNER_TEMP"
-          metriplane atlas protocol export --out protocol-pypi
-          test -s protocol-pypi/open_atlas_protocol_index.json
-          metriplane demo --out demo-pypi
-          test -s demo-pypi/cell_truth_report.html
-          test -s demo-pypi/evidence_bundles/INC-0001.zip
-          test -s demo-pypi/regression_tests/INC-0001.yaml
+          "$verify_venv/bin/metriplane" demo --out demo-pypi
+          "$verify_venv/bin/metriplane" atlas bundle verify \
+            demo-pypi/evidence_bundles/INC-0001.zip | grep -q '"pass": true'
+          "$verify_venv/bin/metriplane" atlas test \
+            demo-pypi/regression_tests/INC-0001.yaml --json | grep -q '"pass": true'
+          VERSION="$RELEASE_VERSION" "$verify_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import os
+          import metriplane
+
+          expected = os.environ["VERSION"]
+          assert metriplane.__version__ == metadata.version("metriplane") == expected
+          PY

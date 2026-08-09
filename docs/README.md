@@ -44,6 +44,8 @@ example inputs and use the supported recorded-run interface.
 - [Contributing](user-guide/contributing.md): prepare a focused change safely.
 - [Research artifacts](user-guide/research-artifacts.md): reproduce or cite the
   exact historical version that produced a result.
+- [Citing Metriplane](user-guide/citing.md): cite the current software, frozen
+  research artifact, or manuscript without mixing their version boundaries.
 
 ## Scope in one sentence
 
