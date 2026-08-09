@@ -39,10 +39,9 @@ a camera, GPU, ROS 2, Docker, or browser-test tooling.
 
 ## Maintenance baseline
 
-As of 9 August 2026, PRs #11–#14 have been merged into `main` as separate
-stabilization work. They do not deliver the planned `v0.3.0` adoption experience.
-The current v0.2.1 PyPI artifacts remain unchanged; post-release runtime fixes and
-long-description updates will ship only in a future package release.
+As of 9 August 2026, PRs #11–#14 and #16 have been merged into `main` as
+stabilization and adoption-foundation work. The current v0.2.1 PyPI artifacts
+remain unchanged; these changes will ship only in a future package release.
 
 | Pull request | Merged outcome |
 | --- | --- |
@@ -50,6 +49,7 @@ long-description updates will ship only in a future package release.
 | [#12](https://github.com/Miko997/metriplane/pull/12) | Atlas now requires explicit overwrite before replacing unrelated existing temporary output. |
 | [#13](https://github.com/Miko997/metriplane/pull/13) | Broken SoftwareX reproducibility links were repaired. |
 | [#14](https://github.com/Miko997/metriplane/pull/14) | Atlas regression expectations now require distinct actual outputs. |
+| [#16](https://github.com/Miko997/metriplane/pull/16) | Bundled demo, root CLI discovery, release-path hardening, and the Ubuntu/macOS Python 3.12/3.13 validation matrix. |
 
 Future adoption branches start from current `main` and receive fresh checks after
 each rebase.
@@ -78,8 +78,8 @@ Completion gate:
 - Repeated runs produce equivalent deterministic results.
 - The built-wheel demo is CI-tested outside a source checkout on Linux and macOS
   with Python 3.12 and 3.13.
-- The documented WSL2 Ubuntu path is manually validated. Native Windows is not
-  advertised until it is implemented and tested.
+- WSL2 is not advertised for v0.3.0 until a clean manual v0.3.0 run is recorded.
+  Native Windows remains unsupported and unadvertised.
 
 ## Phase 2: discoverable command line and first screen
 
@@ -124,10 +124,12 @@ Completion gate:
 
 Goal: make expected compatibility and contribution steps explicit.
 
-- Test the full supported suite on Linux with Python 3.12 and 3.13.
-- Expand macOS coverage from focused regressions to the wheel demo and supported
-  camera-free workflow before claiming broader macOS support.
-- Keep WSL2 Ubuntu as the documented Windows path until native Windows is explicitly
+- Maintain the full supported suite on Linux with Python 3.12 and 3.13.
+- Maintain the macOS camera-free suite and installed-wheel demo on Python 3.12
+  and 3.13; do not claim live-camera support without hardware validation.
+- Advertise WSL2 only after a clean manual v0.3.0 run is recorded; archived v0.2.0
+  WSL2 reproduction instructions do not establish v0.3.0 support.
+- Keep native Windows unsupported and unadvertised until it is explicitly
   implemented and validated.
 - Add issue forms, a pull-request template, `SECURITY.md`, a Code of Conduct, support
   guidance, and an actionable contribution guide.
@@ -135,7 +137,9 @@ Goal: make expected compatibility and contribution steps explicit.
 
 Completion gate:
 
-- Supported platform/version combinations are stated in one place and enforced in CI.
+- Supported platform/version combinations are stated in
+  [`docs/SUPPORTED_ENVIRONMENTS.md`](docs/SUPPORTED_ENVIRONMENTS.md) and enforced
+  in CI.
 - A contributor can set up tests, choose an issue, and prepare a pull request from the
   documented path.
 

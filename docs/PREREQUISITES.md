@@ -6,8 +6,11 @@ SPDX-License-Identifier: MIT
 # Metriplane Prerequisites
 
 **Target Audience**: Developers, researchers, and operators setting up Metriplane for the first time  
-**Last Updated**: 2026-04-26  
-**Supported Platform**: Ubuntu 24.04 LTS (native or Docker)
+**Last Updated**: 2026-08-09
+
+**Setup covered here**: Ubuntu 24.04 LTS (native or Docker)
+
+**Compatibility status**: [Supported Environments](SUPPORTED_ENVIRONMENTS.md)
 
 ---
 
@@ -15,10 +18,10 @@ SPDX-License-Identifier: MIT
 
 ### Operating System
 
-**Supported**:
-- Ubuntu 24.04 LTS (recommended, tested)
-- Ubuntu 22.04 LTS (should work, untested)
-- Linux with v4l2 support (for USB camera access)
+This setup guide targets Ubuntu 24.04 LTS. The full automated suite and the
+installed-wheel camera-free demo run on Ubuntu with Python 3.12 and 3.13.
+See [Supported Environments](SUPPORTED_ENVIRONMENTS.md) for the authoritative
+platform matrix and the narrower macOS, WSL2, and native-Windows boundaries.
 
 **Assumptions**:
 - `bash` shell available
@@ -26,22 +29,19 @@ SPDX-License-Identifier: MIT
 - `git` installed for version control
 - User in `video` group for camera access
 
-**Not Supported**:
-- Windows (Docker may work with WSL2, untested)
-- macOS (Docker may work, camera pass-through untested)
-
 ---
 
-## Python 3.12 Setup
+## Python 3.12 or 3.13 Setup
 
-### Install Python 3.12
+### Select a Supported Python
 
-Ubuntu 24.04 ships with Python 3.12 by default:
+Metriplane requires Python 3.12 or 3.13. Ubuntu 24.04 ships with Python 3.12
+by default, so its `python3` command is sufficient for this guide:
 
 ```bash
 # Verify Python version
 python3 --version
-# Expected: Python 3.12.3 (or higher)
+# Expected: Python 3.12.x or 3.13.x
 
 # Install venv module if missing
 sudo apt install python3-venv python3-pip
@@ -85,7 +85,8 @@ source .venv/bin/activate
 python -m pip install -e .
 ```
 
-This installs the core runtime dependencies declared in `pyproject.toml`, including NumPy, OpenCV headless, Pydantic, PyYAML, and websockets.
+This installs the core runtime dependencies declared in `pyproject.toml`,
+including NumPy, OpenCV contrib headless, Pydantic, PyYAML, and websockets.
 
 If development tools are not already installed, install them separately as needed:
 
@@ -231,16 +232,18 @@ print('✅ Generated markers 0-9')
 
 ## OpenCV Headless Note
 
-Metriplane's default dependency is `opencv-python-headless`, which is suitable for server/headless operation and automated tests.
+Metriplane's default dependency is `opencv-contrib-python-headless`, which
+includes the ArUco module and is suitable for server/headless operation and
+automated tests.
 
 Some debugging tools that use `cv2.imshow()` require a GUI-capable OpenCV build. Do not install multiple conflicting OpenCV packages at the same time. If GUI tools are needed, remove the headless package first and install an appropriate GUI/contrib build:
 
 ```bash
-# Remove headless version first
-pip uninstall opencv-python-headless
+# Remove the default headless contrib build first
+python -m pip uninstall opencv-contrib-python-headless
 
 # Install GUI version
-pip install opencv-contrib-python
+python -m pip install opencv-contrib-python
 ```
 
 **Note**: GUI builds have additional dependencies (Qt, GTK) that may not be available in Docker or headless servers.
@@ -413,7 +416,7 @@ source /opt/ros/jazzy/setup.bash
 
 ROS 2 installs **launch_testing** pytest plugin globally, which interferes with Metriplane tests.
 
-**Solution**: Disable plugin (see [Run Tests](#run tests) section above).
+**Solution**: Disable plugin (see [Run Tests](#run-tests) above).
 
 ### Build the ROS 2 bridge
 
@@ -472,7 +475,7 @@ Metriplane installation.
 
 Before running Metriplane, verify:
 
-- [ ] **Python 3.12** installed: `python3 --version`
+- [ ] **Python 3.12 or 3.13** installed: `python3 --version`
 - [ ] **Virtual environment** created: `.venv/` directory exists
 - [ ] **Metriplane package** installed: `python -c "import metriplane"`
 - [ ] **Tests pass**: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`
@@ -501,12 +504,13 @@ After completing prerequisites:
 
 ## Support
 
-- **Documentation**: [docs/development.md](development.md)
-- **Health check**: [docs/PREREQUISITES.md](PREREQUISITES.md)
+- **Development guide**: [development.md](development.md)
+- **Supported environments**: [SUPPORTED_ENVIRONMENTS.md](SUPPORTED_ENVIRONMENTS.md)
 - **Release audit**: [docs/scope_rules.md](scope_rules.md)
 - **GitHub Issues**: Report bugs or ask questions
 
 ---
 
-**Last Updated**: 2026-04-26  
-**Verified on**: Ubuntu 24.04 LTS, Python 3.12.3, ROS 2 Jazzy
+**Last Updated**: 2026-08-09
+
+**Compatibility evidence**: [Supported Environments](SUPPORTED_ENVIRONMENTS.md)
