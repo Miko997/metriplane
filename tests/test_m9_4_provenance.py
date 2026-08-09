@@ -62,6 +62,62 @@ def test_header_record_written_first_line(tmp_path: Path, monkeypatch) -> None:
     assert obj["config_hash"] == ctx.config_hash
 
 
+def test_run_context_redacts_credentials_from_persisted_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    secret_url = (
+        "rtsp://camera-user:super-secret@camera.local:8554/stream"
+        "?token=query-secret&quality=high"
+    )
+    cfg = Config(
+        source_mode="camera",
+        camera_backend="rtsp",
+        camera_device=secret_url,
+        fusion={
+            "api-key": "nested-secret",
+            "camera_password": "camera-password",
+            "openai_api_key": "provider-key",
+            "X-Amz-Signature": "signed-query",
+            "credential": "credential-value",
+            "headers": {
+                "Authorization": "Bearer header-secret",
+                "Set-Cookie": "session=browser-secret",
+            },
+            "endpoint": secret_url,
+            "invalid_endpoint": "rtsp://camera.local:bad/stream?token=bad-port-secret",
+        },
+        runs_dir=str(tmp_path / "runs"),
+    )
+
+    ctx = create_run_context(
+        cfg,
+        config_path=None,
+        argv=["metriplane", "run"],
+        run_id="redacted",
+        runs_dir=str(tmp_path / "runs"),
+    )
+    persisted = (
+        ctx.config_yaml.read_text(encoding="utf-8")
+        + ctx.config_canonical_json_path.read_text(encoding="utf-8")
+    )
+
+    assert "super-secret" not in persisted
+    assert "query-secret" not in persisted
+    assert "nested-secret" not in persisted
+    assert "camera-password" not in persisted
+    assert "provider-key" not in persisted
+    assert "signed-query" not in persisted
+    assert "credential-value" not in persisted
+    assert "header-secret" not in persisted
+    assert "browser-secret" not in persisted
+    assert "bad-port-secret" not in persisted
+    assert "camera-user" not in persisted
+    assert "camera.local:8554/stream" in persisted
+    assert "<redacted>" in persisted
+
+
 @pytest.mark.parametrize("run_id", ["../escape", "nested/run", "..", "bad id"])
 def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: str) -> None:
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")

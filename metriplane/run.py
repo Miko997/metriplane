@@ -6,6 +6,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -518,6 +519,31 @@ def _maybe_load_zones(cfg: Config, *, required: bool | None = None) -> ZoneMap |
         return None
 
 
+def _apply_runtime_profile_defaults(
+    cfg: Config, *, calib_root: Path = Path("calib")
+) -> Config:
+    """Resolve profile defaults, failing only for an explicitly selected profile."""
+    explicit_profile = str(cfg.profile or "").strip()
+    if explicit_profile:
+        calib = maybe_get_calib_paths(explicit_profile, calib_root=calib_root)
+        if calib is None:
+            raise ValueError(
+                f"Configured profile not found: "
+                f"{calib_root / 'profiles' / explicit_profile}"
+            )
+        if cfg.mapping_file is None and not calib.mapping.is_file():
+            raise ValueError(
+                f"Configured profile {explicit_profile!r} has no planar mapping: "
+                f"{calib.mapping}"
+            )
+        if cfg.zones_file is None and not calib.zones.is_file():
+            raise ValueError(
+                f"Configured profile {explicit_profile!r} has no zones file: "
+                f"{calib.zones}"
+            )
+    return apply_profile_defaults(cfg, calib_root=calib_root)
+
+
 def _sleep_until_replay_deadline(target: float, *, max_sleep_s: float = 0.25) -> int:
     """Sleep in bounded chunks until a replay deadline is actually reached."""
     slept_ns = 0
@@ -528,6 +554,9 @@ def _sleep_until_replay_deadline(target: float, *, max_sleep_s: float = 0.25) ->
         started_ns = time.perf_counter_ns()
         time.sleep(min(remaining, max_sleep_s))
         slept_ns += time.perf_counter_ns() - started_ns
+
+
+_MAX_REPLAY_PACING_DELAY_S = 24 * 60 * 60
 
 
 def _detection_to_object(
@@ -594,6 +623,41 @@ def _detection_to_object(
         return None
     return ObjectStateModel(id=str(mid))
 
+
+@dataclass
+class _RunResources:
+    camera: Any = None
+    websocket: Any = None
+    observability: Any = None
+    recorder: Any = None
+    timing: Any = None
+    video_writer: Any = None
+
+
+def _close_run_resources(resources: _RunResources) -> None:
+    """Close every acquired runtime resource, even when another close fails."""
+    for resource, method in (
+        (resources.camera, "close"),
+        (resources.websocket, "stop"),
+        (resources.observability, "shutdown"),
+        (resources.observability, "server_close"),
+        (resources.recorder, "close"),
+        (resources.video_writer, "release"),
+        (resources.timing, "close"),
+    ):
+        if resource is None:
+            continue
+        try:
+            getattr(resource, method)()
+        except Exception:
+            log.debug(
+                "cleanup failed for %s.%s",
+                type(resource).__name__,
+                method,
+                exc_info=True,
+            )
+
+
 def run_loop(
     cfg: Config,
     *,
@@ -603,12 +667,32 @@ def run_loop(
     run_id: str | None = None,
     runs_dir: str | None = None,
 ) -> int:
-    log.info("run loop started")
+    resources = _RunResources()
+    try:
+        return _run_loop_impl(
+            cfg,
+            cli_faults=cli_faults,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+            _resources=resources,
+        )
+    finally:
+        _close_run_resources(resources)
 
-    # Make profile-derived paths explicit in cfg before hashing/snapshotting.
-    mapping_required = bool(cfg.mapping_file or cfg.intrinsics_file)
-    zones_required = bool(cfg.zones_file)
-    cfg = apply_profile_defaults(cfg)
+
+def _run_loop_impl(
+    cfg: Config,
+    *,
+    cli_faults: list[str] | None = None,
+    config_path: Path | None = None,
+    argv: list[str] | None = None,
+    run_id: str | None = None,
+    runs_dir: str | None = None,
+    _resources: _RunResources,
+) -> int:
+    log.info("run loop started")
 
     mode = str(getattr(cfg, "source_mode", "camera") or "camera").strip().lower()
     if mode not in {"camera", "replay", "dummy"}:
@@ -616,6 +700,15 @@ def run_loop(
         return 1
 
     try:
+        # Explicit file/profile selections fail closed. An omitted profile (including
+        # a best-effort active profile) remains optional for backwards compatibility.
+        explicit_profile = bool(str(cfg.profile or "").strip())
+        mapping_required = bool(
+            cfg.mapping_file or cfg.intrinsics_file or explicit_profile
+        )
+        zones_required = bool(cfg.zones_file or explicit_profile)
+        cfg = _apply_runtime_profile_defaults(cfg)
+
         # Validate configured optional resources before starting services or writing
         # a header-only run that appears successful.
         mapper = _maybe_load_mapper(cfg, required=mapping_required)
@@ -675,6 +768,7 @@ def run_loop(
             recorder = open_jsonl_writer(primary_path=ctx.session_jsonl, mirror_path=None)
         else:
             raise
+    _resources.recorder = recorder
 
     recorder.write(ctx.header_record())
     log.info("M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash)
@@ -704,6 +798,7 @@ def run_loop(
         summary_csv_path=ctx.run_dir / "latency_summary.csv",
         flush_every=1,
     )
+    _resources.timing = timing
     if timing_enabled:
         log.info("M9.5 timing: ENABLED frames_csv=%s summary_csv=%s", ctx.run_dir / "latency_frames.csv", ctx.run_dir / "latency_summary.csv")
     else:
@@ -719,6 +814,7 @@ def run_loop(
     health.ensure("mapping")
     health.ensure("zones")
     health.ensure("timing")
+    health.ensure("observability")
 
     health.mark_ok(
         "recording.jsonl",
@@ -742,6 +838,7 @@ def run_loop(
     t0 = time.monotonic()
 
     ws = WsServerThread(host=cfg.ws_host, port=cfg.ws_port)
+    _resources.websocket = ws
     try:
         ws.start()
         log.info("ws server running at ws://%s:%d", cfg.ws_host, cfg.ws_port)
@@ -749,25 +846,32 @@ def run_loop(
     except Exception as e:
         log.error("failed to start ws server on ws://%s:%d: %s", cfg.ws_host, cfg.ws_port, e)
         health.mark_failed("ws", f"start_failed: {e}")
-        try:
-            recorder.close()
-        except Exception:
-            pass
-        try:
-            timing.close()
-        except Exception:
-            pass
         return 1
 
     metrics = MetricsRegistry()
-    obs_server = _start_observability_server(
-        host=cfg.metrics_host,
-        port=cfg.metrics_port,
-        registry=metrics,
-        get_ws_clients=client_count,
-        get_health_json=health.snapshot_json,
-        health=health,
-    )
+    try:
+        obs_server = _start_observability_server(
+            host=cfg.metrics_host,
+            port=cfg.metrics_port,
+            registry=metrics,
+            get_ws_clients=client_count,
+            get_health_json=health.snapshot_json,
+            health=health,
+        )
+        _resources.observability = obs_server
+        health.mark_ok(
+            "observability",
+            details={"host": cfg.metrics_host, "port": int(cfg.metrics_port)},
+        )
+    except Exception as e:
+        log.error(
+            "failed to start observability server on http://%s:%d: %s",
+            cfg.metrics_host,
+            cfg.metrics_port,
+            e,
+        )
+        health.mark_failed("observability", f"start_failed: {e}")
+        return 1
     log.info("metrics at http://%s:%d/metrics", cfg.metrics_host, cfg.metrics_port)
     log.info("health  at http://%s:%d/health", cfg.metrics_host, cfg.metrics_port)
 
@@ -816,22 +920,6 @@ def run_loop(
                     t0=t0,
                 )
         finally:
-            try:
-                ws.stop()
-            except Exception:
-                pass
-            try:
-                obs_server.shutdown()
-            except Exception:
-                pass
-            try:
-                recorder.close()
-            except Exception:
-                pass
-            try:
-                timing.close()
-            except Exception:
-                pass
             log.info("run loop exited cleanly")
         return status
 
@@ -854,6 +942,7 @@ def run_loop(
 
     assert resolved_camera is not None
     cam = resolved_camera.camera
+    _resources.camera = cam
     backend = ArUcoBackend()
     registry = ObjectRegistry(timeout_s=float(cfg.object_timeout_s))
 
@@ -878,26 +967,13 @@ def run_loop(
                 "vision_backend": resolved_camera.vision_backend,
             },
         )
-    except RuntimeError as e:
+    except Exception as e:
         log.error("camera open error: %s", e)
         health.mark_failed(
             "camera",
             f"open_failed: {e}",
             details={"mode": resolved_camera.camera_backend},
         )
-        ws.stop()
-        try:
-            obs_server.shutdown()
-        except Exception:
-            pass
-        try:
-            recorder.close()
-        except Exception:
-            pass
-        try:
-            timing.close()
-        except Exception:
-            pass
         return 1
 
     last_ts_frame = time.time()
@@ -937,9 +1013,15 @@ def run_loop(
                     video_writer = cv2.VideoWriter(
                         str(record_video_path), fourcc, float(video_fps), (int(w), int(h))
                     )
+                    _resources.video_writer = video_writer
                     if not video_writer.isOpened():
                         log.error("video recording: FAILED to open writer -> %s", record_video_path)
+                        try:
+                            video_writer.release()
+                        except Exception:
+                            pass
                         video_writer = None
+                        _resources.video_writer = None
                         record_video_path = None
                     else:
                         log.info(
@@ -951,7 +1033,13 @@ def run_loop(
                         )
                 except Exception as e:
                     log.exception("video recording: FAILED to init writer: %s", e)
+                    if video_writer is not None:
+                        try:
+                            video_writer.release()
+                        except Exception:
+                            pass
                     video_writer = None
+                    _resources.video_writer = None
                     record_video_path = None
 
             frames_total += 1
@@ -1036,7 +1124,8 @@ def run_loop(
                 try:
                     recorder.write(msg.model_dump())
                 except Exception as e:
-                    health.mark_degraded("recording.jsonl", f"write_failed: {e}")
+                    health.mark_failed("recording.jsonl", f"write_failed: {e}")
+                    return 1
 
             # ---- ws.send ----
             with timing.stage("ws.send"):
@@ -1104,13 +1193,6 @@ def run_loop(
     except KeyboardInterrupt:
         log.info("shutdown requested")
     finally:
-        cam.close()
-        ws.stop()
-        try:
-            obs_server.shutdown()
-        except Exception:
-            pass
-
         # Export analytics
         if zone_analytics is not None and cfg.analytics_out_dir:
             out_dir = _resolve_output_path(str(cfg.analytics_out_dir)) or Path(str(cfg.analytics_out_dir))
@@ -1123,23 +1205,9 @@ def run_loop(
             except Exception as e:
                 log.exception("failed to export zone analytics: %s", e)
 
-        try:
-            recorder.close()
-        except Exception:
-            pass
-
         if video_writer is not None:
-            try:
-                video_writer.release()
-            except Exception:
-                pass
             if record_video_path is not None:
                 log.info("video recording: WROTE %s", record_video_path)
-
-        try:
-            timing.close()
-        except Exception:
-            pass
 
         log.info("run loop exited cleanly")
 
@@ -1172,7 +1240,17 @@ def _run_replay_mode(
 
     health.mark_ok("camera", details={"mode": "replay", "path": str(p)})
 
-    speed = float(getattr(cfg, "replay_speed", 1.0))
+    try:
+        speed = float(getattr(cfg, "replay_speed", 1.0))
+    except (TypeError, ValueError) as exc:
+        health.mark_failed("camera", f"invalid_replay_speed: {exc}")
+        return 1
+    if not math.isfinite(speed) or speed < 0:
+        health.mark_failed(
+            "camera",
+            "invalid_replay_speed: expected a finite value greater than or equal to zero",
+        )
+        return 1
     loop_forever = bool(getattr(cfg, "replay_loop", True))
 
     frames_total = 0
@@ -1189,7 +1267,7 @@ def _run_replay_mode(
             pass_frames = 0
 
             with p.open("r", encoding="utf-8") as f:
-                for line in f:
+                for line_number, line in enumerate(f, start=1):
                     line = line.strip()
                     if not line:
                         continue
@@ -1216,17 +1294,51 @@ def _run_replay_mode(
                         if upd:
                             msg = msg.model_copy(update=upd)
 
-                    except Exception:
-                        log.warning("replay: bad JSONL line (skipping)")
-                        continue
+                    except Exception as exc:
+                        err = (
+                            f"invalid_jsonl_line:{line_number}:"
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                        log.error("replay: %s", err)
+                        health.mark_failed(
+                            "camera",
+                            err,
+                            details={"mode": "replay", "path": str(p)},
+                        )
+                        return 1
 
                     parse_ns = time.perf_counter_ns() - t_parse0
 
-                    replay_ts = (
-                        float(msg.ts_sim_ns) / 1_000_000_000.0
-                        if msg.ts_sim_ns is not None
-                        else float(msg.ts)
-                    )
+                    source_ts = float(msg.ts)
+                    if not math.isfinite(source_ts):
+                        err = f"invalid_timestamp: line {line_number} ts must be finite"
+                        log.error("replay: %s", err)
+                        health.mark_failed("camera", err)
+                        return 1
+                    if msg.ts_sim_ns is not None and msg.ts_sim_ns < 0:
+                        err = (
+                            f"invalid_timestamp: line {line_number} "
+                            "ts_sim_ns must be non-negative"
+                        )
+                        log.error("replay: %s", err)
+                        health.mark_failed("camera", err)
+                        return 1
+                    try:
+                        replay_ts = (
+                            float(msg.ts_sim_ns) / 1_000_000_000.0
+                            if msg.ts_sim_ns is not None
+                            else source_ts
+                        )
+                    except OverflowError:
+                        replay_ts = float("inf")
+                    if not math.isfinite(replay_ts):
+                        err = (
+                            f"invalid_timestamp: line {line_number} "
+                            "timestamp is outside the supported range"
+                        )
+                        log.error("replay: %s", err)
+                        health.mark_failed("camera", err)
+                        return 1
                     if previous_ts is not None and replay_ts < previous_ts:
                         err = f"non_monotonic_timestamp: {replay_ts} follows {previous_ts}"
                         log.error("replay: %s", err)
@@ -1248,8 +1360,25 @@ def _run_replay_mode(
 
                     # replay pacing
                     if speed > 0 and first_ts is not None:
-                        dt = (replay_ts - first_ts) / speed
-                        target = wall0 + dt
+                        try:
+                            dt = (replay_ts - first_ts) / speed
+                            target = wall0 + dt
+                        except OverflowError:
+                            dt = float("inf")
+                            target = float("inf")
+                        if (
+                            not math.isfinite(target)
+                            or dt < 0
+                            or dt > _MAX_REPLAY_PACING_DELAY_S
+                        ):
+                            err = (
+                                f"invalid_replay_deadline: line {line_number} "
+                                "produced a non-finite, negative, or longer than "
+                                "24-hour pacing delay"
+                            )
+                            log.error("replay: %s", err)
+                            health.mark_failed("camera", err)
+                            return 1
                         slept_ns = _sleep_until_replay_deadline(target)
                         if slept_ns:
                             timing.add_stage_ns("replay.sleep", slept_ns)
@@ -1270,7 +1399,8 @@ def _run_replay_mode(
                         try:
                             recorder.write(msg.model_dump())
                         except Exception as e:
-                            health.mark_degraded("recording.jsonl", f"write_failed: {e}")
+                            health.mark_failed("recording.jsonl", f"write_failed: {e}")
+                            return 1
 
                     with timing.stage("ws.send"):
                         try:
@@ -1403,7 +1533,8 @@ def _run_dummy_mode(
                 try:
                     recorder.write(msg.model_dump())
                 except Exception as e:
-                    health.mark_degraded("recording.jsonl", f"write_failed: {e}")
+                    health.mark_failed("recording.jsonl", f"write_failed: {e}")
+                    return 1
 
             with timing.stage("ws.send"):
                 try:
@@ -1440,7 +1571,7 @@ def main(argv=None) -> int:
     import sys
     from pathlib import Path
 
-    from metriplane.config import apply_profile_defaults, load_config
+    from metriplane.config import load_config
 
     ap = argparse.ArgumentParser(description="Metriplane runner")
     ap.add_argument("--config", "-c", default="config.example.yaml", help="Path to YAML config")
@@ -1464,7 +1595,6 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
-    cfg = apply_profile_defaults(cfg)
 
     return run_loop(
         cfg,

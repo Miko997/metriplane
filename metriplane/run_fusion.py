@@ -341,6 +341,17 @@ def _close_fusion_resources(
         except Exception:
             log.debug("cleanup failed for %s.%s", type(resource).__name__, method, exc_info=True)
 
+
+@dataclass
+class _FusionResources:
+    preview: Any = None
+    camera: Any = None
+    websocket: Any = None
+    metrics_server: Any = None
+    recorder: Any = None
+    timing: Any = None
+
+
 def run_loop_fusion(
     cfg: Config,
     *,
@@ -351,13 +362,50 @@ def run_loop_fusion(
     run_id: str | None = None,
     runs_dir: str | None = None,
     duration_s: float = 0.0,
-) -> None:
+) -> int:
+    resources = _FusionResources()
+    try:
+        return _run_loop_fusion_impl(
+            cfg,
+            clock=clock,
+            fault_args=fault_args,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+            duration_s=duration_s,
+            _resources=resources,
+        )
+    finally:
+        _close_fusion_resources(
+            preview=resources.preview,
+            camera=resources.camera,
+            websocket=resources.websocket,
+            metrics_server=resources.metrics_server,
+            recorder=resources.recorder,
+            timing=resources.timing,
+        )
+
+
+def _run_loop_fusion_impl(
+    cfg: Config,
+    *,
+    clock: Clock | None = None,
+    fault_args: list[str] | None = None,
+    config_path: Path | None = None,
+    argv: list[str] | None = None,
+    run_id: str | None = None,
+    runs_dir: str | None = None,
+    duration_s: float = 0.0,
+    _resources: _FusionResources,
+) -> int:
     if clock is None:
         clock = RealTimeClock()
     # Fill per-camera mapping/intrinsics from profile/cam0 + cam1 if missing.
     preview = None
     if os.getenv("METRIPLANE_SHOW_PREVIEW", "0") == "1" and LivePreview is not None:
         preview = LivePreview(scale=float(os.getenv("METRIPLANE_PREVIEW_SCALE", "1.0")))
+        _resources.preview = preview
 
     cfg = apply_profile_defaults(cfg)
 
@@ -388,12 +436,9 @@ def run_loop_fusion(
             recorder = open_jsonl_writer(primary_path=ctx.session_jsonl, mirror_path=None)
         else:
             raise
+    _resources.recorder = recorder
 
-    try:
-        recorder.write(ctx.header_record())
-    except Exception:
-        recorder.close()
-        raise
+    recorder.write(ctx.header_record())
     log.info("M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash)
     log.info("M9.4 recorder paths: %s", ", ".join(str(p) for p in recorder.paths))
 
@@ -414,31 +459,28 @@ def run_loop_fusion(
         cam_stages.append(f"detect.{cid}")
         cam_stages.append(f"map.{cid}")
 
-    try:
-        timing = StageTiming(
-            enabled=timing_enabled,
-            stages=[
-                "camera.read",
-                "preview",
-                *cam_stages,
-                "fuse",
-                "tracking",
-                "zones",
-                "build.msg",
-                "record.jsonl",
-                "ws.send",
-                "sleep",
-            ],
-            frames_csv_path=ctx.run_dir / "latency_frames.csv",
-            summary_csv_path=ctx.run_dir / "latency_summary.csv",
-            flush_every=int(os.getenv("METRIPLANE_TIMING_FLUSH_EVERY", "250")),
-            run_id=ctx.run_id,
-            config_hash=ctx.config_hash,
-            git_commit=ctx.git.commit,
-        )
-    except Exception:
-        recorder.close()
-        raise
+    timing = StageTiming(
+        enabled=timing_enabled,
+        stages=[
+            "camera.read",
+            "preview",
+            *cam_stages,
+            "fuse",
+            "tracking",
+            "zones",
+            "build.msg",
+            "record.jsonl",
+            "ws.send",
+            "sleep",
+        ],
+        frames_csv_path=ctx.run_dir / "latency_frames.csv",
+        summary_csv_path=ctx.run_dir / "latency_summary.csv",
+        flush_every=int(os.getenv("METRIPLANE_TIMING_FLUSH_EVERY", "250")),
+        run_id=ctx.run_id,
+        config_hash=ctx.config_hash,
+        git_commit=ctx.git.commit,
+    )
+    _resources.timing = timing
 
     if timing_enabled:
         log.info("M9.5 timing: ENABLED frames_csv=%s summary_csv=%s", ctx.run_dir / "latency_frames.csv", ctx.run_dir / "latency_summary.csv")
@@ -450,11 +492,9 @@ def run_loop_fusion(
     health = HealthRegistry()
 
     # M9.6: compute backend selection (CPU NumPy by default; optional GPU via CuPy)
-    try:
-        compute_backend = select_fusion_backend(getattr(cfg, "compute", None), logger=log, health=health)
-    except Exception:
-        _close_fusion_resources(preview=preview, recorder=recorder, timing=timing)
-        raise
+    compute_backend = select_fusion_backend(
+        getattr(cfg, "compute", None), logger=log, health=health
+    )
     log.info("M9.6 compute backend: %s", compute_backend.name)
 
     health.set_ok("process")
@@ -490,12 +530,12 @@ def run_loop_fusion(
         )
 
     ws = WsServerThread(host=cfg.ws_host, port=cfg.ws_port)
+    _resources.websocket = ws
     try:
         ws.start()
         health.set_ok("ws")
     except Exception as e:
         health.set_failed("ws", f"{type(e).__name__}: {e}")
-        _close_fusion_resources(preview=preview, websocket=ws, recorder=recorder, timing=timing)
         raise
 
     metrics = MetricsRegistry()
@@ -511,11 +551,8 @@ def run_loop_fusion(
     if health_enabled and "get_health" in inspect.signature(start_metrics_server).parameters:
         start_kwargs["get_health"] = health.snapshot
 
-    try:
-        metrics_server = start_metrics_server(**start_kwargs)
-    except Exception:
-        _close_fusion_resources(preview=preview, websocket=ws, recorder=recorder, timing=timing)
-        raise
+    metrics_server = start_metrics_server(**start_kwargs)
+    _resources.metrics_server = metrics_server
 
     health.set_ok("http.metrics")
     log.info("metrics at http://%s:%d/metrics", cfg.metrics_host, cfg.metrics_port)
@@ -524,17 +561,7 @@ def run_loop_fusion(
     else:
         log.info("health  DISABLED (set health.enabled=true to enable)")
 
-    try:
-        cameras, mm, skipped = _resolve_multi_mapper_from_cfg(cfg, health=health)
-    except Exception:
-        _close_fusion_resources(
-            preview=preview,
-            websocket=ws,
-            metrics_server=metrics_server,
-            recorder=recorder,
-            timing=timing,
-        )
-        raise
+    cameras, mm, skipped = _resolve_multi_mapper_from_cfg(cfg, health=health)
     if skipped:
         health.set_degraded("fusion", f"skipped cameras: {','.join(sorted(skipped))}")
         log.warning("fusion: skipped cameras due to missing mapping/device: %s", ",".join(sorted(skipped)))
@@ -548,17 +575,7 @@ def run_loop_fusion(
     if cfg.zones_file:
         zp = Path(str(cfg.zones_file))
         if zp.is_file():
-            try:
-                zone_analytics = ZoneAnalytics(load_zones(zp))
-            except Exception:
-                _close_fusion_resources(
-                    preview=preview,
-                    websocket=ws,
-                    metrics_server=metrics_server,
-                    recorder=recorder,
-                    timing=timing,
-                )
-                raise
+            zone_analytics = ZoneAnalytics(load_zones(zp))
             health.set_ok("zones")
         else:
             health.set_degraded("zones", f"zones_file not found: {zp}")
@@ -574,6 +591,7 @@ def run_loop_fusion(
         fourcc="MJPG",
         require_all=False,
     )
+    _resources.camera = cam
 
     # -----------------------------
     # Fusion config (authoritative: cfg.fusion dict)
@@ -588,13 +606,6 @@ def run_loop_fusion(
     if method in ("best", "best_conf", "best_rmse"):
         method = "nearest"
     if method not in ("avg", "weighted", "nearest", "kalman"):
-        _close_fusion_resources(
-            preview=preview,
-            websocket=ws,
-            metrics_server=metrics_server,
-            recorder=recorder,
-            timing=timing,
-        )
         raise ValueError(f"Unsupported fusion method '{method}'. Use avg|weighted|nearest|kalman.")
 
     z_world = _coerce_float(str(fcfg.get("z_world")) if fcfg.get("z_world") is not None else None, 0.0)
@@ -644,21 +655,10 @@ def run_loop_fusion(
     frames_total = 0
     last_log = time.monotonic()
 
-    try:
-        det = cv2.aruco.ArucoDetector(
-            cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100),
-            cv2.aruco.DetectorParameters(),
-        )
-    except Exception:
-        _close_fusion_resources(
-            preview=preview,
-            camera=cam,
-            websocket=ws,
-            metrics_server=metrics_server,
-            recorder=recorder,
-            timing=timing,
-        )
-        raise
+    det = cv2.aruco.ArucoDetector(
+        cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100),
+        cv2.aruco.DetectorParameters(),
+    )
 
     try:
         cam.open()
@@ -700,7 +700,10 @@ def run_loop_fusion(
                     frames_by_cam.pop("cam1", None)
                 if not cam1_fault_triggered:
                     cam1_fault_triggered = True
-                    health.set_failed("camera.cam1", f"fault injected: cam1_disconnect_after_s={cam1_disconnect_after_s}")
+                health.set_failed(
+                    "camera.cam1",
+                    f"fault injected: cam1_disconnect_after_s={cam1_disconnect_after_s}",
+                )
 
             preview_ns = 0
             if preview is not None:
@@ -1001,7 +1004,11 @@ def run_loop_fusion(
                         recorder.write(msg.model_dump())
                         health.set_ok("recorder.jsonl")
                     except Exception as e:
-                        health.set_degraded("recorder.jsonl", f"write failed: {type(e).__name__}: {e}")
+                        health.set_failed(
+                            "recorder.jsonl",
+                            f"write failed: {type(e).__name__}: {e}",
+                        )
+                        return 1
 
                 with timing.stage("ws.send"):
                     try:
@@ -1040,15 +1047,7 @@ def run_loop_fusion(
 
     except KeyboardInterrupt:
         log.info("shutdown requested")
-    finally:
-        _close_fusion_resources(
-            preview=preview,
-            camera=cam,
-            websocket=ws,
-            metrics_server=metrics_server,
-            recorder=recorder,
-            timing=timing,
-        )
+    return 0
 
 
 
@@ -1077,7 +1076,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
-    run_loop_fusion(
+    return run_loop_fusion(
         cfg,
         fault_args=list(args.fault or []),
         config_path=Path(args.config),
@@ -1086,7 +1085,6 @@ def main(argv=None) -> int:
         runs_dir=args.runs_dir,
         duration_s=args.duration_s,
     )
-    return 0
 
 
 if __name__ == "__main__":

@@ -418,7 +418,7 @@ def start_runner(host="127.0.0.1", port=9000, *, allowed_origins: list[str] | No
             )
             print(
                 "[Runner] Use `python -m metriplane.cli status` to inspect, "
-                "`python -m metriplane.cli cleanup` for orphaned MetriPlane services, "
+                "`python -m metriplane.cli cleanup` for orphaned Metriplane services, "
                 "or start with `--port` set to a free port.",
                 file=sys.stderr,
             )

@@ -62,21 +62,26 @@ class EngineConfig:
     clock: ClockMode = "replay"          # "replay" | "fixed"
     dt_ms: Optional[int] = None          # required if clock="fixed"
     run_id: str = "replay"
-    speed: Optional[float] = None        # only used if you implement throttling
+    speed: Optional[float] = None        # compatibility only; file output is unpaced
     output_max_frames: Optional[int] = None  # helpful for quick debug
 
 
 def iter_input_frames(path: Path) -> Iterator[Dict[str, Any]]:
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
-            rec = json.loads(line)
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSONL at {path}:{line_number}: {exc}") from exc
             if isinstance(rec, dict) and _is_header_record(rec):
                 continue
             if not isinstance(rec, dict):
-                continue
+                raise ValueError(
+                    f"Invalid JSONL record at {path}:{line_number}: expected an object"
+                )
             yield rec
 
 
@@ -110,6 +115,8 @@ def iter_replay_outputs(cfg: EngineConfig) -> Iterator[Dict[str, Any]]:
         raise ValueError(f"Unknown clock mode: {cfg.clock}")
 
     max_frames = cfg.output_max_frames
+    if max_frames is not None and max_frames <= 0:
+        raise ValueError("output_max_frames must be greater than zero")
 
     if cfg.clock == "replay":
         clock = ReplayClock(0)

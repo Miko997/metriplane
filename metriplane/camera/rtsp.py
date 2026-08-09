@@ -17,7 +17,7 @@ class RTSPCamera:
         self.cap: cv2.VideoCapture | None = None
 
     def open(self) -> None:
-        log.info("opening RTSP url=%s", self.url)
+        log.info("opening configured RTSP stream")
         self.cap = cv2.VideoCapture(self.url)
         if not self.cap.isOpened():
             self.cap.release()

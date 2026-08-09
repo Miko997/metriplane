@@ -15,6 +15,7 @@ import secrets
 import socket
 import subprocess
 import sys
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence, TextIO
@@ -26,6 +27,25 @@ from metriplane.config import Config, resolve_profile
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
 _SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_REDACTED = "<redacted>"
+_SENSITIVE_CONFIG_KEYS = {
+    "access_token",
+    "api_key",
+    "auth_token",
+    "authorization",
+    "bearer",
+    "client_secret",
+    "cookie",
+    "password",
+    "passwd",
+    "private_key",
+    "secret",
+    "session_id",
+    "session_key",
+    "token",
+    "user",
+    "username",
+}
 
 
 def is_header_record(obj: Any) -> bool:
@@ -132,10 +152,90 @@ def get_git_info(*, start: Path | None = None) -> GitInfo:
     return GitInfo(commit=commit, dirty=dirty, describe=describe, repo_root=str(repo_root))
 
 
+def _redact_url_secrets(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        if not parsed.scheme or parsed.hostname is None:
+            return value
+        hostname = parsed.hostname
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        netloc = hostname
+        if parsed.port is not None:
+            netloc = f"{netloc}:{parsed.port}"
+        query = urlencode(
+            [
+                (
+                    key,
+                    _REDACTED if _is_sensitive_config_key(key) else item,
+                )
+                for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+            ]
+        )
+        fragment = urlencode(
+            [
+                (
+                    key,
+                    _REDACTED if _is_sensitive_config_key(key) else item,
+                )
+                for key, item in parse_qsl(parsed.fragment, keep_blank_values=True)
+            ]
+        ) if "=" in parsed.fragment else parsed.fragment
+        return urlunsplit((parsed.scheme, netloc, parsed.path, query, fragment))
+    except (TypeError, ValueError):
+        # Invalid URL-like strings are validated elsewhere. Persisting the
+        # malformed value is less useful than risking an embedded credential.
+        return _REDACTED if "://" in value else value
+
+
+def _is_sensitive_config_key(key: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", key.strip().lower()).strip("_")
+    components = set(normalized.split("_"))
+    return (
+        normalized in _SENSITIVE_CONFIG_KEYS
+        or bool(
+            components
+            & {
+                "authorization",
+                "bearer",
+                "cookie",
+                "credential",
+                "credentials",
+                "passwd",
+                "password",
+                "secret",
+                "session",
+                "signature",
+                "sig",
+                "token",
+            }
+        )
+        or normalized.endswith(
+            ("_api_key", "_private_key", "_access_key", "_secret_key")
+        )
+    )
+
+
+def redact_persisted_config(value: Any, *, key: str | None = None) -> Any:
+    """Remove credentials from config data before it becomes an artifact."""
+    if key is not None and _is_sensitive_config_key(key):
+        return _REDACTED
+    if isinstance(value, dict):
+        return {
+            str(item_key): redact_persisted_config(item, key=str(item_key))
+            for item_key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [redact_persisted_config(item) for item in value]
+    if isinstance(value, str):
+        return _redact_url_secrets(value)
+    return value
+
+
 def config_to_primitive(cfg: Config) -> dict[str, Any]:
     # asdict recursively converts nested dataclasses; JSON roundtrip ensures only JSON primitives.
     d = dataclasses.asdict(cfg)
-    return json.loads(canonical_json_dumps(d))
+    return json.loads(canonical_json_dumps(redact_persisted_config(d)))
 
 
 def compute_config_hash(cfg: Config) -> tuple[str, str]:
