@@ -31,24 +31,57 @@ Open-source workcell black box for replayable physical evidence.
 
 ## Summary
 
-Metriplane's frozen v0.2.0 research artifact is an open-source physical-observability system for bounded workcells. It converts replayed or calibrated workcell state into physical event logs, Cell Truth Reports, portable evidence bundles, local bundle verification, and generated regression checks. The v0.2.1 packaging release makes the core Python package and command-line interfaces installable from PyPI without changing the frozen v0.2.0 paper evidence.
+Give Metriplane recorded object poses and process rules. It produces a physical
+event timeline, incident report, checksummed evidence bundle, and repeatable
+regression check. It is observe-only: it does not control machinery or certify
+safety or quality decisions.
 
-## Install from PyPI
+## Try the bundled demo
 
-Metriplane requires Python 3.12 or newer.
+The development branch requires Python 3.12 or 3.13. The camera-free demo is
+bundled with the package and needs no repository datasets, camera, Docker, or
+GPU. Until v0.3.0 is published, install it from this source branch:
 
 ```bash
-python3.12 -m venv .venv
+git clone https://github.com/Miko997/metriplane.git
+cd metriplane
+git switch agent/bundled-demo
+
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
+python -m pip install -e .
+
+metriplane demo --open
+```
+
+Expected terminal result:
+
+```text
+PASS  Incident analysis: 6 events, 1 incident
+PASS  Evidence bundle: verified
+PASS  Regression check: passed
+Demo complete.
+```
+
+Without `--open`, the command remains headless and prints the report path.
+
+## Published versions
+
+- Latest installable PyPI package: `v0.2.1`
+- Frozen DOI-archived research artifact: `v0.2.0`
+- Bundled one-command demo: planned for `v0.3.0`, currently on the development branch
+
+The current PyPI package can be installed with:
+
+```bash
 python -m pip install "metriplane==0.2.1"
 
 metriplane doctor
 metriplane atlas protocol export --out metriplane-protocol
 ```
 
-The PyPI distribution contains the core Python packages and command-line entry
-points. Repository assets are intentionally not embedded in the wheel:
+The published v0.2.1 wheel predates the bundled demo and intentionally excludes:
 
 - checked-in demo datasets and domain-pack configurations
 - the local web dashboard
@@ -57,7 +90,7 @@ points. Repository assets are intentionally not embedded in the wheel:
 
 Use the exact source checkout in the reproduction section below when a command
 refers to `datasets/`, `configs/`, `web/`, `tools/`, or `evidence/`.
-When run from the wheel, doctor warnings about those source-checkout paths are
+When running v0.2.1, doctor warnings about those source-checkout paths are
 expected and do not mean the package installation failed.
 
 ## Why this exists

@@ -138,6 +138,7 @@ jobs:
           "$smoke_venv/bin/python" -c "import importlib.metadata as md, metriplane; assert metriplane.__version__ == md.version('metriplane')"
           "$smoke_venv/bin/python" -c "import integrations.isaac.metriplane_to_usd"
           "$smoke_venv/bin/python" -c "import integrations.omniverse.metriplane_usd_replay"
+          "$smoke_venv/bin/python" -c "import importlib.util; assert importlib.util.find_spec('integrations.ros2.metriplane_ros.metriplane_ros') is None"
           demo_out="${RUNNER_TEMP}/metriplane-demo-smoke"
           SMOKE_VENV="$smoke_venv" DEMO_OUT="$demo_out" "$smoke_venv/bin/python" - <<'PY'
           import os

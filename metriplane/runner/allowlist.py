@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 """
-Command allowlist for the local MetriPlane runner
+Command allowlist for the local Metriplane runner
 
 Defines safe, pre-approved commands that can be executed via the dashboard.
 No arbitrary command execution allowed.
@@ -180,7 +180,7 @@ ALLOWLIST: List[AllowedCommand] = [
         timeout_s=60,
         requires_cameras=False
     ),
-    # MetriPlane evidence actions. These write only generated,
+    # Metriplane evidence actions. These write only generated,
     # gitignored dashboard artifacts under web/dashboard/atlas_run.
     AllowedCommand(
         id="atlas-validate-pack",
@@ -196,7 +196,7 @@ ALLOWLIST: List[AllowedCommand] = [
     AllowedCommand(
         id="atlas-demo",
         title="Build Evidence Sample",
-        description="Run the MetriPlane evidence workflow over the assembly-cell sample and publish local dashboard artifacts",
+        description="Run the Metriplane evidence workflow over the assembly-cell sample and publish local dashboard artifacts",
         command=[_PYTHON, "-m", "metriplane.cli", "atlas", "run",
                  "--session-jsonl", "datasets/demo/atlas/assembly_cell_missing_tool.jsonl",
                  "--pack", "configs/domain_packs/assembly_cell",
@@ -301,7 +301,7 @@ ALLOWLIST: List[AllowedCommand] = [
     AllowedCommand(
         id="integration-omniverse-export",
         title="Export Omniverse USD Replay",
-        description="Write a USD replay scene from the current MetriPlane evidence run",
+        description="Write a USD replay scene from the current Metriplane evidence run",
         command=[_PYTHON, "-m", "integrations.omniverse.metriplane_usd_replay",
                  "--run-dir", _ATLAS_UI_BUNDLE_DIR,
                  "--out", f"{_ATLAS_UI_RUN}/omniverse/metriplane_replay.usda"],
@@ -325,7 +325,7 @@ ALLOWLIST: List[AllowedCommand] = [
     AllowedCommand(
         id="integration-ros2-check",
         title="Check ROS 2 Bridge Adapters",
-        description="Run ROS-free checks for the MetriPlane ROS 2 message adapters",
+        description="Run ROS-free checks for the Metriplane ROS 2 message adapters",
         command=[_PYTHON, "tools/check_ros2_adapters.py"],
         enabled=True,
         disabled_reason=None,
@@ -355,7 +355,7 @@ ALLOWLIST: List[AllowedCommand] = [
     AllowedCommand(
         id="docker-stop",
         title="Stop Docker Demo",
-        description="Stop local MetriPlane Docker demo containers",
+        description="Stop local Metriplane Docker demo containers",
         command=["./tools/docker_stop.sh"],
         enabled=True,
         disabled_reason=None,

@@ -170,7 +170,7 @@ def render_html(markdown_text: str) -> str:
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>MetriPlane Cell Truth Report</title>
+  <title>Metriplane Cell Truth Report</title>
   <style>
     :root {
       color-scheme: dark;

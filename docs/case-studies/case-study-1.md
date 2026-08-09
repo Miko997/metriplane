@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Case Study 1: Multi-Camera Zone Analytics
 
-**Purpose**: Demonstrate MetriPlane's camera-first planar zone analytics workflow
+**Purpose**: Demonstrate Metriplane's camera-first planar zone analytics workflow
 **Status**: Complete movement-session evidence with multi-camera fusion, zone analytics, and fiducial-continuity artifacts
 **Paper B canonical release tag**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
@@ -25,7 +25,7 @@ SPDX-License-Identifier: MIT
 | Motion-continuity frames | 88,475 |
 | Session JSONL | Large file outside Git; checksum recorded in `evidence/manifest.csv` |
 
-The case study demonstrates applied zone analytics from MetriPlane state streams. It is not a manually annotated ground-truth zone-detection benchmark.
+The case study demonstrates applied zone analytics from Metriplane state streams. It is not a manually annotated ground-truth zone-detection benchmark.
 
 ## Evidence Files
 

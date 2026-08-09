@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 // SPDX-License-Identifier: MIT
 
-// MetriPlane Command Center (live). Reads the runner's read-only /operator/* endpoints,
+// Metriplane Command Center (live). Reads the runner's read-only /operator/* endpoints,
 // auto-refreshes the latest run, animates the run as a replay on the 2D map (highlighting
 // incidents as they happen), and answers grounded questions. No CLI needed.
 

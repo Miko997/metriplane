@@ -3,9 +3,9 @@ SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# MetriPlane Product Scope
+# Metriplane Product Scope
 
-This document defines the supported public-release scope for MetriPlane and the evidence boundaries for Paper B.
+This document defines the supported public-release scope for Metriplane and the evidence boundaries for Paper B.
 
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Initial public release**: [`v0.1.0`](https://github.com/Miko997/metriplane/releases/tag/v0.1.0)
@@ -55,7 +55,7 @@ This document defines the supported public-release scope for MetriPlane and the 
 
 ## GPU Compute Backend
 
-MetriPlane includes an optional CuPy GPU backend for fusion compute.
+Metriplane includes an optional CuPy GPU backend for fusion compute.
 
 Supported claims:
 

@@ -415,53 +415,33 @@ ROS 2 installs **launch_testing** pytest plugin globally, which interferes with 
 
 **Solution**: Disable plugin (see [Run Tests](#run tests) section above).
 
-### ROS 2 Bridge Example
+### Build the ROS 2 bridge
 
-```python
-# Example: Subscribe to Metriplane WebSocket, publish to ROS 2 topic
-import asyncio
-import websockets
-import rclpy
-from std_msgs.msg import String
-
-async def bridge():
-    async with websockets.connect('ws://localhost:8765') as ws:
-        while True:
-            frame_json = await ws.recv()
-            # Publish to ROS 2 topic
-            # (implement using rclpy.Node)
+```bash
+mkdir -p ~/metriplane_ros_ws/src
+cp -r integrations/ros2/metriplane_ros ~/metriplane_ros_ws/src/
+cd ~/metriplane_ros_ws
+colcon build
+source install/setup.bash
+ros2 launch metriplane_ros bridge.launch.py
 ```
 
-**Full integration guide**: See `docs/INTEGRATIONS.md`.
+**Full bridge guide**: See `docs/ros2_bridge.md`.
 
 ---
 
-## Optional: NVIDIA Omniverse Setup
+## Optional: NVIDIA USD / Isaac Sim Setup
 
-Metriplane can stream to **Omniverse** via WebSocket for 3D visualization.
+Metriplane can export recorded state as USD for supported NVIDIA simulation
+applications. It does not require the deprecated Omniverse Launcher.
 
-### Install Omniverse
+### Export a replay scene
 
-1. Download **NVIDIA Omniverse Launcher**: https://www.nvidia.com/en-us/omniverse/download/
-2. Install Omniverse Kit or Create
-3. Enable Developer Mode (for custom extensions)
-
-### Install Metriplane Omniverse Extension
-
-```bash
-# Clone extension repo (separate from main Metriplane)
-git clone <metriplane-omniverse-ext-url>
-
-# Link extension to Omniverse
-# (Follow extension README for installation)
-```
-
-### Connect to Metriplane WebSocket
-
-The Omniverse extension connects to `ws://localhost:8765` and:
-- Parses `FrameStateModel` JSON
-- Creates USD prims for each tracked object
-- Updates transforms in real-time
+Use the checked-in exporters in `integrations/isaac/` or
+`integrations/omniverse/`, then open the resulting `.usda` file in a currently
+supported Isaac Sim or Kit-based application. Installation of those external
+applications follows NVIDIA's current documentation and is outside the core
+Metriplane installation.
 
 **Integration guide**: See `docs/INTEGRATIONS.md`.
 

@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Show docker versions
         run: |
@@ -24,6 +24,5 @@ jobs:
           python3 -m pip install websockets
 
       - name: Run docker smoke test (demo profile)
-        working-directory: metriplane-core
         run: |
           ./tools/docker_smoke_test.sh

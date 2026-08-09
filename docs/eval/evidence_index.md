@@ -3,11 +3,12 @@ SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# MetriPlane Evidence Index
+# Metriplane Evidence Index
 
 Summary of public evidence artifacts, supported Paper B claims, and known limitations.
 
-**Current software release**: [`v0.2.0`](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
+**Latest installable package**: `v0.2.1`
+**Frozen DOI research artifact**: [`v0.2.0`](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
 **Release name**: MetriPlane v0.1.3 — Paper B Provenance-Synchronized Evidence Release
 **Prior canonical evidence release**: [`v0.1.2`](https://github.com/Miko997/metriplane/releases/tag/v0.1.2)

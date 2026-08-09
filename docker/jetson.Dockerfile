@@ -20,14 +20,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE NOTICE ./
 COPY metriplane ./metriplane
 RUN pip install -U pip setuptools wheel && pip install -e .
 
 # Metrics / WebSocket port
 EXPOSE 8000
 
-# Default to a deterministic replay demo (no camera required).
-CMD ["python", "-m", "metriplane.cli", "replay", \
-     "--input", "tests/fixtures/contracts/sentinel_minimal_session.jsonl", \
-     "--clock", "replay"]
+# Default to the bundled, camera-free incident demo.
+CMD ["metriplane", "demo", "--out", "/tmp/metriplane-demo"]

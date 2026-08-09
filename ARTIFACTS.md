@@ -3,16 +3,16 @@ SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# MetriPlane Software Artifact and Benchmark Evidence Supplement
+# Metriplane Software Artifact and Benchmark Evidence Supplement
 
 ## Artifact identity
 
-MetriPlane v0.2.0 is the current software release. It adds Sentinel, Command
-Center, physical regression, and operational evidence layers on top of the
-historical camera-to-coordinate benchmark baseline.
+Metriplane v0.2.0 is the frozen DOI-archived research artifact. The latest
+installable PyPI package is v0.2.1; later source changes do not modify the
+v0.2.0 evidence boundary.
 
-- Software release: `v0.2.0`
-- Current DOI-archived software release: `v0.2.0` at `10.5281/zenodo.20736619`
+- Frozen research artifact: `v0.2.0`
+- DOI-archived research artifact: `v0.2.0` at `10.5281/zenodo.20736619`
 - Zenodo record: `https://zenodo.org/records/20736619`
 - Historical DOI-archived baseline: `v0.1.4` at `10.5281/zenodo.20631037`
 - Repository: `https://github.com/Miko997/metriplane`
