@@ -13,7 +13,8 @@ State: ~/.cache/metriplane/launcher-state.json
 Logs:  ~/metriplane-runs/_launcher/<timestamp>/{runner,dashboard,fusion}.log
 
 Key design decisions (v2):
-- start_new_session=True  → each child is its own process group leader (PGID = PID)
+- each child is its own process group leader (PGID = PID)
+  (process_group=0 on macOS; start_new_session=True elsewhere)
 - os.killpg(pgid, sig)    → kills the entire process group, not just the wrapper
 - state stores both pid and pgid
 - stop: SIGTERM → wait 5s → SIGKILL → poll port-free before clearing state
@@ -290,16 +291,23 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
 
 
 def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) -> subprocess.Popen:
-    """Launch a subprocess in a new session (new process group). Returns Popen."""
-    fh = open(log_file, "w")
-    return subprocess.Popen(
-        cmd,
-        stdout=fh,
-        stderr=fh,
-        cwd=str(cwd),
-        env=env,
-        start_new_session=True,
-    )
+    """Launch a subprocess in its own process group. Returns Popen."""
+    # GitHub-hosted macOS runners have stalled children created with setsid().
+    # A new process group preserves PGID-based cleanup without a detached session.
+    group_options: dict[str, Any]
+    if sys.platform == "darwin":
+        group_options = {"process_group": 0}
+    else:
+        group_options = {"start_new_session": True}
+    with open(log_file, "w") as fh:
+        return subprocess.Popen(
+            cmd,
+            stdout=fh,
+            stderr=fh,
+            cwd=str(cwd),
+            env=env,
+            **group_options,
+        )
 
 
 def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:

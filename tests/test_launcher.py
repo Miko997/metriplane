@@ -458,6 +458,42 @@ def test_print_log_tail_reports_only_requested_lines(tmp_path, capsys):
     assert "third" in output
 
 
+@pytest.mark.parametrize(
+    ("platform", "expected_option", "unexpected_option"),
+    [
+        ("darwin", {"process_group": 0}, "start_new_session"),
+        ("linux", {"start_new_session": True}, "process_group"),
+    ],
+)
+def test_launch_uses_platform_process_group_options(
+    monkeypatch, tmp_path, platform, expected_option, unexpected_option
+):
+    import metriplane.launcher as lm
+
+    captured = {}
+    sentinel = object()
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(lm.sys, "platform", platform)
+    monkeypatch.setattr(lm.subprocess, "Popen", fake_popen)
+
+    result = lm._launch(
+        [sys.executable, "-c", "pass"],
+        tmp_path / "child.log",
+        tmp_path,
+    )
+
+    assert result is sentinel
+    for name, value in expected_option.items():
+        assert captured["kwargs"][name] == value
+    assert unexpected_option not in captured["kwargs"]
+    assert captured["kwargs"]["stdout"].closed
+
+
 # ---------------------------------------------------------------------------
 # Integration: start → status → stop → port free (no-live, no-open, free ports)
 # ---------------------------------------------------------------------------
