@@ -5,26 +5,26 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import shutil
 import zipfile
+from pathlib import Path
 
 import pytest
 import yaml
 
 import metriplane.atlas.bundles as atlas_bundles
+import metriplane.atlas.runtime as atlas_runtime
 from metriplane.atlas.bundles import export_bundle, verify_bundle
 from metriplane.atlas.domain_packs import load_domain_pack, validate_domain_pack
 from metriplane.atlas.privacy import anonymize_run, privacy_report
+from metriplane.atlas.process_model import AssetObservation, ProcessEvaluator
 from metriplane.atlas.regression import run_regression
 from metriplane.atlas.runtime import run_atlas
-from metriplane.atlas.process_model import AssetObservation, ProcessEvaluator
+from metriplane.cli import main as metriplane_main
 from metriplane.sentinel.bundles import verify_checksums
 from metriplane.sentinel.events import IncidentRecord, RuleAlert
 from metriplane.testing.compare import compare_events, compare_incidents
 from metriplane.testing.models import ExpectedEventSpec, ExpectedIncidentSpec
-from metriplane.cli import main as metriplane_main
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSEMBLY_PACK = ROOT / "configs" / "domain_packs" / "assembly_cell"
@@ -687,6 +687,57 @@ def test_failed_atlas_publish_restores_a_previous_symlink(
 
     assert output.is_symlink()
     assert output.readlink() == target
+
+
+def test_atlas_no_overwrite_preserves_output_created_during_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "late-output"
+    real_publish = atlas_runtime._rename_directory_no_replace
+    created_inode: int | None = None
+
+    def create_destination_before_publish(source: Path, destination: Path) -> None:
+        nonlocal created_inode
+        # An empty directory is the dangerous POSIX case: plain os.replace would
+        # silently replace it with the staged run.
+        destination.mkdir()
+        created_inode = destination.stat().st_ino
+        real_publish(source, destination)
+
+    monkeypatch.setattr(
+        "metriplane.atlas.runtime._rename_directory_no_replace",
+        create_destination_before_publish,
+    )
+
+    with pytest.raises(ValueError, match="created while the run was staged"):
+        run_atlas(ASSEMBLY_SESSION, ASSEMBLY_PACK, output)
+
+    assert created_inode is not None
+    assert output.stat().st_ino == created_inode
+    assert list(output.iterdir()) == []
+    assert sorted(tmp_path.glob(".late-output-*")) == []
+
+
+def test_atlas_no_overwrite_publish_failure_leaves_no_partial_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "failed-output"
+
+    def fail_publish(_source: Path, _destination: Path) -> None:
+        raise OSError("simulated exclusive publication failure")
+
+    monkeypatch.setattr(
+        "metriplane.atlas.runtime._rename_directory_no_replace",
+        fail_publish,
+    )
+
+    with pytest.raises(OSError, match="simulated exclusive publication failure"):
+        run_atlas(ASSEMBLY_SESSION, ASSEMBLY_PACK, output)
+
+    assert not output.exists()
+    assert sorted(tmp_path.glob(".failed-output-*")) == []
 
 
 def test_atlas_uses_authoritative_simulation_time(tmp_path: Path) -> None:
