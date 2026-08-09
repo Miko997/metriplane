@@ -79,15 +79,47 @@ def test_atlas_runtime_generates_replayable_cell_black_box_artifacts(tmp_path: P
     assert events[3].value == 35.0
 
     report = (run_dir / "cell_truth_report.md").read_text(encoding="utf-8")
-    assert "Cell Truth Report" in report
-    assert "not a certified safety or quality decision system" in report
+    assert report.startswith("# Incident Report\n")
+    assert "Formal artifact: `Cell Truth Report`." in report
+    headings = [line for line in report.splitlines() if line.startswith("## ")]
+    assert headings == [
+        "## What happened",
+        "## Why it was flagged",
+        "## When it happened",
+        "## Evidence that was saved",
+        "## Repeatable check that was generated",
+        "## Limits of this result",
+    ]
+    for explanation in (
+        "one recorded run: a saved sequence of object positions",
+        "An event is one observed change",
+        "An incident groups related events",
+        "Process rules describe the expected steps",
+        "An evidence bundle is a checksummed ZIP",
+        "A regression check is a generated test",
+        "Deterministic replay uses the saved inputs",
+    ):
+        assert explanation in report
+    assert "missing required asset (`missing_required_asset`)" in report
+    assert "`evt_0003`" in report
+    assert "not a certified safety or quality decision" in report
     assert "Add a required-tool staging check" in report
+    assert "Atlas" not in report
+    assert "domain pack" not in report.lower()
+    assert manifest.artifacts["cell_truth_report_md"] == "cell_truth_report.md"
+    assert manifest.artifacts["cell_truth_report_html"] == "cell_truth_report.html"
+    assert manifest.artifacts["evidence_bundles"] == "evidence_bundles"
+    assert manifest.artifacts["regression_tests"] == "regression_tests"
     report_html = (run_dir / "cell_truth_report.html").read_text(encoding="utf-8")
+    assert "<title>Metriplane Incident Report</title>" in report_html
+    assert "<h1>Incident Report</h1>" in report_html
     assert '<table class="report-table">' in report_html
-    assert "<pre>| issue" not in report_html
+    assert "<pre>| reason" not in report_html
+    assert "<script" not in report_html
 
     bundle_zip = run_dir / "evidence_bundles" / "INC-0001.zip"
     assert verify_bundle(bundle_zip)["pass"] is True
+    assert (run_dir / "regression_tests" / "INC-0001.yaml").is_file()
 
     extracted_bundle = bundle_zip.with_suffix("")
     shutil.rmtree(extracted_bundle)

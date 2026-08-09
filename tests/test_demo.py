@@ -20,8 +20,15 @@ def test_demo_help_exposes_open_option(capsys) -> None:
         demo_main(["--help"])
 
     output = capsys.readouterr().out
-    assert "metriplane demo" in output
-    assert "--open" in output
+    normalized = " ".join(output.split())
+    assert "metriplane demo" in normalized
+    assert (
+        "from a recorded incident to a verified report and a repeatable check"
+        in normalized
+    )
+    assert "No camera is needed" in normalized
+    assert "Save the report, evidence, and repeatable check in DIR" in normalized
+    assert "--open" in normalized
 
 
 def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatch) -> None:
@@ -34,9 +41,23 @@ def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatc
     assert metriplane_main(["demo", "--out", str(out_dir)]) == 0
 
     output = capsys.readouterr().out
-    assert "PASS  Incident analysis: 6 events, 1 incident" in output
+    assert "Metriplane bundled demo" in output
+    assert (
+        "Scenario:\n"
+        "A required torque driver is missing during an assembly step.\n"
+        "The fastening step is delayed by 35.0 seconds."
+        in output
+    )
+    assert "Input:\nTimestamped object positions and process rules." in output
+    assert "Result:\nPASS  Incident timeline: 6 events" in output
+    assert "PASS  Incident report: 1 incident" in output
     assert "PASS  Evidence bundle: verified" in output
-    assert "PASS  Regression check: passed" in output
+    assert "PASS  Repeatable regression check: passed" in output
+    assert f"Report:\n{out_dir / 'cell_truth_report.html'}" in output
+    assert (
+        "The generated check can be run again after the software or process rules change."
+        in output
+    )
     assert "Demo complete." in output
 
     manifest = json.loads((out_dir / "atlas_manifest.json").read_text(encoding="utf-8"))

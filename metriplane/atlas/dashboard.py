@@ -77,10 +77,10 @@ def render_dashboard_html(payload: dict) -> str:
     run_id = html.escape(str(manifest.get("run_id", "unknown")))
     cell_id = html.escape(str(manifest.get("cell_id", "unknown")))
     cards = [
-        ("Physical events", str(len(events))),
-        ("Incidents", str(len(incidents))),
+        ("Recorded events", str(len(events))),
+        ("Flagged incidents", str(len(incidents))),
         ("Observed duration", f"{metrics.get('observed_duration_s', 0)} s"),
-        ("Bundles", str(len(bundles))),
+        ("Evidence bundles", str(len(bundles))),
     ]
     card_html = "\n".join(
         f"<section class='metric'><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></section>"
@@ -104,10 +104,10 @@ def render_dashboard_html(payload: dict) -> str:
         for item in incidents
     ) or "<p>No incidents generated.</p>"
     buttons = [
-        ("Open report", "cell_truth_report.html"),
-        ("Verify bundle", f"evidence_bundles/{bundles[0]}" if bundles else "#"),
-        ("Run regression", f"regression_tests/{regressions[0]}" if regressions else "#"),
-        ("Training case", f"training_cases/{training[0]}" if training else "#"),
+        ("Open incident report", "cell_truth_report.html"),
+        ("Open evidence bundle", f"evidence_bundles/{bundles[0]}" if bundles else "#"),
+        ("Open repeatable check", f"regression_tests/{regressions[0]}" if regressions else "#"),
+        ("Open review note", f"training_cases/{training[0]}" if training else "#"),
     ]
     button_html = "\n".join(
         f"<a class='button' href='{html.escape(href)}'>{html.escape(label)}</a>"
@@ -122,7 +122,7 @@ def render_dashboard_html(payload: dict) -> str:
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Atlas Cell Black Box Dashboard</title>
+  <title>Metriplane Incident Review</title>
   <style>
     :root {{ color-scheme: dark; }}
     body {{ margin: 0; background: #080b0e; color: #eef4f6; font: 14px/1.5 Inter, system-ui, sans-serif; }}
@@ -147,21 +147,37 @@ def render_dashboard_html(payload: dict) -> str:
 <body>
 <main>
   <header>
-    <h1>Atlas Cell Black Box</h1>
-    <div class="sub">Run {run_id} / cell {cell_id}. Evidence is replay-derived and observe-only.</div>
+    <h1>Incident Review</h1>
+    <div class="sub">Recorded run {run_id} / workspace {cell_id}. A recorded run is a saved
+      sequence of object positions and timestamps. Results are replay-derived and observe-only.</div>
   </header>
   <nav class="actions">{button_html}</nav>
   <section class="metrics">{card_html}</section>
   <h2>What happened</h2>
+  <p>This recorded run produced {len(events)} events and {len(incidents)} flagged
+    incidents. An event is one observed change; an incident groups related events
+    that need review.</p>
+  <h2>Why it was flagged</h2>
+  <p>An incident groups related events because an expected process rule was not met.
+    Process rules describe expected steps, objects, locations, and waiting times.</p>
+  {incident_cards}
+  <h3>Suggested follow-up</h3>
+  <ul>{action_html}</ul>
+  <h2>When it happened</h2>
+  <p>The table keeps each timestamp, technical event type, object, and message available
+    for detailed review.</p>
   <table>
     <thead><tr><th>time</th><th>event</th><th>asset</th><th>message</th></tr></thead>
     <tbody>{event_rows}</tbody>
   </table>
-  <h2>Incidents</h2>
-  {incident_cards}
-  <h2>Improvement actions</h2>
-  <ul>{action_html}</ul>
-  <h2>Limitations</h2>
+  <h2>Evidence that was saved</h2>
+  <p>An evidence bundle is a checksummed ZIP that keeps the incident and supporting
+    records together. Use the links above to open the report or verify the bundle.</p>
+  <h2>Repeatable check that was generated</h2>
+  <p>A regression check deterministically replays the saved inputs and checks that the
+    expected incident is still detected. Deterministic replay makes software results
+    comparable; it does not prove that the original measurements were physically accurate.</p>
+  <h2>Limits of this result</h2>
   <ul>
     <li>Derived from calibrated planar state streams.</li>
     <li>Depends on tracked/tagged assets.</li>

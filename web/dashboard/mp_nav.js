@@ -10,7 +10,7 @@
     ["operator.html", "Setup"],
     ["run.html", "Run"],
     ["runtime.html", "Live View"],
-    ["report.html", "Cell Report"],
+    ["report.html", "Incident Report"],
     ["command_center_live.html", "Command Center"],
     ["atlas.html", "Evidence"],
     ["integrations.html", "Integrations"],

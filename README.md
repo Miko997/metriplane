@@ -4,12 +4,22 @@ SPDX-License-Identifier: MIT
 -->
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Miko997/metriplane/main/docs/assets/metriplane-hero.jpg" alt="Metriplane — replayable physical evidence for workcells" width="100%">
+  <img src="https://raw.githubusercontent.com/Miko997/metriplane/main/docs/assets/metriplane-hero.jpg" alt="Metriplane — understand a recorded workcell incident and turn it into a repeatable test" width="100%">
 </p>
 
 # Metriplane
 
-Open-source workcell black box for replayable physical evidence.
+**Understand what went wrong in a recorded workcell run—and turn it into a
+repeatable test.**
+
+Give Metriplane timestamped object positions and process rules. It creates an
+incident timeline, a human-readable report, a verified evidence bundle, and a
+regression check you can run again.
+
+In the bundled example, a required torque driver is missing and an assembly step
+is delayed by 35.0 seconds. The generated check lets an engineer rerun that same
+case after the software or process rules change. Metriplane analyzes recordings;
+it does **not** control machinery or make safety or quality decisions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Miko997/metriplane/blob/main/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/metriplane.svg)](https://pypi.org/project/metriplane/)
@@ -17,7 +27,94 @@ Open-source workcell black box for replayable physical evidence.
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
 
-## Official Links
+## Try the v0.3.0 preview from current main
+
+The public PyPI package is still v0.2.1 and does not contain `metriplane demo`.
+Until v0.3.0 is published, use the current `main` source preview:
+
+```bash
+git clone https://github.com/Miko997/metriplane.git
+cd metriplane
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install .
+metriplane demo --open
+```
+
+The example is camera-free, GPU-free, Docker-free, ROS-free, and offline after
+installation. It writes an HTML report and requests that the browser open it.
+Headless users can omit `--open`.
+
+```text
+Metriplane bundled demo
+
+Scenario:
+A required torque driver is missing during an assembly step.
+The fastening step is delayed by 35.0 seconds.
+
+Result:
+PASS  Incident timeline: 6 events
+PASS  Incident report: 1 incident
+PASS  Evidence bundle: verified
+PASS  Repeatable regression check: passed
+Browser: opened report
+Demo complete.
+```
+
+When v0.3.0 is published, the final package quickstart will be:
+
+```bash
+python -m pip install "metriplane==0.3.0"
+metriplane demo --open
+```
+
+Those package commands are shown as the planned release path; they are not a
+claim that v0.3.0 is already available from PyPI.
+
+## Input and output
+
+```text
+Input
+  Timestamped object positions + process rules
+
+Metriplane
+  Replays the recorded run and checks what happened
+
+Output
+  Incident timeline
+  Incident report
+  Verified evidence bundle
+  Repeatable regression check
+```
+
+Use Metriplane to:
+
+- explain a recorded workcell delay, such as a required tool going missing;
+- preserve an incident as a checksummed bundle that another engineer can verify;
+- rerun that incident as a regression check after software or process-rule changes.
+
+## Terms in plain language
+
+- **Recorded run:** timestamped observations saved from a workcell session.
+- **Event:** one detected change or process condition in that run.
+- **Incident:** related events grouped into one problem worth reviewing.
+- **Evidence bundle:** the incident files plus checks that reveal missing or changed
+  contents.
+- **Regression check:** a repeatable test generated from an incident and rerun after
+  a change.
+- **Process rules:** the expected tools, locations, steps, and timing for the work.
+- **Deterministic replay:** replay that gives the same software result from the same
+  validated input; it does not prove that the original physical measurements were
+  accurate.
+
+## Published versions
+
+- Latest installable PyPI package: `v0.2.1`
+- Frozen DOI-archived research artifact: `v0.2.0`
+- Bundled two-command quickstart: planned for `v0.3.0`
+
+## Official links
 
 - Official site: https://www.metriplane.com/
 - Python package: https://pypi.org/project/metriplane/
@@ -28,49 +125,6 @@ Open-source workcell black box for replayable physical evidence.
 - SSRN manuscript preprint: https://doi.org/10.2139/ssrn.7166858
 - External reproduction issue: https://github.com/Miko997/metriplane/issues/6
 - Short feedback form: https://docs.google.com/forms/d/e/1FAIpQLSfnMZ4b3fSVVtwA89hZt3A09gf85eLfhW00FDD76TGRLNpirQ/viewform
-
-## Summary
-
-Give Metriplane recorded object poses and process rules. It produces a physical
-event timeline, incident report, checksummed evidence bundle, and repeatable
-regression check. It is observe-only: it does not control machinery or certify
-safety or quality decisions.
-
-## Try the bundled demo
-
-The development branch requires Python 3.12 or 3.13. The camera-free demo is
-bundled with the package and needs no repository datasets, camera, Docker, or
-GPU. Until v0.3.0 is published, install it from this source branch:
-
-```bash
-git clone https://github.com/Miko997/metriplane.git
-cd metriplane
-git switch agent/bundled-demo
-
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e .
-
-metriplane demo --open
-```
-
-Expected terminal result:
-
-```text
-PASS  Incident analysis: 6 events, 1 incident
-PASS  Evidence bundle: verified
-PASS  Regression check: passed
-Demo complete.
-```
-
-Without `--open`, the command remains headless and prints the report path.
-
-## Published versions
-
-- Latest installable PyPI package: `v0.2.1`
-- Frozen DOI-archived research artifact: `v0.2.0`
-- Bundled one-command demo: planned for `v0.3.0`, currently on the development branch
 
 The current PyPI package can be installed with:
 

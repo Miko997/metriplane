@@ -60,6 +60,10 @@ def _fmt_s(value: float) -> str:
     return f"{value:.1f} s"
 
 
+def _plain_identifier(value: str) -> str:
+    return value.replace("_", " ")
+
+
 def render_markdown(
     manifest: AtlasRunManifest,
     events: list[AtlasEvent],
@@ -69,76 +73,141 @@ def render_markdown(
     actions: list[ImprovementAction],
 ) -> str:
     lines: list[str] = [
-        "# Cell Truth Report",
+        "# Incident Report",
         "",
-        "## Executive summary",
+        "Formal artifact: `Cell Truth Report`.",
         "",
-        f"- Observed duration: {_fmt_s(metrics.observed_duration_s)}.",
-        f"- Physical events recorded: {len(events)}.",
-        f"- Process deviations detected: {len(deviations)}.",
-        f"- Incidents generated: {len(incidents)}.",
-        f"- Evidence bundles generated: {len(incidents)}.",
-        "- This report is derived from replayed planar state, not raw video judgement.",
+        "This report summarizes one recorded run: a saved sequence of object positions "
+        "and timestamps from a bounded workcell.",
         "",
-        "## Timeline",
+        "## What happened",
         "",
+        f"- Metriplane reviewed {_fmt_s(metrics.observed_duration_s)} of recorded activity.",
+        f"- It recorded {len(events)} events and grouped them into "
+        f"{len(incidents)} {'incident' if len(incidents) == 1 else 'incidents'}.",
+        "- An event is one observed change, such as an object arriving or a required tool "
+        "being absent.",
+        "- An incident groups related events that need review because an expected process "
+        "condition was not met.",
     ]
-    for event in events:
-        lines.append(f"- {event.ts:0.1f}: {event.message} (`{event.event_id}`)")
-    if not events:
-        lines.append("- No Atlas events were emitted.")
-
-    lines.extend(["", "## Time loss table", "", "| issue | asset | station/zone | duration | evidence |", "|---|---|---|---:|---|"])
-    delayed = [event for event in events if event.event_type == "step_delayed"]
-    if delayed:
-        for event in delayed:
+    if incidents:
+        for incident in incidents:
             lines.append(
-                f"| {event.message} | {event.asset_id or '-'} | "
-                f"{event.station_id or event.zone_id or '-'} | {event.value or 0} s | "
-                f"{', '.join(event.evidence)} |"
+                f"- Incident `{incident.incident_id}` ({incident.severity}): "
+                f"{_plain_identifier(incident.title)}. "
+                f"{_plain_identifier(incident.summary)}"
             )
     else:
-        lines.append("| No time loss detected | - | - | 0 s | - |")
-
-    lines.extend(["", "## Deviations", "", "| deviation | severity | process step | assets | evidence |", "|---|---|---|---|---|"])
-    for deviation in deviations:
-        lines.append(
-            f"| {deviation.type} | {deviation.severity} | {deviation.process_step_id or '-'} | "
-            f"{deviation.asset_id or '-'} | {', '.join(deviation.event_ids)} |"
-        )
-    if not deviations:
-        lines.append("| No deviations detected | info | - | - | - |")
-
-    lines.extend(["", "## Incidents and evidence", "", "| incident | severity | summary | events |", "|---|---|---|---|"])
-    for incident in incidents:
-        lines.append(
-            f"| {incident.incident_id}: {incident.title} | {incident.severity} | "
-            f"{incident.summary} | {', '.join(incident.event_ids)} |"
-        )
-    if not incidents:
-        lines.append("| No incidents generated | info | - | - |")
-
-    lines.extend(["", "## Training and improvement", ""])
+        lines.append("- No incident was generated from this run.")
     if actions:
         for action in actions:
-            lines.append(f"- {action.title}: {action.rationale} Caveat: {action.caveat}")
-    else:
-        lines.append("- No improvement actions generated.")
+            lines.append(f"- Suggested follow-up: {action.title}. {action.rationale}")
 
-    lines.extend([
-        "",
-        "## Artifact links",
-        "",
-        f"- Event ledger: `{manifest.artifacts.get('physical_event_log', '-')}`",
-        f"- Reality graph: `{manifest.artifacts.get('reality_graph', '-')}`",
-        f"- Regression tests: `{manifest.artifacts.get('regression_tests', '-')}`",
-        "",
-        "## Limitations",
-        "",
-        "- This report is derived from calibrated planar state streams.",
-        "- It depends on tracked/tagged assets.",
-        "- It is not a certified safety or quality decision system.",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Why it was flagged",
+            "",
+            "Process rules describe the expected steps, required objects and locations, "
+            "and allowed waiting times. Metriplane flags a deviation when the recorded "
+            "run does not meet one of those rules.",
+            "",
+            "| reason | severity | expected step | object | supporting event records |",
+            "|---|---|---|---|---|",
+        ]
+    )
+    if deviations:
+        for deviation in deviations:
+            lines.append(
+                f"| {_plain_identifier(deviation.type)} (`{deviation.type}`) | "
+                f"{deviation.severity} | `{deviation.process_step_id or '-'}` | "
+                f"`{deviation.asset_id or '-'}` | "
+                f"{', '.join(f'`{event_id}`' for event_id in deviation.event_ids) or '-'} |"
+            )
+    else:
+        lines.append("| No process rule was broken | info | - | - | - |")
+
+    lines.extend(
+        [
+            "",
+            "## When it happened",
+            "",
+            "The times below are measured from the start of the recorded run.",
+            "",
+            "| time | what was observed | object | technical event record |",
+            "|---:|---|---|---|",
+        ]
+    )
+    if events:
+        for event in events:
+            lines.append(
+                f"| {event.ts:0.1f} s | {event.message} | `{event.asset_id or '-'}` | "
+                f"`{event.event_id}` / `{event.event_type}` |"
+            )
+    else:
+        lines.append("| - | No events were recorded | - | - |")
+
+    lines.extend(
+        [
+            "",
+            "## Evidence that was saved",
+            "",
+            "An evidence bundle is a checksummed ZIP that keeps the incident report and "
+            "supporting records together so another person can verify what was reviewed.",
+        ]
+    )
+    if incidents:
+        for incident in incidents:
+            lines.append(
+                f"- Evidence bundle for `{incident.incident_id}`: "
+                f"`{manifest.artifacts.get('evidence_bundles', 'evidence_bundles')}/"
+                f"{incident.incident_id}.zip`"
+            )
+    else:
+        lines.append("- No evidence bundle was generated because no incident was found.")
+    lines.extend(
+        [
+            f"- Event records: `{manifest.artifacts.get('physical_event_log', '-')}`",
+            f"- Incident records: `{manifest.artifacts.get('incidents', '-')}`",
+            f"- Supporting recorded state: `{manifest.artifacts.get('state_segment', '-')}`",
+            f"- Formal Cell Truth Report: "
+            f"`{manifest.artifacts.get('cell_truth_report_html', '-')}`",
+            "",
+            "## Repeatable check that was generated",
+            "",
+            "A regression check is a generated test that replays the saved incident and "
+            "checks that the expected events and incident still appear within declared "
+            "timing tolerances.",
+            "",
+            "Deterministic replay uses the saved inputs and recorded time sequence instead "
+            "of live timing, so repeated evaluations can be compared consistently.",
+        ]
+    )
+    if incidents:
+        for incident in incidents:
+            lines.append(
+                f"- Repeatable check for `{incident.incident_id}`: "
+                f"`{manifest.artifacts.get('regression_tests', 'regression_tests')}/"
+                f"{incident.incident_id}.yaml`"
+            )
+    else:
+        lines.append("- No repeatable check was generated because no incident was found.")
+
+    lines.extend(
+        [
+            "",
+            "## Limits of this result",
+            "",
+            "- This result is derived from replayed calibrated planar state, not a fresh "
+            "judgement of raw video.",
+            "- It depends on the tracked or tagged objects and the process rules supplied "
+            "for this run.",
+            "- It does not prove root cause; suggested follow-ups require before-and-after "
+            "validation.",
+            "- It is not a certified safety or quality decision and does not control "
+            "machinery.",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -170,7 +239,7 @@ def render_html(markdown_text: str) -> str:
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Metriplane Cell Truth Report</title>
+  <title>Metriplane Incident Report</title>
   <style>
     :root {
       color-scheme: dark;

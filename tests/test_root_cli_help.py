@@ -10,7 +10,17 @@ def test_root_help_lists_the_bundled_demo_and_primary_actions(capsys) -> None:
     assert cli.main(["--help"]) == 0
 
     output = capsys.readouterr().out
-    assert "Metriplane turns recorded workcell state" in output
+    assert "Metriplane helps explain what went wrong" in output
+    assert "report of what happened" in output
+    assert "repeatable check that can catch the same problem after a change" in output
+    assert "Start here:" in output
+    assert "demo       Run a complete recorded-incident example" in output
+    assert "doctor     Check whether this installation is ready" in output
+    assert (
+        "test       Rerun a bundle and compare its incidents and events with expectations"
+        in output
+    )
+    assert "physical-observability comparisons" not in output
     for command in ("demo", "doctor", "atlas", "replay", "test", "incidents", "run"):
         assert f"  {command}" in output
 

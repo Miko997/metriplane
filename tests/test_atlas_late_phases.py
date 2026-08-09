@@ -56,8 +56,23 @@ def test_late_phase_default_run_artifacts(tmp_path: Path) -> None:
     run_dir = _run(tmp_path)
 
     dashboard = (run_dir / "atlas_dashboard.html").read_text(encoding="utf-8")
-    assert "Atlas Cell Black Box" in dashboard
-    assert "Verify bundle" in dashboard
+    assert "Metriplane Incident Review" in dashboard
+    assert "Open evidence bundle" in dashboard
+    assert "Atlas Cell Black Box" not in dashboard
+    headings = [
+        "What happened",
+        "Why it was flagged",
+        "When it happened",
+        "Evidence that was saved",
+        "Repeatable check that was generated",
+        "Limits of this result",
+    ]
+    positions = [dashboard.index(f"<h2>{heading}</h2>") for heading in headings]
+    assert positions == sorted(positions)
+    assert (
+        "does not prove that the original measurements were physically accurate"
+        in dashboard
+    )
     payload = dashboard_payload(run_dir)
     assert payload["schema_version"] == "metriplane.atlas.dashboard_payload.v1"
     assert len(payload["events"]) == 6
