@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from metriplane import __version__
 from metriplane import cli
 
 
@@ -21,8 +22,15 @@ def test_root_help_lists_the_bundled_demo_and_primary_actions(capsys) -> None:
         in output
     )
     assert "physical-observability comparisons" not in output
+    assert "metriplane --version" in output
     for command in ("demo", "doctor", "atlas", "replay", "test", "incidents", "run"):
         assert f"  {command}" in output
+
+
+def test_root_version_matches_the_package_version(capsys) -> None:
+    for flag in ("--version", "-V"):
+        assert cli.main([flag]) == 0
+        assert capsys.readouterr().out == f"metriplane {__version__}\n"
 
 
 def test_explicit_run_command_preserves_runtime_dispatch(monkeypatch) -> None:

@@ -18,6 +18,14 @@ from pathlib import Path
 _EXPECTED_EVENT_COUNT = 6
 _EXPECTED_INCIDENT_COUNT = 1
 _RESOURCE_PACKAGE = "metriplane.demo"
+BUNDLED_DEMO_RESOURCES = (
+    "assets/assembly_cell_missing_tool.jsonl",
+    "assets/assembly_cell/assets.yaml",
+    "assets/assembly_cell/contracts.yaml",
+    "assets/assembly_cell/process.yaml",
+    "assets/assembly_cell/work_orders.csv",
+    "assets/assembly_cell/workspace.yaml",
+)
 
 
 class _DemoError(RuntimeError):
@@ -54,12 +62,8 @@ def _bundled_inputs() -> Iterator[tuple[Path, Path]]:
         session = root / "assembly_cell_missing_tool.jsonl"
         pack = root / "assembly_cell"
         required = [
-            session,
-            pack / "assets.yaml",
-            pack / "workspace.yaml",
-            pack / "process.yaml",
-            pack / "contracts.yaml",
-            pack / "work_orders.csv",
+            root / Path(path).relative_to("assets")
+            for path in BUNDLED_DEMO_RESOURCES
         ]
         missing = [path.name for path in required if not path.is_file()]
         if missing:
@@ -216,4 +220,4 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["DemoResult", "main", "run_demo"]
+__all__ = ["BUNDLED_DEMO_RESOURCES", "DemoResult", "main", "run_demo"]
