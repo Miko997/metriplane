@@ -9,11 +9,7 @@ All notable changes to Metriplane are documented here.
 
 ---
 
-## [0.3.0] — release date TBD — Usability and adoption
-
-> **RELEASE CANDIDATE — UNPUBLISHED.** Replace `TBD` with the
-> owner-confirmed ISO release date before this release-candidate pull request is
-> merged. No `v0.3.0` tag or production publication is implied by this entry.
+## [0.3.0] — 2026-08-09 — Usability and adoption
 
 ### Added
 

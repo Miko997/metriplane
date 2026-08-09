@@ -76,7 +76,8 @@ def test_protocol_preserves_six_questions_and_adds_neutral_probes() -> None:
         "6. Which term was first confusing?",
     )
     assert all(question in text for question in questions)
-    assert "README or the release candidate's PyPI-style page" in text
+    assert "README or PyPI-style page for the exact tested version" in text
+    assert "candidate or published release" in text
     assert "Do not explain Metriplane before the test" in text
     assert "Does Metriplane control or change the machinery?" in text
     assert "what does it not tell you about the physical measurements?" in text
@@ -374,10 +375,16 @@ def test_cli_exit_codes_cover_pending_pass_fail_and_invalid(
 
 def test_release_checklist_links_protocol_and_site_excludes_results() -> None:
     releasing = (ROOT / "docs/releasing.md").read_text(encoding="utf-8")
+    protocol = PROTOCOL.read_text(encoding="utf-8")
     mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
 
     assert "validation/first-time-user-comprehension.md" in releasing
+    assert "explicitly deferred this check to a post-release adoption" in releasing
+    assert "not block the software release" in releasing
+    assert "truthful post-release adoption follow-up" in protocol
+    assert "manual gate remains open" not in releasing
+    assert "manual release input" not in protocol
     assert "validation/human-comprehension-results.json" in mkdocs
     assert "tests/test_human_comprehension_gate.py" in workflow
     assert "scripts/summarize_human_comprehension.py" in workflow

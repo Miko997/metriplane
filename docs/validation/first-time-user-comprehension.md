@@ -5,8 +5,14 @@ SPDX-License-Identifier: MIT
 
 # First-time-user comprehension check
 
-This is a manual product gate. Automation can summarize recorded observations;
-it cannot establish that an unfamiliar person understood Metriplane.
+This is a manual product-understanding check. Automation can summarize recorded
+observations; it cannot establish that an unfamiliar person understood
+Metriplane.
+
+For v0.3.0, the owner had no unfamiliar tester available before publication and
+explicitly deferred this check on 2026-08-09. The empty record remains a
+truthful post-release adoption follow-up, not a passing human-validation claim
+and not a blocker for publishing the tested software release.
 
 ## Empty-template baseline
 
@@ -25,8 +31,8 @@ command below. No human outcome is claimed until observations are recorded.
 
 Give the tester only:
 
-1. the repository README or the release candidate's PyPI-style page; and
-2. the installation instructions for the exact candidate being tested.
+1. the repository README or PyPI-style page for the exact tested version; and
+2. the installation instructions for that candidate or published release.
 
 Do not explain Metriplane before the test. Do not point out the demo command,
 report link, or product limits. Use an unfamiliar tester and an anonymous ID;
@@ -131,5 +137,5 @@ With zero testers, candidate metadata may remain `null`, rates and median are
 `N/A`, every gate remains pending, and the calculator exits with status 2. Once
 any tester exists, candidate metadata is required and validated. With
 observations, the calculator exits 0 only when all gates pass and 1 when one or
-more gates fail. These results remain a manual release input; the calculator
-does not manufacture or validate human responses.
+more gates fail. These results remain a manual adoption and product-understanding
+input; the calculator does not manufacture or validate human responses.

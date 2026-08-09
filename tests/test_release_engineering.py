@@ -93,7 +93,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     assert "release candidate" not in migration.lower()
     assert "Release commit: `<fill" in notes
     assert "Wheel SHA-256: `<fill" in notes
-    assert "Release date: `<fill" in notes
+    assert "Release date: `2026-08-09`" in notes
     assert "v0.3.0 DOI: none" in notes
     assert "Final main commit: `<full SHA" in launch
     assert "Zenodo automatic GitHub archiving is confirmed disabled" in launch
@@ -116,6 +116,8 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     )
     for result in ("six events", "one incident", "35.0 seconds", "verified", "passed"):
         assert result in notes
+    assert "No unfamiliar-user comprehension study was completed before release" in notes
+    assert "no passing human-validation claim is made" in notes
 
 
 def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
@@ -190,13 +192,13 @@ def test_v030_release_sets_the_package_version() -> None:
     assert metriplane.__version__ == "0.3.0"
 
 
-def test_changelog_is_complete_but_date_blocked() -> None:
+def test_changelog_is_dated_and_complete() -> None:
     text = CHANGELOG.read_text(encoding="utf-8")
 
-    assert "## [0.3.0] — release date TBD — Usability and adoption" in text
+    assert "## [0.3.0] — 2026-08-09 — Usability and adoption" in text
     assert "## [Unreleased]" not in text
-    assert "owner-confirmed ISO release date" in text
-    assert "before this release-candidate pull request is\n> merged" in text
+    assert "release date TBD" not in text
+    assert "RELEASE CANDIDATE — UNPUBLISHED" not in text
     for topic in (
         "package-contained, camera-free",
         "Incident Report",
