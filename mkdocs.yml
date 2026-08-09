@@ -43,3 +43,4 @@ exclude_docs: |
   references/**
   reports/**
   review_kit/**
+  validation/human-comprehension-results.json

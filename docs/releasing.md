@@ -10,6 +10,18 @@ publishes those exact artifacts to TestPyPI, verifies an installation from
 TestPyPI, and only then makes the production PyPI job eligible for approval.
 No long-lived PyPI API token is stored in GitHub.
 
+## Reusable manual product-understanding gate
+
+Before declaring any adoption-focused release candidate ready, run the
+[first-time-user comprehension check](validation/first-time-user-comprehension.md)
+with unfamiliar testers. Record only anonymous, redacted observations for the
+exact candidate commit, version, and material types. Run its calculator and
+carry a pending or failed result into the release blockers; automated checks do
+not substitute for this manual gate.
+
+The structured results file is retained in the repository for release review
+but is explicitly excluded from the generated documentation site.
+
 ## One-time setup
 
 1. In the GitHub repository, create environments named exactly `testpypi` and
