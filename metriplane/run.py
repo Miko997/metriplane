@@ -32,6 +32,7 @@ from metriplane.provenance.run_provenance import (
 
 from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
 from metriplane.backends.aruco_backend import ArUcoBackend
+from metriplane.camera.rtsp import RTSPCamera
 from metriplane.camera.usb import USBCamera
 from metriplane.metrics import MetricsRegistry, start_metrics_server
 from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
@@ -395,7 +396,75 @@ def _resolve_output_path(p: str | None) -> Path | None:
     return pp
 
 
-def _maybe_load_mapper(cfg: Config) -> PlanarMapper | None:
+@dataclass(frozen=True)
+class ResolvedSingleCamera:
+    camera: Any
+    camera_backend: str
+    camera_source: int | str
+    vision_backend: str
+
+    @property
+    def source_backend(self) -> str:
+        return f"{self.vision_backend}_{self.camera_backend}"
+
+
+def _resolve_single_camera(cfg: Config) -> ResolvedSingleCamera:
+    """Resolve and validate the camera settings used by the single-camera runner."""
+    vision_backend = str(cfg.vision_backend or "").strip().lower()
+    if vision_backend != "aruco":
+        raise ValueError(
+            f"Unsupported vision_backend={cfg.vision_backend!r}; single-camera runtime supports 'aruco'"
+        )
+
+    camera_backend = str(cfg.camera_backend or "").strip().lower()
+    camera_device = str(cfg.camera_device).strip() if cfg.camera_device is not None else None
+    camera_index = cfg.camera_index
+
+    if cfg.cameras:
+        if len(cfg.cameras) != 1:
+            raise ValueError(
+                "Single-camera runtime accepts at most one cameras entry; use metriplane.run_fusion "
+                "for multiple cameras"
+            )
+        spec = cfg.cameras[0]
+        camera_device = str(spec.device).strip() if spec.device is not None else camera_device
+        camera_index = spec.index if spec.index is not None else camera_index
+
+    if camera_backend == "usb":
+        source: int | str
+        if camera_device:
+            source = camera_device
+        else:
+            source = 0 if camera_index is None else camera_index
+            if not isinstance(source, int) or isinstance(source, bool) or source < 0:
+                raise ValueError(f"Invalid USB camera_index={source!r}; expected a non-negative integer")
+        return ResolvedSingleCamera(
+            camera=USBCamera(index=source),
+            camera_backend="usb",
+            camera_source=source,
+            vision_backend=vision_backend,
+        )
+
+    if camera_backend == "rtsp":
+        if not camera_device or not camera_device.lower().startswith(("rtsp://", "rtsps://")):
+            raise ValueError(
+                "camera_backend='rtsp' requires camera_device with an rtsp:// or rtsps:// URL"
+            )
+        return ResolvedSingleCamera(
+            camera=RTSPCamera(url=camera_device),
+            camera_backend="rtsp",
+            camera_source=camera_device,
+            vision_backend=vision_backend,
+        )
+
+    raise ValueError(
+        f"Unsupported camera_backend={cfg.camera_backend!r}; single-camera runtime supports 'usb' and 'rtsp'"
+    )
+
+
+def _maybe_load_mapper(cfg: Config, *, required: bool | None = None) -> PlanarMapper | None:
+    if required is None:
+        required = bool(cfg.mapping_file or cfg.intrinsics_file)
     calib = maybe_get_calib_paths(getattr(cfg, "profile", None), calib_root=Path("calib"))
     if calib is not None:
         log.info("profile: ENABLED profile=%s dir=%s", calib.profile, calib.profile_dir)
@@ -419,11 +488,15 @@ def _maybe_load_mapper(cfg: Config) -> PlanarMapper | None:
         log.info("planar mapping: ENABLED mapping=%s intrinsics=%s", mapping_path, intr_path or "(none)")
         return mapper
     except Exception as e:
-        log.warning("planar mapping: DISABLED (failed to load): %s", e)
+        if required:
+            raise ValueError(f"Failed to load configured planar mapping {mapping_path}: {e}") from e
+        log.warning("planar mapping: DISABLED (profile default unavailable): %s", e)
         return None
 
 
-def _maybe_load_zones(cfg: Config) -> ZoneMap | None:
+def _maybe_load_zones(cfg: Config, *, required: bool | None = None) -> ZoneMap | None:
+    if required is None:
+        required = bool(cfg.zones_file)
     calib = maybe_get_calib_paths(getattr(cfg, "profile", None), calib_root=Path("calib"))
 
     zones_path: Path | None = Path(str(cfg.zones_file)) if cfg.zones_file else None
@@ -439,8 +512,22 @@ def _maybe_load_zones(cfg: Config) -> ZoneMap | None:
         log.info("zones: ENABLED file=%s zones=%d units=%s", zones_path, len(z.zones), z.units)
         return z
     except Exception as e:
-        log.warning("zones: DISABLED (failed to load %s): %s", zones_path, e)
+        if required:
+            raise ValueError(f"Failed to load configured zones {zones_path}: {e}") from e
+        log.warning("zones: DISABLED (profile default unavailable): %s", e)
         return None
+
+
+def _sleep_until_replay_deadline(target: float, *, max_sleep_s: float = 0.25) -> int:
+    """Sleep in bounded chunks until a replay deadline is actually reached."""
+    slept_ns = 0
+    while True:
+        remaining = target - time.monotonic()
+        if remaining <= 0:
+            return slept_ns
+        started_ns = time.perf_counter_ns()
+        time.sleep(min(remaining, max_sleep_s))
+        slept_ns += time.perf_counter_ns() - started_ns
 
 
 def _detection_to_object(
@@ -515,11 +602,28 @@ def run_loop(
     argv: list[str] | None = None,
     run_id: str | None = None,
     runs_dir: str | None = None,
-) -> None:
+) -> int:
     log.info("run loop started")
 
     # Make profile-derived paths explicit in cfg before hashing/snapshotting.
+    mapping_required = bool(cfg.mapping_file or cfg.intrinsics_file)
+    zones_required = bool(cfg.zones_file)
     cfg = apply_profile_defaults(cfg)
+
+    mode = str(getattr(cfg, "source_mode", "camera") or "camera").strip().lower()
+    if mode not in {"camera", "replay", "dummy"}:
+        log.error("unsupported source_mode=%r", cfg.source_mode)
+        return 1
+
+    try:
+        # Validate configured optional resources before starting services or writing
+        # a header-only run that appears successful.
+        mapper = _maybe_load_mapper(cfg, required=mapping_required)
+        zone_map = _maybe_load_zones(cfg, required=zones_required)
+        resolved_camera = _resolve_single_camera(cfg) if mode == "camera" else None
+    except (OSError, ValueError) as e:
+        log.error("invalid runtime configuration: %s", e)
+        return 1
 
     # M9.4: run provenance (FAIL FAST if we cannot create it)
     mirror_path: str | None = None
@@ -653,7 +757,7 @@ def run_loop(
             timing.close()
         except Exception:
             pass
-        return
+        return 1
 
     metrics = MetricsRegistry()
     obs_server = _start_observability_server(
@@ -667,13 +771,11 @@ def run_loop(
     log.info("metrics at http://%s:%d/metrics", cfg.metrics_host, cfg.metrics_port)
     log.info("health  at http://%s:%d/health", cfg.metrics_host, cfg.metrics_port)
 
-    mapper = _maybe_load_mapper(cfg)
     if mapper is None:
         health.mark_ok("mapping", details={"enabled": False})
     else:
         health.mark_ok("mapping", details={"enabled": True, "units": mapper.mapping.units})
 
-    zone_map = _maybe_load_zones(cfg)
     zone_analytics = ZoneAnalytics(zone_map) if zone_map is not None else None
     if zone_analytics is not None:
         log.info("zone analytics: ENABLED")
@@ -685,11 +787,11 @@ def run_loop(
     # -----------------------------
     # M9: Docker/offline source modes (NO CAMERA)
     # -----------------------------
-    mode = str(getattr(cfg, "source_mode", "camera") or "camera").strip().lower()
     if mode in ("replay", "dummy"):
+        status = 0
         try:
             if mode == "replay":
-                _run_replay_mode(
+                status = _run_replay_mode(
                     cfg=cfg,
                     ctx=ctx,
                     ws=ws,
@@ -701,7 +803,7 @@ def run_loop(
                     t0=t0,
                 )
             else:
-                _run_dummy_mode(
+                status = _run_dummy_mode(
                     cfg=cfg,
                     ctx=ctx,
                     ws=ws,
@@ -731,7 +833,7 @@ def run_loop(
             except Exception:
                 pass
             log.info("run loop exited cleanly")
-        return
+        return status
 
     # -----------------------------
     # CAMERA MODE (existing behavior)
@@ -750,8 +852,8 @@ def run_loop(
     else:
         log.info("video recording: DISABLED")
 
-    idx = cfg.camera_index if cfg.camera_index is not None else 0
-    cam = USBCamera(index=idx)
+    assert resolved_camera is not None
+    cam = resolved_camera.camera
     backend = ArUcoBackend()
     registry = ObjectRegistry(timeout_s=float(cfg.object_timeout_s))
 
@@ -764,10 +866,25 @@ def run_loop(
 
     try:
         cam.open()
-        health.mark_ok("camera", details={"mode": "usb", "index": idx})
+        health.mark_ok(
+            "camera",
+            details={
+                "mode": resolved_camera.camera_backend,
+                "source": (
+                    str(resolved_camera.camera_source)
+                    if resolved_camera.camera_backend == "usb"
+                    else "configured_rtsp_url"
+                ),
+                "vision_backend": resolved_camera.vision_backend,
+            },
+        )
     except RuntimeError as e:
         log.error("camera open error: %s", e)
-        health.mark_failed("camera", f"open_failed: {e}", details={"mode": "usb", "index": idx})
+        health.mark_failed(
+            "camera",
+            f"open_failed: {e}",
+            details={"mode": resolved_camera.camera_backend},
+        )
         ws.stop()
         try:
             obs_server.shutdown()
@@ -781,7 +898,7 @@ def run_loop(
             timing.close()
         except Exception:
             pass
-        return
+        return 1
 
     last_ts_frame = time.time()
     ws_disabled = False
@@ -895,7 +1012,7 @@ def run_loop(
                 run_id=ctx.run_id,
                 config_hash=ctx.config_hash,
                 git_commit=ctx.git.commit,
-                source_backend=str(getattr(cfg, "vision_backend", "aruco")),
+                source_backend=resolved_camera.source_backend,
                 ts=ts_frame,
                 frame_id=frame_id,
                 objects=tracked_out,
@@ -906,6 +1023,7 @@ def run_loop(
                     "frames_total": frames_total,
                     "frames_dropped_total": frames_dropped,
                     "ws_clients_connected": ws_clients,
+                    "camera_backend": resolved_camera.camera_backend,
                     "mapping_enabled": bool(mapper is not None),
                     "mapping_units": mapper.mapping.units if mapper is not None else None,
                     "zones_enabled": bool(zone_analytics is not None),
@@ -1025,6 +1143,8 @@ def run_loop(
 
         log.info("run loop exited cleanly")
 
+    return 0
+
 
 def _run_replay_mode(
     cfg: Config,
@@ -1037,18 +1157,18 @@ def _run_replay_mode(
     *,
     ws_fail_after_s: float,
     t0: float,
-) -> None:
+) -> int:
     inp = getattr(cfg, "replay_input", None)
     if not inp:
         log.error("replay mode requires replay_input (set replay.input in docker_demo_replay.yaml)")
         health.mark_failed("camera", "replay_input_missing", details={"mode": "replay"})
-        return
+        return 1
 
     p = Path(str(inp))
     if not p.is_file():
         log.error("replay input not found: %s", p)
         health.mark_failed("camera", "replay_input_not_found", details={"mode": "replay", "path": str(p)})
-        return
+        return 1
 
     health.mark_ok("camera", details={"mode": "replay", "path": str(p)})
 
@@ -1064,7 +1184,9 @@ def _run_replay_mode(
     try:
         while True:
             first_ts: float | None = None
+            previous_ts: float | None = None
             wall0 = time.monotonic()
+            pass_frames = 0
 
             with p.open("r", encoding="utf-8") as f:
                 for line in f:
@@ -1100,8 +1222,24 @@ def _run_replay_mode(
 
                     parse_ns = time.perf_counter_ns() - t_parse0
 
+                    replay_ts = (
+                        float(msg.ts_sim_ns) / 1_000_000_000.0
+                        if msg.ts_sim_ns is not None
+                        else float(msg.ts)
+                    )
+                    if previous_ts is not None and replay_ts < previous_ts:
+                        err = f"non_monotonic_timestamp: {replay_ts} follows {previous_ts}"
+                        log.error("replay: %s", err)
+                        health.mark_failed(
+                            "camera",
+                            err,
+                            details={"mode": "replay", "path": str(p)},
+                        )
+                        return 1
+                    previous_ts = replay_ts
+
                     if first_ts is None:
-                        first_ts = float(msg.ts)
+                        first_ts = replay_ts
                         wall0 = time.monotonic()
 
                     # begin timing for this emitted frame (use monotonic counter as frame_id)
@@ -1110,16 +1248,14 @@ def _run_replay_mode(
 
                     # replay pacing
                     if speed > 0 and first_ts is not None:
-                        dt = (float(msg.ts) - first_ts) / speed
+                        dt = (replay_ts - first_ts) / speed
                         target = wall0 + dt
-                        now = time.monotonic()
-                        sleep_s = target - now
-                        if sleep_s > 0:
-                            t_sl0 = time.perf_counter_ns()
-                            time.sleep(min(sleep_s, 0.25))
-                            timing.add_stage_ns("replay.sleep", time.perf_counter_ns() - t_sl0)
+                        slept_ns = _sleep_until_replay_deadline(target)
+                        if slept_ns:
+                            timing.add_stage_ns("replay.sleep", slept_ns)
 
                     frames_total += 1
+                    pass_frames += 1
                     frame_times.append(time.monotonic())
 
                     fps = 0.0
@@ -1150,6 +1286,16 @@ def _run_replay_mode(
 
                     timing.end_frame()
 
+            if pass_frames == 0:
+                err = "replay_input_has_no_valid_frames"
+                log.error("replay: %s: %s", err, p)
+                health.mark_failed(
+                    "camera",
+                    err,
+                    details={"mode": "replay", "path": str(p)},
+                )
+                return 1
+
             if not loop_forever:
                 log.info("replay: EOF reached; exiting replay mode")
                 break
@@ -1159,6 +1305,17 @@ def _run_replay_mode(
 
     except KeyboardInterrupt:
         log.info("replay: shutdown requested")
+        return 0
+    except OSError as e:
+        log.error("replay: failed to read %s: %s", p, e)
+        health.mark_failed(
+            "camera",
+            f"replay_input_unreadable: {e}",
+            details={"mode": "replay", "path": str(p)},
+        )
+        return 1
+
+    return 0
 
 
 def _run_dummy_mode(
@@ -1173,7 +1330,7 @@ def _run_dummy_mode(
     *,
     ws_fail_after_s: float,
     t0: float,
-) -> None:
+) -> int:
     import math
 
     log.info("dummy: ENABLED (no camera)")
@@ -1273,6 +1430,7 @@ def _run_dummy_mode(
 
     except KeyboardInterrupt:
         log.info("dummy: shutdown requested")
+        return 0
 
 
 
@@ -1308,7 +1466,7 @@ def main(argv=None) -> int:
     cfg = load_config(Path(args.config))
     cfg = apply_profile_defaults(cfg)
 
-    run_loop(
+    return run_loop(
         cfg,
         cli_faults=list(args.fault or []),
         config_path=Path(args.config),
@@ -1316,7 +1474,6 @@ def main(argv=None) -> int:
         run_id=args.run_id,
         runs_dir=args.runs_dir,
     )
-    return 0
 
 
 if __name__ == "__main__":

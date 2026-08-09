@@ -60,7 +60,7 @@ def _main_run(argv: list[str]) -> int:
 
     log.info("loaded config: %s", cfg)
 
-    run_loop(
+    return run_loop(
         cfg,
         cli_faults=list(args.fault or []),
         config_path=Path(args.config),
@@ -68,7 +68,6 @@ def _main_run(argv: list[str]) -> int:
         run_id=str(args.run_id) if args.run_id else None,
         runs_dir=str(args.runs_dir) if args.runs_dir else None,
     )
-    return 0
 
 
 def _main_replay(argv: list[str]) -> int:
