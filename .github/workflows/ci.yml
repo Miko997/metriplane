@@ -29,35 +29,33 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Metriplane package
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest playwright
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev
 
       - name: Install browser for E2E smoke
-        run: |
-          python -m playwright install chromium --with-deps
+        run: uv run python -m playwright install chromium --with-deps
 
       - name: Check required release fixtures
-        run: |
-          python -m pytest -q tests/test_release_fixture_integrity.py
+        run: uv run python -m pytest -q tests/test_release_fixture_integrity.py
 
       - name: Run pytest tests
-        run: |
-          python -m pytest -q
+        run: uv run python -m pytest -q
 
       - name: Run doctor
-        run: |
-          python -m metriplane.cli doctor
+        run: uv run python -m metriplane.cli doctor
 
       - name: Check dashboard JavaScript syntax
         run: |
           for f in web/dashboard/*.js; do node --check "$f"; done
 
       - name: Check ROS 2 adapter/package structure
-        run: |
-          python tools/check_ros2_adapters.py
+        run: uv run python tools/check_ros2_adapters.py
 
       - name: Verify current copies of frozen v0.2.0 evidence payload
         shell: bash
@@ -92,8 +90,6 @@ jobs:
             exit 1
           fi
 
-          # Freeze the approved current copies of evidence inventory metadata.
-          # The exact-tag step below independently verifies the archived copies.
           while read -r expected_sha inventory_path; do
             if ! git ls-files --error-unmatch -- "$inventory_path" >/dev/null; then
               echo "Frozen evidence inventory is missing or untracked: $inventory_path" >&2
@@ -116,9 +112,6 @@ jobs:
             | awk '$2 != "evidence/paper_v2_0/README.md"' \
             > "$frozen_checksums"
           test -s "$frozen_checksums"
-
-          # The paper-evidence README is documentation and may be maintained on main.
-          # Every other path in the archived checksum list is frozen evidence payload.
           sha256sum -c "$frozen_checksums" --quiet
 
       - name: Verify archived v0.2.0 release tree
@@ -138,16 +131,14 @@ jobs:
             cd "$archive_tree"
             test "$(git rev-parse HEAD)" = "$METRIPLANE_V020_COMMIT"
             sha256sum -c evidence/CHECKSUMS.sha256 --quiet
-            python scripts/audit_evidence.py
+            uv run python scripts/audit_evidence.py
           )
 
       - name: Check shell script syntax
-        run: |
-          bash -n tools/mp.sh
+        run: bash -n tools/mp.sh
 
       - name: Verify import
-        run: |
-          python -c "import metriplane; print('ok')"
+        run: uv run python -c "import metriplane; print('ok')"
 
   macos-regressions:
     name: macOS full suite (Python ${{ matrix.python-version }})
@@ -161,19 +152,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest
-
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev --python ${{ matrix.python-version }}
       - name: Run full camera-free suite
-        run: python -m pytest -q
+        run: uv run --python ${{ matrix.python-version }} python -m pytest -q
 
   linux-python313:
     name: Linux full suite (Python 3.13)
@@ -183,17 +173,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
-
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest playwright
-          python -m playwright install chromium --with-deps
-
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev --python 3.13
+      - name: Install browser dependencies
+        run: uv run --python 3.13 python -m playwright install chromium --with-deps
       - name: Run full suite
-        run: python -m pytest -q
+        run: uv run --python 3.13 python -m pytest -q
