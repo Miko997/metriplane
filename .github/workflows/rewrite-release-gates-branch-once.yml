@@ -1,0 +1,160 @@
+name: Rewrite release-gates branch once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rewrite-release-gates-branch-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: security/lock-release-gates
+          persist-credentials: true
+
+      - name: Rewrite release gates to use the checked-in lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('.github/workflows/release-gates.yml')
+          text = path.read_text(encoding='utf-8')
+
+          setup_pattern = re.compile(
+              r'(      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n'
+              r'        with:\n'
+              r'          python-version: [^\n]+\n)'
+          )
+          if len(setup_pattern.findall(text)) != 6:
+              raise SystemExit('unexpected setup-python step count')
+          uv_step = (
+              '\n      - name: Install uv\n'
+              '        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0\n'
+              '        with:\n'
+              '          version: "0.12.0"\n'
+              '          enable-cache: false\n'
+          )
+          text = setup_pattern.sub(lambda match: match.group(1) + uv_step, text)
+
+          def replace_exact(old: str, new: str, expected: int = 1) -> None:
+              global text
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(
+                      f'expected {expected} occurrence(s), found {count}: {old.splitlines()[0]!r}'
+                  )
+              text = text.replace(old, new)
+
+          common_install = '''      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest
+'''
+          replace_exact(
+              common_install,
+              '''      - name: Sync locked test environment
+        run: uv sync --locked --group dev
+''',
+              expected=3,
+          )
+          replace_exact(
+              '''      - name: Install browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest playwright
+          python -m playwright install chromium --with-deps
+''',
+              '''      - name: Sync locked browser environment
+        run: uv sync --locked --group dev
+
+      - name: Install Chromium for browser E2E
+        run: uv run python -m playwright install chromium --with-deps
+''',
+          )
+          replace_exact(
+              '''      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+''',
+              '''      - name: Sync locked audit environment
+        run: uv sync --locked --group dev
+''',
+          )
+          replace_exact(
+              '''      - name: Build source and wheel distributions
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+          python -m build
+''',
+              '''      - name: Sync locked build environment
+        run: uv sync --locked --group dev --python __MATRIX_PYTHON__
+
+      - name: Build source and wheel distributions
+        run: |
+          uv run --python __MATRIX_PYTHON__ python -m build
+''',
+          )
+
+          replacements = {
+              '          python -m pytest -q tests/test_release_fixture_integrity.py\n':
+                  '          uv run python -m pytest -q tests/test_release_fixture_integrity.py\n',
+              '          python tools/audit_ui_functionality.py \\\n':
+                  '          uv run python tools/audit_ui_functionality.py \\\n',
+              '          python -m pytest -q tests/ui_api tests/ui_coverage\n':
+                  '          uv run python -m pytest -q tests/ui_api tests/ui_coverage\n',
+              '          python -m pytest -q tests/e2e\n':
+                  '          uv run python -m pytest -q tests/e2e\n',
+              '          python -m twine check --strict dist/*\n':
+                  '          uv run --python __MATRIX_PYTHON__ python -m twine check --strict dist/*\n',
+              '          package_version="$(python -c \'import metriplane; print(metriplane.__version__)\')"\n':
+                  '          package_version="$(uv run --python __MATRIX_PYTHON__ python -c \'import metriplane; print(metriplane.__version__)\')"\n',
+              '          wheel_path="$(python -c \'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())\')"\n':
+                  '          wheel_path="$(uv run --python __MATRIX_PYTHON__ python -c \'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())\')"\n',
+              '          "$smoke_venv/bin/python" -m pip install --upgrade pip\n':
+                  '',
+              '            python scripts/audit_evidence.py\n':
+                  '            "${GITHUB_WORKSPACE}/.venv/bin/python" scripts/audit_evidence.py\n',
+              '          python tools/check_ros2_adapters.py\n':
+                  '          uv run python tools/check_ros2_adapters.py\n',
+              '          python -m pytest -q tests/test_ros2_packaging.py tests/test_ros2_msg_adapters.py\n':
+                  '          uv run python -m pytest -q tests/test_ros2_packaging.py tests/test_ros2_msg_adapters.py\n',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one occurrence, found {count}: {old!r}')
+              text = text.replace(old, new)
+
+          matrix_expression = '$' + '{{ matrix.python-version }}'
+          if text.count('__MATRIX_PYTHON__') != 4:
+              raise SystemExit('unexpected generated matrix placeholder count')
+          text = text.replace('__MATRIX_PYTHON__', matrix_expression)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit migration branch update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/release-gates.yml
+          git commit -m "Use locked dependencies in release gates"
+          git push origin HEAD:security/lock-release-gates
