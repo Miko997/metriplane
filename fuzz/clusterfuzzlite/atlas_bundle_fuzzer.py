@@ -106,6 +106,19 @@ def _bounded_path(fdp: atheris.FuzzedDataProvider) -> str:
     return value or "fuzz-extra"
 
 
+def _bounded_zip_name(fdp: atheris.FuzzedDataProvider) -> str:
+    """Return a name that Python's ZIP writer can encode.
+
+    NUL is still exercised directly against the production path validator, but
+    Python's ``zipfile`` truncates member names at the first NUL and raises an
+    internal ``IndexError`` when that leaves an empty name. The structured stage
+    needs a writable ZIP container so mutations reach Metriplane's verifier.
+    """
+
+    value = _bounded_path(fdp).replace("\x00", "nul")
+    return value or "fuzz-extra"
+
+
 def _mutated_members(
     files: dict[str, bytes],
     fdp: atheris.FuzzedDataProvider,
@@ -128,7 +141,7 @@ def _mutated_members(
     elif mode == 2:
         members = [member for member in members if member[0] != selected]
     elif mode == 3:
-        members.append((_bounded_path(fdp), fdp.ConsumeBytes(2048), False))
+        members.append((_bounded_zip_name(fdp), fdp.ConsumeBytes(2048), False))
     elif mode == 4:
         members = [
             (
@@ -141,7 +154,7 @@ def _mutated_members(
     elif mode == 5:
         members.append((selected, fdp.ConsumeBytes(2048), False))
     elif mode == 6:
-        replacement_name = _bounded_path(fdp)
+        replacement_name = _bounded_zip_name(fdp)
         members = [
             (replacement_name if name == selected else name, content, symlink)
             for name, content, symlink in members
@@ -156,7 +169,7 @@ def _mutated_members(
         ]
         members.append((fdp.PickValueInList(unsafe_names), b"unsafe", False))
     else:
-        members.append((_bounded_path(fdp), b"symlink-target", True))
+        members.append((_bounded_zip_name(fdp), b"symlink-target", True))
     return members, False
 
 
@@ -207,7 +220,9 @@ def test_one_input(data: bytes) -> None:
         structured_path = root / "structured-input.zip"
         try:
             _write_zip(structured_path, members, fdp.ConsumeBool())
-        except (OSError, OverflowError, RuntimeError, ValueError):
+        except (IndexError, OSError, OverflowError, RuntimeError, UnicodeError, ValueError):
+            # These are ZIP-construction limits in the standard library, not
+            # failures in Metriplane's untrusted-input boundary.
             return
 
         result = verify_bundle(structured_path)
