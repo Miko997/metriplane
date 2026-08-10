@@ -106,11 +106,11 @@ jobs:
           python -m build
 ''',
               '''      - name: Sync locked build environment
-        run: uv sync --locked --group dev --python ${{ matrix.python-version }}
+        run: uv sync --locked --group dev --python __MATRIX_PYTHON__
 
       - name: Build source and wheel distributions
         run: |
-          uv run --python ${{ matrix.python-version }} python -m build
+          uv run --python __MATRIX_PYTHON__ python -m build
 ''',
           )
 
@@ -124,11 +124,11 @@ jobs:
               '          python -m pytest -q tests/e2e\n':
                   '          uv run python -m pytest -q tests/e2e\n',
               '          python -m twine check --strict dist/*\n':
-                  '          uv run --python ${{ matrix.python-version }} python -m twine check --strict dist/*\n',
+                  '          uv run --python __MATRIX_PYTHON__ python -m twine check --strict dist/*\n',
               '          package_version="$(python -c \'import metriplane; print(metriplane.__version__)\')"\n':
-                  '          package_version="$(uv run --python ${{ matrix.python-version }} python -c \'import metriplane; print(metriplane.__version__)\')"\n',
+                  '          package_version="$(uv run --python __MATRIX_PYTHON__ python -c \'import metriplane; print(metriplane.__version__)\')"\n',
               '          wheel_path="$(python -c \'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())\')"\n':
-                  '          wheel_path="$(uv run --python ${{ matrix.python-version }} python -c \'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())\')"\n',
+                  '          wheel_path="$(uv run --python __MATRIX_PYTHON__ python -c \'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())\')"\n',
               '          "$smoke_venv/bin/python" -m pip install --upgrade pip\n':
                   '',
               '            python scripts/audit_evidence.py\n':
@@ -143,6 +143,11 @@ jobs:
               if count != 1:
                   raise SystemExit(f'expected one occurrence, found {count}: {old!r}')
               text = text.replace(old, new)
+
+          matrix_expression = '$' + '{{ matrix.python-version }}'
+          if text.count('__MATRIX_PYTHON__') != 4:
+              raise SystemExit('unexpected generated matrix placeholder count')
+          text = text.replace('__MATRIX_PYTHON__', matrix_expression)
 
           path.write_text(text, encoding='utf-8')
           PY
