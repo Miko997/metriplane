@@ -105,6 +105,15 @@ Use Metriplane to:
 - Frozen DOI-archived research artifact: `v0.2.0`
 - TIM evaluated software boundary: `v0.1.3`
 
+## Software preservation
+
+Metriplane source code is preserved in the Software Heritage Archive.
+
+- Software Heritage: `swh:1:rev:dfe9401891596215081a4eff0b828504217a3590`
+- Archived Git revision: `dfe9401891596215081a4eff0b828504217a3590`
+- Archived research-artifact DOI (`v0.2.0`): `10.5281/zenodo.20736619`
+- Source repository: https://github.com/Miko997/metriplane
+
 ## Official links
 
 - Official site: https://www.metriplane.com/
