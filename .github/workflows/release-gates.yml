@@ -228,7 +228,7 @@ jobs:
             '#!/bin/sh' \
             'set -eu' \
             ': "${METRIPLANE_BROWSER_URI_FILE:?}"' \
-            'printf "%s\n\" "$1" > "$METRIPLANE_BROWSER_URI_FILE"' \
+            'printf "%s\\n" "$1" > "$METRIPLANE_BROWSER_URI_FILE"' \
             > "$browser_stub"
           chmod +x "$browser_stub"
           METRIPLANE_BROWSER_URI_FILE="$browser_uri_file" \
