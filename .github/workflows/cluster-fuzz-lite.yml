@@ -1,0 +1,63 @@
+name: ClusterFuzzLite
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".clusterfuzzlite/**"
+      - ".github/workflows/cluster-fuzz-lite.yml"
+      - "fuzz/clusterfuzzlite/**"
+      - "metriplane/atlas/bundles.py"
+      - "metriplane/atlas/event_ledger.py"
+      - "metriplane/atlas/models.py"
+      - "metriplane/schema.py"
+  schedule:
+    - cron: '30 3 * * 3'
+  workflow_dispatch:
+
+concurrency:
+  group: cluster-fuzz-lite-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  fuzz:
+    name: Atlas bundle verification fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 25 || 40 }}
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build fuzzers
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          keep-unaffected-fuzz-targets: true
+          language: python
+
+      - name: Run fuzzers
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          fuzz-seconds: ${{ github.event_name == 'pull_request' && 120 || 600 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          language: python
+          mode: ${{ github.event_name == 'pull_request' && 'code-change' || 'batch' }}
+          output-sarif: true
+          parallel-fuzzing: true
+
+      - name: Upload SARIF to code scanning
+        if: >-
+          always() &&
+          hashFiles('artifacts/fuzz-latest/fuzzing-report.sarif') != '' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          category: cluster-fuzz-lite
+          sarif_file: artifacts/fuzz-latest/fuzzing-report.sarif
