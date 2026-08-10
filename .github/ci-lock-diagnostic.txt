@@ -1,2 +1,0 @@
-Temporary branch marker used to reproduce and diagnose the locked-dependency CI failures.
-This file will be removed before merge.
