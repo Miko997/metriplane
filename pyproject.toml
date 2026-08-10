@@ -48,6 +48,18 @@ dependencies = [
   "pydantic>=2.0",
 ]
 
+[dependency-groups]
+dev = [
+  "build>=1.2,<2",
+  "mkdocs>=1.6,<2",
+  "mypy>=1.17,<2",
+  "playwright>=1.55,<2",
+  "pytest>=8.4,<9",
+  "ruff>=0.12,<1",
+  "twine>=6.1,<7",
+  "types-PyYAML>=6.0,<7",
+]
+
 [project.urls]
 Homepage = "https://www.metriplane.com/"
 Documentation = "https://github.com/Miko997/metriplane/blob/main/docs/README.md"
@@ -77,6 +89,9 @@ plots = [
   "pandas>=2.2",
   "matplotlib>=3.8",
 ]
+
+[tool.uv]
+required-version = ">=0.12,<0.13"
 
 [tool.ruff]
 line-length = 100
