@@ -23,26 +23,26 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Metriplane
-        run: |
-          set -euo pipefail
-          python -m venv .venv
-          source .venv/bin/activate
-          python -m pip install --upgrade pip
-          pip install -e .
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked validation environment
+        run: uv sync --locked --group dev
 
       - name: Run manual external runtime checklist
         run: |
           set -euo pipefail
-          source .venv/bin/activate
           export PYTHONUTF8=1
           export PYTHONIOENCODING=utf-8
 
           echo "External runtime validation is manual/self-hosted evidence only."
           echo "Expected runner capabilities may include ROS 2, Docker, GPU, Isaac Sim, or Omniverse."
 
-          python -m metriplane.cli doctor
-          python tools/check_ros2_adapters.py
+          uv run python -m metriplane.cli doctor
+          uv run python tools/check_ros2_adapters.py
 
           if command -v docker >/dev/null 2>&1; then
             docker --version
