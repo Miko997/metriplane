@@ -24,6 +24,7 @@ it does **not** control machinery or make safety or quality decisions.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Miko997/metriplane/blob/main/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/metriplane.svg)](https://pypi.org/project/metriplane/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14010/badge)](https://www.bestpractices.dev/projects/14010)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Miko997/metriplane/badge)](https://scorecard.dev/viewer/?uri=github.com/Miko997/metriplane)
 [![Research release: v0.2.0](https://img.shields.io/badge/research%20release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
