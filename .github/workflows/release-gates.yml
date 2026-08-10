@@ -21,20 +21,25 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev
 
       - name: Check required release fixtures
         run: |
-          python -m pytest -q tests/test_release_fixture_integrity.py
+          uv run python -m pytest -q tests/test_release_fixture_integrity.py
 
       - name: Confirm required fixture files are tracked
         run: |
@@ -50,16 +55,21 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev
 
       - name: Check dashboard JavaScript syntax
         run: |
@@ -67,14 +77,14 @@ jobs:
 
       - name: Run static UI audit
         run: |
-          python tools/audit_ui_functionality.py \
+          uv run python tools/audit_ui_functionality.py \
             --out /tmp/metriplane_ui_coverage_latest.csv \
             --json /tmp/metriplane_ui_coverage_latest.json \
             --no-docs
 
       - name: Run UI API and static integrity tests
         run: |
-          python -m pytest -q tests/ui_api tests/ui_coverage
+          uv run python -m pytest -q tests/ui_api tests/ui_coverage
 
   browser-e2e:
     runs-on: ubuntu-latest
@@ -82,21 +92,28 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install browser dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest playwright
-          python -m playwright install chromium --with-deps
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked browser environment
+        run: uv sync --locked --group dev
+
+      - name: Install Chromium for browser E2E
+        run: uv run python -m playwright install chromium --with-deps
 
       - name: Run browser smoke
         run: |
-          python -m pytest -q tests/e2e
+          uv run python -m pytest -q tests/e2e
 
   wheel_smoke:
     name: Wheel smoke (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -108,16 +125,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked build environment
+        run: uv sync --locked --group dev --python ${{ matrix.python-version }}
+
       - name: Build source and wheel distributions
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine
-          python -m build
+          uv run --python ${{ matrix.python-version }} python -m build
           python - <<'PY'
           from pathlib import Path
 
@@ -130,17 +156,16 @@ jobs:
                   + ", ".join(path.name for path in artifacts)
               )
           PY
-          python -m twine check --strict dist/*
+          uv run --python ${{ matrix.python-version }} python -m twine check --strict dist/*
 
       - name: Install wheel in fresh venv outside checkout
         shell: bash
         run: |
           set -euo pipefail
-          package_version="$(python -c 'import metriplane; print(metriplane.__version__)')"
-          wheel_path="$(python -c 'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())')"
+          package_version="$(uv run --python ${{ matrix.python-version }} python -c 'import metriplane; print(metriplane.__version__)')"
+          wheel_path="$(uv run --python ${{ matrix.python-version }} python -c 'from pathlib import Path; print(next(Path("dist").glob("*.whl")).resolve())')"
           smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
           python -m venv "$smoke_venv"
-          "$smoke_venv/bin/python" -m pip install --upgrade pip
           "$smoke_venv/bin/python" -m pip install "$wheel_path"
           cd "$RUNNER_TEMP"
           "$smoke_venv/bin/python" -m pip check
@@ -203,7 +228,7 @@ jobs:
             '#!/bin/sh' \
             'set -eu' \
             ': "${METRIPLANE_BROWSER_URI_FILE:?}"' \
-            'printf "%s\\n" "$1" > "$METRIPLANE_BROWSER_URI_FILE"' \
+            'printf "%s\n\" "$1" > "$METRIPLANE_BROWSER_URI_FILE"' \
             > "$browser_stub"
           chmod +x "$browser_stub"
           METRIPLANE_BROWSER_URI_FILE="$browser_uri_file" \
@@ -292,15 +317,20 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked audit environment
+        run: uv sync --locked --group dev
 
       - name: Verify current copies of frozen v0.2.0 evidence payload
         shell: bash
@@ -381,7 +411,7 @@ jobs:
             cd "$archive_tree"
             test "$(git rev-parse HEAD)" = "$METRIPLANE_V020_COMMIT"
             sha256sum -c evidence/CHECKSUMS.sha256 --quiet
-            python scripts/audit_evidence.py
+            "${GITHUB_WORKSPACE}/.venv/bin/python" scripts/audit_evidence.py
           )
 
   ros2-adapter-static:
@@ -390,18 +420,23 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev
 
       - name: Check ROS 2 adapter package structure
         run: |
-          python tools/check_ros2_adapters.py
-          python -m pytest -q tests/test_ros2_packaging.py tests/test_ros2_msg_adapters.py
+          uv run python tools/check_ros2_adapters.py
+          uv run python -m pytest -q tests/test_ros2_packaging.py tests/test_ros2_msg_adapters.py
