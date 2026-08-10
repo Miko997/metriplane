@@ -1,0 +1,58 @@
+name: Fix release-gate browser stub once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-release-gates-stub-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  patch-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out Release Gates migration branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: security/lock-release-gates-v2
+          persist-credentials: true
+
+      - name: Repair generated browser stub line
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/release-gates.yml')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          matches = [
+              index
+              for index, line in enumerate(lines)
+              if "'printf " in line and 'METRIPLANE_BROWSER_URI_FILE' in line
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f'expected one browser-stub printf line, found {len(matches)}')
+          lines[matches[0]] = (
+              "            'printf \"%s\\\\n\" \"$1\" > "
+              "\"$METRIPLANE_BROWSER_URI_FILE\"' \\"
+          )
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          grep -Fq "'printf \"%s\\\\n\" \"\$1\" > \"\$METRIPLANE_BROWSER_URI_FILE\"' \\" \
+            .github/workflows/release-gates.yml
+
+      - name: Commit branch repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/release-gates.yml
+          git commit -m "Fix Release Gates browser stub"
+          git push origin HEAD:security/lock-release-gates-v2
