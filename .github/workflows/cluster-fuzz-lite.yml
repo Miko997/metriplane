@@ -47,6 +47,7 @@ jobs:
         with:
           fuzz-seconds: ${{ github.event_name == 'pull_request' && 120 || 600 }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          language: python
           mode: ${{ github.event_name == 'pull_request' && 'code-change' || 'batch' }}
           output-sarif: true
           parallel-fuzzing: true
