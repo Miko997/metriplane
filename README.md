@@ -24,6 +24,7 @@ it does **not** control machinery or make safety or quality decisions.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Miko997/metriplane/blob/main/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/metriplane.svg)](https://pypi.org/project/metriplane/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14010/badge)](https://www.bestpractices.dev/projects/14010)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Miko997/metriplane/badge)](https://scorecard.dev/viewer/?uri=github.com/Miko997/metriplane)
 [![Research release: v0.2.0](https://img.shields.io/badge/research%20release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
@@ -103,6 +104,15 @@ Use Metriplane to:
 - Current installable software release: `v0.3.0`
 - Frozen DOI-archived research artifact: `v0.2.0`
 - TIM evaluated software boundary: `v0.1.3`
+
+## Software preservation
+
+Metriplane source code is preserved in the Software Heritage Archive.
+
+- Software Heritage: `swh:1:rev:dfe9401891596215081a4eff0b828504217a3590`
+- Archived Git revision: `dfe9401891596215081a4eff0b828504217a3590`
+- Archived research-artifact DOI (`v0.2.0`): `10.5281/zenodo.20736619`
+- Source repository: https://github.com/Miko997/metriplane
 
 ## Official links
 
