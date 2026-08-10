@@ -43,6 +43,9 @@ def test_dashboard_pages_render_without_uncaught_js_errors():
     ]
     errors: list[str] = []
     with static_dashboard_server() as base_url, sync_playwright() as pw:
+        chromium_executable = Path(pw.chromium.executable_path)
+        if not chromium_executable.is_file():
+            pytest.skip("Playwright Chromium browser is not installed")
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         page.on("pageerror", lambda exc: errors.append(str(exc)))
