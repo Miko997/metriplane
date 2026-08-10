@@ -10,12 +10,14 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
