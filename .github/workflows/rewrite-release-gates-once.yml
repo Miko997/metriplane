@@ -1,9 +1,11 @@
 name: Rewrite release gates once
 
 on:
-  push:
-    branches:
-      - security/lock-release-gates
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/rewrite-release-gates-once.yml"
+      - ".github/workflows/release-gates.yml"
 
 permissions:
   contents: read
@@ -15,9 +17,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Check out branch
+      - name: Check out migration branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: security/lock-release-gates
           persist-credentials: true
 
       - name: Rewrite release gates to use the checked-in lock
@@ -36,9 +39,8 @@ jobs:
               r'        with:\n'
               r'          python-version: [^\n]+\n)'
           )
-          setup_matches = setup_pattern.findall(text)
-          if len(setup_matches) != 6:
-              raise SystemExit(f'expected 6 setup-python steps, found {len(setup_matches)}')
+          if len(setup_pattern.findall(text)) != 6:
+              raise SystemExit('unexpected setup-python step count')
           uv_step = (
               '\n      - name: Install uv\n'
               '        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0\n'
@@ -70,7 +72,6 @@ jobs:
 ''',
               expected=3,
           )
-
           replace_exact(
               '''      - name: Install browser dependencies
         run: |
@@ -86,7 +87,6 @@ jobs:
         run: uv run python -m playwright install chromium --with-deps
 ''',
           )
-
           replace_exact(
               '''      - name: Install package
         run: |
@@ -97,7 +97,6 @@ jobs:
         run: uv sync --locked --group dev
 ''',
           )
-
           replace_exact(
               '''      - name: Build source and wheel distributions
         run: |
@@ -148,11 +147,10 @@ jobs:
           if text.count('__MATRIX_PYTHON__') != 4:
               raise SystemExit('unexpected generated matrix placeholder count')
           text = text.replace('__MATRIX_PYTHON__', matrix_expression)
-
           path.write_text(text, encoding='utf-8')
           PY
 
-      - name: Commit generated workflow update
+      - name: Commit migration branch update
         shell: bash
         run: |
           set -euo pipefail
