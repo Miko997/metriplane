@@ -67,6 +67,32 @@ example. A compatible run with no configured incident has no incident bundle or
 regression file. A run with incidents may use different IDs; inspect the report
 and output directories instead of assuming an ID.
 
+## Portable external fixtures
+
+If someone gives you a directory that follows External Source Contract v1, use
+the directory-oriented `external` commands. They bind the manifest, normalized
+session, mapping, normalization report, and domain pack together so unrelated
+artifacts cannot be selected accidentally.
+
+```bash
+metriplane external validate path/to/fixture
+metriplane external validate path/to/fixture --json
+
+metriplane external run path/to/fixture \
+  --out external-run
+metriplane external run path/to/fixture \
+  --out external-run \
+  --json
+```
+
+`external run` performs the full external preflight before it calls the existing
+Atlas engine. It accepts `--run-id` and the same explicit `--overwrite` control as
+`atlas run`. It never downloads a referenced source or executes the historical
+adapter named in the manifest.
+
+See [Validate and run an external fixture](external-fixtures.md) for the evaluator
+workflow, adapter-author requirements, provenance, and claim limits.
+
 ## Other command groups
 
 Root help also lists replay, comparison, incident, and live-runtime functions for

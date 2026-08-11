@@ -1908,7 +1908,14 @@ def _verify_checksum_inventory(root: Path, checksum_relative_path: str) -> None:
         relative_path = path.relative_to(root).as_posix()
         if path.is_symlink():
             raise ValueError(f"bundle symlink is not allowed: {relative_path}")
-        if path.is_file() and relative_path != checksum_relative_path:
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise ValueError(
+                "bundle entry is not a regular file or directory: "
+                f"{relative_path}"
+            )
+        if relative_path != checksum_relative_path:
             inventory.add(relative_path)
     for relative_path in sorted(inventory - set(recorded)):
         raise ValueError(f"file missing checksum entry: {relative_path}")

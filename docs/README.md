@@ -42,11 +42,13 @@ example inputs and use the supported recorded-run interface.
   without turning Metriplane into a control system.
 - [Use your own recorded run](user-guide/use-your-own-run.md): export an
   inspectable example and move toward your own compatible data.
+- [External fixtures](user-guide/external-fixtures.md): validate and run a
+  portable, contract-compliant fixture without its original source software.
 - [Integrations and support](user-guide/integrations.md): distinguish supported,
   repository-only, experimental, and unsupported paths.
 - [External Source Contract v1](specs/external-source-contract-v1.md): inspect the
-  source-neutral conversion contract and its limits. This specification does not
-  claim that a source adapter has been implemented.
+  source-neutral conversion contract and its limits. The generic execution path
+  does not itself claim that an adapter for any particular source exists.
 - [Troubleshooting](user-guide/troubleshooting.md): recover from common setup,
   browser, input, verification, and regression failures.
 - [Contributing](user-guide/contributing.md): prepare a focused change safely.

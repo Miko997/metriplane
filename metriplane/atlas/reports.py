@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import html
+import unicodedata
 from pathlib import Path
 
 from metriplane.atlas.models import (
@@ -62,6 +63,20 @@ def _fmt_s(value: float) -> str:
 
 def _plain_identifier(value: str) -> str:
     return value.replace("_", " ")
+
+
+def _one_line_untrusted(value: str, *, limit: int = 240) -> str:
+    """Keep external labels from creating report structure or unbounded prose."""
+    collapsed = " ".join(value.split())
+    rendered = "".join(
+        character
+        if unicodedata.category(character) not in {"Cc", "Cf", "Cs"}
+        else f"\\u{ord(character):04x}"
+        for character in collapsed
+    ).replace("`", "'")
+    if len(rendered) <= limit:
+        return rendered
+    return rendered[: limit - 1].rstrip() + "…"
 
 
 def render_markdown(
@@ -192,6 +207,42 @@ def render_markdown(
             )
     else:
         lines.append("- No repeatable check was generated because no incident was found.")
+
+    external = manifest.external_source_provenance
+    if external is not None:
+        lines.extend(
+            [
+                "",
+                "## External fixture provenance",
+                "",
+                f"- Fixture: `{_one_line_untrusted(external.fixture_id)}`.",
+                (
+                    "- Contract: "
+                    f"`{_one_line_untrusted(external.contract_schema_version)}` / "
+                    f"`{_one_line_untrusted(external.contract_profile)}`."
+                ),
+                (
+                    "- Source: "
+                    f"`{_one_line_untrusted(external.source_project)}` at revision "
+                    f"`{_one_line_untrusted(external.source_revision)}`."
+                ),
+                (
+                    "- Adapter: "
+                    f"`{_one_line_untrusted(external.adapter_id)}` "
+                    f"version `{_one_line_untrusted(external.adapter_version)}` at commit "
+                    f"`{_one_line_untrusted(external.adapter_commit)}`."
+                ),
+                (
+                    "- Full conversion provenance: "
+                    f"`{external.path}` (SHA-256 `{external.sha256}`)."
+                ),
+                (
+                    "- This identifies the supplied normalized fixture and its conversion; "
+                    "the incident result still comes from the recorded normalized state and "
+                    "the supplied process rules."
+                ),
+            ]
+        )
 
     lines.extend(
         [

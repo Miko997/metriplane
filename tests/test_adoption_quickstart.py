@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -103,3 +102,9 @@ def test_release_gate_runs_the_exact_installed_wheel_quickstart() -> None:
     assert 'BROWSER="$browser_stub"' in workflow
     assert '"Browser: open request sent" not in completed.stdout' in workflow
     assert 'test "$(<"$browser_uri_file")" = "$expected_report_uri"' in workflow
+    head_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
+    wheel_smoke = workflow.split("  wheel_smoke:", 1)[1].split(
+        "\n  package-smoke:", 1
+    )[0]
+    assert head_ref in wheel_smoke
+    assert workflow.count(head_ref) == 1
