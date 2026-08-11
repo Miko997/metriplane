@@ -22,6 +22,15 @@ def _wait_until(predicate, timeout: float = 5.0) -> bool:
     return False
 
 
+def _process_is_gone_or_zombie(pid: int) -> bool:
+    stat_path = Path(f"/proc/{pid}/stat")
+    try:
+        fields = stat_path.read_text().split()
+    except FileNotFoundError:
+        return True
+    return len(fields) > 2 and fields[2] == "Z"
+
+
 def test_cancelled_job_remains_cancelled_after_process_exits(tmp_path: Path) -> None:
     executor = CommandExecutor()
     executor.repo_root = tmp_path
@@ -58,8 +67,5 @@ def test_cancel_terminates_child_process_group(tmp_path: Path) -> None:
     child_pid = int(child_pid_file.read_text())
 
     assert executor.cancel(job_id) is True
-    assert _wait_until(
-        lambda: not Path(f"/proc/{child_pid}").exists()
-        or Path(f"/proc/{child_pid}/stat").read_text().split()[2] == "Z"
-    )
+    assert _wait_until(lambda: _process_is_gone_or_zombie(child_pid))
     assert executor.get_job(job_id)["status"] == "cancelled"  # type: ignore[index]
