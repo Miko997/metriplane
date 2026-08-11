@@ -22,6 +22,7 @@ EXPECTED_NAV = (
     "user-guide/cli.md",
     "user-guide/process-rules.md",
     "user-guide/use-your-own-run.md",
+    "user-guide/external-fixtures.md",
     "user-guide/integrations.md",
     "specs/external-source-contract-v1.md",
     "specs/external-source-contract-v1-audit.md",
@@ -120,6 +121,26 @@ def test_after_demo_tutorial_uses_real_command_sequence() -> None:
     )
     offsets = [tutorial.index(command) for command in commands]
     assert offsets == sorted(offsets)
+
+
+def test_external_fixture_guide_uses_the_canonical_safe_workflow() -> None:
+    guide = (GUIDE / "external-fixtures.md").read_text(encoding="utf-8")
+
+    required = (
+        "metriplane external validate path/to/fixture",
+        "metriplane external validate path/to/fixture --json",
+        "metriplane external run path/to/fixture --out external-run",
+        "--run-id inspection-replay-1",
+        "external_source_provenance.json",
+        "does not download it",
+        "does not execute the adapter",
+        "expected-outcome.json",
+        "never supplied to Atlas",
+        "original source framework",
+        "does not prove",
+        "production-ready",
+    )
+    assert all(fragment in guide for fragment in required)
 
 
 def test_v030_package_install_and_research_boundaries_are_truthful() -> None:

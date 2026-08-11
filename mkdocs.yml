@@ -20,6 +20,7 @@ nav:
   - CLI: user-guide/cli.md
   - Process rules: user-guide/process-rules.md
   - Use your own recorded run: user-guide/use-your-own-run.md
+  - External fixtures: user-guide/external-fixtures.md
   - Integrations and support: user-guide/integrations.md
   - External Source Contract:
       - Contract v1: specs/external-source-contract-v1.md

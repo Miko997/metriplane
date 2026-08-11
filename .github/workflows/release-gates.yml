@@ -296,6 +296,168 @@ jobs:
           "$smoke_venv/bin/metriplane" atlas test \
             "$exported_run/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
 
+          external_fixture="${RUNNER_TEMP}/metriplane-external-fixture"
+          external_run="${RUNNER_TEMP}/metriplane-external-run"
+          external_validation_json="${RUNNER_TEMP}/metriplane-external-validation.json"
+          external_run_json="${RUNNER_TEMP}/metriplane-external-run.json"
+          external_fixture_fingerprint="${RUNNER_TEMP}/metriplane-external-fixture.sha256"
+          SOURCE_FIXTURE="$GITHUB_WORKSPACE/examples/external_sources/minimal" \
+            EXTERNAL_FIXTURE="$external_fixture" \
+            FINGERPRINT_FILE="$external_fixture_fingerprint" \
+            "$smoke_venv/bin/python" - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          import shutil
+
+          source = Path(os.environ["SOURCE_FIXTURE"])
+          fixture = Path(os.environ["EXTERNAL_FIXTURE"])
+          shutil.copytree(source, fixture)
+
+          digest = hashlib.sha256()
+          for path in sorted(fixture.rglob("*")):
+              if path.is_symlink():
+                  raise RuntimeError(f"external smoke fixture contains a symlink: {path}")
+              relative = path.relative_to(fixture).as_posix().encode("utf-8")
+              if path.is_dir():
+                  digest.update(b"directory\0")
+                  digest.update(relative)
+                  digest.update(b"\0")
+              elif path.is_file():
+                  digest.update(b"file\0")
+                  digest.update(relative)
+                  digest.update(b"\0")
+                  digest.update(path.read_bytes())
+                  digest.update(b"\0")
+              else:
+                  raise RuntimeError(f"external smoke fixture has an unsafe path: {path}")
+          Path(os.environ["FINGERPRINT_FILE"]).write_text(
+              digest.hexdigest() + "\n", encoding="utf-8"
+          )
+          PY
+
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/metriplane" external validate \
+            "$external_fixture" --json > "$external_validation_json"
+          VALIDATION_JSON="$external_validation_json" \
+            EXTERNAL_FIXTURE="$external_fixture" \
+            "$smoke_venv/bin/python" - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          result = json.loads(Path(os.environ["VALIDATION_JSON"]).read_text(encoding="utf-8"))
+          assert result["pass"] is True
+          assert result["fixture_id"] == "synthetic-inspection-bench-v1"
+          assert Path(result["fixture_root"]).resolve() == Path(
+              os.environ["EXTERNAL_FIXTURE"]
+          ).resolve()
+          assert result["contract_schema_version"] == (
+              "metriplane.external_source_contract.v1"
+          )
+          assert result["contract_profile"] == (
+              "metriplane.atlas.complete_snapshot.v1"
+          )
+          assert result["frame_state_model_version"] == "1.0"
+          assert result["frame_count"] == 4
+          assert result["normalized_object_count"] == 2
+          assert result["source_entity_count"] == 2
+          assert result["errors"] == []
+          PY
+
+          "$smoke_venv/bin/metriplane" external run \
+            "$external_fixture" \
+            --out "$external_run" \
+            --run-id installed_wheel_external_fixture \
+            --json > "$external_run_json"
+          RUN_JSON="$external_run_json" \
+            EXTERNAL_RUN="$external_run" \
+            "$smoke_venv/bin/python" - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import zipfile
+
+          summary = json.loads(Path(os.environ["RUN_JSON"]).read_text(encoding="utf-8"))
+          run = Path(os.environ["EXTERNAL_RUN"])
+          assert summary["pass"] is True
+          assert summary["fixture_id"] == "synthetic-inspection-bench-v1"
+          assert summary["validation"]["pass"] is True
+          assert summary["run_id"] == "installed_wheel_external_fixture"
+          assert Path(summary["output_directory"]).resolve() == run.resolve()
+          assert summary["frame_count"] == 4
+          assert summary["event_count"] == 5
+          assert summary["deviation_count"] == 1
+          assert summary["incident_count"] == 1
+          assert summary["errors"] == []
+
+          report = Path(summary["report_path"])
+          assert report.is_file()
+          assert "<h2>External fixture provenance</h2>" in report.read_text(
+              encoding="utf-8"
+          )
+
+          provenance = summary["provenance"]
+          provenance_path = Path(provenance["path"])
+          assert provenance_path == run / "external_source_provenance.json"
+          assert provenance_path.is_file()
+          assert hashlib.sha256(provenance_path.read_bytes()).hexdigest() == provenance["sha256"]
+
+          assert len(summary["evidence_bundles"]) == 1
+          evidence = summary["evidence_bundles"][0]
+          assert evidence["verified"] is True
+          assert evidence["errors"] == []
+          evidence_path = Path(evidence["path"])
+          assert evidence_path.is_file()
+          with zipfile.ZipFile(evidence_path) as archive:
+              assert "provenance/external_source_provenance.json" in archive.namelist()
+
+          assert len(summary["generated_regressions"]) == 1
+          regression = summary["generated_regressions"][0]
+          assert regression["passed"] is True
+          assert regression["errors"] == []
+          assert Path(regression["path"]).is_file()
+          PY
+
+          external_bundle="$external_run/evidence_bundles/INC-0001.zip"
+          external_regression="$external_run/regression_tests/INC-0001.yaml"
+          "$smoke_venv/bin/metriplane" atlas bundle verify \
+            "$external_bundle" | grep -q '"pass": true'
+          "$smoke_venv/bin/metriplane" atlas test \
+            "$external_regression" --json | grep -q '"pass": true'
+
+          EXTERNAL_FIXTURE="$external_fixture" \
+            FINGERPRINT_FILE="$external_fixture_fingerprint" \
+            "$smoke_venv/bin/python" - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+
+          fixture = Path(os.environ["EXTERNAL_FIXTURE"])
+          digest = hashlib.sha256()
+          for path in sorted(fixture.rglob("*")):
+              if path.is_symlink():
+                  raise RuntimeError(f"external smoke fixture gained a symlink: {path}")
+              relative = path.relative_to(fixture).as_posix().encode("utf-8")
+              if path.is_dir():
+                  digest.update(b"directory\0")
+                  digest.update(relative)
+                  digest.update(b"\0")
+              elif path.is_file():
+                  digest.update(b"file\0")
+                  digest.update(relative)
+                  digest.update(b"\0")
+                  digest.update(path.read_bytes())
+                  digest.update(b"\0")
+              else:
+                  raise RuntimeError(f"external smoke fixture has an unsafe path: {path}")
+          expected = Path(os.environ["FINGERPRINT_FILE"]).read_text(
+              encoding="utf-8"
+          ).strip()
+          assert digest.hexdigest() == expected, "external fixture changed during validation/run"
+          PY
+
   package-smoke:
     name: package-smoke
     if: ${{ always() }}
