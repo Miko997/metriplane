@@ -434,6 +434,11 @@ def _paths_overlap(first: Path, second: Path) -> bool:
 def _resolve_output_path(path: str | Path) -> Path:
     supplied = Path(path)
     try:
+        # Python 3.13 changed non-strict ``Path.resolve()`` to suppress symlink
+        # loop errors.  Resolve an existing symlink strictly so loops and
+        # dangling targets still fail closed on every supported interpreter.
+        if supplied.is_symlink():
+            return supplied.resolve(strict=True)
         return supplied.resolve()
     except (OSError, RuntimeError) as exc:
         raise ValueError(f"cannot resolve external run output path {supplied}: {exc}") from exc
