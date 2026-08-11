@@ -1,14 +1,14 @@
 {
   "adapter": {
     "adapter_id": "org.metriplane.synthetic_fixture_adapter",
-    "commit": "1c5ee2dec7a363aeb00c02c9f151214a3605bbc1",
+    "commit": "d9cdf3c8c2d947b799eb02c4de52363b2cf21bb7",
     "entrypoint": "tests.external_sources.test_external_source_contract_examples:_reference_conversion",
     "environment": {
       "architecture": "x86_64",
       "dependency_lock": {
         "media_type": "text/plain",
         "path": "source/adapter-environment.txt",
-        "sha256": "cb997b0baf0a19f49470c40e517487e50dc7fdf7288207421aeb7378c3f5dccb"
+        "sha256": "bfd06b094c243fe399092751a93d7476dc1167fe4000d18931de5d9ed0a0c33b"
       },
       "description": "Deterministic reference conversion exercised by the contract tests.",
       "operating_system": "Linux",
@@ -334,7 +334,7 @@
     "normalization_report": {
       "media_type": "application/json",
       "path": "normalization-report.json",
-      "sha256": "603424b4ea4198e000b08a16b09e598947cb3a901e4dc19375958ebf1ff71b2b"
+      "sha256": "07c7d930b8a53aa1247032741d131ff5cbc652ebf1a8a67922baeb888c68ef7e"
     },
     "session": {
       "frame_count": 4,
@@ -442,7 +442,7 @@
     "name": "Metriplane source-neutral synthetic fixture",
     "revision": {
       "kind": "git_commit",
-      "value": "1c5ee2dec7a363aeb00c02c9f151214a3605bbc1"
+      "value": "d9cdf3c8c2d947b799eb02c4de52363b2cf21bb7"
     },
     "version": "contract-test-v1"
   },

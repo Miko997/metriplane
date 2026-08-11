@@ -5,9 +5,11 @@ SPDX-License-Identifier: MIT
 
 # External Source Contract v1
 
-Status: frozen contract proposed by MET-13  
-Contract version: `metriplane.external_source_contract.v1`  
-Atlas profile: `metriplane.atlas.complete_snapshot.v1`  
+Status: frozen contract proposed by MET-13
+
+Contract version: `metriplane.external_source_contract.v1`
+
+Atlas profile: `metriplane.atlas.complete_snapshot.v1`
 Normalized state: unchanged `FrameStateModel` `1.0`
 
 ## Purpose and claim boundary
