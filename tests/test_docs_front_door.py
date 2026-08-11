@@ -127,6 +127,10 @@ def test_external_fixture_guide_uses_the_canonical_safe_workflow() -> None:
     guide = (GUIDE / "external-fixtures.md").read_text(encoding="utf-8")
 
     required = (
+        "newer than the\n> published Metriplane v0.3.0 packages",
+        "development wheel built from commit",
+        "a901ea8d3be62355997c08e3030512e4129ee03c",
+        "The v0.3.0 packages on PyPI and conda-forge do not contain these commands",
         "metriplane external validate path/to/fixture",
         "metriplane external validate path/to/fixture --json",
         "metriplane external run path/to/fixture --out external-run",
@@ -141,6 +145,7 @@ def test_external_fixture_guide_uses_the_canonical_safe_workflow() -> None:
         "production-ready",
     )
     assert all(fragment in guide for fragment in required)
+    assert guide.index("**Availability:**") < guide.index("An External Fixture Bundle")
 
 
 def test_v030_package_install_and_research_boundaries_are_truthful() -> None:

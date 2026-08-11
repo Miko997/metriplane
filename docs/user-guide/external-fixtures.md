@@ -5,6 +5,12 @@ SPDX-License-Identifier: MIT
 
 # Validate and run an external fixture
 
+> **Availability:** The `metriplane external` commands are newer than the
+> published Metriplane v0.3.0 packages. Until a later release includes them,
+> use a development wheel built from commit
+> [`a901ea8d3be62355997c08e3030512e4129ee03c`](https://github.com/Miko997/metriplane/commit/a901ea8d3be62355997c08e3030512e4129ee03c).
+> The v0.3.0 packages on PyPI and conda-forge do not contain these commands.
+
 An External Fixture Bundle is a portable, recorded input that has already been
 converted to Metriplane's `FrameStateModel` 1.0 JSONL and Atlas process rules. The
 software that produced the original source data is needed during conversion, not
