@@ -1,0 +1,4 @@
+{
+  "case": "unsafe_path_traversal",
+  "expected_error": "unsafe bundle path"
+}

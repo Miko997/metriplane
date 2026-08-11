@@ -1,0 +1,4 @@
+{
+  "case": "unmapped_authoritative_object",
+  "expected_error": "authoritative objects absent from entity-mapping.json"
+}

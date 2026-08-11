@@ -1,0 +1,32 @@
+schema_version: metriplane.atlas.workspace.v1
+cell_id: synthetic_inspection_bench
+units: meters
+zones:
+  - zone_id: input_buffer
+    zone_type: inbound_material
+    label: Input buffer
+    polygon:
+      - [0.0, 0.0]
+      - [1.0, 0.0]
+      - [1.0, 1.0]
+      - [0.0, 1.0]
+  - zone_id: measurement_zone
+    zone_type: work_station
+    label: Measurement zone
+    polygon:
+      - [1.2, 0.0]
+      - [2.2, 0.0]
+      - [2.2, 1.0]
+      - [1.2, 1.0]
+  - zone_id: probe_storage
+    zone_type: tool_storage
+    label: Probe storage
+    polygon:
+      - [1.2, 1.2]
+      - [2.2, 1.2]
+      - [2.2, 1.8]
+      - [1.2, 1.8]
+stations:
+  - station_id: measurement_station
+    zone_id: measurement_zone
+    label: Measurement station

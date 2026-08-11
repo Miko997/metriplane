@@ -1,0 +1,4 @@
+{
+  "case": "undeclared_transform",
+  "expected_error": "normalization.coordinates.transform"
+}

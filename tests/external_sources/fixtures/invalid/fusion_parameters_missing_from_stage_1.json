@@ -1,0 +1,4 @@
+{
+  "case": "fusion_parameters_missing_from_stage_1",
+  "expected_error": "included in Stage 1 provenance"
+}

@@ -1,0 +1,4 @@
+{
+  "case": "resampling_field_marked_source_fact",
+  "expected_error": "temporal operation on frame_id requires adapter_derived_fact provenance"
+}

@@ -1,0 +1,4 @@
+{
+  "case": "unsupported_contract_version",
+  "expected_error": "schema_version"
+}

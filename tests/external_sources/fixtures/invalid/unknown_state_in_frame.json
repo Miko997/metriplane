@@ -1,0 +1,4 @@
+{
+  "case": "unknown_state_in_frame",
+  "expected_error": "unknown position or zone"
+}

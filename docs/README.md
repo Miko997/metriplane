@@ -44,6 +44,9 @@ example inputs and use the supported recorded-run interface.
   inspectable example and move toward your own compatible data.
 - [Integrations and support](user-guide/integrations.md): distinguish supported,
   repository-only, experimental, and unsupported paths.
+- [External Source Contract v1](specs/external-source-contract-v1.md): inspect the
+  source-neutral conversion contract and its limits. This specification does not
+  claim that a source adapter has been implemented.
 - [Troubleshooting](user-guide/troubleshooting.md): recover from common setup,
   browser, input, verification, and regression failures.
 - [Contributing](user-guide/contributing.md): prepare a focused change safely.

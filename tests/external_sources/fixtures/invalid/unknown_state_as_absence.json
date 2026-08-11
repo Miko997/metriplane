@@ -1,0 +1,4 @@
+{
+  "case": "unknown_state_as_absence",
+  "expected_error": "unknown_state_policy"
+}

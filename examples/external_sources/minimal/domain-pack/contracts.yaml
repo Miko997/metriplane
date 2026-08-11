@@ -1,0 +1,11 @@
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+  - contract_id: reference_probe_before_measurement
+    kind: process_asset_presence
+    process_step_id: reference_probe_ready
+    required_asset_id: reference_probe_1
+    zone_id: measurement_zone
+    station_id: measurement_station
+    max_wait_s: 2.0
+    severity: warning
+    note: Observe-only synthetic fixture rule; it does not control equipment.

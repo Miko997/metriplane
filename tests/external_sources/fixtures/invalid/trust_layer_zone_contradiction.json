@@ -1,0 +1,4 @@
+{
+  "case": "trust_layer_zone_contradiction",
+  "expected_error": "polygon zone assignment requires adapter_derived_fact provenance"
+}

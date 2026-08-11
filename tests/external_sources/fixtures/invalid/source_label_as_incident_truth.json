@@ -1,0 +1,4 @@
+{
+  "case": "source_label_as_incident_truth",
+  "expected_error": "normalization.source_annotations.used_as_incident_truth"
+}

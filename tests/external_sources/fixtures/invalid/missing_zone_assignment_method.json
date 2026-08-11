@@ -1,0 +1,4 @@
+{
+  "case": "missing_zone_assignment_method",
+  "expected_error": "normalization.zone_assignment.method"
+}

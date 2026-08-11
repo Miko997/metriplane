@@ -1,0 +1,4 @@
+{
+  "case": "source_annotation_feeds_zone",
+  "expected_error": "source annotations cannot feed normalized Atlas semantic fields"
+}

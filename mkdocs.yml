@@ -21,6 +21,9 @@ nav:
   - Process rules: user-guide/process-rules.md
   - Use your own recorded run: user-guide/use-your-own-run.md
   - Integrations and support: user-guide/integrations.md
+  - External Source Contract:
+      - Contract v1: specs/external-source-contract-v1.md
+      - Source-truth audit: specs/external-source-contract-v1-audit.md
   - Troubleshooting: user-guide/troubleshooting.md
   - Contributing: user-guide/contributing.md
   - Research artifacts: user-guide/research-artifacts.md
@@ -34,6 +37,8 @@ exclude_docs: |
   !README.md
   !user-guide/
   !user-guide/**
+  !specs/external-source-contract-v1.md
+  !specs/external-source-contract-v1-audit.md
   archive/**
   atlas/**
   benchmarks/**

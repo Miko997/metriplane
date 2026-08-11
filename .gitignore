@@ -17,6 +17,10 @@ web/dashboard/atlas_run/
 *.mp4
 *.png
 
+# The synthetic MET-13 portable fixture intentionally tracks bounded normalized input.
+!examples/external_sources/minimal/session.jsonl
+!examples/external_sources/minimal/domain-pack/work_orders.csv
+
 # system
 .env
 .DS_Store

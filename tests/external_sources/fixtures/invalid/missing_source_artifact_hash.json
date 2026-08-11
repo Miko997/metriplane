@@ -1,0 +1,4 @@
+{
+  "case": "missing_source_artifact_hash",
+  "expected_error": "included source artifact requires sha256"
+}

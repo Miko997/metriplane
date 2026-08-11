@@ -1,0 +1,4 @@
+{
+  "case": "unknown_top_level_field",
+  "expected_error": "unexpected_shared_field"
+}

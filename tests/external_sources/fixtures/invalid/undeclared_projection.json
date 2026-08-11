@@ -1,0 +1,4 @@
+{
+  "case": "undeclared_projection",
+  "expected_error": "normalization.coordinates.projection"
+}

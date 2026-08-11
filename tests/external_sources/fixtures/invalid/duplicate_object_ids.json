@@ -1,0 +1,4 @@
+{
+  "case": "duplicate_object_ids",
+  "expected_error": "duplicate object ids"
+}

@@ -1,0 +1,4 @@
+{
+  "case": "unresolved_public_rights",
+  "expected_error": "requires resolved source-use permission"
+}

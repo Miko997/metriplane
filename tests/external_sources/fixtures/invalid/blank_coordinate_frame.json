@@ -1,0 +1,4 @@
+{
+  "case": "blank_coordinate_frame",
+  "expected_error": "normalization.coordinates.source_frame"
+}

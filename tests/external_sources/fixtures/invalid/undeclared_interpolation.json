@@ -1,0 +1,4 @@
+{
+  "case": "undeclared_interpolation",
+  "expected_error": "normalization.temporal_alignment.interpolation"
+}

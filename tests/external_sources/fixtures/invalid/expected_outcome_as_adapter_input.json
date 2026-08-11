@@ -1,0 +1,4 @@
+{
+  "case": "expected_outcome_as_adapter_input",
+  "expected_error": "expected outcome path 'expected-outcome.json' cannot also serve as conversion/input roles"
+}

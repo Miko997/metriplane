@@ -1,0 +1,4 @@
+{
+  "case": "undeclared_forward_fill",
+  "expected_error": "cannot conceal carry-forward behavior"
+}

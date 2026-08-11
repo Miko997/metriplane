@@ -1,0 +1,4 @@
+{
+  "case": "partial_update_as_complete",
+  "expected_error": "partial-update source must be materialized"
+}

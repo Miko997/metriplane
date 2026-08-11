@@ -13,6 +13,7 @@ report, verify its bundle, and rerun its generated regression check.
 | --- | --- | --- |
 | Bundled camera-free demo | Release-gated | Runs from an installed wheel outside a source checkout on Ubuntu and macOS with Python 3.12/3.13. |
 | `FrameStateModel` JSONL + process rules | Supported incident input | Requires already-estimated object IDs, positions, and preclassified zone labels. |
+| External Source Contract v1 | Typed repository contract; no source adapter claimed | Defines how a bounded external source may be converted into the existing JSONL + domain-pack boundary with separate conversion provenance. It does not add a ManiSkill, dataset, rosbag, MCAP, CSV, or simulator importer. |
 | Headless/SSH use | Supported for the demo | Omit `--open`; all artifacts are still generated locally. |
 | Live camera runtime | Optional, Linux-hardware dependent | Not needed for the demo. A missing camera does not make the camera-free installation broken. No macOS live-camera claim is made. |
 | GPU acceleration | Optional | Not needed for the demo or recorded incident path. CPU operation is the default adoption path. |

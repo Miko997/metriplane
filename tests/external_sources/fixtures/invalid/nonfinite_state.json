@@ -1,0 +1,4 @@
+{
+  "case": "nonfinite_state",
+  "expected_error": "nonfinite JSON number is prohibited"
+}

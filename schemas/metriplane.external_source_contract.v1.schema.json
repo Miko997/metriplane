@@ -1,0 +1,2363 @@
+{
+  "$defs": {
+    "AdapterDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?){2,}$",
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "commit": {
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "entrypoint": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Entrypoint",
+          "type": "string"
+        },
+        "environment": {
+          "$ref": "#/$defs/AdapterEnvironment"
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/AdapterParameters"
+        },
+        "repository_uri": {
+          "minLength": 3,
+          "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$",
+          "title": "Repository Uri",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "name",
+        "version",
+        "repository_uri",
+        "commit",
+        "entrypoint",
+        "environment",
+        "parameters"
+      ],
+      "title": "AdapterDeclaration",
+      "type": "object"
+    },
+    "AdapterEnvironment": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Architecture",
+          "type": "string"
+        },
+        "container_image_digest": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container Image Digest"
+        },
+        "dependency_lock": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "description": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Description",
+          "type": "string"
+        },
+        "operating_system": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Operating System",
+          "type": "string"
+        },
+        "runtime": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Runtime",
+          "type": "string"
+        },
+        "runtime_version": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Runtime Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "runtime_version",
+        "operating_system",
+        "architecture",
+        "description"
+      ],
+      "title": "AdapterEnvironment",
+      "type": "object"
+    },
+    "AdapterParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "inline": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inline"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha256"
+      ],
+      "title": "AdapterParameters",
+      "type": "object"
+    },
+    "CarryForwardPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "enum": [
+              "objects[*].pos_world",
+              "objects[*].vel_world",
+              "objects[*].zone",
+              "objects[*].confidence",
+              "fused[*].pos_world",
+              "fused[*].vel_world",
+              "fused[*].zone",
+              "fused[*].confidence"
+            ],
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "max_gap_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Gap Ns"
+        },
+        "method": {
+          "enum": [
+            "none",
+            "bounded_last_observation"
+          ],
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "CarryForwardPolicy",
+      "type": "object"
+    },
+    "CitationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Text",
+          "type": "string"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "minLength": 3,
+              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "CitationRecord",
+      "type": "object"
+    },
+    "ClockMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Description",
+          "type": "string"
+        },
+        "evaluation_field": {
+          "enum": [
+            "ts",
+            "ts_sim_ns"
+          ],
+          "title": "Evaluation Field",
+          "type": "string"
+        },
+        "fixed_step_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed Step Ns"
+        },
+        "fixed_step_origin_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed Step Origin Ns"
+        },
+        "lookup": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mapping_method": {
+          "enum": [
+            "identity_seconds",
+            "fixed_step",
+            "affine",
+            "lookup_table"
+          ],
+          "title": "Mapping Method",
+          "type": "string"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Offset"
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scale"
+        },
+        "source_clock": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Source Clock",
+          "type": "string"
+        },
+        "source_field": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Source Field",
+          "type": "string"
+        },
+        "source_unit": {
+          "enum": [
+            "seconds",
+            "milliseconds",
+            "microseconds",
+            "nanoseconds",
+            "ticks",
+            "index"
+          ],
+          "title": "Source Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_clock",
+        "source_field",
+        "source_unit",
+        "evaluation_field",
+        "mapping_method",
+        "description"
+      ],
+      "title": "ClockMapping",
+      "type": "object"
+    },
+    "CompletenessPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "carry_forward": {
+          "$ref": "#/$defs/CarryForwardPolicy"
+        },
+        "frame_semantics": {
+          "const": "complete_snapshot",
+          "title": "Frame Semantics",
+          "type": "string"
+        },
+        "materialization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PartialUpdateMaterialization"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "omission_policy": {
+          "const": "reject_omission",
+          "title": "Omission Policy",
+          "type": "string"
+        },
+        "partial_updates_materialized": {
+          "title": "Partial Updates Materialized",
+          "type": "boolean"
+        },
+        "process_relevant_entity_policy": {
+          "const": "known_in_every_frame",
+          "title": "Process Relevant Entity Policy",
+          "type": "string"
+        },
+        "source_stream_semantics": {
+          "enum": [
+            "complete_snapshot",
+            "partial_update"
+          ],
+          "title": "Source Stream Semantics",
+          "type": "string"
+        },
+        "unknown_state_policy": {
+          "const": "reject_fixture",
+          "title": "Unknown State Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_stream_semantics",
+        "frame_semantics",
+        "partial_updates_materialized",
+        "omission_policy",
+        "unknown_state_policy",
+        "process_relevant_entity_policy",
+        "carry_forward"
+      ],
+      "title": "CompletenessPolicy",
+      "type": "object"
+    },
+    "ConfidencePolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Algorithm"
+        },
+        "implementation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "input_fields": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "title": "Input Fields",
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "absent",
+            "source",
+            "documented_algorithm"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "output_semantics": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Semantics"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "placeholder_or_invented_values": {
+          "anyOf": [
+            {
+              "const": false,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placeholder Or Invented Values"
+        },
+        "source_field": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Field"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "ConfidencePolicy",
+      "type": "object"
+    },
+    "CoordinateMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "information_loss": {
+          "items": {
+            "$ref": "#/$defs/InformationLossDeclaration"
+          },
+          "title": "Information Loss",
+          "type": "array"
+        },
+        "projection": {
+          "$ref": "#/$defs/ProjectionDeclaration"
+        },
+        "source_frame": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Source Frame",
+          "type": "string"
+        },
+        "source_units": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Source Units",
+          "type": "string"
+        },
+        "target_frame": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Target Frame",
+          "type": "string"
+        },
+        "target_units": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Target Units",
+          "type": "string"
+        },
+        "transform": {
+          "$ref": "#/$defs/TransformDeclaration"
+        }
+      },
+      "required": [
+        "source_frame",
+        "target_frame",
+        "source_units",
+        "target_units",
+        "transform",
+        "projection",
+        "information_loss"
+      ],
+      "title": "CoordinateMapping",
+      "type": "object"
+    },
+    "DomainPackFiles": {
+      "additionalProperties": false,
+      "properties": {
+        "assets": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "contracts": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "domain_pack_id": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Domain Pack Id",
+          "type": "string"
+        },
+        "process": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "rationale": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "rule_origin": {
+          "const": "operator_configured_rules",
+          "title": "Rule Origin",
+          "type": "string"
+        },
+        "source_annotations_used": {
+          "const": false,
+          "title": "Source Annotations Used",
+          "type": "boolean"
+        },
+        "work_orders": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "workspace": {
+          "$ref": "#/$defs/FileReference"
+        }
+      },
+      "required": [
+        "domain_pack_id",
+        "rationale",
+        "rule_origin",
+        "source_annotations_used",
+        "assets",
+        "workspace",
+        "process",
+        "contracts",
+        "work_orders"
+      ],
+      "title": "DomainPackFiles",
+      "type": "object"
+    },
+    "EntityMappingReference": {
+      "additionalProperties": false,
+      "properties": {
+        "media_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "path": {
+          "minLength": 1,
+          "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?($|/))(?!.*//)(?!.*\\/$).+$",
+          "title": "Path",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "metriplane.external_entity_mapping.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "schema_version"
+      ],
+      "title": "EntityMappingReference",
+      "type": "object"
+    },
+    "EvaluationDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "domain_pack_id": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Domain Pack Id",
+          "type": "string"
+        },
+        "engine": {
+          "const": "atlas",
+          "title": "Engine",
+          "type": "string"
+        },
+        "expected_outcome_is_input": {
+          "const": false,
+          "title": "Expected Outcome Is Input",
+          "type": "boolean"
+        },
+        "metriplane_version": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Metriplane Version",
+          "type": "string"
+        },
+        "provenance_layer": {
+          "const": "metriplane_derived_results",
+          "title": "Provenance Layer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "engine",
+        "metriplane_version",
+        "domain_pack_id",
+        "provenance_layer",
+        "expected_outcome_is_input"
+      ],
+      "title": "EvaluationDeclaration",
+      "type": "object"
+    },
+    "ExpectedOutcomeReference": {
+      "additionalProperties": false,
+      "properties": {
+        "atlas_input": {
+          "const": false,
+          "title": "Atlas Input",
+          "type": "boolean"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "path": {
+          "minLength": 1,
+          "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?($|/))(?!.*//)(?!.*\\/$).+$",
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "const": "test_metadata_only",
+          "title": "Role",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "role",
+        "atlas_input"
+      ],
+      "title": "ExpectedOutcomeReference",
+      "type": "object"
+    },
+    "FieldProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence_origin": {
+          "anyOf": [
+            {
+              "enum": [
+                "source_value",
+                "documented_algorithm"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence Origin"
+        },
+        "derivation": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Derivation"
+        },
+        "layer": {
+          "enum": [
+            "source_fact",
+            "adapter_derived_fact"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "normalized_field": {
+          "enum": [
+            "schema_version",
+            "source_backend",
+            "ts",
+            "ts_sim_ns",
+            "frame_id",
+            "objects[*].id",
+            "objects[*].pos_world",
+            "objects[*].vel_world",
+            "objects[*].zone",
+            "objects[*].confidence",
+            "fused[*].id",
+            "fused[*].pos_world",
+            "fused[*].vel_world",
+            "fused[*].zone",
+            "fused[*].confidence"
+          ],
+          "title": "Normalized Field",
+          "type": "string"
+        },
+        "parameter_references": {
+          "items": {
+            "$ref": "#/$defs/FileReference"
+          },
+          "title": "Parameter References",
+          "type": "array"
+        },
+        "source_artifact_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Artifact Ids",
+          "type": "array"
+        },
+        "source_fields": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "title": "Source Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalized_field",
+        "layer",
+        "source_artifact_ids"
+      ],
+      "title": "FieldProvenance",
+      "type": "object"
+    },
+    "FileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "media_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "path": {
+          "minLength": 1,
+          "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?($|/))(?!.*//)(?!.*\\/$).+$",
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "FileReference",
+      "type": "object"
+    },
+    "FixtureIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "bounded_recording": {
+          "const": true,
+          "title": "Bounded Recording",
+          "type": "boolean"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "distribution": {
+          "enum": [
+            "public",
+            "reference_only",
+            "derived_only",
+            "proprietary",
+            "private"
+          ],
+          "title": "Distribution",
+          "type": "string"
+        },
+        "fixture_id": {
+          "title": "Fixture Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fixture_id",
+        "title",
+        "description",
+        "bounded_recording",
+        "distribution"
+      ],
+      "title": "FixtureIdentity",
+      "type": "object"
+    },
+    "FixtureRightsDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "access": {
+          "enum": [
+            "public",
+            "restricted",
+            "proprietary",
+            "private"
+          ],
+          "title": "Access",
+          "type": "string"
+        },
+        "citation": {
+          "items": {
+            "$ref": "#/$defs/CitationRecord"
+          },
+          "minItems": 1,
+          "title": "Citation",
+          "type": "array"
+        },
+        "license": {
+          "$ref": "#/$defs/LicenseDeclaration"
+        },
+        "permission_basis": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Permission Basis",
+          "type": "string"
+        },
+        "redistribution": {
+          "enum": [
+            "allowed",
+            "prohibited",
+            "permission_required",
+            "private"
+          ],
+          "title": "Redistribution",
+          "type": "string"
+        },
+        "redistribution_permission": {
+          "enum": [
+            "verified",
+            "not_required",
+            "unresolved"
+          ],
+          "title": "Redistribution Permission",
+          "type": "string"
+        }
+      },
+      "required": [
+        "access",
+        "license",
+        "citation",
+        "redistribution",
+        "redistribution_permission",
+        "permission_basis"
+      ],
+      "title": "FixtureRightsDeclaration",
+      "type": "object"
+    },
+    "InformationLossDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "impact": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Impact",
+          "type": "string"
+        },
+        "lost_information": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Lost Information",
+          "type": "array"
+        },
+        "operation": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Operation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "lost_information",
+        "impact"
+      ],
+      "title": "InformationLossDeclaration",
+      "type": "object"
+    },
+    "InterpolationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "enum": [
+              "objects[*].pos_world",
+              "objects[*].vel_world",
+              "objects[*].zone",
+              "objects[*].confidence",
+              "fused[*].pos_world",
+              "fused[*].vel_world",
+              "fused[*].zone",
+              "fused[*].confidence"
+            ],
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "max_gap_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Gap Ns"
+        },
+        "method": {
+          "enum": [
+            "none",
+            "linear",
+            "nearest_neighbor",
+            "zero_order_hold"
+          ],
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "InterpolationPolicy",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "LicenseDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Identifier"
+        },
+        "status": {
+          "enum": [
+            "declared",
+            "proprietary",
+            "unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "minLength": 3,
+              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "LicenseDeclaration",
+      "type": "object"
+    },
+    "NormalizationDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "atlas_asset_mapping": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "authoritative_object_collection": {
+          "enum": [
+            "objects",
+            "fused"
+          ],
+          "title": "Authoritative Object Collection",
+          "type": "string"
+        },
+        "clock": {
+          "$ref": "#/$defs/ClockMapping"
+        },
+        "completeness": {
+          "$ref": "#/$defs/CompletenessPolicy"
+        },
+        "confidence": {
+          "$ref": "#/$defs/ConfidencePolicy"
+        },
+        "coordinates": {
+          "$ref": "#/$defs/CoordinateMapping"
+        },
+        "entity_mapping": {
+          "$ref": "#/$defs/EntityMappingReference"
+        },
+        "field_provenance": {
+          "items": {
+            "$ref": "#/$defs/FieldProvenance"
+          },
+          "minItems": 1,
+          "title": "Field Provenance",
+          "type": "array"
+        },
+        "frame_state_model_version": {
+          "const": "1.0",
+          "title": "Frame State Model Version",
+          "type": "string"
+        },
+        "source_annotations": {
+          "$ref": "#/$defs/SourceAnnotationPolicy"
+        },
+        "source_backend": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Source Backend",
+          "type": "string"
+        },
+        "temporal_alignment": {
+          "$ref": "#/$defs/TemporalAlignment"
+        },
+        "zone_assignment": {
+          "$ref": "#/$defs/ZoneAssignment"
+        }
+      },
+      "required": [
+        "frame_state_model_version",
+        "source_backend",
+        "authoritative_object_collection",
+        "clock",
+        "coordinates",
+        "entity_mapping",
+        "atlas_asset_mapping",
+        "field_provenance",
+        "zone_assignment",
+        "completeness",
+        "temporal_alignment",
+        "confidence",
+        "source_annotations"
+      ],
+      "title": "NormalizationDeclaration",
+      "type": "object"
+    },
+    "NormalizedArtifacts": {
+      "additionalProperties": false,
+      "properties": {
+        "checksums_path": {
+          "minLength": 1,
+          "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?($|/))(?!.*//)(?!.*\\/$).+$",
+          "title": "Checksums Path",
+          "type": "string"
+        },
+        "expected_outcome": {
+          "$ref": "#/$defs/ExpectedOutcomeReference"
+        },
+        "normalization_report": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionReference"
+        }
+      },
+      "required": [
+        "session",
+        "normalization_report",
+        "expected_outcome",
+        "checksums_path"
+      ],
+      "title": "NormalizedArtifacts",
+      "type": "object"
+    },
+    "PartialUpdateMaterialization": {
+      "additionalProperties": false,
+      "properties": {
+        "carry_forward_dependency": {
+          "enum": [
+            "none",
+            "declared_bounded_policy"
+          ],
+          "title": "Carry Forward Dependency",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "enum": [
+              "objects[*].pos_world",
+              "objects[*].vel_world",
+              "objects[*].zone",
+              "objects[*].confidence",
+              "fused[*].pos_world",
+              "fused[*].vel_world",
+              "fused[*].zone",
+              "fused[*].confidence"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "implementation": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Implementation",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "bounded_last_observation",
+            "state_restoration",
+            "source_snapshot_join",
+            "documented_algorithm"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/FileReference"
+        }
+      },
+      "required": [
+        "method",
+        "fields",
+        "implementation",
+        "parameters",
+        "carry_forward_dependency"
+      ],
+      "title": "PartialUpdateMaterialization",
+      "type": "object"
+    },
+    "ProjectionDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "dropped_axes": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "title": "Dropped Axes",
+          "type": "array"
+        },
+        "implementation": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Implementation",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "identity_3d",
+            "planar_xy",
+            "homography",
+            "custom"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "output_z_policy": {
+          "enum": [
+            "preserve",
+            "zero",
+            "not_applicable"
+          ],
+          "title": "Output Z Policy",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "method",
+        "output_z_policy",
+        "implementation"
+      ],
+      "title": "ProjectionDeclaration",
+      "type": "object"
+    },
+    "ResamplingPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "enum": [
+              "schema_version",
+              "source_backend",
+              "ts",
+              "ts_sim_ns",
+              "frame_id",
+              "objects[*].id",
+              "objects[*].pos_world",
+              "objects[*].vel_world",
+              "objects[*].zone",
+              "objects[*].confidence",
+              "fused[*].id",
+              "fused[*].pos_world",
+              "fused[*].vel_world",
+              "fused[*].zone",
+              "fused[*].confidence"
+            ],
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "max_gap_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Gap Ns"
+        },
+        "method": {
+          "enum": [
+            "none",
+            "fixed_rate",
+            "selected_source_frames"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "output_period_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Period Ns"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "ResamplingPolicy",
+      "type": "object"
+    },
+    "RightsDeclarations": {
+      "additionalProperties": false,
+      "properties": {
+        "fixture": {
+          "$ref": "#/$defs/FixtureRightsDeclaration"
+        },
+        "source_artifacts": {
+          "items": {
+            "$ref": "#/$defs/SourceRightsDeclaration"
+          },
+          "minItems": 1,
+          "title": "Source Artifacts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_artifacts",
+        "fixture"
+      ],
+      "title": "RightsDeclarations",
+      "type": "object"
+    },
+    "SessionReference": {
+      "additionalProperties": false,
+      "properties": {
+        "frame_count": {
+          "exclusiveMinimum": 0,
+          "title": "Frame Count",
+          "type": "integer"
+        },
+        "frame_state_model_version": {
+          "const": "1.0",
+          "title": "Frame State Model Version",
+          "type": "string"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "path": {
+          "minLength": 1,
+          "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?($|/))(?!.*//)(?!.*\\/$).+$",
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "frame_count",
+        "frame_state_model_version"
+      ],
+      "title": "SessionReference",
+      "type": "object"
+    },
+    "SourceAnnotation": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Name",
+          "type": "string"
+        },
+        "retained_in": {
+          "enum": [
+            "source_artifact",
+            "manifest_extension",
+            "not_retained"
+          ],
+          "title": "Retained In",
+          "type": "string"
+        },
+        "retained_reference": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retained Reference"
+        },
+        "source_artifact_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Artifact Ids",
+          "type": "array"
+        },
+        "source_field": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Source Field",
+          "type": "string"
+        },
+        "treatment": {
+          "enum": [
+            "provenance_only",
+            "source_selection_only",
+            "excluded"
+          ],
+          "title": "Treatment",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "source_field",
+        "treatment",
+        "retained_in",
+        "source_artifact_ids"
+      ],
+      "title": "SourceAnnotation",
+      "type": "object"
+    },
+    "SourceAnnotationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "items": {
+            "$ref": "#/$defs/SourceAnnotation"
+          },
+          "title": "Annotations",
+          "type": "array"
+        },
+        "frame_state_events_policy": {
+          "const": "empty",
+          "title": "Frame State Events Policy",
+          "type": "string"
+        },
+        "inventory_complete": {
+          "const": true,
+          "title": "Inventory Complete",
+          "type": "boolean"
+        },
+        "source_incident_ids_in_normalized_input": {
+          "const": false,
+          "title": "Source Incident Ids In Normalized Input",
+          "type": "boolean"
+        },
+        "used_as_incident_truth": {
+          "const": false,
+          "title": "Used As Incident Truth",
+          "type": "boolean"
+        },
+        "used_as_process_events": {
+          "const": false,
+          "title": "Used As Process Events",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "annotations",
+        "inventory_complete",
+        "used_as_incident_truth",
+        "used_as_process_events",
+        "source_incident_ids_in_normalized_input",
+        "frame_state_events_policy"
+      ],
+      "title": "SourceAnnotationPolicy",
+      "type": "object"
+    },
+    "SourceArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Description",
+          "type": "string"
+        },
+        "immutable_identifier": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Immutable Identifier"
+        },
+        "media_type": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": "^(?!.*[\\x00-\\x1f\\x7f])(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?($|/))(?!.*//)(?!.*\\/$).+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "presence": {
+          "enum": [
+            "included",
+            "referenced",
+            "withheld"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "rights_id": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Rights Id",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Role",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "minLength": 3,
+              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uri"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "role",
+        "media_type",
+        "rights_id",
+        "presence",
+        "description"
+      ],
+      "title": "SourceArtifact",
+      "type": "object"
+    },
+    "SourceProject": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_uri": {
+          "minLength": 3,
+          "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$",
+          "title": "Canonical Uri",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Name",
+          "type": "string"
+        },
+        "revision": {
+          "$ref": "#/$defs/SourceRevision"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "name",
+        "canonical_uri",
+        "revision"
+      ],
+      "title": "SourceProject",
+      "type": "object"
+    },
+    "SourceRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "git_commit",
+            "content_digest",
+            "dataset_revision",
+            "doi_version",
+            "immutable_build_id"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "SourceRevision",
+      "type": "object"
+    },
+    "SourceRightsDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "citation": {
+          "items": {
+            "$ref": "#/$defs/CitationRecord"
+          },
+          "minItems": 1,
+          "title": "Citation",
+          "type": "array"
+        },
+        "license": {
+          "$ref": "#/$defs/LicenseDeclaration"
+        },
+        "permission_basis": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Permission Basis",
+          "type": "string"
+        },
+        "redistribution": {
+          "enum": [
+            "allowed",
+            "prohibited",
+            "derived_only",
+            "permission_required",
+            "private"
+          ],
+          "title": "Redistribution",
+          "type": "string"
+        },
+        "redistribution_permission": {
+          "enum": [
+            "verified",
+            "not_required",
+            "unresolved"
+          ],
+          "title": "Redistribution Permission",
+          "type": "string"
+        },
+        "rights_id": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Rights Id",
+          "type": "string"
+        },
+        "source_access": {
+          "enum": [
+            "public",
+            "restricted",
+            "proprietary",
+            "private"
+          ],
+          "title": "Source Access",
+          "type": "string"
+        },
+        "source_use_permission": {
+          "enum": [
+            "verified",
+            "not_required",
+            "unresolved"
+          ],
+          "title": "Source Use Permission",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rights_id",
+        "source_access",
+        "license",
+        "citation",
+        "source_use_permission",
+        "redistribution",
+        "redistribution_permission",
+        "permission_basis"
+      ],
+      "title": "SourceRightsDeclaration",
+      "type": "object"
+    },
+    "SourceSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_ids": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Artifact Ids",
+          "type": "array"
+        },
+        "end_index_exclusive": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Index Exclusive"
+        },
+        "end_time": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Time"
+        },
+        "episode_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Episode Id"
+        },
+        "group_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Path"
+        },
+        "method": {
+          "enum": [
+            "entire_artifact",
+            "episode",
+            "group",
+            "index_range",
+            "time_range",
+            "external_selector"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "selector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start_index": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Index"
+        },
+        "start_time": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Time"
+        }
+      },
+      "required": [
+        "artifact_ids",
+        "method",
+        "rationale"
+      ],
+      "title": "SourceSelection",
+      "type": "object"
+    },
+    "SynchronizationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "enum": [
+              "objects[*].pos_world",
+              "objects[*].vel_world",
+              "objects[*].zone",
+              "objects[*].confidence",
+              "fused[*].pos_world",
+              "fused[*].vel_world",
+              "fused[*].zone",
+              "fused[*].confidence"
+            ],
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "max_skew_ns": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Skew Ns"
+        },
+        "method": {
+          "enum": [
+            "not_applicable",
+            "exact_timestamp",
+            "nearest_neighbor",
+            "windowed"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "reference_stream": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference Stream"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "SynchronizationPolicy",
+      "type": "object"
+    },
+    "TemporalAlignment": {
+      "additionalProperties": false,
+      "properties": {
+        "interpolation": {
+          "$ref": "#/$defs/InterpolationPolicy"
+        },
+        "resampling": {
+          "$ref": "#/$defs/ResamplingPolicy"
+        },
+        "synchronization": {
+          "$ref": "#/$defs/SynchronizationPolicy"
+        }
+      },
+      "required": [
+        "interpolation",
+        "resampling",
+        "synchronization"
+      ],
+      "title": "TemporalAlignment",
+      "type": "object"
+    },
+    "TransformDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "implementation": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Implementation",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "identity",
+            "rigid_matrix",
+            "affine_matrix",
+            "homography",
+            "custom"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "method",
+        "implementation"
+      ],
+      "title": "TransformDeclaration",
+      "type": "object"
+    },
+    "TrustLayerPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_derived_facts": {
+          "const": "adapter_and_normalization",
+          "title": "Adapter Derived Facts",
+          "type": "string"
+        },
+        "expected_outcome_is_atlas_input": {
+          "const": false,
+          "title": "Expected Outcome Is Atlas Input",
+          "type": "boolean"
+        },
+        "metriplane_derived_results": {
+          "const": "atlas_outputs_only",
+          "title": "Metriplane Derived Results",
+          "type": "string"
+        },
+        "operator_configured_rules": {
+          "const": "domain_pack_only",
+          "title": "Operator Configured Rules",
+          "type": "string"
+        },
+        "source_annotations_can_drive_incidents": {
+          "const": false,
+          "title": "Source Annotations Can Drive Incidents",
+          "type": "boolean"
+        },
+        "source_facts": {
+          "const": "source.artifacts_and_field_provenance",
+          "title": "Source Facts",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_facts",
+        "adapter_derived_facts",
+        "operator_configured_rules",
+        "metriplane_derived_results",
+        "source_annotations_can_drive_incidents",
+        "expected_outcome_is_atlas_input"
+      ],
+      "title": "TrustLayerPolicy",
+      "type": "object"
+    },
+    "ZoneAssignment": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary_policy": {
+          "enum": [
+            "inclusive",
+            "exclusive",
+            "half_open",
+            "not_applicable"
+          ],
+          "title": "Boundary Policy",
+          "type": "string"
+        },
+        "definitions": {
+          "$ref": "#/$defs/FileReference"
+        },
+        "implementation": {
+          "minLength": 1,
+          "pattern": ".*\\S.*",
+          "title": "Implementation",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "source_label",
+            "polygon",
+            "lookup_table",
+            "documented_algorithm"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "outside_workspace_policy": {
+          "enum": [
+            "explicit_label",
+            "reject"
+          ],
+          "title": "Outside Workspace Policy",
+          "type": "string"
+        },
+        "outside_zone_label": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outside Zone Label"
+        },
+        "overlap_policy": {
+          "enum": [
+            "reject",
+            "priority_order",
+            "not_applicable"
+          ],
+          "title": "Overlap Policy",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "zone_priority": {
+          "items": {
+            "minLength": 1,
+            "pattern": ".*\\S.*",
+            "type": "string"
+          },
+          "title": "Zone Priority",
+          "type": "array"
+        }
+      },
+      "required": [
+        "method",
+        "definitions",
+        "boundary_policy",
+        "overlap_policy",
+        "outside_workspace_policy",
+        "implementation"
+      ],
+      "title": "ZoneAssignment",
+      "type": "object"
+    }
+  },
+  "$id": "https://www.metriplane.com/schemas/metriplane.external_source_contract.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "$ref": "#/$defs/AdapterDeclaration"
+    },
+    "contract_profile": {
+      "const": "metriplane.atlas.complete_snapshot.v1",
+      "title": "Contract Profile",
+      "type": "string"
+    },
+    "domain_pack": {
+      "$ref": "#/$defs/DomainPackFiles"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/EvaluationDeclaration"
+    },
+    "extensions": {
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?){2,}$": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "title": "Extensions",
+      "type": "object"
+    },
+    "fixture": {
+      "$ref": "#/$defs/FixtureIdentity"
+    },
+    "limitations": {
+      "items": {
+        "minLength": 1,
+        "pattern": ".*\\S.*",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "normalization": {
+      "$ref": "#/$defs/NormalizationDeclaration"
+    },
+    "normalized_artifacts": {
+      "$ref": "#/$defs/NormalizedArtifacts"
+    },
+    "rights": {
+      "$ref": "#/$defs/RightsDeclarations"
+    },
+    "schema_version": {
+      "const": "metriplane.external_source_contract.v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selection": {
+      "$ref": "#/$defs/SourceSelection"
+    },
+    "source_artifacts": {
+      "items": {
+        "$ref": "#/$defs/SourceArtifact"
+      },
+      "minItems": 1,
+      "title": "Source Artifacts",
+      "type": "array"
+    },
+    "source_project": {
+      "$ref": "#/$defs/SourceProject"
+    },
+    "trust_layers": {
+      "$ref": "#/$defs/TrustLayerPolicy"
+    }
+  },
+  "required": [
+    "schema_version",
+    "contract_profile",
+    "fixture",
+    "source_project",
+    "source_artifacts",
+    "selection",
+    "rights",
+    "adapter",
+    "normalization",
+    "domain_pack",
+    "normalized_artifacts",
+    "evaluation",
+    "trust_layers",
+    "limitations"
+  ],
+  "title": "Metriplane External Source Contract v1",
+  "type": "object"
+}
