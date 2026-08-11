@@ -31,6 +31,7 @@ from metriplane.external_sources.execution import (
     run_external_fixture,
     validate_external_fixture,
 )
+from metriplane.provenance.run_provenance import GitInfo
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 VALID_BUNDLE = REPOSITORY_ROOT / "examples" / "external_sources" / "minimal"
@@ -96,6 +97,16 @@ def _snapshot_files(root: Path) -> dict[str, str]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
+
+
+def _string_values(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [item for child in value.values() for item in _string_values(child)]
+    if isinstance(value, list):
+        return [item for child in value for item in _string_values(child)]
+    return []
 
 
 def _copy_fixture(tmp_path: Path) -> Path:
@@ -325,7 +336,10 @@ def test_root_cli_json_run_stdout_is_one_clean_document(
 
 def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    runtime_commit = "a" * 40
+    monkeypatch.setenv("METRIPLANE_GIT_COMMIT", runtime_commit)
     fixture = _copy_fixture(tmp_path)
     before = _snapshot_files(fixture)
     out = tmp_path / "external-run"
@@ -361,6 +375,24 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     assert provenance["schema_version"] == EXTERNAL_PROVENANCE_SCHEMA_VERSION
     assert provenance["fixture_id"] == "synthetic-inspection-bench-v1"
     assert provenance["evaluation"]["run_id"] == "external_execution_positive"
+    assert provenance["evaluation"]["command"] == [
+        "metriplane",
+        "external",
+        "run",
+        "<fixture>",
+        "--out",
+        "<output>",
+        "--run-id",
+        "external_execution_positive",
+    ]
+    assert provenance["evaluation"]["actual_metriplane_git_commit"] == runtime_commit
+    assert provenance["evaluation"]["actual_metriplane_git_dirty"] is None
+    assert provenance["evaluation"]["actual_metriplane_git_describe"] is None
+    provenance_strings = _string_values(provenance)
+    assert str(fixture.resolve()) not in provenance_strings
+    assert str(out.resolve()) not in provenance_strings
+    assert str(REPOSITORY_ROOT.resolve()) not in provenance_strings
+    assert "repo_root" not in json.dumps(provenance, sort_keys=True)
 
     atlas_manifest = _read_json(out / "atlas_manifest.json")
     assert atlas_manifest["external_source_provenance"]["sha256"] == (
@@ -372,9 +404,88 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
         assert "provenance/external_source_provenance.json" in archive.namelist()
         bundled_provenance = json.loads(
             archive.read("provenance/external_source_provenance.json")
-        )
+    )
     assert bundled_provenance["fixture_id"] == "synthetic-inspection-bench-v1"
+    assert bundled_provenance == provenance
+    assert bundled_provenance["evaluation"]["command"] == provenance["evaluation"][
+        "command"
+    ]
+    assert (
+        bundled_provenance["evaluation"]["actual_metriplane_git_commit"]
+        == runtime_commit
+    )
+    bundled_provenance_strings = _string_values(bundled_provenance)
+    assert str(fixture.resolve()) not in bundled_provenance_strings
+    assert str(out.resolve()) not in bundled_provenance_strings
+    assert str(REPOSITORY_ROOT.resolve()) not in bundled_provenance_strings
+    assert "repo_root" not in json.dumps(bundled_provenance, sort_keys=True)
     assert _snapshot_files(fixture) == before
+
+
+def test_external_provenance_handles_unavailable_git_identity_honestly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _copy_fixture(tmp_path)
+    output = tmp_path / "external-run-without-git"
+    machine_local_repo_root = str(tmp_path / "machine-local-repository")
+    monkeypatch.setattr(
+        external_execution,
+        "get_git_info",
+        lambda **_kwargs: GitInfo(
+            commit=None,
+            dirty=None,
+            describe=None,
+            repo_root=machine_local_repo_root,
+        ),
+    )
+
+    summary = run_external_fixture(
+        fixture,
+        output,
+        run_id="external_execution_without_git",
+        overwrite=True,
+    )
+
+    assert summary.passed is True
+    assert summary.provenance is not None
+    provenance_text = Path(summary.provenance.path).read_text(encoding="utf-8")
+    provenance = json.loads(provenance_text)
+    evaluation = provenance["evaluation"]
+    assert evaluation["actual_metriplane_git_commit"] is None
+    assert evaluation["actual_metriplane_git_dirty"] is None
+    assert evaluation["actual_metriplane_git_describe"] is None
+    assert machine_local_repo_root not in provenance_text
+    assert "repo_root" not in provenance_text
+
+
+def test_external_provenance_command_records_overwrite_without_local_paths(
+    tmp_path: Path,
+) -> None:
+    fixture = _copy_fixture(tmp_path)
+    output = tmp_path / "external-overwrite-run"
+
+    summary = run_external_fixture(
+        fixture,
+        output,
+        run_id="external_execution_overwrite",
+        overwrite=True,
+    )
+
+    assert summary.passed is True
+    assert summary.provenance is not None
+    provenance = _read_json(Path(summary.provenance.path))
+    assert provenance["evaluation"]["command"] == [
+        "metriplane",
+        "external",
+        "run",
+        "<fixture>",
+        "--out",
+        "<output>",
+        "--run-id",
+        "external_execution_overwrite",
+        "--overwrite",
+    ]
 
 
 def test_three_external_runs_have_equivalent_canonical_semantics(tmp_path: Path) -> None:

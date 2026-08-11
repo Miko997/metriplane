@@ -35,7 +35,7 @@ from metriplane.external_sources.contract import (
     evaluation_inputs_sha256,
     validate_external_fixture_bundle,
 )
-from metriplane.provenance.run_provenance import sha256_file
+from metriplane.provenance.run_provenance import get_git_info, sha256_file
 from metriplane.schema import frame_time_s
 
 VALIDATION_SUMMARY_SCHEMA_VERSION: Final = "metriplane.external_validation_summary.v1"
@@ -146,6 +146,9 @@ class ExternalReproducibilityProvenance(_ExecutionModel):
 class ExternalEvaluationProvenance(_ExecutionModel):
     declared_metriplane_version: str
     actual_metriplane_version: str
+    actual_metriplane_git_commit: str | None = None
+    actual_metriplane_git_dirty: bool | None = None
+    actual_metriplane_git_describe: str | None = None
     frame_state_model_version: Literal["1.0"]
     run_id: str
     command: list[str]
@@ -469,17 +472,17 @@ def _external_provenance(
     fixture: ValidatedExternalFixture,
     *,
     run_id: str,
-    output_directory: Path,
     overwrite: bool,
 ) -> ExternalSourceProvenanceV1:
     manifest = fixture.manifest
+    git = get_git_info(start=Path(__file__).resolve())
     command = [
         "metriplane",
         "external",
         "run",
-        str(fixture.root),
+        "<fixture>",
         "--out",
-        str(output_directory),
+        "<output>",
         "--run-id",
         run_id,
     ]
@@ -514,6 +517,9 @@ def _external_provenance(
         evaluation=ExternalEvaluationProvenance(
             declared_metriplane_version=manifest.evaluation.metriplane_version,
             actual_metriplane_version=__version__,
+            actual_metriplane_git_commit=git.commit,
+            actual_metriplane_git_dirty=git.dirty,
+            actual_metriplane_git_describe=git.describe,
             frame_state_model_version=manifest.normalization.frame_state_model_version,
             run_id=run_id,
             command=command,
@@ -603,7 +609,6 @@ def run_external_fixture(
     provenance = _external_provenance(
         fixture,
         run_id=selected_run_id,
-        output_directory=resolved_output,
         overwrite=overwrite,
     )
     session_path = fixture.root / manifest.normalized_artifacts.session.path
