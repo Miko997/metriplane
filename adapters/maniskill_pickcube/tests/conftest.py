@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from maniskill_pickcube.constants import DEFAULT_CONFIG
 from maniskill_pickcube.core import RestoredFrame, load_config
 

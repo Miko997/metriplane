@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import yaml
+
 from maniskill_pickcube.core import (
     RestoredFrame,
     finalize_conversion_equivalence,

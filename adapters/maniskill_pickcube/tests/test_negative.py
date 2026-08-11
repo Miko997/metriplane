@@ -10,9 +10,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import h5py
-import maniskill_pickcube.core as core
 import numpy as np
 import pytest
+
+import maniskill_pickcube.core as core
 from maniskill_pickcube.cli import main
 from maniskill_pickcube.constants import (
     DATASET_GENERATION_COMMIT,
