@@ -1,11 +1,45 @@
 # ManiSkill PickCube adapter preflight audit
 
-Status: **PAUSE — audit only; no fixture has been frozen or published.**
+Status: **GO — owner decisions recorded; implementation authorized.**
 
 This note records the source, architecture, and claim-safety preflight for one
 official ManiSkill `PickCube-v1` motion-planning trajectory. It is deliberately
 written before adapter implementation. A portable fixture must not be generated
 until the unresolved contract questions below have an explicit disposition.
+
+## Owner decisions — 2026-08-11
+
+The original PAUSE analysis in this document is preserved as the decision
+history. The owner resolved its implementation gates as follows:
+
+1. The fixture is position-only. Complete source quaternion, yaw, roll, pitch,
+   and source Z are intentionally excluded from normalized evaluation. No
+   orientation field, object `extra`, FrameStateModel change, or External Source
+   Contract change is authorized.
+2. The complete target polygon is a Layer-C operator rule. Its frozen center is
+   the audited projected goal XY (`0.026815735`, `-0.001981318` metres), its
+   square half-extent is `0.010000000` metres, and its boundary policy is
+   inclusive. The source goal remains an inert disclosed source/adapter fact,
+   not a runtime derivation of the polygon.
+3. The cube is modeled as the expected `material` and `robot_tcp_1` as the
+   genuinely required `tool`. The approved Metriplane-authored planar experiment
+   compares the same normalized state under relative missing-tool waits of
+   `0.20` seconds (incident) and `0.30` seconds (control). These values begin
+   when the cube is present and the TCP is missing; they are not absolute
+   trajectory timestamps.
+4. Generic, source-neutral corrections to Atlas output wording and durable path
+   handling are authorized, provided they do not change schemas, process or
+   incident semantics, frozen research evidence, or add source-specific logic.
+5. Raw HDF5/JSON and simulator assets remain referenced and excluded. The
+   independently authored adapter is MIT-licensed, while portable source-derived
+   fixture data receives separate Apache-2.0 attribution and a modified-data
+   notice through REUSE-compliant metadata.
+
+The source project, release, dataset revision, task, episode `0`, group
+`traj_0`, 74 transitions, 75 stored states, 50-step provenance-only horizon,
+and every recorded source hash remain frozen. Implementation resumes on
+`agent/maniskill-pickcube-fixture` without changing FrameStateModel 1.0,
+External Source Contract v1, or Atlas process semantics.
 
 ## 1. Baseline and frozen generic interfaces
 
