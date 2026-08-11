@@ -3,23 +3,31 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Iterator
-from contextlib import contextmanager
 import hashlib
 import json
 import math
 import os
-from pathlib import Path, PurePosixPath
 import re
 import shutil
-from tempfile import TemporaryDirectory
 import zipfile
+from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path, PurePosixPath
+from tempfile import TemporaryDirectory
+from typing import Any
 
 from metriplane.atlas.event_ledger import read_events
-from metriplane.atlas.models import AtlasEvent, AtlasIncident, BundleManifest
+from metriplane.atlas.models import (
+    EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH,
+    EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+    AtlasEvent,
+    AtlasIncident,
+    BundleManifest,
+    ExternalSourceProvenanceReference,
+    external_source_provenance_reference,
+)
 from metriplane.schema import FrameStateModel
-
 
 REQUIRED_BUNDLE_FILES = [
     "manifest.json",
@@ -52,6 +60,7 @@ OPTIONAL_EXPORT_SOURCE_FILES = (
     "state_segment.jsonl",
     "configs/contracts.yaml",
     "configs/work_orders.csv",
+    EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
 )
 
 MAX_ZIP_MEMBERS = 1024
@@ -72,6 +81,35 @@ def sha256_file(path: Path) -> str:
 def _json_dump(path: Path, data: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _reject_duplicate_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON key: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_nonfinite_json_constant(value: str) -> None:
+    raise ValueError(f"nonfinite JSON number is prohibited: {value}")
+
+
+def _load_external_source_provenance(path: Path) -> dict[str, object]:
+    try:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_pairs,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+    except Exception as exc:
+        raise ValueError(f"invalid external source provenance {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(  # noqa: TRY004 - invalid persisted content
+            f"external source provenance must be a JSON object: {path}"
+        )
+    return value
 
 
 def _load_incidents(run_dir: Path) -> list[AtlasIncident]:
@@ -184,6 +222,65 @@ def _validate_export_sources(run: Path) -> None:
         _validate_export_source_file(run, relative_path, required=False)
 
 
+def _external_source_provenance_for_export(
+    run: Path,
+    run_manifest: dict[str, Any],
+) -> ExternalSourceProvenanceReference | None:
+    source_path = run / EXTERNAL_SOURCE_PROVENANCE_RUN_PATH
+    raw_reference = run_manifest.get("external_source_provenance")
+    raw_artifacts = run_manifest.get("artifacts")
+    artifact_path = (
+        raw_artifacts.get("external_source_provenance")
+        if isinstance(raw_artifacts, dict)
+        else None
+    )
+    has_source = source_path.exists() or source_path.is_symlink()
+    if raw_reference is None and artifact_path is None and not has_source:
+        return None
+    if raw_reference is None:
+        raise ValueError(
+            "source run external provenance has no atlas_manifest.json reference"
+        )
+    try:
+        reference = ExternalSourceProvenanceReference.model_validate(raw_reference)
+    except Exception as exc:
+        raise ValueError(
+            f"invalid external source provenance reference in atlas_manifest.json: {exc}"
+        ) from exc
+    if reference.path != EXTERNAL_SOURCE_PROVENANCE_RUN_PATH:
+        raise ValueError(
+            "atlas_manifest.json external provenance path must be "
+            f"{EXTERNAL_SOURCE_PROVENANCE_RUN_PATH!r}"
+        )
+    if artifact_path != reference.path:
+        raise ValueError(
+            "atlas_manifest.json artifacts.external_source_provenance does not match "
+            "the external provenance reference path"
+        )
+    _validate_export_source_file(
+        run,
+        EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+        required=True,
+    )
+    actual_sha256 = sha256_file(source_path)
+    if actual_sha256 != reference.sha256:
+        raise ValueError(
+            "external source provenance sha256 does not match atlas_manifest.json: "
+            f"expected {reference.sha256}, computed {actual_sha256}"
+        )
+    payload = _load_external_source_provenance(source_path)
+    expected_reference = external_source_provenance_reference(
+        payload,
+        path=EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+        sha256=actual_sha256,
+    )
+    if reference != expected_reference:
+        raise ValueError(
+            "external source provenance identity does not match atlas_manifest.json"
+        )
+    return reference
+
+
 def _validated_state_segment_rows(
     rows: list[dict] | None,
     source: Path,
@@ -252,6 +349,7 @@ def export_bundle(
     manifest_path = run / "atlas_manifest.json"
     if manifest_path.exists():
         run_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    external_provenance = _external_source_provenance_for_export(run, run_manifest)
     incident = next((item for item in _load_incidents(run) if item.incident_id == incident_id), None)
     if incident is None:
         raise ValueError(f"incident not found: {incident_id}")
@@ -318,6 +416,11 @@ def export_bundle(
         shutil.copyfile(run / "cell_truth_report.md", stage_bundle / "reports" / "cell_truth_report.md")
         (stage_bundle / "generated").mkdir(exist_ok=True)
         (stage_bundle / "provenance").mkdir(exist_ok=True)
+        if external_provenance is not None:
+            shutil.copyfile(
+                run / EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+                stage_bundle / EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH,
+            )
         (stage_bundle / "limitations.md").write_text(
             "# Limitations\n\n"
             "- Derived from calibrated planar state streams.\n"
@@ -336,6 +439,13 @@ def export_bundle(
             f"--incident-id {incident_id} --run-dir <atlas-run> --out <bundle.zip>\n",
             encoding="utf-8",
         )
+        required_files = list(REQUIRED_BUNDLE_FILES)
+        bundled_external_provenance = None
+        if external_provenance is not None:
+            required_files.append(EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH)
+            bundled_external_provenance = external_provenance.model_copy(
+                update={"path": EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH}
+            )
         manifest = BundleManifest(
             bundle_id=f"bundle_{incident_id}",
             incident_id=incident_id,
@@ -343,9 +453,13 @@ def export_bundle(
                 run_manifest.get("run_id")
                 or (events[0].run_id if events else incident_id)
             ),
-            required_files=list(REQUIRED_BUNDLE_FILES),
+            required_files=required_files,
+            external_source_provenance=bundled_external_provenance,
         )
-        _json_dump(stage_bundle / "manifest.json", manifest.model_dump())
+        _json_dump(
+            stage_bundle / "manifest.json",
+            manifest.model_dump(exclude_none=True),
+        )
 
         checksum_paths = [
             path for path in sorted(stage_bundle.rglob("*"))
@@ -483,6 +597,68 @@ def verify_bundle(bundle_path: str | Path) -> dict:
                     path = root / rel
                     if rel in inventory and sha256_file(path) != digest:
                         errors.append(f"checksum mismatch: {rel}")
+
+                external_reference = manifest.external_source_provenance
+                external_present = EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH in inventory
+                external_required = (
+                    EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH in manifest_required
+                )
+                if external_reference is None:
+                    if external_present or external_required:
+                        errors.append(
+                            "external source provenance file or requirement has no "
+                            "manifest reference"
+                        )
+                else:
+                    if external_reference.path != EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH:
+                        errors.append(
+                            "bundle external provenance path must be "
+                            f"{EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH!r}"
+                        )
+                    if not external_required:
+                        errors.append(
+                            "bundle manifest external provenance is not listed in "
+                            "required_files"
+                        )
+                    if not external_present:
+                        errors.append(
+                            "bundle manifest references missing external source provenance"
+                        )
+                    recorded_digest = recorded.get(
+                        EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH
+                    )
+                    if (
+                        recorded_digest is not None
+                        and recorded_digest != external_reference.sha256
+                    ):
+                        errors.append(
+                            "external source provenance reference sha256 does not match "
+                            "checksums.sha256"
+                        )
+                    if external_present:
+                        external_path = root / EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH
+                        actual_digest = sha256_file(external_path)
+                        if actual_digest != external_reference.sha256:
+                            errors.append(
+                                "external source provenance reference sha256 does not "
+                                "match the bundled file"
+                            )
+                        try:
+                            external_payload = _load_external_source_provenance(
+                                external_path
+                            )
+                            expected_reference = external_source_provenance_reference(
+                                external_payload,
+                                path=EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH,
+                                sha256=actual_digest,
+                            )
+                            if external_reference != expected_reference:
+                                errors.append(
+                                    "external source provenance identity does not match "
+                                    "the bundle manifest reference"
+                                )
+                        except ValueError as exc:
+                            errors.append(str(exc))
                 try:
                     _validated_state_segment_rows(
                         None,

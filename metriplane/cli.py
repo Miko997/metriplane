@@ -33,6 +33,7 @@ Start here:
 
 More commands:
   atlas      Create, verify, and rerun incident evidence
+  external   Validate and run a portable external fixture bundle
   replay     Replay a recorded JSONL timeline the same way every time
   test       Rerun a bundle and compare its incidents and events with expectations
   incidents  Find, inspect, and package incidents from a recording
@@ -588,6 +589,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "atlas":
         from metriplane.atlas.cli import main as atlas_main
         return atlas_main(argv[1:])
+    if argv and argv[0] == "external":
+        from metriplane.external_sources.cli import main as external_main
+        return external_main(argv[1:])
     if argv and argv[0] == "start":
         return _main_start(argv[1:])
     if argv and argv[0] == "stop":

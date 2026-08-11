@@ -3,8 +3,7 @@
 
 from __future__ import annotations
 
-from metriplane import __version__
-from metriplane import cli
+from metriplane import __version__, cli
 
 
 def test_root_help_lists_the_bundled_demo_and_primary_actions(capsys) -> None:
@@ -23,7 +22,16 @@ def test_root_help_lists_the_bundled_demo_and_primary_actions(capsys) -> None:
     )
     assert "physical-observability comparisons" not in output
     assert "metriplane --version" in output
-    for command in ("demo", "doctor", "atlas", "replay", "test", "incidents", "run"):
+    for command in (
+        "demo",
+        "doctor",
+        "atlas",
+        "external",
+        "replay",
+        "test",
+        "incidents",
+        "run",
+    ):
         assert f"  {command}" in output
 
 
