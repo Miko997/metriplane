@@ -5,14 +5,15 @@ SPDX-License-Identifier: MIT
 
 # ManiSkill PickCube verification ledger
 
-Status: **CURRENT EVIDENCE RECORDED — final-head distribution, matrix, CI, PR,
-and repository-wide REUSE gates remain open.**
+Status: **PAUSE — preliminary candidate evidence recorded; exact-final-head
+distribution, Python 3.13, global quality, CI, PR, and repository-wide REUSE
+gates remain open.**
 
 This ledger records the verification evidence currently available for the
 bounded, position-only ManiSkill PickCube compatibility fixture. It separates
-completed source conversion and current source-tree Atlas checks from gates
-that can be run truthfully only after the branch head is final and a wheel has
-been built from that exact head.
+completed source conversion, current source-tree Atlas checks, and preliminary
+candidate-distribution checks from gates that can be closed truthfully only
+after the branch head is final and a wheel has been built from that exact head.
 
 Nothing in this record changes the claim boundary. The fixture evaluates
 bounded XY occupancy and timing under a Metriplane-authored process rule. It
@@ -218,24 +219,83 @@ These are current source-tree executions. They establish the expected semantics
 and path behavior but are **preliminary with respect to the final branch head
 and installed-wheel matrix**.
 
+## Preliminary root-suite and distribution checks
+
+The full root suite was executed against a candidate branch state using a
+writable temporary-home shim required by the sandboxed test environment:
+
+```console
+pytest -q
+```
+
+Result: **1,057 passed, 2 skipped**.
+
+The same candidate state also passed the root package build, strict Twine
+distribution check, and strict MkDocs build:
+
+```console
+python -m build
+python -m twine check --strict dist/*
+python -m mkdocs build --strict
+```
+
+Both the wheel and sdist passed the strict Twine check, and the documentation
+site completed under strict mode. These results are preliminary candidate
+evidence. The tested branch state was not declared the exact final head, so
+this ledger does not relabel those artifacts as final-head distributions or
+use them to close the final distribution gate.
+
+## Preliminary Python 3.12 installed-wheel portability
+
+A clean CPython 3.12 environment outside the repository installed the candidate
+Metriplane wheel and its ordinary declared runtime dependencies from an offline
+package set. ManiSkill, SAPIEN, Torch, h5py, Vulkan tools, and the isolated
+adapter were not installed. Both checked-in fixtures validated and executed
+through the installed `metriplane` command.
+
+The installed-wheel incident result matched the current source-tree semantics:
+75 frames, four events in the recorded order, one deviation, one
+`missing_tool_caused_delay` incident, a verified evidence bundle, and a passing
+generated regression. The control result likewise matched: 75 frames, three
+events, zero deviations, zero incidents, and no fabricated evidence bundle or
+regression.
+
+Each run directory was then moved away from its original execution location.
+After the original fixture execution paths were removed where safe, the
+run-contained session and configuration references, report, dashboard, USDA,
+and applicable incident bundle/regression behavior remained usable. The
+recursive durable-artifact scanner reported:
+
+```text
+PATH_LEAK_FAILURES 0
+```
+
+This establishes one clean, offline CPython 3.12 candidate-wheel result. It is
+not an exact-final-head wheel claim, does not cover CPython 3.13, and must be
+repeated from the final frozen head before PR readiness is asserted.
+
 ## Gates still open
 
 The following results must not be inferred from the evidence above:
 
 - the final branch head has not yet been frozen in this ledger;
-- a Metriplane wheel and sdist have not yet been built from that exact final
-  head and subjected here to `twine check --strict` and archive inspection;
-- the clean installed-wheel Python 3.12/3.13 portability matrix remains
-  pending, including moved-run evaluation without ManiSkill, SAPIEN, Torch,
-  h5py, Vulkan tools, or the adapter;
-- the final-head full focused/relevant test, Ruff, mypy, strict MkDocs, demo,
-  root CLI, and frozen-evidence checks remain pending;
-- GitHub CI remains pending;
-- no PR is claimed open by this ledger;
+- the candidate root suite, build, strict Twine check, strict MkDocs build, and
+  Python 3.12 installed-wheel run above must be repeated from that exact final
+  head; final-head archive inspection also remains pending;
+- Python 3.13 clean installed-wheel validation, execution, moved-run behavior,
+  and path-leak scanning have not been demonstrated and remain blocking;
+- global Ruff and global mypy results remain pending and blocking. No focused
+  or candidate check is represented here as a substitute;
+- final-head demo, root CLI, root dependency/lock, package-content, frozen
+  schema, and frozen-evidence checks remain pending;
+- GitHub CI has not run for the final head and remains pending and blocking;
+- no PR is claimed open by this ledger; PR creation remains pending and
+  blocking;
 - the final Linear evidence handoff and move to In Review remain pending; and
-- repository-wide `reuse lint` is not green. The scoped adapter/fixture REUSE
-  metadata is present, but the pre-existing global repository inventory remains
-  a separate unresolved gate and no blanket license correction is claimed.
+- global repository-wide `reuse lint` is not green and remains blocking. The
+  scoped adapter/fixture REUSE metadata is present, but the pre-existing global
+  repository inventory remains a separate unresolved gate and no blanket
+  license correction is claimed.
 
 The preliminary three-run result must be repeated from the exact final-head
 wheel before PR readiness is claimed. A failure in any open gate restores
@@ -254,8 +314,12 @@ The current evidence supports only these bounded statements:
 - three clean source conversions were byte-equivalent under the recorded
   conversion environment; and
 - current source-tree Atlas and path-portability checks produced the recorded
-  bounded planar results.
+  bounded planar results; and
+- one preliminary candidate state passed the full root suite, distribution and
+  strict documentation checks, plus one clean offline Python 3.12
+  installed-wheel portability run with `PATH_LEAK_FAILURES 0`.
 
 It does not support official PickCube success/failure, 3D or orientation
 evaluation, physical or simulator accuracy, safety certification, general
-ManiSkill compatibility, independent adoption, or final PR/CI readiness.
+ManiSkill compatibility, independent adoption, Python 3.13 portability, or
+final-head PR/CI readiness.
