@@ -28,6 +28,7 @@ it does **not** control machinery or make safety or quality decisions.
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Miko997/metriplane/badge)](https://scorecard.dev/viewer/?uri=github.com/Miko997/metriplane)
 [![Research release: v0.2.0](https://img.shields.io/badge/research%20release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20736619.svg)](https://doi.org/10.5281/zenodo.20736619)
+[![RRID: SCR_028813](https://img.shields.io/badge/RRID-SCR__028813-0072B2)](https://scicrunch.org/resolver/RRID%3ASCR_028813)
 [![Research Software Directory](https://img.shields.io/badge/Research%20Software%20Directory-Metriplane-00856A)](https://research-software-directory.org/software/metriplane)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
 
@@ -120,6 +121,7 @@ Metriplane source code is preserved in the Software Heritage Archive.
 
 - Official site: https://www.metriplane.com/
 - Research Software Directory: https://research-software-directory.org/software/metriplane
+- SciCrunch registry: [Metriplane (RRID:SCR_028813)](https://scicrunch.org/resolver/RRID%3ASCR_028813)
 - Python package: https://pypi.org/project/metriplane/
 - v0.3.0 software release: https://github.com/Miko997/metriplane/releases/tag/v0.3.0
 - Product roadmap: [ROADMAP.md](ROADMAP.md)
@@ -238,6 +240,8 @@ https://www.metriplane.com/feedback/
 If you use or evaluate Metriplane v0.2.0, cite the archived release:
 
 https://doi.org/10.5281/zenodo.20736619
+
+For research-resource identification, use **Metriplane (RRID:SCR_028813)**.
 
 ## Reproducibility and Archived Release
 
