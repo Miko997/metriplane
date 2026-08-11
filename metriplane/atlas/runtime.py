@@ -33,6 +33,10 @@ from metriplane.atlas.models import (
 from metriplane.atlas.process_model import AssetObservation, ProcessEvaluator
 from metriplane.atlas.reality_graph import RealityGraph
 from metriplane.atlas.reports import render_markdown, write_report
+from metriplane.atlas.run_references import (
+    DOMAIN_PACK_RUN_PATH,
+    STATE_SEGMENT_RUN_PATH,
+)
 from metriplane.atlas.training import training_case_from_incident, write_training_case
 from metriplane.provenance.run_provenance import sha256_file
 from metriplane.schema import FrameStateModel
@@ -516,8 +520,8 @@ def _run_atlas_in_place(
         )
     manifest = AtlasRunManifest(
         run_id=run_id,
-        source_session_jsonl=str(session_path),
-        domain_pack=str(pack.root),
+        source_session_jsonl=STATE_SEGMENT_RUN_PATH,
+        domain_pack=DOMAIN_PACK_RUN_PATH,
         cell_id=pack.workspace.cell_id,
         frame_count=len(frames),
         event_count=len(events),

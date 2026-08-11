@@ -157,9 +157,9 @@ def test_stage_2_atlas_evaluation_is_reproducible(tmp_path: Path) -> None:
         expected["deviation_count"],
         expected["incident_count"],
     )
-    assert first.model_dump(exclude={"source_session_jsonl", "domain_pack"}) == second.model_dump(
-        exclude={"source_session_jsonl", "domain_pack"}
-    )
+    assert first.model_dump() == second.model_dump()
+    assert first.source_session_jsonl == "state_segment.jsonl"
+    assert first.domain_pack == "configs"
     for name in ("physical_event_log.jsonl", "deviations.jsonl", "incidents.jsonl"):
         assert (first_out / name).read_bytes() == (second_out / name).read_bytes()
 
