@@ -49,8 +49,8 @@ Inspect structure and independently restore every state through the named APIs:
 
 ```console
 maniskill-pickcube inspect \
-  --trajectory SOURCE_DIR/extracted/demos/PickCube-v1/motionplanning/trajectory.h5 \
-  --metadata SOURCE_DIR/extracted/demos/PickCube-v1/motionplanning/trajectory.json \
+  --trajectory SOURCE_DIR/extracted/PickCube-v1/motionplanning/trajectory.h5 \
+  --metadata SOURCE_DIR/extracted/PickCube-v1/motionplanning/trajectory.json \
   --episode-id 0 --json
 ```
 

@@ -1,7 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # ManiSkill PickCube source and redistribution matrix
 
-Status: **preflight decision; no raw source bytes or normalized fixture have
-been committed.**
+Status: **GO — raw source bytes remain referenced and excluded; the implemented
+portable fixtures have separate Apache-2.0 treatment.**
+
+Historical preflight status, preserved as decision history: **preflight
+decision; no raw source bytes or normalized fixture have been committed.**
 
 This is a research-software provenance decision, not legal advice. It keeps
 source data licensing separate from Metriplane's software license.
@@ -40,3 +48,44 @@ The absence of a dataset-level `LICENSE` file is disclosed rather than silently
 equated with absence of a license declaration. If project counsel or policy
 requires a standalone license file for derived-data redistribution, retain the
 fixture as acquisition-and-conversion instructions only.
+
+## Implemented treatment — 2026-08-12
+
+The architecture PAUSE was resolved and the conditional treatment above was
+implemented without changing the source-rights facts in the matrix.
+
+| Implemented material | Repository treatment |
+| --- | --- |
+| `adapters/maniskill_pickcube/*` | Independently authored adapter code, tests, configuration, and documentation under MIT; frozen adapter commit `8a0c878be9670423d1610c5d89fb090bcd1d5735` |
+| `examples/external_sources/maniskill_pickcube/*` | Public modified/derived fixture subtree under Apache-2.0, with REUSE copyright value `NOASSERTION`, source citation, and modified-data notice |
+| `LICENSES/MIT.txt` | Canonical MIT license text for MIT-tagged repository material |
+| `LICENSES/Apache-2.0.txt` | Canonical Apache License 2.0 text for the fixture subtree |
+| `.reuse/dep5` | Narrow path-based distinction between the MIT adapter and Apache-2.0 fixture; no blanket repository relicensing |
+
+Both fixtures reference, but do not contain, the ZIP, HDF5, JSON, Panda URDF,
+table asset, video, screenshot, checkpoint, or source-framework package. Their
+normalized coordinates are prominently described as modified/derived data from
+the pinned ManiSkill Demonstrations dataset. The operator-authored rules and
+metadata are distributed with the fixture under the same fixture-scoped
+Apache-2.0 treatment. This does not imply that Metriplane created the source
+dataset or that the Metriplane repository as a whole is Apache-2.0.
+
+The frozen fixture identities tying this treatment to the published bytes are:
+
+- frozen configuration SHA-256:
+  `2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202`;
+- shared session SHA-256:
+  `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df`;
+- incident fixture fingerprint:
+  `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04`;
+- control fixture fingerprint:
+  `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68`.
+
+The adapter/fixture REUSE gate is intentionally scoped. The audited global
+baseline was already noncompliant with REUSE 3.3 before this implementation:
+of 1,068 files, 642 had copyright information and 641 had licensing
+information. Much of the missing metadata belongs to pre-existing or frozen
+material whose rights cannot truthfully be repaired with a blanket MIT stanza.
+The new path-specific metadata does not alter those bytes, and no clean global
+`reuse lint` result is claimed. Repository-wide REUSE cleanup remains a
+separate rights-inventory task.

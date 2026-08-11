@@ -1,11 +1,22 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # ManiSkill PickCube adapter preflight audit
 
-Status: **GO — owner decisions recorded; implementation authorized.**
+Status: **GO — owner decisions implemented; adapter and portable fixtures
+frozen; three clean conversions demonstrated.**
 
 This note records the source, architecture, and claim-safety preflight for one
 official ManiSkill `PickCube-v1` motion-planning trajectory. It is deliberately
 written before adapter implementation. A portable fixture must not be generated
 until the unresolved contract questions below have an explicit disposition.
+
+This document began as a pre-implementation PAUSE record. Its original
+forward-looking language, unresolved-question analysis, and PAUSE recommendation
+remain below as decision history. Section 13 records the later implementation
+without rewriting that history.
 
 ## Owner decisions — 2026-08-11
 
@@ -330,3 +341,107 @@ are all viable. The task should resume only after the project owner decides:
 Until those decisions are explicit, writing the adapter or tuning final
 thresholds would risk encoding an answer the frozen interfaces cannot represent
 honestly.
+
+## 13. Post-decision implementation record — 2026-08-12
+
+The owner decisions recorded at the top of this document resolved the four
+historical PAUSE questions without changing FrameStateModel 1.0, External Source
+Contract v1, Atlas process semantics, or the frozen source selection. The
+implemented identities are:
+
+| Item | Frozen implementation identity |
+| --- | --- |
+| Original Metriplane base | `5475c6a66b0535cddcbcc7bb05032aed1d2017db` |
+| Preserved audit commit | `cfba11932ee1deb51491d9c60f5afe434b8ee054` |
+| Adapter freeze commit | `8a0c878be9670423d1610c5d89fb090bcd1d5735` |
+| Frozen adapter configuration SHA-256 | `2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202` |
+| Shared incident/control `session.jsonl` SHA-256 | `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df` |
+| Incident fixture fingerprint | `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04` |
+| Control fixture fingerprint | `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68` |
+
+The fixture fingerprints are the SHA-256 values of each variant's canonical
+`CHECKSUMS.sha256` inventory. They are not source-artifact hashes. The incident
+and control manifests independently record the adapter commit, configuration
+reference, source identities, and normalized session hash.
+
+### Implemented adapter and normalization boundary
+
+The isolated adapter is under `adapters/maniskill_pickcube/` with its own
+project metadata and dependency lock. ManiSkill, SAPIEN, Torch, h5py, Hugging
+Face acquisition code, and conversion-only Vulkan requirements remain outside
+the ordinary Metriplane runtime. The portable fixtures are under
+`examples/external_sources/maniskill_pickcube/` and require none of those
+source-specific dependencies for validation or evaluation.
+
+All 75 stored states are restored independently. The adapter never steps the
+environment or integrates actions. Every normalized frame contains exactly
+`cube_1` as a `material` and `robot_tcp_1` as a `tool`; the goal marker and full
+robot articulation are not emitted. Source world X/Y are copied, normalized Z
+is `0.0`, and the authoritative clock is
+`ts_sim_ns(i) = i * 50_000_000` for frames `0..74`. There is no interpolation,
+resampling, carry-forward, confidence, or normalized source event.
+
+The complete source quaternion exists and audit yaw was numerically
+well-defined. The implemented position-only fixture nevertheless excludes
+source Z, quaternion, yaw, roll, and pitch from normalized evaluation. None is
+hidden in object `extra` or another Atlas input. The result is limited to
+bounded XY occupancy and timing; it does not evaluate 3D placement,
+orientation, grasp state, or official PickCube success.
+
+### Frozen Layer-C geometry and process waits
+
+The complete target polygon is read from the frozen configuration and emitted
+as a Layer-C domain-pack rule. It is not derived from the goal pose during
+conversion. Its exact values are:
+
+- center: `(0.026815734803676605, -0.0019813179969787598)` metres;
+- square half-extent: `0.010000000` metres;
+- vertices, in stable order:
+  `(0.016815734803676603, -0.01198131799697876)`,
+  `(0.03681573480367661, -0.01198131799697876)`,
+  `(0.03681573480367661, 0.00801868200302124)`, and
+  `(0.016815734803676603, 0.00801868200302124)`;
+- inclusive boundary, rejected overlap, and explicit `outside_workspace`;
+- zone `target_xy_region` associated with station `target_station`.
+
+The operator froze this planar target region after inspecting the selected
+source goal pose. The region is a Metriplane compatibility-test rule, not a
+ManiSkill task-success definition.
+
+The incident and control variants use byte-identical normalized session bytes
+and the same geometry. Their Layer-C relative waits are `0.20` seconds and
+`0.30` seconds respectively. Each duration begins when the cube is present in
+the target region while the required TCP is missing; neither is an absolute
+trajectory timestamp.
+
+### Three-conversion evidence
+
+Three clean conversions were performed from the same locked source,
+configuration, and adapter freeze into separate output roots. The finalized
+normalization reports identify them as `real-source-clean-1`,
+`real-source-clean-2`, and `real-source-clean-3`, use
+`sha256_byte_identity` as the comparison policy, and record
+`equivalent: true` / `status: demonstrated`. Each records the same session
+SHA-256 above. This upgrades the pilot restoration evidence in section 5 to a
+demonstrated final conversion-equivalence result; it does not by itself claim
+three Atlas executions, installed-wheel portability, CI completion, or PR
+readiness.
+
+### Implemented rights boundary and REUSE scope
+
+The independently authored adapter subtree is MIT-licensed. The public fixture
+subtree is treated separately as Apache-2.0 modified/derived data, with raw
+source bytes and simulator assets absent. `LICENSES/MIT.txt`,
+`LICENSES/Apache-2.0.txt`, and `.reuse/dep5` express this distinction; the
+fixture stanza uses `NOASSERTION` rather than inventing an upstream copyright
+holder. The fixture README and manifests carry the source citations and
+modified-data notice.
+
+REUSE compliance for the new adapter and fixture paths is scoped separately
+from the repository-wide baseline. The audited global baseline already failed
+REUSE 3.3 before this fixture work: 1,068 files were scanned, 642 had copyright
+information, and 641 had licensing information; broad pre-existing and frozen
+evidence material lacked complete metadata. No blanket license was applied to
+that material, and a clean repository-wide `reuse lint` result is not claimed.
+The scoped treatment must not be described as relicensing the repository or its
+frozen evidence.

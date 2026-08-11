@@ -1,7 +1,16 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
 # ManiSkill PickCube source-selection record
 
-Status: **technical selection frozen; final fixture selection remains contingent
-on the architecture preflight.**
+Status: **selection and implementation frozen; episode `0` remains selected and
+all 75 states are present in the demonstrated fixtures.**
+
+Historical preflight status, preserved as decision history: **technical
+selection frozen; final fixture selection remains contingent on the
+architecture preflight.**
 
 ## Predeclared selection rule
 
@@ -96,3 +105,54 @@ as alternatives after episode 0 passed the declared checks.
 
 Final freeze remains paused for the cross-contract questions documented in
 [`maniskill-pickcube-adapter-audit.md`](maniskill-pickcube-adapter-audit.md).
+
+The preceding sentence is the original preflight disposition. The owner later
+resolved those cross-contract questions without changing the selection rule,
+source revision, task, episode, or state accounting.
+
+## Implemented selection freeze — 2026-08-12
+
+Episode `0` / `traj_0` remains the selected record. No later episode was
+substituted, no outcome value was added to the selection criteria, and the
+50-step registered RL horizon remained provenance only. The frozen adapter at
+commit `8a0c878be9670423d1610c5d89fb090bcd1d5735` retained all 74 transitions
+and all 75 stored states under configuration SHA-256
+`2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202`.
+
+The incident and control variants contain byte-identical `session.jsonl` files
+with SHA-256
+`7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df`.
+Their canonical fixture fingerprints are:
+
+- incident:
+  `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04`;
+- control:
+  `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68`.
+
+The two fixtures use the same operator-authored inclusive square centered at
+`(0.026815734803676605, -0.0019813179969787598)` metres, with half-extent
+`0.010000000` metres and vertices, in stable order:
+
+1. `(0.016815734803676603, -0.01198131799697876)`;
+2. `(0.03681573480367661, -0.01198131799697876)`;
+3. `(0.03681573480367661, 0.00801868200302124)`; and
+4. `(0.016815734803676603, 0.00801868200302124)`.
+
+This geometry was frozen after selection and was not a selection criterion or
+an official ManiSkill success region. The incident and control relative waits
+are `0.20` seconds and `0.30` seconds respectively; they are Layer-C process
+rules, not source outcomes or trajectory timestamps.
+
+Three clean conversions from the same locked source, adapter, and configuration
+were finalized as `real-source-clean-1`, `real-source-clean-2`, and
+`real-source-clean-3`. Both normalization reports record
+`comparison_policy: sha256_byte_identity`, `equivalent: true`, and
+`status: demonstrated`. This establishes final conversion equivalence while
+leaving the original outcome-blind selection claim unchanged. It does not by
+itself claim Atlas three-run equivalence, installed-wheel portability, CI
+completion, PR creation, or merge readiness.
+
+The fixture subtree has separate Apache-2.0 modified/derived-data treatment;
+the independently authored adapter remains MIT. Raw source bytes and assets are
+still absent. This rights treatment does not affect selection and does not
+convert the already success-filtered upstream corpus into an unbiased sample.

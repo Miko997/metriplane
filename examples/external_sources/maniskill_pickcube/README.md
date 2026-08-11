@@ -187,25 +187,24 @@ uv run maniskill-pickcube acquire \
   --json
 
 uv run maniskill-pickcube inspect \
-  --trajectory <source-dir>/extracted/demos/PickCube-v1/motionplanning/trajectory.h5 \
-  --metadata <source-dir>/extracted/demos/PickCube-v1/motionplanning/trajectory.json \
+  --trajectory <source-dir>/extracted/PickCube-v1/motionplanning/trajectory.h5 \
+  --metadata <source-dir>/extracted/PickCube-v1/motionplanning/trajectory.json \
   --episode-id 0 \
   --json
 
 uv run maniskill-pickcube convert \
-  --trajectory <source-dir>/extracted/demos/PickCube-v1/motionplanning/trajectory.h5 \
-  --metadata <source-dir>/extracted/demos/PickCube-v1/motionplanning/trajectory.json \
+  --trajectory <source-dir>/extracted/PickCube-v1/motionplanning/trajectory.h5 \
+  --metadata <source-dir>/extracted/PickCube-v1/motionplanning/trajectory.json \
   --config config/frozen-config.json \
-  --adapter-commit <exact-40-hex-adapter-freeze-commit> \
+  --adapter-commit 8a0c878be9670423d1610c5d89fb090bcd1d5735 \
   --out <generated-fixture-root> \
   --json
 ```
 
 Use an empty generated output outside this checked-in directory. This preserves
 the checked-in README while allowing the converter's atomic output checks to
-remain fail-closed. The exact commit supplied to `--adapter-commit` must identify
-the frozen implementation and is recorded in each generated manifest; this
-document intentionally does not guess it.
+remain fail-closed. The exact commit supplied to `--adapter-commit` identifies
+the frozen implementation and is recorded in each generated manifest.
 
 ## Portable evaluation environment
 
