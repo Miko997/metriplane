@@ -14,7 +14,7 @@ def training_case_from_incident(incident: AtlasIncident) -> TrainingCase:
         training_case_id=f"training_{incident.incident_id}",
         title=f"Training case: {incident.title}",
         what_happened=incident.summary,
-        why_it_matters="The event shows where a process expectation and physical reality diverged.",
+        why_it_matters="The evaluated state did not meet a supplied process rule.",
         evidence_links=[f"event:{event_id}" for event_id in incident.event_ids],
         what_to_do_next=[
             "Review the evidence bundle.",
@@ -28,7 +28,10 @@ def training_case_from_incident(incident: AtlasIncident) -> TrainingCase:
             },
             {
                 "question": "Does this report prove individual blame?",
-                "answer": "No. It supports process improvement from tracked physical evidence.",
+                "answer": (
+                    "No. It supports review of recorded normalized state against supplied "
+                    "process rules."
+                ),
             },
         ],
     )

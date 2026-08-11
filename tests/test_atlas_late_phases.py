@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import zipfile
 from pathlib import Path
 
 import yaml
@@ -14,6 +15,7 @@ from metriplane.atlas.edge import edge_doctor, retention_plan, write_edge_bundle
 from metriplane.atlas.evidence_lake import build_lake, lake_query, trend_summary
 from metriplane.atlas.freeze import build_freeze, claim_audit
 from metriplane.atlas.improvement import compare_runs
+from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS
 from metriplane.atlas.multicell import compare_cells
 from metriplane.atlas.pilot import create_pilot_kit
 from metriplane.atlas.privacy import anonymize_run, privacy_report
@@ -21,7 +23,6 @@ from metriplane.atlas.protocol import compat_check, export_protocol
 from metriplane.atlas.query import explain_query, run_saved_query
 from metriplane.atlas.runtime import run_atlas
 from metriplane.cli import main as metriplane_main
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSEMBLY_PACK = ROOT / "configs" / "domain_packs" / "assembly_cell"
@@ -69,19 +70,20 @@ def test_late_phase_default_run_artifacts(tmp_path: Path) -> None:
     ]
     positions = [dashboard.index(f"<h2>{heading}</h2>") for heading in headings]
     assert positions == sorted(positions)
-    assert (
-        "does not prove that the original measurements were physically accurate"
-        in dashboard
-    )
+    for statement in ATLAS_LIMITATION_STATEMENTS:
+        assert statement in dashboard
     payload = dashboard_payload(run_dir)
     assert payload["schema_version"] == "metriplane.atlas.dashboard_payload.v1"
     assert len(payload["events"]) == 6
+    assert payload["limitations"] == list(ATLAS_LIMITATION_STATEMENTS)
 
     usda = (run_dir / "twinverify_replay.usda").read_text(encoding="utf-8")
     assert "#usda 1.0" in usda
     assert "station_a_work" in usda
     assert "torque_driver_1" in usda
     assert "INC-0001" in usda
+    for statement in ATLAS_LIMITATION_STATEMENTS:
+        assert statement in usda
 
     privacy = json.loads((run_dir / "privacy_report.json").read_text(encoding="utf-8"))
     assert privacy["video_free"] is True
@@ -90,6 +92,28 @@ def test_late_phase_default_run_artifacts(tmp_path: Path) -> None:
     assert (run_dir / "connectors" / "events.csv").read_text(encoding="utf-8").startswith("run_id,event_id")
     rest = json.loads((run_dir / "connectors" / "rest_snapshot.json").read_text(encoding="utf-8"))
     assert "/events" in rest["endpoints"]
+    for statement in ATLAS_LIMITATION_STATEMENTS:
+        assert statement in rest["limitations"]
+
+    report = (run_dir / "cell_truth_report.md").read_text(encoding="utf-8")
+    training = (run_dir / "training_cases" / "INC-0001.md").read_text(encoding="utf-8")
+    with zipfile.ZipFile(run_dir / "evidence_bundles" / "INC-0001.zip") as archive:
+        bundle_limits = archive.read("limitations.md").decode("utf-8")
+    generated_text = f"{report}\n{dashboard}\n{usda}\n{training}\n{bundle_limits}"
+    for statement in ATLAS_LIMITATION_STATEMENTS:
+        assert statement in generated_text
+    for forbidden in (
+        "replayed calibrated",
+        "tracked or tagged",
+        "tracked/tagged",
+        "Tracks tagged",
+        "Requires tracked",
+        "Isaac latency",
+        "tracked physical evidence",
+        "physical reality diverged",
+        "original measurements",
+    ):
+        assert forbidden not in generated_text
 
 
 def test_lake_saved_queries_protocol_edge_and_freeze(tmp_path: Path) -> None:

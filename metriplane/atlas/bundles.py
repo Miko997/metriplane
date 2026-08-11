@@ -19,6 +19,7 @@ from typing import Any
 
 from metriplane.atlas.event_ledger import read_events
 from metriplane.atlas.models import (
+    ATLAS_LIMITATION_STATEMENTS,
     EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH,
     EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
     AtlasEvent,
@@ -423,9 +424,7 @@ def export_bundle(
             )
         (stage_bundle / "limitations.md").write_text(
             "# Limitations\n\n"
-            "- Derived from calibrated planar state streams.\n"
-            "- Requires tracked/tagged assets.\n"
-            "- Not a certified safety or quality decision system.\n",
+            + "".join(f"- {statement}\n" for statement in ATLAS_LIMITATION_STATEMENTS),
             encoding="utf-8",
         )
         (stage_bundle / "replay_command.sh").write_text(

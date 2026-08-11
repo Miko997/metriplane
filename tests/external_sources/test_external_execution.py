@@ -15,6 +15,7 @@ import yaml
 
 from metriplane import __version__
 from metriplane.atlas.bundles import verify_bundle
+from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS
 from metriplane.atlas.regression import run_regression
 from metriplane.cli import main as metriplane_main
 from metriplane.external_sources import execution as external_execution
@@ -400,6 +401,10 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     )
     report = (out / "cell_truth_report.md").read_text(encoding="utf-8")
     assert "## External fixture provenance" in report
+    for statement in ATLAS_LIMITATION_STATEMENTS:
+        assert statement in report
+    assert "replayed calibrated" not in report
+    assert "tracked or tagged" not in report
     with zipfile.ZipFile(out / "evidence_bundles" / "INC-0001.zip") as archive:
         assert "provenance/external_source_provenance.json" in archive.namelist()
         bundled_provenance = json.loads(
