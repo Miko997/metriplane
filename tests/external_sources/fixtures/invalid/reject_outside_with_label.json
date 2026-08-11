@@ -1,0 +1,4 @@
+{
+  "case": "reject_outside_with_label",
+  "expected_error": "reject outside policy cannot declare outside_zone_label"
+}

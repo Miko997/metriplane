@@ -1,0 +1,4 @@
+{
+  "case": "extension_semantic_override",
+  "expected_error": "attempts to alter reserved Atlas or incident semantics"
+}

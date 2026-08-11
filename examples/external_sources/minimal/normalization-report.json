@@ -1,0 +1,103 @@
+{
+  "contract_schema_version": "metriplane.external_source_contract.v1",
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "input_fingerprint_sha256": "1e1c57f3868bf31b39c62e585787e429265d5703544f2a94e26a01a32173d6f3",
+    "runs": [
+      {
+        "artifacts": {
+          "entity-mapping.json": "58223f24a2398611aaa9708b9364db48276e546e2639abd0eb698afbad83b6c5",
+          "session.jsonl": "79e5cb801fce1df9e1c54535f578ab9cd416493703fc4e9ca865aff52f1b056c"
+        },
+        "run_id": "reference-conversion-1"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "58223f24a2398611aaa9708b9364db48276e546e2639abd0eb698afbad83b6c5",
+          "session.jsonl": "79e5cb801fce1df9e1c54535f578ab9cd416493703fc4e9ca865aff52f1b056c"
+        },
+        "run_id": "reference-conversion-2"
+      }
+    ],
+    "status": "demonstrated"
+  },
+  "fixture_id": "synthetic-inspection-bench-v1",
+  "limitations": [
+    "The reference conversion covers only this synthetic source format.",
+    "Byte equivalence does not establish physical accuracy or source truth."
+  ],
+  "normalized_frame_count": 4,
+  "omitted_process_relevant_observations": 0,
+  "operations": [
+    {
+      "applied": true,
+      "declaration_path": "normalization.clock",
+      "kind": "time_mapping",
+      "operation_id": "copy-source-seconds",
+      "summary": "Copied sample_time_s into ts without rescaling."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.entity_mapping",
+      "kind": "entity_mapping",
+      "operation_id": "map-source-entities",
+      "summary": "Applied the hashed one-to-one entity mapping."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.coordinates.transform",
+      "kind": "coordinate_transform",
+      "operation_id": "identity-frame-transform",
+      "summary": "Source and target frames and units were identical."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.coordinates.projection",
+      "kind": "projection",
+      "operation_id": "project-planar-xy",
+      "summary": "Copied x/y and set normalized z to zero."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.zone_assignment",
+      "kind": "zone_assignment",
+      "operation_id": "assign-declared-polygons",
+      "summary": "Applied inclusive polygon membership and rejected overlaps."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.synchronization",
+      "kind": "synchronization",
+      "operation_id": "no-synchronization",
+      "summary": "The source contains one already-synchronized entity collection."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.resampling",
+      "kind": "resampling",
+      "operation_id": "no-resampling",
+      "summary": "Every selected source sample produced one normalized frame."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.interpolation",
+      "kind": "interpolation",
+      "operation_id": "no-interpolation",
+      "summary": "No values were interpolated."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.completeness.carry_forward",
+      "kind": "carry_forward",
+      "operation_id": "no-carry-forward",
+      "summary": "No observation was carried forward."
+    }
+  ],
+  "process_relevant_entity_count": 2,
+  "result": "pass",
+  "schema_version": "metriplane.external_normalization_report.v1",
+  "source_record_count": 4,
+  "unknown_process_relevant_observations": 0,
+  "warnings": []
+}

@@ -1,0 +1,6 @@
+python-implementation==CPython
+python==3.12.13
+platform-system==Linux
+platform-machine==x86_64
+PyYAML==6.0.3
+metriplane-source-commit==d9cdf3c8c2d947b799eb02c4de52363b2cf21bb7

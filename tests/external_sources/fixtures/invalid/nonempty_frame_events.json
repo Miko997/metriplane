@@ -1,0 +1,4 @@
+{
+  "case": "nonempty_frame_events",
+  "expected_error": "events must be empty"
+}

@@ -1,0 +1,29 @@
+{
+  "mappings": [
+    {
+      "atlas_asset_id": "sample_carrier_1",
+      "description": "Stable carrier identity selected from the synthetic source episode.",
+      "normalized_object_id": "sample_carrier_pose",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "trajectory",
+          "source_entity_id": "carrier_raw"
+        }
+      ]
+    },
+    {
+      "atlas_asset_id": "reference_probe_1",
+      "description": "Stable reference-probe identity selected from the synthetic source episode.",
+      "normalized_object_id": "reference_probe_pose",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "trajectory",
+          "source_entity_id": "probe_raw"
+        }
+      ]
+    }
+  ],
+  "schema_version": "metriplane.external_entity_mapping.v1"
+}

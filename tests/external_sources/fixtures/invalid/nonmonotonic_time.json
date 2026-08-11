@@ -1,0 +1,4 @@
+{
+  "case": "nonmonotonic_time",
+  "expected_error": "evaluation time must be strictly monotonic"
+}

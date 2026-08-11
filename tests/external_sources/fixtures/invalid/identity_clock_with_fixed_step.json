@@ -1,0 +1,4 @@
+{
+  "case": "identity_clock_with_fixed_step",
+  "expected_error": "identity_seconds cannot declare fixed-step"
+}

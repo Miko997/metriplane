@@ -1,0 +1,4 @@
+{
+  "case": "normalization_report_operation_mismatch",
+  "expected_error": "normalization report operation coverage mismatch"
+}

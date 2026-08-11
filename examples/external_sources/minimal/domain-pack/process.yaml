@@ -1,0 +1,16 @@
+schema_version: metriplane.atlas.process_model.v1
+process_id: synthetic_external_inspection
+work_order_type: external_fixture
+steps:
+  - step_id: sample_loaded
+    label: Sample carrier loaded
+    expected_asset_types:
+      - sample_carrier
+    required_zone: input_buffer
+  - step_id: reference_probe_ready
+    label: Reference probe ready for inspection
+    required_assets:
+      - reference_probe_1
+    required_zone: measurement_zone
+    required_station: measurement_station
+    max_wait_s: 2.0

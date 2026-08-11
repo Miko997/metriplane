@@ -1,0 +1,4 @@
+{
+  "case": "mutable_adapter_commit",
+  "expected_error": "adapter.commit"
+}

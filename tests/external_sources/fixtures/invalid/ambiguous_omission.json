@@ -1,0 +1,4 @@
+{
+  "case": "ambiguous_omission",
+  "expected_error": "omits process-relevant entities"
+}

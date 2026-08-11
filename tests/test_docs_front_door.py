@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 GUIDE = DOCS / "user-guide"
@@ -24,6 +23,8 @@ EXPECTED_NAV = (
     "user-guide/process-rules.md",
     "user-guide/use-your-own-run.md",
     "user-guide/integrations.md",
+    "specs/external-source-contract-v1.md",
+    "specs/external-source-contract-v1-audit.md",
     "user-guide/troubleshooting.md",
     "user-guide/contributing.md",
     "user-guide/research-artifacts.md",

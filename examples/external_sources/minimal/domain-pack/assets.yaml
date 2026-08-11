@@ -1,0 +1,20 @@
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+  - object_id: sample_carrier_pose
+    asset_id: sample_carrier_1
+    asset_type: sample_carrier
+    label: Synthetic sample carrier
+    work_order_id: WO-EXT-001
+    expected_zones:
+      - input_buffer
+      - measurement_zone
+  - object_id: reference_probe_pose
+    asset_id: reference_probe_1
+    asset_type: inspection_tool
+    label: Synthetic reference probe
+    work_order_id: WO-EXT-001
+    expected_zones:
+      - probe_storage
+      - measurement_zone
+    expected_stations:
+      - measurement_station

@@ -1,0 +1,4 @@
+{
+  "case": "extension_without_namespace",
+  "expected_error": "extensions.maniskill"
+}

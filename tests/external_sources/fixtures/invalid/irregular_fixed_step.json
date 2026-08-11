@@ -1,0 +1,4 @@
+{
+  "case": "irregular_fixed_step",
+  "expected_error": "ts_sim_ns violates fixed_step mapping"
+}

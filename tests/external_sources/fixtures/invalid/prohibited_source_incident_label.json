@@ -1,0 +1,4 @@
+{
+  "case": "prohibited_source_incident_label",
+  "expected_error": "prohibited source incident/annotation fields: incident_id"
+}

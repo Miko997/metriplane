@@ -1,0 +1,457 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.synthetic_fixture_adapter",
+    "commit": "d9cdf3c8c2d947b799eb02c4de52363b2cf21bb7",
+    "entrypoint": "tests.external_sources.test_external_source_contract_examples:_reference_conversion",
+    "environment": {
+      "architecture": "x86_64",
+      "dependency_lock": {
+        "media_type": "text/plain",
+        "path": "source/adapter-environment.txt",
+        "sha256": "bfd06b094c243fe399092751a93d7476dc1167fe4000d18931de5d9ed0a0c33b"
+      },
+      "description": "Deterministic reference conversion exercised by the contract tests.",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12.13"
+    },
+    "name": "Synthetic inspection fixture reference adapter",
+    "parameters": {
+      "inline": {
+        "authoritative_collection": "objects",
+        "entity_mapping": [
+          {
+            "atlas_asset_id": "sample_carrier_1",
+            "description": "Stable carrier identity selected from the synthetic source episode.",
+            "normalized_object_id": "sample_carrier_pose",
+            "process_relevant": true,
+            "source_entity_id": "carrier_raw"
+          },
+          {
+            "atlas_asset_id": "reference_probe_1",
+            "description": "Stable reference-probe identity selected from the synthetic source episode.",
+            "normalized_object_id": "reference_probe_pose",
+            "process_relevant": true,
+            "source_entity_id": "probe_raw"
+          }
+        ],
+        "episode_id": "synthetic-inspection-001",
+        "projection": "xy_zero_z",
+        "zone_assignment": "polygon_inclusive_reject_overlap"
+      },
+      "sha256": "555630627feb3d3756c1341a71ad7aabab49fd2a9dde60ff7679ebc9af9483ee"
+    },
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0-test"
+  },
+  "contract_profile": "metriplane.atlas.complete_snapshot.v1",
+  "domain_pack": {
+    "assets": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "c71e58d8c762cabad0d8481ed8b811db3a2662f703af93f9488c739812d35d68"
+    },
+    "contracts": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/contracts.yaml",
+      "sha256": "ea110f2e12033e6ab72768bc7afa3d76d4ac847a4b03b2af84e4e023c6f9325e"
+    },
+    "domain_pack_id": "synthetic-external-inspection-v1",
+    "process": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/process.yaml",
+      "sha256": "ab13ec778404b143b767bc8d834c9f7fb777137a8cb262270f6621be1923bf01"
+    },
+    "rationale": "Require a reference probe at the measurement station after the sample is loaded.",
+    "rule_origin": "operator_configured_rules",
+    "source_annotations_used": false,
+    "work_orders": {
+      "media_type": "text/csv",
+      "path": "domain-pack/work_orders.csv",
+      "sha256": "a577c1458924f79e4f3923dc0612679385998a6d7f9f8c7f43710826d106f654"
+    },
+    "workspace": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/workspace.yaml",
+      "sha256": "1b511a5b72c2acfcc61ebd61f8011a49b89329c74f1e671fade412078a9e6a28"
+    }
+  },
+  "evaluation": {
+    "domain_pack_id": "synthetic-external-inspection-v1",
+    "engine": "atlas",
+    "expected_outcome_is_input": false,
+    "metriplane_version": "0.3.0",
+    "provenance_layer": "metriplane_derived_results"
+  },
+  "extensions": {
+    "org.example.synthetic_episode": {
+      "episode_id": "synthetic-inspection-001",
+      "generator": "checked-in contract test fixture"
+    }
+  },
+  "fixture": {
+    "bounded_recording": true,
+    "description": "Four complete snapshots from a synthetic planar inspection bench.",
+    "distribution": "public",
+    "fixture_id": "synthetic-inspection-bench-v1",
+    "title": "Synthetic inspection bench"
+  },
+  "limitations": [
+    "Synthetic source state is not physical measurement ground truth.",
+    "The z coordinate is intentionally discarded for bounded planar evaluation.",
+    "This fixture demonstrates the contract and does not establish compatibility with an external source family."
+  ],
+  "normalization": {
+    "atlas_asset_mapping": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "c71e58d8c762cabad0d8481ed8b811db3a2662f703af93f9488c739812d35d68"
+    },
+    "authoritative_object_collection": "objects",
+    "clock": {
+      "description": "Copy source sample_time_s seconds to FrameStateModel.ts.",
+      "evaluation_field": "ts",
+      "mapping_method": "identity_seconds",
+      "source_clock": "synthetic episode time",
+      "source_field": "samples[*].sample_time_s",
+      "source_unit": "seconds"
+    },
+    "completeness": {
+      "carry_forward": {
+        "fields": [],
+        "method": "none"
+      },
+      "frame_semantics": "complete_snapshot",
+      "omission_policy": "reject_omission",
+      "partial_updates_materialized": false,
+      "process_relevant_entity_policy": "known_in_every_frame",
+      "source_stream_semantics": "complete_snapshot",
+      "unknown_state_policy": "reject_fixture"
+    },
+    "confidence": {
+      "mode": "absent"
+    },
+    "coordinates": {
+      "information_loss": [
+        {
+          "impact": "Atlas receives bounded planar x/y position with z set to zero.",
+          "lost_information": [
+            "source z coordinate"
+          ],
+          "operation": "planar projection"
+        }
+      ],
+      "projection": {
+        "dropped_axes": [
+          "z"
+        ],
+        "implementation": "Copy x/y and set output z to 0.0.",
+        "method": "planar_xy",
+        "output_z_policy": "zero"
+      },
+      "source_frame": "synthetic_inspection_bench",
+      "source_units": "meters",
+      "target_frame": "synthetic_inspection_bench",
+      "target_units": "meters",
+      "transform": {
+        "implementation": "No frame or units transform is applied.",
+        "method": "identity"
+      }
+    },
+    "entity_mapping": {
+      "media_type": "application/json",
+      "path": "entity-mapping.json",
+      "schema_version": "metriplane.external_entity_mapping.v1",
+        "sha256": "58223f24a2398611aaa9708b9364db48276e546e2639abd0eb698afbad83b6c5"
+    },
+    "field_provenance": [
+      {
+        "derivation": "Set the frozen FrameStateModel version required by the contract profile.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "schema_version",
+        "source_artifact_ids": [
+          "trajectory"
+        ]
+      },
+      {
+        "derivation": "Set the source-neutral adapter backend identifier.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "source_backend",
+        "source_artifact_ids": [
+          "trajectory"
+        ]
+      },
+      {
+        "layer": "source_fact",
+        "normalized_field": "ts",
+        "source_artifact_ids": [
+          "trajectory"
+        ],
+        "source_fields": [
+          "samples[*].sample_time_s"
+        ]
+      },
+      {
+        "layer": "source_fact",
+        "normalized_field": "frame_id",
+        "source_artifact_ids": [
+          "trajectory"
+        ],
+        "source_fields": [
+          "samples[*].sample_index"
+        ]
+      },
+      {
+        "derivation": "Apply the separately hashed one-to-one entity mapping.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].id",
+        "parameter_references": [
+          {
+            "media_type": "application/json",
+            "path": "entity-mapping.json",
+            "sha256": "58223f24a2398611aaa9708b9364db48276e546e2639abd0eb698afbad83b6c5"
+          }
+        ],
+        "source_artifact_ids": [
+          "trajectory"
+        ],
+        "source_fields": [
+          "samples[*].entities[*].entity_id"
+        ]
+      },
+      {
+        "derivation": "Apply identity frame mapping and planar xy projection with z set to zero.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].pos_world",
+        "source_artifact_ids": [
+          "trajectory"
+        ],
+        "source_fields": [
+          "samples[*].entities[*].position_xyz"
+        ]
+      },
+      {
+        "derivation": "Assign exactly one workspace polygon using inclusive boundaries and reject overlaps.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].zone",
+        "parameter_references": [
+          {
+            "media_type": "application/yaml",
+            "path": "domain-pack/workspace.yaml",
+            "sha256": "1b511a5b72c2acfcc61ebd61f8011a49b89329c74f1e671fade412078a9e6a28"
+          }
+        ],
+        "source_artifact_ids": [
+          "trajectory"
+        ],
+        "source_fields": [
+          "samples[*].entities[*].position_xyz"
+        ]
+      }
+    ],
+    "frame_state_model_version": "1.0",
+    "source_annotations": {
+      "annotations": [
+        {
+          "name": "success",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "metadata"
+          ],
+          "source_field": "source_annotations.success",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "reward",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "metadata"
+          ],
+          "source_field": "source_annotations.reward",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "terminated",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "metadata"
+          ],
+          "source_field": "source_annotations.terminated",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "task_label",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "metadata"
+          ],
+          "source_field": "source_annotations.task_label",
+          "treatment": "source_selection_only"
+        }
+      ],
+      "frame_state_events_policy": "empty",
+      "inventory_complete": true,
+      "source_incident_ids_in_normalized_input": false,
+      "used_as_incident_truth": false,
+      "used_as_process_events": false
+    },
+    "source_backend": "external:synthetic_inspection",
+    "temporal_alignment": {
+      "interpolation": {
+        "fields": [],
+        "method": "none"
+      },
+      "resampling": {
+        "method": "none"
+      },
+      "synchronization": {
+        "method": "not_applicable"
+      }
+    },
+    "zone_assignment": {
+      "boundary_policy": "inclusive",
+      "definitions": {
+        "media_type": "application/yaml",
+        "path": "domain-pack/workspace.yaml",
+        "sha256": "1b511a5b72c2acfcc61ebd61f8011a49b89329c74f1e671fade412078a9e6a28"
+      },
+      "implementation": "Test each xy point against declared polygons; reject overlap; emit explicit outside label.",
+      "method": "polygon",
+      "outside_workspace_policy": "explicit_label",
+      "outside_zone_label": "outside_workspace",
+      "overlap_policy": "reject"
+    }
+  },
+  "normalized_artifacts": {
+    "checksums_path": "CHECKSUMS.sha256",
+    "expected_outcome": {
+      "atlas_input": false,
+      "media_type": "application/json",
+      "path": "expected-outcome.json",
+      "role": "test_metadata_only",
+      "sha256": "1333b0ef36665353c3d5744b1e377b95018287cd0c8af0098e4598bd152b5cfb"
+    },
+    "normalization_report": {
+      "media_type": "application/json",
+      "path": "normalization-report.json",
+      "sha256": "07c7d930b8a53aa1247032741d131ff5cbc652ebf1a8a67922baeb888c68ef7e"
+    },
+    "session": {
+      "frame_count": 4,
+      "frame_state_model_version": "1.0",
+      "media_type": "application/x-ndjson",
+      "path": "session.jsonl",
+      "sha256": "79e5cb801fce1df9e1c54535f578ab9cd416493703fc4e9ca865aff52f1b056c"
+    }
+  },
+  "rights": {
+    "fixture": {
+      "access": "public",
+      "citation": [
+        {
+          "text": "Metriplane External Source Contract v1 synthetic inspection fixture",
+          "uri": "https://github.com/Miko997/metriplane"
+        }
+      ],
+      "license": {
+        "identifier": "MIT",
+        "status": "declared",
+        "uri": "https://opensource.org/license/mit"
+      },
+      "permission_basis": "The normalized synthetic fixture was created for this MIT-licensed repository.",
+      "redistribution": "allowed",
+      "redistribution_permission": "not_required"
+    },
+    "source_artifacts": [
+      {
+        "citation": [
+          {
+            "text": "Synthetic inspection trajectory created for External Source Contract v1",
+            "uri": "https://github.com/Miko997/metriplane"
+          }
+        ],
+        "license": {
+          "identifier": "MIT",
+          "status": "declared",
+          "uri": "https://opensource.org/license/mit"
+        },
+        "permission_basis": "The synthetic trajectory was created for this MIT-licensed repository.",
+        "redistribution": "allowed",
+        "redistribution_permission": "not_required",
+        "rights_id": "synthetic-trajectory-rights",
+        "source_access": "public",
+        "source_use_permission": "not_required"
+      },
+      {
+        "citation": [
+          {
+            "text": "Synthetic inspection metadata sidecar created for External Source Contract v1",
+            "uri": "https://github.com/Miko997/metriplane"
+          }
+        ],
+        "license": {
+          "identifier": "MIT",
+          "status": "declared",
+          "uri": "https://opensource.org/license/mit"
+        },
+        "permission_basis": "The synthetic metadata sidecar was created for this MIT-licensed repository.",
+        "redistribution": "allowed",
+        "redistribution_permission": "not_required",
+        "rights_id": "synthetic-metadata-rights",
+        "source_access": "public",
+        "source_use_permission": "not_required"
+      }
+    ]
+  },
+  "schema_version": "metriplane.external_source_contract.v1",
+  "selection": {
+    "artifact_ids": [
+      "trajectory",
+      "metadata"
+    ],
+    "episode_id": "synthetic-inspection-001",
+    "method": "episode",
+    "rationale": "Select one bounded four-sample episode and its metadata sidecar."
+  },
+  "source_artifacts": [
+    {
+      "artifact_id": "trajectory",
+      "description": "Synthetic source trajectory with two semantic entities and four samples.",
+      "media_type": "application/json",
+      "path": "source/trajectory.json",
+      "presence": "included",
+      "role": "trajectory",
+      "rights_id": "synthetic-trajectory-rights",
+      "sha256": "bc53db30d06b2ae3c720b1d39d116fc9da9b39dc43f22b3e7eed7753c7247713",
+      "uri": "https://github.com/Miko997/metriplane"
+    },
+    {
+      "artifact_id": "metadata",
+      "description": "Synthetic episode metadata sidecar with source-only task annotations.",
+      "media_type": "application/json",
+      "path": "source/metadata.json",
+      "presence": "included",
+      "role": "metadata_sidecar",
+      "rights_id": "synthetic-metadata-rights",
+      "sha256": "26a5b54959587e52c7927ddcbf909f54506a928f2405cd8ca44ae1bbb67ec8d8",
+      "uri": "https://github.com/Miko997/metriplane"
+    }
+  ],
+  "source_project": {
+    "canonical_uri": "https://github.com/Miko997/metriplane",
+    "name": "Metriplane source-neutral synthetic fixture",
+    "revision": {
+      "kind": "git_commit",
+      "value": "d9cdf3c8c2d947b799eb02c4de52363b2cf21bb7"
+    },
+    "version": "contract-test-v1"
+  },
+  "trust_layers": {
+    "adapter_derived_facts": "adapter_and_normalization",
+    "expected_outcome_is_atlas_input": false,
+    "metriplane_derived_results": "atlas_outputs_only",
+    "operator_configured_rules": "domain_pack_only",
+    "source_annotations_can_drive_incidents": false,
+    "source_facts": "source.artifacts_and_field_provenance"
+  }
+}

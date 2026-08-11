@@ -1,0 +1,4 @@
+{
+  "case": "polygon_zone_contradiction",
+  "expected_error": "contradicts polygon assignment"
+}

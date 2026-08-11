@@ -1,0 +1,4 @@
+{
+  "case": "malformed_hash",
+  "expected_error": "source_artifacts.0.sha256"
+}

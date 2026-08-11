@@ -1,0 +1,4 @@
+{
+  "case": "entity_mapping_as_adapter_input",
+  "expected_error": "generated entity-mapping path"
+}

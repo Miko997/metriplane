@@ -1,0 +1,11 @@
+{
+  "coordinate_frame": "synthetic_inspection_bench",
+  "episode_id": "synthetic-inspection-001",
+  "source_annotations": {
+    "reward": 1.0,
+    "success": true,
+    "task_label": "place the reference probe at the measurement station",
+    "terminated": true
+  },
+  "units": "meters"
+}

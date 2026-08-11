@@ -1,0 +1,4 @@
+{
+  "case": "domain_pack_role_alias",
+  "expected_error": "domain_pack.assets.path must end in Atlas canonical filename"
+}

@@ -1,0 +1,4 @@
+{
+  "case": "undeclared_derived_field",
+  "expected_error": "objects[*].vel_world"
+}

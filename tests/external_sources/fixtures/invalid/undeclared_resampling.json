@@ -1,0 +1,4 @@
+{
+  "case": "undeclared_resampling",
+  "expected_error": "normalization.temporal_alignment.resampling"
+}

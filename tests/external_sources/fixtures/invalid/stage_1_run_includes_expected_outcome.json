@@ -1,0 +1,4 @@
+{
+  "case": "stage_1_run_includes_expected_outcome",
+  "expected_error": "exactly the Stage 1 session and entity-mapping outputs"
+}

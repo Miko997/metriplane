@@ -1,0 +1,4 @@
+{
+  "case": "contradictory_source_selection",
+  "expected_error": "episode selection cannot declare: group_path"
+}
