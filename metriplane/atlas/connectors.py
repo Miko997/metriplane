@@ -7,6 +7,8 @@ import csv
 import json
 from pathlib import Path
 
+from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS
+
 
 def _jsonl(path: Path) -> list[dict]:
     if not path.exists():
@@ -52,6 +54,7 @@ def export_connectors(run_dir: str | Path, out_dir: str | Path | None = None) ->
         "limitations": [
             "Static snapshot for read-only integrations.",
             "Does not write to MES, ERP, PLC, or robot controllers.",
+            *ATLAS_LIMITATION_STATEMENTS,
         ],
     }
     webhook_payload = {

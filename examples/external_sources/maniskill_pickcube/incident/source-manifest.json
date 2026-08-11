@@ -1,0 +1,588 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.maniskill_pickcube",
+    "commit": "8a0c878be9670423d1610c5d89fb090bcd1d5735",
+    "entrypoint": "maniskill_pickcube.cli:main",
+    "environment": {
+      "architecture": "x86_64",
+      "dependency_lock": {
+        "media_type": "text/plain",
+        "path": "source/uv.lock",
+        "sha256": "f28f8618680de09c94e855a8b5d2a995ab6241b96c462650cada9c896335ec80"
+      },
+      "description": "Pinned isolated Linux conversion environment; software Vulkan may be needed for upstream scene construction but not fixture evaluation.",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12"
+    },
+    "name": "Metriplane ManiSkill PickCube adapter",
+    "parameters": {
+      "reference": {
+        "media_type": "application/json",
+        "path": "source/frozen-config.json",
+        "sha256": "2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202"
+      },
+      "sha256": "2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202"
+    },
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "contract_profile": "metriplane.atlas.complete_snapshot.v1",
+  "domain_pack": {
+    "assets": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "7c198cfe62eb3635008f01c4f52246cdbb96c3b612d774f04b9a9f9b2c3b1b49"
+    },
+    "contracts": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/contracts.yaml",
+      "sha256": "f46e08d30bd5e41edd5e81a35b8d506d31175ca4a4fcf241ca0a71bc95635fd4"
+    },
+    "domain_pack_id": "maniskill-pickcube-planar-incident-v1",
+    "process": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/process.yaml",
+      "sha256": "59d7d0526a497c729ca4fd1849a238dd2c71bff17a32da6347cd902e51c860d3"
+    },
+    "rationale": "The operator froze this planar target region after inspecting the selected source goal pose. The region is a Metriplane compatibility-test rule, not a ManiSkill task-success definition.",
+    "rule_origin": "operator_configured_rules",
+    "source_annotations_used": false,
+    "work_orders": {
+      "media_type": "text/csv",
+      "path": "domain-pack/work_orders.csv",
+      "sha256": "1f0fbe50790ede0684291a3c0924b37fba3a2ab1ddb2fdbeba6af96f05dfbe2c"
+    },
+    "workspace": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/workspace.yaml",
+      "sha256": "fa3986561609c6e2f38e25070bc49e45f690c9ae5a89e08e0c452820ef01af87"
+    }
+  },
+  "evaluation": {
+    "domain_pack_id": "maniskill-pickcube-planar-incident-v1",
+    "engine": "atlas",
+    "expected_outcome_is_input": false,
+    "metriplane_version": "0.3.0",
+    "provenance_layer": "metriplane_derived_results"
+  },
+  "extensions": {
+    "org.maniskill.pick_cube": {
+      "conversion_identity": {
+        "commit": "a4a4f9272ad64b1564035874b605ceb687b63ed8",
+        "package_version": "3.0.1",
+        "release": "v3.0.1",
+        "wheel_sha256": "685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a"
+      },
+      "dataset_generation_identity": {
+        "commit": "652ad9353c0223507a938f0e8d990dd6f1c771ad",
+        "package_version": "3.0.0b4"
+      },
+      "descriptive_goal_pose": {
+        "projected_xy": [
+          0.026815734803676605,
+          -0.0019813179969787598
+        ],
+        "restored_source_pose_xyz_qwxyz": [
+          0.026815734803676605,
+          -0.0019813179969787598,
+          0.2889334559440613,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "source_api": "goal_site.pose",
+        "use": "audit and operator rationale only; not Atlas runtime input"
+      },
+      "orientation_exclusion": {
+        "audit_yaw_well_defined": true,
+        "excluded_components": [
+          "source z",
+          "quaternion",
+          "yaw",
+          "roll",
+          "pitch"
+        ]
+      },
+      "selection_accounting": {
+        "episode_id": 0,
+        "hdf5_group": "traj_0",
+        "normalized_frames": 75,
+        "registered_rl_horizon": 50,
+        "stored_states": 75,
+        "transitions": 74
+      },
+      "source_absence_inventory": {
+        "failure_array": "absent"
+      },
+      "source_byte_sizes": {
+        "pickcube_archive": 36590010,
+        "pickcube_trajectory_hdf5": 29349195,
+        "pickcube_trajectory_metadata": 228218
+      }
+    }
+  },
+  "fixture": {
+    "bounded_recording": true,
+    "description": "All 75 restored states from pinned PickCube episode 0, normalized as position-only cube and Panda TCP planar snapshots.",
+    "distribution": "derived_only",
+    "fixture_id": "maniskill-pickcube-episode-0-planar-incident-v1",
+    "title": "ManiSkill PickCube episode 0 planar incident fixture"
+  },
+  "limitations": [
+    "This fixture evaluates bounded XY occupancy and timing only; it does not evaluate 3D placement, orientation, grasp state, or official PickCube success.",
+    "The source quaternion exists and audit yaw was numerically well-defined, but source Z, quaternion, yaw, roll, and pitch are excluded from normalized evaluation.",
+    "Atlas does not establish physical accuracy, correctness, calibration, or simulator realism of upstream restored state.",
+    "Episode selection was outcome-blind within an official corpus that had already been success-filtered upstream.",
+    "The target polygon is an operator-authored compatibility rule, not ManiSkill source truth.",
+    "This is not a certified safety or quality decision and does not control machinery."
+  ],
+  "normalization": {
+    "atlas_asset_mapping": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "7c198cfe62eb3635008f01c4f52246cdbb96c3b612d774f04b9a9f9b2c3b1b49"
+    },
+    "authoritative_object_collection": "objects",
+    "clock": {
+      "description": "Map stored-state index i to ts_sim_ns=i*50000000; ts is derived from the same integer nanosecond value.",
+      "evaluation_field": "ts_sim_ns",
+      "fixed_step_ns": 50000000,
+      "fixed_step_origin_ns": 0,
+      "mapping_method": "fixed_step",
+      "source_clock": "stored environment-state order",
+      "source_field": "traj_0/env_states[*] index",
+      "source_unit": "index"
+    },
+    "completeness": {
+      "carry_forward": {
+        "fields": [],
+        "method": "none"
+      },
+      "frame_semantics": "complete_snapshot",
+      "omission_policy": "reject_omission",
+      "partial_updates_materialized": false,
+      "process_relevant_entity_policy": "known_in_every_frame",
+      "source_stream_semantics": "complete_snapshot",
+      "unknown_state_policy": "reject_fixture"
+    },
+    "confidence": {
+      "mode": "absent"
+    },
+    "coordinates": {
+      "information_loss": [
+        {
+          "impact": "Atlas receives x/y with z=0 and no orientation; 3D placement, attitude, grasp state, and official task success cannot be evaluated.",
+          "lost_information": [
+            "source z coordinate",
+            "complete source quaternion",
+            "yaw",
+            "roll",
+            "pitch"
+          ],
+          "operation": "position-only planar projection"
+        }
+      ],
+      "projection": {
+        "dropped_axes": [
+          "z"
+        ],
+        "implementation": "Copy source world x/y, set normalized z to 0.0, omit orientation.",
+        "method": "planar_xy",
+        "output_z_policy": "zero"
+      },
+      "source_frame": "maniskill_world",
+      "source_units": "meters",
+      "target_frame": "maniskill_world",
+      "target_units": "meters",
+      "transform": {
+        "implementation": "No translation, rotation, scaling, or axis swap.",
+        "method": "identity"
+      }
+    },
+    "entity_mapping": {
+      "media_type": "application/json",
+      "path": "entity-mapping.json",
+      "schema_version": "metriplane.external_entity_mapping.v1",
+      "sha256": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7"
+    },
+    "field_provenance": [
+      {
+        "derivation": "Set the frozen FrameStateModel 1.0 schema version.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "schema_version",
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ]
+      },
+      {
+        "derivation": "Set the stable namespaced external restoration backend.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "source_backend",
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ]
+      },
+      {
+        "derivation": "Derive seconds from the authoritative fixed-step nanosecond clock.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "ts",
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ],
+        "source_fields": [
+          "traj_0/env_states[*] index"
+        ]
+      },
+      {
+        "derivation": "Multiply stored-state index by 50000000 ns.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "ts_sim_ns",
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ],
+        "source_fields": [
+          "traj_0/env_states[*] index"
+        ]
+      },
+      {
+        "derivation": "Assign sequential normalized frame IDs from stored-state order.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "frame_id",
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ],
+        "source_fields": [
+          "traj_0/env_states[*] index"
+        ]
+      },
+      {
+        "derivation": "Apply the separately hashed one-to-one entity mapping.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].id",
+        "parameter_references": [
+          {
+            "media_type": "application/json",
+            "path": "entity-mapping.json",
+            "sha256": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7"
+          }
+        ],
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ],
+        "source_fields": [
+          "traj_0/env_states/actors/cube",
+          "traj_0/env_states/articulations/panda"
+        ]
+      },
+      {
+        "derivation": "Restore every state independently, read cube.pose and agent.tcp_pose (pinned forward kinematics), copy x/y, and set z=0.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].pos_world",
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ],
+        "source_fields": [
+          "traj_0/env_states/actors/cube",
+          "traj_0/env_states/articulations/panda"
+        ]
+      },
+      {
+        "derivation": "Apply the separately hashed Layer-C inclusive polygon.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].zone",
+        "parameter_references": [
+          {
+            "media_type": "application/yaml",
+            "path": "domain-pack/workspace.yaml",
+            "sha256": "fa3986561609c6e2f38e25070bc49e45f690c9ae5a89e08e0c452820ef01af87"
+          }
+        ],
+        "source_artifact_ids": [
+          "pickcube_trajectory_hdf5"
+        ],
+        "source_fields": [
+          "traj_0/env_states/actors/cube",
+          "traj_0/env_states/articulations/panda"
+        ]
+      }
+    ],
+    "frame_state_model_version": "1.0",
+    "source_annotations": {
+      "annotations": [
+        {
+          "name": "reward",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_hdf5"
+          ],
+          "source_field": "traj_0/rewards",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "success",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_hdf5"
+          ],
+          "source_field": "traj_0/success",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "success",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "episodes[0].success",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "terminated",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_hdf5"
+          ],
+          "source_field": "traj_0/terminated",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "truncated",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_hdf5"
+          ],
+          "source_field": "traj_0/truncated",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "actions",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "pickcube_trajectory_hdf5"
+          ],
+          "source_field": "traj_0/actions",
+          "treatment": "excluded"
+        },
+        {
+          "name": "elapsed steps",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "episodes[0].elapsed_steps",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "registered RL horizon",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "env_info.max_episode_steps",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "task/environment label",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "env_info.env_id",
+          "treatment": "source_selection_only"
+        },
+        {
+          "name": "control mode",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "episodes[0].control_mode",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "source type",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "source_type",
+          "treatment": "provenance_only"
+        },
+        {
+          "name": "source description",
+          "retained_in": "source_artifact",
+          "source_artifact_ids": [
+            "pickcube_trajectory_metadata"
+          ],
+          "source_field": "source_desc",
+          "treatment": "provenance_only"
+        }
+      ],
+      "frame_state_events_policy": "empty",
+      "inventory_complete": true,
+      "source_incident_ids_in_normalized_input": false,
+      "used_as_incident_truth": false,
+      "used_as_process_events": false
+    },
+    "source_backend": "external:maniskill_pickcube_state_restore",
+    "temporal_alignment": {
+      "interpolation": {
+        "fields": [],
+        "method": "none"
+      },
+      "resampling": {
+        "fields": [],
+        "method": "none"
+      },
+      "synchronization": {
+        "fields": [],
+        "method": "not_applicable"
+      }
+    },
+    "zone_assignment": {
+      "boundary_policy": "inclusive",
+      "definitions": {
+        "media_type": "application/yaml",
+        "path": "domain-pack/workspace.yaml",
+        "sha256": "fa3986561609c6e2f38e25070bc49e45f690c9ae5a89e08e0c452820ef01af87"
+      },
+      "implementation": "Test each x/y point against the frozen polygon, reject overlap, and emit outside_workspace when outside.",
+      "method": "polygon",
+      "outside_workspace_policy": "explicit_label",
+      "outside_zone_label": "outside_workspace",
+      "overlap_policy": "reject",
+      "zone_priority": []
+    }
+  },
+  "normalized_artifacts": {
+    "checksums_path": "CHECKSUMS.sha256",
+    "expected_outcome": {
+      "atlas_input": false,
+      "media_type": "application/json",
+      "path": "expected-outcome.json",
+      "role": "test_metadata_only",
+      "sha256": "8b55e7d7433c7a917963d05f05e6e66c28b54c31ba94a98443fedd8ac3318a15"
+    },
+    "normalization_report": {
+      "media_type": "application/json",
+      "path": "normalization-report.json",
+      "sha256": "849789aea74f94ac1f1d885222dd241bdf1b436618e2ae42b65b276969a280f7"
+    },
+    "session": {
+      "frame_count": 75,
+      "frame_state_model_version": "1.0",
+      "media_type": "application/x-ndjson",
+      "path": "session.jsonl",
+      "sha256": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df"
+    }
+  },
+  "rights": {
+    "fixture": {
+      "access": "public",
+      "citation": [
+        {
+          "text": "ManiSkill Demonstrations dataset and PickCube-v1 motion-planning trajectory",
+          "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/tree/d674485bbffdd533914e52d272fdda34c0515608"
+        },
+        {
+          "text": "ManiSkill project",
+          "uri": "https://github.com/mani-skill/ManiSkill"
+        }
+      ],
+      "license": {
+        "identifier": "Apache-2.0",
+        "status": "declared",
+        "uri": "https://www.apache.org/licenses/LICENSE-2.0"
+      },
+      "permission_basis": "The portable normalized coordinates are modified/derived data distributed with Apache-2.0 attribution and notice; raw source bytes and assets are absent.",
+      "redistribution": "allowed",
+      "redistribution_permission": "verified"
+    },
+    "source_artifacts": [
+      {
+        "citation": [
+          {
+            "text": "ManiSkill Demonstrations dataset and PickCube-v1 motion-planning trajectory",
+            "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/tree/d674485bbffdd533914e52d272fdda34c0515608"
+          },
+          {
+            "text": "ManiSkill project",
+            "uri": "https://github.com/mani-skill/ManiSkill"
+          }
+        ],
+        "license": {
+          "identifier": "Apache-2.0",
+          "status": "declared",
+          "uri": "https://www.apache.org/licenses/LICENSE-2.0"
+        },
+        "permission_basis": "The public dataset card declares Apache-2.0. No standalone dataset LICENSE file was found; only modified/derived fixture data are redistributed.",
+        "redistribution": "derived_only",
+        "redistribution_permission": "verified",
+        "rights_id": "maniskill-demonstrations-rights",
+        "source_access": "public",
+        "source_use_permission": "verified"
+      }
+    ]
+  },
+  "schema_version": "metriplane.external_source_contract.v1",
+  "selection": {
+    "artifact_ids": [
+      "pickcube_trajectory_hdf5",
+      "pickcube_trajectory_metadata"
+    ],
+    "episode_id": "0",
+    "method": "episode",
+    "rationale": "Select frozen episode 0 (HDF5 group traj_0), retaining all 74 transitions and 75 stored states. Selection was outcome-blind within a success-filtered corpus."
+  },
+  "source_artifacts": [
+    {
+      "artifact_id": "pickcube_archive",
+      "description": "Pinned upstream PickCube demonstration ZIP; referenced, never included.",
+      "media_type": "application/zip",
+      "presence": "referenced",
+      "rights_id": "maniskill-demonstrations-rights",
+      "role": "source_archive",
+      "sha256": "b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8",
+      "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1.zip"
+    },
+    {
+      "artifact_id": "pickcube_trajectory_hdf5",
+      "description": "Pinned HDF5 trajectory member from the verified PickCube archive; referenced, never included.",
+      "media_type": "application/x-hdf5",
+      "presence": "referenced",
+      "rights_id": "maniskill-demonstrations-rights",
+      "role": "trajectory",
+      "sha256": "03ca60546541a7f18321d9d32721f0254bc75217828c0cadacd217d0c014576a",
+      "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1/motionplanning/trajectory.h5"
+    },
+    {
+      "artifact_id": "pickcube_trajectory_metadata",
+      "description": "Pinned JSON metadata member from the verified PickCube archive; referenced, never included.",
+      "media_type": "application/json",
+      "presence": "referenced",
+      "rights_id": "maniskill-demonstrations-rights",
+      "role": "metadata_sidecar",
+      "sha256": "16e403cb77bfbdda28c243b96eb90adbae1c0edf42854283be57ee47076a2e90",
+      "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1/motionplanning/trajectory.json"
+    }
+  ],
+  "source_project": {
+    "canonical_uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations",
+    "name": "ManiSkill Demonstrations",
+    "revision": {
+      "kind": "dataset_revision",
+      "value": "d674485bbffdd533914e52d272fdda34c0515608"
+    },
+    "version": "generated-with-mani_skill-3.0.0b4"
+  },
+  "trust_layers": {
+    "adapter_derived_facts": "adapter_and_normalization",
+    "expected_outcome_is_atlas_input": false,
+    "metriplane_derived_results": "atlas_outputs_only",
+    "operator_configured_rules": "domain_pack_only",
+    "source_annotations_can_drive_incidents": false,
+    "source_facts": "source.artifacts_and_field_provenance"
+  }
+}

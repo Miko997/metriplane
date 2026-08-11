@@ -1,0 +1,12 @@
+schema_version: metriplane.atlas.contracts.v1
+contracts:
+- contract_id: robot_tcp_required_with_cube
+  kind: process_asset_presence
+  process_step_id: cube_target_requires_tcp
+  required_asset_id: robot_tcp_1
+  zone_id: target_xy_region
+  station_id: target_station
+  max_wait_s: 0.3
+  severity: warning
+  note: Observe-only Metriplane-authored planar rule; it is not a PickCube success
+    or safety decision.

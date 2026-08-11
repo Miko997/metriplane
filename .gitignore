@@ -117,5 +117,11 @@ configs/*_local.yaml
 !metriplane/demo/assets/assembly_cell_missing_tool.jsonl
 !metriplane/demo/assets/assembly_cell/work_orders.csv
 
+# Portable, source-derived ManiSkill fixture inputs required by contract tests.
+!examples/external_sources/maniskill_pickcube/
+!examples/external_sources/maniskill_pickcube/**/
+!examples/external_sources/maniskill_pickcube/**/*.jsonl
+!examples/external_sources/maniskill_pickcube/**/*.csv
+
 # Local run output accidentally created as literal tilde directory
 /~/

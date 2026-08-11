@@ -30,10 +30,27 @@ EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH: Final = (
 )
 
 ATLAS_LIMITATIONS = [
-    "planar_xy_state",
-    "tracked_or_tagged_assets_required",
+    "recorded_normalized_planar_xy_state_supplied_to_atlas",
+    "depends_on_supplied_object_identity_state_zone_assignments_and_process_rules",
+    "upstream_state_correctness_and_accuracy_not_independently_established",
     "not_certified_safety_or_quality_decision_system",
 ]
+
+ATLAS_LIMITATION_STATEMENTS: Final = (
+    (
+        "This result is derived from recorded normalized planar object state supplied "
+        "for evaluation, not a fresh interpretation of raw sensor data."
+    ),
+    (
+        "It depends on the object identities, state, zone assignments, and process rules "
+        "supplied for this run."
+    ),
+    (
+        "It does not establish correctness, calibration, physical accuracy, or simulator "
+        "realism of the upstream state."
+    ),
+    "It is not a certified safety or quality decision and does not control machinery.",
+)
 
 
 class AssetModel(BaseModel):

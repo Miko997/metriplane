@@ -794,6 +794,8 @@ def test_atlas_manifest_artifact_paths_remain_valid_after_atomic_move(
     manifest = json.loads(
         (atlas_run / "atlas_manifest.json").read_text(encoding="utf-8")
     )
+    assert manifest["source_session_jsonl"] == "state_segment.jsonl"
+    assert manifest["domain_pack"] == "configs"
 
     for rel in manifest["artifacts"].values():
         assert not Path(rel).is_absolute()

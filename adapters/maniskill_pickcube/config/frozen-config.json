@@ -1,0 +1,122 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.maniskill_pickcube",
+    "entrypoint": "maniskill_pickcube.cli:main",
+    "name": "Metriplane ManiSkill PickCube adapter",
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "allowed_future_changes": [
+    "claim-safe documentation corrections",
+    "dependency security updates that preserve output bytes",
+    "tests that do not alter frozen conversion semantics"
+  ],
+  "coordinate_mapping": {
+    "output_z": 0.0,
+    "projection": "source_world_xy",
+    "source_frame": "maniskill_world",
+    "source_units": "meters",
+    "target_frame": "maniskill_world",
+    "target_units": "meters",
+    "transform": "identity"
+  },
+  "freeze_date": "2026-08-12",
+  "normalization": {
+    "authoritative_collection": "objects",
+    "carry_forward": "none",
+    "confidence": "absent",
+    "events": "empty",
+    "interpolation": "none",
+    "orientation": "excluded",
+    "resampling": "none",
+    "source_outcomes": "excluded"
+  },
+  "objects": [
+    {
+      "atlas_asset_id": "cube_1",
+      "atlas_asset_type": "material",
+      "normalized_object_id": "cube_1",
+      "source_api": "cube.pose",
+      "source_entity": "env_states/actors/cube"
+    },
+    {
+      "atlas_asset_id": "robot_tcp_1",
+      "atlas_asset_type": "tool",
+      "normalized_object_id": "robot_tcp_1",
+      "source_api": "agent.tcp_pose",
+      "source_entity": "env_states/articulations/panda"
+    }
+  ],
+  "schema_version": "org.metriplane.maniskill_pickcube.config.v1",
+  "selection": {
+    "episode_id": 0,
+    "hdf5_group": "traj_0",
+    "normalized_frames": 75,
+    "registered_rl_horizon": 50,
+    "stored_states": 75,
+    "transitions": 74
+  },
+  "source": {
+    "archive": {
+      "path": "demos/PickCube-v1.zip",
+      "sha256": "b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8",
+      "size": 36590010
+    },
+    "conversion_commit": "a4a4f9272ad64b1564035874b605ceb687b63ed8",
+    "conversion_package": "mani_skill==3.0.1",
+    "conversion_release": "v3.0.1",
+    "conversion_wheel_sha256": "685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a",
+    "dataset_generation_commit": "652ad9353c0223507a938f0e8d990dd6f1c771ad",
+    "dataset_generation_package": "3.0.0b4",
+    "dataset_repository": "haosulab/ManiSkill_Demonstrations",
+    "dataset_revision": "d674485bbffdd533914e52d272fdda34c0515608",
+    "hdf5": {
+      "path": "demos/PickCube-v1/motionplanning/trajectory.h5",
+      "sha256": "03ca60546541a7f18321d9d32721f0254bc75217828c0cadacd217d0c014576a",
+      "size": 29349195
+    },
+    "json": {
+      "path": "demos/PickCube-v1/motionplanning/trajectory.json",
+      "sha256": "16e403cb77bfbdda28c243b96eb90adbae1c0edf42854283be57ee47076a2e90",
+      "size": 228218
+    },
+    "project_repository": "mani-skill/ManiSkill",
+    "task": "PickCube-v1"
+  },
+  "target_polygon": {
+    "boundary_policy": "inclusive",
+    "center": [
+      0.026815734803676605,
+      -0.0019813179969787598
+    ],
+    "half_extent": 0.01,
+    "outside_label": "outside_workspace",
+    "overlap_policy": "reject",
+    "station_id": "target_station",
+    "vertices": [
+      [0.016815734803676603, -0.01198131799697876],
+      [0.03681573480367661, -0.01198131799697876],
+      [0.03681573480367661, 0.00801868200302124],
+      [0.016815734803676603, 0.00801868200302124]
+    ],
+    "zone_id": "target_xy_region"
+  },
+  "timing": {
+    "control_frequency_hz": 20,
+    "control_period_ns": 50000000,
+    "control_period_s": 0.05,
+    "frame_zero_origin_ns": 0
+  },
+  "variants": {
+    "control": {
+      "domain_pack_id": "maniskill-pickcube-planar-control-v1",
+      "fixture_id": "maniskill-pickcube-episode-0-planar-control-v1",
+      "max_wait_s": 0.3
+    },
+    "incident": {
+      "domain_pack_id": "maniskill-pickcube-planar-incident-v1",
+      "fixture_id": "maniskill-pickcube-episode-0-planar-incident-v1",
+      "max_wait_s": 0.2
+    }
+  }
+}

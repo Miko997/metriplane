@@ -7,6 +7,12 @@ import json
 from pathlib import Path
 
 from metriplane.atlas.domain_packs import load_domain_pack
+from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS
+from metriplane.atlas.run_references import (
+    DOMAIN_PACK_RUN_PATH,
+    STATE_SEGMENT_RUN_PATH,
+    resolve_run_reference,
+)
 
 
 def _q(value: str) -> str:
@@ -38,8 +44,17 @@ def _object_rows(frames: list[dict]) -> list[tuple[float, str, tuple[float, floa
 def export_usda(run_dir: str | Path, out_path: str | Path | None = None) -> Path:
     run = Path(run_dir)
     manifest = json.loads((run / "atlas_manifest.json").read_text(encoding="utf-8"))
-    pack = load_domain_pack(run / "configs")
-    source_session = Path(manifest["source_session_jsonl"])
+    source_session = resolve_run_reference(
+        run,
+        str(manifest["source_session_jsonl"]),
+        contained_reference=STATE_SEGMENT_RUN_PATH,
+    )
+    pack_path = resolve_run_reference(
+        run,
+        str(manifest["domain_pack"]),
+        contained_reference=DOMAIN_PACK_RUN_PATH,
+    )
+    pack = load_domain_pack(pack_path)
     frames = _iter_frames(source_session)
     rows = _object_rows(frames)
     incidents = [
@@ -62,7 +77,7 @@ def export_usda(run_dir: str | Path, out_path: str | Path | None = None) -> Path
         f'    custom string schema_version = "metriplane.atlas.twinverify_usda.v1"',
         f'    custom string run_id = "{_q(str(manifest.get("run_id", "")))}"',
         f'    custom string cell_id = "{_q(str(manifest.get("cell_id", "")))}"',
-        '    custom string limitation = "Replay-derived planar state; no Isaac latency or safety claim."',
+        f'    custom string limitation = "{_q(" ".join(ATLAS_LIMITATION_STATEMENTS))}"',
     ]
     lines.extend([
         '    def Xform "Zones"',

@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 from metriplane.atlas.event_ledger import read_events
-from metriplane.atlas.models import AtlasIncident
+from metriplane.atlas.models import ATLAS_LIMITATION_STATEMENTS, AtlasIncident
 
 
 def _read_json(path: Path, default: object) -> object:
@@ -48,11 +48,7 @@ def dashboard_payload(
         "regressions": regressions,
         "training": training,
         "actions": actions,
-        "limitations": [
-            "Derived from replayed planar state.",
-            "Tracks tagged assets, not people.",
-            "Not a certified safety or quality decision system.",
-        ],
+        "limitations": list(ATLAS_LIMITATION_STATEMENTS),
     }
 
 
@@ -117,6 +113,10 @@ def render_dashboard_html(payload: dict) -> str:
         f"<li>{html.escape(str(action.get('title', 'Action')))}: {html.escape(str(action.get('rationale', '')))}</li>"
         for action in actions
     ) or "<li>No improvement actions generated.</li>"
+    limitation_html = "\n".join(
+        f"<li>{html.escape(statement)}</li>"
+        for statement in ATLAS_LIMITATION_STATEMENTS
+    )
     payload_json = html.escape(json.dumps(payload, sort_keys=True))
     return f"""<!doctype html>
 <html lang="en">
@@ -148,8 +148,8 @@ def render_dashboard_html(payload: dict) -> str:
 <main>
   <header>
     <h1>Incident Review</h1>
-    <div class="sub">Recorded run {run_id} / workspace {cell_id}. A recorded run is a saved
-      sequence of object positions and timestamps. Results are replay-derived and observe-only.</div>
+    <div class="sub">Recorded run {run_id} / workspace {cell_id}. Atlas evaluated supplied
+      normalized planar object state and process rules. Results are observe-only.</div>
   </header>
   <nav class="actions">{button_html}</nav>
   <section class="metrics">{card_html}</section>
@@ -176,13 +176,9 @@ def render_dashboard_html(payload: dict) -> str:
   <h2>Repeatable check that was generated</h2>
   <p>A regression check deterministically replays the saved inputs and checks that the
     expected incident is still detected. Deterministic replay makes software results
-    comparable; it does not prove that the original measurements were physically accurate.</p>
+    comparable; it does not establish correctness or physical accuracy of upstream state.</p>
   <h2>Limits of this result</h2>
-  <ul>
-    <li>Derived from calibrated planar state streams.</li>
-    <li>Depends on tracked/tagged assets.</li>
-    <li>Not a certified safety or quality decision system.</li>
-  </ul>
+  <ul>{limitation_html}</ul>
   <script type="application/json" id="atlas-dashboard-payload">{payload_json}</script>
 </main>
 </body>

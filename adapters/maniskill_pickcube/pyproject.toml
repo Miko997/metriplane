@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "maniskill-pickcube-adapter"
+version = "1.0.0"
+description = "Isolated deterministic adapter for one pinned ManiSkill PickCube trajectory"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = [
+  "h5py==3.16.0",
+  "huggingface-hub==1.27.0",
+  "mani-skill==3.0.1",
+  "numpy==2.5.2",
+  "PyYAML==6.0.3",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.2", "ruff==0.14.10"]
+
+[project.scripts]
+maniskill-pickcube = "maniskill_pickcube.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/maniskill_pickcube"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config/frozen-config.json" = "maniskill_pickcube/data/frozen-config.json"
+"uv.lock" = "maniskill_pickcube/data/uv.lock"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]

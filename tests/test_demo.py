@@ -187,6 +187,8 @@ def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatc
     manifest = json.loads((out_dir / "atlas_manifest.json").read_text(encoding="utf-8"))
     assert manifest["event_count"] == 6
     assert manifest["incident_count"] == 1
+    assert manifest["source_session_jsonl"] == "state_segment.jsonl"
+    assert manifest["domain_pack"] == "configs"
 
     bundle_path = out_dir / "evidence_bundles" / "INC-0001.zip"
     regression_path = out_dir / "regression_tests" / "INC-0001.yaml"

@@ -8,6 +8,7 @@ import unicodedata
 from pathlib import Path
 
 from metriplane.atlas.models import (
+    ATLAS_LIMITATION_STATEMENTS,
     AtlasDeviation,
     AtlasEvent,
     AtlasIncident,
@@ -249,14 +250,11 @@ def render_markdown(
             "",
             "## Limits of this result",
             "",
-            "- This result is derived from replayed calibrated planar state, not a fresh "
-            "judgement of raw video.",
-            "- It depends on the tracked or tagged objects and the process rules supplied "
-            "for this run.",
-            "- It does not prove root cause; suggested follow-ups require before-and-after "
-            "validation.",
-            "- It is not a certified safety or quality decision and does not control "
-            "machinery.",
+            *(f"- {statement}" for statement in ATLAS_LIMITATION_STATEMENTS),
+            (
+                "- It does not prove root cause; suggested follow-ups require before-and-after "
+                "validation."
+            ),
         ]
     )
     return "\n".join(lines) + "\n"

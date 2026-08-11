@@ -19,7 +19,7 @@ FILES = {
 """,
     "reviewer_questionnaire.md": """# Atlas Reviewer Questionnaire
 
-1. What physical event did the report make easiest to understand?
+1. Which recorded state change did the report make easiest to understand?
 2. Which evidence artifact felt most trustworthy?
 3. Which limitation was unclear?
 4. Would this help a team discuss process improvement without blame?

@@ -1,0 +1,20 @@
+schema_version: metriplane.atlas.workspace.v1
+cell_id: maniskill_pickcube_planar_fixture
+units: meters
+zones:
+- zone_id: target_xy_region
+  zone_type: work_station
+  label: Operator-configured planar target region
+  polygon:
+  - - 0.016815734803676603
+    - -0.01198131799697876
+  - - 0.03681573480367661
+    - -0.01198131799697876
+  - - 0.03681573480367661
+    - 0.00801868200302124
+  - - 0.016815734803676603
+    - 0.00801868200302124
+stations:
+- station_id: target_station
+  zone_id: target_xy_region
+  label: Operator-configured planar target station
