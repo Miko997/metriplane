@@ -1,0 +1,15 @@
+adapter=maniskill-pickcube-adapter==1.0.0
+adapter_commit=8a0c878be9670423d1610c5d89fb090bcd1d5735
+frozen_config_sha256=2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202
+python=CPython==3.12
+operating_system=Linux
+architecture=x86_64
+mani_skill==3.0.1
+mani_skill_commit=a4a4f9272ad64b1564035874b605ceb687b63ed8
+mani_skill_wheel_sha256=685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a
+h5py==3.16.0
+huggingface-hub==1.27.0
+numpy==2.5.2
+PyYAML==6.0.3
+conversion_scene_dependency=software Vulkan device when required by upstream scene construction
+portable_fixture_requires_simulator=false

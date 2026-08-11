@@ -1,0 +1,13 @@
+schema_version: metriplane.atlas.process_model.v1
+process_id: maniskill_pickcube_planar_tcp_presence
+work_order_type: external_fixture
+steps:
+- step_id: cube_target_requires_tcp
+  label: Cube in target planar region requires robot TCP
+  expected_asset_types:
+  - material
+  required_assets:
+  - robot_tcp_1
+  required_zone: target_xy_region
+  required_station: target_station
+  max_wait_s: 0.2

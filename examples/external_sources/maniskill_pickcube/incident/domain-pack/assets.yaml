@@ -1,0 +1,20 @@
+schema_version: metriplane.atlas.asset_registry.v1
+assets:
+- object_id: cube_1
+  asset_id: cube_1
+  asset_type: material
+  label: Restored PickCube cube (planar material object)
+  work_order_id: WO-MANISKILL-PICKCUBE-001
+  expected_zones:
+  - target_xy_region
+  expected_stations:
+  - target_station
+- object_id: robot_tcp_1
+  asset_id: robot_tcp_1
+  asset_type: tool
+  label: Restored Panda TCP (planar required tool)
+  work_order_id: WO-MANISKILL-PICKCUBE-001
+  expected_zones:
+  - target_xy_region
+  expected_stations:
+  - target_station

@@ -1,0 +1,114 @@
+{
+  "contract_schema_version": "metriplane.external_source_contract.v1",
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "input_fingerprint_sha256": "fe90ca129c924d183cecdacc05c5fa0f8a5711dd169cb034128f0da33a2c4475",
+    "runs": [
+      {
+        "artifacts": {
+          "entity-mapping.json": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7",
+          "session.jsonl": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df"
+        },
+        "run_id": "real-source-clean-1"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7",
+          "session.jsonl": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df"
+        },
+        "run_id": "real-source-clean-2"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7",
+          "session.jsonl": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df"
+        },
+        "run_id": "real-source-clean-3"
+      }
+    ],
+    "status": "demonstrated"
+  },
+  "fixture_id": "maniskill-pickcube-episode-0-planar-control-v1",
+  "limitations": [
+    "This is a position-only planar conversion: source Z and the complete source quaternion, including yaw, roll, and pitch, are discarded.",
+    "Audit yaw was numerically well-defined, but no orientation is emitted or used for positions, zones, time, process rules, Atlas events, or incidents.",
+    "The result does not evaluate 3D placement, grasp state, official PickCube success, physical accuracy, or simulator realism.",
+    "The goal-centered polygon is wholly an operator-configured Layer-C compatibility-test rule.",
+    "The source corpus was success-filtered upstream; episode selection within it was outcome-blind.",
+    "The restored source goal pose is xyz=(0.026815734803676605, -0.0019813179969787598, 0.2889334559440613) with qwxyz=(1.0, 0.0, 0.0, 0.0); projected goal XY is descriptive only."
+  ],
+  "normalized_frame_count": 75,
+  "omitted_process_relevant_observations": 0,
+  "operations": [
+    {
+      "applied": true,
+      "declaration_path": "normalization.clock",
+      "kind": "time_mapping",
+      "operation_id": "map-state-index-to-fixed-nanoseconds",
+      "summary": "Mapped state index i to ts_sim_ns=i*50000000 and derived ts from it."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.entity_mapping",
+      "kind": "entity_mapping",
+      "operation_id": "map-cube-and-tcp",
+      "summary": "Applied the hashed one-to-one cube and Panda TCP mapping."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.coordinates.transform",
+      "kind": "coordinate_transform",
+      "operation_id": "identity-world-frame",
+      "summary": "Source and target use the same metre-valued ManiSkill world frame."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.coordinates.projection",
+      "kind": "projection",
+      "operation_id": "project-planar-xy",
+      "summary": "Copied world x/y and set normalized z to zero; orientation was omitted."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.zone_assignment",
+      "kind": "zone_assignment",
+      "operation_id": "assign-frozen-target-polygon",
+      "summary": "Applied the Layer-C inclusive polygon and explicit outside label."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.synchronization",
+      "kind": "synchronization",
+      "operation_id": "no-synchronization",
+      "summary": "Each restored simulator state supplies both objects synchronously."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.resampling",
+      "kind": "resampling",
+      "operation_id": "no-resampling",
+      "summary": "All 75 stored states are retained one-for-one."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.interpolation",
+      "kind": "interpolation",
+      "operation_id": "no-interpolation",
+      "summary": "No position or time value is interpolated."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.completeness.carry_forward",
+      "kind": "carry_forward",
+      "operation_id": "no-carry-forward",
+      "summary": "Every frame is complete; no observation is carried forward."
+    }
+  ],
+  "process_relevant_entity_count": 2,
+  "result": "pass",
+  "schema_version": "metriplane.external_normalization_report.v1",
+  "source_record_count": 75,
+  "unknown_process_relevant_observations": 0,
+  "warnings": []
+}

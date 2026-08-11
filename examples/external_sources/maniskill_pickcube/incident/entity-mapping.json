@@ -1,0 +1,29 @@
+{
+  "mappings": [
+    {
+      "atlas_asset_id": "cube_1",
+      "description": "One-to-one operator-frozen mapping from the restored cube actor to the normalized material object.",
+      "normalized_object_id": "cube_1",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "pickcube_trajectory_hdf5",
+          "source_entity_id": "traj_0/env_states/actors/cube"
+        }
+      ]
+    },
+    {
+      "atlas_asset_id": "robot_tcp_1",
+      "description": "One-to-one operator-frozen mapping from Panda state to the named agent.tcp_pose tool object.",
+      "normalized_object_id": "robot_tcp_1",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "pickcube_trajectory_hdf5",
+          "source_entity_id": "traj_0/env_states/articulations/panda"
+        }
+      ]
+    }
+  ],
+  "schema_version": "metriplane.external_entity_mapping.v1"
+}

@@ -1,0 +1,16 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Metriplane
+Source: https://github.com/Miko997/metriplane
+
+Files: adapters/maniskill_pickcube/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+
+Files: examples/external_sources/maniskill_pickcube/*
+Copyright: NOASSERTION
+License: Apache-2.0
+Comment: This subtree contains modified normalized data derived from the pinned
+ ManiSkill Demonstrations dataset and independently authored compatibility-test
+ metadata and rules. The source dataset card declares Apache-2.0 but provides no
+ standalone dataset LICENSE or copyright notice. See the fixture README and
+ source-manifest.json for immutable source attribution, hashes, and the modified-data notice.
