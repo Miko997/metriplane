@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -514,9 +515,26 @@ def test_safe_relative_paths_reject_ambiguous_or_escaping_values(value: str) -> 
 )
 def test_absolute_uris_reject_whitespace_and_credential_material(value: str) -> None:
     manifest = _read_json(VALID_BUNDLE / "source-manifest.json")
-    manifest["source_project"]["repository_uri"] = value
+    manifest["source_project"]["canonical_uri"] = value
     with pytest.raises(ValueError):
         ExternalSourceManifestV1.model_validate(manifest)
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or not hasattr(os, "mkfifo"),
+    reason="FIFO creation is available only on supported POSIX platforms",
+)
+def test_bundle_rejects_nonregular_fifo_entry(tmp_path: Path) -> None:
+    root = tmp_path / "fixture-with-fifo"
+    shutil.copytree(VALID_BUNDLE, root)
+    fifo = root / "unexpected.pipe"
+    os.mkfifo(fifo)
+
+    with pytest.raises(
+        ValueError,
+        match=r"bundle entry is not a regular file or directory: unexpected\.pipe",
+    ):
+        validate_external_fixture_bundle(root)
 
 
 def test_expected_outcome_type_inventory_matches_counts() -> None:

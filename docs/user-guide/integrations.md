@@ -9,11 +9,11 @@ The v0.3.0 adoption path is intentionally narrow: install the Python package,
 analyze a `FrameStateModel` JSONL recording with process rules, inspect the local
 report, verify its bundle, and rerun its generated regression check.
 
-| Path | v0.3.0 status | What that means |
+| Path | Status | What that means |
 | --- | --- | --- |
 | Bundled camera-free demo | Release-gated | Runs from an installed wheel outside a source checkout on Ubuntu and macOS with Python 3.12/3.13. |
 | `FrameStateModel` JSONL + process rules | Supported incident input | Requires already-estimated object IDs, positions, and preclassified zone labels. |
-| External Source Contract v1 | Typed repository contract; no source adapter claimed | Defines how a bounded external source may be converted into the existing JSONL + domain-pack boundary with separate conversion provenance. It does not add a ManiSkill, dataset, rosbag, MCAP, CSV, or simulator importer. |
+| External Fixture Bundle | Generic validation and execution path | An installed build containing this interface can validate one contract-compliant fixture directory and run its declared normalized state through Atlas without the original source framework. It records external provenance but does not add or claim an importer for any particular source. |
 | Headless/SSH use | Supported for the demo | Omit `--open`; all artifacts are still generated locally. |
 | Live camera runtime | Optional, Linux-hardware dependent | Not needed for the demo. A missing camera does not make the camera-free installation broken. No macOS live-camera claim is made. |
 | GPU acceleration | Optional | Not needed for the demo or recorded incident path. CPU operation is the default adoption path. |

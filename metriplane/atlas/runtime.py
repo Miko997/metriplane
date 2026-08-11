@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 from metriplane.atlas.domain_packs import (
     DomainPack,
@@ -22,11 +23,18 @@ from metriplane.atlas.domain_packs import (
 )
 from metriplane.atlas.event_ledger import write_events
 from metriplane.atlas.improvement import recommend_actions
-from metriplane.atlas.models import AtlasRunManifest, FlowMetrics
+from metriplane.atlas.models import (
+    EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+    AtlasRunManifest,
+    ExternalSourceProvenanceReference,
+    FlowMetrics,
+    external_source_provenance_reference,
+)
 from metriplane.atlas.process_model import AssetObservation, ProcessEvaluator
 from metriplane.atlas.reality_graph import RealityGraph
 from metriplane.atlas.reports import render_markdown, write_report
 from metriplane.atlas.training import training_case_from_incident, write_training_case
+from metriplane.provenance.run_provenance import sha256_file
 from metriplane.schema import FrameStateModel
 
 
@@ -52,6 +60,7 @@ class AtlasRunPaths:
     twinverify_usda: Path
     privacy_report: Path
     connector_dir: Path
+    external_source_provenance: Path
 
     @classmethod
     def from_out_dir(cls, out_dir: str | Path) -> "AtlasRunPaths":
@@ -77,6 +86,7 @@ class AtlasRunPaths:
             twinverify_usda=root / "twinverify_replay.usda",
             privacy_report=root / "privacy_report.json",
             connector_dir=root / "connectors",
+            external_source_provenance=root / EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
         )
 
 
@@ -90,6 +100,35 @@ def _jsonl_dump(path: Path, rows: list[object]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def _write_external_source_provenance(
+    path: Path,
+    provenance: dict[str, Any],
+) -> ExternalSourceProvenanceReference:
+    if not isinstance(provenance, dict):
+        raise ValueError(  # noqa: TRY004 - invalid persisted content
+            "external source provenance must be a JSON object"
+        )
+    try:
+        serialized = json.dumps(
+            provenance,
+            allow_nan=False,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"external source provenance must contain only finite JSON-safe data: {exc}"
+        ) from exc
+    path.write_text(serialized, encoding="utf-8")
+    digest = sha256_file(path)
+    return external_source_provenance_reference(
+        provenance,
+        path=EXTERNAL_SOURCE_PROVENANCE_RUN_PATH,
+        sha256=digest,
+    )
 
 
 def _iter_frames(path: str | Path) -> list[FrameStateModel]:
@@ -240,6 +279,8 @@ def run_atlas(
     out_dir: str | Path,
     run_id: str | None = None,
     overwrite: bool = False,
+    *,
+    external_source_provenance: dict[str, Any] | None = None,
 ) -> AtlasRunManifest:
     """Build an Atlas run completely before replacing any existing output."""
     session_path = Path(session_jsonl)
@@ -274,6 +315,7 @@ def run_atlas(
             stage,
             run_id=run_id,
             overwrite=False,
+            external_source_provenance=external_source_provenance,
         )
 
         if not overwrite:
@@ -304,6 +346,8 @@ def _run_atlas_in_place(
     out_dir: str | Path,
     run_id: str | None = None,
     overwrite: bool = False,
+    *,
+    external_source_provenance: dict[str, Any] | None = None,
 ) -> AtlasRunManifest:
     session_path = Path(session_jsonl)
     if not session_path.exists():
@@ -436,6 +480,13 @@ def _run_atlas_in_place(
     actions = recommend_actions(evaluator.incidents)
     _json_dump(paths.improvement_actions, [action.model_dump() for action in actions])
 
+    external_provenance_reference: ExternalSourceProvenanceReference | None = None
+    if external_source_provenance is not None:
+        external_provenance_reference = _write_external_source_provenance(
+            paths.external_source_provenance,
+            external_source_provenance,
+        )
+
     def artifact_path(path: Path) -> str:
         return path.relative_to(paths.out_dir).as_posix()
 
@@ -459,6 +510,10 @@ def _run_atlas_in_place(
         "privacy_report": artifact_path(paths.privacy_report),
         "connector_exports": artifact_path(paths.connector_dir),
     }
+    if external_provenance_reference is not None:
+        artifacts["external_source_provenance"] = artifact_path(
+            paths.external_source_provenance
+        )
     manifest = AtlasRunManifest(
         run_id=run_id,
         source_session_jsonl=str(session_path),
@@ -469,13 +524,14 @@ def _run_atlas_in_place(
         deviation_count=len(evaluator.deviations),
         incident_count=len(evaluator.incidents),
         artifacts=artifacts,
+        external_source_provenance=external_provenance_reference,
     )
 
     report_md = render_markdown(manifest, events, evaluator.deviations, evaluator.incidents, metrics, actions)
     write_report(paths.report_md, paths.report_html, report_md)
     _copy_pack_configs(pack, paths.out_dir)
 
-    _json_dump(paths.manifest, manifest.model_dump())
+    _json_dump(paths.manifest, manifest.model_dump(exclude_none=True))
 
     from metriplane.atlas.bundles import export_bundle
     from metriplane.atlas.regression import create_regression_from_bundle

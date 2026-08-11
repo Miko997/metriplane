@@ -496,13 +496,13 @@ real adapter under these exact conditions:
 12. Report limitations and make no compatibility, physical-truth, safety,
     production, or independent-adoption claim beyond the exact tested fixture.
 
-MET-14 may later add a canonical public validation/run command over this model.
-MET-13 intentionally exposes only the typed model and source-neutral validation
-API and does not begin MET-14 or MET-15.
+Source-specific conversion remains outside the generic consumer. A finished
+fixture is validated and evaluated without executing its adapter or installing
+the original source framework.
 
-## Reference validation and existing Atlas consumption
+## Canonical validation and Atlas consumption
 
-The source-neutral model API is:
+The source-neutral model API remains available:
 
 ```python
 from metriplane.external_sources import validate_external_fixture_bundle
@@ -510,16 +510,16 @@ from metriplane.external_sources import validate_external_fixture_bundle
 fixture = validate_external_fixture_bundle("external-fixture")
 ```
 
-After successful contract validation, the existing execution remains unchanged:
+Installed users can validate the whole fixture without selecting its files
+individually:
 
-```bash
-metriplane atlas validate-pack external-fixture/domain-pack
-metriplane atlas run \
-  --session-jsonl external-fixture/session.jsonl \
-  --pack external-fixture/domain-pack \
-  --out external-fixture-run
+```console
+metriplane external validate external-fixture
+metriplane external run external-fixture --out external-fixture-run
 ```
 
-Only those two paths are Atlas input. `source-manifest.json`, source artifacts,
-the normalization report, extensions, and `expected-outcome.json` do not bypass or
-modify Atlas process rules.
+The external command verifies the manifest, included hashes, normalized session,
+mapping, normalization report, and domain pack before passing only the declared
+`session.jsonl` and `domain-pack/` to Atlas. It never fetches a referenced source
+or executes the historical adapter command. Source artifacts, extensions, and
+`expected-outcome.json` do not bypass or modify Atlas process rules.

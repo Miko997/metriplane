@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ASSET_REGISTRY_SCHEMA = "metriplane.atlas.asset_registry.v1"
 WORKSPACE_SCHEMA = "metriplane.atlas.workspace.v1"
@@ -21,6 +20,14 @@ REGRESSION_TEST_SCHEMA = "metriplane.atlas.regression_test.v1"
 TRAINING_CASE_SCHEMA = "metriplane.atlas.training_case.v1"
 IMPROVEMENT_ACTION_SCHEMA = "metriplane.atlas.improvement_action.v1"
 RUN_MANIFEST_SCHEMA = "metriplane.atlas.run_manifest.v1"
+EXTERNAL_SOURCE_PROVENANCE_REFERENCE_SCHEMA: Final = (
+    "metriplane.atlas.external_source_provenance_reference.v1"
+)
+EXTERNAL_SOURCE_PROVENANCE_SCHEMA: Final = "metriplane.external_source_provenance.v1"
+EXTERNAL_SOURCE_PROVENANCE_RUN_PATH: Final = "external_source_provenance.json"
+EXTERNAL_SOURCE_PROVENANCE_BUNDLE_PATH: Final = (
+    "provenance/external_source_provenance.json"
+)
 
 ATLAS_LIMITATIONS = [
     "planar_xy_state",
@@ -216,6 +223,156 @@ class ImprovementAction(BaseModel):
     )
 
 
+class ExternalSourceProvenanceReference(BaseModel):
+    """Compact reference to the full external-source provenance artifact."""
+
+    model_config = ConfigDict(
+        allow_inf_nan=False,
+        extra="forbid",
+        strict=True,
+        validate_default=True,
+    )
+
+    schema_version: Literal[
+        "metriplane.atlas.external_source_provenance_reference.v1"
+    ] = EXTERNAL_SOURCE_PROVENANCE_REFERENCE_SCHEMA
+    path: Literal[
+        "external_source_provenance.json",
+        "provenance/external_source_provenance.json",
+    ]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    fixture_id: str
+    contract_schema_version: str
+    contract_profile: str
+    source_project: str
+    source_revision: str
+    adapter_id: str
+    adapter_version: str
+    adapter_commit: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+
+    @field_validator(
+        "fixture_id",
+        "contract_schema_version",
+        "contract_profile",
+        "source_project",
+        "source_revision",
+        "adapter_id",
+        "adapter_version",
+    )
+    @classmethod
+    def _identity_is_nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("external source provenance identity must not be blank")
+        return value
+
+
+def _required_provenance_mapping(
+    value: object,
+    *,
+    field: str,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(  # noqa: TRY004 - invalid persisted content
+            f"external source provenance {field} must be an object"
+        )
+    return value
+
+
+def _required_provenance_string(
+    value: object,
+    *,
+    field: str,
+) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            f"external source provenance {field} must be a nonblank string"
+        )
+    return value
+
+
+def external_source_provenance_reference(
+    provenance: dict[str, Any],
+    *,
+    path: Literal[
+        "external_source_provenance.json",
+        "provenance/external_source_provenance.json",
+    ],
+    sha256: str,
+) -> ExternalSourceProvenanceReference:
+    """Build the compact Atlas reference from a validated provenance document."""
+
+    provenance_schema_version = _required_provenance_string(
+        provenance.get("schema_version"),
+        field="schema_version",
+    )
+    if provenance_schema_version != EXTERNAL_SOURCE_PROVENANCE_SCHEMA:
+        raise ValueError(
+            "unsupported external source provenance schema_version: "
+            f"{provenance_schema_version!r}"
+        )
+    source_project = _required_provenance_mapping(
+        provenance.get("source_project"),
+        field="source_project",
+    )
+    revision = source_project.get("revision")
+    if isinstance(revision, dict):
+        revision_value = _required_provenance_string(
+            revision.get("value"),
+            field="source_project.revision.value",
+        )
+        revision_kind = revision.get("kind")
+        if revision_kind is None:
+            source_revision = revision_value
+        else:
+            source_revision = (
+                f"{_required_provenance_string(revision_kind, field='source_project.revision.kind')}:"
+                f"{revision_value}"
+            )
+    else:
+        source_revision = _required_provenance_string(
+            revision,
+            field="source_project.revision",
+        )
+
+    adapter = _required_provenance_mapping(
+        provenance.get("adapter"),
+        field="adapter",
+    )
+    return ExternalSourceProvenanceReference(
+        path=path,
+        sha256=sha256,
+        fixture_id=_required_provenance_string(
+            provenance.get("fixture_id"),
+            field="fixture_id",
+        ),
+        contract_schema_version=_required_provenance_string(
+            provenance.get("contract_schema_version"),
+            field="contract_schema_version",
+        ),
+        contract_profile=_required_provenance_string(
+            provenance.get("contract_profile"),
+            field="contract_profile",
+        ),
+        source_project=_required_provenance_string(
+            source_project.get("name"),
+            field="source_project.name",
+        ),
+        source_revision=source_revision,
+        adapter_id=_required_provenance_string(
+            adapter.get("adapter_id"),
+            field="adapter.adapter_id",
+        ),
+        adapter_version=_required_provenance_string(
+            adapter.get("version"),
+            field="adapter.version",
+        ),
+        adapter_commit=_required_provenance_string(
+            adapter.get("commit"),
+            field="adapter.commit",
+        ),
+    )
+
+
 class BundleManifest(BaseModel):
     schema_version: Literal["metriplane.atlas.evidence_bundle.v1"] = EVIDENCE_BUNDLE_SCHEMA
     bundle_id: str
@@ -223,6 +380,7 @@ class BundleManifest(BaseModel):
     run_id: str
     required_files: list[str]
     limitations: list[str] = Field(default_factory=lambda: list(ATLAS_LIMITATIONS))
+    external_source_provenance: ExternalSourceProvenanceReference | None = None
 
 
 class RegressionSpec(BaseModel):
@@ -261,3 +419,4 @@ class AtlasRunManifest(BaseModel):
     incident_count: int
     artifacts: dict[str, str]
     limitations: list[str] = Field(default_factory=lambda: list(ATLAS_LIMITATIONS))
+    external_source_provenance: ExternalSourceProvenanceReference | None = None
