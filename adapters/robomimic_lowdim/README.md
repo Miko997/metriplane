@@ -59,6 +59,13 @@ uv run robomimic-lowdim convert \
   --adapter-commit 0123456789abcdef0123456789abcdef01234567 --json
 ```
 
+Production `convert` and public `finalize-equivalence` must run from a clean
+Metriplane Git checkout. The supplied adapter commit must equal the verified
+checkout `HEAD`, and the complete adapter subtree must be tracked and clean.
+This binds the durable adapter identity rather than trusting caller-provided
+40-hex text. This checkout requirement applies only to conversion; portable
+fixture validation and evaluation do not import the adapter or require Git.
+
 Run conversion three times into separate empty roots, then finalize only if all
 fixture bytes agree:
 

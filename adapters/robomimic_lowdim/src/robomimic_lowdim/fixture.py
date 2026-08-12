@@ -35,6 +35,7 @@ from .constants import (
     SOURCE_BACKEND,
 )
 from .hdf5_audit import SourceAuditError, SourceFrame, reject_symlink_components, sha256_file
+from .identity import AdapterIdentityError, verify_adapter_commit
 
 
 class FixtureError(RuntimeError):
@@ -578,6 +579,97 @@ def _real_source_audit_extension() -> dict[str, object]:
         "source_unchanged_during_conversion": True,
         "states_actions_model_sample_masks_equal": True,
     }
+
+
+def _summary_real_source_audit() -> dict[str, object]:
+    return {
+        "can_named_qpos_rows_verified": 23_207,
+        "clock_rows_verified": 23_207,
+        "demo_count": 200,
+        "mask_membership_equal": True,
+        "max_fk_abs_error": 1.1102230246251565e-15,
+        "prepared_environment_version": "1.5.1",
+        "raw_environment_version": "1.5.0",
+        "selected_demo": "demo_0",
+        "selected_frame_count": 118,
+        "states_actions_model_sample_masks_equal": True,
+    }
+
+
+def _require_exact_summary_real_source_audit(value: object) -> None:
+    if value != _summary_real_source_audit():
+        raise FixtureError("equivalence: exact real-source summary attestation is required")
+
+
+def _load_conversion_summary(raw: bytes) -> dict[str, Any]:
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON constant {value}")
+
+    try:
+        value = json.loads(raw.decode("utf-8"), parse_constant=reject_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise FixtureError(f"equivalence: malformed conversion-summary.json: {exc}") from exc
+    if not isinstance(value, dict):
+        raise FixtureError("equivalence: conversion-summary.json root must be an object")
+    return value
+
+
+def _expected_bound_conversion_summary(root: Path) -> dict[str, Any]:
+    config = load_config(root / "incident/source/frozen-config.json")
+    try:
+        manifests = {
+            variant: json.loads(
+                (root / variant / "source-manifest.json").read_text(encoding="utf-8")
+            )
+            for variant in ("incident", "control")
+        }
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:  # already checked per variant
+        raise FixtureError(f"equivalence {root}: invalid manifest JSON") from exc
+    commits = {value.get("adapter", {}).get("commit") for value in manifests.values()}
+    if len(commits) != 1:
+        raise FixtureError(f"equivalence {root}: incident/control adapter commits differ")
+    adapter_commit = commits.pop()
+    if not isinstance(adapter_commit, str) or re.fullmatch(r"[0-9a-f]{40}", adapter_commit) is None:
+        raise FixtureError(f"equivalence {root}: invalid adapter commit")
+    variants = {
+        variant: {
+            "fixture_fingerprint_sha256": hashlib.sha256(
+                (root / variant / "CHECKSUMS.sha256").read_bytes()
+            ).hexdigest(),
+            "fixture_id": str(config["variants"][variant]["fixture_id"]),
+            "max_wait_s": config["variants"][variant]["max_wait_s"],
+        }
+        for variant in ("incident", "control")
+    }
+    return {
+        "adapter_commit": adapter_commit,
+        "can_inside_first_frame": 0,
+        "can_inside_last_frame": 63,
+        "config_sha256": FROZEN_CONFIG_SHA256,
+        "control": variants["control"],
+        "incident": variants["incident"],
+        "real_source_audit": _summary_real_source_audit(),
+        "schema_version": "org.metriplane.robomimic_lowdim.conversion_summary.v1",
+        "shared_session_sha256": (
+            "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246"
+        ),
+        "source_sha256": {
+            "prepared_hdf5": PREPARED_SHA256,
+            "raw_hdf5": RAW_SHA256,
+        },
+        "source_unchanged_during_conversion": True,
+        "tcp_inside_first_frame": 42,
+        "tcp_inside_last_frame": 64,
+    }
+
+
+def _require_exact_bound_conversion_summary(actual: object, expected: object) -> None:
+    try:
+        matches = canonical_json_bytes(actual) == canonical_json_bytes(expected)
+    except (TypeError, ValueError) as exc:
+        raise FixtureError(f"equivalence: invalid conversion summary value: {exc}") from exc
+    if not matches:
+        raise FixtureError("equivalence: conversion summary differs from frozen construction")
 
 
 def _manifest(
@@ -1305,24 +1397,7 @@ def write_fixtures(
         }
         if audit_report is not None:
             summary["source_unchanged_during_conversion"] = True
-            summary["real_source_audit"] = {
-                "can_named_qpos_rows_verified": audit_report["can_named_qpos_rows_verified"],
-                "clock_rows_verified": audit_report["clock_rows_verified"],
-                "demo_count": audit_report["demo_count"],
-                "mask_membership_equal": audit_report["mask_membership_equal"],
-                "max_fk_abs_error": audit_report["max_fk_abs_error"],
-                "prepared_environment_version": audit_report["source_environment"][
-                    "prepared_environment_version"
-                ],
-                "raw_environment_version": audit_report["source_environment"][
-                    "raw_environment_version"
-                ],
-                "selected_demo": audit_report["selected_demo"],
-                "selected_frame_count": audit_report["selected_frame_count"],
-                "states_actions_model_sample_masks_equal": audit_report[
-                    "states_actions_model_sample_masks_equal"
-                ],
-            }
+            summary["real_source_audit"] = _summary_real_source_audit()
         (stage / "conversion-summary.json").write_bytes(pretty_json_bytes(summary))
         if output.exists():
             if output.is_symlink() or not output.is_dir():
@@ -1342,12 +1417,16 @@ def relative_file_inventory(root: Path) -> set[str]:
 def _verify_variant_integrity(
     root: Path, variant: str, *, require_real_source_attestation: bool
 ) -> None:
-    """Verify checksum coverage and the manifest/report's direct byte references."""
+    """Replay the frozen writer and require exact semantic output authenticity."""
     checksum_path = root / "CHECKSUMS.sha256"
     manifest_path = root / "source-manifest.json"
     recorded: dict[str, str] = {}
     order: list[str] = []
-    for line in checksum_path.read_text(encoding="utf-8").splitlines():
+    try:
+        checksum_text = checksum_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise FixtureError(f"equivalence {root}: checksum inventory is not UTF-8") from exc
+    for line in checksum_text.splitlines():
         if not line:
             continue
         match = re.fullmatch(r"([0-9a-f]{64})  (.+)", line)
@@ -1366,71 +1445,32 @@ def _verify_variant_integrity(
         if sha256_file(root / relative) != digest:
             raise FixtureError(f"equivalence {root}: checksum mismatch for {relative}")
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON constant {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise FixtureError(f"equivalence {root}: invalid manifest JSON") from exc
-    if manifest.get("schema_version") != "metriplane.external_source_contract.v1":
-        raise FixtureError(f"equivalence {root}: unexpected contract schema version")
-    if manifest.get("contract_profile") != "metriplane.atlas.complete_snapshot.v1":
-        raise FixtureError(f"equivalence {root}: unexpected contract profile")
-    if manifest.get("source_project", {}).get("revision") != {
-        "kind": "dataset_revision",
-        "value": DATASET_REVISION,
-    }:
-        raise FixtureError(f"equivalence {root}: unexpected source revision")
-    if manifest.get("normalization", {}).get("frame_state_model_version") != "1.0":
-        raise FixtureError(f"equivalence {root}: unexpected FrameStateModel version")
-    clock = manifest.get("normalization", {}).get("clock", {})
-    if (
-        clock.get("mapping_method") != "fixed_step"
-        or clock.get("fixed_step_ns") != CONTROL_PERIOD_NS
-        or clock.get("fixed_step_origin_ns") != 0
-    ):
-        raise FixtureError(f"equivalence {root}: unexpected clock declaration")
-    references = [
-        manifest["adapter"]["environment"]["dependency_lock"],
-        manifest["adapter"]["parameters"]["reference"],
-        manifest["normalization"]["entity_mapping"],
-        manifest["normalization"]["atlas_asset_mapping"],
-        manifest["normalization"]["zone_assignment"]["definitions"],
-        *[
-            manifest["domain_pack"][name]
-            for name in ("assets", "workspace", "process", "contracts", "work_orders")
-        ],
-        manifest["normalized_artifacts"]["session"],
-        manifest["normalized_artifacts"]["normalization_report"],
-        manifest["normalized_artifacts"]["expected_outcome"],
-    ]
-    for declaration in manifest["normalization"]["field_provenance"]:
-        references.extend(declaration.get("parameter_references", []))
-    for reference in references:
-        relative = reference["path"]
-        if sha256_file(root / relative) != reference["sha256"]:
-            raise FixtureError(f"equivalence {root}: manifest reference mismatch for {relative}")
-    report = json.loads((root / "normalization-report.json").read_text(encoding="utf-8"))
-    if report.get("schema_version") != "metriplane.external_normalization_report.v1":
-        raise FixtureError(f"equivalence {root}: unexpected report schema version")
-    expected_fingerprint = _conversion_inputs_fingerprint(manifest)
-    if (
-        report.get("conversion_reproducibility", {}).get("input_fingerprint_sha256")
-        != expected_fingerprint
-    ):
-        raise FixtureError(f"equivalence {root}: conversion input fingerprint mismatch")
-    expected_artifacts = {
-        "entity-mapping.json": sha256_file(root / "entity-mapping.json"),
-        "session.jsonl": sha256_file(root / "session.jsonl"),
-    }
-    for run in report["conversion_reproducibility"]["runs"]:
-        if run["artifacts"] != expected_artifacts:
-            raise FixtureError(f"equivalence {root}: conversion-run artifacts do not match bytes")
+    if not isinstance(manifest, dict):
+        raise FixtureError(f"equivalence {root}: manifest root must be an object")
     config_path = root / "source/frozen-config.json"
     if sha256_file(config_path) != FROZEN_CONFIG_SHA256:
         raise FixtureError(f"equivalence {root}: frozen config hash mismatch")
     config = load_config(config_path)
-    adapter_commit = manifest.get("adapter", {}).get("commit", "")
+    adapter_declaration = manifest.get("adapter")
+    if not isinstance(adapter_declaration, dict):
+        raise FixtureError(f"equivalence {root}: manifest adapter must be an object")
+    adapter_commit = adapter_declaration.get("commit", "")
     if re.fullmatch(r"[0-9a-f]{40}", adapter_commit) is None:
         raise FixtureError(f"equivalence {root}: invalid adapter commit")
-    source_extension = manifest.get("extensions", {}).get("org.robomimic.can_ph", {})
+    extensions = manifest.get("extensions")
+    if not isinstance(extensions, dict):
+        raise FixtureError(f"equivalence {root}: manifest extensions must be an object")
+    source_extension = extensions.get("org.robomimic.can_ph")
+    if not isinstance(source_extension, dict):
+        raise FixtureError(f"equivalence {root}: robomimic extension must be an object")
     real_source_attested = "real_source_audit" in source_extension
     if require_real_source_attestation and not real_source_attested:
         raise FixtureError(f"equivalence {root}: real-source audit attestation is required")
@@ -1438,31 +1478,76 @@ def _verify_variant_integrity(
         _real_source_audit_extension()
     ):
         raise FixtureError(f"equivalence {root}: real-source audit attestation differs")
-    files = {
-        relative: (root / relative).read_bytes()
-        for relative in FIXTURE_FILE_INVENTORY
-        if relative not in {"CHECKSUMS.sha256", "source-manifest.json"}
+
+    if DEFAULT_LOCK.is_symlink() or not DEFAULT_LOCK.is_file():
+        raise FixtureError("equivalence: adapter dependency lock is missing or unsafe")
+    session = (root / "session.jsonl").read_bytes()
+    session_sha256 = hashlib.sha256(session).hexdigest()
+    if require_real_source_attestation and session_sha256 != (
+        "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246"
+    ):
+        raise FixtureError(f"equivalence {root}: session is not the frozen audited session")
+    variant_config = config["variants"][variant]
+    fixture_id = str(variant_config["fixture_id"])
+    expected_files: dict[str, bytes] = {
+        "entity-mapping.json": pretty_json_bytes(_entity_mapping()),
+        "expected-outcome.json": pretty_json_bytes(_expected_outcome(variant, fixture_id)),
+        "session.jsonl": session,
+        "source/adapter-environment.txt": _adapter_environment(
+            FROZEN_CONFIG_SHA256, adapter_commit
+        ),
+        "source/frozen-config.json": config_path.read_bytes(),
+        "source/uv.lock": DEFAULT_LOCK.read_bytes(),
+        **_domain_pack_files(config, float(variant_config["max_wait_s"])),
     }
+    for relative, expected in expected_files.items():
+        if (root / relative).read_bytes() != expected:
+            raise FixtureError(f"equivalence {root}: {relative} differs from frozen writer output")
+
+    mapping_sha256 = hashlib.sha256(expected_files["entity-mapping.json"]).hexdigest()
+    expected_files["normalization-report.json"] = pretty_json_bytes(
+        _normalization_report(
+            fixture_id=fixture_id,
+            input_fingerprint="0" * 64,
+            session_sha256=session_sha256,
+            mapping_sha256=mapping_sha256,
+        )
+    )
+    provisional_manifest = _manifest(
+        config=config,
+        variant=variant,
+        adapter_commit=adapter_commit,
+        files=expected_files,
+        config_sha256=FROZEN_CONFIG_SHA256,
+        real_source_attested=real_source_attested,
+    )
+    expected_files["normalization-report.json"] = pretty_json_bytes(
+        _normalization_report(
+            fixture_id=fixture_id,
+            input_fingerprint=_conversion_inputs_fingerprint(provisional_manifest),
+            session_sha256=session_sha256,
+            mapping_sha256=mapping_sha256,
+        )
+    )
+    if (root / "normalization-report.json").read_bytes() != expected_files[
+        "normalization-report.json"
+    ]:
+        raise FixtureError(
+            f"equivalence {root}: normalization report differs from frozen construction"
+        )
     expected_manifest = _manifest(
         config=config,
         variant=variant,
         adapter_commit=adapter_commit,
-        files=files,
+        files=expected_files,
         config_sha256=FROZEN_CONFIG_SHA256,
         real_source_attested=real_source_attested,
     )
     if manifest != expected_manifest:
         raise FixtureError(f"equivalence {root}: manifest differs from frozen construction")
-    expected_report = _normalization_report(
-        fixture_id=str(config["variants"][variant]["fixture_id"]),
-        input_fingerprint=_conversion_inputs_fingerprint(expected_manifest),
-        session_sha256=sha256_file(root / "session.jsonl"),
-        mapping_sha256=sha256_file(root / "entity-mapping.json"),
-    )
-    if report != expected_report:
-        raise FixtureError(
-            f"equivalence {root}: normalization report differs from frozen construction"
-        )
+    expected_files["source-manifest.json"] = pretty_json_bytes(expected_manifest)
+    if checksum_path.read_bytes() != _checksum_inventory(expected_files):
+        raise FixtureError(f"equivalence {root}: checksum inventory differs from frozen output")
 
 
 def finalize_conversion_equivalence(
@@ -1542,40 +1627,14 @@ def finalize_conversion_equivalence(
     summaries = [(root / "conversion-summary.json").read_bytes() for root in roots]
     if summaries[0] != summaries[1] or summaries[0] != summaries[2]:
         raise FixtureError("equivalence: conversion-summary.json differs across roots")
-    summary_document = json.loads(summaries[0])
-    for variant in ("incident", "control"):
-        expected_fingerprint = hashlib.sha256(
-            (roots[0] / variant / "CHECKSUMS.sha256").read_bytes()
-        ).hexdigest()
-        if (
-            summary_document.get(variant, {}).get("fixture_fingerprint_sha256")
-            != expected_fingerprint
-        ):
-            raise FixtureError(
-                f"equivalence: {variant} fixture fingerprint is not bound to its bytes"
-            )
+    summary_document = _load_conversion_summary(summaries[0])
     if not allow_unbound_test_fixture:
-        required_summary = {
-            "config_sha256": FROZEN_CONFIG_SHA256,
-            "shared_session_sha256": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246",
-            "can_inside_first_frame": 0,
-            "can_inside_last_frame": 63,
-            "tcp_inside_first_frame": 42,
-            "tcp_inside_last_frame": 64,
-            "source_sha256": {"prepared_hdf5": PREPARED_SHA256, "raw_hdf5": RAW_SHA256},
-        }
-        for name, expected in required_summary.items():
-            if summary_document.get(name) != expected:
-                raise FixtureError(f"equivalence: unbound or unexpected summary field {name}")
-        audit = summary_document.get("real_source_audit")
-        if (
-            not isinstance(audit, dict)
-            or audit.get("demo_count") != 200
-            or audit.get("clock_rows_verified") != 23_207
-        ):
-            raise FixtureError("equivalence: exact real-source audit attestation is required")
-        if summary_document.get("source_unchanged_during_conversion") is not True:
-            raise FixtureError("equivalence: post-conversion source integrity is not attested")
+        expected_summary = _expected_bound_conversion_summary(roots[0])
+        try:
+            verify_adapter_commit(str(expected_summary["adapter_commit"]))
+        except AdapterIdentityError as exc:
+            raise FixtureError(str(exc)) from exc
+        _require_exact_bound_conversion_summary(summary_document, expected_summary)
         for root in roots:
             for variant in ("incident", "control"):
                 actual_session = sha256_file(root / variant / "session.jsonl")

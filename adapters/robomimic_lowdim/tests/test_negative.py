@@ -10,8 +10,16 @@ import h5py
 import numpy as np
 import pytest
 
-from robomimic_lowdim.fixture import FixtureError, write_fixtures
+from robomimic_lowdim.fixture import (
+    FixtureError,
+    _load_conversion_summary,
+    _require_exact_bound_conversion_summary,
+    _require_exact_summary_real_source_audit,
+    _summary_real_source_audit,
+    write_fixtures,
+)
 from robomimic_lowdim.hdf5_audit import SourceAuditError, SourceFrame, compare_raw_prepared
+from robomimic_lowdim.identity import AdapterIdentityError, verify_adapter_commit
 
 
 def _model_xml() -> str:
@@ -482,3 +490,49 @@ def test_public_finalizer_requires_per_bundle_real_source_attestation(
         )
     with pytest.raises(FixtureError, match="real-source audit attestation is required"):
         finalize_conversion_equivalence(roots, output_root=tmp_path / "final-unbound")
+
+
+def test_summary_real_source_attestation_rejects_falsification_and_extra_keys() -> None:
+    expected = _summary_real_source_audit()
+    _require_exact_summary_real_source_audit(expected)
+    for name, false_value in (
+        ("selected_demo", "demo_199"),
+        ("selected_frame_count", 999),
+        ("states_actions_model_sample_masks_equal", False),
+        ("mask_membership_equal", False),
+        ("max_fk_abs_error", 999.0),
+        ("raw_environment_version", "0.0.0"),
+    ):
+        falsified = {**expected, name: false_value}
+        with pytest.raises(FixtureError, match="exact real-source summary attestation"):
+            _require_exact_summary_real_source_audit(falsified)
+    with pytest.raises(FixtureError, match="exact real-source summary attestation"):
+        _require_exact_summary_real_source_audit({**expected, "fabricated": True})
+
+
+def test_conversion_summary_requires_an_exact_object_envelope() -> None:
+    expected = {
+        "schema_version": "v1",
+        "adapter_commit": "a" * 40,
+        "incident": {"fixture_id": "incident", "max_wait_s": 2.0},
+    }
+    _require_exact_bound_conversion_summary(expected, expected)
+    for falsified in (
+        {**expected, "schema_version": "v999"},
+        {**expected, "adapter_commit": "0" * 40},
+        {**expected, "unexpected": True},
+        {**expected, "incident": {"fixture_id": "fake", "max_wait_s": 999}},
+    ):
+        with pytest.raises(FixtureError, match="differs from frozen construction"):
+            _require_exact_bound_conversion_summary(falsified, expected)
+    with pytest.raises(FixtureError, match="malformed conversion-summary"):
+        _load_conversion_summary(b"{bad")
+    with pytest.raises(FixtureError, match="root must be an object"):
+        _load_conversion_summary(b"[]")
+    with pytest.raises(FixtureError, match="malformed conversion-summary"):
+        _load_conversion_summary(b'{"bad": NaN}')
+
+
+def test_adapter_identity_rejects_a_caller_asserted_wrong_revision() -> None:
+    with pytest.raises(AdapterIdentityError, match=r"supplied commit|Git verification"):
+        verify_adapter_commit("0" * 40)

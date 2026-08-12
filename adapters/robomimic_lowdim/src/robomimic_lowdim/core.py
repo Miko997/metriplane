@@ -34,6 +34,7 @@ from .hdf5_audit import (
 from .hdf5_audit import (
     compare_raw_prepared as audit_raw_prepared,
 )
+from .identity import AdapterIdentityError, verify_adapter_commit
 
 
 class AdapterError(RuntimeError):
@@ -109,6 +110,7 @@ def convert(
         if output == source or output in source.parents or source in output.parents:
             raise AdapterError("output/source overlap: source files and output must be disjoint")
     try:
+        verify_adapter_commit(adapter_commit)
         verify_source_file(
             raw_path, label="raw HDF5", expected_size=RAW_SIZE, expected_sha256=RAW_SHA256
         )
@@ -149,7 +151,7 @@ def convert(
                 raise AdapterError("output: refusing non-directory replacement")
             shutil.rmtree(output)
         candidate.replace(output)
-    except (SourceAuditError, FixtureError, AdapterError) as exc:
+    except (SourceAuditError, FixtureError, AdapterIdentityError, AdapterError) as exc:
         if candidate is not None:
             shutil.rmtree(candidate, ignore_errors=True)
         if isinstance(exc, AdapterError):
