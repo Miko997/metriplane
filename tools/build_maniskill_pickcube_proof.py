@@ -66,6 +66,27 @@ EXPECTED_MAPPING = "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeec
 EXPECTED_ADAPTER = "95d1134d9fb9273318c552c507952f1c5c26877e"
 IMPLEMENTATION_MERGE = "1549d0a05e03db51efc0ee08edb7d9db66196b4e"
 CONTRACT_SCHEMA_SHA = "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
+CANDIDATE_IDENTITY_PATHS = (
+    "metriplane",
+    "integrations",
+    "pyproject.toml",
+    "uv.lock",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "adapters/maniskill_pickcube",
+    "examples/external_sources/maniskill_pickcube",
+    "schemas/metriplane.external_source_contract.v1.schema.json",
+    "proofs/maniskill-pickcube-v1/CITATION.cff",
+    "proofs/maniskill-pickcube-v1/CLAIMS.md",
+    "proofs/maniskill-pickcube-v1/EVALUATOR.md",
+    "proofs/maniskill-pickcube-v1/NOTICE.md",
+    "proofs/maniskill-pickcube-v1/README.md",
+    "proofs/maniskill-pickcube-v1/REPRODUCE.md",
+    "proofs/maniskill-pickcube-v1/evaluator-report-template.md",
+    "proofs/maniskill-pickcube-v1/proof-record.schema.json",
+    "proofs/maniskill-pickcube-v1/reproduce.py",
+)
 
 
 class ProofBuildError(RuntimeError):
@@ -125,16 +146,17 @@ def _check_repository(repo: Path, commit: str, allow_dirty: bool) -> None:
         raise ProofBuildError("--metriplane-commit must be a full lowercase 40-hex commit")
     _git(repo, "cat-file", "-e", f"{commit}^{{commit}}")
     head = _git(repo, "rev-parse", "HEAD")
-    ancestor = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", commit, head],
+    identity_diff = subprocess.run(
+        ["git", "diff", "--exit-code", commit, head, "--", *CANDIDATE_IDENTITY_PATHS],
         cwd=repo,
         check=False,
         capture_output=True,
         text=True,
     )
-    if ancestor.returncode != 0:
+    if identity_diff.returncode != 0:
         raise ProofBuildError(
-            f"tested candidate commit is not an ancestor of template HEAD: {commit} !<= {head}"
+            "tested candidate commit differs from template HEAD on the frozen "
+            f"identity boundary: {commit} != {head}"
         )
     dirty = _git(repo, "status", "--porcelain", "--untracked-files=all")
     if dirty and not allow_dirty:

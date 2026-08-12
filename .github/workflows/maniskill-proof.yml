@@ -164,7 +164,29 @@ jobs:
           )"
           [[ "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]
           git cat-file -e "${candidate_commit}^{commit}"
-          git merge-base --is-ancestor "$candidate_commit" HEAD
+          candidate_identity_paths=(
+            metriplane
+            integrations
+            pyproject.toml
+            uv.lock
+            README.md
+            LICENSE
+            NOTICE
+            adapters/maniskill_pickcube
+            examples/external_sources/maniskill_pickcube
+            schemas/metriplane.external_source_contract.v1.schema.json
+            proofs/maniskill-pickcube-v1/CITATION.cff
+            proofs/maniskill-pickcube-v1/CLAIMS.md
+            proofs/maniskill-pickcube-v1/EVALUATOR.md
+            proofs/maniskill-pickcube-v1/NOTICE.md
+            proofs/maniskill-pickcube-v1/README.md
+            proofs/maniskill-pickcube-v1/REPRODUCE.md
+            proofs/maniskill-pickcube-v1/evaluator-report-template.md
+            proofs/maniskill-pickcube-v1/proof-record.schema.json
+            proofs/maniskill-pickcube-v1/reproduce.py
+          )
+          git diff --exit-code "$candidate_commit" HEAD -- \
+            "${candidate_identity_paths[@]}"
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           candidate_dist="${RUNNER_TEMP}/metriplane-candidate-dist"
           candidate_venv="${RUNNER_TEMP}/metriplane-candidate-venv"
@@ -260,7 +282,29 @@ jobs:
           )"
           [[ "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]
           git cat-file -e "${candidate_commit}^{commit}"
-          git merge-base --is-ancestor "$candidate_commit" HEAD
+          candidate_identity_paths=(
+            metriplane
+            integrations
+            pyproject.toml
+            uv.lock
+            README.md
+            LICENSE
+            NOTICE
+            adapters/maniskill_pickcube
+            examples/external_sources/maniskill_pickcube
+            schemas/metriplane.external_source_contract.v1.schema.json
+            proofs/maniskill-pickcube-v1/CITATION.cff
+            proofs/maniskill-pickcube-v1/CLAIMS.md
+            proofs/maniskill-pickcube-v1/EVALUATOR.md
+            proofs/maniskill-pickcube-v1/NOTICE.md
+            proofs/maniskill-pickcube-v1/README.md
+            proofs/maniskill-pickcube-v1/REPRODUCE.md
+            proofs/maniskill-pickcube-v1/evaluator-report-template.md
+            proofs/maniskill-pickcube-v1/proof-record.schema.json
+            proofs/maniskill-pickcube-v1/reproduce.py
+          )
+          git diff --exit-code "$candidate_commit" HEAD -- \
+            "${candidate_identity_paths[@]}"
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           dist_dir="${RUNNER_TEMP}/metriplane-proof-dist"
           mkdir -p "$candidate_source" "$dist_dir"
