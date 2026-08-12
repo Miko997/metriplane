@@ -554,6 +554,32 @@ def _normalization_operations() -> list[dict[str, object]]:
     ]
 
 
+def _real_source_audit_extension() -> dict[str, object]:
+    """Frozen attestation emitted only by the exact-source conversion path.
+
+    ``core.convert`` publishes the staged output only after independently
+    rehashing both sources and proving that the before/after identities below
+    remain exact.
+    """
+    return {
+        "can_named_qpos_rows_verified": 23_207,
+        "clock_rows_verified": 23_207,
+        "demo_count": 200,
+        "mask_membership_equal": True,
+        "max_fk_abs_error_m": 1.1102230246251565e-15,
+        "prepared_environment_version": "1.5.1",
+        "prepared_sha256_after": PREPARED_SHA256,
+        "prepared_sha256_before": PREPARED_SHA256,
+        "raw_environment_version": "1.5.0",
+        "raw_sha256_after": RAW_SHA256,
+        "raw_sha256_before": RAW_SHA256,
+        "selected_demo": "demo_0",
+        "selected_frame_count": 118,
+        "source_unchanged_during_conversion": True,
+        "states_actions_model_sample_masks_equal": True,
+    }
+
+
 def _manifest(
     *,
     config: Mapping[str, Any],
@@ -561,6 +587,7 @@ def _manifest(
     adapter_commit: str,
     files: Mapping[str, bytes],
     config_sha256: str,
+    real_source_attested: bool,
 ) -> dict[str, object]:
     variant_config = config["variants"][variant]
     fixture_id = str(variant_config["fixture_id"])
@@ -664,6 +691,11 @@ def _manifest(
                     "can": "array-exact named Can_joint0 qpos translation",
                     "tcp": "independent embedded-XML FK to gripper0_right_grip_site within 2e-12",
                 },
+                **(
+                    {"real_source_audit": _real_source_audit_extension()}
+                    if real_source_attested
+                    else {}
+                ),
                 "selection_accounting": {
                     "demo_id": "demo_0",
                     "normalized_frames": FRAME_COUNT,
@@ -672,7 +704,7 @@ def _manifest(
                 },
                 "source_byte_sizes": {"prepared_hdf5": PREPARED_SIZE, "raw_hdf5": RAW_SIZE},
                 "source_field_exclusions": [
-                    "object relative-to-EFF position/quaternion block",
+                    "object relative-to-EEF position/quaternion block",
                     "object and TCP z",
                     "object and TCP quaternion",
                     "actions",
@@ -1233,6 +1265,7 @@ def write_fixtures(
                 adapter_commit=adapter_commit,
                 files=files,
                 config_sha256=config_sha256,
+                real_source_attested=audit_report is not None,
             )
             input_fingerprint = _conversion_inputs_fingerprint(manifest)
             files["normalization-report.json"] = pretty_json_bytes(
@@ -1250,6 +1283,7 @@ def write_fixtures(
                     adapter_commit=adapter_commit,
                     files=files,
                     config_sha256=config_sha256,
+                    real_source_attested=audit_report is not None,
                 )
             )
             files["CHECKSUMS.sha256"] = _checksum_inventory(files)
@@ -1270,6 +1304,7 @@ def write_fixtures(
             **accounting,
         }
         if audit_report is not None:
+            summary["source_unchanged_during_conversion"] = True
             summary["real_source_audit"] = {
                 "can_named_qpos_rows_verified": audit_report["can_named_qpos_rows_verified"],
                 "clock_rows_verified": audit_report["clock_rows_verified"],
@@ -1304,7 +1339,9 @@ def relative_file_inventory(root: Path) -> set[str]:
     return {path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()}
 
 
-def _verify_variant_integrity(root: Path, variant: str) -> None:
+def _verify_variant_integrity(
+    root: Path, variant: str, *, require_real_source_attestation: bool
+) -> None:
     """Verify checksum coverage and the manifest/report's direct byte references."""
     checksum_path = root / "CHECKSUMS.sha256"
     manifest_path = root / "source-manifest.json"
@@ -1393,6 +1430,14 @@ def _verify_variant_integrity(root: Path, variant: str) -> None:
     adapter_commit = manifest.get("adapter", {}).get("commit", "")
     if re.fullmatch(r"[0-9a-f]{40}", adapter_commit) is None:
         raise FixtureError(f"equivalence {root}: invalid adapter commit")
+    source_extension = manifest.get("extensions", {}).get("org.robomimic.can_ph", {})
+    real_source_attested = "real_source_audit" in source_extension
+    if require_real_source_attestation and not real_source_attested:
+        raise FixtureError(f"equivalence {root}: real-source audit attestation is required")
+    if real_source_attested and source_extension["real_source_audit"] != (
+        _real_source_audit_extension()
+    ):
+        raise FixtureError(f"equivalence {root}: real-source audit attestation differs")
     files = {
         relative: (root / relative).read_bytes()
         for relative in FIXTURE_FILE_INVENTORY
@@ -1404,6 +1449,7 @@ def _verify_variant_integrity(root: Path, variant: str) -> None:
         adapter_commit=adapter_commit,
         files=files,
         config_sha256=FROZEN_CONFIG_SHA256,
+        real_source_attested=real_source_attested,
     )
     if manifest != expected_manifest:
         raise FixtureError(f"equivalence {root}: manifest differs from frozen construction")
@@ -1483,7 +1529,11 @@ def finalize_conversion_equivalence(
                     f"missing={sorted(FIXTURE_FILE_INVENTORY - inventory)}, "
                     f"extra={sorted(inventory - FIXTURE_FILE_INVENTORY)}"
                 )
-            _verify_variant_integrity(root / variant, variant)
+            _verify_variant_integrity(
+                root / variant,
+                variant,
+                require_real_source_attestation=not allow_unbound_test_fixture,
+            )
         for relative in sorted(FIXTURE_FILE_INVENTORY):
             values = [(root / variant / relative).read_bytes() for root in roots]
             if values[0] != values[1] or values[0] != values[2]:
@@ -1524,6 +1574,8 @@ def finalize_conversion_equivalence(
             or audit.get("clock_rows_verified") != 23_207
         ):
             raise FixtureError("equivalence: exact real-source audit attestation is required")
+        if summary_document.get("source_unchanged_during_conversion") is not True:
+            raise FixtureError("equivalence: post-conversion source integrity is not attested")
         for root in roots:
             for variant in ("incident", "control"):
                 actual_session = sha256_file(root / variant / "session.jsonl")

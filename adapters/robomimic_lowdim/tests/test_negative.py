@@ -464,3 +464,21 @@ def test_finalizer_rejects_incident_control_state_mismatch(
             output_root=tmp_path / "final-state-mismatch",
             allow_unbound_test_fixture=True,
         )
+
+
+def test_public_finalizer_requires_per_bundle_real_source_attestation(
+    tmp_path: Path, source_frames: list[SourceFrame], config_path: Path
+) -> None:
+    from robomimic_lowdim.fixture import finalize_conversion_equivalence
+
+    roots = [tmp_path / f"unbound-{index}" for index in range(3)]
+    for root in roots:
+        write_fixtures(
+            source_frames,
+            config_path=config_path,
+            output_root=root,
+            adapter_commit="a" * 40,
+            allow_unbound_test_fixture=True,
+        )
+    with pytest.raises(FixtureError, match="real-source audit attestation is required"):
+        finalize_conversion_equivalence(roots, output_root=tmp_path / "final-unbound")

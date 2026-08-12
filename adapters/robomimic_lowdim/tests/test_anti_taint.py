@@ -41,6 +41,12 @@ def test_outcome_annotation_action_and_next_obs_changes_cannot_change_state(
         for demo_name in raw_file["data"]:
             raw_demo = raw_file[f"data/{demo_name}"]
             prepared_demo = prepared_file[f"data/{demo_name}"]
+            # Paired Can free-joint orientation and episode metadata mutations
+            # remain correspondence-only; neither can affect emitted XY state.
+            raw_demo["states"][:, 26:30] = np.asarray([1.0, 0.0, 0.0, 0.0])
+            prepared_demo["states"][:, 26:30] = np.asarray([1.0, 0.0, 0.0, 0.0])
+            raw_demo.attrs["ep_meta"] = '{"success": true, "end_reason": "taint"}'
+            prepared_demo.attrs["ep_meta"] = '{"success": true, "end_reason": "taint"}'
             replacement = np.full(raw_demo["actions"].shape, 17.0)
             raw_demo["actions"][...] = replacement
             prepared_demo["actions"][...] = replacement
