@@ -1,0 +1,366 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: ManiSkill PickCube Proof
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/maniskill-proof.yml"
+      - "adapters/maniskill_pickcube/**"
+      - "examples/external_sources/maniskill_pickcube/**"
+      - "metriplane/atlas/**"
+      - "metriplane/external_sources/**"
+      - "metriplane/provenance/**"
+      - "proofs/maniskill-pickcube-v1/**"
+      - "schemas/metriplane.external_source_contract.v1.schema.json"
+      - "tests/external_sources/test_maniskill_pickcube_fixture.py"
+      - "tests/external_sources/test_maniskill_pickcube_proof.py"
+      - "tools/build_maniskill_pickcube_proof.py"
+      - "pyproject.toml"
+      - "uv.lock"
+  push:
+    branches:
+      - main
+    tags:
+      - maniskill-pickcube-proof-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maniskill-pickcube-proof-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  proof-structure:
+    name: Proof structure and records
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked proof-test environment
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Validate proof structure, record, hashes, and citation
+        run: |
+          uv run --python 3.12 python -m pytest -q \
+            tests/external_sources/test_maniskill_pickcube_proof.py \
+            -k "structure or schema or record or checksum or citation or fixture_identity or representative_results"
+
+      - name: Validate proof record with the official JSON Schema implementation
+        run: |
+          uv run --python 3.12 --with jsonschema==4.25.1 python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from jsonschema import Draft202012Validator
+
+          root = Path("proofs/maniskill-pickcube-v1")
+          schema = json.loads((root / "proof-record.schema.json").read_text(encoding="utf-8"))
+          record = json.loads((root / "proof-record.json").read_text(encoding="utf-8"))
+          Draft202012Validator.check_schema(schema)
+          Draft202012Validator(schema).validate(record)
+          PY
+
+      - name: Validate proof CITATION.cff
+        run: |
+          uvx --from cffconvert==2.0.0 cffconvert \
+            --validate \
+            --infile proofs/maniskill-pickcube-v1/CITATION.cff
+
+      - name: Run scoped REUSE validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' reuse_paths < <(
+            git ls-files -z -- \
+              .github/workflows/maniskill-proof.yml \
+              adapters/maniskill_pickcube \
+              examples/external_sources/maniskill_pickcube \
+              proofs/maniskill-pickcube-v1 \
+              tests/external_sources/test_maniskill_pickcube_fixture.py \
+              tests/external_sources/test_maniskill_pickcube_proof.py \
+              tools/build_maniskill_pickcube_proof.py
+          )
+          test "${#reuse_paths[@]}" -gt 0
+          uvx --from reuse==5.0.2 reuse lint-file "${reuse_paths[@]}"
+
+  artifact-red-team:
+    name: Artifact red team
+    runs-on: ubuntu-latest
+    needs: proof-structure
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked proof-test environment
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Run proof red-team tests
+        run: |
+          uv run --python 3.12 python -m pytest -q \
+            tests/external_sources/test_maniskill_pickcube_proof.py \
+            -k "path or raw or claim or source_neutral or evidence or regression or control or public_commit"
+
+      - name: Rebuild proof twice and require deterministic output
+        shell: bash
+        run: |
+          set -euo pipefail
+          exact_commit="$(git rev-parse HEAD)"
+          test "$exact_commit" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          first="${RUNNER_TEMP}/proof-build-a"
+          second="${RUNNER_TEMP}/proof-build-b"
+          uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
+            --repo-root . \
+            --out "$first" \
+            --metriplane-commit "$exact_commit" \
+            --publication-date 2026-08-12
+          uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
+            --repo-root . \
+            --out "$second" \
+            --metriplane-commit "$exact_commit" \
+            --publication-date 2026-08-12
+          diff --recursive --brief "$first" "$second"
+
+  portable-proof:
+    name: Portable proof (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: proof-structure
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        python-version:
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked build environment
+        run: uv sync --locked --group dev --python ${{ matrix.python-version }}
+
+      - name: Build and inspect distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist_dir="${RUNNER_TEMP}/metriplane-proof-dist"
+          mkdir -p "$dist_dir"
+          uv run --python ${{ matrix.python-version }} python -m build --outdir "$dist_dir"
+          uv run --python ${{ matrix.python-version }} python -m twine check --strict "$dist_dir"/*
+          DIST_DIR="$dist_dir" uv run --python ${{ matrix.python-version }} python - <<'PY'
+          import os
+          from pathlib import Path
+          import tarfile
+          import zipfile
+
+          root = Path(os.environ["DIST_DIR"])
+          wheels = sorted(root.glob("*.whl"))
+          sdists = sorted(root.glob("*.tar.gz"))
+          assert len(wheels) == 1, wheels
+          assert len(sdists) == 1, sdists
+          with zipfile.ZipFile(wheels[0]) as archive:
+              wheel_names = archive.namelist()
+          with tarfile.open(sdists[0], "r:gz") as archive:
+              sdist_names = archive.getnames()
+          prohibited = ("mani_skill", "maniskill", "sapien", "torch", "h5py")
+          assert not any("adapters/maniskill_pickcube" in name for name in wheel_names)
+          assert not any(
+              name.lower().endswith((".h5", ".hdf5", ".urdf", ".glb", ".pt", ".pth"))
+              for name in wheel_names
+          )
+          metadata_name = next(name for name in wheel_names if name.endswith(".dist-info/METADATA"))
+          with zipfile.ZipFile(wheels[0]) as archive:
+              metadata = archive.read(metadata_name).decode("utf-8").lower()
+          assert not any(f"requires-dist: {name}" in metadata for name in prohibited)
+          assert any(name.endswith("pyproject.toml") for name in sdist_names)
+          PY
+
+      - name: Install exact wheel outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel_path="$(find "${RUNNER_TEMP}/metriplane-proof-dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$wheel_path"
+          proof_venv="${RUNNER_TEMP}/metriplane-proof-venv"
+          python -m venv "$proof_venv"
+          "$proof_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
+          "$proof_venv/bin/python" -m pip check
+          PROOF_VENV="$proof_venv" "$proof_venv/bin/python" - <<'PY'
+          from importlib import metadata
+
+          installed = {dist.metadata["Name"].lower().replace("-", "_") for dist in metadata.distributions()}
+          prohibited = {"mani_skill", "maniskill", "sapien", "torch", "h5py"}
+          assert installed.isdisjoint(prohibited), sorted(installed & prohibited)
+          metriplane_files = [str(path) for path in (metadata.files("metriplane") or ())]
+          assert not any("adapters/maniskill_pickcube" in path for path in metriplane_files)
+          PY
+
+      - name: Copy portable proof inputs outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          portable_root="${RUNNER_TEMP}/portable-proof-input"
+          mkdir -p \
+            "$portable_root/proofs" \
+            "$portable_root/examples/external_sources"
+          cp -R \
+            proofs/maniskill-pickcube-v1 \
+            "$portable_root/proofs/maniskill-pickcube-v1"
+          cp -R \
+            examples/external_sources/maniskill_pickcube \
+            "$portable_root/examples/external_sources/maniskill_pickcube"
+
+      - name: Run Level-A proof using only the installed wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          exact_commit="$(git rev-parse HEAD)"
+          test "$exact_commit" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          proof_venv="${RUNNER_TEMP}/metriplane-proof-venv"
+          portable_root="${RUNNER_TEMP}/portable-proof-input"
+          proof_output="${RUNNER_TEMP}/portable-proof-output"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          PATH="$proof_venv/bin:$PATH" \
+          METRIPLANE_GIT_COMMIT="$exact_commit" \
+            "$proof_venv/bin/python" \
+              "$portable_root/proofs/maniskill-pickcube-v1/reproduce.py" \
+              --repo-root "$portable_root" \
+              --out "$proof_output" \
+              --metriplane-commit "$exact_commit"
+          test -s "$proof_output/reproduction-result.json"
+
+      - name: Move and reverify durable outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_venv="${RUNNER_TEMP}/metriplane-proof-venv"
+          original="${RUNNER_TEMP}/portable-proof-output"
+          moved="${RUNNER_TEMP}/moved-portable-proof-output"
+          mv "$original" "$moved"
+          test -s "$moved/reproduction-result.json"
+          bundle="$(find "$moved" -type f -path '*/evidence_bundles/*.zip' -print -quit)"
+          regression="$(find "$moved" -type f -path '*/regression_tests/*.yaml' -print -quit)"
+          test -n "$bundle"
+          test -n "$regression"
+          "$proof_venv/bin/metriplane" atlas bundle verify "$bundle" \
+            | grep -q '"pass": true'
+          "$proof_venv/bin/metriplane" atlas test "$regression" --json \
+            | grep -q '"pass": true'
+          test "$(find "$moved" -type f -name 'cell_truth_report.html' | wc -l | tr -d ' ')" -eq 2
+          test "$(find "$moved" -type f -name 'atlas_dashboard.html' | wc -l | tr -d ' ')" -eq 2
+          test "$(find "$moved" -type f -name '*.usda' | wc -l | tr -d ' ')" -eq 2
+          if find "$moved" -type f -path '*control*/evidence_bundles/*.zip' -print -quit | grep -q .; then
+            echo "Control output contains a fabricated evidence bundle" >&2
+            exit 1
+          fi
+          if find "$moved" -type f -path '*control*/regression_tests/*.yaml' -print -quit | grep -q .; then
+            echo "Control output contains a fabricated regression" >&2
+            exit 1
+          fi
+
+      - name: Scan moved output for operational paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          MOVED_OUTPUT="${RUNNER_TEMP}/moved-portable-proof-output" \
+          FORBIDDEN_CHECKOUT="$GITHUB_WORKSPACE" \
+          FORBIDDEN_TEMP="$RUNNER_TEMP" \
+            "${RUNNER_TEMP}/metriplane-proof-venv/bin/python" - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import zipfile
+
+          root = Path(os.environ["MOVED_OUTPUT"])
+          forbidden = [
+              os.environ["FORBIDDEN_CHECKOUT"].encode(),
+              os.environ["FORBIDDEN_TEMP"].encode(),
+          ]
+          private_path = re.compile(
+              rb"(?:/(?:home|Users)/[^/\s\"'<>]+(?:/|(?=[\s\"'<>]|$))|"
+              rb"(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/])"
+          )
+
+          def check(raw: bytes, location: object) -> None:
+              assert not any(value in raw for value in forbidden), location
+              assert private_path.search(raw) is None, location
+
+          for path in sorted(root.rglob("*")):
+              if not path.is_file():
+                  continue
+              raw = path.read_bytes()
+              check(raw, path)
+              if path.suffix.lower() != ".zip":
+                  continue
+              with zipfile.ZipFile(path) as archive:
+                  for member in archive.infolist():
+                      check(member.filename.encode(), (path, member.filename))
+                      if not member.is_dir():
+                          check(archive.read(member), (path, member.filename))
+          PY

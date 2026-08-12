@@ -25,6 +25,7 @@ nav:
   - External Source Contract:
       - Contract v1: specs/external-source-contract-v1.md
       - Source-truth audit: specs/external-source-contract-v1-audit.md
+  - ManiSkill PickCube proof: user-guide/maniskill-pickcube-proof.md
   - Troubleshooting: user-guide/troubleshooting.md
   - Contributing: user-guide/contributing.md
   - Research artifacts: user-guide/research-artifacts.md
