@@ -56,7 +56,7 @@ implemented without changing the source-rights facts in the matrix.
 
 | Implemented material | Repository treatment |
 | --- | --- |
-| `adapters/maniskill_pickcube/*` | Independently authored adapter code, tests, configuration, and documentation under MIT; frozen adapter commit `8a0c878be9670423d1610c5d89fb090bcd1d5735` |
+| `adapters/maniskill_pickcube/*` | Independently authored adapter code, tests, configuration, and documentation under MIT; frozen adapter commit `95d1134d9fb9273318c552c507952f1c5c26877e` |
 | `examples/external_sources/maniskill_pickcube/*` | Public modified/derived fixture subtree under Apache-2.0, with REUSE copyright value `NOASSERTION`, source citation, and modified-data notice |
 | `LICENSES/MIT.txt` | Canonical MIT license text for MIT-tagged repository material |
 | `LICENSES/Apache-2.0.txt` | Canonical Apache License 2.0 text for the fixture subtree |
@@ -77,9 +77,9 @@ The frozen fixture identities tying this treatment to the published bytes are:
 - shared session SHA-256:
   `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df`;
 - incident fixture fingerprint:
-  `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04`;
+  `954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2`;
 - control fixture fingerprint:
-  `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68`.
+  `8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e`.
 
 The adapter/fixture REUSE gate is intentionally scoped. The audited global
 baseline was already noncompliant with REUSE 3.3 before this implementation:

@@ -196,7 +196,7 @@ uv run maniskill-pickcube convert \
   --trajectory <source-dir>/extracted/PickCube-v1/motionplanning/trajectory.h5 \
   --metadata <source-dir>/extracted/PickCube-v1/motionplanning/trajectory.json \
   --config config/frozen-config.json \
-  --adapter-commit 8a0c878be9670423d1610c5d89fb090bcd1d5735 \
+  --adapter-commit 95d1134d9fb9273318c552c507952f1c5c26877e \
   --out <generated-fixture-root> \
   --json
 ```

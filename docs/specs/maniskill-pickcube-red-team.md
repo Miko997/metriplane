@@ -146,7 +146,8 @@ differing files contain only the allowed changes and caused hashes.
 ### 12. Can a run be moved without its original source path?
 
 **CURRENT EVIDENCE PASS; FINAL-HEAD WHEEL PENDING.** Atlas commit
-`f3d3092` makes new manifests refer to run-contained `state_segment.jsonl` and
+`89f2877372471d9d449b355b93ef2fe4e8d8617d` makes new manifests refer to
+run-contained `state_segment.jsonl` and
 `configs`, introduces source-neutral safe resolution, and makes the USDA exporter
 prefer those copies. The 13-passing fixture/path suite moved current incident
 and control runs, removed their original fixture execution paths, and rechecked
@@ -167,7 +168,8 @@ scan.
 ### 14. Does any generated output assume camera, tracking, or calibration?
 
 **CURRENT EVIDENCE PASS; FINAL-HEAD WHEEL PENDING.** Atlas commit
-`e49425f` replaces generic camera/tracking assumptions with normalized-state
+`070421a2626f0fe0b9e197b28b2bc852410da569` replaces generic camera/tracking
+assumptions with normalized-state
 language and upstream-accuracy limitations. Camera-specific subsystem
 documentation remains outside this change. Current reports, dashboard,
 limitations, connectors, evidence metadata, regression, privacy report, and
@@ -228,9 +230,9 @@ artifacts plus the root conversion summary. The final reports name
 `status: demonstrated` and `equivalent: true`. The shared session SHA-256 is
 `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df`;
 the incident and control fixture fingerprints are respectively
-`b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04`
+`954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2`
 and
-`cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68`.
+`8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e`.
 
 ### 20. Are three Atlas executions semantically equivalent?
 

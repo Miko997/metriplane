@@ -115,7 +115,7 @@ source revision, task, episode, or state accounting.
 Episode `0` / `traj_0` remains the selected record. No later episode was
 substituted, no outcome value was added to the selection criteria, and the
 50-step registered RL horizon remained provenance only. The frozen adapter at
-commit `8a0c878be9670423d1610c5d89fb090bcd1d5735` retained all 74 transitions
+commit `95d1134d9fb9273318c552c507952f1c5c26877e` retained all 74 transitions
 and all 75 stored states under configuration SHA-256
 `2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202`.
 
@@ -125,9 +125,9 @@ with SHA-256
 Their canonical fixture fingerprints are:
 
 - incident:
-  `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04`;
+  `954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2`;
 - control:
-  `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68`.
+  `8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e`.
 
 The two fixtures use the same operator-authored inclusive square centered at
 `(0.026815734803676605, -0.0019813179969787598)` metres, with half-extent

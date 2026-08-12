@@ -352,12 +352,12 @@ implemented identities are:
 | Item | Frozen implementation identity |
 | --- | --- |
 | Original Metriplane base | `5475c6a66b0535cddcbcc7bb05032aed1d2017db` |
-| Preserved audit commit | `cfba11932ee1deb51491d9c60f5afe434b8ee054` |
-| Adapter freeze commit | `8a0c878be9670423d1610c5d89fb090bcd1d5735` |
+| Preserved audit commit | `683d725f7ab92dd3915cf98efdf48b605ad551ec` |
+| Adapter freeze commit | `95d1134d9fb9273318c552c507952f1c5c26877e` |
 | Frozen adapter configuration SHA-256 | `2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202` |
 | Shared incident/control `session.jsonl` SHA-256 | `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df` |
-| Incident fixture fingerprint | `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04` |
-| Control fixture fingerprint | `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68` |
+| Incident fixture fingerprint | `954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2` |
+| Control fixture fingerprint | `8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e` |
 
 The fixture fingerprints are the SHA-256 values of each variant's canonical
 `CHECKSUMS.sha256` inventory. They are not source-artifact hashes. The incident
