@@ -5,11 +5,12 @@ SPDX-License-Identifier: MIT
 
 # MET-18 robomimic Can field provenance and normalization loss
 
-Status: **field and rule mapping frozen; adapter serialization, fixture hashes,
-anti-taint execution, and Atlas run verification pending.**
+Status: **implemented and demonstrated for the exact pinned source pair,
+`demo_0`, adapter commit `cfc285a3e757fdf742858b1c4cf685c384d01e8b`,
+and the two frozen incident/control rules.**
 
 This record defines the complete source-to-normalized map for the selected
-robomimic Can Proficient Human `demo_0` fixture. The proposed portable record
+robomimic Can Proficient Human `demo_0` fixture. The portable record
 contains 118 complete snapshots of one Can and one robot TCP. It intentionally
 does not contain source outcomes, actions, `next_obs`, orientation, task labels,
 or a source success definition.
@@ -38,8 +39,8 @@ normalized position are Layer-B operations.
 
 | Artifact ID | Repository path | Size | SHA-256 / LFS OID | Fixture treatment |
 | --- | --- | ---: | --- | --- |
-| `robomimic_can_ph_raw` | `v1.5/can/ph/demo_v15.hdf5` | 64,932,974 | `86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d` | Required external audit/conversion input; not redistributed. |
-| `robomimic_can_ph_low_dim` | `v1.5/can/ph/low_dim_v15.hdf5` | 46,889,752 | `3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962` | Required external conversion input; not redistributed. |
+| `can_ph_raw_hdf5` | `v1.5/can/ph/demo_v15.hdf5` | 64,932,974 | `86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d` | Required external audit/conversion input; not redistributed. |
+| `can_ph_prepared_lowdim_hdf5` | `v1.5/can/ph/low_dim_v15.hdf5` | 46,889,752 | `3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962` | Required external conversion input; not redistributed. |
 
 Both artifacts belong to `robomimic/robomimic_datasets` at immutable revision
 `74fa018461f479cd9fd15b924a16103012096203`. Different paths, sizes, hashes,
@@ -98,8 +99,10 @@ the adapter must not guess an offset or accept an unnamed concatenated vector.
 
 ## 5. Complete `session.jsonl` field map
 
-Every field planned for each normalized frame is listed below. The exact JSON
-serialization and durable file hash remain pending implementation.
+Every field emitted in each normalized frame is listed below. The 118-row
+canonical JSONL serialization is byte-identical between the two variants and
+has SHA-256
+`bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246`.
 
 | Output field | Layer | Source file / HDF5 key | Transform and parameters | Information loss / missing behavior | Validation and Atlas use | Claim limitation |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -126,9 +129,10 @@ substitution.
 
 ## 6. Entity-mapping field map
 
-The planned `entity-mapping.json` uses schema
+The emitted `entity-mapping.json` uses schema
 `metriplane.external_entity_mapping.v1`. Its semantic fields are frozen as
-follows; byte identity is pending implementation.
+follows; both variants use byte-identical mapping bytes with SHA-256
+`51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c`.
 
 | Output field | Layer | Frozen meaning and source | Validation / Atlas use | Claim limitation |
 | --- | --- | --- | --- | --- |
@@ -158,21 +162,44 @@ The frozen variant IDs are
 `robomimic-can-ph-demo-0-planar-incident-v1` with domain pack
 `robomimic-can-ph-planar-incident-v1`, and
 `robomimic-can-ph-demo-0-planar-control-v1` with domain pack
-`robomimic-can-ph-planar-control-v1`. Exact remaining durable IDs, labels,
-YAML/CSV serialization, and domain-pack hashes must be reported by the
-implementation. If implementation identifiers differ from this record, the
-record must be updated before evidence freeze; semantic equivalence alone is
-not a substitute for an exact provenance record.
+`robomimic-can-ph-planar-control-v1`. The final serializer retained these IDs
+and the declared labels. `CHECKSUMS.sha256` binds every YAML/CSV byte; the
+finalized incident and control fixture fingerprints are respectively
+`6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6` and
+`dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf`.
+
+The verified Atlas behavior is deliberately one-shot. The Can is inside on
+frames 0 through 63; the TCP first enters on frame 42 and is inside through
+frame 64. Both variants complete the single process step at frame 42, so Atlas
+does not reopen it when the Can or TCP later exits. This fixture therefore
+checks arrival and required presence, not continued co-occupancy or retention.
+For missing and delayed events, the unchanged evaluator emits its existing
+`unknown_required_asset` placeholder in the event `asset_type` field. That
+placeholder does not replace or weaken the stable Layer-C identity and role:
+the configured required asset remains `robot_tcp_1`, whose registry type is
+`tool`.
 
 ## 8. Other durable outputs
 
 | Artifact | Layers represented | Required contents | Current status |
 | --- | --- | --- | --- |
-| `source-manifest.json` | A-C metadata; D evaluation declaration | Exact code/dataset identities; both artifact paths, sizes and hashes; adapter `org.metriplane.robomimic_lowdim`; frozen-config SHA-256 `dc01dd3f300be3d660216bc07a0df67b3c57fc88416032fd54a2974abe964017`; lock/config identities; clock and coordinate maps; field provenance; exclusions, limitations, domain-pack hashes, and immutable relative paths only. | Schema-level content frozen; manifest bytes/hashes pending. |
-| `normalization-report.json` | A-C audit record | Raw/prepared comparison result, both raw witnesses, 118-to-118 frame accounting, finite/complete checks, no-taint declarations, source non-mutation hashes, and deterministic-conversion comparison. | Source comparison demonstrated; conversion and determinism fields pending. |
-| `expected-outcome.json` | Test metadata about D; never Atlas input | `atlas_input: false`; incident expected to exercise existing missing-tool delay semantics; control expected to remain non-incident. Actual event/deviation/incident counts and hashes must be frozen from verified runs, not invented here. | Pending Atlas runs. |
-| `CHECKSUMS.sha256` | Artifact integrity | Sorted relative paths and content hashes; no machine-local paths or mutable references. | Pending fixture generation. |
-| `source/*` records | A-C provenance | Deterministic frozen adapter config, dependency lock, and conversion environment record; no raw HDF5, model XML, simulator asset, or absolute path. | Pending fixture generation. |
+| `source-manifest.json` | A-C metadata; D evaluation declaration | Exact code/dataset identities; both artifact paths, sizes and hashes; adapter `org.metriplane.robomimic_lowdim` at `cfc285a3e757fdf742858b1c4cf685c384d01e8b`; frozen-config SHA-256 `3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5`; clock and coordinate maps; field provenance; exclusions, limitations, domain-pack hashes, and immutable relative paths only. | Demonstrated. Incident manifest SHA-256 `866b98ad23e21942985d3be051715e0291ba5ba3323f852184dfe214c04e9d35`; control `46e06a7bf345a695947edbccfac7f9abeaa77ffd8716f965422ff3200868e6b6`. |
+| `normalization-report.json` | A-C audit record | 118-to-118 frame accounting, declared operations/loss, and three byte-identical real-source conversion records. Exact source correspondence and before/after source hashes are bound in each manifest and the conversion summary. | Demonstrated. Incident SHA-256 `a95c263f5c18c39f649c4849ff4a38a1abe82b9dfd1deb39274ac073b1d49ea4`; control `d81b1cfe1dc1967c2c713abcea8a4b45c8f7a3397b92b476f2a568e7334ead1c`. |
+| `expected-outcome.json` | Test metadata about D; never Atlas input | `atlas_input: false`. Incident: four ordered events, one deviation, one `missing_tool_caused_delay` incident, verified evidence, and passing regression. Control: three ordered events, no deviation or incident, and no fabricated evidence/regression. | Demonstrated against the frozen session and rules. |
+| `CHECKSUMS.sha256` | Artifact integrity | Sorted complete relative-path inventory and content hashes; no machine-local paths or mutable references. | Demonstrated. Its file hash is the per-variant fingerprint: incident `6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6`; control `dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf`. |
+| `source/*` records | A-C provenance | Frozen config, dependency lock SHA-256 `86dab2c05dce00cb40db03ddea9848da227451661cd30aaa0f3eda72a35fc4ff`, and exact Linux x86_64 / CPython 3.12 conversion environment; no raw HDF5, model XML, simulator asset, or absolute path. | Demonstrated and byte-identical between variants and across three conversions. |
+
+Production conversion and public finalization bind the durable adapter commit
+to the running checkout instead of trusting caller-supplied 40-hex text. They
+require the supplied commit to equal verified `HEAD`, reject a dirty or
+untracked adapter subtree, enumerate its complete `HEAD` tree, and compare every
+regular tracked file byte-for-byte with its Git blob. Wrong commits, modified
+files hidden by `assume-unchanged` or `skip-worktree`, mode/type/symlink drift,
+hostile Git environment overrides, and missing critical files fail closed.
+Portable fixture validation and execution do not require Git or this adapter.
+Final exact three-run equivalence, installed-wheel portability, exhaustive
+root/ZIP path-leak scanning, and the root-level REUSE/CI rechecks remain pending
+verification gates; none permits a change to this frozen field map.
 
 ## 9. Excluded source inputs and anti-taint boundary
 
@@ -191,10 +218,16 @@ Conversion must not consume or semantically depend on:
 `states`, `actions`, `model_file`, and opaque mask arrays were compared across
 raw and prepared files for provenance. Comparison is not consumption: actions
 and filter semantics do not contribute to normalized state or Atlas rules.
-Required anti-taint tests must change or remove excluded values in safe copies
-and demonstrate byte-identical normalized session, entity mapping, domain pack,
-waits, and Atlas semantics whenever normalized state is unchanged. Those
-implementation tests remain pending.
+The anti-taint suite changed paired mask membership, horizon, actions, episode
+metadata, raw controller/intervention/policy/user arrays, prepared rewards and
+dones, relative object pose, excluded object/TCP quaternions, and all
+`next_obs` positions in safe source-shaped copies. The extracted `SourceFrame`
+sequence remained exactly equal to the baseline. Because mapping, domain pack,
+and waits are frozen writer outputs, unchanged frames reproduce the identical
+session and Atlas inputs. Durable-session scans also confirmed that outcome,
+action, `next_obs`, and local-path fields are absent. These checks are adapter
+tests; they do not reclassify synthetic source-shaped test bodies as the real
+source conversion.
 
 ## 10. Information loss and claim boundary
 

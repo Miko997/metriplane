@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 
 # robomimic Can low-dimensional rights and redistribution matrix
 
-Status: **rights gate GO for the exact MIT-declared dataset revision and a
-modified normalized numeric fixture; fixture/adapter REUSE verification
-pending implementation.**
+Status: **rights gate GO and fixture/adapter licensing treatment implemented
+for the exact MIT-declared dataset revision and modified normalized numeric
+fixture; final root-level REUSE and path-leak rechecks remain pending.**
 
 This is a research-software licensing and provenance record, not legal advice.
 It separates source code, dataset bytes, embedded model material, normalized
@@ -22,10 +22,12 @@ dataset declaration.
 | robomimic source code | [`ARISE-Initiative/robomimic`](https://github.com/ARISE-Initiative/robomimic/tree/d309eaecc18acf4152a830a895a6984b8ac71b05) at `d309eaecc18acf4152a830a895a6984b8ac71b05` | [MIT](https://github.com/ARISE-Initiative/robomimic/blob/d309eaecc18acf4152a830a895a6984b8ac71b05/LICENSE) | Inspect as primary evidence. Do not copy upstream implementation into the independently authored adapter. |
 | robosuite source code | [`ARISE-Initiative/robosuite`](https://github.com/ARISE-Initiative/robosuite/tree/51cc01785bab80ffeed20da15e67d7dd4140e76a) at prepared boundary `v1.5.1` / `51cc01785bab80ffeed20da15e67d7dd4140e76a`; raw metadata also records `v1.5.0` / `1a8701b90c07c6595ace4af9935d7c5ebe1baed3` | MIT | Inspect field and preparation semantics. Do not package or redistribute robosuite source through this fixture. |
 | Official dataset repository | [`robomimic/robomimic_datasets`](https://huggingface.co/datasets/robomimic/robomimic_datasets/tree/74fa018461f479cd9fd15b924a16103012096203) at `74fa018461f479cd9fd15b924a16103012096203` | Immutable dataset card declares `license: mit`; repository is public and ungated; no path-specific override was found | Covers the exact raw and prepared bodies at this revision. Retain MIT notice, source attribution, immutable identity, and modified-data notice for normalized publication. |
+| Independently authored Metriplane adapter | `adapters/robomimic_lowdim/` at Git-bound commit `cfc285a3e757fdf742858b1c4cf685c384d01e8b` | MIT through SPDX headers and path-scoped REUSE metadata | Publish as isolated source-specific code. Production conversion/finalization requires its running tracked bytes to equal that commit's adapter tree. No upstream source was copied into it. |
 
-The current code commit is an audit identity, not the asserted generator of the
-prepared dataset. This generation-provenance limitation does not alter the
-separate dataset license declaration.
+The audited robomimic code commit is an audit identity, not the asserted
+generator of the prepared dataset. This generation-provenance limitation does
+not alter the separate dataset license declaration or the independently bound
+Metriplane adapter identity.
 
 ## 2. Material-by-material treatment
 
@@ -41,15 +43,15 @@ separate dataset license declaration.
 | Normalized Can/TCP numeric session | Modified/derived numeric values from the exact MIT-declared prepared dataset, tied to independent raw witnesses | **GO under MIT** for the narrowly transformed fixture, with source attribution and a conspicuous modified-data notice. | Preserve upstream MIT notice; identify both source artifacts; say coordinates were selected, projected to world XY, given normalized Z=0, renamed, and assigned operator-authored zones. |
 | Entity map and normalization report | Independently authored provenance structure containing source identifiers and transformation facts; may include derived audit values | **GO under MIT**, scoped to the fixture. | Cite exact source and mark any copied/derived numeric facts. |
 | Operator-authored polygon, waits, domain pack, and work order | Layer-C Metriplane-authored compatibility-test rules | **GO under MIT**. | Prominently distinguish them from source geometry, source timing rules, and official Can success. |
-| Expected-outcome record, Atlas reports, evidence, regression | Metriplane-authored test/result material derived from the normalized fixture | **GO under MIT** when generated and verified. | State that the expected-outcome record is not Atlas input and the result is not an upstream success/safety decision. |
-| Adapter code | Independently authored source-specific code with no copied upstream source | **GO under MIT** after code/notice review. Keep its dependency lock isolated. | SPDX headers and path-scoped REUSE metadata; dependency licenses remain their own. |
+| Expected-outcome record, Atlas reports, evidence, regression | Metriplane-authored test/result material derived from the normalized fixture | **GO under MIT; generated and verified for the frozen scenario.** | State that the expected-outcome record is not Atlas input and the result is not an upstream success/safety decision. The no-incident control has no evidence bundle or regression. |
+| Adapter code | Independently authored source-specific code with no copied upstream source | **GO under MIT; implemented and reviewed at `cfc285a3e757fdf742858b1c4cf685c384d01e8b`.** Keep its dependency lock isolated. | SPDX headers and path-scoped REUSE metadata; dependency licenses remain their own. |
 | Adapter dependency lock and environment record | Factual dependency identities and independently authored environment description | **GO under MIT** for the record itself; dependencies are not relicensed | Preserve names, versions, hashes, and their upstream licenses. |
 | These audit documents | Independently authored factual documentation with primary-source citations | **MIT**, following the repository documentation treatment | SPDX header; no endorsement or legal-advice claim. |
 
 ## 3. Required modified-data and attribution notice
 
-Every incident/control fixture README and durable source manifest must make the
-following facts readily visible:
+The shared fixture README and each incident/control durable source manifest make
+the following facts readily visible:
 
 1. the source dataset is `robomimic/robomimic_datasets` at immutable revision
    `74fa018461f479cd9fd15b924a16103012096203`;
@@ -67,10 +69,10 @@ following facts readily visible:
    definitions; and
 9. neither the source projects nor their maintainers endorse Metriplane.
 
-The fixture must retain or reference the MIT license text required by the
-upstream grant. Calling the fixture simply “Metriplane MIT data” without source
-attribution and a modified-data notice is insufficient even though both the
-source grant and proposed fixture treatment use MIT.
+The fixture retains the repository MIT license text and immutable upstream
+references. Calling it simply “Metriplane MIT data” without source attribution
+and a modified-data notice would be insufficient even though both the source
+grant and implemented fixture treatment use MIT.
 
 ## 4. REUSE treatment
 
@@ -91,10 +93,15 @@ YAML, or CSV artifact, use a narrow `.reuse/dep5` stanza for the exact path.
 Do not use a blanket repository stanza and do not claim that adding a license
 file relicenses another project's work.
 
-Exact `.reuse/dep5` paths and `reuse lint` results are **pending
-implementation**. Any pre-existing repository-wide REUSE deficit must be
-reported separately; this fixture may not claim global compliance merely
-because its own paths are covered.
+The implemented `.reuse/dep5` stanzas cover
+`adapters/robomimic_lowdim/*` as Metriplane-authored MIT material and
+`examples/external_sources/robomimic_lowdim/*` as MIT-treated modified data with
+`NOASSERTION` copyright plus the exact source-boundary comment. The fixture
+README supplies immutable attribution and a conspicuous modification notice;
+`LICENSES/MIT.txt` supplies the repository license text. `reuse 5.0.2
+lint-file` passed for the adapter, fixture, and these four MET-18 documents on
+2026-08-12. A final root-level REUSE rerun is still required; path-scoped
+success is not a claim of repository-wide compliance.
 
 ## 5. Redistribution decision
 
@@ -104,8 +111,9 @@ because its own paths are covered.
 - Normalized numeric fixture: **GO under MIT with attribution and modified-data
   notice**.
 - Operator-authored rule pack: **GO under MIT**, explicitly Layer C.
-- Independently authored adapter: **GO under MIT** after implementation and
-  copied-code review.
+- Independently authored adapter: **GO under MIT**, implemented at Git-bound
+  commit `cfc285a3e757fdf742858b1c4cf685c384d01e8b` after copied-code and notice
+  review.
 - Public claim: one exact transformed trajectory only; no general compatibility,
   official-success, physical-accuracy, safety, endorsement, or independent
   adoption claim.

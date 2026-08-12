@@ -6,7 +6,8 @@ SPDX-License-Identifier: MIT
 # robomimic Can low-dimensional source-selection record
 
 Status: **source identity, outcome-blind selection, geometry, clock, entity map,
-and operator waits frozen; conversion and run verification pending.**
+and operator waits frozen; exact real-source conversion and the frozen
+incident/control outcomes demonstrated.**
 
 ## 1. Predeclared selection rule
 
@@ -89,7 +90,7 @@ Descriptive geometry from the selected source record:
 | TCP final world XYZ | `[0.1910255357, 0.3289658572, 1.0142795811]` |
 | TCP first-to-final XY displacement | `0.4877730902` |
 
-These rounded values are audit displays. The converter must retain the exact
+These rounded values are audit displays. The converter retained the exact
 float64 prepared X/Y values when producing normalized frames and when deriving
 the frozen row-0-centered polygon.
 
@@ -161,9 +162,20 @@ The following Layer-C decisions are now frozen:
 > official success definition.
 
 The polygon and waits were frozen after selection. They were not selection
-criteria. They may not be tuned after final conversion to obtain a preferred
-incident or control result. If the exact Atlas outcome differs from the pilot
-expectation, the actual frozen result must be preserved.
+criteria and were not tuned after final conversion. The exact run preserved the
+frozen rules and produced:
+
+| Variant | Demonstrated Atlas result |
+| --- | --- |
+| Incident, `2.0` s | Missing at frame 0; delayed at frame 40; present and complete at frame 42; four events, one deviation, and one `missing_tool_caused_delay` incident; evidence verified and generated regression passed. |
+| Control, `2.5` s | Missing at frame 0; present and complete at frame 42; three events, no deviation, no incident, and no evidence bundle or regression. |
+
+Atlas treats this as one process-step arrival check. Completion at frame 42 is
+one-shot; later Can/TCP exits do not reopen the step, so the result does not
+establish continued co-occupancy or retention. Missing and delayed event
+payloads use the existing evaluator placeholder `unknown_required_asset` for
+`asset_type`; the required stable identity remains `robot_tcp_1`, configured as
+a `tool`.
 
 ## 7. Rejection and non-selection record
 
@@ -178,7 +190,7 @@ arbitrary operators, arbitrary Can trajectories, or robomimic generally.
 Episode selection was outcome-blind only within an upstream success-filtered
 corpus.
 
-## 8. Freeze integrity and pending evidence
+## 8. Freeze integrity and demonstrated evidence
 
 The following values may not change merely to obtain a desired Atlas result:
 
@@ -193,9 +205,21 @@ The following values may not change merely to obtain a desired Atlas result:
 - relative incident/control waits; and
 - exclusion of outcomes, actions, `next_obs`, horizon, and annotations.
 
-Pending implementation evidence includes the frozen adapter-config hash,
-incident/control session hash, fixture fingerprints, anti-taint results, three
-clean conversion identities, Atlas event/deviation/incident accounting, three
-run equivalence, evidence/regression verification, installed-wheel results,
-path-leak scan, and CI results. This record must be extended with exact values
-after those gates pass; none is claimed by the source selection alone.
+The post-freeze implementation record is:
+
+| Evidence | Exact result |
+| --- | --- |
+| Adapter identity | Git-bound commit `cfc285a3e757fdf742858b1c4cf685c384d01e8b`; conversion and finalization require verified `HEAD` plus byte equality for the complete tracked adapter tree. |
+| Frozen config | SHA-256 `3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5`. |
+| Isolated dependency lock | SHA-256 `86dab2c05dce00cb40db03ddea9848da227451661cd30aaa0f3eda72a35fc4ff`. |
+| Three conversions | `real-source-clean-1`, `real-source-clean-2`, and `real-source-clean-3` were byte-identical for every declared fixture artifact; before/after raw and prepared hashes remained unchanged. |
+| Shared normalized session | SHA-256 `bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246`; 118 frames in both variants. |
+| Incident fingerprint | `6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6`. |
+| Control fingerprint | `dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf`. |
+| Generic validation | Passed for both variants, each with 118 complete frames. |
+| Frozen Atlas result | Exact incident/control accounting in section 6, including verified incident evidence/regression and no fabricated control artifacts. |
+
+Final exact three-run equivalence, installed-wheel portability, root-level
+path-leak and REUSE rechecks, and the complete CI matrix remain separate pending
+gates. They may not change the selected source, episode, fields, clock,
+geometry, roles, or waits recorded here.

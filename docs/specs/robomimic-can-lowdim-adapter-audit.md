@@ -5,9 +5,10 @@ SPDX-License-Identifier: MIT
 
 # robomimic Can low-dimensional adapter audit
 
-Status: **GO boundary and fixture design frozen; adapter implementation, three
-clean conversions, portable runs, evidence, regression, and CI verification
-pending.**
+Status: **source-boundary GO implemented for the exact pinned pair and
+demonstrated through three byte-identical real-source conversions, generic
+validation, and the frozen incident/control Atlas outcomes; final exact
+three-run, installed-wheel, root-path/REUSE, and CI gates remain pending.**
 
 This audit authorizes implementation of one exact source-specific boundary:
 Can Proficient Human `demo_0` from the official robomimic v1.5 raw/prepared
@@ -29,6 +30,9 @@ general robomimic support, or a source-success evaluator.
 | Immutable dataset revision | `74fa018461f479cd9fd15b924a16103012096203` |
 | Task / dataset type | `Can` / Proficient Human (`ph`) |
 | Selected record | `data/demo_0`, 118 source/prepared rows |
+| Metriplane adapter commit | `cfc285a3e757fdf742858b1c4cf685c384d01e8b` |
+| Frozen adapter config | SHA-256 `3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5` |
+| Isolated dependency lock | SHA-256 `86dab2c05dce00cb40db03ddea9848da227451661cd30aaa0f3eda72a35fc4ff` |
 
 The current robomimic commit is an **audit identity**, not a claimed historical
 generator. The prepared artifact does not embed its robomimic generator commit.
@@ -234,10 +238,20 @@ Atlas rule:
 - the control variant allows a relative wait of `2.5` s.
 
 The waits begin from the existing process condition; they are not absolute
-trajectory timestamps. The incident is expected to cross the 2.0-second wait
-before TCP arrival, while the control is expected to receive the TCP within
-2.5 seconds. Actual Atlas event, deviation, and incident counts remain pending
-verified runs and must not be invented from this pilot.
+trajectory timestamps. The verified incident crosses the 2.0-second wait at
+frame 40 before TCP arrival, then records TCP presence and completion at frame
+42: four ordered events, one deviation, and one
+`missing_tool_caused_delay` incident. The control records missing at frame 0,
+then TCP presence and completion at frame 42: three ordered events, no
+deviation, and no incident. The incident evidence bundle verified and its
+generated regression passed; the no-incident control generated neither.
+
+This is a one-shot process step. Once Atlas completes it at frame 42, later Can
+and TCP exits do not reopen it. The demonstrated behavior is therefore arrival
+and required-presence timing, not continued co-occupancy or retention. Missing
+and delayed event payloads use unchanged Atlas's existing
+`unknown_required_asset` placeholder for `asset_type`; the required configured
+identity remains `robot_tcp_1`, and the asset registry declares it as `tool`.
 
 The incident and control variants must use byte-identical normalized sessions,
 entity mappings, source identities, field maps, coordinate maps, clocks, and
@@ -248,17 +262,21 @@ declared differences.
 The frozen adapter configuration names adapter
 `org.metriplane.robomimic_lowdim`, source backend
 `external:robomimic_lowdim_prepared_obs`, and has SHA-256
-`dc01dd3f300be3d660216bc07a0df67b3c57fc88416032fd54a2974abe964017`.
+`3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5`.
 The incident fixture/domain-pack IDs are
 `robomimic-can-ph-demo-0-planar-incident-v1` and
 `robomimic-can-ph-planar-incident-v1`; the control IDs are
 `robomimic-can-ph-demo-0-planar-control-v1` and
-`robomimic-can-ph-planar-control-v1`. Conversion must reject configuration
-drift. Fixture and domain-pack content hashes remain pending generation.
+`robomimic-can-ph-planar-control-v1`. Conversion rejects configuration drift.
+The shared session SHA-256 is
+`bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246`;
+the finalized incident and control fixture fingerprints are
+`6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6` and
+`dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf`.
 
 ## 9. Isolated adapter architecture
 
-The allowed implementation boundary is:
+The implemented boundary is:
 
 ```text
 adapters/robomimic_lowdim/
@@ -269,18 +287,27 @@ adapters/robomimic_lowdim/
   tests/
 ```
 
-It may use its own locked `h5py` and `numpy` dependencies. It must not import
+It uses its own locked `h5py` and `numpy` dependencies. It does not import
 robomimic, robosuite, MuJoCo, Torch, or the source simulator. Standard-library
 XML parsing and independently authored forward kinematics may implement the raw
 TCP witness. No adapter or adapter dependency enters the ordinary Metriplane
 wheel.
 
-The source-specific commands should implement immutable acquisition metadata,
-safe inspection, fail-closed raw/prepared comparison, and deterministic
-conversion. HDF5 opening must not permit pickle or arbitrary code execution.
-Output/source overlap, unsafe paths, changed hashes, source mutation, and
-overwrite without explicit authorization must be rejected. JSON command output
-must be deterministic and must not expose absolute paths.
+The source-specific commands implement immutable acquisition, safe inspection,
+fail-closed raw/prepared comparison, deterministic conversion, and exact
+three-conversion finalization. HDF5 opening permits no pickle or arbitrary code
+execution. Output/source overlap, unsafe paths, changed hashes, source mutation,
+and overwrite without explicit authorization are rejected. Durable output and
+JSON summaries contain no absolute source or temporary path.
+
+Production conversion and public finalization also authenticate the adapter
+identity. The supplied commit must equal the verified clean checkout `HEAD`.
+Every regular file in the complete tracked adapter subtree is compared directly
+with its `HEAD` Git blob, so dirty/untracked files, wrong commits, mode/type or
+symlink drift, and changes hidden behind `assume-unchanged` or `skip-worktree`
+cannot acquire the recorded identity. Git replacements, alternate object
+stores, config overrides, tracing, library injection, and hostile `PATH` input
+are stripped or bypassed. This Git requirement is conversion-only.
 
 The portable fixture contains normalized JSON/YAML/CSV and deterministic
 provenance records only. It requires the ordinary installed Metriplane wheel,
@@ -301,51 +328,63 @@ The official PH corpus contains 200 successful trajectories from one RoboTurk
 operator. This fixture is therefore neither an unbiased sample nor evidence
 about arbitrary Can behavior or failures.
 
-## 11. Required implementation and adversarial verification
+## 11. Demonstrated implementation and adversarial verification
 
-The following work is required and is **pending** unless a later dated section
-records exact evidence:
+The final adapter and fixture record the following completed evidence:
 
-- fail-closed tests for wrong repository/dataset revision, both wrong hashes,
-  old prepared body, demo mismatch, count/state/action/model mismatch, malformed
-  HDF5, unexpected key/shape, missing entity, nonfinite value, relative/world
-  confusion, unknown units/frame/frequency, incomplete snapshots, unsafe paths,
-  source/output overlap, mutation, overwrite, local-path leaks, and
-  incident/control state mismatch;
-- anti-taint mutation of rewards, dones, success/failure fields, masks/actions,
-  episode metadata, horizon, `next_obs`, and excluded quaternions with
-  byte-identical normalized state and unchanged Atlas semantics;
-- three clean source conversions into separate roots with canonical or byte
-  identity for every durable artifact and unchanged source hashes;
-- three clean incident runs and three clean control runs from the exact branch
-  wheel, with semantic equivalence, evidence/regression verification where
-  applicable, and no fabricated control evidence;
-- installed-wheel portability without source dependencies, relocation checks,
-  ZIP/content path-leak scans, and the requested OS/Python matrix where
-  practical; and
-- root-package protection, prior-proof immutability, generic-fixture
-  regression, and CI verification.
+- the isolated adapter test suite passed 36 tests and Ruff passed at adapter
+  commit `cfc285a3e757fdf742858b1c4cf685c384d01e8b`;
+- the negative matrix covers wrong exact identities and hashes, structural and
+  node-type drift, missing/mismatched demos, counts, states, actions and models,
+  unexpected keys/shapes, nonfinite values, unsafe HDF5 links/storage and paths,
+  source/output overlap and mutation, overwrite refusal, incomplete snapshots,
+  cross-variant drift, and malformed or self-consistently falsified durable
+  attestations;
+- anti-taint tests changed masks, horizon, actions, episode metadata,
+  controller/intervention/policy/user arrays, rewards, dones, relative object
+  pose, excluded quaternions, and `next_obs` while retaining identical extracted
+  normalized source frames;
+- `real-source-clean-1`, `real-source-clean-2`, and `real-source-clean-3` were
+  converted independently; all declared fixture bytes matched, both source
+  SHA-256 values remained unchanged after every conversion, and finalized
+  normalization reports record `status: demonstrated`;
+- both finalized variants passed generic External Source Contract validation;
+- five durable-bundle attacks, 32 conversion-summary fuzz mutations, and 28
+  inventory corruptions were rejected; no malformed input escaped as an
+  uncaught parser failure; and
+- the frozen Atlas run produced the exact incident/control accounting stated in
+  section 8, including verified incident evidence and a passing generated
+  regression, with no control evidence or regression fabricated.
+
+The fixture inventory contains no HDF5, source framework, simulator, model
+asset, or adapter package, and its structured provenance uses relative paths.
+Final exact three-run equivalence, installed-wheel portability, the exhaustive
+root/ZIP path-leak scan, root-level REUSE recheck, root-package protection, and
+the complete CI matrix remain pending. Their results belong in the dedicated
+verification records and may not change the source or field provenance asserted
+here.
 
 ## 12. Audit conclusion and claims
 
-The source, rights, field, clock, raw/prepared, entity, and planar gates support
-implementation of this exact one-demo boundary. No schema change, Atlas branch,
-action replay, source outcome, source dependency, or new incident type is
-needed.
+The source, rights, field, clock, raw/prepared, entity, planar, deterministic
+conversion, and frozen Atlas gates support GO for this exact one-demo boundary.
+No schema change, Atlas branch, action replay, source outcome, source dependency,
+or new incident type was needed.
 
-Allowed after this audit, before implementation verification:
+Allowed claims:
 
 - the exact raw/prepared pair is immutable and internally corresponding;
 - the two consumed prepared position streams have complete independent raw
   witnesses;
-- the exact fixed-step clock is evidenced; and
-- the frozen trajectory naturally supports the proposed bounded planar rule.
+- the exact fixed-step clock is evidenced;
+- the exact adapter commit produced three byte-identical portable fixtures; and
+- the frozen trajectory produces the recorded bounded planar incident/control
+  behavior under the declared operator rules.
 
-Not yet allowed:
+Not allowed:
 
-- that a portable fixture, deterministic three-conversion result, Atlas
-  incident/control result, evidence bundle, regression, wheel matrix, CI result,
-  PR-ready implementation, or general robomimic adapter has been demonstrated;
+- that this is a general or native robomimic adapter, an official source-task
+  evaluator, or independent adoption;
 - that planar occupancy equals official Can success or failure;
 - that source or simulator state is physically accurate or safety qualified;
   or
