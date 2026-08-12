@@ -8,6 +8,7 @@ import subprocess
 import zipfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tools.build_external_source_family_matrix import (
@@ -15,13 +16,34 @@ from tools.build_external_source_family_matrix import (
     ARCHIVE_PREFIX,
     EXPECTED_ROWS,
     PACKAGE_RELATIVE,
+    PUBLIC_BASELINE,
     _build_archive,
+    _verify_git_identities,
     validate,
 )
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPOSITORY_ROOT / PACKAGE_RELATIVE
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github/workflows/external-source-family-matrix.yml"
+
+
+def _git_object_exists(revision: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", revision],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+FULL_GIT_HISTORY_AVAILABLE = _git_object_exists(f"{PUBLIC_BASELINE}^{{commit}}") and (
+    _git_object_exists("refs/tags/maniskill-pickcube-proof-v1^{tag}")
+)
+requires_full_git_history = pytest.mark.skipif(
+    not FULL_GIT_HISTORY_AVAILABLE,
+    reason="enforced by the dedicated full-history publication workflow",
+)
 
 
 def _read_json(name: str) -> dict[str, object]:
@@ -81,12 +103,22 @@ def test_go_rows_record_exact_frozen_fixture_identities() -> None:
     }
 
 
-def test_full_candidate_validator_passes() -> None:
-    result = validate(REPOSITORY_ROOT, require_jsonschema=False)
+def test_candidate_content_validator_passes_without_git_history() -> None:
+    result = validate(
+        REPOSITORY_ROOT,
+        require_jsonschema=False,
+        require_git_history=False,
+    )
     assert result["pass"] is True
     assert result["decision_count"] == 6
     assert result["proven_path_count"] == 2
     assert result["metriplane_version"] == "0.3.0"
+    assert result["git_history"] == "not_requested"
+
+
+@requires_full_git_history
+def test_candidate_git_identities_pass_with_full_history() -> None:
+    _verify_git_identities(REPOSITORY_ROOT)
 
 
 def test_publication_archive_is_byte_deterministic(tmp_path: Path) -> None:
@@ -154,6 +186,7 @@ def test_focused_workflow_keeps_four_portable_rows() -> None:
     assert portable["strategy"]["fail-fast"] is False
 
 
+@requires_full_git_history
 def test_prior_frozen_paths_are_not_changed_by_this_branch() -> None:
     protected = (
         "adapters/maniskill_pickcube",

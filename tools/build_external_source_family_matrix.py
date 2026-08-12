@@ -504,7 +504,12 @@ def _build_archive(package: Path, out: Path) -> str:
     return _sha256(out)
 
 
-def validate(repo: Path, *, require_jsonschema: bool) -> dict[str, Any]:
+def validate(
+    repo: Path,
+    *,
+    require_jsonschema: bool,
+    require_git_history: bool = True,
+) -> dict[str, Any]:
     package = repo / PACKAGE_RELATIVE
     _require(package.is_dir(), f"missing publication package: {package}")
     schema = _read_json(package / SCHEMA_NAME)
@@ -517,7 +522,8 @@ def validate(repo: Path, *, require_jsonschema: bool) -> dict[str, Any]:
         _sha256(contract_path) == matrix["contract"]["schema_sha256"],
         "declared External Source Contract schema hash does not match its bytes",
     )
-    _verify_git_identities(repo)
+    if require_git_history:
+        _verify_git_identities(repo)
     evidence_count = _verify_repository_artifacts(repo, matrix)
     frozen_file_count = _verify_frozen_records(repo)
     inventory_count = _verify_inventory(package)
@@ -527,6 +533,7 @@ def validate(repo: Path, *, require_jsonschema: bool) -> dict[str, Any]:
         "decision_count": len(EXPECTED_ROWS),
         "evidence_path_count": evidence_count,
         "frozen_fixture_file_count": frozen_file_count,
+        "git_history": "verified" if require_git_history else "not_requested",
         "inventory_count": inventory_count,
         "json_schema": schema_status,
         "metriplane_version": "0.3.0",
