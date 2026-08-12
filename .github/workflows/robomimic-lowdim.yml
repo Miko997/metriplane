@@ -1,0 +1,274 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: robomimic Low-Dimensional Fixture
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: robomimic-lowdim-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
+jobs:
+  adapter-tests:
+    name: Isolated adapter (Ubuntu, Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: adapters/robomimic_lowdim
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Lint and test the isolated adapter
+        run: |
+          uv sync --locked --extra test --python ${{ matrix.python-version }}
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen python -m pytest -q
+
+  fixture-tests:
+    name: Frozen fixture assertions
+    needs: adapter-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Run focused source-tree fixture tests
+        run: |
+          uv sync --locked --group dev --python 3.12
+          uv run --frozen python -m pytest -q \
+            tests/external_sources/test_robomimic_lowdim_fixture.py
+
+  portable-fixture:
+    name: Portable fixture (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: fixture-tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Build, inspect, and install only the root wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="${RUNNER_TEMP}/metriplane-dist"
+          venv="${RUNNER_TEMP}/metriplane-venv"
+          mkdir -p "$dist"
+          uv build --wheel --python ${{ matrix.python-version }} --out-dir "$dist" .
+          DIST="$dist" python - <<'PY'
+          import os, re, zipfile
+          from pathlib import Path
+          wheels = list(Path(os.environ["DIST"]).glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          with zipfile.ZipFile(wheels[0]) as zf:
+              names = [name.lower() for name in zf.namelist()]
+              metadata_name = next(name for name in zf.namelist() if name.endswith(".dist-info/METADATA"))
+              metadata = zf.read(metadata_name).decode().lower().splitlines()
+          assert not any("robomimic_lowdim" in name for name in names)
+          assert not any(name.endswith((".h5", ".hdf5", ".xml", ".urdf", ".mjcf", ".pt", ".pth")) for name in names)
+          requires = [line for line in metadata if line.startswith("requires-dist:")]
+          for dep in ("robomimic", "robosuite", "mujoco", "torch", "h5py", "huggingface-hub"):
+              assert not any(re.match(rf"requires-dist:\s*{re.escape(dep)}(?:\s|\[|;|\(|$)", line) for line in requires), dep
+          PY
+          wheel="$(find "$dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --no-cache-dir "$wheel"
+          "$venv/bin/python" -m pip check
+          VENV="$venv" "$venv/bin/python" - <<'PY'
+          import os
+          from importlib import metadata
+          names = {d.metadata["Name"].lower().replace("-", "_") for d in metadata.distributions() if d.metadata["Name"]}
+          assert names.isdisjoint({"robomimic", "robosuite", "mujoco", "torch", "h5py", "huggingface_hub"})
+          assert not any("robomimic_lowdim" in str(path) for path in (metadata.files("metriplane") or ()))
+          PY
+      - name: Run and reverify the movable fixture three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/metriplane-venv"
+          input="${RUNNER_TEMP}/portable-input"
+          output="${RUNNER_TEMP}/portable-output"
+          moved="${RUNNER_TEMP}/moved-output"
+          mkdir -p "$input" "$output"
+          cp -R examples/external_sources/robomimic_lowdim "$input/fixture"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          for variant in incident control; do
+            "$venv/bin/metriplane" external validate "$input/fixture/$variant" --json \
+              > "validation-${variant}.json"
+            for index in 1 2 3; do
+              METRIPLANE_GIT_COMMIT="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+                "$venv/bin/metriplane" external run "$input/fixture/$variant" \
+                --out "$output/${variant}-${index}" --run-id "robomimic_${variant}" --json \
+                > "summary-${variant}-${index}.json"
+            done
+          done
+          mv "$output" "$moved"
+          rm -rf -- "$input"
+          ROOT="$moved" TEMP_ROOT="$RUNNER_TEMP" CHECKOUT="$GITHUB_WORKSPACE" MP="$venv/bin/metriplane" \
+            "$venv/bin/python" - <<'PY'
+          import json, os, re, subprocess, zipfile
+          from pathlib import Path
+          import yaml
+          root, temp = Path(os.environ["ROOT"]), Path(os.environ["TEMP_ROOT"])
+          expected = {"incident": (118, 4, 1, 1), "control": (118, 3, 0, 0)}
+          frames = {"incident": [0, 40, 42, 42], "control": [0, 42, 42]}
+          types = {"incident": ["required_asset_missing", "step_delayed", "required_asset_present", "step_completed"], "control": ["required_asset_missing", "required_asset_present", "step_completed"]}
+          def jsonl(path): return [json.loads(line) for line in path.read_text().splitlines()]
+          def semantic(run):
+              regressions = []
+              for path in sorted((run / "regression_tests").glob("*.yaml")):
+                  value = yaml.safe_load(path.read_text()); value.pop("source_bundle", None); regressions.append(value)
+              return tuple(jsonl(run / name) for name in ("state_segment.jsonl", "physical_event_log.jsonl", "deviations.jsonl", "incidents.jsonl")) + (regressions,)
+          for variant in ("incident", "control"):
+              assert json.loads((temp / f"validation-{variant}.json").read_text())["pass"] is True
+              values = []
+              for index in (1, 2, 3):
+                  summary = json.loads((temp / f"summary-{variant}-{index}.json").read_text())
+                  counts = tuple(summary[key] for key in ("frame_count", "event_count", "deviation_count", "incident_count"))
+                  assert summary["pass"] is True and counts == expected[variant]
+                  run = root / f"{variant}-{index}"
+                  events = jsonl(run / "physical_event_log.jsonl")
+                  assert [e["event_type"] for e in events] == types[variant]
+                  assert [e["frame_id"] for e in events] == frames[variant]
+                  assert all((run / name).is_file() for name in ("cell_truth_report.html", "atlas_dashboard.html", "twinverify_replay.usda"))
+                  bundles, regressions = list((run / "evidence_bundles").glob("*.zip")), list((run / "regression_tests").glob("*.yaml"))
+                  if variant == "incident":
+                      assert len(bundles) == len(regressions) == 1
+                      subprocess.run([os.environ["MP"], "atlas", "bundle", "verify", str(bundles[0])], check=True)
+                      subprocess.run([os.environ["MP"], "atlas", "test", str(regressions[0]), "--json"], check=True)
+                  else: assert not bundles and not regressions
+                  values.append(semantic(run))
+              assert values[0] == values[1] == values[2]
+          forbidden = [os.environ["TEMP_ROOT"].encode(), os.environ["CHECKOUT"].encode()]
+          private = re.compile(rb"(?:/(?:home|Users)/[^/\s\"'<>]+(?:/|(?=[\s\"'<>]|$))|(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/])")
+          def check(raw, where): assert not any(value in raw for value in forbidden) and private.search(raw) is None, where
+          for path in root.rglob("*"):
+              if not path.is_file(): continue
+              check(path.read_bytes(), path)
+              if path.suffix == ".zip":
+                  with zipfile.ZipFile(path) as zf:
+                      for info in zf.infolist():
+                          check(info.filename.encode(), info.filename)
+                          assert not info.filename.startswith(("/", "\\")) and ".." not in Path(info.filename).parts
+                          if not info.is_dir(): check(zf.read(info), info.filename)
+          PY
+
+  real-source-integration:
+    name: Pinned real-source conversion (manual)
+    if: github.event_name == 'workflow_dispatch'
+    needs: portable-fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_HUB_CACHE: ${{ runner.temp }}/robomimic-hf-cache
+      REVISION: 74fa018461f479cd9fd15b924a16103012096203
+      RAW_PATH: v1.5/can/ph/demo_v15.hdf5
+      RAW_SHA: 86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d
+      PREPARED_PATH: v1.5/can/ph/low_dim_v15.hdf5
+      PREPARED_SHA: 3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Acquire, audit, convert three times, and finalize
+        shell: bash
+        working-directory: adapters/robomimic_lowdim
+        run: |
+          set -euo pipefail
+          uv sync --locked --python 3.12
+          source="${RUNNER_TEMP}/exact-source"
+          conversions="${RUNNER_TEMP}/conversions"
+          final="${RUNNER_TEMP}/final-fixture"
+          uv run --frozen robomimic-lowdim acquire --out "$source" --json
+          raw="$source/$RAW_PATH"; prepared="$source/$PREPARED_PATH"
+          test "$(stat -c %s "$raw")" -eq 64932974
+          test "$(stat -c %s "$prepared")" -eq 46889752
+          printf '%s  %s\n%s  %s\n' "$RAW_SHA" "$raw" "$PREPARED_SHA" "$prepared" | sha256sum --check --strict
+          test "$(stat -c %a "$raw")" = 444 && test "$(stat -c %a "$prepared")" = 444
+          uv run --frozen robomimic-lowdim inspect --raw "$raw" --prepared "$prepared" --json
+          uv run --frozen robomimic-lowdim compare-raw-prepared --raw "$raw" --prepared "$prepared" --json
+          commit="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          for index in 1 2 3; do
+            uv run --frozen robomimic-lowdim convert --raw "$raw" --prepared "$prepared" \
+              --config config/frozen-config.json --out "$conversions/$index" \
+              --adapter-commit "$commit" --json
+          done
+          uv run --frozen robomimic-lowdim finalize-equivalence \
+            --conversion-root "$conversions/1" --conversion-root "$conversions/2" \
+            --conversion-root "$conversions/3" --run-id real-source-clean-1 \
+            --run-id real-source-clean-2 --run-id real-source-clean-3 --out "$final" --json
+          printf '%s  %s\n%s  %s\n' "$RAW_SHA" "$raw" "$PREPARED_SHA" "$prepared" | sha256sum --check --strict
