@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+cff-version: 1.2.0
+message: >-
+  This is a pre-publication candidate. After the immutable
+  maniskill-pickcube-proof-v1 tag exists, cite: Parkkinen, M. (2026).
+  Metriplane ManiSkill PickCube External Fixture Proof, version 1. GitHub
+  artifact, tag maniskill-pickcube-proof-v1. Metriplane, RRID:SCR_028813.
+title: "Metriplane ManiSkill PickCube External Fixture Proof"
+type: software
+authors:
+  - family-names: "Parkkinen"
+    given-names: "Miko"
+version: "1"
+date-released: "2026-08-12"
+repository-code: "https://github.com/Miko997/metriplane"
+license:
+  - MIT
+  - Apache-2.0
+abstract: >-
+  Publication candidate for one bounded, position-only Metriplane evaluation
+  of normalized state derived from a pinned ManiSkill PickCube-v1
+  demonstration episode. The proposed immutable tag is
+  maniskill-pickcube-proof-v1 and is pending merge, explicit owner approval,
+  and final verification. MIT applies to independently authored proof
+  documentation and software; Apache-2.0 attribution and modified-data notice
+  apply to the derived fixture-data boundary described in NOTICE.md. The proof
+  is owner generated, not an independent reproduction or ManiSkill
+  endorsement.
+identifiers:
+  - type: other
+    value: "RRID:SCR_028813"
+    description: >-
+      Research Resource Identifier for Metriplane; it does not identify this
+      proof package by itself.
+keywords:
+  - Metriplane
+  - ManiSkill
+  - PickCube-v1
+  - external fixture
+  - reproducibility
+  - deterministic replay
+  - position-only normalization
+  - "proposed tag: maniskill-pickcube-proof-v1"
+  - "proof path: proofs/maniskill-pickcube-v1"
+preferred-citation:
+  type: data
+  title: "Metriplane ManiSkill PickCube External Fixture Proof"
+  authors:
+    - family-names: "Parkkinen"
+      given-names: "Miko"
+  version: "1"
+  year: 2026
+  repository-code: "https://github.com/Miko997/metriplane"
+references:
+  - type: software
+    title: "ManiSkill"
+    authors:
+      - name: "ManiSkill contributors"
+        website: "https://github.com/mani-skill/ManiSkill"
+    version: "3.0.1"
+    repository-code: >-
+      https://github.com/mani-skill/ManiSkill/tree/a4a4f9272ad64b1564035874b605ceb687b63ed8
+  - type: data
+    title: "ManiSkill Demonstrations"
+    authors:
+      - name: "ManiSkill contributors"
+        website: "https://github.com/mani-skill/ManiSkill"
+    version: "d674485bbffdd533914e52d272fdda34c0515608"
+    url: >-
+      https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/tree/d674485bbffdd533914e52d272fdda34c0515608

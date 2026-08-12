@@ -1,0 +1,110 @@
+{
+  "adapter_identity": {
+    "adapter_id": "org.metriplane.maniskill_pickcube",
+    "commit": "95d1134d9fb9273318c552c507952f1c5c26877e",
+    "environment": "f28f8618680de09c94e855a8b5d2a995ab6241b96c462650cada9c896335ec80",
+    "name": "Metriplane ManiSkill PickCube adapter",
+    "parameters_sha256": "2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202",
+    "version": "1.0.0"
+  },
+  "checks": [
+    {
+      "check_id": "manifest_contract",
+      "detail": "Strict External Source Contract v1 manifest validated.",
+      "pass": true
+    },
+    {
+      "check_id": "local_bundle_integrity",
+      "detail": "Local paths, symlinks, inventory, and declared hashes validated.",
+      "pass": true
+    },
+    {
+      "check_id": "normalized_session",
+      "detail": "FrameStateModel 1.0 session and complete snapshots validated.",
+      "pass": true
+    },
+    {
+      "check_id": "domain_pack",
+      "detail": "Existing Atlas domain-pack validation passed.",
+      "pass": true
+    },
+    {
+      "check_id": "cross_artifact_agreement",
+      "detail": "Manifest, mapping, session, report, and process rules agree.",
+      "pass": true
+    },
+    {
+      "check_id": "evaluation_runtime_version",
+      "detail": "Installed Metriplane version matches 0.3.0.",
+      "pass": true
+    }
+  ],
+  "contract_profile": "metriplane.atlas.complete_snapshot.v1",
+  "contract_schema_version": "metriplane.external_source_contract.v1",
+  "declared_metriplane_version": "0.3.0",
+  "domain_pack_file_hashes": {
+    "assets": "7c198cfe62eb3635008f01c4f52246cdbb96c3b612d774f04b9a9f9b2c3b1b49",
+    "contracts": "ae32968a954390f247b562e79331804aa0ba58cdc17b626ded91b58a736953d4",
+    "process": "7e84081d7f91c634257db2de60ab979a549bf67671d1f1bffface7c05d70d919",
+    "work_orders": "1f0fbe50790ede0684291a3c0924b37fba3a2ab1ddb2fdbeba6af96f05dfbe2c",
+    "workspace": "fa3986561609c6e2f38e25070bc49e45f690c9ae5a89e08e0c452820ef01af87"
+  },
+  "entity_mapping_sha256": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7",
+  "errors": [],
+  "first_authoritative_timestamp": 0.0,
+  "fixture_id": "maniskill-pickcube-episode-0-planar-control-v1",
+  "fixture_root": "examples/external_sources/maniskill_pickcube/control",
+  "frame_count": 75,
+  "frame_state_model_version": "1.0",
+  "last_authoritative_timestamp": 3.7,
+  "limitations": [
+    "This fixture evaluates bounded XY occupancy and timing only; it does not evaluate 3D placement, orientation, grasp state, or official PickCube success.",
+    "The source quaternion exists and audit yaw was numerically well-defined, but source Z, quaternion, yaw, roll, and pitch are excluded from normalized evaluation.",
+    "Atlas does not establish physical accuracy, correctness, calibration, or simulator realism of upstream restored state.",
+    "Episode selection was outcome-blind within an official corpus that had already been success-filtered upstream.",
+    "The target polygon is an operator-authored compatibility rule, not ManiSkill source truth.",
+    "This is not a certified safety or quality decision and does not control machinery.",
+    "This is a position-only planar conversion: source Z and the complete source quaternion, including yaw, roll, and pitch, are discarded.",
+    "Audit yaw was numerically well-defined, but no orientation is emitted or used for positions, zones, time, process rules, Atlas events, or incidents.",
+    "The result does not evaluate 3D placement, grasp state, official PickCube success, physical accuracy, or simulator realism.",
+    "The goal-centered polygon is wholly an operator-configured Layer-C compatibility-test rule.",
+    "The source corpus was success-filtered upstream; episode selection within it was outcome-blind.",
+    "The restored source goal pose is xyz=(0.026815734803676605, -0.0019813179969787598, 0.2889334559440613) with qwxyz=(1.0, 0.0, 0.0, 0.0); projected goal XY is descriptive only."
+  ],
+  "manifest_sha256": "40611b13ad2f774b92704bd23a080ab9f4711fd370bee2ca6c3ef26d014ad11d",
+  "metriplane_version": "0.3.0",
+  "normalization_report_sha256": "677f94e861c68cc8cdc966bcc5f62916d642f44524abda5f2afad79b31ade282",
+  "normalized_object_count": 2,
+  "pass": true,
+  "schema_version": "metriplane.external_validation_summary.v1",
+  "session_sha256": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df",
+  "source_entity_count": 2,
+  "source_identities": [
+    {
+      "artifact_id": "pickcube_archive",
+      "presence": "referenced",
+      "role": "source_archive",
+      "sha256": "b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8",
+      "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1.zip"
+    },
+    {
+      "artifact_id": "pickcube_trajectory_hdf5",
+      "presence": "referenced",
+      "role": "trajectory",
+      "sha256": "03ca60546541a7f18321d9d32721f0254bc75217828c0cadacd217d0c014576a",
+      "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1/motionplanning/trajectory.h5"
+    },
+    {
+      "artifact_id": "pickcube_trajectory_metadata",
+      "presence": "referenced",
+      "role": "metadata_sidecar",
+      "sha256": "16e403cb77bfbdda28c243b96eb90adbae1c0edf42854283be57ee47076a2e90",
+      "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1/motionplanning/trajectory.json"
+    }
+  ],
+  "source_revision": {
+    "kind": "dataset_revision",
+    "value": "d674485bbffdd533914e52d272fdda34c0515608"
+  },
+  "warnings": []
+}

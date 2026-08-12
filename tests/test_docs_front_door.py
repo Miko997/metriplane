@@ -26,6 +26,7 @@ EXPECTED_NAV = (
     "user-guide/integrations.md",
     "specs/external-source-contract-v1.md",
     "specs/external-source-contract-v1-audit.md",
+    "user-guide/maniskill-pickcube-proof.md",
     "user-guide/troubleshooting.md",
     "user-guide/contributing.md",
     "user-guide/research-artifacts.md",

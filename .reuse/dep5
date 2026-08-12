@@ -14,3 +14,20 @@ Comment: This subtree contains modified normalized data derived from the pinned
  metadata and rules. The source dataset card declares Apache-2.0 but provides no
  standalone dataset LICENSE or copyright notice. See the fixture README and
  source-manifest.json for immutable source attribution, hashes, and the modified-data notice.
+
+Files: proofs/maniskill-pickcube-v1/*.md
+ proofs/maniskill-pickcube-v1/*.cff
+ proofs/maniskill-pickcube-v1/*.json
+ proofs/maniskill-pickcube-v1/*.py
+ proofs/maniskill-pickcube-v1/SHA256SUMS
+ proofs/maniskill-pickcube-v1/artifacts/*.json
+ proofs/maniskill-pickcube-v1/artifacts/*.yaml
+Copyright: 2026 Miko Parkkinen
+License: MIT
+
+Files: proofs/maniskill-pickcube-v1/artifacts/incident-evidence.zip
+Copyright: NOASSERTION
+License: Apache-2.0
+Comment: This incident evidence bundle contains generated evidence metadata and
+ a bounded modified/derived state segment from the Apache-2.0-treated fixture.
+ See proofs/maniskill-pickcube-v1/NOTICE.md for the exact mixed rights boundary.

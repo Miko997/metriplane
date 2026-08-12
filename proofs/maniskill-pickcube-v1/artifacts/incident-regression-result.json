@@ -1,0 +1,6 @@
+{
+  "errors": [],
+  "pass": true,
+  "schema_version": "metriplane.atlas.regression_result.v1",
+  "test_id": "missing_tool_caused_delay_INC-0001"
+}

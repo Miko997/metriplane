@@ -1,0 +1,354 @@
+{
+  "adapter": {
+    "actions_integrated": false,
+    "adapter_id": "org.metriplane.maniskill_pickcube",
+    "adapter_version": "1.0.0",
+    "commit": "95d1134d9fb9273318c552c507952f1c5c26877e",
+    "dependency_lock_sha256": "f28f8618680de09c94e855a8b5d2a995ab6241b96c462650cada9c896335ec80",
+    "environment": {
+      "architecture": "x86_64",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12"
+    },
+    "path": "adapters/maniskill_pickcube",
+    "rendering": false,
+    "restoration_method": "Restore each of 75 states independently with env.unwrapped.set_state_dict, then read cube.pose and agent.tcp_pose through named APIs."
+  },
+  "artifacts": [
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/schema+json",
+      "path": "proof-record.schema.json",
+      "purpose": "Closed Draft 2020-12 schema for the proof record.",
+      "sha256": "782cc6b41ba217a16fe38e0e8e9999895efdd4238b799b50ce050ea13fc2a5a0"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/incident-validation.json",
+      "purpose": "Canonical incident fixture validation summary.",
+      "sha256": "be93ab1e7349ac49a02a35861ab04fd09582592c9223f98edb78baefff243670"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/control-validation.json",
+      "purpose": "Canonical control fixture validation summary.",
+      "sha256": "cee0fa7e19aed8eab5840bde58f6c928992fd52b4a0b8d782ccd24d915e6b279"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/incident-run-summary.json",
+      "purpose": "Canonical incident evaluation summary.",
+      "sha256": "bf0d274b7d746109191a0e44e45870a4c3aabb9df024590ce90bc7278614d5fb"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/control-run-summary.json",
+      "purpose": "Canonical control evaluation summary.",
+      "sha256": "c4263f9ab3c132d4c47c735157fa8eca0438360ec95686397185cc67e95c4702"
+    },
+    {
+      "license_classification": "Mixed: MIT-generated evidence metadata and Apache-2.0-treated modified fixture state",
+      "media_type": "application/zip",
+      "path": "artifacts/incident-evidence.zip",
+      "purpose": "Verified incident evidence bundle.",
+      "sha256": "92aa56ba36340f3d8ed5a9fa05f8bd365eadf6c0376fddc9ae7ec4cba8431fb4"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/yaml",
+      "path": "artifacts/incident-regression.yaml",
+      "purpose": "Portable generated incident regression specification.",
+      "sha256": "4eabcea3e90b9be8e80eace6742deae990052c17eec99866567c12a1faa99362"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/incident-regression-result.json",
+      "purpose": "Public-command regression execution result.",
+      "sha256": "aad2fbf5b000d9b8ad3ef7ed1a1e1bd31811eb0d42da374a09b63de54468632f"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/equivalence-summary.json",
+      "purpose": "Three-conversion and three-run equivalence summary.",
+      "sha256": "6b25d0d0a74525a63c9bcb6b60f8704925a29455f39b5ca041d92c1ac5d8d5d4"
+    },
+    {
+      "license_classification": "MIT proof metadata",
+      "media_type": "application/json",
+      "path": "artifacts/environment-matrix.json",
+      "purpose": "Required installed-wheel OS and Python portability matrix.",
+      "sha256": "69c3bbe0e8e128cc19d7ec0bea7b44cd25d7cd54959d9146511f40575b4edae0"
+    }
+  ],
+  "claims": {
+    "allowed": [
+      "One exact official ManiSkill demonstration episode was normalized into a contract-valid position-only Metriplane fixture.",
+      "All 75 stored source states were retained and the 50-step RL horizon remained separate provenance.",
+      "Incident and control used byte-identical normalized state and differed only by declared variant identities and operator-configured relative waits.",
+      "The portable fixture can be evaluated without ManiSkill, and the representative incident bundle verifies and regression passes."
+    ],
+    "evidence_classification": "owner_generated_public_technical_proof",
+    "independent_reproduction": false,
+    "limitations": [
+      "The source corpus was already success-filtered upstream.",
+      "Source Z and all orientation are discarded.",
+      "The polygon and waits are operator-authored rather than source task truth."
+    ],
+    "prohibited": [
+      "official PickCube success or failure",
+      "grasp or robot-control failure",
+      "3D placement or orientation evaluation",
+      "physical accuracy, simulator realism, or sim-to-real validity",
+      "safety, quality certification, or production readiness",
+      "native or general ManiSkill integration or endorsement",
+      "independent reproduction, external adoption, or industry use"
+    ]
+  },
+  "contract": {
+    "contract_profile": "metriplane.atlas.complete_snapshot.v1",
+    "contract_schema_sha256": "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4",
+    "external_source_contract_version": "metriplane.external_source_contract.v1",
+    "frame_state_model_version": "1.0",
+    "metriplane_git_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+    "metriplane_package_version": "0.3.0"
+  },
+  "fixtures": {
+    "control": {
+      "fingerprint_sha256": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
+      "fixture_id": "maniskill-pickcube-episode-0-planar-control-v1",
+      "inventory_count": 14,
+      "manifest_sha256": "40611b13ad2f774b92704bd23a080ab9f4711fd370bee2ca6c3ef26d014ad11d",
+      "path": "examples/external_sources/maniskill_pickcube/control"
+    },
+    "exact_inventory": [
+      "CHECKSUMS.sha256",
+      "domain-pack/assets.yaml",
+      "domain-pack/contracts.yaml",
+      "domain-pack/process.yaml",
+      "domain-pack/work_orders.csv",
+      "domain-pack/workspace.yaml",
+      "entity-mapping.json",
+      "expected-outcome.json",
+      "normalization-report.json",
+      "session.jsonl",
+      "source-manifest.json",
+      "source/adapter-environment.txt",
+      "source/frozen-config.json",
+      "source/uv.lock"
+    ],
+    "incident": {
+      "fingerprint_sha256": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
+      "fixture_id": "maniskill-pickcube-episode-0-planar-incident-v1",
+      "inventory_count": 14,
+      "manifest_sha256": "7179850c7de3a9603ff6e1b9396c3e174fa9d81633d2ef47fbc38e75daac269e",
+      "path": "examples/external_sources/maniskill_pickcube/incident"
+    },
+    "mapping_sha256": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7",
+    "shared_session_sha256": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df"
+  },
+  "normalization": {
+    "annotation_exclusion_policy": "Reward, success, termination, truncation, task outcomes, and the RL horizon remain provenance only and never feed normalized state or Atlas incidents.",
+    "authoritative_clock": "ts_sim_ns(i) = i * 50000000 for stored-state index i; ts is derived from that integer clock.",
+    "carry_forward_policy": "none",
+    "confidence_policy": "absent",
+    "coordinate_mapping": "Identity source-world X/Y in metres, normalized Z set to 0.0, no translation, rotation, scale, or axis swap.",
+    "discarded_fields": [
+      "source Z",
+      "complete quaternion",
+      "yaw",
+      "roll",
+      "pitch",
+      "velocities",
+      "grasp/contact state",
+      "actions"
+    ],
+    "interpolation_policy": "none",
+    "object_ids": [
+      "cube_1",
+      "robot_tcp_1"
+    ],
+    "resampling_policy": "none",
+    "source_to_normalized_mapping": [
+      {
+        "normalized": "cube_1.pos_world",
+        "source": "traj_0/env_states/actors/cube via cube.pose"
+      },
+      {
+        "normalized": "robot_tcp_1.pos_world",
+        "source": "traj_0/env_states/articulations/panda via agent.tcp_pose"
+      }
+    ]
+  },
+  "operator_rules": {
+    "boundary_policy": "inclusive",
+    "control_wait_s": 0.3,
+    "incident_wait_s": 0.2,
+    "outside_workspace_policy": "explicit_label",
+    "outside_zone_label": "outside_workspace",
+    "overlap_policy": "reject",
+    "provenance": "The polygon and both relative waits are operator-configured Metriplane compatibility-test rules, not source task truth.",
+    "target_polygon": [
+      [
+        0.016815734803676603,
+        -0.01198131799697876
+      ],
+      [
+        0.03681573480367661,
+        -0.01198131799697876
+      ],
+      [
+        0.03681573480367661,
+        0.00801868200302124
+      ],
+      [
+        0.016815734803676603,
+        0.00801868200302124
+      ]
+    ]
+  },
+  "proof_identity": {
+    "candidate_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+    "canonical_commit": null,
+    "canonical_repository": "https://github.com/Miko997/metriplane",
+    "canonical_tag": "maniskill-pickcube-proof-v1",
+    "canonical_url": null,
+    "implementation_merge_commit": "1549d0a05e03db51efc0ee08edb7d9db66196b4e",
+    "proof_id": "maniskill-pickcube-v1",
+    "proof_landing_page_path": "proofs/maniskill-pickcube-v1/README.md",
+    "proof_publication_commit": null,
+    "proof_version": 1,
+    "proposed_canonical_url": "https://github.com/Miko997/metriplane/tree/maniskill-pickcube-proof-v1/proofs/maniskill-pickcube-v1",
+    "publication_date": "2026-08-12",
+    "status": "candidate"
+  },
+  "results": {
+    "control_run": {
+      "bundle_count": 0,
+      "bundle_verified": false,
+      "counts": {
+        "deviation_count": 0,
+        "event_count": 3,
+        "frame_count": 75,
+        "incident_count": 0
+      },
+      "regression_count": 0,
+      "regression_passed": false,
+      "semantic_hash": "acb9e6d2b193b59c831798e4beed6ed45cf3df2b30f0fb2bd85ad4c4acfb2a7f"
+    },
+    "conversions": {
+      "compared_artifact_count": 28,
+      "equivalent": true,
+      "run_ids": [
+        "real-source-clean-1",
+        "real-source-clean-2",
+        "real-source-clean-3"
+      ]
+    },
+    "environment_matrix": {
+      "complete": true,
+      "path": "artifacts/environment-matrix.json",
+      "required_jobs": 4
+    },
+    "incident_run": {
+      "bundle_count": 1,
+      "bundle_verified": true,
+      "counts": {
+        "deviation_count": 1,
+        "event_count": 4,
+        "frame_count": 75,
+        "incident_count": 1
+      },
+      "regression_count": 1,
+      "regression_passed": true,
+      "semantic_hash": "112bcd2a29fd7f754b255d02f6e3544ef619142507d02d19b20f268d2009d536"
+    },
+    "run_equivalence": {
+      "control": {
+        "equivalent": true,
+        "run_count": 3,
+        "semantic_hash": "acb9e6d2b193b59c831798e4beed6ed45cf3df2b30f0fb2bd85ad4c4acfb2a7f"
+      },
+      "incident": {
+        "equivalent": true,
+        "run_count": 3,
+        "semantic_hash": "112bcd2a29fd7f754b255d02f6e3544ef619142507d02d19b20f268d2009d536"
+      }
+    },
+    "validation": {
+      "control": {
+        "frame_count": 75,
+        "pass": true
+      },
+      "incident": {
+        "frame_count": 75,
+        "pass": true
+      }
+    }
+  },
+  "rights": {
+    "adapter_software_license": "MIT",
+    "derived_fixture_data_treatment": "Apache-2.0 fixture-scoped modified/derived data",
+    "excluded_assets": [
+      "raw ZIP",
+      "raw HDF5",
+      "raw JSON",
+      "Panda assets",
+      "table assets",
+      "URDF/GLB",
+      "checkpoints",
+      "videos",
+      "screenshots",
+      "rendered images"
+    ],
+    "modified_data_notice": "The portable positions are modified/derived data; raw ZIP, HDF5, JSON, simulator assets, images, and recordings are not included.",
+    "source_artifacts_referenced_not_included": true,
+    "upstream_attribution": "ManiSkill and the ManiSkill Demonstrations dataset are cited at immutable source identities without implying endorsement."
+  },
+  "schema_version": "org.metriplane.maniskill_pickcube_proof.v1",
+  "source": {
+    "artifacts": [
+      {
+        "artifact_id": "pickcube_archive",
+        "bytes": 36590010,
+        "path": "demos/PickCube-v1.zip",
+        "sha256": "b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8"
+      },
+      {
+        "artifact_id": "pickcube_trajectory_hdf5",
+        "bytes": 29349195,
+        "path": "demos/PickCube-v1/motionplanning/trajectory.h5",
+        "sha256": "03ca60546541a7f18321d9d32721f0254bc75217828c0cadacd217d0c014576a"
+      },
+      {
+        "artifact_id": "pickcube_trajectory_metadata",
+        "bytes": 228218,
+        "path": "demos/PickCube-v1/motionplanning/trajectory.json",
+        "sha256": "16e403cb77bfbdda28c243b96eb90adbae1c0edf42854283be57ee47076a2e90"
+      }
+    ],
+    "conversion_commit": "a4a4f9272ad64b1564035874b605ceb687b63ed8",
+    "conversion_release": "v3.0.1",
+    "conversion_wheel": {
+      "package": "mani_skill==3.0.1",
+      "sha256": "685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a"
+    },
+    "dataset_project": "haosulab/ManiSkill_Demonstrations",
+    "dataset_revision": "d674485bbffdd533914e52d272fdda34c0515608",
+    "episode_id": 0,
+    "hdf5_group": "traj_0",
+    "rl_horizon": 50,
+    "source_generation_commit": "652ad9353c0223507a938f0e8d990dd6f1c771ad",
+    "source_generation_package": "ManiSkill 3.0.0b4",
+    "source_project": "mani-skill/ManiSkill",
+    "stored_state_count": 75,
+    "transition_count": 74,
+    "upstream_corpus_limitation": "Episode selection was outcome-blind only within an official demonstration corpus already success-filtered upstream."
+  }
+}

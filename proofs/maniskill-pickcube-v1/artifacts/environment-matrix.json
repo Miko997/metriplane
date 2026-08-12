@@ -1,0 +1,80 @@
+{
+  "complete": true,
+  "conversion_portability": "not_evaluated_by_this_matrix",
+  "evidence_head_commit": "488ef555732012b302db6795ba5796b8fa8e7f10",
+  "evidence_workflow_run_id": 31576927627,
+  "evidence_workflow_run_url": "https://github.com/Miko997/metriplane/actions/runs/31576927627",
+  "jobs": [
+    {
+      "architecture": "x86_64",
+      "github_job_id": 94051127016,
+      "job_id": "ubuntu-python-3.12",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "Ubuntu",
+      "operating_system_version": "24.04.4",
+      "python_patch_version": "3.12.13",
+      "python_version": "3.12",
+      "reproduction_result_sha256": "836ad5b4f74657c2f4e97a05b8d909bd23a9b2168961c47aa824448709db273b",
+      "runner_image": "ubuntu-24.04",
+      "runner_image_version": "20260810.271.1",
+      "simulator_dependencies": [],
+      "status": "pass",
+      "workflow_url": "https://github.com/Miko997/metriplane/actions/runs/31576927627/job/94051127016"
+    },
+    {
+      "architecture": "x86_64",
+      "github_job_id": 94051127003,
+      "job_id": "ubuntu-python-3.13",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "Ubuntu",
+      "operating_system_version": "24.04.4",
+      "python_patch_version": "3.13.15",
+      "python_version": "3.13",
+      "reproduction_result_sha256": "b2eb0e1d4f9a53d0c279056ea1ef4d9e9cfd301f254fa464638923f3626cb4ac",
+      "runner_image": "ubuntu-24.04",
+      "runner_image_version": "20260810.271.1",
+      "simulator_dependencies": [],
+      "status": "pass",
+      "workflow_url": "https://github.com/Miko997/metriplane/actions/runs/31576927627/job/94051127003"
+    },
+    {
+      "architecture": "arm64",
+      "github_job_id": 94051126999,
+      "job_id": "macos-python-3.12",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "macOS",
+      "operating_system_version": "26.5.2",
+      "python_patch_version": "3.12.10",
+      "python_version": "3.12",
+      "reproduction_result_sha256": "001d8e664926e1a90b3185283a795e2f30fc5a154abefbbe4986ac77b0bacef7",
+      "runner_image": "macos-26-arm64",
+      "runner_image_version": "20260728.0273.1",
+      "simulator_dependencies": [],
+      "status": "pass",
+      "workflow_url": "https://github.com/Miko997/metriplane/actions/runs/31576927627/job/94051126999"
+    },
+    {
+      "architecture": "arm64",
+      "github_job_id": 94051127104,
+      "job_id": "macos-python-3.13",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "macOS",
+      "operating_system_version": "26.5.2",
+      "python_patch_version": "3.13.14",
+      "python_version": "3.13",
+      "reproduction_result_sha256": "95d20fae57192ce00c7aec34c41ef7018d4c7ea065cb6a7cf708a903e04d3268",
+      "runner_image": "macos-26-arm64",
+      "runner_image_version": "20260728.0273.1",
+      "simulator_dependencies": [],
+      "status": "pass",
+      "workflow_url": "https://github.com/Miko997/metriplane/actions/runs/31576927627/job/94051127104"
+    }
+  ],
+  "limitations": [
+    "CI runners are portability evidence, not independent users.",
+    "The matrix evaluates portable fixtures and does not claim conversion portability on macOS."
+  ],
+  "metriplane_git_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+  "proof_level": "portable_fixture_evaluation",
+  "schema_version": "org.metriplane.maniskill_pickcube_environment_matrix.v1"
+}

@@ -1,0 +1,467 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Miko997/metriplane/blob/maniskill-pickcube-proof-v1/proofs/maniskill-pickcube-v1/proof-record.schema.json",
+  "title": "Metriplane ManiSkill PickCube proof record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "proof_identity",
+    "source",
+    "adapter",
+    "contract",
+    "normalization",
+    "operator_rules",
+    "fixtures",
+    "results",
+    "rights",
+    "claims",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "org.metriplane.maniskill_pickcube_proof.v1"
+    },
+    "proof_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proof_id",
+        "proof_version",
+        "status",
+        "publication_date",
+        "canonical_repository",
+        "canonical_tag",
+        "canonical_commit",
+        "implementation_merge_commit",
+        "candidate_commit",
+        "proof_publication_commit",
+        "proof_landing_page_path",
+        "proposed_canonical_url",
+        "canonical_url"
+      ],
+      "properties": {
+        "proof_id": {"const": "maniskill-pickcube-v1"},
+        "proof_version": {"const": 1},
+        "status": {"enum": ["candidate", "published"]},
+        "publication_date": {"type": "string", "format": "date"},
+        "canonical_repository": {"const": "https://github.com/Miko997/metriplane"},
+        "canonical_tag": {"const": "maniskill-pickcube-proof-v1"},
+        "canonical_commit": {"$ref": "#/$defs/nullableCommit"},
+        "implementation_merge_commit": {"$ref": "#/$defs/commit"},
+        "candidate_commit": {"$ref": "#/$defs/commit"},
+        "proof_publication_commit": {"$ref": "#/$defs/nullableCommit"},
+        "proof_landing_page_path": {"const": "proofs/maniskill-pickcube-v1/README.md"},
+        "proposed_canonical_url": {"type": "string", "format": "uri"},
+        "canonical_url": {
+          "oneOf": [{"type": "null"}, {"type": "string", "format": "uri"}]
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_project",
+        "conversion_release",
+        "conversion_commit",
+        "conversion_wheel",
+        "dataset_project",
+        "dataset_revision",
+        "source_generation_package",
+        "source_generation_commit",
+        "artifacts",
+        "episode_id",
+        "hdf5_group",
+        "transition_count",
+        "stored_state_count",
+        "rl_horizon",
+        "upstream_corpus_limitation"
+      ],
+      "properties": {
+        "source_project": {"const": "mani-skill/ManiSkill"},
+        "conversion_release": {"const": "v3.0.1"},
+        "conversion_commit": {"$ref": "#/$defs/commit"},
+        "conversion_wheel": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["package", "sha256"],
+          "properties": {
+            "package": {"const": "mani_skill==3.0.1"},
+            "sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "dataset_project": {"const": "haosulab/ManiSkill_Demonstrations"},
+        "dataset_revision": {"$ref": "#/$defs/commit"},
+        "source_generation_package": {"const": "ManiSkill 3.0.0b4"},
+        "source_generation_commit": {"$ref": "#/$defs/commit"},
+        "artifacts": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/sourceArtifact"}
+        },
+        "episode_id": {"const": 0},
+        "hdf5_group": {"const": "traj_0"},
+        "transition_count": {"const": 74},
+        "stored_state_count": {"const": 75},
+        "rl_horizon": {"const": 50},
+        "upstream_corpus_limitation": {"type": "string", "minLength": 1}
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter_id",
+        "adapter_version",
+        "commit",
+        "path",
+        "dependency_lock_sha256",
+        "environment",
+        "restoration_method",
+        "actions_integrated",
+        "rendering"
+      ],
+      "properties": {
+        "adapter_id": {"const": "org.metriplane.maniskill_pickcube"},
+        "adapter_version": {"const": "1.0.0"},
+        "commit": {"$ref": "#/$defs/commit"},
+        "path": {"const": "adapters/maniskill_pickcube"},
+        "dependency_lock_sha256": {"$ref": "#/$defs/sha256"},
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operating_system", "architecture", "runtime", "runtime_version"],
+          "properties": {
+            "operating_system": {"const": "Linux"},
+            "architecture": {"const": "x86_64"},
+            "runtime": {"const": "CPython"},
+            "runtime_version": {"const": "3.12"}
+          }
+        },
+        "restoration_method": {"type": "string", "minLength": 1},
+        "actions_integrated": {"const": false},
+        "rendering": {"const": false}
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "external_source_contract_version",
+        "contract_profile",
+        "contract_schema_sha256",
+        "frame_state_model_version",
+        "metriplane_package_version",
+        "metriplane_git_commit"
+      ],
+      "properties": {
+        "external_source_contract_version": {"const": "metriplane.external_source_contract.v1"},
+        "contract_profile": {"const": "metriplane.atlas.complete_snapshot.v1"},
+        "contract_schema_sha256": {"$ref": "#/$defs/sha256"},
+        "frame_state_model_version": {"const": "1.0"},
+        "metriplane_package_version": {"const": "0.3.0"},
+        "metriplane_git_commit": {"$ref": "#/$defs/commit"}
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object_ids",
+        "source_to_normalized_mapping",
+        "authoritative_clock",
+        "coordinate_mapping",
+        "discarded_fields",
+        "confidence_policy",
+        "interpolation_policy",
+        "resampling_policy",
+        "carry_forward_policy",
+        "annotation_exclusion_policy"
+      ],
+      "properties": {
+        "object_ids": {
+          "type": "array",
+          "prefixItems": [{"const": "cube_1"}, {"const": "robot_tcp_1"}],
+          "items": false
+        },
+        "source_to_normalized_mapping": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "normalized"],
+            "properties": {
+              "source": {"type": "string", "minLength": 1},
+              "normalized": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "authoritative_clock": {"type": "string", "minLength": 1},
+        "coordinate_mapping": {"type": "string", "minLength": 1},
+        "discarded_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "confidence_policy": {"const": "absent"},
+        "interpolation_policy": {"const": "none"},
+        "resampling_policy": {"const": "none"},
+        "carry_forward_policy": {"const": "none"},
+        "annotation_exclusion_policy": {"type": "string", "minLength": 1}
+      }
+    },
+    "operator_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_polygon",
+        "boundary_policy",
+        "overlap_policy",
+        "outside_workspace_policy",
+        "outside_zone_label",
+        "incident_wait_s",
+        "control_wait_s",
+        "provenance"
+      ],
+      "properties": {
+        "target_polygon": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "array",
+            "prefixItems": [{"type": "number"}, {"type": "number"}],
+            "items": false
+          }
+        },
+        "boundary_policy": {"const": "inclusive"},
+        "overlap_policy": {"const": "reject"},
+        "outside_workspace_policy": {"const": "explicit_label"},
+        "outside_zone_label": {"const": "outside_workspace"},
+        "incident_wait_s": {"const": 0.2},
+        "control_wait_s": {"const": 0.3},
+        "provenance": {"type": "string", "minLength": 1}
+      }
+    },
+    "fixtures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["incident", "control", "shared_session_sha256", "mapping_sha256", "exact_inventory"],
+      "properties": {
+        "incident": {"$ref": "#/$defs/fixture"},
+        "control": {"$ref": "#/$defs/fixture"},
+        "shared_session_sha256": {"$ref": "#/$defs/sha256"},
+        "mapping_sha256": {"$ref": "#/$defs/sha256"},
+        "exact_inventory": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/relativePath"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation",
+        "incident_run",
+        "control_run",
+        "conversions",
+        "run_equivalence",
+        "environment_matrix"
+      ],
+      "properties": {
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["incident", "control"],
+          "properties": {
+            "incident": {"$ref": "#/$defs/validationResult"},
+            "control": {"$ref": "#/$defs/validationResult"}
+          }
+        },
+        "incident_run": {"$ref": "#/$defs/runResult"},
+        "control_run": {"$ref": "#/$defs/runResult"},
+        "conversions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["equivalent", "run_ids", "compared_artifact_count"],
+          "properties": {
+            "equivalent": {"const": true},
+            "run_ids": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {"type": "string", "minLength": 1},
+              "uniqueItems": true
+            },
+            "compared_artifact_count": {"const": 28}
+          }
+        },
+        "run_equivalence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["incident", "control"],
+          "properties": {
+            "incident": {"$ref": "#/$defs/runEquivalence"},
+            "control": {"$ref": "#/$defs/runEquivalence"}
+          }
+        },
+        "environment_matrix": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "complete", "required_jobs"],
+          "properties": {
+            "path": {"const": "artifacts/environment-matrix.json"},
+            "complete": {"type": "boolean"},
+            "required_jobs": {"const": 4}
+          }
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_artifacts_referenced_not_included",
+        "adapter_software_license",
+        "derived_fixture_data_treatment",
+        "modified_data_notice",
+        "upstream_attribution",
+        "excluded_assets"
+      ],
+      "properties": {
+        "source_artifacts_referenced_not_included": {"const": true},
+        "adapter_software_license": {"const": "MIT"},
+        "derived_fixture_data_treatment": {"const": "Apache-2.0 fixture-scoped modified/derived data"},
+        "modified_data_notice": {"type": "string", "minLength": 1},
+        "upstream_attribution": {"type": "string", "minLength": 1},
+        "excluded_assets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "prohibited", "limitations", "evidence_classification", "independent_reproduction"],
+      "properties": {
+        "allowed": {"$ref": "#/$defs/nonemptyStrings"},
+        "prohibited": {"$ref": "#/$defs/nonemptyStrings"},
+        "limitations": {"$ref": "#/$defs/nonemptyStrings"},
+        "evidence_classification": {"const": "owner_generated_public_technical_proof"},
+        "independent_reproduction": {"const": false}
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 9,
+      "items": {"$ref": "#/$defs/proofArtifact"}
+    }
+  },
+  "$defs": {
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "nullableCommit": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/commit"}]
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "sourceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "path", "bytes", "sha256"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "fixture_id", "manifest_sha256", "fingerprint_sha256", "inventory_count"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "fixture_id": {"type": "string", "minLength": 1},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "fingerprint_sha256": {"$ref": "#/$defs/sha256"},
+        "inventory_count": {"const": 14}
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame_count", "event_count", "deviation_count", "incident_count"],
+      "properties": {
+        "frame_count": {"type": "integer", "minimum": 0},
+        "event_count": {"type": "integer", "minimum": 0},
+        "deviation_count": {"type": "integer", "minimum": 0},
+        "incident_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "validationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "frame_count"],
+      "properties": {
+        "pass": {"const": true},
+        "frame_count": {"const": 75}
+      }
+    },
+    "runResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counts", "semantic_hash", "bundle_verified", "regression_passed", "bundle_count", "regression_count"],
+      "properties": {
+        "counts": {"$ref": "#/$defs/counts"},
+        "semantic_hash": {"$ref": "#/$defs/sha256"},
+        "bundle_verified": {"type": "boolean"},
+        "regression_passed": {"type": "boolean"},
+        "bundle_count": {"type": "integer", "minimum": 0},
+        "regression_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "runEquivalence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["equivalent", "run_count", "semantic_hash"],
+      "properties": {
+        "equivalent": {"const": true},
+        "run_count": {"const": 3},
+        "semantic_hash": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "nonemptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "proofArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "media_type", "sha256", "purpose", "license_classification"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "media_type": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "purpose": {"type": "string", "minLength": 1},
+        "license_classification": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

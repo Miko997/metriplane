@@ -123,5 +123,10 @@ configs/*_local.yaml
 !examples/external_sources/maniskill_pickcube/**/*.jsonl
 !examples/external_sources/maniskill_pickcube/**/*.csv
 
+# Public MET-16 proof artifacts, including the single representative evidence bundle.
+!proofs/maniskill-pickcube-v1/
+!proofs/maniskill-pickcube-v1/**/
+!proofs/maniskill-pickcube-v1/artifacts/incident-evidence.zip
+
 # Local run output accidentally created as literal tilde directory
 /~/
