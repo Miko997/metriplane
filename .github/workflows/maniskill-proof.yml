@@ -146,24 +146,62 @@ jobs:
             tests/external_sources/test_maniskill_pickcube_proof.py \
             -k "path or raw or claim or source_neutral or evidence or regression or control or public_commit"
 
+      - name: Build and install the recorded candidate wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_commit="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          record = json.loads(
+              Path("proofs/maniskill-pickcube-v1/proof-record.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(record["proof_identity"]["candidate_commit"])
+          PY
+          )"
+          [[ "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "${candidate_commit}^{commit}"
+          git merge-base --is-ancestor "$candidate_commit" HEAD
+          candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
+          candidate_dist="${RUNNER_TEMP}/metriplane-candidate-dist"
+          candidate_venv="${RUNNER_TEMP}/metriplane-candidate-venv"
+          mkdir -p "$candidate_source" "$candidate_dist"
+          git archive --format=tar "$candidate_commit" | tar -xf - -C "$candidate_source"
+          uv run --python 3.12 python -m build \
+            --wheel \
+            --outdir "$candidate_dist" \
+            "$candidate_source"
+          wheel_path="$(find "$candidate_dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$wheel_path"
+          python -m venv "$candidate_venv"
+          "$candidate_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
+          "$candidate_venv/bin/python" -m pip check
+          {
+            echo "CANDIDATE_COMMIT=$candidate_commit"
+            echo "CANDIDATE_METRIPLANE=$candidate_venv/bin/metriplane"
+          } >> "$GITHUB_ENV"
+
       - name: Rebuild proof twice and require deterministic output
         shell: bash
         run: |
           set -euo pipefail
-          exact_commit="$(git rev-parse HEAD)"
-          test "$exact_commit" = "${{ github.event.pull_request.head.sha || github.sha }}"
           first="${RUNNER_TEMP}/proof-build-a"
           second="${RUNNER_TEMP}/proof-build-b"
           uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
             --repo-root . \
             --out "$first" \
-            --metriplane-commit "$exact_commit" \
-            --publication-date 2026-08-12
+            --metriplane-commit "$CANDIDATE_COMMIT" \
+            --publication-date 2026-08-12 \
+            --metriplane-command "$CANDIDATE_METRIPLANE"
           uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
             --repo-root . \
             --out "$second" \
-            --metriplane-commit "$exact_commit" \
-            --publication-date 2026-08-12
+            --metriplane-commit "$CANDIDATE_COMMIT" \
+            --publication-date 2026-08-12 \
+            --metriplane-command "$CANDIDATE_METRIPLANE"
           diff --recursive --brief "$first" "$second"
 
   portable-proof:
@@ -208,10 +246,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          candidate_commit="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          record = json.loads(
+              Path("proofs/maniskill-pickcube-v1/proof-record.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(record["proof_identity"]["candidate_commit"])
+          PY
+          )"
+          [[ "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "${candidate_commit}^{commit}"
+          git merge-base --is-ancestor "$candidate_commit" HEAD
+          candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           dist_dir="${RUNNER_TEMP}/metriplane-proof-dist"
-          mkdir -p "$dist_dir"
-          uv run --python ${{ matrix.python-version }} python -m build --outdir "$dist_dir"
+          mkdir -p "$candidate_source" "$dist_dir"
+          git archive --format=tar "$candidate_commit" | tar -xf - -C "$candidate_source"
+          uv run --python ${{ matrix.python-version }} python -m build \
+            --outdir "$dist_dir" \
+            "$candidate_source"
           uv run --python ${{ matrix.python-version }} python -m twine check --strict "$dist_dir"/*
+          echo "CANDIDATE_COMMIT=$candidate_commit" >> "$GITHUB_ENV"
           DIST_DIR="$dist_dir" uv run --python ${{ matrix.python-version }} python - <<'PY'
           import os
           from pathlib import Path
@@ -279,20 +337,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          exact_commit="$(git rev-parse HEAD)"
-          test "$exact_commit" = "${{ github.event.pull_request.head.sha || github.sha }}"
           proof_venv="${RUNNER_TEMP}/metriplane-proof-venv"
           portable_root="${RUNNER_TEMP}/portable-proof-input"
           proof_output="${RUNNER_TEMP}/portable-proof-output"
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           PATH="$proof_venv/bin:$PATH" \
-          METRIPLANE_GIT_COMMIT="$exact_commit" \
+          METRIPLANE_GIT_COMMIT="$CANDIDATE_COMMIT" \
             "$proof_venv/bin/python" \
               "$portable_root/proofs/maniskill-pickcube-v1/reproduce.py" \
               --repo-root "$portable_root" \
               --out "$proof_output" \
-              --metriplane-commit "$exact_commit"
+              --metriplane-commit "$CANDIDATE_COMMIT" \
+              --metriplane-command "$proof_venv/bin/metriplane"
           test -s "$proof_output/reproduction-result.json"
 
       - name: Move and reverify durable outputs

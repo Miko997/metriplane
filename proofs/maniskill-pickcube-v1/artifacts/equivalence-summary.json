@@ -1,0 +1,40 @@
+{
+  "conversion": {
+    "compared_artifact_count": 28,
+    "comparison_policy": "sha256_byte_identity",
+    "control_fixture_fingerprint_sha256": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
+    "equivalent": true,
+    "incident_fixture_fingerprint_sha256": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
+    "run_ids": [
+      "real-source-clean-1",
+      "real-source-clean-2",
+      "real-source-clean-3"
+    ]
+  },
+  "evaluation": {
+    "control": {
+      "counts": {
+        "deviation_count": 0,
+        "event_count": 3,
+        "frame_count": 75,
+        "incident_count": 0
+      },
+      "equivalent": true,
+      "run_count": 3,
+      "semantic_hash": "acb9e6d2b193b59c831798e4beed6ed45cf3df2b30f0fb2bd85ad4c4acfb2a7f"
+    },
+    "incident": {
+      "counts": {
+        "deviation_count": 1,
+        "event_count": 4,
+        "frame_count": 75,
+        "incident_count": 1
+      },
+      "equivalent": true,
+      "run_count": 3,
+      "semantic_hash": "112bcd2a29fd7f754b255d02f6e3544ef619142507d02d19b20f268d2009d536"
+    }
+  },
+  "metriplane_git_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+  "schema_version": "org.metriplane.maniskill_pickcube_equivalence_summary.v1"
+}

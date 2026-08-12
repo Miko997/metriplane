@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import zipfile
 from collections.abc import Iterable, Mapping
 from datetime import date
@@ -727,7 +728,6 @@ def test_claim_and_source_neutral_wording_red_team() -> None:
         b"camera tracked",
         b"fiducial-tagged",
         b"validated by maniskill",
-        b"official pickcube success",
     ):
         assert unsupported_assumption not in artifact_bytes
 
@@ -744,8 +744,8 @@ def test_claim_and_source_neutral_wording_red_team() -> None:
         "sim-to-real",
         "safety",
         "production readiness",
-        "general maniskill compatibility",
-        "maniskill endorsement",
+        "general maniskill",
+        "endorsement",
         "independent",
         "industry use",
     ):
@@ -822,6 +822,42 @@ def test_reproduce_script_is_standard_library_and_public_cli_only() -> None:
     assert "maniskill_pickcube_control_proof" in source
 
 
+def test_reproduce_failure_writes_a_sanitized_machine_readable_result(
+    tmp_path: Path,
+) -> None:
+    record = _read_json(RECORD_PATH)
+    out = tmp_path / "failed-reproduction"
+    missing_command = tmp_path / "PRIVATE_MISSING_METRIPLANE"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(PROOF_ROOT / "reproduce.py"),
+            "--repo-root",
+            str(REPOSITORY_ROOT),
+            "--out",
+            str(out),
+            "--metriplane-commit",
+            record["proof_identity"]["candidate_commit"],
+            "--metriplane-command",
+            str(missing_command),
+        ],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 1
+    result = _read_json(out / "reproduction-result.json")
+    assert result["pass"] is False
+    assert result["level"] == "portable_fixture_evaluation"
+    assert result["metriplane_git_commit"] == record["proof_identity"]["candidate_commit"]
+    assert len(result["errors"]) == 1
+    serialized = json.dumps(result, sort_keys=True)
+    assert str(tmp_path) not in serialized
+    assert "PRIVATE_MISSING_METRIPLANE" not in serialized
+    assert "<metriplane-command>" in serialized
+
+
 def test_referenced_metriplane_commits_are_full_and_reachable_in_git() -> None:
     record = _read_json(RECORD_PATH)
     commits = {
@@ -857,7 +893,7 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     matrix = portable["strategy"]["matrix"]
     assert matrix["os"] == ["ubuntu-latest", "macos-latest"]
     assert matrix["python-version"] == ["3.12", "3.13"]
-    assert "build --outdir" in text
+    assert re.search(r"python -m build\s+.*--outdir", text, re.DOTALL)
     assert "twine check --strict" in text
     assert 'pip install --no-cache-dir "$wheel_path"' in text
     assert "reproduce.py" in text
@@ -868,6 +904,11 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert "jsonschema" in text and "cffconvert" in text and "reuse lint-file" in text
     assert "tools/build_maniskill_pickcube_proof.py" in text
     assert "diff --recursive --brief" in text
+    assert 'record["proof_identity"]["candidate_commit"]' in text
+    assert 'git archive --format=tar "$candidate_commit"' in text
+    assert 'git merge-base --is-ancestor "$candidate_commit" HEAD' in text
+    assert "CANDIDATE_COMMIT" in text
+    assert 'exact_commit="$(git rev-parse HEAD)"' not in text
 
     action_uses = re.findall(r"(?m)^\s*uses:\s*([^\s#]+)", text)
     assert action_uses

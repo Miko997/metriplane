@@ -1,0 +1,57 @@
+{
+  "complete": false,
+  "conversion_portability": "not_evaluated_by_this_matrix",
+  "jobs": [
+    {
+      "architecture": "x86_64",
+      "job_id": "ubuntu-python-3.12",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "Ubuntu",
+      "python_version": "3.12",
+      "reproduction_result_sha256": null,
+      "simulator_dependencies": [],
+      "status": "pending",
+      "workflow_url": null
+    },
+    {
+      "architecture": "x86_64",
+      "job_id": "ubuntu-python-3.13",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "Ubuntu",
+      "python_version": "3.13",
+      "reproduction_result_sha256": null,
+      "simulator_dependencies": [],
+      "status": "pending",
+      "workflow_url": null
+    },
+    {
+      "architecture": "arm64",
+      "job_id": "macos-python-3.12",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "macOS",
+      "python_version": "3.12",
+      "reproduction_result_sha256": null,
+      "simulator_dependencies": [],
+      "status": "pending",
+      "workflow_url": null
+    },
+    {
+      "architecture": "arm64",
+      "job_id": "macos-python-3.13",
+      "level": "portable_fixture_evaluation",
+      "operating_system": "macOS",
+      "python_version": "3.13",
+      "reproduction_result_sha256": null,
+      "simulator_dependencies": [],
+      "status": "pending",
+      "workflow_url": null
+    }
+  ],
+  "limitations": [
+    "CI runners are portability evidence, not independent users.",
+    "The matrix evaluates portable fixtures and does not claim conversion portability on macOS."
+  ],
+  "metriplane_git_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+  "proof_level": "portable_fixture_evaluation",
+  "schema_version": "org.metriplane.maniskill_pickcube_environment_matrix.v1"
+}
