@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+import pytest
 import yaml
 
 from metriplane.atlas.bundles import verify_bundle
@@ -629,23 +630,63 @@ def test_equivalence_and_environment_matrix_have_required_jobs() -> None:
         assert equivalence["evaluation"][variant]["run_count"] == 3
 
     matrix = _read_json(ARTIFACT_ROOT / "environment-matrix.json")
+    evidence_run_id = 31576927627
+    evidence_run_url = "https://github.com/Miko997/metriplane/actions/runs/31576927627"
+    assert matrix["complete"] is True
+    assert matrix["evidence_head_commit"] == ("488ef555732012b302db6795ba5796b8fa8e7f10")
+    assert FULL_COMMIT.fullmatch(matrix["evidence_head_commit"])
+    assert type(matrix["evidence_workflow_run_id"]) is int
+    assert matrix["evidence_workflow_run_id"] == evidence_run_id
+    assert matrix["evidence_workflow_run_url"] == evidence_run_url
+
     jobs = matrix["jobs"]
     identities = {(job["operating_system"], job["python_version"]): job for job in jobs}
-    assert set(identities) == {
-        ("Ubuntu", "3.12"),
-        ("Ubuntu", "3.13"),
-        ("macOS", "3.12"),
-        ("macOS", "3.13"),
+    expected_environments = {
+        ("Ubuntu", "3.12"): {
+            "architecture": "x86_64",
+            "operating_system_version": "24.04.4",
+            "python_patch_version": "3.12.13",
+            "runner_image": "ubuntu-24.04",
+            "runner_image_version": "20260810.271.1",
+        },
+        ("Ubuntu", "3.13"): {
+            "architecture": "x86_64",
+            "operating_system_version": "24.04.4",
+            "python_patch_version": "3.13.15",
+            "runner_image": "ubuntu-24.04",
+            "runner_image_version": "20260810.271.1",
+        },
+        ("macOS", "3.12"): {
+            "architecture": "arm64",
+            "operating_system_version": "26.5.2",
+            "python_patch_version": "3.12.10",
+            "runner_image": "macos-26-arm64",
+            "runner_image_version": "20260728.0273.1",
+        },
+        ("macOS", "3.13"): {
+            "architecture": "arm64",
+            "operating_system_version": "26.5.2",
+            "python_patch_version": "3.13.14",
+            "runner_image": "macos-26-arm64",
+            "runner_image_version": "20260728.0273.1",
+        },
     }
+    assert set(identities) == set(expected_environments)
     for job in jobs:
-        assert job["architecture"] in {"x86_64", "arm64"}
+        identity = (job["operating_system"], job["python_version"])
+        for field, expected in expected_environments[identity].items():
+            assert job[field] == expected
         assert job["level"] == "portable_fixture_evaluation"
         assert job["simulator_dependencies"] == []
-        assert job["status"] in {"pending", "pass"}
+        assert job["status"] == "pass"
+        assert type(job["github_job_id"]) is int
+        assert job["github_job_id"] > 0
+        assert job["workflow_url"] == (f"{evidence_run_url}/job/{job['github_job_id']}")
+        assert SHA256.fullmatch(job["reproduction_result_sha256"])
     matrix_record = record["results"]["environment_matrix"]
     assert matrix_record["path"] == "artifacts/environment-matrix.json"
     assert matrix_record["required_jobs"] == 4
-    assert matrix_record["complete"] is (all(job["status"] == "pass" for job in jobs))
+    assert matrix_record["complete"] is True
 
 
 def test_sha256sum_inventory_and_proof_record_artifact_hashes() -> None:
@@ -873,6 +914,19 @@ def test_referenced_metriplane_commits_are_full_and_reachable_in_git() -> None:
     commits.update(commit for commit in optional if commit is not None)
     for commit in commits:
         assert FULL_COMMIT.fullmatch(commit), commit
+
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert shallow.returncode == 0, shallow.stderr
+    if shallow.stdout.strip() == "true":
+        pytest.skip("commit reachability is enforced by the full-history proof workflow")
+
+    for commit in commits:
         completed = subprocess.run(
             ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
             cwd=REPOSITORY_ROOT,
@@ -905,6 +959,7 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert "tools/build_maniskill_pickcube_proof.py" in text
     assert "diff --recursive --brief" in text
     assert 'record["proof_identity"]["candidate_commit"]' in text
+    assert "fetch-depth: 0" in text
     assert 'git archive --format=tar "$candidate_commit"' in text
     assert 'git merge-base --is-ancestor "$candidate_commit" HEAD' in text
     assert "CANDIDATE_COMMIT" in text

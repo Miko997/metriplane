@@ -33,6 +33,7 @@ STATIC_PROOF_FILES = (
     "reproduce.py",
 )
 FULL_COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+FULL_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 PRIVATE_PATH = re.compile(
     rb"(?:(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/][^\x00\r\n\"']+|"
     rb"/(?:home|Users|workspace|tmp|private/tmp|var/folders)/[^\x00\r\n\"']+)"
@@ -318,6 +319,33 @@ def _environment_matrix(path: Path | None, commit: str) -> dict[str, Any]:
             raise ProofBuildError("Level-A matrix jobs must have no simulator dependencies")
         if job.get("status") not in {"pending", "pass"}:
             raise ProofBuildError("environment matrix job status must be pending or pass")
+        if job.get("status") == "pass":
+            job_id = job.get("github_job_id")
+            run_id = matrix.get("evidence_workflow_run_id")
+            if not isinstance(job_id, int) or job_id <= 0:
+                raise ProofBuildError("passing matrix job must record a GitHub job ID")
+            if not isinstance(run_id, int) or run_id <= 0:
+                raise ProofBuildError("complete matrix must record a GitHub workflow run ID")
+            expected_url = (
+                f"https://github.com/Miko997/metriplane/actions/runs/{run_id}/job/{job_id}"
+            )
+            if job.get("workflow_url") != expected_url:
+                raise ProofBuildError("passing matrix job URL does not match its run and job IDs")
+            result_hash = job.get("reproduction_result_sha256")
+            if not isinstance(result_hash, str) or FULL_SHA256.fullmatch(result_hash) is None:
+                raise ProofBuildError("passing matrix job must record a full reproduction hash")
+            python_patch = job.get("python_patch_version")
+            if not isinstance(python_patch, str) or not python_patch.startswith(
+                f"{job.get('python_version')}."
+            ):
+                raise ProofBuildError("matrix Python patch version disagrees with its minor")
+            for field in (
+                "operating_system_version",
+                "runner_image",
+                "runner_image_version",
+            ):
+                if not isinstance(job.get(field), str) or not job[field]:
+                    raise ProofBuildError(f"passing matrix job must record {field}")
     if identities != {
         ("Ubuntu", "3.12"),
         ("Ubuntu", "3.13"),
@@ -328,6 +356,14 @@ def _environment_matrix(path: Path | None, commit: str) -> dict[str, Any]:
     complete = all(job["status"] == "pass" for job in jobs)
     if matrix.get("complete") is not complete:
         raise ProofBuildError("environment matrix complete flag disagrees with job statuses")
+    if complete:
+        evidence_head = matrix.get("evidence_head_commit")
+        if not isinstance(evidence_head, str) or FULL_COMMIT.fullmatch(evidence_head) is None:
+            raise ProofBuildError("complete matrix must record a full evidence-head commit")
+        run_id = matrix.get("evidence_workflow_run_id")
+        expected_run_url = f"https://github.com/Miko997/metriplane/actions/runs/{run_id}"
+        if matrix.get("evidence_workflow_run_url") != expected_run_url:
+            raise ProofBuildError("complete matrix workflow URL does not match its run ID")
     return matrix
 
 

@@ -84,7 +84,7 @@
       "media_type": "application/json",
       "path": "artifacts/environment-matrix.json",
       "purpose": "Required installed-wheel OS and Python portability matrix.",
-      "sha256": "cc3159b7a823cc165925f43465ebfa56289e56535520eb2672437462a1cf66ca"
+      "sha256": "69c3bbe0e8e128cc19d7ec0bea7b44cd25d7cd54959d9146511f40575b4edae0"
     }
   ],
   "claims": {
@@ -252,7 +252,7 @@
       ]
     },
     "environment_matrix": {
-      "complete": false,
+      "complete": true,
       "path": "artifacts/environment-matrix.json",
       "required_jobs": 4
     },
