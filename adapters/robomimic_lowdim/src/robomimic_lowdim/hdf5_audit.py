@@ -572,15 +572,17 @@ def compare_raw_prepared(
                 _array_identity(
                     raw_demo["states"], prepared_demo["states"], label=f"{demo_name}/states"
                 )
-                if raw_demo["actions"].shape != (raw_count, 7) or raw_demo[
-                    "actions"
-                ].dtype != np.dtype("float64"):
+                raw_actions = raw_demo["actions"]
+                prepared_actions = prepared_demo["actions"]
+                if not isinstance(raw_actions, h5py.Dataset) or not isinstance(
+                    prepared_actions, h5py.Dataset
+                ):
+                    raise SourceAuditError(f"{demo_name}/actions: expected datasets")
+                if raw_actions.shape != (raw_count, 7) or raw_actions.dtype != np.dtype("float64"):
                     raise SourceAuditError(
                         f"{demo_name}/actions: expected ({raw_count}, 7) float64"
                     )
-                _array_identity(
-                    raw_demo["actions"], prepared_demo["actions"], label=f"{demo_name}/actions"
-                )
+                _array_identity(raw_actions, prepared_actions, label=f"{demo_name}/actions")
                 states = raw_demo["states"][...]
                 _finite(states, label=f"raw data/{demo_name}/states")
                 if states.ndim != 2 or states.shape[0] != raw_count:

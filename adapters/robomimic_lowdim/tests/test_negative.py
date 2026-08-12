@@ -271,6 +271,23 @@ def test_malformed_hdf5_and_wrong_exact_identity_fail(tmp_path: Path) -> None:
         compare_raw_prepared(raw, prepared, verify_identity=True)
 
 
+def test_actions_group_is_an_actionable_malformed_hdf5_error(tmp_path: Path) -> None:
+    raw, prepared = _make_pair(tmp_path)
+    for path in (raw, prepared):
+        with h5py.File(path, "r+") as handle:
+            del handle["data/demo_0/actions"]
+            handle["data/demo_0"].create_group("actions")
+    with pytest.raises(SourceAuditError, match="demo_0/actions: expected datasets"):
+        compare_raw_prepared(
+            raw,
+            prepared,
+            verify_identity=False,
+            expected_frame_count=3,
+            expected_demo_count=2,
+            expected_total_samples=5,
+        )
+
+
 def test_filtered_dataset_and_xml_entity_declaration_are_rejected(tmp_path: Path) -> None:
     raw, prepared = _make_pair(tmp_path / "filtered")
     with h5py.File(prepared, "r+") as handle:
@@ -421,5 +438,29 @@ def test_finalizer_rejects_identically_corrupted_roots(
             config_path=config_path,
             output_root=config_path.parent,
             adapter_commit="a" * 40,
+            allow_unbound_test_fixture=True,
+        )
+
+
+def test_finalizer_rejects_incident_control_state_mismatch(
+    tmp_path: Path, source_frames: list[SourceFrame], config_path: Path
+) -> None:
+    from robomimic_lowdim.fixture import finalize_conversion_equivalence
+
+    roots = [tmp_path / f"state-mismatch-{index}" for index in range(3)]
+    for root in roots:
+        write_fixtures(
+            source_frames,
+            config_path=config_path,
+            output_root=root,
+            adapter_commit="a" * 40,
+            allow_unbound_test_fixture=True,
+        )
+        with (root / "incident/session.jsonl").open("ab") as handle:
+            handle.write(b"{}\n")
+    with pytest.raises(FixtureError, match="incident/control shared artifact differs: session"):
+        finalize_conversion_equivalence(
+            roots,
+            output_root=tmp_path / "final-state-mismatch",
             allow_unbound_test_fixture=True,
         )

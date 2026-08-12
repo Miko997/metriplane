@@ -1109,6 +1109,17 @@ FIXTURE_FILE_INVENTORY = {
     "source-manifest.json",
 }
 
+SHARED_VARIANT_FILES = {
+    "domain-pack/assets.yaml",
+    "domain-pack/work_orders.csv",
+    "domain-pack/workspace.yaml",
+    "entity-mapping.json",
+    "session.jsonl",
+    "source/adapter-environment.txt",
+    "source/frozen-config.json",
+    "source/uv.lock",
+}
+
 
 def write_fixtures(
     frames: Sequence[SourceFrame],
@@ -1453,6 +1464,13 @@ def finalize_conversion_equivalence(
         for path in root.rglob("*"):
             if path.is_symlink():
                 raise FixtureError(f"equivalence {root}: symlink prohibited: {path}")
+        for relative in sorted(SHARED_VARIANT_FILES):
+            if (root / "incident" / relative).read_bytes() != (
+                root / "control" / relative
+            ).read_bytes():
+                raise FixtureError(
+                    f"equivalence {root}: incident/control shared artifact differs: {relative}"
+                )
     if output.exists() and not overwrite:
         raise FixtureError(f"equivalence output {output}: exists; pass --overwrite")
     compared: dict[str, str] = {}
@@ -1475,6 +1493,17 @@ def finalize_conversion_equivalence(
     if summaries[0] != summaries[1] or summaries[0] != summaries[2]:
         raise FixtureError("equivalence: conversion-summary.json differs across roots")
     summary_document = json.loads(summaries[0])
+    for variant in ("incident", "control"):
+        expected_fingerprint = hashlib.sha256(
+            (roots[0] / variant / "CHECKSUMS.sha256").read_bytes()
+        ).hexdigest()
+        if (
+            summary_document.get(variant, {}).get("fixture_fingerprint_sha256")
+            != expected_fingerprint
+        ):
+            raise FixtureError(
+                f"equivalence: {variant} fixture fingerprint is not bound to its bytes"
+            )
     if not allow_unbound_test_fixture:
         required_summary = {
             "config_sha256": FROZEN_CONFIG_SHA256,
@@ -1495,6 +1524,13 @@ def finalize_conversion_equivalence(
             or audit.get("clock_rows_verified") != 23_207
         ):
             raise FixtureError("equivalence: exact real-source audit attestation is required")
+        for root in roots:
+            for variant in ("incident", "control"):
+                actual_session = sha256_file(root / variant / "session.jsonl")
+                if actual_session != summary_document["shared_session_sha256"]:
+                    raise FixtureError(
+                        f"equivalence {root}: {variant} session is not the frozen audited session"
+                    )
     output.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f".{output.name}.stage-", dir=output.parent))
     try:
