@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
 site_name: Metriplane documentation
 site_description: >-
   Install Metriplane, understand a recorded bounded-workcell incident, and
@@ -26,6 +29,19 @@ nav:
       - Contract v1: specs/external-source-contract-v1.md
       - Source-truth audit: specs/external-source-contract-v1-audit.md
   - ManiSkill PickCube proof: user-guide/maniskill-pickcube-proof.md
+  - External source-family matrix:
+      - Landing page: user-guide/external-source-family-matrix-v1/README.md
+      - Human-readable matrix: user-guide/external-source-family-matrix-v1/MATRIX.md
+      - Source and license crosswalk: user-guide/external-source-family-matrix-v1/SOURCE-CROSSWALK.md
+      - Provenance crosswalk: user-guide/external-source-family-matrix-v1/PROVENANCE-CROSSWALK.md
+      - State-model crosswalk: user-guide/external-source-family-matrix-v1/STATE-MODEL-CROSSWALK.md
+      - Semantics register: user-guide/external-source-family-matrix-v1/SEMANTICS.md
+      - Unsupported paths: user-guide/external-source-family-matrix-v1/UNSUPPORTED-PATHS.md
+      - Reopening criteria: user-guide/external-source-family-matrix-v1/REOPENING.md
+      - Evaluator packet: user-guide/external-source-family-matrix-v1/EVALUATOR.md
+      - Partner summary: user-guide/external-source-family-matrix-v1/PARTNER-SUMMARY.md
+      - Validation: user-guide/external-source-family-matrix-v1/VALIDATION.md
+      - Readiness: user-guide/external-source-family-matrix-v1/READINESS.md
   - Troubleshooting: user-guide/troubleshooting.md
   - Contributing: user-guide/contributing.md
   - Research artifacts: user-guide/research-artifacts.md

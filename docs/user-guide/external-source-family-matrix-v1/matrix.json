@@ -1,0 +1,1481 @@
+{
+  "allowed_decisions": [
+    "GO",
+    "PARTIALLY SUPPORTED",
+    "NO-GO",
+    "NOT TESTED",
+    "NOT APPLICABLE"
+  ],
+  "contract": {
+    "contract_id": "metriplane.external_source_contract.v1",
+    "frame_state_model_version": "1.0",
+    "profile_id": "metriplane.atlas.complete_snapshot.v1",
+    "schema_path": "schemas/metriplane.external_source_contract.v1.schema.json",
+    "schema_sha256": "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
+  },
+  "publication": {
+    "evidence_classification": "owner-generated consolidation of frozen public technical evidence",
+    "metriplane_version": "0.3.0",
+    "public_main_baseline": "5606b956e9309802570cfa46857714722fd70187",
+    "publication_id": "external-source-family-matrix-v1",
+    "starting_commit": "5606b956e9309802570cfa46857714722fd70187",
+    "status": "candidate",
+    "strongest_allowed_claim": "Metriplane's frozen external-source process has produced two successful, source-specific portable evaluation paths: ManiSkill and robomimic. It also produced one documented CALVIN rejection because public rights and authoritative timing did not satisfy the contract.",
+    "version": "1"
+  },
+  "rows": [
+    {
+      "atlas_rerun_status": {
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-tag-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "Three owner-run evaluations per variant were semantically equivalent. Exact-tag CI also reran the portable incident and control paths on all four required OS/Python rows."
+      },
+      "authoritative_clock_and_domain": {
+        "evidence": [
+          "maniskill-manifest",
+          "maniskill-field-provenance"
+        ],
+        "status": "VERIFIED",
+        "summary": "Stored-state index i is mapped to ts_sim_ns=i*50,000,000 with origin zero: 75 frames at 20 Hz from 0 through 3.70 s. The registered 50-step RL horizon is separate provenance and does not truncate the fixture."
+      },
+      "compatibility_counted": true,
+      "complete_snapshot_and_missing_state_policy": {
+        "evidence": [
+          "maniskill-manifest",
+          "maniskill-proof-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "Every frame is a complete snapshot containing known cube_1 and robot_tcp_1 state. Omission and unknown state reject the fixture; normalized events are empty."
+      },
+      "decision": "GO",
+      "deterministic_conversion_status": {
+        "evidence": [
+          "maniskill-proof-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "Three clean conversions, real-source-clean-1 through real-source-clean-3, were byte-equivalent across 28 compared variant artifacts."
+      },
+      "evidence_bundle_status": {
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-tag-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "The incident path produced one evidence bundle and verification passed. The no-incident control correctly produced no evidence bundle."
+      },
+      "exact_source_artifact_identity": {
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-manifest",
+          "maniskill-tag"
+        ],
+        "status": "VERIFIED",
+        "summary": "ManiSkill PickCube-v1 episode 0 / traj_0 at dataset revision d674485bbffdd533914e52d272fdda34c0515608: ZIP b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8, HDF5 03ca60546541a7f18321d9d32721f0254bc75217828c0cadacd217d0c014576a, JSON 16e403cb77bfbdda28c243b96eb90adbae1c0edf42854283be57ee47076a2e90. Canonical proof tag maniskill-pickcube-proof-v1 targets 49c3b37057312c89db030386dd2cc68628d92458."
+      },
+      "external_source_contract_v1_fit": {
+        "evidence": [
+          "external-source-contract",
+          "maniskill-manifest",
+          "maniskill-tag-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "Both portable bundles validate under External Source Contract v1 and its complete-snapshot profile without changing FrameStateModel 1.0 or Atlas."
+      },
+      "field_provenance": {
+        "evidence": [
+          "maniskill-field-provenance",
+          "maniskill-manifest"
+        ],
+        "status": "VERIFIED",
+        "summary": "Restored traj_0 actor state supplies cube.pose; restored Panda articulation supplies agent.tcp_pose through pinned forward kinematics. Frame IDs, time, object IDs, planar projection, and zone assignment are declared adapter-derived fields; operator rules and Atlas results remain separate layers."
+      },
+      "frozen_fixture_identities": {
+        "control_fingerprint_sha256": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
+        "control_fixture_id": "maniskill-pickcube-episode-0-planar-control-v1",
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-manifest"
+        ],
+        "incident_fingerprint_sha256": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
+        "incident_fixture_id": "maniskill-pickcube-episode-0-planar-incident-v1",
+        "shared_session_sha256": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df",
+        "status": "VERIFIED"
+      },
+      "frame_authority_and_transform_model": {
+        "evidence": [
+          "maniskill-manifest",
+          "maniskill-field-provenance"
+        ],
+        "status": "VERIFIED",
+        "summary": "Named poses are restored independently in maniskill_world. World X/Y use an identity transform; normalized Z is set to 0.0. Zone membership is a separate inclusive operator-polygon operation."
+      },
+      "independent_rerun_status": {
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-readiness"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No attributable outside evaluator rerun is recorded. Owner runs and GitHub-hosted CI are first-party technical evidence, not independent validation or adoption."
+      },
+      "information_loss": {
+        "evidence": [
+          "maniskill-field-provenance",
+          "maniskill-red-team"
+        ],
+        "status": "VERIFIED",
+        "summary": "The fixture discards source Z, complete quaternions and all orientation, velocities, articulation beyond TCP forward kinematics, actions, contact/grasp state, outcomes, and rendering material."
+      },
+      "limitations": [
+        "One official episode from an upstream success-filtered corpus; selection was outcome-blind only within that corpus.",
+        "Position-only planar occupancy and timing under operator-authored rules, not official PickCube success, grasping, 3D placement, physical accuracy, simulator realism, safety, production readiness, endorsement, or general ManiSkill support.",
+        "The portable matrix proves fixture evaluation portability; it does not prove source-conversion portability on macOS or independent adoption."
+      ],
+      "materialization_or_carry_forward_policy": {
+        "evidence": [
+          "maniskill-manifest"
+        ],
+        "status": "VERIFIED",
+        "summary": "No partial-update materialization, carry-forward, interpolation, resampling, or cross-stream synchronization is used. Each stored state is restored independently; actions are never stepped."
+      },
+      "portable_evaluation_status": {
+        "evidence": [
+          "maniskill-tag-workflow",
+          "maniskill-proof-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "Exact-tag installed-wheel evaluation passed Ubuntu/Python 3.12, Ubuntu/Python 3.13, macOS/Python 3.12, and macOS/Python 3.13 without ManiSkill, SAPIEN, Torch, h5py, source HDF5/JSON, or simulator assets."
+      },
+      "prohibited_semantics": {
+        "evidence": [
+          "maniskill-red-team",
+          "maniskill-proof-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "Official PickCube success/failure, grasp or controller failure, retention after completion, 3D placement/orientation, physical or simulator truth, safety, quality, production fitness, endorsement, and general source-family support are prohibited."
+      },
+      "raw_prepared_derived_normalized_boundary": {
+        "evidence": [
+          "maniskill-manifest",
+          "maniskill-field-provenance",
+          "maniskill-rights"
+        ],
+        "status": "VERIFIED",
+        "summary": "Referenced ZIP/HDF5/JSON source bytes remain external. The isolated adapter restores each stored environment state and derives cube/TCP poses, then emits a modified, derived, position-only normalized fixture. Operator domain rules and Metriplane results are later layers."
+      },
+      "regression_status": {
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-tag-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "The incident path generated one regression and it passed, including after output relocation. The control correctly generated none."
+      },
+      "reopening_criteria": [
+        "No reopening is needed for this exact GO row; any broader source, task, episode, field, clock, transform, platform-conversion, or semantic claim requires a new bounded audit and fixture.",
+        "Independent-validation status changes only after an attributable outside evaluator completes the packet; owner CI cannot satisfy that criterion."
+      ],
+      "rights": {
+        "code": {
+          "evidence": [
+            "maniskill-rights",
+            "maniskill-adapter-commit"
+          ],
+          "status": "VERIFIED",
+          "summary": "ManiSkill source is Apache-2.0; the independently authored isolated adapter is MIT. Upstream code is invoked in the conversion environment, not copied into the Metriplane runtime."
+        },
+        "dataset": {
+          "evidence": [
+            "maniskill-rights",
+            "maniskill-manifest"
+          ],
+          "status": "VERIFIED",
+          "summary": "The pinned ManiSkill Demonstrations dataset card declares Apache-2.0. Raw trajectory bytes are referenced, never redistributed; source assets with separate terms are excluded."
+        },
+        "derived_fixture": {
+          "evidence": [
+            "maniskill-rights",
+            "maniskill-manifest"
+          ],
+          "status": "VERIFIED",
+          "summary": "Modified/derived fixture coordinates are treated as Apache-2.0 data with immutable attribution and modification notice. Proof metadata and adapter code are MIT; the repository as a whole is not relicensed."
+        }
+      },
+      "row_id": "maniskill",
+      "source_family": "ManiSkill",
+      "stable_identity_model": {
+        "evidence": [
+          "maniskill-manifest",
+          "maniskill-proof-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "The frozen one-to-one mapping binds restored cube state to cube_1/material and Panda TCP state to robot_tcp_1/tool. Mapping SHA-256 is 9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7."
+      },
+      "status_label": "GO / PROVEN EXTERNAL SOURCE",
+      "supported_atlas_semantics": {
+        "evidence": [
+          "maniskill-proof-record",
+          "maniskill-red-team"
+        ],
+        "status": "VERIFIED",
+        "summary": "Bounded XY arrival/required-presence timing under an operator-authored polygon and relative waits. Incident 0.20 s: 75/4/1/1 with missing_tool_caused_delay. Control 0.30 s: 75/3/0/0."
+      },
+      "supporting_artifacts": [
+        {
+          "id": "external-source-contract",
+          "identity": "External Source Contract v1 normative specification",
+          "kind": "repository_path",
+          "path": "docs/specs/external-source-contract-v1.md",
+          "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39",
+          "verification": "SHA-256 recomputed from public baseline 5606b956e9309802570cfa46857714722fd70187."
+        },
+        {
+          "id": "maniskill-tag",
+          "identity": "annotated tag object 259d6e16ae4c0bbc18f4864dd1e899e66a1a7f58 -> commit 49c3b37057312c89db030386dd2cc68628d92458",
+          "kind": "git_tag",
+          "url": "https://github.com/Miko997/metriplane/tree/maniskill-pickcube-proof-v1/proofs/maniskill-pickcube-v1",
+          "verification": "Fetched from the public repository and dereferenced locally; tag is annotated, but no cryptographic signature or tag protection is claimed."
+        },
+        {
+          "id": "maniskill-adapter-commit",
+          "identity": "95d1134d9fb9273318c552c507952f1c5c26877e",
+          "kind": "git_commit",
+          "url": "https://github.com/Miko997/metriplane/commit/95d1134d9fb9273318c552c507952f1c5c26877e",
+          "verification": "Public commit and ancestor of the canonical proof commit."
+        },
+        {
+          "id": "maniskill-proof-record",
+          "identity": "frozen proof record",
+          "kind": "repository_path",
+          "path": "proofs/maniskill-pickcube-v1/proof-record.json",
+          "sha256": "2a85d93eca6b6c6be08f41a263d1224c3a2cc160241aa3ef7eee5e8a5c5e0951",
+          "verification": "Complete proof inventory recomputed and matched at the public baseline. Embedded candidate status is historical; the public tag and exact-tag workflow are the later publication evidence."
+        },
+        {
+          "id": "maniskill-readiness",
+          "identity": "historical tagged readiness ledger",
+          "kind": "repository_path",
+          "path": "proofs/maniskill-pickcube-v1/READINESS.md",
+          "sha256": "0be63784b013802d7632a4d9dee260c74bf18a6698cc2fcd553eb083a2237a08",
+          "verification": "Hash matches the immutable tagged record. Its pre-publication NOT READY prose is retained as historical status rather than silently rewritten."
+        },
+        {
+          "id": "maniskill-manifest",
+          "identity": "incident External Source Contract manifest",
+          "kind": "repository_path",
+          "path": "examples/external_sources/maniskill_pickcube/incident/source-manifest.json",
+          "sha256": "7179850c7de3a9603ff6e1b9396c3e174fa9d81633d2ef47fbc38e75daac269e",
+          "verification": "Hash recomputed; incident and control checksum inventories both pass."
+        },
+        {
+          "id": "maniskill-field-provenance",
+          "identity": "ManiSkill field provenance and information-loss record",
+          "kind": "repository_path",
+          "path": "docs/specs/maniskill-pickcube-field-provenance.md",
+          "sha256": "bd031055b5fa0c64277a43e3e7272dee50f2913e1c0ef405e9e353f43749c2e9",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "maniskill-rights",
+          "identity": "ManiSkill source and redistribution matrix",
+          "kind": "repository_path",
+          "path": "docs/specs/maniskill-pickcube-rights-matrix.md",
+          "sha256": "7dc122860ced1d632aef55eec9a60620d7734f09a8cc154faa1ee8fc157bc6b8",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "maniskill-red-team",
+          "identity": "ManiSkill claim and adversarial gate",
+          "kind": "repository_path",
+          "path": "docs/specs/maniskill-pickcube-red-team.md",
+          "sha256": "2953a18abc954bf84b5e8092845de68e0244341e5b27502a5c888d6f17349d8d",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "maniskill-tag-workflow",
+          "identity": "ManiSkill PickCube Proof run 31583292137 at 49c3b37057312c89db030386dd2cc68628d92458",
+          "kind": "workflow_run",
+          "url": "https://github.com/Miko997/metriplane/actions/runs/31583292137",
+          "verification": "Completed success: structure, artifact red team, and all Ubuntu/macOS Python 3.12/3.13 portable jobs passed."
+        }
+      ],
+      "units": {
+        "evidence": [
+          "maniskill-manifest",
+          "maniskill-field-provenance"
+        ],
+        "status": "VERIFIED",
+        "summary": "World position uses metres; authoritative evaluation time uses integer nanoseconds, with descriptive seconds derived from the same value."
+      }
+    },
+    {
+      "atlas_rerun_status": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No Atlas run exists because the rights and clock gates stopped implementation. Not applicable is not a pass."
+      },
+      "authoritative_clock_and_domain": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "BLOCKED",
+        "summary": "File indices establish order only. Published NPZs omit timestamps; nominal 30 Hz configuration cannot replace the recorder's wall-clock-gated sampling. External Source Contract v1 has no order-only clock, so an exact fixed step would be invented."
+      },
+      "compatibility_counted": false,
+      "complete_snapshot_and_missing_state_policy": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "Each inspected boundary NPZ is an explicit scene_obs/robot_obs snapshot, but completeness was not proven across all 2,771 candidate samples. A future adapter would reject gaps, shape changes, nonfinite values, and missing entities."
+      },
+      "decision": "NO-GO",
+      "deterministic_conversion_status": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No adapter or conversion was created after the Phase-0 stop conditions fired."
+      },
+      "evidence_bundle_status": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No fixture or Atlas incident exists, so no evidence bundle exists."
+      },
+      "exact_source_artifact_identity": {
+        "evidence": [
+          "calvin-audit",
+          "calvin-code-commit",
+          "calvin-environment-commit",
+          "calvin-archive"
+        ],
+        "status": "PARTIAL",
+        "summary": "Official mees/calvin audit commit fa03f01f19c65920e18cf37398a9ce859274af76 and calvin_env 1431a46bd36bde5903fb6345e68b5ccc30def666. The debug archive is 1,299,150,917 bytes with published SHA-256 c66d09147e2c806b244f18ea7d61e388d4dac11f828929779437f728d03e1204, but it embeds no generator revision and the full body was not independently downloaded and hashed."
+      },
+      "external_source_contract_v1_fit": {
+        "evidence": [
+          "external-source-contract",
+          "calvin-audit"
+        ],
+        "status": "BLOCKED",
+        "summary": "Direct state is technically plausible, but public derived-state rights and a source-authoritative clock independently fail the contract. No partial contract fixture is valid without both."
+      },
+      "field_provenance": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "Official code and documentation map scene_obs[6:9] to red-block XYZ and robot_obs[0:3] to TCP XYZ. Boundary arrays were inspected as finite float64 despite documentation saying float32. The complete sequence was not inspected and no normalized field map was emitted."
+      },
+      "frozen_fixture_identities": {
+        "control_fingerprint_sha256": null,
+        "control_fixture_id": null,
+        "evidence": [
+          "calvin-audit"
+        ],
+        "incident_fingerprint_sha256": null,
+        "incident_fixture_id": null,
+        "shared_session_sha256": null,
+        "status": "NOT APPLICABLE"
+      },
+      "frame_authority_and_transform_model": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "PyBullet world coordinates and a direct XY projection are technically plausible; exact handedness was not found in the inspected official sources. No transform or polygon was frozen."
+      },
+      "independent_rerun_status": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No implemented path exists to rerun."
+      },
+      "information_loss": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "A proposed one-block mapping would retain only scene_obs red-block X/Y and discard Z, Euler orientation, robot state, fixtures, actions, language, images, tactile data, and outcomes. No full-sequence loss ranges were produced."
+      },
+      "limitations": [
+        "A documented NO-GO proves fail-closed gate enforcement; it does not establish CALVIN compatibility or support.",
+        "The full 1.3 GB archive and full candidate sequence were not downloaded or independently validated; generator identity and correction applicability remain unknown.",
+        "No exact timing, delay semantics, task success/failure, benchmark result, physical accuracy, simulator realism, safety, production readiness, adoption, or endorsement is claimed."
+      ],
+      "materialization_or_carry_forward_policy": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No adapter policy was implemented. The proposed direct-NPZ path would use no interpolation, resampling, or carry-forward and would reject incomplete samples."
+      },
+      "portable_evaluation_status": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No portable fixture exists."
+      },
+      "prohibited_semantics": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "VERIFIED",
+        "summary": "CALVIN support/compatibility, task success or failure, exact 30 Hz timestamps, delay duration, public raw or derived redistribution permission, full-sequence validation, benchmark performance, physical or simulator truth, safety, adoption, and endorsement are prohibited."
+      },
+      "raw_prepared_derived_normalized_boundary": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "The separately hosted ZIP contains direct timestep NPZ state plus media/action fields. Only small byte ranges and boundary members were inspected. No derived or normalized CALVIN values were published, and no source bytes entered the repository."
+      },
+      "regression_status": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No Atlas run or generated regression exists."
+      },
+      "reopening_criteria": [
+        "Obtain an official dataset license or explicit permission covering the debug archive and public redistribution of derived state.",
+        "Obtain an immutable archive/revision identity and an authoritative correction-status record.",
+        "Obtain source-authoritative per-sample timestamps or an official exact fixed-step guarantee that satisfies External Source Contract v1 without invention.",
+        "Independently verify the full archive, then complete an outcome-blind validation of every candidate sample. Maintainer contact requires separate owner authorization."
+      ],
+      "rights": {
+        "code": {
+          "evidence": [
+            "calvin-audit",
+            "calvin-code-commit",
+            "calvin-environment-commit"
+          ],
+          "status": "PARTIAL",
+          "summary": "The CALVIN root repository is MIT. calvin_env has an unresolved internal MIT LICENSE versus GPLv3 package-metadata conflict; no calvin_env code is copied."
+        },
+        "dataset": {
+          "evidence": [
+            "calvin-audit",
+            "calvin-archive"
+          ],
+          "status": "BLOCKED",
+          "summary": "The separately hosted debug archive contains no dataset-specific license or terms. Public download, academic-use wording, citation requests, and the code repository's MIT license do not establish dataset redistribution rights."
+        },
+        "derived_fixture": {
+          "evidence": [
+            "calvin-audit"
+          ],
+          "status": "BLOCKED",
+          "summary": "Permission to redistribute transformed scene_obs or robot_obs numeric state is unresolved, so no normalized public fixture was created."
+        }
+      },
+      "row_id": "calvin",
+      "source_family": "CALVIN",
+      "stable_identity_model": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "Scene D movable-object order is fixed as red, blue, pink and could map block_red to red_block_1, but this was verified only from official structure/code plus boundary files, not across the full sequence."
+      },
+      "status_label": "NO-GO / NOT SUPPORTED",
+      "supported_atlas_semantics": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "None. A non-time-based XY event was technically conceivable, but no contract-valid fixture can be emitted without rights and a compliant clock."
+      },
+      "supporting_artifacts": [
+        {
+          "id": "external-source-contract",
+          "identity": "External Source Contract v1 normative specification",
+          "kind": "repository_path",
+          "path": "docs/specs/external-source-contract-v1.md",
+          "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39",
+          "verification": "SHA-256 recomputed from public baseline 5606b956e9309802570cfa46857714722fd70187."
+        },
+        {
+          "id": "calvin-audit",
+          "identity": "CALVIN semantic-state adapter Phase-0 audit",
+          "kind": "repository_path",
+          "path": "docs/specs/calvin-semantic-state-adapter-audit.md",
+          "sha256": "e87fb2ee2509afba9633683074a7786325a3104619905a6129dda12655747388",
+          "verification": "Hash recomputed; current public main is byte-identical to the documentation-only public merge a8b67d58e00f7fcb9b090b2c95475d51b0ede81c."
+        },
+        {
+          "id": "calvin-code-commit",
+          "identity": "mees/calvin fa03f01f19c65920e18cf37398a9ce859274af76",
+          "kind": "external_artifact",
+          "url": "https://github.com/mees/calvin/tree/fa03f01f19c65920e18cf37398a9ce859274af76",
+          "verification": "The exact public commit resolves in the official repository. It is an audit identity, not an asserted dataset-generator identity."
+        },
+        {
+          "id": "calvin-environment-commit",
+          "identity": "mees/calvin_env 1431a46bd36bde5903fb6345e68b5ccc30def666",
+          "kind": "external_artifact",
+          "url": "https://github.com/mees/calvin_env/tree/1431a46bd36bde5903fb6345e68b5ccc30def666",
+          "verification": "The exact public commit resolves in the official repository."
+        },
+        {
+          "id": "calvin-archive",
+          "identity": "calvin_debug_dataset.zip, 1,299,150,917 bytes, published SHA-256 c66d09147e2c806b244f18ea7d61e388d4dac11f828929779437f728d03e1204",
+          "kind": "external_artifact",
+          "url": "http://calvin.cs.uni-freiburg.de/dataset/calvin_debug_dataset.zip",
+          "verification": "Identity was recorded from the official unsigned HTTP checksum inventory during the completed CALVIN audit. Only approximately 1.56 MB of unique archive ranges were inspected; the full digest was not independently recomputed."
+        }
+      ],
+      "units": {
+        "evidence": [
+          "calvin-audit"
+        ],
+        "status": "PARTIAL",
+        "summary": "TCP XYZ is documented as world metres; movable-block world/metre and Euler-radian meanings are supported source/API inferences. No supported elapsed-time unit exists for the published samples."
+      }
+    },
+    {
+      "atlas_rerun_status": {
+        "evidence": [
+          "robomimic-summary",
+          "robomimic-push-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "Three project-controlled evaluations per variant were semantically equivalent; post-merge portable CI evaluated both checked-in frozen fixtures across all four OS/Python rows."
+      },
+      "authoritative_clock_and_domain": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-adapter-audit"
+        ],
+        "status": "VERIFIED",
+        "summary": "Raw MuJoCo simulation time is data/demo_0/states[:,0]. All 23,007 corpus-wide adjacent within-demo differences are 0.05 simulated seconds within floating representation; row i maps exactly to ts_sim_ns=i*50,000,000. The 118 frames span 0 through 5.85 s."
+      },
+      "compatibility_counted": true,
+      "complete_snapshot_and_missing_state_policy": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-field-provenance"
+        ],
+        "status": "VERIFIED",
+        "summary": "All 118 prepared obs rows become complete two-entity snapshots. Can and TCP are known on every frame; omission, unknown, nonfinite, duplicate, or mismatched state rejects the fixture. No T+1 frame is fabricated."
+      },
+      "decision": "GO",
+      "deterministic_conversion_status": {
+        "evidence": [
+          "robomimic-summary",
+          "robomimic-dispatch-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "The frozen cfc285a3 fixture records three byte-equivalent clean conversions and 28 equivalent artifacts. Later first-party dispatch separately reacquired and audited the source and produced three mutually equivalent current-head conversions with the same normalized session; because current HEAD is recorded as adapter provenance, it did not reproduce the frozen fixture fingerprints byte-for-byte."
+      },
+      "evidence_bundle_status": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-push-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "The incident path produced one verified evidence bundle. The no-incident control correctly produced none."
+      },
+      "exact_source_artifact_identity": {
+        "evidence": [
+          "robomimic-summary",
+          "robomimic-manifest",
+          "robomimic-dispatch-workflow",
+          "robomimic-main"
+        ],
+        "status": "VERIFIED",
+        "summary": "Public main baseline 5606b956e9309802570cfa46857714722fd70187; adapter cfc285a3e757fdf742858b1c4cf685c384d01e8b; robomimic_datasets revision 74fa018461f479cd9fd15b924a16103012096203; raw v1.5/can/ph/demo_v15.hdf5 SHA-256 86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d; prepared low_dim_v15.hdf5 SHA-256 3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962."
+      },
+      "external_source_contract_v1_fit": {
+        "evidence": [
+          "external-source-contract",
+          "robomimic-manifest",
+          "robomimic-push-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "Both derived-only portable bundles validate under External Source Contract v1 and the complete-snapshot profile without source dependencies at evaluation time."
+      },
+      "field_provenance": {
+        "evidence": [
+          "robomimic-field-provenance",
+          "robomimic-adapter-audit",
+          "robomimic-manifest"
+        ],
+        "status": "VERIFIED",
+        "summary": "Can uses prepared data/demo_0/obs/object[:,7:10], witnessed array-exactly by raw Can_joint0 translation for all 23,207 rows. TCP uses prepared robot0_eef_pos, witnessed by independent named-site XML forward kinematics for all 23,207 rows with maximum absolute error 1.1102230246251565e-15 m. Prepared fields remain classified as prepared, not raw."
+      },
+      "frozen_fixture_identities": {
+        "control_fingerprint_sha256": "dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf",
+        "control_fixture_id": "robomimic-can-ph-demo-0-planar-control-v1",
+        "evidence": [
+          "robomimic-summary",
+          "robomimic-manifest"
+        ],
+        "incident_fingerprint_sha256": "6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6",
+        "incident_fixture_id": "robomimic-can-ph-demo-0-planar-incident-v1",
+        "shared_session_sha256": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246",
+        "status": "VERIFIED"
+      },
+      "frame_authority_and_transform_model": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-field-provenance"
+        ],
+        "status": "VERIFIED",
+        "summary": "Both positions are in robosuite_world under pinned MuJoCo semantics. World X/Y use an identity transform; normalized Z is 0.0. Polygon zone assignment is a separate operator-authored operation."
+      },
+      "independent_rerun_status": {
+        "evidence": [
+          "robomimic-verification",
+          "robomimic-dispatch-workflow"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No attributable outside evaluator rerun is recorded. Local and GitHub Actions repetitions are first-party project-controlled evidence."
+      },
+      "information_loss": {
+        "evidence": [
+          "robomimic-field-provenance",
+          "robomimic-red-team"
+        ],
+        "status": "VERIFIED",
+        "summary": "Source Z, both quaternions and all orientation, relative fields, articulation, velocities, actions, contacts, grasp/controller state, rewards, dones, source outcomes, next_obs, images, and model details are excluded from normalized evaluation."
+      },
+      "limitations": [
+        "One 118-frame Can PH demo_0 trajectory from one upstream success-filtered corpus and operator; outcome-blind selection applies only within that corpus.",
+        "Position-only planar arrival/required-presence timing under Metriplane-authored polygon and waits, not official Can success/failure, continued co-occupancy, 3D pose, placement or grasp correctness.",
+        "No physical or simulator accuracy, safety, quality, production readiness, general robomimic compatibility, general HDF5 support, endorsement, independent adoption, or proof that the audited current code historically generated the prepared bytes."
+      ],
+      "materialization_or_carry_forward_policy": {
+        "evidence": [
+          "robomimic-manifest"
+        ],
+        "status": "VERIFIED",
+        "summary": "partial_updates_materialized is false. Carry-forward, interpolation, and resampling are none; synchronization is not applicable because both observations are from the same row. Exactly obs is consumed; next_obs and action replay are excluded."
+      },
+      "portable_evaluation_status": {
+        "evidence": [
+          "robomimic-push-workflow",
+          "robomimic-dispatch-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "The checked-in frozen fixtures passed installed-wheel evaluation on Ubuntu and macOS with Python 3.12 and 3.13. Runtime excludes the adapter, robomimic, robosuite, MuJoCo, Torch, h5py, Hugging Face tooling, and source HDF5 files."
+      },
+      "prohibited_semantics": {
+        "evidence": [
+          "robomimic-red-team",
+          "robomimic-manifest"
+        ],
+        "status": "VERIFIED",
+        "summary": "Official Can success/failure, reward/done interpretation, grasp/contact or retention semantics, 3D pose/orientation, physics or simulator truth, safety/quality, source endorsement, universal HDF5 or general robomimic support are prohibited."
+      },
+      "raw_prepared_derived_normalized_boundary": {
+        "evidence": [
+          "robomimic-adapter-audit",
+          "robomimic-field-provenance",
+          "robomimic-manifest"
+        ],
+        "status": "VERIFIED",
+        "summary": "Referenced raw HDF5 carries flattened MuJoCo states, actions, embedded models and metadata. Referenced prepared HDF5 carries simulator-derived obs/next_obs plus copied source fields. The adapter consumes two raw-witnessed prepared obs fields, derives identity/time/XY/zone records, and emits normalized JSONL; operator rules and Atlas results remain later layers."
+      },
+      "regression_status": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-push-workflow"
+        ],
+        "status": "VERIFIED",
+        "summary": "The incident path generated one passing regression, including after relocation. The no-incident control correctly generated none."
+      },
+      "reopening_criteria": [
+        "No reopening is needed for this exact GO row; any other task, dataset version, prepared-field set, episode, semantic rule, source environment, or claim requires a new bounded audit and fixture.",
+        "Independent-validation status changes only after an attributable outside evaluator reruns the path.",
+        "Any exact frozen-byte conversion rerun must preserve the frozen adapter provenance identity rather than substituting the current checkout HEAD."
+      ],
+      "rights": {
+        "code": {
+          "evidence": [
+            "robomimic-rights",
+            "robomimic-adapter-commit"
+          ],
+          "status": "VERIFIED",
+          "summary": "robomimic and robosuite code are MIT and were inspected, not packaged. The independently authored isolated adapter is MIT."
+        },
+        "dataset": {
+          "evidence": [
+            "robomimic-rights",
+            "robomimic-manifest"
+          ],
+          "status": "VERIFIED",
+          "summary": "The exact immutable robomimic dataset revision declares MIT and no path-specific override was found. Raw and prepared HDF5 remain referenced and absent from the repository."
+        },
+        "derived_fixture": {
+          "evidence": [
+            "robomimic-rights",
+            "robomimic-manifest"
+          ],
+          "status": "VERIFIED",
+          "summary": "The normalized numeric derivative is MIT-treated with immutable source attribution, MIT notice, and a conspicuous modification notice. Source frameworks, XML/model bytes, simulator assets, images, video, and raw HDF5 are excluded."
+        }
+      },
+      "row_id": "robomimic",
+      "source_family": "robomimic",
+      "stable_identity_model": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-field-provenance"
+        ],
+        "status": "VERIFIED",
+        "summary": "A one-to-one mapping binds the named Can observation to can_1/material and the named Panda grip-site observation to robot_tcp_1/tool. Entity-mapping SHA-256 is 51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c."
+      },
+      "status_label": "GO / PROVEN EXTERNAL SOURCE",
+      "supported_atlas_semantics": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-red-team"
+        ],
+        "status": "VERIFIED",
+        "summary": "Bounded XY arrival/required-presence timing under an inclusive operator polygon. Incident wait 2.0 s: 118/4/1/1 and one missing_tool_caused_delay. Control wait 2.5 s: 118/3/0/0. Shared session bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246."
+      },
+      "supporting_artifacts": [
+        {
+          "id": "external-source-contract",
+          "identity": "External Source Contract v1 normative specification",
+          "kind": "repository_path",
+          "path": "docs/specs/external-source-contract-v1.md",
+          "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39",
+          "verification": "SHA-256 recomputed from public baseline 5606b956e9309802570cfa46857714722fd70187."
+        },
+        {
+          "id": "robomimic-main",
+          "identity": "5606b956e9309802570cfa46857714722fd70187",
+          "kind": "git_commit",
+          "url": "https://github.com/Miko997/metriplane/commit/5606b956e9309802570cfa46857714722fd70187",
+          "verification": "Public main resolved exactly to this merge at the publication start gate."
+        },
+        {
+          "id": "robomimic-adapter-commit",
+          "identity": "cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+          "kind": "git_commit",
+          "url": "https://github.com/Miko997/metriplane/commit/cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+          "verification": "Public ancestor of main. The adapter subtree tree object at cfc285a3 and 5606b956 is identical: 94f946232a8139b216512ef796af248bc8e2f366."
+        },
+        {
+          "id": "robomimic-summary",
+          "identity": "frozen conversion summary",
+          "kind": "repository_path",
+          "path": "examples/external_sources/robomimic_lowdim/conversion-summary.json",
+          "sha256": "49105fd28491ffe39b20aef37bd61dfdf6ec40affc42c822f041c9bc025e3d9f",
+          "verification": "Hash recomputed; both fixture checksum inventories pass at the public baseline."
+        },
+        {
+          "id": "robomimic-manifest",
+          "identity": "incident External Source Contract manifest",
+          "kind": "repository_path",
+          "path": "examples/external_sources/robomimic_lowdim/incident/source-manifest.json",
+          "sha256": "866b98ad23e21942985d3be051715e0291ba5ba3323f852184dfe214c04e9d35",
+          "verification": "Hash recomputed; incident and control manifests retain the frozen cfc285a3 adapter identity."
+        },
+        {
+          "id": "robomimic-adapter-audit",
+          "identity": "robomimic Can low-dimensional adapter audit",
+          "kind": "repository_path",
+          "path": "docs/specs/robomimic-can-lowdim-adapter-audit.md",
+          "sha256": "e8ddeda3ef866aeafb0e27812c7474fe2e2f97d99c7ca11b091090a3373b7739",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "robomimic-field-provenance",
+          "identity": "raw/prepared/normalized field provenance and loss record",
+          "kind": "repository_path",
+          "path": "docs/specs/met18-source-field-provenance.md",
+          "sha256": "d3aa199ceb793246464172f160f7e28a1ed9d04910d93dd11a458982625aee0a",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "robomimic-rights",
+          "identity": "robomimic source and redistribution matrix",
+          "kind": "repository_path",
+          "path": "docs/specs/robomimic-can-lowdim-rights-matrix.md",
+          "sha256": "f70b6b45fa71131fd25df24a6ebb874957d0f0370e8be97929e6d3351308aaca",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "robomimic-red-team",
+          "identity": "robomimic adversarial and falsification gate",
+          "kind": "repository_path",
+          "path": "docs/specs/robomimic-can-lowdim-red-team.md",
+          "sha256": "419ed1028c9c5d66936c8d8d2dd22f6572ba8baa88eea2928b995b3d134a8829",
+          "verification": "SHA-256 recomputed at the public baseline."
+        },
+        {
+          "id": "robomimic-verification",
+          "identity": "robomimic local verification ledger",
+          "kind": "repository_path",
+          "path": "docs/specs/robomimic-can-lowdim-verification.md",
+          "sha256": "bf44f4c6e895a6bf11b5ec3078d3a86d02cc965836e57b2f59c3a58bbdf554ad",
+          "verification": "Hash recomputed. Historical pending status prose is not used as current workflow evidence."
+        },
+        {
+          "id": "robomimic-push-workflow",
+          "identity": "robomimic Low-Dimensional Fixture push run 31619605287 at 5606b956e9309802570cfa46857714722fd70187",
+          "kind": "workflow_run",
+          "url": "https://github.com/Miko997/metriplane/actions/runs/31619605287",
+          "verification": "Completed success: adapter Python 3.12, frozen assertions, and all four Ubuntu/macOS Python 3.12/3.13 portable rows passed; dispatch-only source job correctly skipped."
+        },
+        {
+          "id": "robomimic-dispatch-workflow",
+          "identity": "robomimic Low-Dimensional Fixture dispatch run 31619957092 at 5606b956e9309802570cfa46857714722fd70187",
+          "kind": "workflow_run",
+          "url": "https://github.com/Miko997/metriplane/actions/runs/31619957092",
+          "verification": "Completed success: exact source pair acquired and rehashed, 200 demos/23,207 rows audited, three current-head conversions and 28-artifact equivalence passed, and all four portable rows passed. The dispatch records current HEAD as adapter provenance and is not an exact frozen-fingerprint rerun."
+        }
+      ],
+      "units": {
+        "evidence": [
+          "robomimic-manifest",
+          "robomimic-adapter-audit"
+        ],
+        "status": "VERIFIED",
+        "summary": "robosuite_world positions are metres; raw simulation time is seconds and normalized authoritative time is integer nanoseconds."
+      }
+    },
+    {
+      "atlas_rerun_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No Atlas run exists."
+      },
+      "authoritative_clock_and_domain": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No artifact-specific clock proof was completed."
+      },
+      "compatibility_counted": false,
+      "complete_snapshot_and_missing_state_policy": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No HDF5 body was inspected for complete process-relevant snapshots, missing state, or partial-update semantics."
+      },
+      "decision": "PARTIALLY SUPPORTED",
+      "deterministic_conversion_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No converter was implemented or run."
+      },
+      "evidence_bundle_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No fixture or evidence bundle exists."
+      },
+      "exact_source_artifact_identity": {
+        "evidence": [
+          "source-comparison-record",
+          "mimicgen-code-commit",
+          "mimicgen-dataset"
+        ],
+        "status": "PARTIAL",
+        "summary": "Official code NVlabs/mimicgen at 72bd767c255545f462e7ccfb2731f2e5d4c1d9bb; tag v1.0.0 at ea0988523f468ccf7570475f1906023f854962e9; dataset amandlek/mimicgen_datasets revision 33016f8a62c02334f929f2913af8fdd2a8a129e1. Candidate source/square.hdf5 was recorded as 16,451,426 bytes with SHA-256 c917e99362fd9bd11978d6e2642c1ea88272702fbf55b50367ed471febf550e2, but its body was not downloaded or locally rehashed."
+      },
+      "external_source_contract_v1_fit": {
+        "evidence": [
+          "external-source-contract",
+          "source-comparison-record"
+        ],
+        "status": "PARTIAL",
+        "summary": "The raw/prepared separation is a design fit, but no immutable raw/preparation/prepared chain, clock, complete field map, adapter, or contract fixture was demonstrated. PARTIALLY SUPPORTED here means audit coverage only, not compatibility."
+      },
+      "field_provenance": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No source body or candidate fields were inspected. Derived pose, gripper, and datagen_info fields were not accepted as raw facts."
+      },
+      "frozen_fixture_identities": {
+        "control_fingerprint_sha256": null,
+        "control_fixture_id": null,
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "incident_fingerprint_sha256": null,
+        "incident_fixture_id": null,
+        "shared_session_sha256": null,
+        "status": "NOT APPLICABLE"
+      },
+      "frame_authority_and_transform_model": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No frame, transform, projection, or zone model was verified."
+      },
+      "independent_rerun_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No implemented path exists to rerun."
+      },
+      "information_loss": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No normalized field set or loss statement was produced."
+      },
+      "limitations": [
+        "This is a partially completed identity/rights/provenance audit, not a compatibility proof, GO, or NO-GO decision.",
+        "No HDF5 body, clock, fields, frames, units, identity model, completeness, materialization policy, planar fit, conversion, fixture, Atlas result, evidence, regression, or independent rerun was tested.",
+        "The generated core/square_d0.hdf5 artifact is not a prepared counterpart to the human source."
+      ],
+      "materialization_or_carry_forward_policy": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No preparation, synchronization, materialization, or carry-forward policy was inspected or implemented."
+      },
+      "portable_evaluation_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No portable fixture exists."
+      },
+      "prohibited_semantics": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "MimicGen compatibility, deterministic conversion, source-clock or field claims, Atlas outcomes, evidence/regression, and general task support are prohibited until the audit is reopened and completed."
+      },
+      "raw_prepared_derived_normalized_boundary": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "BLOCKED",
+        "summary": "Documentation says historical paper data moved from robosuite v1.2 to v1.4, but no immutable original-raw identity or exact transformation command/environment/lock was established for the inspected path. No normalized output exists."
+      },
+      "regression_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No Atlas run or generated regression exists."
+      },
+      "reopening_criteria": [
+        "Approve a narrower source boundary or obtain an official immutable original-raw and preparation record for the selected human source.",
+        "Establish artifact-specific authoritative clock evidence.",
+        "Perform deterministic local preparation and full field/frame/unit/identity/completeness audits before deciding GO, PARTIAL, or NO-GO."
+      ],
+      "rights": {
+        "code": {
+          "evidence": [
+            "source-comparison-record",
+            "mimicgen-code-commit"
+          ],
+          "status": "VERIFIED",
+          "summary": "Official code uses separate NVIDIA source terms with a noncommercial research/evaluation restriction as recorded by the completed audit. The exact formal license identifier/version was not frozen; no MimicGen code may enter Metriplane's MIT package."
+        },
+        "dataset": {
+          "evidence": [
+            "source-comparison-record",
+            "mimicgen-dataset"
+          ],
+          "status": "VERIFIED",
+          "summary": "The pinned dataset revision declares CC BY 4.0, separate from code terms."
+        },
+        "derived_fixture": {
+          "evidence": [
+            "source-comparison-record"
+          ],
+          "status": "PARTIAL",
+          "summary": "Current data terms could support an attributed modified numeric derivative, but favorable rights do not fill the missing raw/preparation provenance chain; no fixture was created."
+        }
+      },
+      "row_id": "mimicgen",
+      "source_family": "MimicGen",
+      "stable_identity_model": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No source entity identity or normalized mapping was inspected."
+      },
+      "status_label": "PARTIALLY AUDITED / NOT IMPLEMENTED",
+      "supported_atlas_semantics": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "None demonstrated."
+      },
+      "supporting_artifacts": [
+        {
+          "id": "external-source-contract",
+          "identity": "External Source Contract v1 normative specification",
+          "kind": "repository_path",
+          "path": "docs/specs/external-source-contract-v1.md",
+          "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39",
+          "verification": "SHA-256 recomputed from public baseline 5606b956e9309802570cfa46857714722fd70187."
+        },
+        {
+          "id": "source-comparison-record",
+          "identity": "Ordered low-dimensional source comparison and MimicGen partial audit",
+          "kind": "repository_path",
+          "path": "docs/specs/met18-lowdim-source-comparison.md",
+          "sha256": "7855d0513de896d87c8591e72e806e2016226aba2b33f2ec6056f085891b73aa",
+          "verification": "SHA-256 recomputed at the public baseline. It explicitly records that no MimicGen or RoboCasa body was downloaded."
+        },
+        {
+          "id": "mimicgen-code-commit",
+          "identity": "NVlabs/mimicgen 72bd767c255545f462e7ccfb2731f2e5d4c1d9bb; latest actual tag v1.0.0 at ea0988523f468ccf7570475f1906023f854962e9",
+          "kind": "external_artifact",
+          "url": "https://github.com/NVlabs/mimicgen/tree/72bd767c255545f462e7ccfb2731f2e5d4c1d9bb",
+          "verification": "Both exact public commits resolve in the official repository. No code was copied."
+        },
+        {
+          "id": "mimicgen-dataset",
+          "identity": "amandlek/mimicgen_datasets revision 33016f8a62c02334f929f2913af8fdd2a8a129e1, CC BY 4.0",
+          "kind": "external_artifact",
+          "url": "https://huggingface.co/datasets/amandlek/mimicgen_datasets/tree/33016f8a62c02334f929f2913af8fdd2a8a129e1",
+          "verification": "Immutable revision and CC BY 4.0 terms are recorded by the completed source comparison. The candidate HDF5 body was not downloaded or locally rehashed."
+        }
+      ],
+      "units": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No candidate field units were verified."
+      }
+    },
+    {
+      "atlas_rerun_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No source audit, fixture, or Atlas run exists."
+      },
+      "authoritative_clock_and_domain": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected."
+      },
+      "compatibility_counted": false,
+      "complete_snapshot_and_missing_state_policy": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected."
+      },
+      "decision": "NOT TESTED",
+      "deterministic_conversion_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No converter exists."
+      },
+      "evidence_bundle_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No fixture or evidence bundle exists."
+      },
+      "exact_source_artifact_identity": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No RoboCasa or RoboCasa365 source artifact, revision, path, or hash was selected or inspected."
+      },
+      "external_source_contract_v1_fit": {
+        "evidence": [
+          "external-source-contract",
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No fit decision was made."
+      },
+      "field_provenance": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No fields were inspected."
+      },
+      "frozen_fixture_identities": {
+        "control_fingerprint_sha256": null,
+        "control_fixture_id": null,
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "incident_fingerprint_sha256": null,
+        "incident_fixture_id": null,
+        "shared_session_sha256": null,
+        "status": "NOT TESTED"
+      },
+      "frame_authority_and_transform_model": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected."
+      },
+      "independent_rerun_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No implemented path exists to rerun."
+      },
+      "information_loss": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No normalization or information-loss analysis was performed."
+      },
+      "limitations": [
+        "The family was not inspected because robomimic became the first-candidate GO in the ordered source comparison.",
+        "No source, license, clock, field, frame, unit, identity, completeness, conversion, fixture, Atlas, evidence, regression, or compatibility fact is inferred."
+      ],
+      "materialization_or_carry_forward_policy": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected."
+      },
+      "portable_evaluation_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No portable fixture exists."
+      },
+      "prohibited_semantics": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "VERIFIED",
+        "summary": "Any RoboCasa/RoboCasa365 support, compatibility, rights, field, timing, conversion, or outcome claim is prohibited until a separate authorized audit occurs."
+      },
+      "raw_prepared_derived_normalized_boundary": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected; no cells are filled by analogy to another HDF5 family."
+      },
+      "regression_status": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No Atlas run or regression exists."
+      },
+      "reopening_criteria": [
+        "Open a separately authorized source audit with an exact artifact and immutable revision.",
+        "Verify source-specific rights, clock, frames, units, identity, completeness, provenance, and information loss before any implementation or support classification."
+      ],
+      "rights": {
+        "code": {
+          "evidence": [
+            "source-comparison-record"
+          ],
+          "status": "NOT TESTED",
+          "summary": "Not inspected."
+        },
+        "dataset": {
+          "evidence": [
+            "source-comparison-record"
+          ],
+          "status": "NOT TESTED",
+          "summary": "Not inspected."
+        },
+        "derived_fixture": {
+          "evidence": [
+            "source-comparison-record"
+          ],
+          "status": "NOT TESTED",
+          "summary": "No derived fixture exists and no permission is inferred."
+        }
+      },
+      "row_id": "robocasa",
+      "source_family": "RoboCasa / RoboCasa365",
+      "stable_identity_model": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected."
+      },
+      "status_label": "NOT INSPECTED / NOT TESTED",
+      "supported_atlas_semantics": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "None demonstrated."
+      },
+      "supporting_artifacts": [
+        {
+          "id": "external-source-contract",
+          "identity": "External Source Contract v1 normative specification",
+          "kind": "repository_path",
+          "path": "docs/specs/external-source-contract-v1.md",
+          "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39",
+          "verification": "SHA-256 recomputed from public baseline 5606b956e9309802570cfa46857714722fd70187."
+        },
+        {
+          "id": "source-comparison-record",
+          "identity": "Ordered low-dimensional source comparison",
+          "kind": "repository_path",
+          "path": "docs/specs/met18-lowdim-source-comparison.md",
+          "sha256": "7855d0513de896d87c8591e72e806e2016226aba2b33f2ec6056f085891b73aa",
+          "verification": "The record explicitly marks RoboCasa/RoboCasa365 NOT INSPECTED and says no body was downloaded."
+        }
+      ],
+      "units": {
+        "evidence": [
+          "source-comparison-record"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Not inspected."
+      }
+    },
+    {
+      "atlas_rerun_status": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No ROS 2/MCAP fixture or Atlas run exists."
+      },
+      "authoritative_clock_and_domain": {
+        "evidence": [
+          "external-source-contract",
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "A future bounded profile must choose one explicit source/header/bag clock and domain and reject nominal rate, mixed clocks, default timestamps, and unjustified MCAP log time. No recording has been selected or tested."
+      },
+      "compatibility_counted": false,
+      "complete_snapshot_and_missing_state_policy": {
+        "evidence": [
+          "external-source-contract",
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "The planned profile must materialize bounded complete snapshots and reject unknown state; no topic set, trigger, skew, or staleness bound has been tested."
+      },
+      "decision": "NOT TESTED",
+      "deterministic_conversion_status": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No converter exists."
+      },
+      "evidence_bundle_status": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No fixture or evidence bundle exists."
+      },
+      "exact_source_artifact_identity": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No ROS 2 recording, MCAP/rosbag2 artifact, message schema, topic set, TF tree, calibration sidecar, revision, or SHA-256 has been selected."
+      },
+      "external_source_contract_v1_fit": {
+        "evidence": [
+          "external-source-contract",
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Contract v1 contains a design-fit row for already-estimated ROS 2 pose/TF state, not an implemented compatibility claim. A future implementation must prove one bounded profile without changing the contract."
+      },
+      "field_provenance": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "The planned profile requires explicit topic, message schema, field path, entity, frame, unit, transform, clock, and provenance mapping. No such map exists yet."
+      },
+      "frozen_fixture_identities": {
+        "control_fingerprint_sha256": null,
+        "control_fixture_id": null,
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "incident_fingerprint_sha256": null,
+        "incident_fixture_id": null,
+        "shared_session_sha256": null,
+        "status": "NOT TESTED"
+      },
+      "frame_authority_and_transform_model": {
+        "evidence": [
+          "external-source-contract",
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "A future profile requires an explicit acyclic TF2 path with static/dynamic distinction and rejects missing or ambiguous transforms and undeclared interpolation. No frame tree has been tested."
+      },
+      "independent_rerun_status": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No implemented path exists to rerun."
+      },
+      "information_loss": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No source fields, transforms, projection, or information-loss record exists."
+      },
+      "limitations": [
+        "This remains separately authorized future work and is not part of this publication.",
+        "MCAP is storage/transport, not semantic compatibility. No ROS 2, MCAP, rosbag2, TF2, arbitrary topic, automatic discovery, or general format-family support claim currently exists.",
+        "No source recording, rights, clock, frame tree, units, identities, completeness, conversion, fixture, Atlas result, evidence, regression, portability, or independent rerun has been tested."
+      ],
+      "materialization_or_carry_forward_policy": {
+        "evidence": [
+          "external-source-contract",
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "The future profile must declare sampling trigger, synchronization tolerance, bounded carry-forward, maximum staleness, and rejection behavior. No policy has been implemented."
+      },
+      "portable_evaluation_status": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No portable ROS-independent fixture exists."
+      },
+      "prohibited_semantics": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "VERIFIED",
+        "summary": "General ROS 2/MCAP/rosbag2 support, arbitrary topic discovery, automatic semantics, source outcomes as Atlas truth, control, perception, physical accuracy, safety, calibration validity, production readiness, endorsement, and adoption are prohibited."
+      },
+      "raw_prepared_derived_normalized_boundary": {
+        "evidence": [
+          "external-source-contract",
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "Planned only: referenced MCAP/rosbag2 plus message definitions and TF/calibration sidecars; direct message fields separated from derived TF composition, synchronization, materialization, identity mapping, zones, and normalized snapshots. No concrete boundary exists."
+      },
+      "regression_status": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "No Atlas run or generated regression exists."
+      },
+      "reopening_criteria": [
+        "Begin a separate bounded profile only with owner authorization.",
+        "Select one legally usable immutable recording and pin every message schema, topic, source entity, frame path, unit, authoritative clock/domain, identity, completeness/materialization policy, and artifact hash.",
+        "Implement and verify a deterministic isolated conversion and ROS-independent portable fixture before changing this row from NOT TESTED."
+      ],
+      "rights": {
+        "code": {
+          "evidence": [
+            "future-ros-profile"
+          ],
+          "status": "NOT TESTED",
+          "summary": "No adapter/tooling set has been selected or audited."
+        },
+        "dataset": {
+          "evidence": [
+            "future-ros-profile"
+          ],
+          "status": "NOT TESTED",
+          "summary": "No recording rights, embedded schema rights, calibration rights, or payload terms have been inspected. A ROS software license would not grant rights to a recording payload."
+        },
+        "derived_fixture": {
+          "evidence": [
+            "future-ros-profile"
+          ],
+          "status": "NOT TESTED",
+          "summary": "No normalized fixture exists and no derived-data permission is inferred."
+        }
+      },
+      "row_id": "ros2_mcap_tf2",
+      "source_family": "ROS 2 / MCAP + TF2",
+      "stable_identity_model": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "The future profile requires explicit source-entity to normalized-ID mapping; no entity model has been selected."
+      },
+      "status_label": "PLANNED / NOT TESTED",
+      "supported_atlas_semantics": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT APPLICABLE",
+        "summary": "None demonstrated."
+      },
+      "supporting_artifacts": [
+        {
+          "id": "external-source-contract",
+          "identity": "External Source Contract v1 normative specification and design-fit row",
+          "kind": "repository_path",
+          "path": "docs/specs/external-source-contract-v1.md",
+          "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39",
+          "verification": "The contract documents a potential already-estimated pose/TF boundary while explicitly withholding compatibility until a real adapter and fixture exist."
+        },
+        {
+          "id": "future-ros-profile",
+          "identity": "Reopening criteria for a future ROS 2/MCAP + TF2 profile",
+          "kind": "repository_path",
+          "path": "docs/user-guide/external-source-family-matrix-v1/REOPENING.md",
+          "sha256": "ed414bca666ca164fe7af2ab68b606a8fcd6de25d822277ef3cb6cc5b9a6b4fb",
+          "verification": "The publication records this as separately authorized future work and makes no current compatibility claim."
+        }
+      ],
+      "units": {
+        "evidence": [
+          "future-ros-profile"
+        ],
+        "status": "NOT TESTED",
+        "summary": "No message-field units or conversions have been selected or verified."
+      }
+    }
+  ],
+  "schema_version": "org.metriplane.external_source_family_matrix.v1"
+}
