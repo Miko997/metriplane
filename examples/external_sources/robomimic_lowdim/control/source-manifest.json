@@ -1,0 +1,583 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.robomimic_lowdim",
+    "commit": "cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+    "entrypoint": "robomimic_lowdim.cli:main",
+    "environment": {
+      "architecture": "x86_64",
+      "dependency_lock": {
+        "media_type": "text/plain",
+        "path": "source/uv.lock",
+        "sha256": "86dab2c05dce00cb40db03ddea9848da227451661cd30aaa0f3eda72a35fc4ff"
+      },
+      "description": "Pinned isolated Linux direct-HDF5 conversion environment; no robomimic, robosuite, MuJoCo, Torch, or source simulator is imported.",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12"
+    },
+    "name": "Metriplane robomimic low-dimensional adapter",
+    "parameters": {
+      "reference": {
+        "media_type": "application/json",
+        "path": "source/frozen-config.json",
+        "sha256": "3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5"
+      },
+      "sha256": "3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5"
+    },
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "contract_profile": "metriplane.atlas.complete_snapshot.v1",
+  "domain_pack": {
+    "assets": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "62442945c01d205d66c156e9ff5b508bef26afaef6d2e8b1be0a8d93fe8b8357"
+    },
+    "contracts": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/contracts.yaml",
+      "sha256": "75cb6788a9ead050d4168d1a5f88890c5a016ac180bb68d7977a9ec31064b6d5"
+    },
+    "domain_pack_id": "robomimic-can-ph-planar-control-v1",
+    "process": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/process.yaml",
+      "sha256": "6b6aaa2eba51429889858a21294f38bb47ddd76edc4fa711ce5e9b7c35f25e77"
+    },
+    "rationale": "The operator froze a 0.04 m square around the selected source Can row-0 XY. It is a compatibility-test rule, not the source task's success definition.",
+    "rule_origin": "operator_configured_rules",
+    "source_annotations_used": false,
+    "work_orders": {
+      "media_type": "text/csv",
+      "path": "domain-pack/work_orders.csv",
+      "sha256": "b2ee02ad72a041cc12624aa0d88923ba5c79e074e71b0fa3c0ce00cd1c4f741c"
+    },
+    "workspace": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/workspace.yaml",
+      "sha256": "6b4b4994f06c2be4fc42e5edaaffd5632cb18b0c2e2673d5217e14a0574acdfb"
+    }
+  },
+  "evaluation": {
+    "domain_pack_id": "robomimic-can-ph-planar-control-v1",
+    "engine": "atlas",
+    "expected_outcome_is_input": false,
+    "metriplane_version": "0.3.0",
+    "provenance_layer": "metriplane_derived_results"
+  },
+  "extensions": {
+    "org.robomimic.can_ph": {
+      "artifact_environment_boundary": {
+        "current_project_commits_used_as_generation_identity": false,
+        "prepared_robosuite_version": "1.5.1",
+        "raw_robosuite_version": "1.5.0"
+      },
+      "code_identity_context": {
+        "hosted_artifact_generation_commit_claimed": false,
+        "prepared_robosuite_commit": "51cc01785bab80ffeed20da15e67d7dd4140e76a",
+        "prepared_robosuite_release": "v1.5.1",
+        "raw_robosuite_commit": "1a8701b90c07c6595ace4af9935d7c5ebe1baed3",
+        "raw_robosuite_release": "v1.5.0",
+        "robomimic_commit": "d309eaecc18acf4152a830a895a6984b8ac71b05",
+        "robomimic_package": "0.5.0"
+      },
+      "corpus_limitation": "Episode selection was outcome-blind only within an upstream success-filtered corpus.",
+      "prepared_field_witnesses": {
+        "can": "array-exact named Can_joint0 qpos translation",
+        "tcp": "independent embedded-XML FK to gripper0_right_grip_site within 2e-12"
+      },
+      "real_source_audit": {
+        "can_named_qpos_rows_verified": 23207,
+        "clock_rows_verified": 23207,
+        "demo_count": 200,
+        "mask_membership_equal": true,
+        "max_fk_abs_error_m": 1.1102230246251565e-15,
+        "prepared_environment_version": "1.5.1",
+        "prepared_sha256_after": "3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962",
+        "prepared_sha256_before": "3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962",
+        "raw_environment_version": "1.5.0",
+        "raw_sha256_after": "86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d",
+        "raw_sha256_before": "86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d",
+        "selected_demo": "demo_0",
+        "selected_frame_count": 118,
+        "source_unchanged_during_conversion": true,
+        "states_actions_model_sample_masks_equal": true
+      },
+      "selection_accounting": {
+        "demo_id": "demo_0",
+        "normalized_frames": 118,
+        "prepared_observation_rows": 118,
+        "raw_state_rows": 118
+      },
+      "source_byte_sizes": {
+        "prepared_hdf5": 46889752,
+        "raw_hdf5": 64932974
+      },
+      "source_field_exclusions": [
+        "object relative-to-EEF position/quaternion block",
+        "object and TCP z",
+        "object and TCP quaternion",
+        "actions",
+        "next_obs",
+        "rewards",
+        "dones",
+        "filter membership"
+      ]
+    }
+  },
+  "fixture": {
+    "bounded_recording": true,
+    "description": "All 118 prepared obs rows from pinned Can PH demo_0, normalized as complete position-only Can and robot TCP planar snapshots.",
+    "distribution": "derived_only",
+    "fixture_id": "robomimic-can-ph-demo-0-planar-control-v1",
+    "title": "robomimic Can PH demo_0 planar control fixture"
+  },
+  "limitations": [
+    "This fixture evaluates bounded XY occupancy and timing only; it does not evaluate 3D placement, orientation, grasp state, reward, or official Can task success.",
+    "Prepared named observations are consumed as prepared fields, not represented as raw source truth; raw states and embedded XML are correspondence witnesses.",
+    "Source Z and complete source quaternions, including yaw, roll, and pitch, are excluded from normalized evaluation.",
+    "Episode selection was outcome-blind only within an upstream success-filtered corpus.",
+    "The target polygon and both waits are operator-authored compatibility-test rules, not robomimic or robosuite task semantics.",
+    "This single trajectory establishes no general robomimic compatibility, physical accuracy, safety, quality, or source-project endorsement."
+  ],
+  "normalization": {
+    "atlas_asset_mapping": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "62442945c01d205d66c156e9ff5b508bef26afaef6d2e8b1be0a8d93fe8b8357"
+    },
+    "authoritative_object_collection": "objects",
+    "clock": {
+      "description": "Require raw and prepared states to match and raw states[:,0] to equal i/20 within 1e-12 s; map row i to ts_sim_ns=i*50000000.",
+      "evaluation_field": "ts_sim_ns",
+      "fixed_step_ns": 50000000,
+      "fixed_step_origin_ns": 0,
+      "mapping_method": "fixed_step",
+      "source_clock": "raw MuJoCo simulation time sampled once per source control step",
+      "source_field": "data/demo_0/states[:,0]",
+      "source_unit": "seconds"
+    },
+    "completeness": {
+      "carry_forward": {
+        "fields": [],
+        "method": "none"
+      },
+      "frame_semantics": "complete_snapshot",
+      "omission_policy": "reject_omission",
+      "partial_updates_materialized": false,
+      "process_relevant_entity_policy": "known_in_every_frame",
+      "source_stream_semantics": "complete_snapshot",
+      "unknown_state_policy": "reject_fixture"
+    },
+    "confidence": {
+      "mode": "absent"
+    },
+    "coordinates": {
+      "information_loss": [
+        {
+          "impact": "Atlas receives only world x/y with z=0 and no orientation; 3D pose, relative geometry, grasp state, and official task success cannot be evaluated.",
+          "lost_information": [
+            "Can source z coordinate",
+            "robot TCP source z coordinate",
+            "Can complete source quaternion",
+            "robot TCP complete source quaternion",
+            "relative Can-to-EFF position and quaternion",
+            "yaw, roll, and pitch"
+          ],
+          "operation": "position-only planar projection"
+        }
+      ],
+      "projection": {
+        "dropped_axes": [
+          "z"
+        ],
+        "implementation": "Copy proven robosuite-world x/y, set normalized z to 0.0, omit orientation.",
+        "method": "planar_xy",
+        "output_z_policy": "zero"
+      },
+      "source_frame": "robosuite_world",
+      "source_units": "meters",
+      "target_frame": "robosuite_world",
+      "target_units": "meters",
+      "transform": {
+        "implementation": "No translation, rotation, scaling, or axis swap.",
+        "method": "identity"
+      }
+    },
+    "entity_mapping": {
+      "media_type": "application/json",
+      "path": "entity-mapping.json",
+      "schema_version": "metriplane.external_entity_mapping.v1",
+      "sha256": "51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c"
+    },
+    "field_provenance": [
+      {
+        "derivation": "Set the frozen FrameStateModel 1.0 schema version.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "schema_version",
+        "source_artifact_ids": [
+          "can_ph_raw_hdf5",
+          "can_ph_prepared_lowdim_hdf5"
+        ]
+      },
+      {
+        "derivation": "Set the stable namespaced prepared-observation backend.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "source_backend",
+        "source_artifact_ids": [
+          "can_ph_raw_hdf5",
+          "can_ph_prepared_lowdim_hdf5"
+        ]
+      },
+      {
+        "derivation": "Derive seconds from the exact integer nanosecond mapping.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "ts",
+        "source_artifact_ids": [
+          "can_ph_raw_hdf5"
+        ],
+        "source_fields": [
+          "data/demo_0/states[:,0]"
+        ]
+      },
+      {
+        "derivation": "Require raw time i/20 and multiply row index by 50000000 ns.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "ts_sim_ns",
+        "source_artifact_ids": [
+          "can_ph_raw_hdf5"
+        ],
+        "source_fields": [
+          "data/demo_0/states[:,0]"
+        ]
+      },
+      {
+        "derivation": "Assign sequential normalized IDs from prepared obs row order.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "frame_id",
+        "source_artifact_ids": [
+          "can_ph_raw_hdf5",
+          "can_ph_prepared_lowdim_hdf5"
+        ],
+        "source_fields": [
+          "data/demo_0/states row order",
+          "data/demo_0/obs row order"
+        ]
+      },
+      {
+        "derivation": "Apply the separately hashed one-to-one entity mapping.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].id",
+        "parameter_references": [
+          {
+            "media_type": "application/json",
+            "path": "entity-mapping.json",
+            "sha256": "51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c"
+          }
+        ],
+        "source_artifact_ids": [
+          "can_ph_prepared_lowdim_hdf5"
+        ],
+        "source_fields": [
+          "data/demo_0/obs/object[:,7:10]",
+          "data/demo_0/obs/robot0_eef_pos"
+        ]
+      },
+      {
+        "derivation": "Read only the two named prepared world-position fields after requiring exact raw Can qpos and independent XML-FK TCP witnesses; copy x/y and set z=0.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].pos_world",
+        "source_artifact_ids": [
+          "can_ph_raw_hdf5",
+          "can_ph_prepared_lowdim_hdf5"
+        ],
+        "source_fields": [
+          "data/demo_0/obs/object[:,7:10]",
+          "data/demo_0/obs/robot0_eef_pos",
+          "data/demo_0/states[:,31:34]",
+          "data/demo_0/states[:,1:38]",
+          "data/demo_0@model_file/Can_joint0",
+          "data/demo_0@model_file/gripper0_right_grip_site"
+        ]
+      },
+      {
+        "derivation": "Apply the separately hashed Layer-C inclusive polygon.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].zone",
+        "parameter_references": [
+          {
+            "media_type": "application/yaml",
+            "path": "domain-pack/workspace.yaml",
+            "sha256": "6b4b4994f06c2be4fc42e5edaaffd5632cb18b0c2e2673d5217e14a0574acdfb"
+          }
+        ],
+        "source_artifact_ids": [
+          "can_ph_prepared_lowdim_hdf5"
+        ],
+        "source_fields": [
+          "data/demo_0/obs/object[:,7:10]",
+          "data/demo_0/obs/robot0_eef_pos"
+        ]
+      }
+    ],
+    "frame_state_model_version": "1.0",
+    "source_annotations": {
+      "annotations": [
+        {
+          "name": "raw actions",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5"
+          ],
+          "source_field": "data/demo_*/actions",
+          "treatment": "excluded"
+        },
+        {
+          "name": "prepared actions",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_prepared_lowdim_hdf5"
+          ],
+          "source_field": "data/demo_*/actions",
+          "treatment": "excluded"
+        },
+        {
+          "name": "reward",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_prepared_lowdim_hdf5"
+          ],
+          "source_field": "data/demo_*/rewards",
+          "treatment": "excluded"
+        },
+        {
+          "name": "done",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_prepared_lowdim_hdf5"
+          ],
+          "source_field": "data/demo_*/dones",
+          "treatment": "excluded"
+        },
+        {
+          "name": "prepared next observation",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_prepared_lowdim_hdf5"
+          ],
+          "source_field": "data/demo_*/next_obs/*",
+          "treatment": "excluded"
+        },
+        {
+          "name": "controller information",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5"
+          ],
+          "source_field": "data/demo_*/controller_info",
+          "treatment": "excluded"
+        },
+        {
+          "name": "interventions",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5"
+          ],
+          "source_field": "data/demo_*/interventions",
+          "treatment": "excluded"
+        },
+        {
+          "name": "policy acting",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5"
+          ],
+          "source_field": "data/demo_*/policy_acting",
+          "treatment": "excluded"
+        },
+        {
+          "name": "user acting",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5"
+          ],
+          "source_field": "data/demo_*/user_acting",
+          "treatment": "excluded"
+        },
+        {
+          "name": "user information",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5"
+          ],
+          "source_field": "data/demo_*/user_info",
+          "treatment": "excluded"
+        },
+        {
+          "name": "filter membership",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "can_ph_raw_hdf5",
+            "can_ph_prepared_lowdim_hdf5"
+          ],
+          "source_field": "mask/*",
+          "treatment": "excluded"
+        }
+      ],
+      "frame_state_events_policy": "empty",
+      "inventory_complete": true,
+      "source_incident_ids_in_normalized_input": false,
+      "used_as_incident_truth": false,
+      "used_as_process_events": false
+    },
+    "source_backend": "external:robomimic_lowdim_prepared_obs",
+    "temporal_alignment": {
+      "interpolation": {
+        "fields": [],
+        "method": "none"
+      },
+      "resampling": {
+        "fields": [],
+        "method": "none"
+      },
+      "synchronization": {
+        "fields": [],
+        "method": "not_applicable"
+      }
+    },
+    "zone_assignment": {
+      "boundary_policy": "inclusive",
+      "definitions": {
+        "media_type": "application/yaml",
+        "path": "domain-pack/workspace.yaml",
+        "sha256": "6b4b4994f06c2be4fc42e5edaaffd5632cb18b0c2e2673d5217e14a0574acdfb"
+      },
+      "implementation": "Test each x/y point against the frozen polygon including its boundary, reject overlap, and emit outside_workspace when outside.",
+      "method": "polygon",
+      "outside_workspace_policy": "explicit_label",
+      "outside_zone_label": "outside_workspace",
+      "overlap_policy": "reject",
+      "zone_priority": []
+    }
+  },
+  "normalized_artifacts": {
+    "checksums_path": "CHECKSUMS.sha256",
+    "expected_outcome": {
+      "atlas_input": false,
+      "media_type": "application/json",
+      "path": "expected-outcome.json",
+      "role": "test_metadata_only",
+      "sha256": "32e5adee92d1abedba9218313d644c3a3269679f86b885ad08112bc8d4b8fb96"
+    },
+    "normalization_report": {
+      "media_type": "application/json",
+      "path": "normalization-report.json",
+      "sha256": "d81b1cfe1dc1967c2c713abcea8a4b45c8f7a3397b92b476f2a568e7334ead1c"
+    },
+    "session": {
+      "frame_count": 118,
+      "frame_state_model_version": "1.0",
+      "media_type": "application/x-ndjson",
+      "path": "session.jsonl",
+      "sha256": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246"
+    }
+  },
+  "rights": {
+    "fixture": {
+      "access": "public",
+      "citation": [
+        {
+          "text": "robomimic official datasets repository, Can Proficient Human v1.5 raw and low-dimensional artifacts",
+          "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/tree/74fa018461f479cd9fd15b924a16103012096203/v1.5/can/ph"
+        },
+        {
+          "text": "robomimic project",
+          "uri": "https://github.com/ARISE-Initiative/robomimic"
+        }
+      ],
+      "license": {
+        "identifier": "MIT",
+        "status": "declared",
+        "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/blob/74fa018461f479cd9fd15b924a16103012096203/README.md"
+      },
+      "permission_basis": "The pinned dataset card declares MIT. The normalized coordinates are modified/derived data distributed with attribution and the MIT notice; raw/prepared HDF5, simulator assets, and source framework code are absent.",
+      "redistribution": "allowed",
+      "redistribution_permission": "verified"
+    },
+    "source_artifacts": [
+      {
+        "citation": [
+          {
+            "text": "robomimic official datasets repository, Can Proficient Human v1.5 raw and low-dimensional artifacts",
+            "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/tree/74fa018461f479cd9fd15b924a16103012096203/v1.5/can/ph"
+          },
+          {
+            "text": "robomimic project",
+            "uri": "https://github.com/ARISE-Initiative/robomimic"
+          }
+        ],
+        "license": {
+          "identifier": "MIT",
+          "status": "declared",
+          "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/blob/74fa018461f479cd9fd15b924a16103012096203/README.md"
+        },
+        "permission_basis": "The MIT declaration is repository-wide at the exact immutable dataset revision and covers both files in the same Can/ph directory.",
+        "redistribution": "allowed",
+        "redistribution_permission": "verified",
+        "rights_id": "robomimic-dataset-mit",
+        "source_access": "public",
+        "source_use_permission": "verified"
+      }
+    ]
+  },
+  "schema_version": "metriplane.external_source_contract.v1",
+  "selection": {
+    "artifact_ids": [
+      "can_ph_raw_hdf5",
+      "can_ph_prepared_lowdim_hdf5"
+    ],
+    "episode_id": "demo_0",
+    "method": "episode",
+    "rationale": "Select the lowest numeric demo satisfying predeclared structural, finiteness, identity, raw/prepared, timing, rights, and non-degenerate planar criteria. Selection was outcome-blind within an upstream success-filtered corpus."
+  },
+  "source_artifacts": [
+    {
+      "artifact_id": "can_ph_raw_hdf5",
+      "description": "Pinned official raw Can PH HDF5 used only for correspondence, clock, named-qpos, and FK witnesses; referenced and never included.",
+      "media_type": "application/x-hdf5",
+      "presence": "referenced",
+      "rights_id": "robomimic-dataset-mit",
+      "role": "raw_simulation_demonstration",
+      "sha256": "86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d",
+      "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/resolve/74fa018461f479cd9fd15b924a16103012096203/v1.5/can/ph/demo_v15.hdf5"
+    },
+    {
+      "artifact_id": "can_ph_prepared_lowdim_hdf5",
+      "description": "Pinned official prepared low-dimensional Can PH HDF5 supplying the two named world-position observations; referenced and never included.",
+      "media_type": "application/x-hdf5",
+      "presence": "referenced",
+      "rights_id": "robomimic-dataset-mit",
+      "role": "prepared_low_dimensional_observations",
+      "sha256": "3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962",
+      "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/resolve/74fa018461f479cd9fd15b924a16103012096203/v1.5/can/ph/low_dim_v15.hdf5"
+    }
+  ],
+  "source_project": {
+    "canonical_uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets",
+    "name": "robomimic official datasets",
+    "revision": {
+      "kind": "dataset_revision",
+      "value": "74fa018461f479cd9fd15b924a16103012096203"
+    },
+    "version": "v1.5/can/ph"
+  },
+  "trust_layers": {
+    "adapter_derived_facts": "adapter_and_normalization",
+    "expected_outcome_is_atlas_input": false,
+    "metriplane_derived_results": "atlas_outputs_only",
+    "operator_configured_rules": "domain_pack_only",
+    "source_annotations_can_drive_incidents": false,
+    "source_facts": "source.artifacts_and_field_provenance"
+  }
+}

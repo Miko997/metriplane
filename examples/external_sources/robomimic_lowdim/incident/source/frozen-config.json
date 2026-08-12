@@ -1,0 +1,126 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.robomimic_lowdim",
+    "entrypoint": "robomimic_lowdim.cli:main",
+    "name": "Metriplane robomimic low-dimensional adapter",
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "allowed_future_changes": [
+    "claim-safe documentation corrections",
+    "dependency security updates that preserve output bytes",
+    "tests that do not alter frozen conversion semantics"
+  ],
+  "coordinate_mapping": {
+    "output_z": 0.0,
+    "projection": "source_world_xy",
+    "source_frame": "robosuite_world",
+    "source_units": "meters",
+    "target_frame": "robosuite_world",
+    "target_units": "meters",
+    "transform": "identity"
+  },
+  "freeze_date": "2026-08-12",
+  "normalization": {
+    "authoritative_collection": "objects",
+    "carry_forward": "none",
+    "confidence": "absent",
+    "events": "empty",
+    "interpolation": "none",
+    "orientation": "excluded",
+    "resampling": "none",
+    "source_outcomes": "excluded"
+  },
+  "objects": [
+    {
+      "atlas_asset_id": "can_1",
+      "atlas_asset_type": "material",
+      "normalized_object_id": "can_1",
+      "source_entity": "data/demo_0/obs/object[:,7:10]",
+      "witness": "data/demo_0/states[:,31:34] via named Can_joint0 qpos address"
+    },
+    {
+      "atlas_asset_id": "robot_tcp_1",
+      "atlas_asset_type": "tool",
+      "normalized_object_id": "robot_tcp_1",
+      "source_entity": "data/demo_0/obs/robot0_eef_pos",
+      "witness": "independent XML-tree FK to gripper0_right_grip_site"
+    }
+  ],
+  "schema_version": "org.metriplane.robomimic_lowdim.config.v1",
+  "selection": {
+    "demo_id": "demo_0",
+    "normalized_frames": 118,
+    "prepared_object_path": "data/demo_0/obs/object",
+    "prepared_tcp_path": "data/demo_0/obs/robot0_eef_pos",
+    "raw_state_path": "data/demo_0/states",
+    "rows": 118
+  },
+  "source": {
+    "dataset_repository": "robomimic/robomimic_datasets",
+    "dataset_revision": "74fa018461f479cd9fd15b924a16103012096203",
+    "prepared": {
+      "path": "v1.5/can/ph/low_dim_v15.hdf5",
+      "sha256": "3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962",
+      "size": 46889752
+    },
+    "project_commit": "d309eaecc18acf4152a830a895a6984b8ac71b05",
+    "project_package": "robomimic==0.5.0",
+    "project_release": "v0.5.0",
+    "raw": {
+      "path": "v1.5/can/ph/demo_v15.hdf5",
+      "sha256": "86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d",
+      "size": 64932974
+    },
+    "prepared_robosuite_commit": "51cc01785bab80ffeed20da15e67d7dd4140e76a",
+    "prepared_robosuite_release": "v1.5.1",
+    "raw_robosuite_commit": "1a8701b90c07c6595ace4af9935d7c5ebe1baed3",
+    "raw_robosuite_release": "v1.5.0",
+    "task": "Can",
+    "type": "ph"
+  },
+  "target_polygon": {
+    "boundary_policy": "inclusive",
+    "center": [
+      0.123724912698951,
+      -0.20150121318116285
+    ],
+    "half_extent": 0.02,
+    "outside_label": "outside_workspace",
+    "overlap_policy": "reject",
+    "station_id": "target_station",
+    "vertices": [
+      [0.103724912698951, -0.22150121318116284],
+      [0.143724912698951, -0.22150121318116284],
+      [0.143724912698951, -0.18150121318116286],
+      [0.103724912698951, -0.18150121318116286]
+    ],
+    "zone_id": "target_xy_region"
+  },
+  "timing": {
+    "control_frequency_hz": 20,
+    "control_period_ns": 50000000,
+    "control_period_s": 0.05,
+    "frame_zero_origin_ns": 0,
+    "source_field": "data/demo_0/states[:,0]",
+    "source_tolerance_s": 1e-12
+  },
+  "variants": {
+    "control": {
+      "domain_pack_id": "robomimic-can-ph-planar-control-v1",
+      "fixture_id": "robomimic-can-ph-demo-0-planar-control-v1",
+      "max_wait_s": 2.5
+    },
+    "incident": {
+      "domain_pack_id": "robomimic-can-ph-planar-incident-v1",
+      "fixture_id": "robomimic-can-ph-demo-0-planar-incident-v1",
+      "max_wait_s": 2.0
+    }
+  },
+  "witnesses": {
+    "can_qpos_name": "Can_joint0",
+    "can_translation_tolerance": 0.0,
+    "fk_max_abs_tolerance": 2e-12,
+    "tcp_site_name": "gripper0_right_grip_site"
+  }
+}

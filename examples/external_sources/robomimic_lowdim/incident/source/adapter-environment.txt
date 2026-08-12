@@ -1,0 +1,14 @@
+adapter=robomimic-lowdim-adapter==1.0.0
+adapter_commit=cfc285a3e757fdf742858b1c4cf685c384d01e8b
+frozen_config_sha256=3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5
+python=CPython==3.12.13
+operating_system=Linux
+architecture=x86_64
+h5py==3.16.0
+huggingface-hub==1.27.0
+numpy==2.5.2
+robomimic_imported=false
+robosuite_imported=false
+mujoco_imported=false
+action_replay=false
+portable_fixture_requires_source_framework=false

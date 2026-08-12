@@ -1,0 +1,20 @@
+{
+  "process_id": "robomimic_can_ph_planar_tcp_presence",
+  "schema_version": "metriplane.atlas.process_model.v1",
+  "steps": [
+    {
+      "expected_asset_types": [
+        "material"
+      ],
+      "label": "Can in operator region requires robot TCP",
+      "max_wait_s": 2.0,
+      "required_assets": [
+        "robot_tcp_1"
+      ],
+      "required_station": "target_station",
+      "required_zone": "target_xy_region",
+      "step_id": "can_region_requires_tcp"
+    }
+  ],
+  "work_order_type": "external_fixture"
+}

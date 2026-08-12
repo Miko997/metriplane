@@ -1,0 +1,31 @@
+{
+  "assets": [
+    {
+      "asset_id": "can_1",
+      "asset_type": "material",
+      "expected_stations": [
+        "target_station"
+      ],
+      "expected_zones": [
+        "target_xy_region"
+      ],
+      "label": "Prepared Can world position (planar material object)",
+      "object_id": "can_1",
+      "work_order_id": "WO-ROBOMIMIC-CAN-001"
+    },
+    {
+      "asset_id": "robot_tcp_1",
+      "asset_type": "tool",
+      "expected_stations": [
+        "target_station"
+      ],
+      "expected_zones": [
+        "target_xy_region"
+      ],
+      "label": "Prepared Panda TCP world position (planar required tool)",
+      "object_id": "robot_tcp_1",
+      "work_order_id": "WO-ROBOMIMIC-CAN-001"
+    }
+  ],
+  "schema_version": "metriplane.atlas.asset_registry.v1"
+}

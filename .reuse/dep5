@@ -6,6 +6,19 @@ Files: adapters/maniskill_pickcube/*
 Copyright: 2026 Miko Parkkinen
 License: MIT
 
+Files: adapters/robomimic_lowdim/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+
+Files: examples/external_sources/robomimic_lowdim/*
+Copyright: NOASSERTION
+License: MIT
+Comment: This subtree contains modified normalized numeric state derived from
+ the pinned MIT-declared robomimic dataset and independently authored
+ compatibility-test metadata and rules. Raw HDF5, source framework code, and
+ simulator assets are absent. See the fixture README and source manifests for
+ immutable source attribution, exact hashes, and the modification notice.
+
 Files: examples/external_sources/maniskill_pickcube/*
 Copyright: NOASSERTION
 License: Apache-2.0

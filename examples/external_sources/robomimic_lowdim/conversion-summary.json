@@ -1,0 +1,47 @@
+{
+  "adapter_commit": "cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+  "can_inside_first_frame": 0,
+  "can_inside_last_frame": 63,
+  "config_sha256": "3cfa88b1512215d8545c1404bcc80e18bf780d1dfc899553ccc69c2517c623c5",
+  "control": {
+    "fixture_fingerprint_sha256": "dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf",
+    "fixture_id": "robomimic-can-ph-demo-0-planar-control-v1",
+    "max_wait_s": 2.5
+  },
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "run_ids": [
+      "real-source-clean-1",
+      "real-source-clean-2",
+      "real-source-clean-3"
+    ],
+    "status": "demonstrated"
+  },
+  "incident": {
+    "fixture_fingerprint_sha256": "6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6",
+    "fixture_id": "robomimic-can-ph-demo-0-planar-incident-v1",
+    "max_wait_s": 2.0
+  },
+  "real_source_audit": {
+    "can_named_qpos_rows_verified": 23207,
+    "clock_rows_verified": 23207,
+    "demo_count": 200,
+    "mask_membership_equal": true,
+    "max_fk_abs_error": 1.1102230246251565e-15,
+    "prepared_environment_version": "1.5.1",
+    "raw_environment_version": "1.5.0",
+    "selected_demo": "demo_0",
+    "selected_frame_count": 118,
+    "states_actions_model_sample_masks_equal": true
+  },
+  "schema_version": "org.metriplane.robomimic_lowdim.conversion_summary.v1",
+  "shared_session_sha256": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246",
+  "source_sha256": {
+    "prepared_hdf5": "3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962",
+    "raw_hdf5": "86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d"
+  },
+  "source_unchanged_during_conversion": true,
+  "tcp_inside_first_frame": 42,
+  "tcp_inside_last_frame": 64
+}
