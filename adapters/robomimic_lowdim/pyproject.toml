@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "robomimic-lowdim-adapter"
+version = "1.0.0"
+description = "Isolated deterministic adapter for one pinned robomimic Can PH trajectory"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = [
+  "h5py==3.16.0",
+  "huggingface-hub==1.27.0",
+  "numpy==2.5.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.4.2", "ruff==0.14.10"]
+
+[project.scripts]
+robomimic-lowdim = "robomimic_lowdim.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/robomimic_lowdim"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config/frozen-config.json" = "robomimic_lowdim/data/frozen-config.json"
+"uv.lock" = "robomimic_lowdim/data/uv.lock"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
