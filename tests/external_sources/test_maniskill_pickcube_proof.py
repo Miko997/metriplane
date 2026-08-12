@@ -937,6 +937,51 @@ def test_referenced_metriplane_commits_are_full_and_reachable_in_git() -> None:
         assert completed.returncode == 0, (commit, completed.stderr)
 
 
+def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert shallow.returncode == 0, shallow.stderr
+    if shallow.stdout.strip() == "true":
+        pytest.skip("candidate identity is enforced by the full-history proof workflow")
+
+    record = _read_json(RECORD_PATH)
+    candidate = record["proof_identity"]["candidate_commit"]
+    frozen_identity_paths = (
+        "metriplane",
+        "integrations",
+        "pyproject.toml",
+        "uv.lock",
+        "README.md",
+        "LICENSE",
+        "NOTICE",
+        "adapters/maniskill_pickcube",
+        "examples/external_sources/maniskill_pickcube",
+        "schemas/metriplane.external_source_contract.v1.schema.json",
+        "proofs/maniskill-pickcube-v1/CITATION.cff",
+        "proofs/maniskill-pickcube-v1/CLAIMS.md",
+        "proofs/maniskill-pickcube-v1/EVALUATOR.md",
+        "proofs/maniskill-pickcube-v1/NOTICE.md",
+        "proofs/maniskill-pickcube-v1/README.md",
+        "proofs/maniskill-pickcube-v1/REPRODUCE.md",
+        "proofs/maniskill-pickcube-v1/evaluator-report-template.md",
+        "proofs/maniskill-pickcube-v1/proof-record.schema.json",
+        "proofs/maniskill-pickcube-v1/reproduce.py",
+    )
+    completed = subprocess.run(
+        ["git", "diff", "--exit-code", candidate, "HEAD", "--", *frozen_identity_paths],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     workflow = yaml.safe_load(text)
@@ -961,7 +1006,20 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert 'record["proof_identity"]["candidate_commit"]' in text
     assert "fetch-depth: 0" in text
     assert 'git archive --format=tar "$candidate_commit"' in text
-    assert 'git merge-base --is-ancestor "$candidate_commit" HEAD' in text
+    assert 'git merge-base --is-ancestor "$candidate_commit" HEAD' not in text
+    assert text.count('git diff --exit-code "$candidate_commit" HEAD --') == 2
+    for identity_path in (
+        "metriplane",
+        "integrations",
+        "pyproject.toml",
+        "uv.lock",
+        "adapters/maniskill_pickcube",
+        "examples/external_sources/maniskill_pickcube",
+        "schemas/metriplane.external_source_contract.v1.schema.json",
+        "proofs/maniskill-pickcube-v1/CLAIMS.md",
+        "proofs/maniskill-pickcube-v1/reproduce.py",
+    ):
+        assert text.count(identity_path) >= 2
     assert "CANDIDATE_COMMIT" in text
     assert 'exact_commit="$(git rev-parse HEAD)"' not in text
 
