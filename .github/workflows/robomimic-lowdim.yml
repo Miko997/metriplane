@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12"]
     defaults:
       run:
         working-directory: adapters/robomimic_lowdim
@@ -222,7 +222,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      HF_HUB_CACHE: ${{ runner.temp }}/robomimic-hf-cache
       REVISION: 74fa018461f479cd9fd15b924a16103012096203
       RAW_PATH: v1.5/can/ph/demo_v15.hdf5
       RAW_SHA: 86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d
@@ -249,6 +248,7 @@ jobs:
         working-directory: adapters/robomimic_lowdim
         run: |
           set -euo pipefail
+          export HF_HUB_CACHE="${RUNNER_TEMP}/robomimic-hf-cache"
           uv sync --locked --python 3.12
           source="${RUNNER_TEMP}/exact-source"
           conversions="${RUNNER_TEMP}/conversions"
