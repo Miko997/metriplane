@@ -123,6 +123,12 @@ configs/*_local.yaml
 !examples/external_sources/maniskill_pickcube/**/*.jsonl
 !examples/external_sources/maniskill_pickcube/**/*.csv
 
+# Portable, source-derived robomimic low-dimensional fixture inputs.
+!examples/external_sources/robomimic_lowdim/
+!examples/external_sources/robomimic_lowdim/**/
+!examples/external_sources/robomimic_lowdim/**/*.jsonl
+!examples/external_sources/robomimic_lowdim/**/*.csv
+
 # Public MET-16 proof artifacts, including the single representative evidence bundle.
 !proofs/maniskill-pickcube-v1/
 !proofs/maniskill-pickcube-v1/**/

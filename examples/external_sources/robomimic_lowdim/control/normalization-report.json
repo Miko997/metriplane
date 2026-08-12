@@ -1,0 +1,113 @@
+{
+  "contract_schema_version": "metriplane.external_source_contract.v1",
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "input_fingerprint_sha256": "50662d64c2fb925155a7b52b87997f204282213da81958064deda02a9f1597f5",
+    "runs": [
+      {
+        "artifacts": {
+          "entity-mapping.json": "51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c",
+          "session.jsonl": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246"
+        },
+        "run_id": "real-source-clean-1"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c",
+          "session.jsonl": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246"
+        },
+        "run_id": "real-source-clean-2"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c",
+          "session.jsonl": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246"
+        },
+        "run_id": "real-source-clean-3"
+      }
+    ],
+    "status": "demonstrated"
+  },
+  "fixture_id": "robomimic-can-ph-demo-0-planar-control-v1",
+  "limitations": [
+    "Position-only planar conversion discards source Z and complete object/TCP orientation.",
+    "Prepared observations remain explicitly prepared fields; raw state and XML are independent witnesses, not emitted values.",
+    "The result does not evaluate grasp state, official Can success, physical accuracy, simulator realism, or safety.",
+    "The row-0-centered polygon and waits are wholly operator-configured Layer-C rules.",
+    "Episode selection was outcome-blind only within an upstream success-filtered corpus."
+  ],
+  "normalized_frame_count": 118,
+  "omitted_process_relevant_observations": 0,
+  "operations": [
+    {
+      "applied": true,
+      "declaration_path": "normalization.clock",
+      "kind": "time_mapping",
+      "operation_id": "map-verified-source-row-to-fixed-nanoseconds",
+      "summary": "Verified raw states[:,0] equals i/20 and mapped row i to i*50000000 ns."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.entity_mapping",
+      "kind": "entity_mapping",
+      "operation_id": "map-can-and-tcp",
+      "summary": "Applied the hashed one-to-one Can and robot TCP mapping."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.coordinates.transform",
+      "kind": "coordinate_transform",
+      "operation_id": "identity-robosuite-world-frame",
+      "summary": "Source and target use the same metre-valued robosuite world frame."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.coordinates.projection",
+      "kind": "projection",
+      "operation_id": "project-planar-xy",
+      "summary": "Copied source world x/y, set normalized z to zero, and omitted orientation."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.zone_assignment",
+      "kind": "zone_assignment",
+      "operation_id": "assign-frozen-operator-polygon",
+      "summary": "Applied the Layer-C inclusive polygon and explicit outside label."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.synchronization",
+      "kind": "synchronization",
+      "operation_id": "no-synchronization",
+      "summary": "Each prepared obs row supplies both named observations synchronously."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.resampling",
+      "kind": "resampling",
+      "operation_id": "no-resampling",
+      "summary": "All 118 prepared obs rows are retained one-for-one."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.interpolation",
+      "kind": "interpolation",
+      "operation_id": "no-interpolation",
+      "summary": "No position or time value is interpolated."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.completeness.carry_forward",
+      "kind": "carry_forward",
+      "operation_id": "no-carry-forward",
+      "summary": "Every retained obs row is complete; no observation is carried forward."
+    }
+  ],
+  "process_relevant_entity_count": 2,
+  "result": "pass",
+  "schema_version": "metriplane.external_normalization_report.v1",
+  "source_record_count": 118,
+  "unknown_process_relevant_observations": 0,
+  "warnings": []
+}

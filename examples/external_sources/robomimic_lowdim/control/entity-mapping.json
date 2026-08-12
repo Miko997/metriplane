@@ -1,0 +1,29 @@
+{
+  "mappings": [
+    {
+      "atlas_asset_id": "can_1",
+      "description": "One-to-one mapping from the named prepared Can world-position field to the normalized material object, witnessed by raw Can_joint0 qpos.",
+      "normalized_object_id": "can_1",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "can_ph_prepared_lowdim_hdf5",
+          "source_entity_id": "data/demo_0/obs/object[:,7:10]"
+        }
+      ]
+    },
+    {
+      "atlas_asset_id": "robot_tcp_1",
+      "description": "One-to-one mapping from the named prepared robot0_eef_pos world field to the normalized tool, witnessed by independent XML-tree FK.",
+      "normalized_object_id": "robot_tcp_1",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "can_ph_prepared_lowdim_hdf5",
+          "source_entity_id": "data/demo_0/obs/robot0_eef_pos"
+        }
+      ]
+    }
+  ],
+  "schema_version": "metriplane.external_entity_mapping.v1"
+}

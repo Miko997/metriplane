@@ -1,0 +1,21 @@
+{
+  "atlas_input": false,
+  "deviation_count": 1,
+  "event_count": 4,
+  "event_types": [
+    "required_asset_missing",
+    "step_delayed",
+    "required_asset_present",
+    "step_completed"
+  ],
+  "evidence_bundle_verified": true,
+  "fixture_id": "robomimic-can-ph-demo-0-planar-incident-v1",
+  "frame_count": 118,
+  "incident_count": 1,
+  "incident_types": [
+    "missing_tool_caused_delay"
+  ],
+  "regression_passed": true,
+  "role": "test_metadata_only",
+  "schema_version": "metriplane.external_expected_outcome.v1"
+}

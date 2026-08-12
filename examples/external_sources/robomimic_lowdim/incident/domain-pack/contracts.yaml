@@ -1,0 +1,16 @@
+{
+  "contracts": [
+    {
+      "contract_id": "robot_tcp_required_with_can",
+      "kind": "process_asset_presence",
+      "max_wait_s": 2.0,
+      "note": "Observe-only Metriplane-authored planar rule; not official robomimic task success, safety, or source truth.",
+      "process_step_id": "can_region_requires_tcp",
+      "required_asset_id": "robot_tcp_1",
+      "severity": "warning",
+      "station_id": "target_station",
+      "zone_id": "target_xy_region"
+    }
+  ],
+  "schema_version": "metriplane.atlas.contracts.v1"
+}

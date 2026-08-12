@@ -1,0 +1,37 @@
+{
+  "cell_id": "robomimic_can_ph_planar_fixture",
+  "schema_version": "metriplane.atlas.workspace.v1",
+  "stations": [
+    {
+      "label": "Operator-configured planar compatibility station",
+      "station_id": "target_station",
+      "zone_id": "target_xy_region"
+    }
+  ],
+  "units": "meters",
+  "zones": [
+    {
+      "label": "Operator-configured planar compatibility region",
+      "polygon": [
+        [
+          0.103724912698951,
+          -0.22150121318116284
+        ],
+        [
+          0.143724912698951,
+          -0.22150121318116284
+        ],
+        [
+          0.143724912698951,
+          -0.18150121318116286
+        ],
+        [
+          0.103724912698951,
+          -0.18150121318116286
+        ]
+      ],
+      "zone_id": "target_xy_region",
+      "zone_type": "work_station"
+    }
+  ]
+}
