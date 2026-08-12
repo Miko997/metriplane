@@ -1,0 +1,385 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: External Source-Family Matrix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/external-source-family-matrix.yml"
+      - ".reuse/dep5"
+      - "LICENSE"
+      - "NOTICE"
+      - "README.md"
+      - "adapters/maniskill_pickcube/**"
+      - "adapters/robomimic_lowdim/**"
+      - "docs/README.md"
+      - "docs/specs/calvin-semantic-state-adapter-audit.md"
+      - "docs/specs/external-source-contract-v1.md"
+      - "docs/specs/maniskill-pickcube-*.md"
+      - "docs/specs/met18-*.md"
+      - "docs/specs/robomimic-can-lowdim-*.md"
+      - "docs/user-guide/external-source-family-matrix-v1/**"
+      - "examples/external_sources/maniskill_pickcube/**"
+      - "examples/external_sources/robomimic_lowdim/**"
+      - "integrations/**"
+      - "metriplane/**"
+      - "mkdocs.yml"
+      - "proofs/maniskill-pickcube-v1/**"
+      - "pyproject.toml"
+      - "schemas/metriplane.external_source_contract.v1.schema.json"
+      - "tests/external_sources/test_external_source_family_matrix.py"
+      - "tests/test_docs_front_door.py"
+      - "tools/build_external_source_family_matrix.py"
+      - "uv.lock"
+  merge_group:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-source-family-matrix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  publication-structure:
+    name: Publication structure and deterministic build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact revision with frozen history and tags
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Validate matrix with Draft 2020-12 JSON Schema
+        run: |
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python docs/user-guide/external-source-family-matrix-v1/validate.py \
+              --require-jsonschema --validate-only
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python tools/build_external_source_family_matrix.py \
+              --require-jsonschema --validate-only
+
+      - name: Build twice and require byte-identical publication archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          first="${RUNNER_TEMP}/external-source-family-matrix-a.zip"
+          second="${RUNNER_TEMP}/external-source-family-matrix-b.zip"
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python tools/build_external_source_family_matrix.py \
+              --require-jsonschema --out "$first"
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python tools/build_external_source_family_matrix.py \
+              --require-jsonschema --out "$second"
+          cmp "$first" "$second"
+          sha256sum "$first" "$second"
+
+      - name: Validate citation metadata
+        run: >-
+          uvx --from cffconvert==2.0.0 cffconvert --validate
+          --infile docs/user-guide/external-source-family-matrix-v1/CITATION.cff
+
+      - name: Run focused publication tests
+        run: |
+          uv run --python 3.12 python -m pytest -q \
+            tests/external_sources/test_external_source_family_matrix.py \
+            tests/test_docs_front_door.py
+
+      - name: Build strict documentation
+        run: uv run --python 3.12 mkdocs build --strict
+
+      - name: Run scoped REUSE validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' reuse_paths < <(
+            git ls-files -z -- \
+              .github/workflows/external-source-family-matrix.yml \
+              docs/README.md \
+              docs/user-guide/external-source-family-matrix-v1 \
+              mkdocs.yml \
+              tests/external_sources/test_external_source_family_matrix.py \
+              tests/test_docs_front_door.py \
+              tools/build_external_source_family_matrix.py
+          )
+          test "${#reuse_paths[@]}" -gt 0
+          uvx --from reuse==5.0.2 reuse lint-file "${reuse_paths[@]}"
+
+  portable-fixtures:
+    name: Portable fixtures (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Build exact Metriplane wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv sync --locked --group dev --python "${{ matrix.python-version }}"
+          dist="${RUNNER_TEMP}/matrix-dist"
+          mkdir -p "$dist"
+          uv run --python "${{ matrix.python-version }}" \
+            python -m build --wheel --outdir "$dist" .
+          candidate_commit="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor \
+            5606b956e9309802570cfa46857714722fd70187 "$candidate_commit"
+          wheel_count="$(find "$dist" -maxdepth 1 -name '*.whl' -print | wc -l | tr -d ' ')"
+          test "$wheel_count" -eq 1
+          wheel="$(find "$dist" -maxdepth 1 -name '*.whl' -print)"
+          CANDIDATE_COMMIT="$candidate_commit" WHEEL="$wheel" \
+            uv run --python "${{ matrix.python-version }}" python - <<'PY'
+          import os
+          import zipfile
+
+          wheel = os.environ["WHEEL"]
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode("utf-8").lower()
+          assert not any("adapters/" in name for name in names)
+          assert not any(
+              name.lower().endswith(
+                  (".h5", ".hdf5", ".zip", ".urdf", ".glb", ".xml", ".mjcf", ".pt", ".pth")
+              )
+              for name in names
+          )
+          prohibited = (
+              "mani-skill", "maniskill", "sapien", "torch", "robomimic",
+              "robosuite", "mujoco", "h5py", "huggingface-hub",
+          )
+          assert not any(f"requires-dist: {name}" in metadata for name in prohibited)
+          PY
+          {
+            echo "CANDIDATE_COMMIT=$candidate_commit"
+            echo "WHEEL=$wheel"
+          } >> "$GITHUB_ENV"
+
+      - name: Install wheel and copy fixtures outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/matrix-venv"
+          input="${RUNNER_TEMP}/matrix-input"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --no-cache-dir "$WHEEL"
+          "$venv/bin/python" -m pip check
+          mkdir -p "$input/maniskill" "$input/robomimic"
+          cp -R examples/external_sources/maniskill_pickcube/incident "$input/maniskill/incident"
+          cp -R examples/external_sources/maniskill_pickcube/control "$input/maniskill/control"
+          cp -R examples/external_sources/robomimic_lowdim/incident "$input/robomimic/incident"
+          cp -R examples/external_sources/robomimic_lowdim/control "$input/robomimic/control"
+          VENV="$venv" "$venv/bin/python" - <<'PY'
+          import os
+          from importlib import metadata
+
+          installed = {dist.metadata["Name"].lower().replace("-", "_") for dist in metadata.distributions()}
+          prohibited = {
+              "mani_skill", "maniskill", "sapien", "torch", "robomimic",
+              "robosuite", "mujoco", "h5py", "huggingface_hub",
+          }
+          assert installed.isdisjoint(prohibited), sorted(installed & prohibited)
+          PY
+
+      - name: Validate and run both frozen source-specific families
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/matrix-venv"
+          input="${RUNNER_TEMP}/matrix-input"
+          output="${RUNNER_TEMP}/matrix-output"
+          mkdir -p "$output"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          for family in maniskill robomimic; do
+            for variant in incident control; do
+              METRIPLANE_GIT_COMMIT="$CANDIDATE_COMMIT" \
+                "$venv/bin/metriplane" external validate \
+                  "$input/$family/$variant" --json \
+                  > "validation-$family-$variant.json"
+              for index in 1 2 3; do
+                METRIPLANE_GIT_COMMIT="$CANDIDATE_COMMIT" \
+                  "$venv/bin/metriplane" external run \
+                    "$input/$family/$variant" \
+                    --out "$output/$family-$variant-$index" \
+                    --run-id "matrix_${family}_${variant}" --json \
+                    > "summary-$family-$variant-$index.json"
+              done
+            done
+          done
+
+      - name: Move, assert, and reverify portable outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/matrix-venv"
+          original="${RUNNER_TEMP}/matrix-output"
+          moved="${RUNNER_TEMP}/moved-matrix-output"
+          mv "$original" "$moved"
+          ROOT="$moved" TEMP_ROOT="$RUNNER_TEMP" CHECKOUT="$GITHUB_WORKSPACE" \
+          MP="$venv/bin/metriplane" "$venv/bin/python" - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import zipfile
+          from pathlib import Path
+          import yaml
+
+          root = Path(os.environ["ROOT"])
+          temp = Path(os.environ["TEMP_ROOT"])
+          expected = {
+              ("maniskill", "incident"): (75, 4, 1, 1),
+              ("maniskill", "control"): (75, 3, 0, 0),
+              ("robomimic", "incident"): (118, 4, 1, 1),
+              ("robomimic", "control"): (118, 3, 0, 0),
+          }
+          event_frames = {
+              ("maniskill", "incident"): [66, 70, 71, 71],
+              ("maniskill", "control"): [66, 71, 71],
+              ("robomimic", "incident"): [0, 40, 42, 42],
+              ("robomimic", "control"): [0, 42, 42],
+          }
+          event_types = {
+              "incident": [
+                  "required_asset_missing", "step_delayed",
+                  "required_asset_present", "step_completed",
+              ],
+              "control": [
+                  "required_asset_missing", "required_asset_present", "step_completed",
+              ],
+          }
+
+          def jsonl(path):
+              return [json.loads(line) for line in path.read_text().splitlines()]
+
+          def semantic(run):
+              regressions = []
+              for path in sorted((run / "regression_tests").glob("*.yaml")):
+                  value = yaml.safe_load(path.read_text())
+                  value.pop("source_bundle", None)
+                  regressions.append(value)
+              return tuple(
+                  jsonl(run / name)
+                  for name in (
+                      "state_segment.jsonl", "physical_event_log.jsonl",
+                      "deviations.jsonl", "incidents.jsonl",
+                  )
+              ) + (regressions,)
+
+          for (family, variant), counts in expected.items():
+              validation = json.loads((temp / f"validation-{family}-{variant}.json").read_text())
+              assert validation["pass"] is True
+              values = []
+              for index in (1, 2, 3):
+                  summary = json.loads(
+                      (temp / f"summary-{family}-{variant}-{index}.json").read_text()
+                  )
+                  actual = tuple(
+                      summary[key]
+                      for key in (
+                          "frame_count", "event_count", "deviation_count", "incident_count",
+                      )
+                  )
+                  assert summary["pass"] is True and actual == counts
+                  run = root / f"{family}-{variant}-{index}"
+                  events = jsonl(run / "physical_event_log.jsonl")
+                  incidents = jsonl(run / "incidents.jsonl")
+                  assert [event["event_type"] for event in events] == event_types[variant]
+                  assert [event["frame_id"] for event in events] == event_frames[(family, variant)]
+                  if variant == "incident":
+                      assert [item["incident_type"] for item in incidents] == [
+                          "missing_tool_caused_delay"
+                      ]
+                  else:
+                      assert incidents == []
+                  bundles = list((run / "evidence_bundles").glob("*.zip"))
+                  regressions = list((run / "regression_tests").glob("*.yaml"))
+                  if variant == "incident":
+                      assert len(bundles) == len(regressions) == 1
+                      subprocess.run(
+                          [os.environ["MP"], "atlas", "bundle", "verify", str(bundles[0])],
+                          check=True,
+                      )
+                      subprocess.run(
+                          [os.environ["MP"], "atlas", "test", str(regressions[0]), "--json"],
+                          check=True,
+                      )
+                  else:
+                      assert not bundles and not regressions
+                  values.append(semantic(run))
+              assert values[0] == values[1] == values[2]
+          forbidden = [os.environ["TEMP_ROOT"].encode(), os.environ["CHECKOUT"].encode()]
+          private = re.compile(
+              rb"(?:/(?:home|Users)/[^/\s\"'<>]+(?:/|(?=[\s\"'<>]|$))|"
+              rb"(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/])"
+          )
+          for path in root.rglob("*"):
+              if not path.is_file():
+                  continue
+              raw = path.read_bytes()
+              assert not any(value in raw for value in forbidden), path
+              assert private.search(raw) is None, path
+              if path.suffix == ".zip":
+                  with zipfile.ZipFile(path) as archive:
+                      for member in archive.infolist():
+                          member_raw = member.filename.encode()
+                          assert not any(value in member_raw for value in forbidden)
+                          assert private.search(member_raw) is None
+                          if not member.is_dir():
+                              body = archive.read(member)
+                              assert not any(value in body for value in forbidden)
+                              assert private.search(body) is None
+          PY

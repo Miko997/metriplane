@@ -1,0 +1,475 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Miko997/metriplane/blob/main/docs/user-guide/external-source-family-matrix-v1/matrix.schema.json",
+  "title": "Metriplane external source-family compatibility and decision matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "publication",
+    "contract",
+    "allowed_decisions",
+    "rows"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "org.metriplane.external_source_family_matrix.v1"
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publication_id",
+        "version",
+        "status",
+        "starting_commit",
+        "public_main_baseline",
+        "metriplane_version",
+        "strongest_allowed_claim",
+        "evidence_classification"
+      ],
+      "properties": {
+        "publication_id": {
+          "const": "external-source-family-matrix-v1"
+        },
+        "version": {
+          "const": "1"
+        },
+        "status": {
+          "const": "candidate"
+        },
+        "starting_commit": {
+          "$ref": "#/$defs/commit"
+        },
+        "public_main_baseline": {
+          "$ref": "#/$defs/commit"
+        },
+        "metriplane_version": {
+          "const": "0.3.0"
+        },
+        "strongest_allowed_claim": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_classification": {
+          "const": "owner-generated consolidation of frozen public technical evidence"
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_id",
+        "profile_id",
+        "frame_state_model_version",
+        "schema_path",
+        "schema_sha256"
+      ],
+      "properties": {
+        "contract_id": {
+          "const": "metriplane.external_source_contract.v1"
+        },
+        "profile_id": {
+          "const": "metriplane.atlas.complete_snapshot.v1"
+        },
+        "frame_state_model_version": {
+          "const": "1.0"
+        },
+        "schema_path": {
+          "const": "schemas/metriplane.external_source_contract.v1.schema.json"
+        },
+        "schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "allowed_decisions": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "$ref": "#/$defs/row"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "decision": {
+      "enum": [
+        "GO",
+        "PARTIALLY SUPPORTED",
+        "NO-GO",
+        "NOT TESTED",
+        "NOT APPLICABLE"
+      ]
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "summary",
+        "evidence"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "VERIFIED",
+            "PARTIAL",
+            "BLOCKED",
+            "NOT TESTED",
+            "NOT APPLICABLE"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          }
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "dataset",
+        "derived_fixture"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/cell"
+        },
+        "dataset": {
+          "$ref": "#/$defs/cell"
+        },
+        "derived_fixture": {
+          "$ref": "#/$defs/cell"
+        }
+      }
+    },
+    "frozen_fixture_identities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "incident_fixture_id",
+        "control_fixture_id",
+        "shared_session_sha256",
+        "incident_fingerprint_sha256",
+        "control_fingerprint_sha256",
+        "evidence"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "VERIFIED",
+            "PARTIAL",
+            "BLOCKED",
+            "NOT TESTED",
+            "NOT APPLICABLE"
+          ]
+        },
+        "incident_fixture_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "control_fixture_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shared_session_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "incident_fingerprint_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "control_fingerprint_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "VERIFIED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "incident_fixture_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "control_fixture_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "shared_session_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "incident_fingerprint_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "control_fingerprint_sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "supporting_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "identity",
+        "verification"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "kind": {
+          "enum": [
+            "repository_path",
+            "git_commit",
+            "git_tag",
+            "workflow_run",
+            "linear_issue",
+            "external_artifact"
+          ]
+        },
+        "identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[^/].*$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "verification": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "row_id",
+        "source_family",
+        "status_label",
+        "decision",
+        "compatibility_counted",
+        "exact_source_artifact_identity",
+        "rights",
+        "raw_prepared_derived_normalized_boundary",
+        "authoritative_clock_and_domain",
+        "frame_authority_and_transform_model",
+        "units",
+        "stable_identity_model",
+        "complete_snapshot_and_missing_state_policy",
+        "materialization_or_carry_forward_policy",
+        "field_provenance",
+        "frozen_fixture_identities",
+        "information_loss",
+        "external_source_contract_v1_fit",
+        "supported_atlas_semantics",
+        "prohibited_semantics",
+        "deterministic_conversion_status",
+        "portable_evaluation_status",
+        "atlas_rerun_status",
+        "evidence_bundle_status",
+        "regression_status",
+        "independent_rerun_status",
+        "limitations",
+        "reopening_criteria",
+        "supporting_artifacts"
+      ],
+      "properties": {
+        "row_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_]*$"
+        },
+        "source_family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "$ref": "#/$defs/decision"
+        },
+        "compatibility_counted": {
+          "type": "boolean"
+        },
+        "exact_source_artifact_identity": {
+          "$ref": "#/$defs/cell"
+        },
+        "rights": {
+          "$ref": "#/$defs/rights"
+        },
+        "raw_prepared_derived_normalized_boundary": {
+          "$ref": "#/$defs/cell"
+        },
+        "authoritative_clock_and_domain": {
+          "$ref": "#/$defs/cell"
+        },
+        "frame_authority_and_transform_model": {
+          "$ref": "#/$defs/cell"
+        },
+        "units": {
+          "$ref": "#/$defs/cell"
+        },
+        "stable_identity_model": {
+          "$ref": "#/$defs/cell"
+        },
+        "complete_snapshot_and_missing_state_policy": {
+          "$ref": "#/$defs/cell"
+        },
+        "materialization_or_carry_forward_policy": {
+          "$ref": "#/$defs/cell"
+        },
+        "field_provenance": {
+          "$ref": "#/$defs/cell"
+        },
+        "frozen_fixture_identities": {
+          "$ref": "#/$defs/frozen_fixture_identities"
+        },
+        "information_loss": {
+          "$ref": "#/$defs/cell"
+        },
+        "external_source_contract_v1_fit": {
+          "$ref": "#/$defs/cell"
+        },
+        "supported_atlas_semantics": {
+          "$ref": "#/$defs/cell"
+        },
+        "prohibited_semantics": {
+          "$ref": "#/$defs/cell"
+        },
+        "deterministic_conversion_status": {
+          "$ref": "#/$defs/cell"
+        },
+        "portable_evaluation_status": {
+          "$ref": "#/$defs/cell"
+        },
+        "atlas_rerun_status": {
+          "$ref": "#/$defs/cell"
+        },
+        "evidence_bundle_status": {
+          "$ref": "#/$defs/cell"
+        },
+        "regression_status": {
+          "$ref": "#/$defs/cell"
+        },
+        "independent_rerun_status": {
+          "$ref": "#/$defs/cell"
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reopening_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "supporting_artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/supporting_artifact"
+          }
+        }
+      }
+    }
+  }
+}

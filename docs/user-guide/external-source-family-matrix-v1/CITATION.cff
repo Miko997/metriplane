@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+cff-version: 1.2.0
+message: >-
+  This is a publication candidate. Until an owner-approved immutable
+  publication identity exists, cite the exact Metriplane commit and this path;
+  do not infer a DOI, release, or tag.
+title: "Metriplane External Source-Family Compatibility and Decision Matrix"
+type: dataset
+authors:
+  - family-names: "Parkkinen"
+    given-names: "Miko"
+version: "1-candidate"
+repository-code: "https://github.com/Miko997/metriplane"
+license: MIT
+abstract: >-
+  Claim-bounded consolidation of frozen Metriplane external-source evidence:
+  one source-specific ManiSkill GO, one CALVIN NO-GO, one source-specific
+  robomimic GO, one partially audited MimicGen row, and untested RoboCasa and
+  ROS 2 / MCAP + TF2 rows. The package is owner-generated and does not claim
+  independent validation, universal compatibility, physical accuracy, safety,
+  production readiness, or source-project endorsement.
+keywords:
+  - Metriplane
+  - external source contract
+  - compatibility matrix
+  - decision matrix
+  - ManiSkill
+  - CALVIN
+  - robomimic
+  - reproducibility
+preferred-citation:
+  type: data
+  title: "Metriplane External Source-Family Compatibility and Decision Matrix"
+  authors:
+    - family-names: "Parkkinen"
+      given-names: "Miko"
+  version: "1-candidate"
+  year: 2026
+  repository-code: "https://github.com/Miko997/metriplane"
+references:
+  - type: software
+    title: "Metriplane"
+    authors:
+      - family-names: "Parkkinen"
+        given-names: "Miko"
+    version: "0.3.0"
+    repository-code: "https://github.com/Miko997/metriplane"
+  - type: software
+    title: "ManiSkill"
+    authors:
+      - name: "ManiSkill contributors"
+    version: "3.0.1"
+    repository-code: >-
+      https://github.com/haosulab/ManiSkill/tree/a4a4f9272ad64b1564035874b605ceb687b63ed8
+  - type: software
+    title: "robomimic"
+    authors:
+      - name: "robomimic contributors"
+    version: "0.5.0"
+    repository-code: >-
+      https://github.com/ARISE-Initiative/robomimic/tree/d309eaecc18acf4152a830a895a6984b8ac71b05

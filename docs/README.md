@@ -49,6 +49,9 @@ example inputs and use the supported recorded-run interface.
 - [External Source Contract v1](specs/external-source-contract-v1.md): inspect the
   source-neutral conversion contract and its limits. The generic execution path
   does not itself claim that an adapter for any particular source exists.
+- [External source-family matrix v1](user-guide/external-source-family-matrix-v1/README.md):
+  compare the exact evidence, decisions, limitations, and reopening criteria
+  for six audited, partial, rejected, uninspected, or planned source families.
 - [Troubleshooting](user-guide/troubleshooting.md): recover from common setup,
   browser, input, verification, and regression failures.
 - [Contributing](user-guide/contributing.md): prepare a focused change safely.

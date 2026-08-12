@@ -44,3 +44,10 @@ License: Apache-2.0
 Comment: This incident evidence bundle contains generated evidence metadata and
  a bounded modified/derived state segment from the Apache-2.0-treated fixture.
  See proofs/maniskill-pickcube-v1/NOTICE.md for the exact mixed rights boundary.
+
+Files: docs/user-guide/external-source-family-matrix-v1/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This publication package is independently authored consolidation
+ metadata and documentation. It references frozen source-specific evidence but
+ does not redistribute upstream raw artifacts or alter prior derived fixtures.
