@@ -219,7 +219,8 @@ The post-freeze implementation record is:
 | Generic validation | Passed for both variants, each with 118 complete frames. |
 | Frozen Atlas result | Exact incident/control accounting in section 6, including verified incident evidence/regression and no fabricated control artifacts. |
 
-Final exact three-run equivalence, installed-wheel portability, root-level
-path-leak and REUSE rechecks, and the complete CI matrix remain separate pending
-gates. They may not change the selected source, episode, fields, clock,
-geometry, roles, or waits recorded here.
+Final source-tree and Linux Python 3.12/3.13 installed-wheel three-run
+equivalence, moved-root path/ZIP scanning, scoped REUSE, and root-protection
+checks passed. The complete Ubuntu/macOS CI matrix, review, merge, and
+post-merge checks remain separate gates. They may not change the selected
+source, episode, fields, clock, geometry, roles, or waits recorded here.

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Status: **rights gate GO and fixture/adapter licensing treatment implemented
 for the exact MIT-declared dataset revision and modified normalized numeric
-fixture; final root-level REUSE and path-leak rechecks remain pending.**
+fixture; scoped REUSE and local fixture/output path-leak checks pass.**
 
 This is a research-software licensing and provenance record, not legal advice.
 It separates source code, dataset bytes, embedded model material, normalized
@@ -100,8 +100,9 @@ The implemented `.reuse/dep5` stanzas cover
 README supplies immutable attribution and a conspicuous modification notice;
 `LICENSES/MIT.txt` supplies the repository license text. `reuse 5.0.2
 lint-file` passed for the adapter, fixture, and these four MET-18 documents on
-2026-08-12. A final root-level REUSE rerun is still required; path-scoped
-success is not a claim of repository-wide compliance.
+2026-08-12. Recursive fixture, installed-run, and ZIP path scans also passed.
+The full repository retains pre-existing REUSE debt outside MET-18;
+path-scoped success is not a claim of repository-wide compliance.
 
 ## 5. Redistribution decision
 

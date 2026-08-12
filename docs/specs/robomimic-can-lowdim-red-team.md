@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 
 # robomimic Can low-dimensional fixture red-team gate
 
-Status: **LOCAL ADVERSARIAL, REAL-SOURCE, CONTRACT, AND SOURCE-TREE GATES PASS.
-Installed-wheel portability, final root CI, PR review, merge, and post-merge
-verification remain open and block a final completion claim.**
+Status: **LOCAL ADVERSARIAL, REAL-SOURCE, CONTRACT, SOURCE-TREE, AND LINUX
+INSTALLED-WHEEL GATES PASS. macOS CI, PR review, merge, and post-merge
+verification remain open and block a Done claim.**
 
 This record adversarially reviews the exact fixture identified by adapter
 commit `cfc285a3e757fdf742858b1c4cf685c384d01e8b`, shared session SHA-256
@@ -32,19 +32,19 @@ and control fingerprint
 | 9 | Are world and relative frames distinguished? | **Pass.** Only proven robosuite-world positions are used. The relative Can-to-EEF block is inventoried and excluded. |
 | 10 | Are Z and orientation losses explicit? | **Pass.** Both source Z values and complete quaternions, yaw, roll, and pitch are declared losses; normalized Z is `0.0`; no orientation is hidden in `extra`. |
 | 11 | Are raw and prepared artifacts independently identified? | **Pass.** Immutable revision, exact paths, sizes, and distinct SHA-256 values are recorded; raw robosuite `1.5.0` and prepared `1.5.1` remain distinct. |
-| 12 | Does portable fixture evaluation require source dependencies? | **Local contract pass; installed-wheel proof pending.** Source-tree evaluation imports no adapter or source framework. Exact installed-wheel confirmation remains open. |
-| 13 | Does the ordinary wheel contain source material or adapter dependencies? | **Pending installed distribution inspection.** Root dependency protections exist, but the exact final wheel/sdist must be inspected. |
-| 14 | Can local paths be found in durable artifacts? | **Fixture pass; installed-run scan pending.** Generic validation rejects local paths/symlinks and fixture inventory is clean. Moved installed-wheel outputs and ZIP members still require the final matrix scan. |
+| 12 | Does portable fixture evaluation require source dependencies? | **Pass on Linux 3.12/3.13.** Six runs per interpreter family used only the ordinary installed wheel and runtime dependencies; no adapter or source framework was installed. macOS CI remains pending. |
+| 13 | Does the ordinary wheel contain source material or adapter dependencies? | **Pass.** Wheel archive, metadata, and installed distributions contain no adapter, source fixture, raw data/model payload, or prohibited source dependency; package version remains `0.3.0`. |
+| 14 | Can local paths be found in durable artifacts? | **Pass locally.** Recursive scans of fixture, moved output, ZIP member names, and ZIP bodies found no checkout, original execution-root, home, or platform-private path. CI independently repeats this. |
 | 15 | Are incident/control sessions identical? | **Pass.** Both hash to `bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246`. |
 | 16 | Are variant differences limited to declared rules? | **Pass.** State, mapping, geometry, assets, work order, frozen config, environment, and lock are identical. Differences are fixture/domain identities, `max_wait_s` (`2.0`/`2.5`), expected-outcome metadata, and directly caused hashes. |
 | 17 | Are rights for normalized state explicit? | **Pass for the frozen boundary.** The immutable dataset card declares MIT; raw/prepared HDF5 and embedded XML are excluded; the modified normalized fixture retains attribution and a modification notice. |
 | 18 | Can exact source drift be detected? | **Pass.** Immutable revision, sizes, and source hashes are mandatory before inspection and are recomputed after conversion; publication is atomic only after post-hash equality. |
 | 19 | Are three conversions deterministic? | **Pass.** Three empty-root conversions were byte-equivalent across 28 variant artifacts plus exact root summaries and finalized as demonstrated. |
-| 20 | Are three runs semantically equivalent? | **Pass in the source tree.** Incident repeated `118/4/1/1`; control repeated `118/3/0/0`; canonical state/events/deviations/incidents/regressions matched. Installed-wheel repetition is pending. |
+| 20 | Are three runs semantically equivalent? | **Pass in source-tree and installed-wheel Linux 3.12/3.13 tests.** Incident repeated `118/4/1/1`; control repeated `118/3/0/0`; canonical state/events/deviations/incidents/regressions matched within and across interpreters. |
 | 21 | Is upstream corpus filtering visible? | **Pass.** The required limitation appears in durable manifests and documentation: “Episode selection was outcome-blind only within an upstream success-filtered corpus.” |
 | 22 | Is independent adoption or endorsement implied? | **Pass.** Both claims are prohibited; this is one internally verified trajectory and no source endorsement is asserted. |
 | 23 | Did the CALVIN rejection weaken a gate? | **Pass.** Rights, clock, raw/prepared, deterministic conversion, and claim gates were applied independently and remain stricter than public-download inference. |
-| 24 | Is the result suitable as a factual MET-19 row? | **Conditionally yes.** The exact local GO boundary and limitations are factual; the row must keep installed-wheel, CI, merge, and post-merge fields pending until independently closed. |
+| 24 | Is the result suitable as a factual MET-19 row? | **Yes as a factual local GO row.** It must retain one-trajectory, operator-rule, position-only, upstream-filtering, no-success/no-accuracy limitations and keep macOS/merge fields pending until closed. |
 
 ## Outcome-specific adversarial findings
 
@@ -110,12 +110,13 @@ No local red-team finding requires retuning the selected demo, polygon, waits,
 field map, clock, or contract. The exact local result is supported, subject to
 the one-shot and placeholder disclosures above.
 
-The gate is not fully closed until the final dedicated fixture/root suites and
-CI are green, the exact final wheel/sdist exclude source material and adapter
-dependencies, and the installed-wheel Python/OS matrix repeats validation,
-three incident/control runs, evidence/regression checks, movable-output checks,
-and recursive path/ZIP scans. PR review, merge, and post-merge workflows remain
-separate pending gates.
+The dedicated adapter, fixture, root, preserved-proof, demo, distribution, and
+Linux installed-wheel gates are green. The local wheel archive and installed
+distributions exclude source material and adapter dependencies; Python 3.12 and
+3.13 each repeated validation, three incident/control runs,
+evidence/regression policy, relocation, and path/ZIP scans. GitHub must still
+repeat the portable rows on Ubuntu and macOS. PR review, merge, and post-merge
+workflows remain separate pending gates.
 
 If any pending gate changes the frozen semantics or reveals a source
 dependency, path leak, rights defect, nondeterminism, or misleading public

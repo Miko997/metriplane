@@ -197,9 +197,11 @@ regular tracked file byte-for-byte with its Git blob. Wrong commits, modified
 files hidden by `assume-unchanged` or `skip-worktree`, mode/type/symlink drift,
 hostile Git environment overrides, and missing critical files fail closed.
 Portable fixture validation and execution do not require Git or this adapter.
-Final exact three-run equivalence, installed-wheel portability, exhaustive
-root/ZIP path-leak scanning, and the root-level REUSE/CI rechecks remain pending
-verification gates; none permits a change to this frozen field map.
+Final source-tree and Linux installed-wheel three-run equivalence passed on
+Python 3.12 and 3.13, including moved-root and recursive ZIP/path-leak checks.
+The scoped REUSE check passed for all MET-18 paths. macOS and fresh-runner CI,
+PR review, merge, and post-merge verification remain separate gates; none
+permits a change to this frozen field map.
 
 ## 9. Excluded source inputs and anti-taint boundary
 

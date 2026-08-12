@@ -7,8 +7,8 @@ SPDX-License-Identifier: MIT
 
 Status: **source-boundary GO implemented for the exact pinned pair and
 demonstrated through three byte-identical real-source conversions, generic
-validation, and the frozen incident/control Atlas outcomes; final exact
-three-run, installed-wheel, root-path/REUSE, and CI gates remain pending.**
+validation, frozen incident/control outcomes, and Linux Python 3.12/3.13
+installed-wheel runs; macOS CI, review, merge, and post-merge gates remain.**
 
 This audit authorizes implementation of one exact source-specific boundary:
 Can Proficient Human `demo_0` from the official robomimic v1.5 raw/prepared
@@ -358,11 +358,12 @@ The final adapter and fixture record the following completed evidence:
 
 The fixture inventory contains no HDF5, source framework, simulator, model
 asset, or adapter package, and its structured provenance uses relative paths.
-Final exact three-run equivalence, installed-wheel portability, the exhaustive
-root/ZIP path-leak scan, root-level REUSE recheck, root-package protection, and
-the complete CI matrix remain pending. Their results belong in the dedicated
-verification records and may not change the source or field provenance asserted
-here.
+Final source-tree and Linux installed-wheel three-run equivalence passed on
+Python 3.12 and 3.13. Wheel/dependency inspection, moved-output checks,
+recursive path/ZIP scans, scoped REUSE, root-package protection, and preserved
+proof regressions passed locally. The complete Ubuntu/macOS CI matrix remains
+pending; details belong in the dedicated verification record and may not change
+the source or field provenance asserted here.
 
 ## 12. Audit conclusion and claims
 

@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 
 # robomimic Can low-dimensional verification ledger
 
-Status: **LOCAL REAL-SOURCE CONVERSION, CONTRACT VALIDATION, AND SOURCE-TREE
-EXECUTION PASS. Installed-wheel portability, the final root CI matrix, PR
-workflows, merge, and post-merge verification remain pending.**
+Status: **LOCAL REAL-SOURCE CONVERSION, CONTRACT VALIDATION, SOURCE-TREE
+EXECUTION, AND LINUX INSTALLED-WHEEL GATES PASS. macOS jobs, PR workflows,
+merge, and post-merge verification remain pending.**
 
 This ledger records the reproducibility evidence for one bounded,
 position-only fixture derived from the official robomimic Can Proficient Human
@@ -121,6 +121,35 @@ The later Can and TCP exits are therefore inert. This is a bounded arrival and
 required-presence timing check, not a retention or continuing co-occupancy
 check.
 
+## Installed-wheel portability
+
+An ordinary `metriplane-0.3.0-py3-none-any.whl` was built outside the fixture
+and installed into isolated environments outside the checkout. The installed
+package list contained only Metriplane and its ordinary runtime dependencies.
+It contained no adapter, fixture, HDF5/XML/model payload, robomimic, robosuite,
+MuJoCo, Torch, h5py, or Hugging Face dependency. Package-consistency checks
+passed in both environments.
+
+| Local platform | Python | Incident runs | Control runs | Move/reverify | Path and ZIP scan |
+| --- | --- | ---: | ---: | --- | --- |
+| Linux x86_64 | `3.12.13` | 3 equivalent, `118/4/1/1` | 3 equivalent, `118/3/0/0` | Pass | Pass |
+| Linux x86_64 | `3.13.14` | 3 equivalent, `118/4/1/1` | 3 equivalent, `118/3/0/0` | Pass | Pass |
+
+Across both interpreters the incident canonical semantic SHA-256 was
+`fdf02146435923f0aadce3cdbe1060bea92e52a55cb38243daac1a0ad266c374`;
+the control was
+`b103f07b729a16003aa90f54bc940c34eb8561068a497fe94cca98bfb9558780`.
+Every incident run produced one verifiable bundle and one passing regression.
+Every control produced neither. Reports, dashboards, and USDA replays remained
+readable after both the input and output roots moved. Recursive scans of moved
+fixtures, outputs, ZIP member names, and ZIP bodies found no checkout,
+execution-root, user-home, or platform-private path.
+
+The workflow repeats this matrix on Ubuntu and macOS for Python 3.12 and 3.13.
+The two macOS rows are pending GitHub execution; they are not inferred from the
+Linux result. Conversion remains a separate Linux-only activity and is not a
+portable-runtime requirement.
+
 ## Adapter, anti-taint, and negative verification
 
 The isolated adapter suite result at the recorded head is **36 passed**; Ruff
@@ -156,19 +185,46 @@ skip-worktree content/mode changes, untracked adapter files, replacement refs,
 hostile Git/config/loader environment variables, and non-checkout conversion
 were rejected.
 
+## Root protection and local quality gates
+
+- isolated adapter: **36 passed**; Ruff check and format clean;
+- fixture-specific suite: **11 passed**;
+- full repository suite with a writable sandbox home: **1,089 passed, 2
+  skipped**;
+- preserved ManiSkill proof/fixture plus generic external-contract examples:
+  **39 passed**;
+- bundled `metriplane demo`: incident, evidence, and regression pass;
+- synthetic fixture: unchanged generic validation pass;
+- fixture checksum inventories: both pass;
+- scoped REUSE 5.0.2 validation for every new/modified MET-18 path: pass;
+- root `pyproject.toml`, root `uv.lock`, `metriplane/`, FrameStateModel 1.0,
+  External Source Contract v1, ManiSkill fixture/proof, and CALVIN audit: byte
+  unchanged from `a8b67d58e00f7fcb9b090b2c95475d51b0ede81c` where applicable; and
+- package version: unchanged at `0.3.0`; no release or tag was created.
+
+A repository-wide REUSE invocation still reports pre-existing unlicensed-path
+debt outside MET-18. The scoped new paths pass; this record does not relabel the
+whole pre-existing tree REUSE-compliant.
+
 ## Gates still open
 
-- The dedicated fixture test record and final root test/quality results must be
-  rerun and recorded after the checked fixture/test files are finalized.
-- Installed-wheel execution outside the repository on the required Python and
-  OS matrix is **pending**. Source-tree execution is not relabeled as
-  installed-wheel evidence.
-- Final wheel/sdist archive inspection, moved-output path-leak scans, ordinary
-  wheel dependency/content checks, CI workflows, PR review, merge, and
-  post-merge verification are **pending**.
+- GitHub Ubuntu/macOS jobs on Python 3.12/3.13, including fresh runner package
+  installation;
+- PR review and merge; and
+- post-merge workflows and the final Linear completion record.
 
-Until those gates close, this ledger supports a local conversion and
-source-tree result only. It must not be used to claim a final installed-wheel
-matrix or green CI.
+MET-18 must remain In Review rather than Done until those gates close.
+
+## Exact MET-19 row and remaining instruction
+
+Use this factual row after merge, without broadening it:
+
+| Source | Decision | Exact boundary | Rights | Clock | Fields / loss | Result | Portability | Limitations |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| robomimic | GO | Can PH `demo_0`; dataset `74fa018461f479cd9fd15b924a16103012096203`; raw SHA-256 `86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d`; prepared SHA-256 `3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962`; adapter `cfc285a3e757fdf742858b1c4cf685c384d01e8b` | Dataset and modified numeric fixture MIT with attribution/notice | VERIFIED, artifact-native `50,000,000 ns` per retained row | Prepared world Can/TCP XY witnessed against raw state/model; Z and orientation discarded | Incident `118/4/1/1`; control `118/3/0/0`; shared session SHA-256 `bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246` | Linux installed wheel 3.12/3.13 pass; macOS rows only after green CI | One upstream success-filtered trajectory; operator polygon/waits; arrival timing only; no source success, accuracy, safety, endorsement, or general compatibility |
+
+Remaining instruction: review and merge the focused PR, require all post-merge
+workflows to pass, then mark MET-18 Done and copy the row above into MET-19.
+Do not start MET-19 automatically.
 
 Episode selection was outcome-blind only within an upstream success-filtered corpus.
