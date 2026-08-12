@@ -43,6 +43,14 @@ CONVERSION_COMMIT = "a4a4f9272ad64b1564035874b605ceb687b63ed8"
 CONVERSION_WHEEL_SHA256 = (
     "685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a"
 )
+ADAPTER_COMMIT = "95d1134d9fb9273318c552c507952f1c5c26877e"
+CONVERSION_INPUT_FINGERPRINT = (
+    "9eb29e2c52b5ab3e59801b12b19b14385fe5b176a90f71a08df566d1f03d6eb1"
+)
+EXPECTED_FIXTURE_FINGERPRINTS = {
+    "incident": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
+    "control": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
+}
 SOURCE_ARTIFACTS = {
     "pickcube_archive": {
         "sha256": "b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8",
@@ -206,7 +214,16 @@ def test_fixture_contract_source_identity_rights_and_provenance(variant: str) ->
     assert GOAL_XY[1] in scalars
 
     assert manifest.adapter.adapter_id == "org.metriplane.maniskill_pickcube"
-    assert re.fullmatch(r"[0-9a-f]{40}", manifest.adapter.commit)
+    assert manifest.adapter.commit == ADAPTER_COMMIT
+    adapter_environment = (root / "source" / "adapter-environment.txt").read_text(
+        encoding="utf-8"
+    )
+    assert f"adapter_commit={ADAPTER_COMMIT}\n" in adapter_environment
+    assert (
+        fixture.normalization_report.conversion_reproducibility.input_fingerprint_sha256
+        == CONVERSION_INPUT_FINGERPRINT
+    )
+    assert _sha256(root / "CHECKSUMS.sha256") == EXPECTED_FIXTURE_FINGERPRINTS[variant]
     assert manifest.adapter.environment.dependency_lock is not None
     assert manifest.rights.fixture.access == "public"
     assert manifest.rights.fixture.license.status == "declared"

@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 
 # ManiSkill PickCube verification ledger
 
-Status: **PAUSE — preliminary candidate evidence recorded; exact-final-head
-distribution, Python 3.13, global quality, CI, PR, and repository-wide REUSE
-gates remain open.**
+Status: **CORRECTION CANDIDATE — the 2026-08-12 public-provenance correction
+passed all required local gates, including exact-head installed-wheel Python
+3.12/3.13. PR review/CI, merge, and post-merge verification remain open.**
 
 This ledger records the verification evidence currently available for the
 bounded, position-only ManiSkill PickCube compatibility fixture. It separates
@@ -26,16 +26,16 @@ or certified quality.
 | Item | Recorded identity |
 | --- | --- |
 | Original Metriplane base | `5475c6a66b0535cddcbcc7bb05032aed1d2017db` |
-| Preserved audit commit | `cfba11932ee1deb51491d9c60f5afe434b8ee054` |
-| Adapter freeze commit | `8a0c878be9670423d1610c5d89fb090bcd1d5735` |
-| Fixture commit | `dcbc46c91c796f7a8e0bdfc7d76d6e063a485d87` |
+| Preserved audit commit | `683d725f7ab92dd3915cf98efdf48b605ad551ec` |
+| Adapter freeze commit | `95d1134d9fb9273318c552c507952f1c5c26877e` |
+| Original public fixture commit | `d311d2d6c2ecd76b1dfec1102a76786f172be22d` |
 | Adapter configuration SHA-256 | `2062eb44090276b7933e15600d286f532c15f3399746dbe15738bb0411d5e202` |
-| Conversion input fingerprint | `fe90ca129c924d183cecdacc05c5fa0f8a5711dd169cb034128f0da33a2c4475` |
+| Conversion input fingerprint | `9eb29e2c52b5ab3e59801b12b19b14385fe5b176a90f71a08df566d1f03d6eb1` |
 | Named restored-pose stream SHA-256 | `1c2fe261f0bb2190683900e5b751c9416a18f13b6a6485c45969809bd48860d2` |
 | Shared session SHA-256 | `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df` |
 | Entity mapping SHA-256 | `9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7` |
-| Incident fixture fingerprint | `b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04` |
-| Control fixture fingerprint | `cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68` |
+| Incident fixture fingerprint | `954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2` |
+| Control fixture fingerprint | `8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e` |
 
 The fixture fingerprints are the SHA-256 values of the finalized variant
 `CHECKSUMS.sha256` files. They are not source hashes. The conversion input
@@ -71,7 +71,7 @@ for index in 1 2 3; do
     --trajectory "$SOURCE_ROOT/extracted/PickCube-v1/motionplanning/trajectory.h5" \
     --metadata "$SOURCE_ROOT/extracted/PickCube-v1/motionplanning/trajectory.json" \
     --config adapters/maniskill_pickcube/config/frozen-config.json \
-    --adapter-commit 8a0c878be9670423d1610c5d89fb090bcd1d5735 \
+    --adapter-commit 95d1134d9fb9273318c552c507952f1c5c26877e \
     --out "$THREE_CONVERSION_ROOT/conversion-$index" \
     --json
 done
@@ -92,9 +92,9 @@ The finalizer result was:
 ```json
 {
   "compared_artifact_count": 28,
-  "control_fixture_fingerprint_sha256": "cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68",
+  "control_fixture_fingerprint_sha256": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
   "equivalent": true,
-  "incident_fixture_fingerprint_sha256": "b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04",
+  "incident_fixture_fingerprint_sha256": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
   "run_ids": [
     "real-source-clean-1",
     "real-source-clean-2",
@@ -219,7 +219,7 @@ These are current source-tree executions. They establish the expected semantics
 and path behavior but are **preliminary with respect to the final branch head
 and installed-wheel matrix**.
 
-## Preliminary root-suite and distribution checks
+## Earlier preliminary root-suite and distribution checks
 
 The full root suite was executed against a candidate branch state using a
 writable temporary-home shim required by the sandboxed test environment:
@@ -245,7 +245,7 @@ evidence. The tested branch state was not declared the exact final head, so
 this ledger does not relabel those artifacts as final-head distributions or
 use them to close the final distribution gate.
 
-## Preliminary Python 3.12 installed-wheel portability
+## Earlier preliminary Python 3.12 installed-wheel portability
 
 A clean CPython 3.12 environment outside the repository installed the candidate
 Metriplane wheel and its ordinary declared runtime dependencies from an offline
@@ -270,37 +270,85 @@ recursive durable-artifact scanner reported:
 PATH_LEAK_FAILURES 0
 ```
 
-This establishes one clean, offline CPython 3.12 candidate-wheel result. It is
-not an exact-final-head wheel claim, does not cover CPython 3.13, and must be
-repeated from the final frozen head before PR readiness is asserted.
+This preserves one clean, offline CPython 3.12 pre-correction candidate-wheel
+result. It is not an exact-final-head wheel claim, does not cover CPython 3.13,
+and must be repeated from the final frozen head before PR readiness is
+asserted.
+
+## Public-provenance correction verification — 2026-08-12
+
+The earlier record used local-lineage Metriplane commit identities. Git history
+preserves that superseded record; the current fixture and this ledger use only
+the publicly reachable equivalents. The public adapter freeze is
+`95d1134d9fb9273318c552c507952f1c5c26877e`. It resolves publicly and has the
+same complete repository tree
+`f9532701629d924e55c6d4f82da71b00e3cffa63` and adapter subtree
+`54ec32baadc11ce7de6e8d419a1369aa36f4671e` as the superseded local-lineage
+commit. The preserved public audit and original fixture commits are
+`683d725f7ab92dd3915cf98efdf48b605ad551ec` and
+`d311d2d6c2ecd76b1dfec1102a76786f172be22d`.
+
+The exact pinned PickCube source was reacquired and verified. Inspection passed
+under CPython 3.12.13, the pinned adapter lock, ManiSkill 3.0.1, and software
+Vulkan, recording 74 transitions, 75 stored states, and the provenance-only
+50-step RL horizon. Three fresh conversions using the public adapter commit
+were written to separate empty roots and finalized. The finalizer compared 28
+variant artifacts, returned `equivalent: true`, and produced:
+
+- conversion input fingerprint:
+  `9eb29e2c52b5ab3e59801b12b19b14385fe5b176a90f71a08df566d1f03d6eb1`;
+- incident fixture fingerprint:
+  `954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2`;
+- control fixture fingerprint:
+  `8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e`.
+
+The finalized conversion trees were byte-identical to the corrected checked-in
+fixtures. The source HDF5 and JSON hashes remained unchanged. The source,
+episode, normalized session, entity mapping, geometry, relative waits, and
+incident/control semantics were not changed.
+
+| Correction-candidate gate | Result |
+| --- | --- |
+| Fixture checksum inventories | PASS |
+| Isolated adapter and anti-taint suite | 31 passed |
+| PickCube fixture/path suite | 13 passed |
+| Full external-source suite | 119 passed |
+| Full root suite | 1,057 passed, 2 skipped |
+| Strict MkDocs build | PASS |
+| Wheel/sdist build and strict Twine check | PASS |
+| Distribution-content inspection | PASS; no adapter package, raw source, or prohibited simulator/ML assets |
+| Focused Ruff | PASS |
+| Global Ruff baseline delta | Zero delta; 1,083 diagnostics on both base and candidate |
+| Global mypy baseline delta | Zero delta; the same duplicate-`conftest.py` exit 2 on base and candidate |
+| Changed-path REUSE | PASS for all 15 changed paths |
+| Global REUSE baseline delta | Zero delta; the same pre-existing repository inventory remains non-green |
+| Exact-head installed wheel | PASS on CPython 3.12.13 and 3.13.14 |
+
+The global Ruff, mypy, and REUSE commands are not represented as green. Their
+correction gate is the recorded zero-delta disposition; every changed path
+passes the scoped REUSE check.
+
+The wheel built from the frozen correction head was installed into clean
+CPython 3.12.13 and 3.13.14 environments outside the checkout. ManiSkill,
+SAPIEN, Torch, h5py, Hugging Face tooling, Vulkan tooling, and the isolated
+adapter were absent. On each interpreter, both fixtures validated and three
+incident plus three control executions produced the frozen `75/4/1/1` and
+`75/3/0/0` counts and event order. Incident bundles and generated regressions
+verified; control executions produced neither. After the fixture and output
+roots were moved away from their original paths, all six runs per interpreter
+remained usable and recursive plain/ZIP scans reported
+`PATH_LEAK_FAILURES 0`.
 
 ## Gates still open
 
-The following results must not be inferred from the evidence above:
+- PR checks, review, and merge remain pending;
+- post-merge workflows and public merged-tree verification remain pending; and
+- the final Linear completion handoff remains pending.
 
-- the final branch head has not yet been frozen in this ledger;
-- the candidate root suite, build, strict Twine check, strict MkDocs build, and
-  Python 3.12 installed-wheel run above must be repeated from that exact final
-  head; final-head archive inspection also remains pending;
-- Python 3.13 clean installed-wheel validation, execution, moved-run behavior,
-  and path-leak scanning have not been demonstrated and remain blocking;
-- global Ruff and global mypy results remain pending and blocking. No focused
-  or candidate check is represented here as a substitute;
-- final-head demo, root CLI, root dependency/lock, package-content, frozen
-  schema, and frozen-evidence checks remain pending;
-- GitHub CI has not run for the final head and remains pending and blocking;
-- no PR is claimed open by this ledger; PR creation remains pending and
-  blocking;
-- the final Linear evidence handoff and move to In Review remain pending; and
-- global repository-wide `reuse lint` is not green and remains blocking. The
-  scoped adapter/fixture REUSE metadata is present, but the pre-existing global
-  repository inventory remains a separate unresolved gate and no blanket
-  license correction is claimed.
-
-The preliminary three-run result must be repeated from the exact final-head
-wheel before PR readiness is claimed. A failure in any open gate restores
-PAUSE; it must not be hidden by changing the source, episode, polygon,
-thresholds, orientation boundary, or expected outcomes.
+The completed local results must not be relabeled as PR-CI or post-merge
+evidence. Any discrepancy in a remaining gate restores PAUSE and must not be
+hidden by changing the source, episode, polygon, waits, orientation boundary,
+or expected outcomes.
 
 ## Claim boundary
 
@@ -317,9 +365,12 @@ The current evidence supports only these bounded statements:
   bounded planar results; and
 - one preliminary candidate state passed the full root suite, distribution and
   strict documentation checks, plus one clean offline Python 3.12
-  installed-wheel portability run with `PATH_LEAK_FAILURES 0`.
+  installed-wheel portability run with `PATH_LEAK_FAILURES 0`; and
+- the frozen correction head passed clean installed-wheel validation,
+  execution, evidence/regression, moved-run, and path-leak checks on CPython
+  3.12.13 and 3.13.14.
 
 It does not support official PickCube success/failure, 3D or orientation
 evaluation, physical or simulator accuracy, safety certification, general
-ManiSkill compatibility, independent adoption, Python 3.13 portability, or
-final-head PR/CI readiness.
+ManiSkill compatibility, independent adoption, cross-platform portability
+beyond the recorded Linux CPython checks, or final-head PR/CI readiness.

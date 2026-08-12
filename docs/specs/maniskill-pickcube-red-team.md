@@ -5,18 +5,18 @@ SPDX-License-Identifier: MIT
 
 # ManiSkill PickCube fixture red-team gate
 
-Status: **OPEN — current conversion, fixture, Atlas, and path evidence passes;
-final-head distribution, matrix, CI, PR, and global REUSE gates remain
-pending.**
+Status: **READY FOR REVIEW — real-source, fixture, exact-head distribution,
+Python matrix, quality baseline-delta, scoped rights, and PR workflow gates
+pass. Review, merge, and post-merge verification remain open.**
 
 This record is the adversarial pre-PR gate for the bounded ManiSkill PickCube
 fixture. Current commands, hashes, counts, and evidence boundaries are recorded
 in [`maniskill-pickcube-verification.md`](maniskill-pickcube-verification.md).
-The evidence there covers three clean real-source conversions and current
-source-tree Atlas/path checks. It is not a substitute for the still-pending
-final-head wheel, installed-package matrix, CI, PR, and repository-wide rights
-gates. Every item whose evidence state still contains **PENDING** blocks PR
-readiness.
+The evidence there covers three clean real-source conversions, current
+source-tree Atlas/path checks, the exact-head installed-package matrix, and the
+recorded zero-delta dispositions for pre-existing global quality and rights
+debt. Correction PR #50 is ready for review. Merge and post-merge verification
+remain separate gates.
 
 The source remains frozen to episode `0` / group `traj_0` from dataset revision
 `d674485bbffdd533914e52d272fdda34c0515608`. The conversion runtime remains
@@ -34,8 +34,8 @@ README, current Atlas reports/dashboard, incident evidence and regression use
 bounded XY occupancy and timing language under a Metriplane-authored process
 rule. They explicitly deny official PickCube success/failure, 3D placement,
 orientation, and grasp evaluation. The domain-pack rationale says the region is
-not a ManiSkill task-success definition. Repeat this output review from the
-final-head wheel before PR readiness.
+not a ManiSkill task-success definition. The same bounded claims were retained
+in the exact-head installed-wheel outputs.
 
 ### 2. Can a reader mistake the goal-centered polygon for source truth?
 
@@ -101,7 +101,7 @@ Z is explicitly discarded. The observed source Z excursion is a prominent
 limitation. Allowed descriptions are target XY-region occupancy, planar transit,
 and planar arrival. The checked-in artifacts and current generated outputs were
 reviewed and make no 3D placement, grasp, physical-accuracy, or sim-to-real
-claim. Repeat the generated-output review for the final-head wheel.
+claim. The exact-head installed-wheel outputs retained the same limitations.
 
 ### 8. Is TCP genuinely represented as a tool?
 
@@ -145,69 +145,74 @@ differing files contain only the allowed changes and caused hashes.
 
 ### 12. Can a run be moved without its original source path?
 
-**CURRENT EVIDENCE PASS; FINAL-HEAD WHEEL PENDING.** Atlas commit
-`f3d3092` makes new manifests refer to run-contained `state_segment.jsonl` and
+**PASS.** Atlas commit
+`89f2877372471d9d449b355b93ef2fe4e8d8617d` makes new manifests refer to
+run-contained `state_segment.jsonl` and
 `configs`, introduces source-neutral safe resolution, and makes the USDA exporter
 prefer those copies. The 13-passing fixture/path suite moved current incident
 and control runs, removed their original fixture execution paths, and rechecked
 the report, dashboard, USDA, incident evidence bundle, and regression from the
-moved directories. Repeat this test after installing the exact final-head
-wheel outside the repository.
+moved directories. The exact-head wheel repeated the check outside the
+repository on CPython 3.12.13 and 3.13.14 for three incident and three control
+runs per interpreter.
 
 ### 13. Does any durable artifact leak a local path?
 
-**CURRENT EVIDENCE PASS; FINAL-HEAD WHEEL PENDING.** New durable
-manifest references are run-relative. This is not sufficient evidence by itself.
+**PASS.** New durable manifest references are run-relative.
 The complete current incident and control output trees, including ZIP members,
 were scanned for fixture, pack, output, home, repository, and cache sentinels,
 Unix home paths, Windows drive-prefixed paths, and operational absolute roots.
-No leak was found. The final installed-wheel run requires the same recursive
-scan.
+The exact-head installed-wheel matrix repeated the recursive plain/ZIP scan
+after moving all six runs per interpreter and reported `PATH_LEAK_FAILURES 0`.
 
 ### 14. Does any generated output assume camera, tracking, or calibration?
 
-**CURRENT EVIDENCE PASS; FINAL-HEAD WHEEL PENDING.** Atlas commit
-`e49425f` replaces generic camera/tracking assumptions with normalized-state
+**PASS.** Atlas commit
+`070421a2626f0fe0b9e197b28b2bc852410da569` replaces generic camera/tracking
+assumptions with normalized-state
 language and upstream-accuracy limitations. Camera-specific subsystem
 documentation remains outside this change. Current reports, dashboard,
 limitations, connectors, evidence metadata, regression, privacy report, and
 USDA were searched and contain no false `camera`, `tracked`, `tagged`,
-`calibrated`, `sensor`, `video`, `Isaac`, or source-latency assumption. Repeat
-the search on final-head installed-wheel outputs.
+`calibrated`, `sensor`, `video`, `Isaac`, or source-latency assumption. The
+exact-head installed-wheel outputs retained the same source-neutral claims and
+were byte-identical across the recorded Python 3.12/3.13 runs.
 
 ### 15. Does the wheel contain source dependencies or assets?
 
-**CURRENT SOURCE-TREE BOUNDARY PASS; FINAL DISTRIBUTION PENDING.** The adapter is
+**PASS.** The adapter is
 isolated under `adapters/maniskill_pickcube/` with its own dependency lock. The
 root package must not import or depend on ManiSkill, SAPIEN, Torch, h5py,
 Hugging Face clients, or Vulkan bindings. The final wheel and sdist must be
 inspected to prove that they contain no raw source, Panda/table assets, adapter
-runtime, or source-framework dependency. Current dependency/import/package
-discovery checks pass, but the final-head wheel and sdist have not yet been
-built and inspected; this remains a blocking distribution gate.
+runtime, or source-framework dependency. The exact-head wheel and sdist contain
+187 and 318 paths respectively; archive inspection found none of those source
+dependencies or assets. Both clean wheel environments confirmed that the
+adapter and source-framework packages were absent.
 
 ### 16. Are raw source artifacts absent?
 
-**CURRENT FIXTURE PASS; FINAL DISTRIBUTION PENDING.** The ZIP, HDF5,
+**PASS.** The ZIP, HDF5,
 JSON, Panda URDF, table asset, videos, screenshots, and checkpoints must remain
 outside Git fixtures and Metriplane distributions. The portable fixture may
 contain only normalized/derived material and immutable referenced source
 identities. The checked-in fixture inventory and recursive file-type scan found
-none of the prohibited raw artifacts or assets. Final wheel/sdist archive
-inspection remains pending.
+none of the prohibited raw artifacts or assets, and final wheel/sdist archive
+inspection confirmed their absence.
 
 ### 17. Is fixture licensing distinct from repository software licensing?
 
-**SCOPED FIXTURE/ADAPTER RIGHTS PASS; GLOBAL REUSE PENDING.** Independently authored
+**SCOPED PASS; GLOBAL ZERO-DELTA DISPOSITION.** Independently authored
 adapter code remains MIT-licensed. Public source-derived fixture data is treated
 separately under Apache-2.0 attribution and a modified-data notice. Raw source
 bytes are referenced rather than redistributed. The final fixture manifest,
 notices, Apache-2.0 license text, and REUSE metadata must agree and must not imply
 that the entire repository is Apache-2.0 or that the demonstration data was
 created by Metriplane. The manifests, notices, canonical license texts, and
-narrow `.reuse/dep5` entries agree. Repository-wide `reuse lint` is not green
-because of pre-existing inventory debt; no blanket relicensing is authorized or
-claimed.
+narrow `.reuse/dep5` entries agree. All 15 changed paths pass `reuse lint-file`.
+Repository-wide `reuse lint` remains non-green with exactly the pre-existing
+baseline inventory and invalid-expression debt; the correction has zero global
+delta and claims no blanket relicensing.
 
 ### 18. Can exact source drift be detected?
 
@@ -228,20 +233,20 @@ artifacts plus the root conversion summary. The final reports name
 `status: demonstrated` and `equivalent: true`. The shared session SHA-256 is
 `7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df`;
 the incident and control fixture fingerprints are respectively
-`b45b71495d50686bcffa3f4e230d0b8325ef1fd0ffdfc2775e53c1f041ad8a04`
+`954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2`
 and
-`cb5c157aec19381affcceb025b375caa6bef1b6179df58ce6faa290312881f68`.
+`8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e`.
 
 ### 20. Are three Atlas executions semantically equivalent?
 
-**CURRENT SOURCE-TREE PASS; FINAL-HEAD WHEEL PENDING.** Three current incident
-and three current control evaluations produced equivalent canonical semantics.
+**PASS.** Three current incident and three current control evaluations produced
+equivalent canonical semantics.
 Each incident run produced four events, one deviation, one
 `missing_tool_caused_delay` incident, a verified bundle, and a passing
 regression. Each control run produced three events, zero deviations, zero
-incidents, and no bundle or regression. This six-run result is preliminary with
-respect to packaging: repeat it from the exact final-head wheel and fixed safe
-run IDs before PR readiness.
+incidents, and no bundle or regression. The exact-head installed wheel repeated
+all six runs with fixed safe run IDs on CPython 3.12.13 and 3.13.14, retaining
+the incident `75/4/1/1` and control `75/3/0/0` results.
 
 ## Claims supported by current evidence
 
@@ -252,14 +257,14 @@ run IDs before PR readiness.
 - Atlas evaluated the normalized cube and TCP state under the supplied
   Metriplane-authored target-region and relative-wait rules.
 - Three clean conversions were byte-equivalent under the recorded conversion
-  environment, and current source-tree incident/control executions were
-  semantically equivalent.
+  environment, and source-tree plus exact-head installed-wheel incident/control
+  executions were semantically equivalent.
 - The portable fixture can be validated and evaluated without ManiSkill or its
-  assets after conversion.
+  assets after conversion on the recorded CPython 3.12/3.13 Linux matrix.
 
 These claims remain bounded to the exact source, episode, adapter, rules,
-fixture commit, and tested environments. Do not describe the current Atlas
-execution evidence as final installed-wheel or CI evidence.
+fixture commit, and tested environments. Do not describe PR evidence as merged
+or post-merge evidence.
 
 ## Prohibited claims
 
@@ -279,15 +284,13 @@ outcome-blind only within that already filtered official corpus.
 
 ## Stop gate
 
-Do not open the fixture PR, move the work item to review, or describe the fixture
-as complete while any evidence gate remains **PENDING** or produces a
-contradictory result. The exact-final-head wheel/sdist, clean installed-wheel
-Python matrix, repeated six-run/path scan, focused/full checks, CI, PR, Linear
-handoff, and repository-wide REUSE disposition remain open as listed in the
-verification ledger. In particular, stop rather than retune the frozen polygon,
-thresholds, source, episode, or trust-layer assignments if a final result
-differs. A source hash mismatch, nondeterministic restoration/conversion,
-source-tainted state or rules, remaining durable path leak, misleading generated
-claim, unrepresentable rights boundary, source dependency in the portable
-evaluator, or change to the frozen contract or FrameStateModel is a blocking
-result, not a reason to weaken the gate.
+Do not merge correction PR #50 until every current-head PR workflow is green.
+Do not return MET-15 to Done or start MET-16 until the correction is merged and
+every triggered `main` workflow plus the public merged-tree verification is
+green. Stop rather than retune the frozen polygon, thresholds, source, episode,
+or trust-layer assignments if a final result differs. A source hash mismatch,
+nondeterministic restoration/conversion, source-tainted state or rules,
+remaining durable path leak, misleading generated claim, unrepresentable
+rights boundary, source dependency in the portable evaluator, or change to the
+frozen contract or FrameStateModel is a blocking result, not a reason to weaken
+the gate.
