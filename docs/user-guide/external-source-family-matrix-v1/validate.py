@@ -37,9 +37,9 @@ EXPECTED_BASELINE = "5606b956e9309802570cfa46857714722fd70187"
 EXPECTED_CONTRACT = "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
 EXPECTED_CLAIM = (
     "Metriplane's frozen external-source process has produced two successful, "
-    "source-specific, portable evaluation paths—ManiSkill and robomimic—and one "
-    "documented CALVIN rejection where public rights and authoritative timing did "
-    "not satisfy the contract."
+    "source-specific portable evaluation paths: ManiSkill and robomimic. It also "
+    "produced one documented CALVIN rejection because public rights and "
+    "authoritative timing did not satisfy the contract."
 )
 EXPECTED_FIXTURES = {
     "maniskill": (

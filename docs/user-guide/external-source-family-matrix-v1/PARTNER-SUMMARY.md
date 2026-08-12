@@ -20,8 +20,8 @@ an incident and a no-incident control. Their target polygons, roles, and waits
 are Metriplane-authored evaluation rules, not source-project success labels.
 
 MimicGen was only partially audited and was not implemented. RoboCasa was not
-inspected. ROS 2 / MCAP + TF2 remains planned under unstarted MET-46. No third
-successful-source claim exists.
+inspected. ROS 2 / MCAP + TF2 remains future work and has not been tested. No
+third successful-source claim exists.
 
 This is first-party technical evidence. It does not claim independent adoption
 or validation, universal source neutrality, general simulator or HDF5 support,
@@ -31,5 +31,5 @@ rights, authoritative timing, frames, units, entity identity, completeness,
 field provenance, information loss, deterministic conversion, and portable
 evaluation.
 
-This text is a factual summary for possible later MET-22 use. MET-19 performs no
-outreach and makes no partnership offer.
+This is a factual technical summary. No partner outreach or partnership offer
+is included.

@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT
 # Human-readable compatibility and decision matrix
 
 This view summarizes the complete structured rows in [matrix.json](matrix.json).
-“Verified” means verified for the exact bounded artifact named in that row—not
+“Verified” means verified for the exact bounded artifact named in that row, not
 for the whole source family. “Not applicable” is distinct from a passing test.
 
 ## Decision and artifact identity
@@ -18,7 +18,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | robomimic | Can PH `demo_0`; dataset revision `74fa018461f479cd9fd15b924a16103012096203`; frozen adapter `cfc285a3e757fdf742858b1c4cf685c384d01e8b` | `GO` | Two frozen complete-snapshot fixtures validate under Contract v1 |
 | MimicGen | Partially audited Square human source at dataset revision `33016f8a62c02334f929f2913af8fdd2a8a129e1`; recorded remote source hash `c917e99362fd9bd11978d6e2642c1ea88272702fbf55b50367ed471febf550e2` | `PARTIALLY SUPPORTED` | Not established; no immutable raw/prepared chain or clock proof |
 | RoboCasa / RoboCasa365 | No artifact selected or inspected | `NOT TESTED` | Not tested |
-| ROS 2 / MCAP + TF2 | No recording selected; planned work is [MET-46](https://linear.app/metriplane/issue/MET-46/extract-a-minimal-metriplane-source-adapter-sdk-and-prove-a-ros-2mcap) | `NOT TESTED` | Design target only; no compatibility proof |
+| ROS 2 / MCAP + TF2 | No recording selected; any future work requires a separate bounded audit | `NOT TESTED` | Design target only; no compatibility proof |
 
 ## Rights and provenance boundary
 
@@ -57,9 +57,9 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 
 | Family | Supported Atlas semantics | Deterministic conversion | Portable evaluation | Evidence / regression | Independent rerun |
 | --- | --- | --- | --- | --- | --- |
-| ManiSkill | Operator-authored XY arrival/required-presence timing; incident `75/4/1/1`, control `75/3/0/0` | Three clean conversions; 28 byte-equivalent artifacts | Ubuntu/macOS × Python 3.12/3.13 at exact tag | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED`—only first-party evidence |
+| ManiSkill | Operator-authored XY arrival/required-presence timing; incident `75/4/1/1`, control `75/3/0/0` | Three clean conversions; 28 byte-equivalent artifacts | Ubuntu/macOS × Python 3.12/3.13 at exact tag | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED`, with first-party evidence only |
 | CALVIN | None | No adapter or conversion | No fixture | Not applicable; no Atlas run | Not applicable |
-| robomimic | Operator-authored XY arrival/required-presence timing; incident `118/4/1/1`, control `118/3/0/0` | Frozen three-conversion / 28-artifact equivalence; later first-party source reacquisition produced the same session and mutually equivalent current-head conversions, not frozen-byte fingerprints | Frozen fixtures passed Ubuntu/macOS × Python 3.12/3.13 | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED`—only first-party evidence |
+| robomimic | Operator-authored XY arrival/required-presence timing; incident `118/4/1/1`, control `118/3/0/0` | Frozen three-conversion / 28-artifact equivalence; later first-party source reacquisition produced the same session and mutually equivalent current-head conversions, not frozen-byte fingerprints | Frozen fixtures passed Ubuntu/macOS × Python 3.12/3.13 | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED`, with first-party evidence only |
 | MimicGen | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
 | RoboCasa / RoboCasa365 | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
 | ROS 2 / MCAP + TF2 | None demonstrated | No converter | No fixture | Not applicable | Not applicable |

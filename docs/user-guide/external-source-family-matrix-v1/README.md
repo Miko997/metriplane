@@ -11,9 +11,9 @@ evidence at public baseline
 Source Contract, an adapter, a fixture, Atlas, or any earlier proof.
 
 > Metriplane's frozen external-source process has produced two successful,
-> source-specific, portable evaluation paths—ManiSkill and robomimic—and one
-> documented CALVIN rejection where public rights and authoritative timing did
-> not satisfy the contract.
+> source-specific portable evaluation paths: ManiSkill and robomimic. It also
+> produced one documented CALVIN rejection because public rights and
+> authoritative timing did not satisfy the contract.
 
 That is the strongest aggregate claim supported by this package. A `GO` is
 bounded to the exact source artifact, fields, clock, normalization, operator
@@ -24,9 +24,9 @@ gate enforcement; it is not compatibility.
 
 | Source family | Public label | Decision | Counts as a proven path? |
 | --- | --- | --- | --- |
-| ManiSkill | GO / proven external source | `GO` | Yes—one pinned PickCube path |
+| ManiSkill | GO / proven external source | `GO` | Yes, one pinned PickCube path |
 | CALVIN | NO-GO / not supported | `NO-GO` | No |
-| robomimic | GO / proven external source | `GO` | Yes—one pinned Can low-dimensional path |
+| robomimic | GO / proven external source | `GO` | Yes, one pinned Can low-dimensional path |
 | MimicGen | Partially audited / not implemented | `PARTIALLY SUPPORTED` | No |
 | RoboCasa / RoboCasa365 | Not inspected / not tested | `NOT TESTED` | No |
 | ROS 2 / MCAP + TF2 | Planned / not tested | `NOT TESTED` | No |

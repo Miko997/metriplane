@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Metriplane documentation
 
-**Understand what went wrong in a recorded workcell run—and turn it into a
+**Understand what went wrong in a recorded workcell run and turn it into a
 repeatable test.**
 
 Give Metriplane timestamped object positions and process rules. It creates an

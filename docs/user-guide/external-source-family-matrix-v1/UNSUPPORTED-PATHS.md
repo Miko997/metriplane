@@ -9,8 +9,8 @@ SPDX-License-Identifier: MIT
 | --- | --- | --- | --- |
 | CALVIN | `NO-GO` | No dataset-specific public redistribution grant for derived state and no authoritative per-sample clock or official exact fixed-step guarantee | One documentation-only Phase-0 audit; no adapter, fixture, conversion, Atlas run, evidence bundle, regression, or portability result |
 | MimicGen | `PARTIALLY SUPPORTED` | Identity and rights were partially inspected, but no immutable raw/prepared human-source chain, artifact-specific clock proof, or HDF5 body audit was completed | A bounded partial comparison record; no adapter, fixture, conversion, Atlas run, or compatibility proof |
-| RoboCasa / RoboCasa365 | `NOT TESTED` | The family was not inspected after robomimic satisfied the ordered MET-18 selection | No source identity, rights decision, clock, field map, adapter, fixture, or result |
-| ROS 2 / MCAP + TF2 | `NOT TESTED` | Planned work under unstarted MET-46 has not selected one immutable recording, semantic profile, clock, frame path, or identity/completeness policy | A planned issue only; no ROS 2 or MCAP compatibility claim |
+| RoboCasa / RoboCasa365 | `NOT TESTED` | The family was not inspected after robomimic satisfied the ordered source selection | No source identity, rights decision, clock, field map, adapter, fixture, or result |
+| ROS 2 / MCAP + TF2 | `NOT TESTED` | Future work has not selected one immutable recording, semantic profile, clock, frame path, or identity/completeness policy | No ROS 2 or MCAP compatibility claim |
 | ManiSkill beyond the pinned PickCube path | `NOT APPLICABLE` to the `GO` row | The proof covers one episode, two normalized fixtures, and one operator scenario | Any broader task, dataset, field, platform-conversion, or semantic claim needs a new audit |
 | robomimic beyond the pinned Can path | `NOT APPLICABLE` to the `GO` row | The proof covers one 118-frame trajectory and one position-only operator scenario | Other tasks, episodes, prepared fields, formats, and HDF5 files are not covered |
 

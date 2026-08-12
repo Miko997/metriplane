@@ -5,8 +5,8 @@ SPDX-License-Identifier: MIT
 
 # Evaluator packet
 
-This packet is reserved for a later, separately authorized MET-20 evaluation.
-MET-19 does not contact evaluators or claim an independent rerun.
+This packet is reserved for a later, separately authorized external evaluation.
+No evaluator has been contacted, and no independent rerun is claimed.
 
 ## Evaluation question
 
@@ -23,7 +23,7 @@ compatibility, or production readiness.
 An evaluator receives:
 
 - an owner-approved immutable Metriplane publication commit or tag, supplied
-  after MET-19 review;
+  after publication review;
 - `examples/external_sources/maniskill_pickcube/{incident,control}`;
 - `examples/external_sources/robomimic_lowdim/{incident,control}`;
 - this publication package and its verified `SHA256SUMS`.

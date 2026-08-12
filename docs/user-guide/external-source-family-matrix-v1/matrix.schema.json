@@ -303,7 +303,6 @@
             "git_commit",
             "git_tag",
             "workflow_run",
-            "linear_issue",
             "external_artifact"
           ]
         },

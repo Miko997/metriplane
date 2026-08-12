@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 ## Decision
 
-**NOT READY — REVIEW CANDIDATE**
+**NOT READY: REVIEW CANDIDATE**
 
 The package starts from public Metriplane commit
 `5606b956e9309802570cfa46857714722fd70187`. Its technical rows reference
@@ -31,14 +31,14 @@ frozen public evidence; they do not regenerate or modify that evidence.
 - [x] Every candidate row passes claim and unsupported-path red-team review.
 - [ ] The owner reviews and explicitly approves merge.
 
-The live PR and Linear issue are the authoritative place for exact-head workflow
-results. This hashed file does not manufacture a self-referential commit ID.
+The live PR records exact-head workflow results. They are not embedded in the
+files they verify.
 
 ## Publication identity proposal
 
 After review and merge, the owner may separately approve an immutable tag or
-archive such as `external-source-family-matrix-v1`. That action is not part of
-MET-19 implementation, is not preapproved by this record, and must verify the
+archive such as `external-source-family-matrix-v1`. That action is separate
+from this candidate, is not preapproved by this record, and must verify the
 exact merged inventory and stable URL before any `READY` claim.
 
 No tag, archive, release, DOI, version bump, or GitHub Release exists or is

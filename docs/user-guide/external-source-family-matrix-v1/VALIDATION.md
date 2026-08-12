@@ -32,7 +32,7 @@ The official schema check uses `jsonschema==4.25.1`; citation validation uses
 | Gate | Local result | Exact-head CI result |
 | --- | --- | --- |
 | JSON syntax and Draft 2020-12 schema | Pass with `jsonschema==4.25.1` | Pending |
-| Evidence references and frozen hashes | Pass; 16 unique repository paths verified | Pending |
+| Evidence references and frozen hashes | Pass; 17 unique repository paths verified | Pending |
 | Complete SHA-256 inventory | Pass; 17 package entries, excluding the inventory itself | Pending |
 | Two byte-identical builds | Pass | Pending |
 | Machine-local path and unsupported-claim scan | Pass; 18 package files scanned including the inventory | Pending |
@@ -48,5 +48,4 @@ The official schema check uses `jsonschema==4.25.1`; citation validation uses
 The local test environment was Ubuntu with CPython 3.12.13. A local pass is
 first-party development evidence; a GitHub-hosted pass is first-party CI
 evidence. Neither is an independent rerun. Exact PR-head workflow identities
-are recorded in the PR and Linear rather than embedded into their own hashed
-input tree.
+are recorded in the PR rather than embedded in the files they verify.
