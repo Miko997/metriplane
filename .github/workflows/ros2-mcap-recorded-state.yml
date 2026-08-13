@@ -39,15 +39,15 @@ env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
   SDK_COMMIT: 975fda022962b9f1f6a1b986693557600a320916
   SDK_TREE: 88179a50330fb07a278369a341f8aa1f1e909204
-  ADAPTER_COMMIT: 04090e510fa2bccd4fe3ac90521d3201a7c1b7c7
-  ADAPTER_TREE: 5fa1b18dba8358661e3f59814c29ed7fa0d6a6a7
+  ADAPTER_COMMIT: 686c38c2f8ca34439f851b5d62c8f7cd1cfddac8
+  ADAPTER_TREE: f6421a5e52a7f45449e2a1bbeda993ea9ea43b8a
   SOURCE_SIZE: "28735"
   SOURCE_SHA256: c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99
   CONFIG_SHA256: a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962
   LOCK_SHA256: 864f24f57d1e99ecae76e7da832c8022bbfcbaf0583b612e6d909a5e93f4edd6
   SESSION_SHA256: 4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8
-  CAPABILITY_SHA256: 18b2ceb08568aaf3975d3bdf87354d182d93551625f5e8b59a25cd4aa36ba27d
-  FIXTURE_INVENTORY_SHA256: 0a3dd86c91e2c5a78a3fbafcfdaad6d6de7e1669812f99968f8e73626d2726de
+  CAPABILITY_SHA256: 563fca13873a90d79644c9b5f552c3377e6f0143ead46403beb13fa5aa037295
+  FIXTURE_INVENTORY_SHA256: 37709e9e02307fb17e87c3bac27f14808608da5cdeec567277fddf71f8c790de
 
 jobs:
   sdk-tests:
@@ -392,19 +392,22 @@ jobs:
           test -z "$(git -C "$freeze" status --porcelain --untracked-files=all)"
 
           adapter="$freeze/adapters/ros2_mcap"
-          source="$adapter/source/metriplane-synthetic-recorded-state-v1.mcap"
+          checked_source="$adapter/source/metriplane-synthetic-recorded-state-v1.mcap"
+          source="${RUNNER_TEMP}/metriplane-synthetic-recorded-state-v1.mcap"
           config="$adapter/config/frozen-config.json"
           conversions="${RUNNER_TEMP}/clean-conversions"
           final="${RUNNER_TEMP}/final-fixture"
-          test "$(SOURCE_PATH="$source" python -c 'import os; print(os.path.getsize(os.environ["SOURCE_PATH"]))')" \
+          test "$(SOURCE_PATH="$checked_source" python -c 'import os; print(os.path.getsize(os.environ["SOURCE_PATH"]))')" \
             -eq "$SOURCE_SIZE"
           printf '%s  %s\n%s  %s\n%s  %s\n' \
-            "$SOURCE_SHA256" "$source" \
+            "$SOURCE_SHA256" "$checked_source" \
             "$CONFIG_SHA256" "$config" \
             "$LOCK_SHA256" "$adapter/uv.lock" | sha256sum --check --strict
 
           cd "$adapter"
           uv sync --locked --python 3.12
+          uv run --frozen metriplane-ros2-mcap generate-source --out "$source"
+          cmp "$checked_source" "$source"
           uv run --frozen metriplane-ros2-mcap inspect --source "$source"
           for index in 1 2 3; do
             uv run --frozen metriplane-ros2-mcap convert \
@@ -419,7 +422,9 @@ jobs:
             --run-id clean-conversion-2 \
             --run-id clean-conversion-3 \
             --out "$final"
-          printf '%s  %s\n' "$SOURCE_SHA256" "$source" | sha256sum --check --strict
+          printf '%s  %s\n%s  %s\n' \
+            "$SOURCE_SHA256" "$checked_source" \
+            "$SOURCE_SHA256" "$source" | sha256sum --check --strict
           diff -ru "$GITHUB_WORKSPACE/examples/external_sources/ros2_mcap" "$final"
           test "$(sha256sum "$final/SHA256SUMS" | awk '{print $1}')" \
             = "$FIXTURE_INVENTORY_SHA256"

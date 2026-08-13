@@ -29,8 +29,9 @@ CONTRACT_SCHEMA = REPOSITORY_ROOT / "schemas" / "metriplane.external_source_cont
 STARTING_BASELINE = "f8a3a48752101d74f658124e23354f0816e20a21"
 SDK_COMMIT = "975fda022962b9f1f6a1b986693557600a320916"
 SDK_TREE = "88179a50330fb07a278369a341f8aa1f1e909204"
-ADAPTER_COMMIT = "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7"
-ADAPTER_TREE = "5fa1b18dba8358661e3f59814c29ed7fa0d6a6a7"
+ORIGINAL_ADAPTER_FREEZE = "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7"
+ADAPTER_COMMIT = "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8"
+ADAPTER_TREE = "f6421a5e52a7f45449e2a1bbeda993ea9ea43b8a"
 CONTRACT_SCHEMA_SHA256 = "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
 SOURCE_CLASSIFICATION = "FORMAT-ENGINEERING ONLY / SYNTHETIC / NOT EXTERNAL-SOURCE EVIDENCE"
 SOURCE_SIZE = 28_735
@@ -38,13 +39,13 @@ SOURCE_SHA256 = "c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e9
 CONFIG_SHA256 = "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962"
 LOCK_SHA256 = "864f24f57d1e99ecae76e7da832c8022bbfcbaf0583b612e6d909a5e93f4edd6"
 SESSION_SHA256 = "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8"
-CAPABILITY_CANONICAL_SHA256 = "3bb37c0457a945fbea166e339d57c373e8251620f3a90ec3a02992fec7b01db7"
-CAPABILITY_FILE_SHA256 = "18b2ceb08568aaf3975d3bdf87354d182d93551625f5e8b59a25cd4aa36ba27d"
-ROOT_INVENTORY_SHA256 = "0a3dd86c91e2c5a78a3fbafcfdaad6d6de7e1669812f99968f8e73626d2726de"
-CONVERSION_SUMMARY_SHA256 = "bff6ff0456178798bd3d987f3c3a687b900aa0c511e571b72d06503765067218"
+CAPABILITY_CANONICAL_SHA256 = "ef9341324267b53ce94fa17b6eb313c1d839b2062ed26b9c0ee93a046bfe307f"
+CAPABILITY_FILE_SHA256 = "563fca13873a90d79644c9b5f552c3377e6f0143ead46403beb13fa5aa037295"
+ROOT_INVENTORY_SHA256 = "37709e9e02307fb17e87c3bac27f14808608da5cdeec567277fddf71f8c790de"
+CONVERSION_SUMMARY_SHA256 = "2c97916ad90a3c89387a964b5d7f35022593147b3566ccc3fffd7f260c4c4892"
 EXPECTED_FINGERPRINTS = {
-    "incident": "79d1061df5e4f8880f29ead31de3dfac8adae5cf52fbe269513cb6beeb67ae31",
-    "control": "559f9c803da6514c82c4ee83c2b925d505be88db2a57582daf7e1d82ec68db42",
+    "incident": "b88fe8731b3d9ed63414b6bd3d4af8be0d68e8259ed6c467fbf9df63e2bece66",
+    "control": "2d7b98ffba20bd91b13c8ee311bacf9365b64d8dd5b56b8eaa1898226c3c9062",
 }
 EXPECTED_FIXTURE_IDS = {
     "incident": "ros2_mcap_synthetic_incident_v1",
@@ -401,6 +402,17 @@ def test_capability_record_is_synthetic_partial_and_frozen() -> None:
     assert "external-source compatibility evidence" in prohibited
 
 
+def test_rights_record_retains_exact_tf2_bsd_notice() -> None:
+    rights = _read_json(FIXTURE_ROOT / "rights-record.json")
+    tf2 = next(item for item in rights["components"] if item["component"].startswith("tf2_msgs"))
+    assert tf2["copyright_notice"] == (
+        "Copyright (c) 2008, Willow Garage, Inc. All rights reserved."
+    )
+    assert tf2["source_commit"] == "f6053126926a38ffad5e81588054d793d87fc662"
+    assert tf2["schema_blob"] == "fda1e4d0985406667d26b7b36cbbedc9bb497074"
+    assert tf2["license_blob"] == "d79557eefaf84816a7ce5f6201fa32fac60a69b5"
+
+
 def test_conversion_summary_binds_three_conversions_and_exact_source() -> None:
     summary = _read_json(FIXTURE_ROOT / "conversion-summary.json")
     assert summary["adapter_commit"] == ADAPTER_COMMIT
@@ -554,15 +566,8 @@ def test_fixture_inventory_excludes_source_runtime_and_machine_paths() -> None:
 
 
 def test_frozen_git_lineage_and_subtrees_are_preserved() -> None:
-    candidate = subprocess.run(
-        ["git", "rev-parse", "--verify", "origin/agent/met46-ros2-mcap-recorded-state-profile"],
-        cwd=REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    candidate_revision = candidate.stdout.strip() if candidate.returncode == 0 else "HEAD"
-    for commit in (STARTING_BASELINE, SDK_COMMIT, ADAPTER_COMMIT):
+    candidate_revision = "HEAD"
+    for commit in (STARTING_BASELINE, SDK_COMMIT, ORIGINAL_ADAPTER_FREEZE, ADAPTER_COMMIT):
         subprocess.run(
             ["git", "cat-file", "-e", f"{commit}^{{commit}}"],
             cwd=REPOSITORY_ROOT,
@@ -580,6 +585,11 @@ def test_frozen_git_lineage_and_subtrees_are_preserved() -> None:
     )
     subprocess.run(
         ["git", "merge-base", "--is-ancestor", ADAPTER_COMMIT, candidate_revision],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ORIGINAL_ADAPTER_FREEZE, ADAPTER_COMMIT],
         cwd=REPOSITORY_ROOT,
         check=True,
     )

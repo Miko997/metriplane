@@ -1,9 +1,9 @@
 {
-  "adapter_commit": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7",
-  "capability_fingerprint_sha256": "3bb37c0457a945fbea166e339d57c373e8251620f3a90ec3a02992fec7b01db7",
+  "adapter_commit": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
+  "capability_fingerprint_sha256": "ef9341324267b53ce94fa17b6eb313c1d839b2062ed26b9c0ee93a046bfe307f",
   "config_sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962",
   "control": {
-    "fixture_fingerprint_sha256": "559f9c803da6514c82c4ee83c2b925d505be88db2a57582daf7e1d82ec68db42",
+    "fixture_fingerprint_sha256": "2d7b98ffba20bd91b13c8ee311bacf9365b64d8dd5b56b8eaa1898226c3c9062",
     "fixture_id": "ros2_mcap_synthetic_control_v1",
     "max_wait_s": 1.2
   },
@@ -18,7 +18,7 @@
     "status": "demonstrated"
   },
   "incident": {
-    "fixture_fingerprint_sha256": "79d1061df5e4f8880f29ead31de3dfac8adae5cf52fbe269513cb6beeb67ae31",
+    "fixture_fingerprint_sha256": "b88fe8731b3d9ed63414b6bd3d4af8be0d68e8259ed6c467fbf9df63e2bece66",
     "fixture_id": "ros2_mcap_synthetic_incident_v1",
     "max_wait_s": 0.5
   },

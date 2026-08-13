@@ -48,7 +48,7 @@ renamed, duplicated, retyped, or unexpectedly encoded input fails closed.
 | Transform topic | `/tf_static` |
 | Material state | `/metriplane/material_pose` |
 | Tool state | `/metriplane/tool_pose` |
-| Excluded annotations | Optional exact `/metriplane/source_outcome` stream |
+| Excluded annotations | Exact frozen `/metriplane/source_outcome` stream; complete absence is internal anti-taint-test input only |
 | Required dynamic frames | 60 |
 | First source timestamp | 1,000,000,000 ns |
 | Period | 100,000,000 ns |
@@ -71,7 +71,7 @@ decoding:
 | `metriplane_msgs/msg/SourceOutcome` | `954f2e44e4c2e2e2654f9de20dc68de75f5a219d2d591c2fde40ac93d5366a80` |
 
 These identities are frozen by adapter commit
-`04090e510fa2bccd4fe3ac90521d3201a7c1b7c7`. A mutable local ROS
+`686c38c2f8ca34439f851b5d62c8f7cd1cfddac8`. A mutable local ROS
 installation never defines their semantics.
 
 No arbitrary Python object deserialization, runtime ROS graph, rosbag2 process,
@@ -133,14 +133,26 @@ the recording. It never emits physical absence.
 
 ## Annotation boundary
 
-The optional outcome stream contains fields named `success`, `result`, `alarm`,
+The frozen outcome stream contains fields named `success`, `result`, `alarm`,
 `action`, and `annotation`. It is excluded from normalized state, operator
-rules, Atlas events, and incidents. The adapter accepts either the exact complete
-stream or its complete absence. Partial, renamed, retyped, reordered, or
-malformed outcome input fails closed.
+rules, Atlas events, and incidents. Public inspection and conversion accept
+only the exact complete frozen stream. An internal anti-taint harness constructs
+value mutations and a complete-absence variant solely to prove semantic
+invariance; those variants still fail public source identity. Partial, renamed,
+retyped, reordered, deleted, or malformed public input fails closed.
 
 Outcome-only mutation and deletion tests demonstrate that normalized state and
 Atlas semantics do not depend on the excluded values.
+
+## Publication safety
+
+On the frozen Linux x86_64 conversion platform, source, config, lock, candidate,
+parent, and published-output identities are descriptor-bound and rechecked.
+Publication uses atomic no-clobber rename to a fresh absent destination; links,
+candidate replacement, late destination creation, existing output replacement,
+or a post-transition input change fails closed and rolls back. This is a
+point-in-time guarantee. Long-term custody against a same-privilege writer
+requires external access separation or immutability.
 
 ## Portable output
 

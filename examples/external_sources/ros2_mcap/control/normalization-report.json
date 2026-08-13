@@ -3,7 +3,7 @@
   "conversion_reproducibility": {
     "comparison_policy": "sha256_byte_identity",
     "equivalent": true,
-    "input_fingerprint_sha256": "f16545b5fde5cf7d360ae0eb7a9e3b44830f3b96db37a09a1965050fa03d3f2b",
+    "input_fingerprint_sha256": "4df918dab9c73f656493515b5583b0cb44614e9e07bc61b0eaf921a1f2cb8211",
     "runs": [
       {
         "artifacts": {

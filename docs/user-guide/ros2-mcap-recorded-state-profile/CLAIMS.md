@@ -7,8 +7,9 @@ SPDX-License-Identifier: MIT
 
 ## Allowed claims
 
-The following claims are supported by the frozen local evidence. Public
-exact-head checks must still pass before merge review:
+The following claims are supported by the frozen evidence. The reviewed exact
+head completed the required public workflow gates; the live pull request is
+authoritative for any later additive head:
 
 - Metriplane has a small, isolated Source Adapter capability schema extracted
   from repeated ManiSkill and robomimic adapter responsibilities.
@@ -20,8 +21,8 @@ exact-head checks must still pass before merge review:
   transforms, units, identities, complete-snapshot rules, provenance, loss, and
   anti-taint exclusions.
 - The portable synthetic fixture contains no ROS 2, rosbag2, MCAP, source
-  schema, or adapter runtime dependency. Its four-row installed-wheel workflow
-  remains pending.
+  schema, or adapter runtime dependency. Installed-wheel evaluation passed on
+  Ubuntu and macOS with Python 3.12 and 3.13.
 - Three external candidates were rejected without weakening Contract v1 gates.
 
 ## Required headline

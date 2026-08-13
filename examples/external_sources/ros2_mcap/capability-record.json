@@ -12,7 +12,7 @@
       "runtime": "CPython",
       "runtime_version": "3.12"
     },
-    "implementation_commit": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7",
+    "implementation_commit": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
     "repository_uri": "https://github.com/Miko997/metriplane",
     "version": "1.0.0"
   },
@@ -96,7 +96,7 @@
       "evidence_ids": [
         "ros2_mcap_adapter_commit"
       ],
-      "input_fingerprint_sha256": "2b2f055ceb8b0a9f6b444e68a45e4c69691ea0d92c0f31b5743bc1431ce139ec",
+      "input_fingerprint_sha256": "6415acbee84239714754abc2f7ab8e2401a4e2134a4bbe0b605795c55a7b13b0",
       "status": "verified"
     },
     "entity_identity": {
@@ -202,9 +202,9 @@
   "evidence": [
     {
       "evidence_id": "ros2_mcap_adapter_commit",
-      "identity": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7",
+      "identity": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
       "kind": "git_commit",
-      "uri": "https://github.com/Miko997/metriplane/commit/04090e510fa2bccd4fe3ac90521d3201a7c1b7c7"
+      "uri": "https://github.com/Miko997/metriplane/commit/686c38c2f8ca34439f851b5d62c8f7cd1cfddac8"
     }
   ],
   "limitations": [
@@ -233,7 +233,7 @@
     ],
     "family": "Bounded synthetic ROS 2 message streams in one MCAP container",
     "project_uri": "https://github.com/Miko997/metriplane",
-    "revision": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7",
+    "revision": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
     "revision_kind": "adapter_commit",
     "rights": {
       "derived_fixture": {

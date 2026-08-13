@@ -1,7 +1,7 @@
 {
   "adapter": {
     "adapter_id": "org.metriplane.ros2_mcap_recorded_state",
-    "commit": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7",
+    "commit": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
     "entrypoint": "ros2_mcap_adapter.cli:main",
     "environment": {
       "architecture": "x86_64",
@@ -434,7 +434,7 @@
     "normalization_report": {
       "media_type": "application/json",
       "path": "normalization-report.json",
-      "sha256": "d75cc5717bd21e6fba30d9ebdb993fe4a01d946bc5111bda5923aeff43908be5"
+      "sha256": "14e12d400cd089e5fe97c4326b23f9bd92dbc458b4381edd232a4997730c99aa"
     },
     "session": {
       "frame_count": 60,
@@ -466,7 +466,7 @@
         "citation": [
           {
             "text": "Metriplane-authored synthetic ROS 2/MCAP format-engineering source",
-            "uri": "https://github.com/Miko997/metriplane/blob/04090e510fa2bccd4fe3ac90521d3201a7c1b7c7/adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap"
+            "uri": "https://github.com/Miko997/metriplane/blob/686c38c2f8ca34439f851b5d62c8f7cd1cfddac8/adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap"
           }
         ],
         "license": {
@@ -501,7 +501,7 @@
       "rights_id": "synthetic-mcap-composite-rights-v1",
       "role": "synthetic_recorded_robotics_state",
       "sha256": "c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99",
-      "uri": "https://github.com/Miko997/metriplane/blob/04090e510fa2bccd4fe3ac90521d3201a7c1b7c7/adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap"
+      "uri": "https://github.com/Miko997/metriplane/blob/686c38c2f8ca34439f851b5d62c8f7cd1cfddac8/adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap"
     }
   ],
   "source_project": {
@@ -509,7 +509,7 @@
     "name": "Metriplane synthetic ROS 2/MCAP format-engineering source",
     "revision": {
       "kind": "git_commit",
-      "value": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7"
+      "value": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8"
     },
     "version": "1.0.0"
   },

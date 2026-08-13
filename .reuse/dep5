@@ -80,7 +80,10 @@ Comment: The isolated adapter is independently authored. The narrower
 Files: adapters/ros2_mcap/src/ros2_mcap_adapter/schemas.py
  adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap
 Copyright: 2026 Miko Parkkinen
+ 2008 Willow Garage, Inc.
+ ROS 2 interface definition contributors
 License: MIT AND Apache-2.0 AND BSD-3-Clause
 Comment: The container and synthetic values are Metriplane-authored MIT
  content. Embedded ROS interface schema text retains the upstream Apache-2.0
- and BSD-3-Clause terms recorded in the public rights matrix.
+ and BSD-3-Clause terms recorded in the public rights matrix and packaged
+ third-party notice.

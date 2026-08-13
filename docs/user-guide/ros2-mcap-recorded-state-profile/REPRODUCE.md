@@ -17,21 +17,22 @@ Start from a Metriplane checkout whose object database contains these commits:
 | Public baseline | `f8a3a48752101d74f658124e23354f0816e20a21` |
 | Candidate audit | `782712f8b87c5daf237b55101594dcf91abed103` |
 | Source Adapter SDK | `975fda022962b9f1f6a1b986693557600a320916` |
-| Frozen ROS 2/MCAP adapter | `04090e510fa2bccd4fe3ac90521d3201a7c1b7c7` |
+| Original ROS 2/MCAP adapter freeze | `04090e510fa2bccd4fe3ac90521d3201a7c1b7c7` |
+| Effective hardened ROS 2/MCAP adapter freeze | `686c38c2f8ca34439f851b5d62c8f7cd1cfddac8` |
 
 Create a clean detached worktree at the literal adapter freeze:
 
 ```sh
 git fetch origin agent/met46-ros2-mcap-recorded-state-profile
 git worktree add --detach ../metriplane-ros2-mcap-freeze \
-  04090e510fa2bccd4fe3ac90521d3201a7c1b7c7
+  686c38c2f8ca34439f851b5d62c8f7cd1cfddac8
 cd ../metriplane-ros2-mcap-freeze
 git rev-parse HEAD
 git status --short
 ```
 
 `git rev-parse HEAD` must print
-`04090e510fa2bccd4fe3ac90521d3201a7c1b7c7`, and status must be empty before
+`686c38c2f8ca34439f851b5d62c8f7cd1cfddac8`, and status must be empty before
 conversion.
 
 ## Isolated SDK validation
@@ -65,7 +66,7 @@ sha256sum source/metriplane-synthetic-recorded-state-v1.mcap \
   config/frozen-config.json uv.lock
 ```
 
-The expected result is 101 passing tests and these three identities:
+The expected result is 115 passing tests and these three identities:
 
 ```text
 c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99  metriplane-synthetic-recorded-state-v1.mcap
@@ -85,7 +86,7 @@ before publishing output.
 ros2_mcap_runs="$(mktemp -d)"
 ros2_mcap_source="$PWD/source/metriplane-synthetic-recorded-state-v1.mcap"
 ros2_mcap_config="$PWD/config/frozen-config.json"
-ros2_mcap_commit="04090e510fa2bccd4fe3ac90521d3201a7c1b7c7"
+ros2_mcap_commit="686c38c2f8ca34439f851b5d62c8f7cd1cfddac8"
 
 uv run metriplane-ros2-mcap inspect --source "$ros2_mcap_source"
 for ros2_mcap_run in 1 2 3; do
@@ -108,9 +109,13 @@ uv run metriplane-ros2-mcap finalize-equivalence \
 
 Finalization must report three byte-equivalent conversions. The canonical
 conversion-tree digest is
-`56a70b440f3105ae01a2913940db664008a829dae05d4442dc610aaa99b80505`.
+`c010d56b587f2100eb79b35bb448fe24c07231871b992e368a5552844ff0f14d`.
 The finalized conversion summary SHA-256 is
-`bff6ff0456178798bd3d987f3c3a687b900aa0c511e571b72d06503765067218`.
+`2c97916ad90a3c89387a964b5d7f35022593147b3566ccc3fffd7f260c4c4892`.
+
+Conversion and finalization require a fresh absent output path and Linux
+`renameat2(RENAME_NOREPLACE)`. Existing directory replacement fails closed even
+when the legacy `--overwrite` option is supplied.
 
 ## Portable fixture evaluation
 
@@ -131,8 +136,9 @@ the incident evidence bundle, execute the incident regression, assert the
 control remains incident-free, relocate outputs, verify again, and scan durable
 files and ZIP entries for machine-local paths.
 
-The required public matrix is Ubuntu and macOS on Python 3.12 and 3.13. Those
-exact-head workflow results are pending until the review branch is published.
+The reviewed exact head passed the required installed-wheel matrix on Ubuntu
+and macOS with Python 3.12 and 3.13. The live pull request remains authoritative
+for any later additive head.
 
 ## Candidate audit reproduction
 

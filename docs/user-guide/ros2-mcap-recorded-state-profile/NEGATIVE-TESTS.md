@@ -6,8 +6,10 @@ SPDX-License-Identifier: MIT
 # Negative-test record
 
 The isolated packages fail closed on the malformed and unsupported paths below.
-The frozen SDK suite passes 146 tests and the frozen adapter suite passes 101
-tests. Public exact-head workflow results remain pending.
+The frozen SDK suite passes 146 tests and the hardened adapter suite passes 115
+tests. The reviewed exact head completed the required public workflows,
+including Ubuntu and macOS portable evaluation on Python 3.12 and 3.13. The
+live pull request is authoritative for any later additive head.
 
 ## Source and container
 
@@ -60,21 +62,32 @@ tests. Public exact-head workflow results remain pending.
 
 ## Anti-taint
 
-Mutating or deleting `success`, `result`, `alarm`, `action`, and `annotation`
-must not change normalized state, mapping, operator rules, Atlas events, or Atlas
-incidents. The exact complete outcome stream or its complete absence is allowed.
-A partial or structurally altered stream rejects conversion.
+Mutating `success`, `result`, `alarm`, `action`, and `annotation` in the
+internal anti-taint harness must not change normalized state, mapping, operator
+rules, Atlas events, or Atlas incidents. That harness also constructs a
+complete-absence variant solely to prove semantic invariance. Public inspection
+and conversion accept only the exact frozen complete outcome stream; deletion,
+partial input, or structural alteration rejects at source identity.
 
 ## Filesystem and provenance
 
 - source mutation during conversion;
 - source/output or config/output overlap;
 - source, config, output, or nested symlink attacks;
-- path traversal or unsafe destination replacement;
+- path traversal, late destination creation, candidate inode/content
+  replacement, parent replacement, or unsafe destination replacement;
+- source, config, or lock mutation after the atomic namespace transition but
+  before publication commit;
+- any attempt to replace an existing conversion, finalization, or generated
+  source destination, including with the legacy `--overwrite` flag;
 - adapter commit mismatch, dirty adapter subtree, untracked files, or mode drift;
 - hostile Git environment overrides;
 - stale lock, mapping fingerprint mismatch, or capability fingerprint mismatch;
 - machine-local path leakage.
+
+Successful publication is a descriptor-authenticated point-in-time guarantee.
+Later custody still requires access separation or immutability against a writer
+with the same operating-system privileges.
 
 ## Status
 
