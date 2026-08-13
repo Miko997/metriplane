@@ -71,7 +71,6 @@ CANDIDATE_IDENTITY_PATHS = (
     "integrations",
     "pyproject.toml",
     "uv.lock",
-    "README.md",
     "LICENSE",
     "NOTICE",
     "adapters/maniskill_pickcube",
