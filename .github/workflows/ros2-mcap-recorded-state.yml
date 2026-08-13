@@ -362,12 +362,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout exact dispatched revision
+      - name: Checkout exact candidate revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -381,9 +381,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           git cat-file -e "${ADAPTER_COMMIT}^{commit}"
           test "$(git rev-parse "${ADAPTER_COMMIT}:adapters/ros2_mcap")" = "$ADAPTER_TREE"
-          git merge-base --is-ancestor "$ADAPTER_COMMIT" "$GITHUB_SHA"
+          git merge-base --is-ancestor "$ADAPTER_COMMIT" HEAD
           freeze="${RUNNER_TEMP}/adapter-freeze"
           git worktree add --detach "$freeze" "$ADAPTER_COMMIT"
           trap 'git worktree remove --force "$freeze"' EXIT
