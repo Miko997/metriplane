@@ -123,10 +123,11 @@ Metriplane source code is preserved in the Software Heritage Archive.
 - Research Software Directory: https://research-software-directory.org/software/metriplane
 - SciCrunch registry: [Metriplane (RRID:SCR_028813)](https://scicrunch.org/resolver/RRID%3ASCR_028813)
 - Python package: https://pypi.org/project/metriplane/
+- ROS 2 Jazzy rosdistro indexing: [ros/rosdistro#53151](https://github.com/ros/rosdistro/pull/53151)
 - v0.3.0 software release: https://github.com/Miko997/metriplane/releases/tag/v0.3.0
 - Product roadmap: [ROADMAP.md](ROADMAP.md)
 - 3-minute v0.2.0 demo: https://www.youtube.com/watch?v=7U5nbBbGGbw
-- v0.2.0 release: https://github.com/Miko997/metriplane/releases/tag/v0.2.0
+- v0.2.0 release: https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 - Zenodo DOI: https://doi.org/10.5281/zenodo.20736619
 - SSRN manuscript preprint: https://doi.org/10.2139/ssrn.7166858
 - External reproduction issue: https://github.com/Miko997/metriplane/issues/6
@@ -224,6 +225,16 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 - no full 3D reconstruction claim
 - no production-factory deployment validation
 - no factory-wide deployment readiness
+
+## ROS 2 Jazzy
+
+The `metriplane_ros` bridge is indexed in the official ROS 2 Jazzy rosdistro via
+[ros/rosdistro#53151](https://github.com/ros/rosdistro/pull/53151). The bridge
+connects to a running Metriplane WebSocket stream and republishes Metriplane
+frames, alerts, and incidents as `std_msgs/String` JSON topics.
+
+This source-level rosdistro indexing does not by itself imply that Metriplane is
+available as a ROS binary package through `apt`.
 
 ## Relationship to ROS Bags and Logs
 
