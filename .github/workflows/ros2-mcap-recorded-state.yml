@@ -122,6 +122,7 @@ jobs:
             "$SOURCE_SHA256" source/metriplane-synthetic-recorded-state-v1.mcap \
             "$CONFIG_SHA256" config/frozen-config.json \
             "$LOCK_SHA256" uv.lock | sha256sum --check --strict
+          uv pip install --system "$GITHUB_WORKSPACE"
           uv sync --locked --extra test --python 3.12
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
