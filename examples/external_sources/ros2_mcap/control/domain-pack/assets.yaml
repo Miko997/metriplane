@@ -1,0 +1,31 @@
+{
+  "assets": [
+    {
+      "asset_id": "material_1",
+      "asset_type": "material",
+      "expected_stations": [
+        "target_station"
+      ],
+      "expected_zones": [
+        "target_xy_region"
+      ],
+      "label": "Synthetic recorded material",
+      "object_id": "material_1",
+      "work_order_id": "WO-ROS2-MCAP-001"
+    },
+    {
+      "asset_id": "tool_1",
+      "asset_type": "tool",
+      "expected_stations": [
+        "target_station"
+      ],
+      "expected_zones": [
+        "target_xy_region"
+      ],
+      "label": "Synthetic recorded tool",
+      "object_id": "tool_1",
+      "work_order_id": "WO-ROS2-MCAP-001"
+    }
+  ],
+  "schema_version": "metriplane.atlas.asset_registry.v1"
+}

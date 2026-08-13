@@ -1,0 +1,524 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.ros2_mcap_recorded_state",
+    "commit": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7",
+    "entrypoint": "ros2_mcap_adapter.cli:main",
+    "environment": {
+      "architecture": "x86_64",
+      "dependency_lock": {
+        "media_type": "text/plain",
+        "path": "source/uv.lock",
+        "sha256": "864f24f57d1e99ecae76e7da832c8022bbfcbaf0583b612e6d909a5e93f4edd6"
+      },
+      "description": "Pinned isolated CPython 3.12 MCAP conversion environment; no ROS installation required.",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12"
+    },
+    "name": "Metriplane bounded ROS 2/MCAP recorded-state adapter",
+    "parameters": {
+      "reference": {
+        "media_type": "application/json",
+        "path": "source/frozen-config.json",
+        "sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962"
+      },
+      "sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962"
+    },
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "contract_profile": "metriplane.atlas.complete_snapshot.v1",
+  "domain_pack": {
+    "assets": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "371026af4fd6d8909a2023ce5bd017ec2adc4462364bc95f129c735885f4698e"
+    },
+    "contracts": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/contracts.yaml",
+      "sha256": "7f21983dab254895fef3fa5bc2d539117e9dc7d10e8eead70b2386caec2f4a11"
+    },
+    "domain_pack_id": "ros2_mcap_synthetic_control_v1",
+    "process": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/process.yaml",
+      "sha256": "44a74b7de982f7d992bc8bf1cfef6f529040e527f96aef9a5f361774d21a6102"
+    },
+    "rationale": "Operator-authored bounded format-test region and timing rule; not source truth.",
+    "rule_origin": "operator_configured_rules",
+    "source_annotations_used": false,
+    "work_orders": {
+      "media_type": "text/csv",
+      "path": "domain-pack/work_orders.csv",
+      "sha256": "78ff10b00b0bdcca95a15216b1c060926d6fab453663b1fd6a85b3115efe4df0"
+    },
+    "workspace": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/workspace.yaml",
+      "sha256": "895aed6649cd7a55786c75bf174cb92b6c30ffab0f9c3052b9d6d34fcbd46783"
+    }
+  },
+  "evaluation": {
+    "domain_pack_id": "ros2_mcap_synthetic_control_v1",
+    "engine": "atlas",
+    "expected_outcome_is_input": false,
+    "metriplane_version": "0.3.0",
+    "provenance_layer": "metriplane_derived_results"
+  },
+  "extensions": {
+    "org.metriplane.ros2_mcap_recorded_state": {
+      "channel_inventory": [
+        {
+          "channel_id": 1,
+          "message_encoding": "cdr",
+          "schema_id": 2,
+          "topic": "/tf_static"
+        },
+        {
+          "channel_id": 2,
+          "message_encoding": "cdr",
+          "schema_id": 1,
+          "topic": "/metriplane/material_pose"
+        },
+        {
+          "channel_id": 3,
+          "message_encoding": "cdr",
+          "schema_id": 1,
+          "topic": "/metriplane/tool_pose"
+        },
+        {
+          "channel_id": 4,
+          "message_encoding": "cdr",
+          "schema_id": 3,
+          "topic": "/metriplane/source_outcome"
+        }
+      ],
+      "clock_domain": "ROS_TIME",
+      "evaluation_clock_field": "geometry_msgs/msg/PoseStamped.header.stamp",
+      "log_time_role": "container_provenance_only",
+      "outcome_stream_message_count": 60,
+      "outcome_stream_present": true,
+      "profile": "metriplane.ros2_mcap_recorded_state.v1",
+      "publish_time_role": "transport_provenance_only",
+      "schema_inventory": [
+        {
+          "encoding": "ros2msg",
+          "name": "geometry_msgs/msg/PoseStamped",
+          "schema_id": 1,
+          "sha256": "a80b6e20113061c6a8cbd4a5e623d7e1aa54d68deebbc3e69738ff1e502daae8"
+        },
+        {
+          "encoding": "ros2msg",
+          "name": "tf2_msgs/msg/TFMessage",
+          "schema_id": 2,
+          "sha256": "e9121b91448577bf5075f9b1a00b8afcaeeab85422497da524a0cbef10896502"
+        },
+        {
+          "encoding": "ros2msg",
+          "name": "metriplane_msgs/msg/SourceOutcome",
+          "schema_id": 3,
+          "sha256": "954f2e44e4c2e2e2654f9de20dc68de75f5a219d2d591c2fde40ac93d5366a80"
+        }
+      ],
+      "source_classification": "FORMAT-ENGINEERING ONLY / SYNTHETIC / NOT EXTERNAL-SOURCE EVIDENCE",
+      "source_size": 28735,
+      "tf_policy": "exact configured /tf_static chain; no interpolation, latest, or extrapolation"
+    }
+  },
+  "fixture": {
+    "bounded_recording": true,
+    "description": "Sixty complete synthetic position snapshots converted through a declared two-edge static TF path.",
+    "distribution": "derived_only",
+    "fixture_id": "ros2_mcap_synthetic_control_v1",
+    "title": "Bounded synthetic ROS 2/MCAP control fixture"
+  },
+  "limitations": [
+    "This is synthetic format-engineering evidence and not external-source evidence.",
+    "This one exact profile is not general ROS 2, MCAP, rosbag2, or TF2 support.",
+    "Evaluation is position-only planar world XY and discards source Z and pose orientation.",
+    "Only exact co-timestamped state with the configured static transform chain is accepted.",
+    "No discovery, interpolation, extrapolation, carry-forward, or inferred absence is supported.",
+    "The region and waits are operator-authored test rules, not physical, safety, or source truth."
+  ],
+  "normalization": {
+    "atlas_asset_mapping": {
+      "media_type": "application/yaml",
+      "path": "domain-pack/assets.yaml",
+      "sha256": "371026af4fd6d8909a2023ce5bd017ec2adc4462364bc95f129c735885f4698e"
+    },
+    "authoritative_object_collection": "objects",
+    "clock": {
+      "description": "Use PoseStamped header.stamp in declared ROS_TIME, require exact co-timestamps, and subtract the first timestamp.",
+      "evaluation_field": "ts_sim_ns",
+      "mapping_method": "affine",
+      "offset": -1000000000,
+      "scale": 1.0,
+      "source_clock": "message header ROS_TIME in synthetic declared source domain",
+      "source_field": "geometry_msgs/msg/PoseStamped.header.stamp",
+      "source_unit": "nanoseconds"
+    },
+    "completeness": {
+      "carry_forward": {
+        "fields": [],
+        "method": "none"
+      },
+      "frame_semantics": "complete_snapshot",
+      "materialization": {
+        "carry_forward_dependency": "none",
+        "fields": [
+          "objects[*].pos_world",
+          "objects[*].zone"
+        ],
+        "implementation": "Join both configured PoseStamped messages only when header timestamps are exactly equal.",
+        "method": "source_snapshot_join",
+        "parameters": {
+          "media_type": "application/json",
+          "path": "source/frozen-config.json",
+          "sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962"
+        }
+      },
+      "omission_policy": "reject_omission",
+      "partial_updates_materialized": true,
+      "process_relevant_entity_policy": "known_in_every_frame",
+      "source_stream_semantics": "partial_update",
+      "unknown_state_policy": "reject_fixture"
+    },
+    "confidence": {
+      "mode": "absent"
+    },
+    "coordinates": {
+      "information_loss": [
+        {
+          "impact": "Atlas receives transformed world x/y with z=0 and no orientation; 3D pose and rotational semantics cannot be evaluated.",
+          "lost_information": [
+            "transformed world z",
+            "complete source pose orientation"
+          ],
+          "operation": "position-only planar projection"
+        }
+      ],
+      "projection": {
+        "dropped_axes": [
+          "z"
+        ],
+        "implementation": "Retain transformed world x/y, set normalized z to zero, and omit orientation.",
+        "method": "planar_xy",
+        "output_z_policy": "zero"
+      },
+      "source_frame": "sensor_frame",
+      "source_units": "meters",
+      "target_frame": "world",
+      "target_units": "meters",
+      "transform": {
+        "implementation": "Compose configured world->cell_frame and cell_frame->sensor_frame static rigid transforms in reverse for child-to-parent point conversion.",
+        "method": "rigid_matrix",
+        "parameters": {
+          "media_type": "application/json",
+          "path": "source/frozen-config.json",
+          "sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962"
+        }
+      }
+    },
+    "entity_mapping": {
+      "media_type": "application/json",
+      "path": "entity-mapping.json",
+      "schema_version": "metriplane.external_entity_mapping.v1",
+      "sha256": "c9e8c252a20fced69bf9cd167a38c483cced7608582f93049ccf53ad7cf222e3"
+    },
+    "field_provenance": [
+      {
+        "derivation": "Set the frozen FrameStateModel 1.0 schema version.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "schema_version",
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ]
+      },
+      {
+        "derivation": "Set the namespaced bounded profile backend.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "source_backend",
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ]
+      },
+      {
+        "derivation": "Subtract the first authoritative ROS_TIME header stamp and divide nanoseconds by 1e9.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "ts",
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ],
+        "source_fields": [
+          "geometry_msgs/msg/PoseStamped.header.stamp"
+        ]
+      },
+      {
+        "derivation": "Subtract the first authoritative ROS_TIME header stamp as exact integer nanoseconds.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "ts_sim_ns",
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ],
+        "source_fields": [
+          "geometry_msgs/msg/PoseStamped.header.stamp"
+        ]
+      },
+      {
+        "derivation": "Assign sequential normalized snapshot IDs after exact timestamp join.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "frame_id",
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ],
+        "source_fields": [
+          "geometry_msgs/msg/PoseStamped.header.stamp"
+        ]
+      },
+      {
+        "derivation": "Apply the explicit hashed entity mapping; topic names are not discovered.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].id",
+        "parameter_references": [
+          {
+            "media_type": "application/json",
+            "path": "entity-mapping.json",
+            "sha256": "c9e8c252a20fced69bf9cd167a38c483cced7608582f93049ccf53ad7cf222e3"
+          }
+        ],
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ],
+        "source_fields": [
+          "/metriplane/material_pose",
+          "/metriplane/tool_pose"
+        ]
+      },
+      {
+        "derivation": "Decode source metres, compose the declared static TF path, retain world x/y, and set z to zero.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].pos_world",
+        "parameter_references": [
+          {
+            "media_type": "application/json",
+            "path": "source/frozen-config.json",
+            "sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962"
+          }
+        ],
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ],
+        "source_fields": [
+          "geometry_msgs/msg/PoseStamped.pose.position",
+          "tf2_msgs/msg/TFMessage.transforms"
+        ]
+      },
+      {
+        "derivation": "Apply the operator-authored inclusive polygon after the source transform.",
+        "layer": "adapter_derived_fact",
+        "normalized_field": "objects[*].zone",
+        "parameter_references": [
+          {
+            "media_type": "application/yaml",
+            "path": "domain-pack/workspace.yaml",
+            "sha256": "895aed6649cd7a55786c75bf174cb92b6c30ffab0f9c3052b9d6d34fcbd46783"
+          }
+        ],
+        "source_artifact_ids": [
+          "metriplane_synthetic_ros2_mcap_v1"
+        ],
+        "source_fields": [
+          "geometry_msgs/msg/PoseStamped.pose.position"
+        ]
+      }
+    ],
+    "frame_state_model_version": "1.0",
+    "source_annotations": {
+      "annotations": [
+        {
+          "name": "success",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "metriplane_synthetic_ros2_mcap_v1"
+          ],
+          "source_field": "/metriplane/source_outcome.success",
+          "treatment": "excluded"
+        },
+        {
+          "name": "result",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "metriplane_synthetic_ros2_mcap_v1"
+          ],
+          "source_field": "/metriplane/source_outcome.result",
+          "treatment": "excluded"
+        },
+        {
+          "name": "alarm",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "metriplane_synthetic_ros2_mcap_v1"
+          ],
+          "source_field": "/metriplane/source_outcome.alarm",
+          "treatment": "excluded"
+        },
+        {
+          "name": "action",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "metriplane_synthetic_ros2_mcap_v1"
+          ],
+          "source_field": "/metriplane/source_outcome.action",
+          "treatment": "excluded"
+        },
+        {
+          "name": "annotation",
+          "retained_in": "not_retained",
+          "source_artifact_ids": [
+            "metriplane_synthetic_ros2_mcap_v1"
+          ],
+          "source_field": "/metriplane/source_outcome.annotation",
+          "treatment": "excluded"
+        }
+      ],
+      "frame_state_events_policy": "empty",
+      "inventory_complete": true,
+      "source_incident_ids_in_normalized_input": false,
+      "used_as_incident_truth": false,
+      "used_as_process_events": false
+    },
+    "source_backend": "ros2_mcap_recorded_state_v1_synthetic",
+    "temporal_alignment": {
+      "interpolation": {
+        "fields": [],
+        "method": "none"
+      },
+      "resampling": {
+        "fields": [],
+        "method": "none"
+      },
+      "synchronization": {
+        "fields": [
+          "objects[*].pos_world"
+        ],
+        "max_skew_ns": 0,
+        "method": "exact_timestamp",
+        "reference_stream": "/metriplane/material_pose"
+      }
+    },
+    "zone_assignment": {
+      "boundary_policy": "inclusive",
+      "definitions": {
+        "media_type": "application/yaml",
+        "path": "domain-pack/workspace.yaml",
+        "sha256": "895aed6649cd7a55786c75bf174cb92b6c30ffab0f9c3052b9d6d34fcbd46783"
+      },
+      "implementation": "Apply the single configured polygon after TF composition and planar projection.",
+      "method": "polygon",
+      "outside_workspace_policy": "explicit_label",
+      "outside_zone_label": "outside_workspace",
+      "overlap_policy": "reject",
+      "zone_priority": []
+    }
+  },
+  "normalized_artifacts": {
+    "checksums_path": "CHECKSUMS.sha256",
+    "expected_outcome": {
+      "atlas_input": false,
+      "media_type": "application/json",
+      "path": "expected-outcome.json",
+      "role": "test_metadata_only",
+      "sha256": "404000b5227c0227a956d91532149507cb3f280814ea6bab023ffc62825a0dc8"
+    },
+    "normalization_report": {
+      "media_type": "application/json",
+      "path": "normalization-report.json",
+      "sha256": "e2cd722b3dba1bd706850d8ede8f5238527f5f217c2874ede2e784397f7f8cf4"
+    },
+    "session": {
+      "frame_count": 60,
+      "frame_state_model_version": "1.0",
+      "media_type": "application/x-ndjson",
+      "path": "session.jsonl",
+      "sha256": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8"
+    }
+  },
+  "rights": {
+    "fixture": {
+      "access": "public",
+      "citation": [
+        {
+          "text": "Metriplane bounded synthetic ROS 2/MCAP fixture"
+        }
+      ],
+      "license": {
+        "identifier": "MIT",
+        "status": "declared",
+        "uri": "https://github.com/Miko997/metriplane/blob/main/LICENSE"
+      },
+      "permission_basis": "Metriplane-authored derived numeric state and rules; MCAP and embedded ROS schema bytes are excluded.",
+      "redistribution": "allowed",
+      "redistribution_permission": "verified"
+    },
+    "source_artifacts": [
+      {
+        "citation": [
+          {
+            "text": "Metriplane-authored synthetic ROS 2/MCAP format-engineering source",
+            "uri": "https://github.com/Miko997/metriplane/blob/04090e510fa2bccd4fe3ac90521d3201a7c1b7c7/adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap"
+          }
+        ],
+        "license": {
+          "identifier": "MIT AND Apache-2.0 AND BSD-3-Clause",
+          "status": "declared",
+          "uri": "https://github.com/Miko997/metriplane"
+        },
+        "permission_basis": "Container and synthetic values are Metriplane-authored MIT content; embedded ROS interface schema text retains Apache-2.0 and BSD-3-Clause terms.",
+        "redistribution": "allowed",
+        "redistribution_permission": "verified",
+        "rights_id": "synthetic-mcap-composite-rights-v1",
+        "source_access": "public",
+        "source_use_permission": "verified"
+      }
+    ]
+  },
+  "schema_version": "metriplane.external_source_contract.v1",
+  "selection": {
+    "artifact_ids": [
+      "metriplane_synthetic_ros2_mcap_v1"
+    ],
+    "method": "entire_artifact",
+    "rationale": "Metriplane-authored deterministic fallback after three external candidates failed hard gates; selection does not inspect Atlas results."
+  },
+  "source_artifacts": [
+    {
+      "artifact_id": "metriplane_synthetic_ros2_mcap_v1",
+      "description": "Exact Metriplane-authored synthetic MCAP source with composite payload rights; referenced and omitted from the portable fixture.",
+      "immutable_identifier": "c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99",
+      "media_type": "application/vnd.mcap",
+      "presence": "referenced",
+      "rights_id": "synthetic-mcap-composite-rights-v1",
+      "role": "synthetic_recorded_robotics_state",
+      "sha256": "c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99",
+      "uri": "https://github.com/Miko997/metriplane/blob/04090e510fa2bccd4fe3ac90521d3201a7c1b7c7/adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap"
+    }
+  ],
+  "source_project": {
+    "canonical_uri": "https://github.com/Miko997/metriplane",
+    "name": "Metriplane synthetic ROS 2/MCAP format-engineering source",
+    "revision": {
+      "kind": "git_commit",
+      "value": "04090e510fa2bccd4fe3ac90521d3201a7c1b7c7"
+    },
+    "version": "1.0.0"
+  },
+  "trust_layers": {
+    "adapter_derived_facts": "adapter_and_normalization",
+    "expected_outcome_is_atlas_input": false,
+    "metriplane_derived_results": "atlas_outputs_only",
+    "operator_configured_rules": "domain_pack_only",
+    "source_annotations_can_drive_incidents": false,
+    "source_facts": "source.artifacts_and_field_provenance"
+  }
+}

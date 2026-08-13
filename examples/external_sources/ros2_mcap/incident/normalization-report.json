@@ -1,0 +1,120 @@
+{
+  "contract_schema_version": "metriplane.external_source_contract.v1",
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "input_fingerprint_sha256": "f16545b5fde5cf7d360ae0eb7a9e3b44830f3b96db37a09a1965050fa03d3f2b",
+    "runs": [
+      {
+        "artifacts": {
+          "entity-mapping.json": "c9e8c252a20fced69bf9cd167a38c483cced7608582f93049ccf53ad7cf222e3",
+          "session.jsonl": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8"
+        },
+        "run_id": "clean-conversion-1"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "c9e8c252a20fced69bf9cd167a38c483cced7608582f93049ccf53ad7cf222e3",
+          "session.jsonl": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8"
+        },
+        "run_id": "clean-conversion-2"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "c9e8c252a20fced69bf9cd167a38c483cced7608582f93049ccf53ad7cf222e3",
+          "session.jsonl": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8"
+        },
+        "run_id": "clean-conversion-3"
+      }
+    ],
+    "status": "demonstrated"
+  },
+  "fixture_id": "ros2_mcap_synthetic_incident_v1",
+  "limitations": [
+    "Synthetic format-engineering source only; no external-source compatibility evidence.",
+    "Position-only planar evaluation discards transformed world Z and pose orientation.",
+    "The target polygon and waits are operator-authored test rules, not source truth.",
+    "No interpolation, extrapolation, carry-forward, discovery, or inferred absence is supported.",
+    "Excluded outcome values cannot drive normalized state or Atlas semantics."
+  ],
+  "normalized_frame_count": 60,
+  "omitted_process_relevant_observations": 0,
+  "operations": [
+    {
+      "applied": true,
+      "declaration_path": "normalization.clock",
+      "kind": "time_mapping",
+      "operation_id": "map-header-ros-time-to-relative-integer-nanoseconds",
+      "summary": "Subtract the first authoritative header.stamp from each exact ROS_TIME timestamp."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.entity_mapping",
+      "kind": "entity_mapping",
+      "operation_id": "apply-explicit-entity-mapping",
+      "summary": "Map the two configured stable source entities one-to-one to normalized IDs."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.coordinates.transform",
+      "kind": "coordinate_transform",
+      "operation_id": "compose-two-static-tf-edges",
+      "summary": "Resolve the declared sensor_frame to world path with two exact static transforms."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.coordinates.projection",
+      "kind": "projection",
+      "operation_id": "project-world-xy",
+      "summary": "Copy transformed world x/y, set normalized z to zero, and omit orientation."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.zone_assignment",
+      "kind": "zone_assignment",
+      "operation_id": "assign-operator-polygon",
+      "summary": "Assign the inclusive operator-authored polygon after world-frame projection."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.completeness.materialization",
+      "kind": "partial_update_materialization",
+      "operation_id": "materialize-exact-co-timestamp-snapshot",
+      "summary": "Materialize a complete snapshot only from both exact co-timestamped required messages."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.temporal_alignment.synchronization",
+      "kind": "synchronization",
+      "operation_id": "exact-co-timestamp-snapshot-join",
+      "summary": "Join both required PoseStamped streams only at exactly equal header timestamps."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.resampling",
+      "kind": "resampling",
+      "operation_id": "no-resampling",
+      "summary": "Every exact source timestamp is retained one-for-one."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.completeness.carry_forward",
+      "kind": "carry_forward",
+      "operation_id": "no-carry-forward",
+      "summary": "Missing required state rejects the recording."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.interpolation",
+      "kind": "interpolation",
+      "operation_id": "no-interpolation-or-extrapolation",
+      "summary": "Only exact source timestamps and static transforms are allowed."
+    }
+  ],
+  "process_relevant_entity_count": 2,
+  "result": "pass",
+  "schema_version": "metriplane.external_normalization_report.v1",
+  "source_record_count": 60,
+  "unknown_process_relevant_observations": 0,
+  "warnings": []
+}

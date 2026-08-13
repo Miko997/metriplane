@@ -1,0 +1,16 @@
+{
+  "contracts": [
+    {
+      "contract_id": "tool_required_with_material",
+      "kind": "process_asset_presence",
+      "max_wait_s": 1.2,
+      "note": "Metriplane-authored format-test rule, not source truth or a safety rule.",
+      "process_step_id": "material_region_requires_tool",
+      "required_asset_id": "tool_1",
+      "severity": "warning",
+      "station_id": "target_station",
+      "zone_id": "target_xy_region"
+    }
+  ],
+  "schema_version": "metriplane.atlas.contracts.v1"
+}

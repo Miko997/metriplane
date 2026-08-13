@@ -1,0 +1,20 @@
+{
+  "process_id": "synthetic_recorded_material_tool_presence",
+  "schema_version": "metriplane.atlas.process_model.v1",
+  "steps": [
+    {
+      "expected_asset_types": [
+        "material"
+      ],
+      "label": "Material in operator region requires tool",
+      "max_wait_s": 0.5,
+      "required_assets": [
+        "tool_1"
+      ],
+      "required_station": "target_station",
+      "required_zone": "target_xy_region",
+      "step_id": "material_region_requires_tool"
+    }
+  ],
+  "work_order_type": "external_fixture"
+}

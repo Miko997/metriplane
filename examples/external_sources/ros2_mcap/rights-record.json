@@ -1,0 +1,36 @@
+{
+  "components": [
+    {
+      "component": "MCAP container and synthetic numeric/message values",
+      "license": "MIT",
+      "origin": "Metriplane-authored",
+      "redistribution": "allowed"
+    },
+    {
+      "component": "std_msgs, builtin_interfaces, and geometry_msgs interface definitions",
+      "license": "Apache-2.0",
+      "origin": "ROS 2 common_interfaces and rcl_interfaces",
+      "redistribution": "allowed with notices"
+    },
+    {
+      "component": "tf2_msgs interface definition",
+      "license": "BSD-3-Clause",
+      "origin": "ROS 2 geometry2",
+      "redistribution": "allowed with notices"
+    },
+    {
+      "component": "Metriplane SourceOutcome interface definition",
+      "license": "MIT",
+      "origin": "Metriplane-authored format-test schema",
+      "redistribution": "allowed"
+    },
+    {
+      "component": "Portable normalized numeric state and operator rules",
+      "license": "MIT",
+      "origin": "Metriplane-authored derived fixture; embedded schema bytes excluded",
+      "redistribution": "allowed"
+    }
+  ],
+  "conclusion": "The source recording has composite MIT, Apache-2.0, and BSD-3-Clause payload terms. The portable fixture excludes MCAP and schema bytes and is MIT.",
+  "schema_version": "org.metriplane.ros2_mcap.rights.v1"
+}

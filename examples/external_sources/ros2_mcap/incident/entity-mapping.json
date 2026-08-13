@@ -1,0 +1,29 @@
+{
+  "mappings": [
+    {
+      "atlas_asset_id": "material_1",
+      "description": "Explicit configured mapping from the synthetic material PoseStamped channel.",
+      "normalized_object_id": "material_1",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "metriplane_synthetic_ros2_mcap_v1",
+          "source_entity_id": "/metriplane/material_pose:synthetic_material_1:pose.position"
+        }
+      ]
+    },
+    {
+      "atlas_asset_id": "tool_1",
+      "description": "Explicit configured mapping from the synthetic tool PoseStamped channel.",
+      "normalized_object_id": "tool_1",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "metriplane_synthetic_ros2_mcap_v1",
+          "source_entity_id": "/metriplane/tool_pose:synthetic_tool_1:pose.position"
+        }
+      ]
+    }
+  ],
+  "schema_version": "metriplane.external_entity_mapping.v1"
+}

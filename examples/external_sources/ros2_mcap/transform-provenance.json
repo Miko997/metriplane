@@ -1,0 +1,53 @@
+{
+  "carry_forward": "none",
+  "composition_order": "sensor_frame -> cell_frame -> world",
+  "extrapolation": "none",
+  "interpolation": "none",
+  "normalized_projection": "world x/y copied; normalized z set to 0; orientation omitted",
+  "schema_version": "org.metriplane.ros2_mcap.transform_provenance.v1",
+  "source_field": "geometry_msgs/msg/PoseStamped.pose.position",
+  "source_frame": "sensor_frame",
+  "source_topic": [
+    "/metriplane/material_pose",
+    "/metriplane/tool_pose"
+  ],
+  "target_frame": "world",
+  "transform_topic": "/tf_static",
+  "transforms": [
+    {
+      "child_frame_id": "cell_frame",
+      "parent_frame_id": "world",
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.7071067811865475,
+        0.7071067811865476
+      ],
+      "timestamp_ns": 0,
+      "translation_m": [
+        0.4,
+        -0.2,
+        0.1
+      ],
+      "type": "static"
+    },
+    {
+      "child_frame_id": "sensor_frame",
+      "parent_frame_id": "cell_frame",
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        -0.7071067811865475,
+        0.7071067811865476
+      ],
+      "timestamp_ns": 0,
+      "translation_m": [
+        0.1,
+        0.05,
+        -0.1
+      ],
+      "type": "static"
+    }
+  ],
+  "unit": "m"
+}
