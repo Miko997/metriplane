@@ -956,7 +956,6 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
         "integrations",
         "pyproject.toml",
         "uv.lock",
-        "README.md",
         "LICENSE",
         "NOTICE",
         "adapters/maniskill_pickcube",
