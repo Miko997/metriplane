@@ -352,7 +352,7 @@ jobs:
                           if not info.is_dir():
                               check(archive.read(info), info.filename)
           PY
-          "$venv/bin/metriplane" atlas export-usd --run-dir "$moved/incident-1"
+          "$venv/bin/metriplane" atlas twinverify export-usd --run-dir "$moved/incident-1"
           test -s "$moved/incident-1/twinverify_replay.usda"
 
   exact-source-conversion:
