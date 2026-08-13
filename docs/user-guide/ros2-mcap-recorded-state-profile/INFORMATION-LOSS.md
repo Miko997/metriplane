@@ -35,4 +35,3 @@ The synthetic profile retains only:
 The output is a position-only planar evaluation input. It is not a lossless ROS
 recording conversion and cannot establish physical accuracy, calibration
 validity, dynamics, simulator realism, or robot-control correctness.
-

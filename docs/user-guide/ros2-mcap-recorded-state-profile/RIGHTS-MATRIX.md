@@ -29,4 +29,3 @@ or derivative treatment remains unclear.
 No raw candidate recording is included in the repository. No source project,
 container library, ROS package, or repository license is presented as endorsing
 Metriplane or validating its result.
-

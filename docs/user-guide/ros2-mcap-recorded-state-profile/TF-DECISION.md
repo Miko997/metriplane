@@ -46,4 +46,3 @@ nonfinite values, reordered edges, dynamic transforms, or a source/target mismat
 rejects conversion.
 
 This bounded implementation is not a general TF2 compatibility claim.
-

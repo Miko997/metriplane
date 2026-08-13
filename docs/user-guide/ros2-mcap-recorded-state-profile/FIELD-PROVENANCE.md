@@ -51,4 +51,3 @@ become evaluation time.
 
 The excluded fields do not affect source selection, identity, time, position,
 zone, rules, Atlas events, or incidents.
-

@@ -45,4 +45,3 @@ file-order timing, or substitution of MCAP time for the declared evaluation
 clock.
 
 No order-only support exists. No cadence is synthesized from topic frequency.
-

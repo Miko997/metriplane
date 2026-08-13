@@ -39,4 +39,3 @@ Class A is an existing Contract v1 requirement. Class B is an existing contract
 field with reusable validation semantics. Class C is a repeated adapter
 responsibility consolidated as a capability gate. ROS topics, MCAP channels,
 message schemas, and TF paths are Class D and remain outside the common schema.
-

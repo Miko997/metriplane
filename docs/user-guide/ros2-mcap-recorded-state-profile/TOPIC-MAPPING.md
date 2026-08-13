@@ -35,4 +35,3 @@ identities, and duplicated normalized IDs reject conversion.
 The polygon, station, roles, required-asset rule, and waits are separate
 Metriplane-authored configuration. None is extracted from a source annotation,
 topic name, frame ID, or outcome field.
-
