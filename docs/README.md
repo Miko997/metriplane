@@ -52,6 +52,10 @@ example inputs and use the supported recorded-run interface.
 - [External source-family matrix v1](user-guide/external-source-family-matrix-v1/README.md):
   compare the exact evidence, decisions, limitations, and reopening criteria
   for six audited, partial, rejected, uninspected, or planned source families.
+- [Bounded ROS 2 and MCAP recorded-state profile](user-guide/ros2-mcap-recorded-state-profile/README.md):
+  inspect the PARTIAL synthetic format-engineering result, three rejected
+  external candidates, and the source-neutral capability boundary. This is not
+  an external ROS 2 or MCAP compatibility claim.
 - [Troubleshooting](user-guide/troubleshooting.md): recover from common setup,
   browser, input, verification, and regression failures.
 - [Contributing](user-guide/contributing.md): prepare a focused change safely.

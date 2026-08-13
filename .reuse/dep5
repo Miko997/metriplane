@@ -51,3 +51,29 @@ License: MIT
 Comment: This publication package is independently authored consolidation
  metadata and documentation. It references frozen source-specific evidence but
  does not redistribute upstream raw artifacts or alter prior derived fixtures.
+
+Files: docs/user-guide/ros2-mcap-recorded-state-profile/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This technical package documents a Metriplane-authored synthetic
+ format-engineering profile and references, but does not redistribute, three
+ rejected external candidate recordings.
+
+Files: adapters/source_adapter_sdk/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+
+Files: adapters/ros2_mcap/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: The isolated adapter is independently authored. The narrower
+ composite terms for embedded ROS interface schema text and the generated MCAP
+ payload are declared below.
+
+Files: adapters/ros2_mcap/src/ros2_mcap_adapter/schemas.py
+ adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap
+Copyright: 2026 Miko Parkkinen
+License: MIT AND Apache-2.0 AND BSD-3-Clause
+Comment: The container and synthetic values are Metriplane-authored MIT
+ content. Embedded ROS interface schema text retains the upstream Apache-2.0
+ and BSD-3-Clause terms recorded in the public rights matrix.

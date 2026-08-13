@@ -42,6 +42,28 @@ nav:
       - Partner summary: user-guide/external-source-family-matrix-v1/PARTNER-SUMMARY.md
       - Validation: user-guide/external-source-family-matrix-v1/VALIDATION.md
       - Readiness: user-guide/external-source-family-matrix-v1/READINESS.md
+  - Bounded ROS 2 and MCAP profile:
+      - Landing page: user-guide/ros2-mcap-recorded-state-profile/README.md
+      - Candidate comparison: user-guide/ros2-mcap-recorded-state-profile/SOURCE-CANDIDATES.md
+      - Source audit: user-guide/ros2-mcap-recorded-state-profile/SOURCE-AUDIT.md
+      - Rights matrix: user-guide/ros2-mcap-recorded-state-profile/RIGHTS-MATRIX.md
+      - Shared adapter evidence: user-guide/ros2-mcap-recorded-state-profile/SHARED-ADAPTER-EVIDENCE.md
+      - Capability specification: user-guide/ros2-mcap-recorded-state-profile/SOURCE-ADAPTER-CAPABILITY.md
+      - ManiSkill classification: user-guide/ros2-mcap-recorded-state-profile/MANISKILL-CAPABILITY.md
+      - robomimic classification: user-guide/ros2-mcap-recorded-state-profile/ROBOMIMIC-CAPABILITY.md
+      - Synthetic ROS 2 and MCAP classification: user-guide/ros2-mcap-recorded-state-profile/ROS2-MCAP-CAPABILITY.md
+      - Recorded-state profile: user-guide/ros2-mcap-recorded-state-profile/PROFILE.md
+      - Topic and entity mapping: user-guide/ros2-mcap-recorded-state-profile/TOPIC-MAPPING.md
+      - Clock decision: user-guide/ros2-mcap-recorded-state-profile/CLOCK-DECISION.md
+      - Frame and TF decision: user-guide/ros2-mcap-recorded-state-profile/TF-DECISION.md
+      - Materialization decision: user-guide/ros2-mcap-recorded-state-profile/MATERIALIZATION.md
+      - Field provenance: user-guide/ros2-mcap-recorded-state-profile/FIELD-PROVENANCE.md
+      - Information loss: user-guide/ros2-mcap-recorded-state-profile/INFORMATION-LOSS.md
+      - Negative tests: user-guide/ros2-mcap-recorded-state-profile/NEGATIVE-TESTS.md
+      - Red-team record: user-guide/ros2-mcap-recorded-state-profile/RED-TEAM.md
+      - Reproduction: user-guide/ros2-mcap-recorded-state-profile/REPRODUCE.md
+      - Claims: user-guide/ros2-mcap-recorded-state-profile/CLAIMS.md
+      - Readiness: user-guide/ros2-mcap-recorded-state-profile/READINESS.md
   - Troubleshooting: user-guide/troubleshooting.md
   - Contributing: user-guide/contributing.md
   - Research artifacts: user-guide/research-artifacts.md
