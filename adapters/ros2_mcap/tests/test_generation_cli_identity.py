@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import json
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
 
+import ros2_mcap_adapter.path_safety as path_safety
 from ros2_mcap_adapter.canonical import sha256_file
 from ros2_mcap_adapter.cli import main
 from ros2_mcap_adapter.constants import SOURCE_SHA256, SOURCE_SIZE
@@ -29,8 +31,9 @@ def test_source_generation_requires_explicit_overwrite(tmp_path: Path) -> None:
     path.write_text("old")
     with pytest.raises(SourceGenerationError, match="exists"):
         generate_source(path)
-    result = generate_source(path, overwrite=True)
-    assert result["sha256"] == SOURCE_SHA256
+    with pytest.raises(SourceGenerationError, match="replacement is prohibited"):
+        generate_source(path, overwrite=True)
+    assert path.read_text() == "old"
 
 
 def test_source_generation_rejects_symlink(tmp_path: Path) -> None:
@@ -71,3 +74,41 @@ def test_cli_failure_is_compact(tmp_path: Path, capsys) -> None:
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "expected a regular" in captured.err
+
+
+def test_packaged_third_party_notice_retains_tf2_bsd_identity() -> None:
+    notice = files("ros2_mcap_adapter").joinpath("THIRD_PARTY_NOTICES.md").read_text()
+    assert "Copyright (c) 2008, Willow Garage, Inc." in notice
+    assert "f6053126926a38ffad5e81588054d793d87fc662" in notice
+    assert "d79557eefaf84816a7ce5f6201fa32fac60a69b5" in notice
+
+
+def test_source_generation_rejects_candidate_mutation_at_publish(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "source.mcap"
+    original = path_safety._rename_noreplace
+
+    def mutate_then_rename(parent: int, source: str, target: str) -> None:
+        directory = Path(f"/proc/self/fd/{parent}")
+        (directory / source).write_bytes(b"HOSTILE")
+        original(parent, source, target)
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", mutate_then_rename)
+    with pytest.raises(SourceGenerationError, match="published output differs"):
+        generate_source(output)
+    assert not output.exists()
+
+
+def test_source_generation_noreplace_rejects_late_destination(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "source.mcap"
+    original = path_safety._rename_noreplace
+
+    def create_then_rename(parent: int, source: str, target: str) -> None:
+        output.write_bytes(b"intruder")
+        original(parent, source, target)
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", create_then_rename)
+    with pytest.raises(SourceGenerationError, match="output exists"):
+        generate_source(output)
+    assert output.read_bytes() == b"intruder"

@@ -19,6 +19,7 @@ from .path_safety import (
     PathSafetyError,
     durable_path_leaks,
     publish_directory,
+    read_directory_snapshot,
     read_file_snapshot,
     reject_overlap,
     require_safe_output,
@@ -98,22 +99,31 @@ def convert(
             config_bytes=config_snapshot.data,
             lock_bytes=lock_snapshot.data,
         )
+
+        def verify_publish_inputs() -> None:
+            verify_file_snapshot_current(source_snapshot, label="source mutation")
+            verify_file_snapshot_current(config_snapshot, label="config mutation")
+            verify_file_snapshot_current(lock_snapshot, label="adapter lock mutation")
+            verify_adapter_commit(adapter_commit)
+
         if _SOURCE_MUTATION_TEST_HOOK is not None:
             _SOURCE_MUTATION_TEST_HOOK(source_file)
-        verify_file_snapshot_current(source_snapshot, label="source mutation")
-        verify_file_snapshot_current(config_snapshot, label="config mutation")
-        verify_file_snapshot_current(lock_snapshot, label="adapter lock mutation")
-        verify_adapter_commit(adapter_commit)
-        for durable in candidate.rglob("*"):
-            if durable.is_symlink():
-                raise AdapterError("conversion output: generated symlink is prohibited")
-            if durable.is_file():
-                leaks = durable_path_leaks(durable.read_bytes(), extra_roots=(candidate,))
+        verify_publish_inputs()
+        candidate_snapshot = read_directory_snapshot(candidate, label="conversion output")
+        for durable in candidate_snapshot.entries:
+            if durable.entry_type == "file" and durable.data is not None:
+                leaks = durable_path_leaks(durable.data, extra_roots=(candidate,))
                 if leaks:
                     raise AdapterError(
-                        f"conversion output: machine-local path leak in {durable.relative_to(candidate)}"
+                        f"conversion output: machine-local path leak in {durable.relative_path}"
                     )
-        publish_directory(candidate, output, overwrite=overwrite)
+        publish_directory(
+            candidate,
+            output,
+            overwrite=overwrite,
+            snapshot=candidate_snapshot,
+            commit_check=verify_publish_inputs,
+        )
         candidate = None
         return summary
     except (PathSafetyError, DecodeError, FixtureError, AdapterIdentityError, AdapterError) as exc:

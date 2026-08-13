@@ -29,6 +29,7 @@ from .path_safety import (
     PathSafetyError,
     durable_path_leaks,
     publish_directory,
+    read_directory_snapshot,
     read_file_snapshot,
     reject_overlap,
     require_safe_output,
@@ -383,8 +384,22 @@ def finalize_conversion_equivalence(
                 f"{sha256_bytes(variant_files[path])}  {path}\n" for path in sorted(variant_files)
             ).encode()
             (candidate / variant / "CHECKSUMS.sha256").write_bytes(checksums)
+        capability_path = candidate / "capability-record.json"
+        capability = _load_json(capability_path)
+        deterministic = capability["capabilities"]["deterministic_conversion"]
+        deterministic.update(
+            {
+                "status": "verified",
+                "comparison_policy": "byte_identity",
+                "clean_run_count": 3,
+                "compared_output_count": 3,
+                "equivalent": True,
+            }
+        )
+        capability_path.write_bytes(pretty_json_bytes(capability))
         summary_path = candidate / "conversion-summary.json"
         summary = _load_json(summary_path)
+        summary["capability_fingerprint_sha256"] = sha256_bytes(canonical_json_bytes(capability))
         summary["conversion_reproducibility"] = {
             "comparison_policy": "sha256_byte_identity",
             "equivalent": True,
@@ -397,19 +412,35 @@ def finalize_conversion_equivalence(
             )
         summary_path.write_bytes(pretty_json_bytes(summary))
         _write_root_inventory(candidate)
-        for path in candidate.rglob("*"):
-            if path.is_symlink():
-                raise FinalizationError("equivalence: final output contains a symlink")
-            if path.is_file() and durable_path_leaks(path.read_bytes(), extra_roots=tuple(roots)):
+        candidate_snapshot = read_directory_snapshot(candidate, label="equivalence output")
+        for entry in candidate_snapshot.entries:
+            if (
+                entry.entry_type == "file"
+                and entry.data is not None
+                and durable_path_leaks(entry.data, extra_roots=tuple(roots))
+            ):
                 raise FinalizationError("equivalence: final output contains a machine-local path")
-        try:
+
+        def verify_publish_inputs() -> None:
             verify_file_snapshot_current(source_snapshot, label="frozen MCAP source")
             verify_file_snapshot_current(config_snapshot, label="frozen config")
             verify_file_snapshot_current(lock_snapshot, label="adapter lock")
             verify_adapter_commit(adapter_commit)
+
+        try:
+            verify_publish_inputs()
         except (PathSafetyError, AdapterIdentityError) as exc:
             raise FinalizationError(str(exc)) from exc
-        publish_directory(candidate, output, overwrite=overwrite)
+        try:
+            publish_directory(
+                candidate,
+                output,
+                overwrite=overwrite,
+                snapshot=candidate_snapshot,
+                commit_check=verify_publish_inputs,
+            )
+        except (PathSafetyError, AdapterIdentityError) as exc:
+            raise FinalizationError(str(exc)) from exc
         candidate = None
         return {
             "conversion_tree_sha256": run_records[0]["conversion_tree_sha256"],

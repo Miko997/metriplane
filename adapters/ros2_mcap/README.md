@@ -27,6 +27,25 @@ Partial, renamed, retyped, or malformed outcome streams fail closed.
 Conversion dependencies remain in this package. Portable fixtures do not
 contain MCAP bytes and do not require ROS or MCAP packages.
 
+## Publication boundary
+
+Conversion and finalization are frozen to Linux x86_64. Before publication,
+the complete same-parent candidate tree is read and synchronized through
+non-following directory descriptors; every regular file is bound by bytes,
+SHA-256, and inode metadata, and links or non-file entries fail closed.
+Publication uses Linux `renameat2(RENAME_NOREPLACE)` and requires a fresh,
+absent destination. Directory replacement is rejected even if the legacy
+`--overwrite` option is supplied; source generation follows the same
+fresh-destination rule, and callers must select a new output path. This
+keeps the namespace transition atomic without an absent-output window or an
+unverified displaced tree. The published namespace and complete tree are
+independently rechecked against the authenticated snapshot before success is
+returned. A platform or filesystem without the atomic no-clobber operation is
+rejected. This is a descriptor-authenticated point-in-time guarantee: a writer
+with the same operating-system privileges could still mutate an ordinary
+writable output after the final verification and successful return, so callers
+must enforce access separation or immutability for any later custody guarantee.
+
 ## Licensing
 
 The independently authored adapter code is MIT. `schemas.py` and the frozen
@@ -35,5 +54,9 @@ MCAP contain exact embedded ROS interface schema text: `std_msgs`,
 `tf2_msgs` text remains BSD-3-Clause. The Metriplane-authored outcome schema,
 container structure, and message values are MIT. The repository copy of the
 MCAP has an adjacent `.license` sidecar with the composite SPDX expression.
+The exact Willow Garage copyright notice, BSD conditions, upstream commit, and
+schema blob identity are retained in
+[`src/ros2_mcap_adapter/THIRD_PARTY_NOTICES.md`](src/ros2_mcap_adapter/THIRD_PARTY_NOTICES.md),
+which is also included in the adapter wheel.
 Portable normalized fixtures omit the MCAP and embedded schema bytes and are
 MIT.

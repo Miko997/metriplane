@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-FileCopyrightText: 2008 Willow Garage, Inc.
 # SPDX-FileCopyrightText: ROS 2 interface definition contributors
 # SPDX-License-Identifier: MIT AND Apache-2.0 AND BSD-3-Clause
 

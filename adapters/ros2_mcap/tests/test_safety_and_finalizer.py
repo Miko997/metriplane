@@ -13,7 +13,8 @@ import pytest
 
 import ros2_mcap_adapter.core as core
 import ros2_mcap_adapter.finalize as finalizer
-from ros2_mcap_adapter.canonical import pretty_json_bytes, sha256_bytes
+import ros2_mcap_adapter.path_safety as path_safety
+from ros2_mcap_adapter.canonical import canonical_json_bytes, pretty_json_bytes, sha256_bytes
 from ros2_mcap_adapter.constants import DEFAULT_CONFIG, DEFAULT_LOCK
 from ros2_mcap_adapter.decoder import decode_source_file, load_config
 from ros2_mcap_adapter.finalize import FinalizationError, finalize_conversion_equivalence
@@ -22,6 +23,7 @@ from ros2_mcap_adapter.generator import SourceGenerationError, generate_source
 from ros2_mcap_adapter.path_safety import (
     PathSafetyError,
     publish_directory,
+    read_directory_snapshot,
     reject_overlap,
     require_regular_file,
 )
@@ -242,6 +244,62 @@ def test_finalizer_requires_exactly_three_distinct_roots(tmp_path: Path, source_
         )
 
 
+def test_finalizer_is_the_only_determinism_state_transition(
+    tmp_path: Path, source_path: Path
+) -> None:
+    roots = _three_conversions(tmp_path, source_path)
+    raw = json.loads((roots[0] / "capability-record.json").read_text())
+    assert raw["capabilities"]["deterministic_conversion"]["status"] == "not_demonstrated"
+    output = tmp_path / "final"
+    finalize_conversion_equivalence(roots, output_root=output)
+    final = json.loads((output / "capability-record.json").read_text())
+    deterministic = final["capabilities"]["deterministic_conversion"]
+    assert deterministic["status"] == "verified"
+    assert deterministic["clean_run_count"] == 3
+    assert deterministic["compared_output_count"] == 3
+    assert deterministic["equivalent"] is True
+    summary = json.loads((output / "conversion-summary.json").read_text())
+    assert summary["capability_fingerprint_sha256"] == sha256_bytes(canonical_json_bytes(final))
+
+
+@pytest.mark.parametrize(
+    ("constant_name", "original_path", "message"),
+    [
+        (
+            "DEFAULT_SOURCE",
+            Path(__file__).parents[1] / "source/metriplane-synthetic-recorded-state-v1.mcap",
+            "frozen MCAP source",
+        ),
+        ("DEFAULT_CONFIG", DEFAULT_CONFIG, "frozen config"),
+        ("DEFAULT_LOCK", DEFAULT_LOCK, "adapter lock"),
+    ],
+)
+def test_finalizer_input_mutation_at_atomic_publish_rolls_back(
+    tmp_path: Path,
+    source_path: Path,
+    monkeypatch,
+    constant_name: str,
+    original_path: Path,
+    message: str,
+) -> None:
+    roots = _three_conversions(tmp_path, source_path)
+    authenticated = tmp_path / original_path.name
+    authenticated.write_bytes(original_path.read_bytes())
+    monkeypatch.setattr(finalizer, constant_name, authenticated)
+    monkeypatch.setattr(finalizer, "verify_adapter_commit", lambda _commit: None)
+    original_rename = path_safety._rename_noreplace
+
+    def rename_then_mutate(parent: int, source: str, target: str) -> None:
+        original_rename(parent, source, target)
+        authenticated.write_bytes(authenticated.read_bytes() + b"x")
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", rename_then_mutate)
+    output = tmp_path / "final"
+    with pytest.raises(FinalizationError, match=message):
+        finalize_conversion_equivalence(roots, output_root=output)
+    assert not output.exists()
+
+
 def test_source_mutation_never_replaces_existing_output(
     tmp_path: Path, source_path: Path, config_path: Path, monkeypatch
 ) -> None:
@@ -263,6 +321,30 @@ def test_source_mutation_never_replaces_existing_output(
             overwrite=True,
         )
     assert (output / "preserve.txt").read_text() == "old"
+
+
+def test_source_mutation_at_atomic_publish_rolls_back_new_output(
+    tmp_path: Path, source_path: Path, config_path: Path, monkeypatch
+) -> None:
+    source_copy = tmp_path / "source.mcap"
+    source_copy.write_bytes(source_path.read_bytes())
+    output = tmp_path / "output"
+    monkeypatch.setattr(core, "verify_adapter_commit", lambda _commit: None)
+    original = path_safety._rename_noreplace
+
+    def rename_then_mutate(parent: int, source: str, target: str) -> None:
+        original(parent, source, target)
+        source_copy.write_bytes(source_copy.read_bytes() + b"x")
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", rename_then_mutate)
+    with pytest.raises(core.AdapterError, match="source mutation"):
+        core.convert(
+            source_copy,
+            config_path=config_path,
+            output_root=output,
+            adapter_commit="1" * 40,
+        )
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("label", ["frozen config", "adapter lock"])
@@ -321,26 +403,19 @@ def test_generator_rejects_symlinked_parent_component(tmp_path: Path) -> None:
         generate_source(linked_parent / "source.mcap")
 
 
-def test_publish_overwrite_preserves_old_tree_if_candidate_rename_fails(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_publish_rejects_existing_even_with_overwrite(tmp_path: Path) -> None:
     output = tmp_path / "output"
     candidate = tmp_path / "candidate"
     output.mkdir()
     candidate.mkdir()
     (output / "old").write_text("old")
     (candidate / "new").write_text("new")
-    original = Path.replace
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
 
-    def fail_candidate(self: Path, target: Path):
-        if self == candidate and target == output:
-            raise OSError("injected rename failure")
-        return original(self, target)
-
-    monkeypatch.setattr(Path, "replace", fail_candidate)
-    with pytest.raises(OSError, match="injected"):
-        publish_directory(candidate, output, overwrite=True)
+    with pytest.raises(PathSafetyError, match="replacement is prohibited"):
+        publish_directory(candidate, output, overwrite=True, snapshot=snapshot)
     assert (output / "old").read_text() == "old"
+    assert (candidate / "new").read_text() == "new"
 
 
 def test_publish_rejects_existing_without_overwrite(tmp_path: Path) -> None:
@@ -348,8 +423,126 @@ def test_publish_rejects_existing_without_overwrite(tmp_path: Path) -> None:
     candidate = tmp_path / "candidate"
     output.mkdir()
     candidate.mkdir()
-    with pytest.raises(PathSafetyError, match="overwrite"):
-        publish_directory(candidate, output, overwrite=False)
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
+    with pytest.raises(PathSafetyError, match="replacement is prohibited"):
+        publish_directory(candidate, output, overwrite=False, snapshot=snapshot)
+
+
+def test_publish_rejects_candidate_content_mutation_at_rename(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "output"
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    verified = candidate / "verified.txt"
+    verified.write_text("verified")
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
+    original = path_safety._rename_noreplace
+
+    def mutate_then_rename(parent: int, source: str, target: str) -> None:
+        verified.write_text("HOSTILE")
+        original(parent, source, target)
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", mutate_then_rename)
+    with pytest.raises(PathSafetyError, match="published tree differs"):
+        publish_directory(candidate, output, overwrite=False, snapshot=snapshot)
+    assert not output.exists()
+    assert verified.read_text() == "HOSTILE"
+
+
+def test_publish_rejects_candidate_inode_replacement_at_rename(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "output"
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "verified.txt").write_text("verified")
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
+    displaced = tmp_path / "displaced"
+    original = path_safety._rename_noreplace
+
+    def replace_then_rename(parent: int, source: str, target: str) -> None:
+        candidate.rename(displaced)
+        candidate.mkdir()
+        (candidate / "verified.txt").write_text("HOSTILE")
+        original(parent, source, target)
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", replace_then_rename)
+    with pytest.raises(PathSafetyError, match="published tree differs"):
+        publish_directory(candidate, output, overwrite=False, snapshot=snapshot)
+    assert not output.exists()
+    assert (candidate / "verified.txt").read_text() == "HOSTILE"
+    assert (displaced / "verified.txt").read_text() == "verified"
+
+
+def test_publish_noreplace_rejects_destination_created_at_rename(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "output"
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "verified.txt").write_text("verified")
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
+    original = path_safety._rename_noreplace
+
+    def create_destination_then_rename(parent: int, source: str, target: str) -> None:
+        output.mkdir()
+        (output / "intruder.txt").write_text("intruder")
+        original(parent, source, target)
+
+    monkeypatch.setattr(path_safety, "_rename_noreplace", create_destination_then_rename)
+    with pytest.raises(PathSafetyError, match="output exists"):
+        publish_directory(candidate, output, overwrite=False, snapshot=snapshot)
+    assert (output / "intruder.txt").read_text() == "intruder"
+    assert (candidate / "verified.txt").read_text() == "verified"
+
+
+def test_publish_commit_check_failure_rolls_back_new_output(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "new.txt").write_text("new")
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
+
+    def fail_commit_check() -> None:
+        raise PathSafetyError("input changed before publish committed")
+
+    with pytest.raises(PathSafetyError, match="input changed"):
+        publish_directory(
+            candidate,
+            output,
+            overwrite=False,
+            snapshot=snapshot,
+            commit_check=fail_commit_check,
+        )
+    assert not output.exists()
+    assert (candidate / "new.txt").read_text() == "new"
+
+
+def test_directory_snapshot_rejects_nested_symlink(tmp_path: Path) -> None:
+    candidate = tmp_path / "candidate"
+    nested = candidate / "nested"
+    nested.mkdir(parents=True)
+    target = tmp_path / "target"
+    target.write_text("outside")
+    (nested / "unsafe").symlink_to(target)
+    with pytest.raises(PathSafetyError, match="symlink prohibited"):
+        read_directory_snapshot(candidate, label="test candidate")
+
+
+def test_publish_rejects_authenticated_parent_replacement(tmp_path: Path) -> None:
+    parent = tmp_path / "parent"
+    candidate = parent / "candidate"
+    candidate.mkdir(parents=True)
+    (candidate / "verified.txt").write_text("verified")
+    snapshot = read_directory_snapshot(candidate, label="test candidate")
+    displaced = tmp_path / "displaced-parent"
+    parent.rename(displaced)
+    parent.mkdir()
+    (displaced / "candidate").rename(parent / "candidate")
+    with pytest.raises(PathSafetyError, match="parent changed"):
+        publish_directory(
+            parent / "candidate",
+            parent / "output",
+            overwrite=False,
+            snapshot=snapshot,
+        )
 
 
 def test_symlink_source_and_overlap_rejected(tmp_path: Path, source_path: Path) -> None:

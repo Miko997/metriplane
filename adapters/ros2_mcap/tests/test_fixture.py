@@ -95,6 +95,18 @@ def test_conversion_builds_contract_bundle_and_native_capability(
     }
     assert {row["status"] for row in rows} == {"required"}
     assert capability["capabilities"]["portable_evaluation"]["status"] == "not_demonstrated"
+    deterministic = capability["capabilities"]["deterministic_conversion"]
+    assert deterministic["status"] == "not_demonstrated"
+    assert deterministic["comparison_policy"] == "not_demonstrated"
+    assert deterministic["clean_run_count"] == 1
+    assert deterministic["compared_output_count"] == 0
+    assert deterministic["equivalent"] is False
+    rights = json.loads((root / "rights-record.json").read_text())
+    tf2 = next(item for item in rights["components"] if item["component"].startswith("tf2_msgs"))
+    assert tf2["copyright_notice"] == (
+        "Copyright (c) 2008, Willow Garage, Inc. All rights reserved."
+    )
+    assert tf2["source_commit"] == "f6053126926a38ffad5e81588054d793d87fc662"
     assert not any(path.suffix == ".mcap" for path in root.rglob("*"))
 
 
@@ -117,7 +129,10 @@ def test_capability_validates_against_shared_sdk(
     assessment = assess_capability(load_capability(root / "capability-record.json"))
     assert assessment.technically_permitted is False
     assert assessment.external_source_permitted is False
-    assert assessment.reasons == ("portable_evaluation is not verified",)
+    assert assessment.reasons == (
+        "deterministic_conversion is not verified",
+        "portable_evaluation is not verified",
+    )
 
 
 def test_bundles_validate_with_external_source_contract(

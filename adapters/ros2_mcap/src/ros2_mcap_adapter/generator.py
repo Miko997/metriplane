@@ -42,7 +42,7 @@ from .constants import (
     TF_TOPIC,
     TOOL_TOPIC,
 )
-from .path_safety import PathSafetyError, reject_symlink_components
+from .path_safety import PathSafetyError, publish_file, reject_symlink_components
 from .schemas import OUTCOME_SCHEMA, POSE_STAMPED_SCHEMA, TF_MESSAGE_SCHEMA
 
 
@@ -224,10 +224,6 @@ def generate_source(output_path: str | Path, *, overwrite: bool = False) -> dict
         output = reject_symlink_components(output_path, label="source generation output")
     except PathSafetyError as exc:
         raise SourceGenerationError(str(exc)) from exc
-    if output.exists() and not overwrite:
-        raise SourceGenerationError(f"source generation: output exists: {output}")
-    if output.exists() and not output.is_file():
-        raise SourceGenerationError("source generation: refusing non-file output replacement")
     data = build_source_bytes()
     actual_size = len(data)
     actual_sha256 = sha256_bytes(data)
@@ -238,16 +234,28 @@ def generate_source(output_path: str | Path, *, overwrite: bool = False) -> dict
         )
     output.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent)
+    temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "wb") as handle:
+        with os.fdopen(descriptor, "wb", closefd=False) as handle:
             handle.write(data)
             handle.flush()
-            os.fsync(handle.fileno())
-        temporary = Path(temporary_name)
-        temporary.replace(output)
-    except Exception:
-        Path(temporary_name).unlink(missing_ok=True)
-        raise
+        os.fsync(descriptor)
+        identity = os.fstat(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        publish_file(
+            temporary,
+            output,
+            overwrite=overwrite,
+            expected_data=data,
+            expected_identity=identity,
+        )
+    except (OSError, PathSafetyError) as exc:
+        raise SourceGenerationError(str(exc)) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
     return {
         "classification": "FORMAT-ENGINEERING ONLY / SYNTHETIC / NOT EXTERNAL-SOURCE EVIDENCE",
         "path": output.name,

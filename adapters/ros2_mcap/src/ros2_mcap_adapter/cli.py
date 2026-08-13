@@ -24,7 +24,11 @@ def _parser() -> argparse.ArgumentParser:
 
     generate = commands.add_parser("generate-source", help="generate the exact synthetic MCAP")
     generate.add_argument("--out", type=Path, required=True)
-    generate.add_argument("--overwrite", action="store_true")
+    generate.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="legacy flag; existing outputs remain prohibited by the atomic publication boundary",
+    )
 
     inspect = commands.add_parser("inspect", help="audit the exact MCAP source")
     inspect.add_argument("--source", type=Path, required=True)
@@ -38,7 +42,11 @@ def _parser() -> argparse.ArgumentParser:
         default=os.environ.get("ROS2_MCAP_ADAPTER_COMMIT"),
         required=os.environ.get("ROS2_MCAP_ADAPTER_COMMIT") is None,
     )
-    conversion.add_argument("--overwrite", action="store_true")
+    conversion.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="legacy flag; existing outputs remain prohibited by the atomic publication boundary",
+    )
 
     finalize = commands.add_parser(
         "finalize-equivalence", help="verify three clean conversions and finalize evidence"
@@ -46,7 +54,11 @@ def _parser() -> argparse.ArgumentParser:
     finalize.add_argument("--conversion-root", action="append", type=Path, required=True)
     finalize.add_argument("--run-id", action="append")
     finalize.add_argument("--out", type=Path, required=True)
-    finalize.add_argument("--overwrite", action="store_true")
+    finalize.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="legacy flag; existing outputs remain prohibited by the atomic publication boundary",
+    )
     return parser
 
 

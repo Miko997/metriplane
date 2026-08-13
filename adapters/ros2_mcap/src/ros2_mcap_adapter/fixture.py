@@ -266,9 +266,15 @@ def _rights_record() -> dict[str, object]:
             },
             {
                 "component": "tf2_msgs interface definition",
+                "copyright_notice": (
+                    "Copyright (c) 2008, Willow Garage, Inc. All rights reserved."
+                ),
                 "license": "BSD-3-Clause",
+                "license_blob": "d79557eefaf84816a7ce5f6201fa32fac60a69b5",
                 "origin": "ROS 2 geometry2",
                 "redistribution": "allowed with notices",
+                "schema_blob": "fda1e4d0985406667d26b7b36cbbedc9bb497074",
+                "source_commit": "f6053126926a38ffad5e81588054d793d87fc662",
             },
             {
                 "component": "Metriplane SourceOutcome interface definition",
@@ -455,11 +461,12 @@ def _capability_record(
                 ],
             },
             "deterministic_conversion": {
-                **base,
-                "comparison_policy": "byte_identity",
-                "clean_run_count": 3,
-                "compared_output_count": 3,
-                "equivalent": True,
+                "status": "not_demonstrated",
+                "evidence_ids": evidence_ids,
+                "comparison_policy": "not_demonstrated",
+                "clean_run_count": 1,
+                "compared_output_count": 0,
+                "equivalent": False,
                 "input_fingerprint_sha256": sha256_bytes(
                     canonical_json_bytes(
                         {
