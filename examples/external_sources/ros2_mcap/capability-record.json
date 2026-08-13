@@ -1,0 +1,259 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.ros2_mcap_recorded_state",
+    "conversion_dependencies": [
+      "mcap==1.3.0"
+    ],
+    "entrypoint": "ros2_mcap_adapter.cli:main",
+    "environment": {
+      "architecture": "x86_64",
+      "dependency_lock_sha256": "864f24f57d1e99ecae76e7da832c8022bbfcbaf0583b612e6d909a5e93f4edd6",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12"
+    },
+    "implementation_commit": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "capabilities": {
+    "anti_taint": {
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "excluded_fields": [
+        "/metriplane/source_outcome.success",
+        "/metriplane/source_outcome.result",
+        "/metriplane/source_outcome.alarm",
+        "/metriplane/source_outcome.action",
+        "/metriplane/source_outcome.annotation"
+      ],
+      "frame_state_events_policy": "empty",
+      "inventory_complete": true,
+      "status": "verified",
+      "used_as_incident_truth": false,
+      "used_as_process_events": false
+    },
+    "artifact_identity": {
+      "all_required_artifacts_hashed": true,
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "status": "verified"
+    },
+    "clock": {
+      "authoritative": true,
+      "authority": "PoseStamped message header stamp in declared ROS_TIME",
+      "domain": "synthetic declared ROS_TIME source domain",
+      "evaluation_field": "ts_sim_ns",
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "mapping_method": "affine",
+      "order_only": false,
+      "source_field": "geometry_msgs/msg/PoseStamped.header.stamp",
+      "source_unit": "nanoseconds",
+      "status": "verified"
+    },
+    "completeness": {
+      "carry_forward": {
+        "fields": [],
+        "max_gap_ns": null,
+        "method": "none"
+      },
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "frame_semantics": "complete_snapshot",
+      "interpolation": "none",
+      "materialization_method": "exact_snapshot_join",
+      "omission_policy": "reject_omission",
+      "partial_updates_materialized": true,
+      "resampling": "none",
+      "source_stream_semantics": "partial_updates",
+      "status": "verified",
+      "synchronization": "exact_timestamp",
+      "synchronization_tolerance_ns": 0,
+      "unknown_state_policy": "reject_fixture"
+    },
+    "coordinates": {
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "projection_method": "planar_xy",
+      "source_frame": "sensor_frame",
+      "source_units": "meters",
+      "status": "verified",
+      "target_frame": "world",
+      "target_units": "meters",
+      "transform_method": "declared two-edge static rigid transform"
+    },
+    "deterministic_conversion": {
+      "clean_run_count": 3,
+      "compared_output_count": 3,
+      "comparison_policy": "byte_identity",
+      "equivalent": true,
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "input_fingerprint_sha256": "6415acbee84239714754abc2f7ab8e2401a4e2134a4bbe0b605795c55a7b13b0",
+      "status": "verified"
+    },
+    "entity_identity": {
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "explicit_mapping": true,
+      "mapping_schema": "metriplane.external_entity_mapping.v1",
+      "mapping_sha256": "c9e8c252a20fced69bf9cd167a38c483cced7608582f93049ccf53ad7cf222e3",
+      "normalized_entities": [
+        {
+          "normalized_id": "material_1",
+          "process_relevant": true
+        },
+        {
+          "normalized_id": "tool_1",
+          "process_relevant": true
+        }
+      ],
+      "required_entities": [
+        "material_1",
+        "tool_1"
+      ],
+      "stable": true,
+      "status": "verified"
+    },
+    "field_provenance": {
+      "complete": true,
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "status": "verified",
+      "trust_layers_separated": true
+    },
+    "information_loss": {
+      "declared": true,
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "items": [
+        "transformed world z",
+        "complete source pose orientation"
+      ],
+      "status": "verified"
+    },
+    "portable_evaluation": {
+      "environments": [
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.12",
+          "status": "required"
+        },
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.13",
+          "status": "required"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.12",
+          "status": "required"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.13",
+          "status": "required"
+        }
+      ],
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "source_dependencies_required": false,
+      "status": "not_demonstrated"
+    },
+    "rights": {
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "status": "verified"
+    },
+    "semantics": {
+      "evidence_ids": [
+        "ros2_mcap_adapter_commit"
+      ],
+      "prohibited": [
+        "General ROS 2, MCAP, rosbag2, or TF2 compatibility",
+        "Automatic topic discovery or arbitrary message support",
+        "External-source compatibility evidence",
+        "Physical accuracy, safety, simulator realism, or production readiness"
+      ],
+      "status": "verified",
+      "supported": [
+        "Bounded planar XY arrival and required-presence timing for one exact synthetic recorded-state profile"
+      ]
+    }
+  },
+  "contract": {
+    "fit": "verified",
+    "frame_state_model_version": "1.0",
+    "profile": "metriplane.atlas.complete_snapshot.v1",
+    "version": "metriplane.external_source_contract.v1"
+  },
+  "evidence": [
+    {
+      "evidence_id": "ros2_mcap_adapter_commit",
+      "identity": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
+      "kind": "git_commit",
+      "uri": "https://github.com/Miko997/metriplane/commit/686c38c2f8ca34439f851b5d62c8f7cd1cfddac8"
+    }
+  ],
+  "limitations": [
+    "Synthetic format-engineering evidence only",
+    "One exact configured profile and source identity",
+    "Portable operating-system rows remain required until CI passes"
+  ],
+  "record": {
+    "classification": "native",
+    "evidence_classification": "synthetic_format_engineering",
+    "statement": "Native capability declaration for one bounded Metriplane-authored synthetic format-engineering source.",
+    "subject": "candidate_adapter"
+  },
+  "schema_version": "metriplane.source_adapter_capability.v1",
+  "source": {
+    "artifacts": [
+      {
+        "artifact_id": "metriplane_synthetic_ros2_mcap_v1",
+        "byte_size": 28735,
+        "presence": "referenced",
+        "rights_id": "synthetic_mcap_composite_rights",
+        "role": "synthetic_recorded_robotics_state",
+        "sha256": "c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99",
+        "uri": "urn:sha256:c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99"
+      }
+    ],
+    "family": "Bounded synthetic ROS 2 message streams in one MCAP container",
+    "project_uri": "https://github.com/Miko997/metriplane",
+    "revision": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
+    "revision_kind": "adapter_commit",
+    "rights": {
+      "derived_fixture": {
+        "basis": "MIT normalized numeric state and operator rules exclude MCAP and embedded schema bytes.",
+        "redistribution": "verified",
+        "rights_id": "synthetic_normalized_fixture",
+        "subject": "normalized_fixture"
+      },
+      "source_bytes_in_fixture": false,
+      "source_records": [
+        {
+          "basis": "Metriplane-authored MIT container and values with embedded Apache-2.0 and BSD-3-Clause ROS interface schema text.",
+          "rights_id": "synthetic_mcap_composite_rights",
+          "source_redistribution": "allowed",
+          "source_use": "verified",
+          "subject_artifact_ids": [
+            "metriplane_synthetic_ros2_mcap_v1"
+          ]
+        }
+      ]
+    }
+  }
+}

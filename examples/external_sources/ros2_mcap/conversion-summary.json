@@ -1,0 +1,38 @@
+{
+  "adapter_commit": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
+  "capability_fingerprint_sha256": "ef9341324267b53ce94fa17b6eb313c1d839b2062ed26b9c0ee93a046bfe307f",
+  "config_sha256": "a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962",
+  "control": {
+    "fixture_fingerprint_sha256": "2d7b98ffba20bd91b13c8ee311bacf9365b64d8dd5b56b8eaa1898226c3c9062",
+    "fixture_id": "ros2_mcap_synthetic_control_v1",
+    "max_wait_s": 1.2
+  },
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "run_ids": [
+      "clean-conversion-1",
+      "clean-conversion-2",
+      "clean-conversion-3"
+    ],
+    "status": "demonstrated"
+  },
+  "incident": {
+    "fixture_fingerprint_sha256": "b88fe8731b3d9ed63414b6bd3d4af8be0d68e8259ed6c467fbf9df63e2bece66",
+    "fixture_id": "ros2_mcap_synthetic_incident_v1",
+    "max_wait_s": 0.5
+  },
+  "material_inside_first_frame": 5,
+  "material_inside_last_frame": 39,
+  "outcome_stream_message_count": 60,
+  "outcome_stream_present": true,
+  "profile": "metriplane.ros2_mcap_recorded_state.v1",
+  "schema_version": "org.metriplane.ros2_mcap.conversion_summary.v1",
+  "shared_session_sha256": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8",
+  "source_classification": "FORMAT-ENGINEERING ONLY / SYNTHETIC / NOT EXTERNAL-SOURCE EVIDENCE",
+  "source_sha256": "c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99",
+  "source_size": 28735,
+  "source_unchanged_during_conversion": true,
+  "tool_inside_first_frame": 15,
+  "tool_inside_last_frame": 40
+}

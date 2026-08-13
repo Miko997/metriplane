@@ -1,0 +1,3 @@
+CPython 3.12
+Linux x86_64
+adapter=org.metriplane.ros2_mcap_recorded_state@686c38c2f8ca34439f851b5d62c8f7cd1cfddac8

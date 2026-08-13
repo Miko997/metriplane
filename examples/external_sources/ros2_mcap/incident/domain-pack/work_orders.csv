@@ -1,0 +1,2 @@
+work_order_id,process_id,product,priority
+WO-ROS2-MCAP-001,synthetic_recorded_material_tool_presence,synthetic_format_fixture,normal

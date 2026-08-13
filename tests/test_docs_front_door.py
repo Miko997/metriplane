@@ -39,6 +39,27 @@ EXPECTED_NAV = (
     "user-guide/external-source-family-matrix-v1/PARTNER-SUMMARY.md",
     "user-guide/external-source-family-matrix-v1/VALIDATION.md",
     "user-guide/external-source-family-matrix-v1/READINESS.md",
+    "user-guide/ros2-mcap-recorded-state-profile/README.md",
+    "user-guide/ros2-mcap-recorded-state-profile/SOURCE-CANDIDATES.md",
+    "user-guide/ros2-mcap-recorded-state-profile/SOURCE-AUDIT.md",
+    "user-guide/ros2-mcap-recorded-state-profile/RIGHTS-MATRIX.md",
+    "user-guide/ros2-mcap-recorded-state-profile/SHARED-ADAPTER-EVIDENCE.md",
+    "user-guide/ros2-mcap-recorded-state-profile/SOURCE-ADAPTER-CAPABILITY.md",
+    "user-guide/ros2-mcap-recorded-state-profile/MANISKILL-CAPABILITY.md",
+    "user-guide/ros2-mcap-recorded-state-profile/ROBOMIMIC-CAPABILITY.md",
+    "user-guide/ros2-mcap-recorded-state-profile/ROS2-MCAP-CAPABILITY.md",
+    "user-guide/ros2-mcap-recorded-state-profile/PROFILE.md",
+    "user-guide/ros2-mcap-recorded-state-profile/TOPIC-MAPPING.md",
+    "user-guide/ros2-mcap-recorded-state-profile/CLOCK-DECISION.md",
+    "user-guide/ros2-mcap-recorded-state-profile/TF-DECISION.md",
+    "user-guide/ros2-mcap-recorded-state-profile/MATERIALIZATION.md",
+    "user-guide/ros2-mcap-recorded-state-profile/FIELD-PROVENANCE.md",
+    "user-guide/ros2-mcap-recorded-state-profile/INFORMATION-LOSS.md",
+    "user-guide/ros2-mcap-recorded-state-profile/NEGATIVE-TESTS.md",
+    "user-guide/ros2-mcap-recorded-state-profile/RED-TEAM.md",
+    "user-guide/ros2-mcap-recorded-state-profile/REPRODUCE.md",
+    "user-guide/ros2-mcap-recorded-state-profile/CLAIMS.md",
+    "user-guide/ros2-mcap-recorded-state-profile/READINESS.md",
     "user-guide/troubleshooting.md",
     "user-guide/contributing.md",
     "user-guide/research-artifacts.md",
@@ -75,12 +96,8 @@ def test_mkdocs_uses_stock_theme_and_explicit_front_door_nav() -> None:
 
 def test_documentation_workflow_pins_actions_and_runs_strict_build() -> None:
     workflow = (ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
-    assert (
-        "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803" in workflow
-    )
-    assert (
-        "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1" in workflow
-    )
+    assert "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803" in workflow
+    assert "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1" in workflow
     assert "python -m mkdocs build --strict" in workflow
 
 

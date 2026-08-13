@@ -1,0 +1,37 @@
+{
+  "cell_id": "synthetic_ros2_mcap_recorded_state_fixture",
+  "schema_version": "metriplane.atlas.workspace.v1",
+  "stations": [
+    {
+      "label": "Operator-configured format-test station",
+      "station_id": "target_station",
+      "zone_id": "target_xy_region"
+    }
+  ],
+  "units": "meters",
+  "zones": [
+    {
+      "label": "Operator-configured format-test region",
+      "polygon": [
+        [
+          0.45,
+          -0.05
+        ],
+        [
+          0.55,
+          -0.05
+        ],
+        [
+          0.55,
+          0.05
+        ],
+        [
+          0.45,
+          0.05
+        ]
+      ],
+      "zone_id": "target_xy_region",
+      "zone_type": "work_station"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "components": [
+    {
+      "component": "MCAP container and synthetic numeric/message values",
+      "license": "MIT",
+      "origin": "Metriplane-authored",
+      "redistribution": "allowed"
+    },
+    {
+      "component": "std_msgs, builtin_interfaces, and geometry_msgs interface definitions",
+      "license": "Apache-2.0",
+      "origin": "ROS 2 common_interfaces and rcl_interfaces",
+      "redistribution": "allowed with notices"
+    },
+    {
+      "component": "tf2_msgs interface definition",
+      "copyright_notice": "Copyright (c) 2008, Willow Garage, Inc. All rights reserved.",
+      "license": "BSD-3-Clause",
+      "license_blob": "d79557eefaf84816a7ce5f6201fa32fac60a69b5",
+      "origin": "ROS 2 geometry2",
+      "redistribution": "allowed with notices",
+      "schema_blob": "fda1e4d0985406667d26b7b36cbbedc9bb497074",
+      "source_commit": "f6053126926a38ffad5e81588054d793d87fc662"
+    },
+    {
+      "component": "Metriplane SourceOutcome interface definition",
+      "license": "MIT",
+      "origin": "Metriplane-authored format-test schema",
+      "redistribution": "allowed"
+    },
+    {
+      "component": "Portable normalized numeric state and operator rules",
+      "license": "MIT",
+      "origin": "Metriplane-authored derived fixture; embedded schema bytes excluded",
+      "redistribution": "allowed"
+    }
+  ],
+  "conclusion": "The source recording has composite MIT, Apache-2.0, and BSD-3-Clause payload terms. The portable fixture excludes MCAP and schema bytes and is MIT.",
+  "schema_version": "org.metriplane.ros2_mcap.rights.v1"
+}
