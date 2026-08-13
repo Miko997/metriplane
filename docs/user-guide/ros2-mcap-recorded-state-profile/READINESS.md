@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 ## Current decision
 
-**PARTIAL: FROZEN PACKAGE GATES COMPLETE, REPOSITORY AND PUBLIC GATES PENDING**
+**PARTIAL: READY FOR OWNER MERGE REVIEW**
 
 The bounded external-source search is complete. Three candidates were rejected
 and no external source was selected. The synthetic format-engineering artifacts
@@ -35,9 +35,24 @@ establish external ROS 2 or MCAP compatibility.
 | Generated fixture inventory file | SHA-256 `0a3dd86c91e2c5a78a3fbafcfdaad6d6de7e1669812f99968f8e73626d2726de` |
 | Conversion summary | SHA-256 `bff6ff0456178798bd3d987f3c3a687b900aa0c511e571b72d06503765067218` |
 | Three-run conversion tree | SHA-256 `56a70b440f3105ae01a2913940db664008a829dae05d4442dc610aaa99b80505` |
+| Green review-evidence commit | `a67d98c12691f2981344d68cd5ace075735b129e` |
+| Pull request | `https://github.com/Miko997/metriplane/pull/57` |
 
-The exact PR head and public workflow run identities are not known yet and are
-not guessed here.
+The green review-evidence commit completed these public workflow runs:
+
+| Workflow | Run | Result |
+| --- | ---: | --- |
+| Bounded ROS 2 and MCAP Recorded-State Profile | `31679707210` | pass |
+| CI | `31679707212` | pass |
+| Release Gates | `31679707236` | pass |
+| Documentation | `31679707484` | pass |
+| CodeQL | `31679707205` | pass |
+| External Source-Family Matrix | `31679707220` | pass |
+| robomimic Low-Dimensional Fixture | `31679707195` | pass |
+
+The pull request's live head must also retain a complete green exact-head suite.
+Workflow status remains live review metadata rather than a self-referential
+property of this hashed file.
 
 ## Stable boundaries
 
@@ -67,21 +82,23 @@ not guessed here.
 - [x] Control output is `60/3/0/0`; the no-incident assertion passes.
 - [x] Durable generated outputs contain no machine-local paths.
 
-## Pending public and repository gates
+## Completed public and repository gates
 
-- [ ] frozen fixture assertions on the exact PR head;
-- [ ] full repository regression and existing proof-family tests;
-- [ ] source-family matrix validation, bundled demo, documentation, release
+- [x] frozen fixture assertions on the review-evidence commit;
+- [x] full repository regression and existing proof-family tests;
+- [x] source-family matrix validation, bundled demo, documentation, release
       gates, and applicable static checks;
-- [ ] ordinary wheel contents and source-dependency isolation;
-- [ ] installed-wheel portable evaluation on Ubuntu and macOS with Python 3.12
+- [x] ordinary wheel contents and source-dependency isolation;
+- [x] installed-wheel portable evaluation on Ubuntu and macOS with Python 3.12
       and 3.13;
-- [ ] all other applicable exact-head workflows;
-- [ ] public PR head and workflow identities recorded.
+- [x] exact frozen synthetic-source acquisition, inspection, three-conversion,
+      and finalization check;
+- [x] all other applicable review-evidence workflows;
+- [x] public review-evidence commit and workflow identities recorded.
 
 No real-source conversion job can run because no external candidate passed the
-bounded audit. A workflow must report that path as not applicable, not as a
-successful external conversion.
+bounded audit. The green exact-source job reproduces only the Metriplane-authored
+synthetic format-engineering source. It is not a successful external conversion.
 
 ## Merge boundary
 
@@ -89,7 +106,6 @@ Any eventual merge must preserve the adapter freeze commit
 `04090e510fa2bccd4fe3ac90521d3201a7c1b7c7` in public history. No merge, tag,
 release, DOI, package release, or version bump is authorized by this record.
 
-If the pending exact-head gates pass, the branch can be presented for owner
-merge review while the result remains PARTIAL. An optional immutable synthetic
-proof identity may be proposed later, but it must not imply external ROS 2 or
-MCAP compatibility.
+The branch is ready for owner merge review while the result remains PARTIAL. An
+optional immutable synthetic proof identity may be proposed later, but it must
+not imply external ROS 2 or MCAP compatibility.
