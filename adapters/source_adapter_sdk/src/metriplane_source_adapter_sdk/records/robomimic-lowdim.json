@@ -1,0 +1,347 @@
+{
+  "schema_version": "metriplane.source_adapter_capability.v1",
+  "record": {
+    "classification": "post_hoc",
+    "evidence_classification": "external_source",
+    "subject": "frozen_adapter",
+    "statement": "Post-hoc capability classification of the already-public frozen robomimic low-dimensional adapter. The historical adapter did not emit this record."
+  },
+  "contract": {
+    "version": "metriplane.external_source_contract.v1",
+    "profile": "metriplane.atlas.complete_snapshot.v1",
+    "frame_state_model_version": "1.0",
+    "fit": "verified"
+  },
+  "adapter": {
+    "adapter_id": "org.metriplane.robomimic_lowdim",
+    "version": "1.0.0",
+    "implementation_commit": "cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "entrypoint": "robomimic_lowdim.cli:main",
+    "environment": {
+      "runtime": "CPython",
+      "runtime_version": "3.12",
+      "operating_system": "Linux",
+      "architecture": "x86_64",
+      "dependency_lock_sha256": "86dab2c05dce00cb40db03ddea9848da227451661cd30aaa0f3eda72a35fc4ff"
+    },
+    "conversion_dependencies": [
+      "h5py==3.16.0",
+      "huggingface-hub==1.27.0",
+      "numpy==2.5.2",
+      "PyYAML==6.0.3"
+    ]
+  },
+  "source": {
+    "family": "robomimic Can PH raw plus prepared low-dimensional HDF5",
+    "project_uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets",
+    "revision_kind": "dataset_revision",
+    "revision": "74fa018461f479cd9fd15b924a16103012096203",
+    "artifacts": [
+      {
+        "artifact_id": "can_ph_raw_hdf5",
+        "role": "raw_simulation_demonstration",
+        "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/resolve/74fa018461f479cd9fd15b924a16103012096203/v1.5/can/ph/demo_v15.hdf5",
+        "sha256": "86961df85af1b9c6b9d4182a3755a8a4db6d0660cd550e45cca1f7accdb6d73d",
+        "byte_size": 64932974,
+        "presence": "referenced",
+        "rights_id": "robomimic_dataset"
+      },
+      {
+        "artifact_id": "can_ph_prepared_lowdim_hdf5",
+        "role": "prepared_low_dimensional_observations",
+        "uri": "https://huggingface.co/datasets/robomimic/robomimic_datasets/resolve/74fa018461f479cd9fd15b924a16103012096203/v1.5/can/ph/low_dim_v15.hdf5",
+        "sha256": "3f2eb92e0a5025d0095e866ac16cc8092d6a762abe27dec90dbaff9027282962",
+        "byte_size": 46889752,
+        "presence": "referenced",
+        "rights_id": "robomimic_dataset"
+      }
+    ],
+    "rights": {
+      "source_records": [
+        {
+          "rights_id": "robomimic_dataset",
+          "subject_artifact_ids": [
+            "can_ph_raw_hdf5",
+            "can_ph_prepared_lowdim_hdf5"
+          ],
+          "source_use": "verified",
+          "source_redistribution": "allowed",
+          "basis": "The exact immutable dataset revision declares MIT with no path-specific override found. Source HDF5 remains referenced."
+        }
+      ],
+      "derived_fixture": {
+        "rights_id": "robomimic_normalized_fixture",
+        "subject": "normalized_fixture",
+        "redistribution": "verified",
+        "basis": "The normalized derivative carries attribution, the MIT notice, and modified-data treatment."
+      },
+      "source_bytes_in_fixture": false
+    }
+  },
+  "capabilities": {
+    "artifact_identity": {
+      "status": "verified",
+      "all_required_artifacts_hashed": true,
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_summary"
+      ]
+    },
+    "rights": {
+      "status": "verified",
+      "evidence_ids": [
+        "robomimic_rights",
+        "robomimic_incident_manifest"
+      ]
+    },
+    "clock": {
+      "status": "verified",
+      "authority": "Raw MuJoCo simulation time sampled once per source control step",
+      "source_field": "data/demo_0/states[:,0]",
+      "domain": "robosuite MuJoCo simulation time",
+      "source_unit": "seconds",
+      "evaluation_field": "ts_sim_ns",
+      "mapping_method": "fixed_step",
+      "authoritative": true,
+      "order_only": false,
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_field_provenance"
+      ]
+    },
+    "coordinates": {
+      "status": "verified",
+      "source_frame": "robosuite_world",
+      "target_frame": "robosuite_world",
+      "source_units": "meters",
+      "target_units": "meters",
+      "transform_method": "identity",
+      "projection_method": "planar_xy",
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_field_provenance"
+      ]
+    },
+    "entity_identity": {
+      "status": "verified",
+      "stable": true,
+      "explicit_mapping": true,
+      "mapping_schema": "metriplane.external_entity_mapping.v1",
+      "mapping_sha256": "51735e2c4e416c951d5d355dbb271a89f467354a9cab41fef386fa105c671a8c",
+      "normalized_entities": [
+        {
+          "normalized_id": "can_1",
+          "process_relevant": true
+        },
+        {
+          "normalized_id": "robot_tcp_1",
+          "process_relevant": true
+        }
+      ],
+      "required_entities": [
+        "can_1",
+        "robot_tcp_1"
+      ],
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_field_provenance"
+      ]
+    },
+    "field_provenance": {
+      "status": "verified",
+      "complete": true,
+      "trust_layers_separated": true,
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_field_provenance"
+      ]
+    },
+    "completeness": {
+      "status": "verified",
+      "frame_semantics": "complete_snapshot",
+      "unknown_state_policy": "reject_fixture",
+      "omission_policy": "reject_omission",
+      "source_stream_semantics": "complete_snapshot",
+      "partial_updates_materialized": false,
+      "materialization_method": "none",
+      "synchronization_tolerance_ns": 0,
+      "carry_forward": {
+        "method": "none",
+        "fields": [],
+        "max_gap_ns": null
+      },
+      "interpolation": "none",
+      "resampling": "none",
+      "synchronization": "not_applicable",
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_field_provenance"
+      ]
+    },
+    "information_loss": {
+      "status": "verified",
+      "declared": true,
+      "items": [
+        "Can and robot TCP source z coordinates",
+        "complete source quaternions and all orientation",
+        "relative Can-to-EFF geometry",
+        "articulation, velocities, actions, contacts, grasp state, outcomes, next observations, images, and model details"
+      ],
+      "evidence_ids": [
+        "robomimic_field_provenance",
+        "robomimic_red_team"
+      ]
+    },
+    "anti_taint": {
+      "status": "verified",
+      "inventory_complete": true,
+      "used_as_incident_truth": false,
+      "used_as_process_events": false,
+      "frame_state_events_policy": "empty",
+      "excluded_fields": [
+        "data/demo_*/actions",
+        "data/demo_*/rewards",
+        "data/demo_*/dones",
+        "data/demo_*/next_obs/*",
+        "data/demo_*/controller_info",
+        "data/demo_*/interventions",
+        "data/demo_*/policy_acting",
+        "data/demo_*/user_acting",
+        "data/demo_*/user_info",
+        "mask/*"
+      ],
+      "evidence_ids": [
+        "robomimic_incident_manifest",
+        "robomimic_red_team"
+      ]
+    },
+    "deterministic_conversion": {
+      "status": "verified",
+      "comparison_policy": "byte_identity",
+      "clean_run_count": 3,
+      "compared_output_count": 2,
+      "equivalent": true,
+      "input_fingerprint_sha256": "50662d64c2fb925155a7b52b87997f204282213da81958064deda02a9f1597f5",
+      "evidence_ids": [
+        "robomimic_summary",
+        "robomimic_incident_manifest"
+      ]
+    },
+    "portable_evaluation": {
+      "status": "verified",
+      "source_dependencies_required": false,
+      "environments": [
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.12",
+          "status": "pass"
+        },
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.13",
+          "status": "pass"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.12",
+          "status": "pass"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.13",
+          "status": "pass"
+        }
+      ],
+      "evidence_ids": [
+        "robomimic_summary",
+        "robomimic_push_workflow"
+      ]
+    },
+    "semantics": {
+      "status": "verified",
+      "supported": [
+        "Bounded planar XY arrival and required-presence timing for one frozen trajectory under an operator-authored polygon and waits"
+      ],
+      "prohibited": [
+        "Official Can success or failure and reward or done interpretation",
+        "Grasp, contact, controller, or retention correctness",
+        "3D placement or orientation evaluation",
+        "Physical accuracy, simulator realism, safety, or production readiness",
+        "General robomimic or HDF5 support or source-project endorsement"
+      ],
+      "evidence_ids": [
+        "robomimic_summary",
+        "robomimic_red_team"
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "evidence_id": "external_contract",
+      "kind": "repository_file",
+      "path": "docs/specs/external-source-contract-v1.md",
+      "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39"
+    },
+    {
+      "evidence_id": "robomimic_incident_manifest",
+      "kind": "repository_file",
+      "path": "examples/external_sources/robomimic_lowdim/incident/source-manifest.json",
+      "sha256": "866b98ad23e21942985d3be051715e0291ba5ba3323f852184dfe214c04e9d35"
+    },
+    {
+      "evidence_id": "robomimic_control_manifest",
+      "kind": "repository_file",
+      "path": "examples/external_sources/robomimic_lowdim/control/source-manifest.json",
+      "sha256": "46e06a7bf345a695947edbccfac7f9abeaa77ffd8716f965422ff3200868e6b6"
+    },
+    {
+      "evidence_id": "robomimic_summary",
+      "kind": "repository_file",
+      "path": "examples/external_sources/robomimic_lowdim/conversion-summary.json",
+      "sha256": "49105fd28491ffe39b20aef37bd61dfdf6ec40affc42c822f041c9bc025e3d9f"
+    },
+    {
+      "evidence_id": "robomimic_field_provenance",
+      "kind": "repository_file",
+      "path": "docs/specs/met18-source-field-provenance.md",
+      "sha256": "d3aa199ceb793246464172f160f7e28a1ed9d04910d93dd11a458982625aee0a"
+    },
+    {
+      "evidence_id": "robomimic_rights",
+      "kind": "repository_file",
+      "path": "docs/specs/robomimic-can-lowdim-rights-matrix.md",
+      "sha256": "f70b6b45fa71131fd25df24a6ebb874957d0f0370e8be97929e6d3351308aaca"
+    },
+    {
+      "evidence_id": "robomimic_red_team",
+      "kind": "repository_file",
+      "path": "docs/specs/robomimic-can-lowdim-red-team.md",
+      "sha256": "419ed1028c9c5d66936c8d8d2dd22f6572ba8baa88eea2928b995b3d134a8829"
+    },
+    {
+      "evidence_id": "robomimic_adapter_commit",
+      "kind": "git_commit",
+      "identity": "cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+      "uri": "https://github.com/Miko997/metriplane/commit/cfc285a3e757fdf742858b1c4cf685c384d01e8b"
+    },
+    {
+      "evidence_id": "robomimic_push_workflow",
+      "kind": "workflow_run",
+      "identity": "robomimic Low-Dimensional Fixture push run 31619605287 at 5606b956e9309802570cfa46857714722fd70187",
+      "uri": "https://github.com/Miko997/metriplane/actions/runs/31619605287"
+    },
+    {
+      "evidence_id": "robomimic_dispatch_workflow",
+      "kind": "workflow_run",
+      "identity": "robomimic Low-Dimensional Fixture dispatch run 31619957092 at 5606b956e9309802570cfa46857714722fd70187",
+      "uri": "https://github.com/Miko997/metriplane/actions/runs/31619957092"
+    }
+  ],
+  "limitations": [
+    "This is a post-hoc classification of a frozen adapter, not a record historically emitted by that adapter.",
+    "One 118-frame Can PH demo_0 trajectory from one upstream success-filtered corpus and operator is covered.",
+    "Prepared observations remain prepared fields and are not called raw source truth.",
+    "No independent outside evaluator rerun is claimed."
+  ]
+}

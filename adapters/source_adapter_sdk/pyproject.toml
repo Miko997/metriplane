@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "metriplane-source-adapter-sdk"
+version = "1.0.0"
+description = "Source-neutral capability records for bounded Metriplane adapters"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["jsonschema==4.25.1", "pytest==8.4.2", "ruff==0.14.10"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/metriplane_source_adapter_sdk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]

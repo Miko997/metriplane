@@ -1,0 +1,348 @@
+{
+  "schema_version": "metriplane.source_adapter_capability.v1",
+  "record": {
+    "classification": "post_hoc",
+    "evidence_classification": "external_source",
+    "subject": "frozen_adapter",
+    "statement": "Post-hoc capability classification of the already-public frozen ManiSkill PickCube adapter. The historical adapter did not emit this record."
+  },
+  "contract": {
+    "version": "metriplane.external_source_contract.v1",
+    "profile": "metriplane.atlas.complete_snapshot.v1",
+    "frame_state_model_version": "1.0",
+    "fit": "verified"
+  },
+  "adapter": {
+    "adapter_id": "org.metriplane.maniskill_pickcube",
+    "version": "1.0.0",
+    "implementation_commit": "95d1134d9fb9273318c552c507952f1c5c26877e",
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "entrypoint": "maniskill_pickcube.cli:main",
+    "environment": {
+      "runtime": "CPython",
+      "runtime_version": "3.12",
+      "operating_system": "Linux",
+      "architecture": "x86_64",
+      "dependency_lock_sha256": "f28f8618680de09c94e855a8b5d2a995ab6241b96c462650cada9c896335ec80"
+    },
+    "conversion_dependencies": [
+      "h5py==3.16.0",
+      "huggingface-hub==1.27.0",
+      "mani-skill==3.0.1",
+      "numpy==2.5.2",
+      "PyYAML==6.0.3"
+    ]
+  },
+  "source": {
+    "family": "ManiSkill PickCube trajectory HDF5 plus metadata",
+    "project_uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations",
+    "revision_kind": "dataset_revision",
+    "revision": "d674485bbffdd533914e52d272fdda34c0515608",
+    "artifacts": [
+      {
+        "artifact_id": "pickcube_archive",
+        "role": "source_archive",
+        "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1.zip",
+        "sha256": "b2d4afb30fa309755862b98c342e6ee18918253c93f3bbac16ed6670748f26d8",
+        "byte_size": 36590010,
+        "presence": "referenced",
+        "rights_id": "maniskill_demonstrations"
+      },
+      {
+        "artifact_id": "pickcube_trajectory_hdf5",
+        "role": "trajectory",
+        "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1/motionplanning/trajectory.h5",
+        "sha256": "03ca60546541a7f18321d9d32721f0254bc75217828c0cadacd217d0c014576a",
+        "byte_size": 29349195,
+        "presence": "referenced",
+        "rights_id": "maniskill_demonstrations"
+      },
+      {
+        "artifact_id": "pickcube_trajectory_metadata",
+        "role": "metadata_sidecar",
+        "uri": "https://huggingface.co/datasets/haosulab/ManiSkill_Demonstrations/resolve/d674485bbffdd533914e52d272fdda34c0515608/demos/PickCube-v1/motionplanning/trajectory.json",
+        "sha256": "16e403cb77bfbdda28c243b96eb90adbae1c0edf42854283be57ee47076a2e90",
+        "byte_size": 228218,
+        "presence": "referenced",
+        "rights_id": "maniskill_demonstrations"
+      }
+    ],
+    "rights": {
+      "source_records": [
+        {
+          "rights_id": "maniskill_demonstrations",
+          "subject_artifact_ids": [
+            "pickcube_archive",
+            "pickcube_trajectory_hdf5",
+            "pickcube_trajectory_metadata"
+          ],
+          "source_use": "verified",
+          "source_redistribution": "derived_only",
+          "basis": "The pinned dataset card declares Apache-2.0. Source bytes remain referenced."
+        }
+      ],
+      "derived_fixture": {
+        "rights_id": "maniskill_normalized_fixture",
+        "subject": "normalized_fixture",
+        "redistribution": "verified",
+        "basis": "Public normalized coordinates are treated as modified derived data with attribution and notice."
+      },
+      "source_bytes_in_fixture": false
+    }
+  },
+  "capabilities": {
+    "artifact_identity": {
+      "status": "verified",
+      "all_required_artifacts_hashed": true,
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_proof_record"
+      ]
+    },
+    "rights": {
+      "status": "verified",
+      "evidence_ids": [
+        "maniskill_rights",
+        "maniskill_incident_manifest"
+      ]
+    },
+    "clock": {
+      "status": "verified",
+      "authority": "Stored environment-state index with the declared 50,000,000 ns source step",
+      "source_field": "traj_0/env_states[*] index",
+      "domain": "ManiSkill stored-state simulation sequence",
+      "source_unit": "index",
+      "evaluation_field": "ts_sim_ns",
+      "mapping_method": "fixed_step",
+      "authoritative": true,
+      "order_only": false,
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_field_provenance"
+      ]
+    },
+    "coordinates": {
+      "status": "verified",
+      "source_frame": "maniskill_world",
+      "target_frame": "maniskill_world",
+      "source_units": "meters",
+      "target_units": "meters",
+      "transform_method": "identity",
+      "projection_method": "planar_xy",
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_field_provenance"
+      ]
+    },
+    "entity_identity": {
+      "status": "verified",
+      "stable": true,
+      "explicit_mapping": true,
+      "mapping_schema": "metriplane.external_entity_mapping.v1",
+      "mapping_sha256": "9127535a2e8eb3091aeac82f335e001f81c3a9e5098272881f7969c6eeecbee7",
+      "normalized_entities": [
+        {
+          "normalized_id": "cube_1",
+          "process_relevant": true
+        },
+        {
+          "normalized_id": "robot_tcp_1",
+          "process_relevant": true
+        }
+      ],
+      "required_entities": [
+        "cube_1",
+        "robot_tcp_1"
+      ],
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_proof_record"
+      ]
+    },
+    "field_provenance": {
+      "status": "verified",
+      "complete": true,
+      "trust_layers_separated": true,
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_field_provenance"
+      ]
+    },
+    "completeness": {
+      "status": "verified",
+      "frame_semantics": "complete_snapshot",
+      "unknown_state_policy": "reject_fixture",
+      "omission_policy": "reject_omission",
+      "source_stream_semantics": "complete_snapshot",
+      "partial_updates_materialized": false,
+      "materialization_method": "none",
+      "synchronization_tolerance_ns": 0,
+      "carry_forward": {
+        "method": "none",
+        "fields": [],
+        "max_gap_ns": null
+      },
+      "interpolation": "none",
+      "resampling": "none",
+      "synchronization": "not_applicable",
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_proof_record"
+      ]
+    },
+    "information_loss": {
+      "status": "verified",
+      "declared": true,
+      "items": [
+        "source z coordinate",
+        "complete source quaternion and all orientation",
+        "velocities and articulation beyond the restored TCP pose",
+        "actions, contacts, grasp state, outcomes, and rendering material"
+      ],
+      "evidence_ids": [
+        "maniskill_field_provenance",
+        "maniskill_red_team"
+      ]
+    },
+    "anti_taint": {
+      "status": "verified",
+      "inventory_complete": true,
+      "used_as_incident_truth": false,
+      "used_as_process_events": false,
+      "frame_state_events_policy": "empty",
+      "excluded_fields": [
+        "traj_0/rewards",
+        "traj_0/success",
+        "episodes[0].success",
+        "traj_0/terminated",
+        "traj_0/truncated",
+        "traj_0/actions"
+      ],
+      "evidence_ids": [
+        "maniskill_incident_manifest",
+        "maniskill_red_team"
+      ]
+    },
+    "deterministic_conversion": {
+      "status": "verified",
+      "comparison_policy": "byte_identity",
+      "clean_run_count": 3,
+      "compared_output_count": 2,
+      "equivalent": true,
+      "input_fingerprint_sha256": "9eb29e2c52b5ab3e59801b12b19b14385fe5b176a90f71a08df566d1f03d6eb1",
+      "evidence_ids": [
+        "maniskill_proof_record",
+        "maniskill_incident_manifest"
+      ]
+    },
+    "portable_evaluation": {
+      "status": "verified",
+      "source_dependencies_required": false,
+      "environments": [
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.12",
+          "status": "pass"
+        },
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.13",
+          "status": "pass"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.12",
+          "status": "pass"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.13",
+          "status": "pass"
+        }
+      ],
+      "evidence_ids": [
+        "maniskill_proof_record",
+        "maniskill_workflow"
+      ]
+    },
+    "semantics": {
+      "status": "verified",
+      "supported": [
+        "Bounded planar XY arrival and required-presence timing for one frozen episode under an operator-authored polygon and waits"
+      ],
+      "prohibited": [
+        "Official PickCube success or failure",
+        "Grasp or controller correctness",
+        "3D placement or orientation evaluation",
+        "Physical accuracy, simulator realism, safety, or production readiness",
+        "General ManiSkill support or source-project endorsement"
+      ],
+      "evidence_ids": [
+        "maniskill_proof_record",
+        "maniskill_red_team"
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "evidence_id": "external_contract",
+      "kind": "repository_file",
+      "path": "docs/specs/external-source-contract-v1.md",
+      "sha256": "3c7f7b84f8ba8587d05efd9e9cde65dfc288957ba9a29b0b66e45f13bbde3c39"
+    },
+    {
+      "evidence_id": "maniskill_incident_manifest",
+      "kind": "repository_file",
+      "path": "examples/external_sources/maniskill_pickcube/incident/source-manifest.json",
+      "sha256": "7179850c7de3a9603ff6e1b9396c3e174fa9d81633d2ef47fbc38e75daac269e"
+    },
+    {
+      "evidence_id": "maniskill_control_manifest",
+      "kind": "repository_file",
+      "path": "examples/external_sources/maniskill_pickcube/control/source-manifest.json",
+      "sha256": "40611b13ad2f774b92704bd23a080ab9f4711fd370bee2ca6c3ef26d014ad11d"
+    },
+    {
+      "evidence_id": "maniskill_proof_record",
+      "kind": "repository_file",
+      "path": "proofs/maniskill-pickcube-v1/proof-record.json",
+      "sha256": "2a85d93eca6b6c6be08f41a263d1224c3a2cc160241aa3ef7eee5e8a5c5e0951"
+    },
+    {
+      "evidence_id": "maniskill_field_provenance",
+      "kind": "repository_file",
+      "path": "docs/specs/maniskill-pickcube-field-provenance.md",
+      "sha256": "bd031055b5fa0c64277a43e3e7272dee50f2913e1c0ef405e9e353f43749c2e9"
+    },
+    {
+      "evidence_id": "maniskill_rights",
+      "kind": "repository_file",
+      "path": "docs/specs/maniskill-pickcube-rights-matrix.md",
+      "sha256": "7dc122860ced1d632aef55eec9a60620d7734f09a8cc154faa1ee8fc157bc6b8"
+    },
+    {
+      "evidence_id": "maniskill_red_team",
+      "kind": "repository_file",
+      "path": "docs/specs/maniskill-pickcube-red-team.md",
+      "sha256": "2953a18abc954bf84b5e8092845de68e0244341e5b27502a5c888d6f17349d8d"
+    },
+    {
+      "evidence_id": "maniskill_adapter_commit",
+      "kind": "git_commit",
+      "identity": "95d1134d9fb9273318c552c507952f1c5c26877e",
+      "uri": "https://github.com/Miko997/metriplane/commit/95d1134d9fb9273318c552c507952f1c5c26877e"
+    },
+    {
+      "evidence_id": "maniskill_workflow",
+      "kind": "workflow_run",
+      "identity": "ManiSkill PickCube Proof run 31583292137 at 49c3b37057312c89db030386dd2cc68628d92458",
+      "uri": "https://github.com/Miko997/metriplane/actions/runs/31583292137"
+    }
+  ],
+  "limitations": [
+    "This is a post-hoc classification of a frozen adapter, not a record historically emitted by that adapter.",
+    "One official episode from an upstream success-filtered corpus is covered.",
+    "Conversion portability is not established by the portable installed-wheel evaluation matrix.",
+    "No independent outside evaluator rerun is claimed."
+  ]
+}
