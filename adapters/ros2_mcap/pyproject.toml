@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "metriplane-ros2-mcap-adapter"
+version = "1.0.0"
+description = "Isolated converter for one bounded synthetic ROS 2 and MCAP recorded-state profile"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT AND Apache-2.0 AND BSD-3-Clause"
+dependencies = [
+  "mcap==1.3.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "mcap-ros2-support==0.5.5",
+  "pytest==8.4.2",
+  "ruff==0.14.10",
+]
+
+[project.scripts]
+metriplane-ros2-mcap = "ros2_mcap_adapter.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ros2_mcap_adapter"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config/frozen-config.json" = "ros2_mcap_adapter/data/frozen-config.json"
+"uv.lock" = "ros2_mcap_adapter/data/uv.lock"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]

@@ -1,0 +1,123 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.ros2_mcap_recorded_state",
+    "version": "1.0.0"
+  },
+  "clock": {
+    "authority": "message_header",
+    "domain": "ROS_TIME",
+    "epoch": "synthetic_declared_source_domain",
+    "evaluation_field": "header.stamp",
+    "first_timestamp_ns": 1000000000,
+    "frame_count": 60,
+    "log_time_offset_ns": 2000000,
+    "monotonic": true,
+    "period_ns": 100000000,
+    "publish_time_offset_ns": 1000000,
+    "unit": "ns"
+  },
+  "entities": [
+    {
+      "atlas_asset_id": "material_1",
+      "field_path": "pose.position",
+      "message_type": "geometry_msgs/msg/PoseStamped",
+      "normalized_id": "material_1",
+      "process_relevant": true,
+      "role": "material",
+      "source_entity_id": "synthetic_material_1",
+      "source_frame": "sensor_frame",
+      "topic": "/metriplane/material_pose",
+      "unit": "m"
+    },
+    {
+      "atlas_asset_id": "tool_1",
+      "field_path": "pose.position",
+      "message_type": "geometry_msgs/msg/PoseStamped",
+      "normalized_id": "tool_1",
+      "process_relevant": true,
+      "role": "tool",
+      "source_entity_id": "synthetic_tool_1",
+      "source_frame": "sensor_frame",
+      "topic": "/metriplane/tool_pose",
+      "unit": "m"
+    }
+  ],
+  "materialization": {
+    "allow_duplicate_trigger": false,
+    "carry_forward": "none",
+    "dynamic_state": "exact_timestamp",
+    "missing_state": "reject_recording",
+    "required_topics": [
+      "/metriplane/material_pose",
+      "/metriplane/tool_pose"
+    ],
+    "sampling_trigger": "/metriplane/material_pose",
+    "synchronization_tolerance_ns": 0
+  },
+  "outcome_stream": {
+    "fields": [
+      "success",
+      "result",
+      "alarm",
+      "action",
+      "annotation"
+    ],
+    "message_type": "metriplane_msgs/msg/SourceOutcome",
+    "policy": "excluded_exact_complete_or_absent",
+    "topic": "/metriplane/source_outcome"
+  },
+  "profile": "metriplane.ros2_mcap_recorded_state.v1",
+  "projection": {
+    "discarded": [
+      "source_z",
+      "pose_orientation"
+    ],
+    "normalized_z": 0.0,
+    "plane": "world_xy",
+    "position_unit": "m"
+  },
+  "source": {
+    "artifact_id": "metriplane_synthetic_ros2_mcap_v1",
+    "classification": "FORMAT-ENGINEERING ONLY / SYNTHETIC / NOT EXTERNAL-SOURCE EVIDENCE",
+    "license": "MIT AND Apache-2.0 AND BSD-3-Clause",
+    "message_encoding": "cdr",
+    "schema_encoding": "ros2msg"
+  },
+  "target_polygon": {
+    "boundary_policy": "inclusive",
+    "outside_label": "outside_workspace",
+    "vertices": [
+      [0.45, -0.05],
+      [0.55, -0.05],
+      [0.55, 0.05],
+      [0.45, 0.05]
+    ],
+    "zone_id": "target_xy_region"
+  },
+  "tf": {
+    "allow_dynamic": false,
+    "allow_interpolation": false,
+    "allow_latest": false,
+    "allow_extrapolation": false,
+    "source_frame": "sensor_frame",
+    "static_zero_stamp_meaning": "timeless_static_transform",
+    "target_frame": "world",
+    "topic": "/tf_static",
+    "transform_path": [
+      "world->cell_frame",
+      "cell_frame->sensor_frame"
+    ]
+  },
+  "variants": {
+    "control": {
+      "domain_pack_id": "ros2_mcap_synthetic_control_v1",
+      "fixture_id": "ros2_mcap_synthetic_control_v1",
+      "max_wait_s": 1.2
+    },
+    "incident": {
+      "domain_pack_id": "ros2_mcap_synthetic_incident_v1",
+      "fixture_id": "ros2_mcap_synthetic_incident_v1",
+      "max_wait_s": 0.5
+    }
+  }
+}
