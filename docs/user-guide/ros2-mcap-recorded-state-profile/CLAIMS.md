@@ -7,7 +7,8 @@ SPDX-License-Identifier: MIT
 
 ## Allowed claims
 
-The following claims are allowed after their corresponding exact-head tests pass:
+The following claims are supported by the frozen local evidence. Public
+exact-head checks must still pass before merge review:
 
 - Metriplane has a small, isolated Source Adapter capability schema extracted
   from repeated ManiSkill and robomimic adapter responsibilities.
@@ -18,8 +19,9 @@ The following claims are allowed after their corresponding exact-head tests pass
 - The synthetic path uses explicit schemas, topics, message-header clock, static
   transforms, units, identities, complete-snapshot rules, provenance, loss, and
   anti-taint exclusions.
-- Portable synthetic fixture evaluation does not require ROS 2, rosbag2, MCAP,
-  or the adapter environment, once verified.
+- The portable synthetic fixture contains no ROS 2, rosbag2, MCAP, source
+  schema, or adapter runtime dependency. Its four-row installed-wheel workflow
+  remains pending.
 - Three external candidates were rejected without weakening Contract v1 gates.
 
 ## Required headline
@@ -55,4 +57,3 @@ validate an external source family.
 The prior source-family matrix aggregate claim remains unchanged: two
 source-specific portable paths, ManiSkill and robomimic, plus the documented
 CALVIN rejection. This synthetic work does not add a third external path.
-

@@ -49,7 +49,8 @@ Only the Metriplane-authored maximum wait differs:
 | Incident | 0.5 |
 | Control | 1.2 |
 
-These values are frozen test rules, not source timing annotations. Final Atlas
-outcomes are recorded only after the portable fixtures and evaluations reach
-their immutable freeze point.
-
+These values are frozen test rules, not source timing annotations. The incident
+produces 60 frames, four events, one deviation, and one incident. Its evidence
+bundle verifies and its generated regression passes. The control produces 60
+frames, three events, no deviations, and no incidents. Evidence and regression
+are not applicable to the no-incident control; its absence assertion passes.

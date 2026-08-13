@@ -29,12 +29,12 @@ SPDX-License-Identifier: MIT
 | Are operator rules separate from source truth? | Yes. Polygon, roles, required asset, and waits are Layer C. |
 | Are recording rights proven? | Only for the Metriplane-authored synthetic source. External candidates did not pass the required boundary. |
 | Are normalized-derived-state rights proven? | Yes for the Metriplane-authored synthetic fixture. No external derivative is published. |
-| Does the ordinary wheel remain source-neutral? | The package design keeps SDK, MCAP, CDR, and source schemas outside the wheel. Exact wheel inspection remains a readiness gate. |
-| Does evaluation require ROS? | No by design. Exact installed-wheel verification remains a readiness gate. |
-| Do three conversions agree? | Pending final adapter freeze and generated-output finalization. |
+| Does the ordinary wheel remain source-neutral? | The package design keeps SDK, MCAP, CDR, and source schemas outside the wheel. Exact-head wheel inspection remains a readiness gate. |
+| Does evaluation require ROS? | No for the finalized portable fixture. The four-row exact-head installed-wheel matrix remains a readiness gate. |
+| Do three conversions agree? | Yes. Three clean conversions are byte-equivalent with conversion-tree digest `56a70b440f3105ae01a2913940db664008a829dae05d4442dc610aaa99b80505`. |
 | Do all OS and Python rows agree? | Pending exact-head workflows. |
 | Can another engineer acquire the exact external source? | Immutable candidate identities are documented, but no candidate is an accepted source. The synthetic source is generated from the frozen adapter. |
-| Are machine-local paths absent? | The converter scans durable output. Final package scans remain a readiness gate. |
+| Are machine-local paths absent? | Local converter and finalized-package scans pass. Exact-head workflow scans remain a readiness gate. |
 | Does wording imply general ROS 2 or MCAP support? | No. The result is consistently labeled synthetic format engineering and PARTIAL. |
 | Were earlier fail-closed gates weakened? | No. The absence of an accepted source preserves those gates. |
 | Does the SDK contain ROS-only fields? | No. Topics, channels, schemas, and TF paths stay in adapter configuration and provenance. |
@@ -48,4 +48,3 @@ The strongest defensible statement is that a small source-neutral capability
 layer and one narrow synthetic ROS 2/MCAP recorded-state profile have been
 engineered without changing Metriplane core semantics. No external ROS 2/MCAP
 recording has passed the contract.
-

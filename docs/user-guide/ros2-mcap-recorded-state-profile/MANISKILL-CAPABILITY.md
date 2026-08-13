@@ -39,6 +39,9 @@ success-filtered corpus. It does not establish general ManiSkill support,
 conversion portability across platforms, physical accuracy, simulator realism,
 source-project endorsement, or an independent outside rerun.
 
-The exact capability-record fingerprint is recorded only after the SDK schema
-and classification files reach their public freeze point.
-
+The post-hoc record file SHA-256 is
+`fb7593bb6eb5f0aefa15f0e804d19e5d4af7b883d6f9623c8bb21cfc79a264a5`.
+Its validated canonical capability fingerprint is
+`ccc7fc3972b19aa373101ef60bc0598cca83e41d8c1243821003c3a0eaef4487`.
+The classification is frozen in SDK commit
+`975fda022962b9f1f6a1b986693557600a320916`.

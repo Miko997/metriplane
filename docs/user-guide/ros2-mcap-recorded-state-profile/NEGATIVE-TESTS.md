@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 
 # Negative-test record
 
-The isolated packages must fail closed on every relevant malformed or
-unsupported path. This document records the required categories. Exact test
-counts and workflow results are added after the adapter and SDK are frozen.
+The isolated packages fail closed on the malformed and unsupported paths below.
+The frozen SDK suite passes 146 tests and the frozen adapter suite passes 101
+tests. Public exact-head workflow results remain pending.
 
 ## Source and container
 
@@ -79,6 +79,6 @@ A partial or structurally altered stream rejects conversion.
 ## Status
 
 Candidate rejections are documented in [SOURCE-CANDIDATES.md](SOURCE-CANDIDATES.md).
-The implementation test result remains pending until the freeze commit and exact
-generated identities are available.
-
+The SDK schema, two post-hoc records, native synthetic record, and exact generated
+identities validate locally. Three clean conversions are byte-equivalent. These
+tests do not turn the synthetic result into external-source evidence.

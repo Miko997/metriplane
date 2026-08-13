@@ -62,8 +62,16 @@ and the exact complete-snapshot join.
 ## Message schema identities
 
 The recording embeds the exact flattened ROS 2 message definitions used for
-decoding. Their final SHA-256 identities are taken from the frozen adapter
-schema inventory after the adapter freeze point. A mutable local ROS
+decoding:
+
+| Schema | SHA-256 |
+| --- | --- |
+| `geometry_msgs/msg/PoseStamped` | `a80b6e20113061c6a8cbd4a5e623d7e1aa54d68deebbc3e69738ff1e502daae8` |
+| `tf2_msgs/msg/TFMessage` | `e9121b91448577bf5075f9b1a00b8afcaeeab85422497da524a0cbef10896502` |
+| `metriplane_msgs/msg/SourceOutcome` | `954f2e44e4c2e2e2654f9de20dc68de75f5a219d2d591c2fde40ac93d5366a80` |
+
+These identities are frozen by adapter commit
+`04090e510fa2bccd4fe3ac90521d3201a7c1b7c7`. A mutable local ROS
 installation never defines their semantics.
 
 No arbitrary Python object deserialization, runtime ROS graph, rosbag2 process,
@@ -148,4 +156,3 @@ schemas, unknown encodings, dynamic TF, multiple transform paths, interpolation,
 extrapolation, carry-forward, tolerance-based synchronization, nominal-rate-only
 timing, MCAP-time substitution, raw sensor interpretation, source outcome truth,
 and any source requiring a core or Atlas change.
-

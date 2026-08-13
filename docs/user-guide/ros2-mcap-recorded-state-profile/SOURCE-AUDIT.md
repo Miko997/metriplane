@@ -9,6 +9,10 @@ SPDX-License-Identifier: MIT
 
 **No external recording selected.**
 
+The candidate audit is frozen in commit
+`782712f8b87c5daf237b55101594dcf91abed103` on starting public main
+`f8a3a48752101d74f658124e23354f0816e20a21`.
+
 The strongest candidate, the Omega Prime ROS simulation example, contains
 explicit object state and TF streams. It still fails closed because its official
 artifacts do not declare the semantic domain of the message-header timestamps,
@@ -45,4 +49,3 @@ fixture path could be tested without mislabeling an external source.
 The synthetic source is not a replacement for an accepted candidate. It cannot
 change an external-source decision to `GO`. Reopening requires one external
 recording to satisfy every criterion in [READINESS.md](READINESS.md).
-

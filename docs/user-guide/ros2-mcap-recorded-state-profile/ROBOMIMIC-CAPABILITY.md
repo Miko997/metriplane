@@ -39,6 +39,9 @@ position-only rule. It does not establish general robomimic or HDF5 support,
 grasp or controller correctness, physical accuracy, simulator realism,
 source-project endorsement, or an independent outside rerun.
 
-The exact capability-record fingerprint is recorded only after the SDK schema
-and classification files reach their public freeze point.
-
+The post-hoc record file SHA-256 is
+`806624b6b9b8efb37b3e1aa7be08082c43efa864a4a2ff159cbb363866fa35a3`.
+Its validated canonical capability fingerprint is
+`053b7994edd1f1043ee1b3423ee7de45e83c111c2dcf921482bce8ffb4afa610`.
+The classification is frozen in SDK commit
+`975fda022962b9f1f6a1b986693557600a320916`.

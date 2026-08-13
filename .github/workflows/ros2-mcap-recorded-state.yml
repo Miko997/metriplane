@@ -1,0 +1,423 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Bounded ROS 2 and MCAP Recorded-State Profile
+
+on:
+  push:
+    branches: [main]
+  merge_group:
+  pull_request:
+    paths:
+      - ".github/workflows/ros2-mcap-recorded-state.yml"
+      - ".reuse/dep5"
+      - "LICENSES/BSD-3-Clause.txt"
+      - "adapters/source_adapter_sdk/**"
+      - "adapters/ros2_mcap/**"
+      - "docs/README.md"
+      - "docs/user-guide/ros2-mcap-recorded-state-profile/**"
+      - "examples/external_sources/ros2_mcap/**"
+      - "metriplane/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "schemas/metriplane.external_source_contract.v1.schema.json"
+      - "tests/external_sources/test_ros2_mcap_recorded_state_fixture.py"
+      - "tests/test_docs_front_door.py"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ros2-mcap-recorded-state-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  SDK_COMMIT: 975fda022962b9f1f6a1b986693557600a320916
+  SDK_TREE: 88179a50330fb07a278369a341f8aa1f1e909204
+  ADAPTER_COMMIT: 04090e510fa2bccd4fe3ac90521d3201a7c1b7c7
+  ADAPTER_TREE: 5fa1b18dba8358661e3f59814c29ed7fa0d6a6a7
+  SOURCE_SIZE: "28735"
+  SOURCE_SHA256: c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99
+  CONFIG_SHA256: a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962
+  LOCK_SHA256: 864f24f57d1e99ecae76e7da832c8022bbfcbaf0583b612e6d909a5e93f4edd6
+  SESSION_SHA256: 4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8
+  CAPABILITY_SHA256: 18b2ceb08568aaf3975d3bdf87354d182d93551625f5e8b59a25cd4aa36ba27d
+  FIXTURE_INVENTORY_SHA256: 0a3dd86c91e2c5a78a3fbafcfdaad6d6de7e1669812f99968f8e73626d2726de
+
+jobs:
+  sdk-tests:
+    name: Isolated source adapter SDK (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: adapters/source_adapter_sdk
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Verify frozen subtree and run isolated tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${SDK_COMMIT}^{commit}"
+          test "$(git rev-parse "${SDK_COMMIT}:adapters/source_adapter_sdk")" = "$SDK_TREE"
+          git merge-base --is-ancestor "$SDK_COMMIT" HEAD
+          git diff --exit-code "$SDK_COMMIT" HEAD -- .
+          uv sync --locked --extra test --python 3.12
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen python -m pytest -q
+
+  adapter-tests:
+    name: Isolated bounded adapter (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: adapters/ros2_mcap
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Verify frozen subtree and run isolated tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "${ADAPTER_COMMIT}:adapters/ros2_mcap")" = "$ADAPTER_TREE"
+          git merge-base --is-ancestor "$ADAPTER_COMMIT" HEAD
+          git diff --exit-code "$ADAPTER_COMMIT" HEAD -- .
+          test "$(python -c 'import os; print(os.path.getsize("source/metriplane-synthetic-recorded-state-v1.mcap"))')" \
+            -eq "$SOURCE_SIZE"
+          printf '%s  %s\n%s  %s\n%s  %s\n' \
+            "$SOURCE_SHA256" source/metriplane-synthetic-recorded-state-v1.mcap \
+            "$CONFIG_SHA256" config/frozen-config.json \
+            "$LOCK_SHA256" uv.lock | sha256sum --check --strict
+          uv sync --locked --extra test --python 3.12
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen python -m pytest -q
+
+  fixture-tests:
+    name: Frozen synthetic fixture assertions
+    needs: [sdk-tests, adapter-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Verify fixture inventory and assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum examples/external_sources/ros2_mcap/SHA256SUMS | awk '{print $1}')" \
+            = "$FIXTURE_INVENTORY_SHA256"
+          test "$(sha256sum examples/external_sources/ros2_mcap/capability-record.json | awk '{print $1}')" \
+            = "$CAPABILITY_SHA256"
+          (
+            cd examples/external_sources/ros2_mcap
+            sha256sum --check --strict SHA256SUMS
+          )
+          uv sync --locked --group dev --python 3.12
+          uv run --frozen python -m pytest -q \
+            tests/external_sources/test_ros2_mcap_recorded_state_fixture.py
+
+  portable-fixture:
+    name: Portable synthetic fixture (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: fixture-tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Build, inspect, and install only the ordinary Metriplane wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="${RUNNER_TEMP}/metriplane-dist"
+          venv="${RUNNER_TEMP}/metriplane-venv"
+          mkdir -p "$dist"
+          uv build --wheel --python ${{ matrix.python-version }} --out-dir "$dist" .
+          DIST="$dist" python - <<'PY'
+          import os
+          import re
+          import zipfile
+          from pathlib import Path
+
+          wheels = list(Path(os.environ["DIST"]).glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          with zipfile.ZipFile(wheels[0]) as archive:
+              names = [name.lower() for name in archive.namelist()]
+              metadata_name = next(
+                  name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+              )
+              metadata = archive.read(metadata_name).decode().lower().splitlines()
+          forbidden_paths = ("ros2_mcap", "source_adapter_sdk", ".mcap", ".db3", ".msg", ".idl")
+          assert not any(any(value in name for value in forbidden_paths) for name in names)
+          requirements = [line for line in metadata if line.startswith("requires-dist:")]
+          for dependency in ("mcap", "mcap-ros2-support", "rosbags", "rclpy", "rosidl", "tf2"):
+              pattern = rf"requires-dist:\s*{re.escape(dependency)}(?:\s|\[|;|\(|$)"
+              assert not any(re.match(pattern, line) for line in requirements), dependency
+          PY
+          set -- "$dist"/*.whl
+          test "$#" -eq 1
+          wheel="$1"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --no-cache-dir "$wheel"
+          "$venv/bin/python" -m pip check
+      - name: Validate, run three times, relocate, and reverify
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${RUNNER_TEMP}/metriplane-venv"
+          input="${RUNNER_TEMP}/portable-input"
+          output="${RUNNER_TEMP}/portable-output"
+          moved="${RUNNER_TEMP}/moved-output"
+          mkdir -p "$input" "$output"
+          cp -R examples/external_sources/ros2_mcap "$input/fixture"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          for variant in incident control; do
+            "$venv/bin/metriplane" external validate "$input/fixture/$variant" --json \
+              > "validation-${variant}.json"
+            for index in 1 2 3; do
+              METRIPLANE_GIT_COMMIT="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" \
+                "$venv/bin/metriplane" external run "$input/fixture/$variant" \
+                --out "$output/${variant}-${index}" \
+                --run-id "ros2_mcap_${variant}" --json \
+                > "summary-${variant}-${index}.json"
+            done
+          done
+          mv "$output" "$moved"
+          ROOT="$moved" TEMP_ROOT="$RUNNER_TEMP" CHECKOUT="$GITHUB_WORKSPACE" \
+            MP="$venv/bin/metriplane" "$venv/bin/python" - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import zipfile
+          from pathlib import Path
+
+          import yaml
+
+          root = Path(os.environ["ROOT"])
+          temp = Path(os.environ["TEMP_ROOT"])
+          expected = {"incident": (60, 4, 1, 1), "control": (60, 3, 0, 0)}
+          event_frames = {"incident": [5, 10, 15, 15], "control": [5, 15, 15]}
+          event_types = {
+              "incident": [
+                  "required_asset_missing",
+                  "step_delayed",
+                  "required_asset_present",
+                  "step_completed",
+              ],
+              "control": [
+                  "required_asset_missing",
+                  "required_asset_present",
+                  "step_completed",
+              ],
+          }
+
+          def jsonl(path):
+              return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+          def semantics(run):
+              regressions = []
+              for path in sorted((run / "regression_tests").glob("*.yaml")):
+                  value = yaml.safe_load(path.read_text())
+                  value.pop("source_bundle", None)
+                  regressions.append(value)
+              return tuple(
+                  jsonl(run / name)
+                  for name in (
+                      "state_segment.jsonl",
+                      "physical_event_log.jsonl",
+                      "deviations.jsonl",
+                      "incidents.jsonl",
+                  )
+              ) + (regressions,)
+
+          for variant in ("incident", "control"):
+              assert json.loads((temp / f"validation-{variant}.json").read_text())["pass"] is True
+              values = []
+              for index in (1, 2, 3):
+                  summary = json.loads((temp / f"summary-{variant}-{index}.json").read_text())
+                  counts = tuple(
+                      summary[key]
+                      for key in ("frame_count", "event_count", "deviation_count", "incident_count")
+                  )
+                  assert summary["pass"] is True and counts == expected[variant]
+                  run = root / f"{variant}-{index}"
+                  events = jsonl(run / "physical_event_log.jsonl")
+                  assert [item["event_type"] for item in events] == event_types[variant]
+                  assert [item["frame_id"] for item in events] == event_frames[variant]
+                  bundles = list((run / "evidence_bundles").glob("*.zip"))
+                  regressions = list((run / "regression_tests").glob("*.yaml"))
+                  if variant == "incident":
+                      assert len(bundles) == len(regressions) == 1
+                      subprocess.run(
+                          [os.environ["MP"], "atlas", "bundle", "verify", str(bundles[0])],
+                          check=True,
+                      )
+                      subprocess.run(
+                          [os.environ["MP"], "atlas", "test", str(regressions[0]), "--json"],
+                          check=True,
+                      )
+                  else:
+                      assert not bundles and not regressions
+                  values.append(semantics(run))
+              assert values[0] == values[1] == values[2]
+
+          forbidden = [os.environ["TEMP_ROOT"].encode(), os.environ["CHECKOUT"].encode()]
+          private = re.compile(
+              rb"(?:/(?:home|Users|workspace)/[^/\s\"'<>]+(?:/|(?=[\s\"'<>]|$))|"
+              rb"(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/])"
+          )
+
+          def check(raw, where):
+              assert not any(value in raw for value in forbidden), where
+              assert private.search(raw) is None, where
+
+          for path in root.rglob("*"):
+              if not path.is_file():
+                  continue
+              check(path.read_bytes(), path)
+              if path.suffix == ".zip":
+                  with zipfile.ZipFile(path) as archive:
+                      for info in archive.infolist():
+                          assert not info.filename.startswith(("/", "\\"))
+                          assert ".." not in Path(info.filename).parts
+                          check(info.filename.encode(), info.filename)
+                          if not info.is_dir():
+                              check(archive.read(info), info.filename)
+          PY
+          "$venv/bin/metriplane" atlas export-usd --run-dir "$moved/incident-1"
+          test -s "$moved/incident-1/twinverify_replay.usda"
+
+  exact-source-conversion:
+    name: Exact synthetic source conversion
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    needs: portable-fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact dispatched revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+      - name: Convert three times at the exact frozen adapter commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${ADAPTER_COMMIT}^{commit}"
+          test "$(git rev-parse "${ADAPTER_COMMIT}:adapters/ros2_mcap")" = "$ADAPTER_TREE"
+          git merge-base --is-ancestor "$ADAPTER_COMMIT" "$GITHUB_SHA"
+          freeze="${RUNNER_TEMP}/adapter-freeze"
+          git worktree add --detach "$freeze" "$ADAPTER_COMMIT"
+          trap 'git worktree remove --force "$freeze"' EXIT
+          test "$(git -C "$freeze" rev-parse HEAD)" = "$ADAPTER_COMMIT"
+          test -z "$(git -C "$freeze" status --porcelain --untracked-files=all)"
+
+          adapter="$freeze/adapters/ros2_mcap"
+          source="$adapter/source/metriplane-synthetic-recorded-state-v1.mcap"
+          config="$adapter/config/frozen-config.json"
+          conversions="${RUNNER_TEMP}/clean-conversions"
+          final="${RUNNER_TEMP}/final-fixture"
+          test "$(SOURCE_PATH="$source" python -c 'import os; print(os.path.getsize(os.environ["SOURCE_PATH"]))')" \
+            -eq "$SOURCE_SIZE"
+          printf '%s  %s\n%s  %s\n%s  %s\n' \
+            "$SOURCE_SHA256" "$source" \
+            "$CONFIG_SHA256" "$config" \
+            "$LOCK_SHA256" "$adapter/uv.lock" | sha256sum --check --strict
+
+          cd "$adapter"
+          uv sync --locked --python 3.12
+          uv run --frozen metriplane-ros2-mcap inspect --source "$source"
+          for index in 1 2 3; do
+            uv run --frozen metriplane-ros2-mcap convert \
+              --source "$source" --config "$config" \
+              --out "$conversions/$index" --adapter-commit "$ADAPTER_COMMIT"
+          done
+          uv run --frozen metriplane-ros2-mcap finalize-equivalence \
+            --conversion-root "$conversions/1" \
+            --conversion-root "$conversions/2" \
+            --conversion-root "$conversions/3" \
+            --run-id clean-conversion-1 \
+            --run-id clean-conversion-2 \
+            --run-id clean-conversion-3 \
+            --out "$final"
+          printf '%s  %s\n' "$SOURCE_SHA256" "$source" | sha256sum --check --strict
+          diff -ru "$GITHUB_WORKSPACE/examples/external_sources/ros2_mcap" "$final"
+          test "$(sha256sum "$final/SHA256SUMS" | awk '{print $1}')" \
+            = "$FIXTURE_INVENTORY_SHA256"

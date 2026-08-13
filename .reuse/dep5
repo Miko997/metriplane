@@ -59,6 +59,13 @@ Comment: This technical package documents a Metriplane-authored synthetic
  format-engineering profile and references, but does not redistribute, three
  rejected external candidate recordings.
 
+Files: examples/external_sources/ros2_mcap/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This subtree contains only a Metriplane-authored portable synthetic
+ fixture and its independently authored metadata and rules. It excludes the
+ generated MCAP source and is not external-source evidence.
+
 Files: adapters/source_adapter_sdk/*
 Copyright: 2026 Miko Parkkinen
 License: MIT

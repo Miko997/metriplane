@@ -23,6 +23,13 @@ The authoritative schema and validator are isolated in:
 The package has no runtime dependencies and is not included in the ordinary
 Metriplane wheel.
 
+The schema is frozen in commit
+`975fda022962b9f1f6a1b986693557600a320916`. Its SHA-256 is
+`30f42190171f9adcc51387909b738378143821c624187604a6d8d89256f103da`.
+The SDK lock SHA-256 is
+`bc2aee5afdd495b57238a03e450beac1ee9344cadd1657cd6f8d8df746fcd1de`.
+The isolated SDK suite passes 146 tests.
+
 ## Evidence basis
 
 The field set comes from repeated responsibilities in the frozen ManiSkill and
@@ -104,4 +111,3 @@ The synthetic evidence class is never external-source-permitted.
 The SDK intentionally has no dynamic plugin discovery, source reader, topic
 discovery, source registration, dependency-injection framework, state schema,
 runtime Atlas hook, or automatic semantic inference.
-

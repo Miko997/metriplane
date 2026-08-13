@@ -76,6 +76,28 @@ The exact capability JSON Schema and records live in the isolated
 generator live in `adapters/ros2_mcap/`. Neither package enters the ordinary
 Metriplane wheel.
 
+## Frozen identities
+
+| Item | Identity |
+| --- | --- |
+| Starting public main | `f8a3a48752101d74f658124e23354f0816e20a21` |
+| Candidate audit commit | `782712f8b87c5daf237b55101594dcf91abed103` |
+| Source Adapter SDK commit | `975fda022962b9f1f6a1b986693557600a320916` |
+| ROS 2/MCAP adapter freeze | `04090e510fa2bccd4fe3ac90521d3201a7c1b7c7` |
+| Capability schema SHA-256 | `30f42190171f9adcc51387909b738378143821c624187604a6d8d89256f103da` |
+| Synthetic source | 28,735 bytes; `c61100bb3c95fffa436043f82e1674faeb693d918cee52d14177b485a5076e99` |
+| Frozen mapping | `a984825975fcdc62f2b8599f6ecf76667da3f055cb61ffab0ba9bee7b2541962` |
+| Adapter lock | `864f24f57d1e99ecae76e7da832c8022bbfcbaf0583b612e6d909a5e93f4edd6` |
+| Shared normalized session | `4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8` |
+
+Three clean conversions were byte-equivalent. Their canonical conversion-tree
+digest is
+`56a70b440f3105ae01a2913940db664008a829dae05d4442dc610aaa99b80505`.
+The incident fixture records `60/4/1/1` for frames, events, deviations, and
+incidents. Its evidence bundle verifies and its generated regression passes.
+The control records `60/3/0/0`; evidence and regression are not applicable
+because it contains no incident.
+
 ## Frozen boundaries
 
 This work does not modify External Source Contract v1, FrameStateModel 1.0,
