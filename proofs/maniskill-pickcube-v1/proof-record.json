@@ -116,7 +116,7 @@
     "contract_schema_sha256": "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4",
     "external_source_contract_version": "metriplane.external_source_contract.v1",
     "frame_state_model_version": "1.0",
-    "metriplane_git_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+    "metriplane_git_commit": "15fd6bc8274eaf02a65f802a705fd72dfaee3512",
     "metriplane_package_version": "0.3.0"
   },
   "fixtures": {
@@ -214,7 +214,7 @@
     ]
   },
   "proof_identity": {
-    "candidate_commit": "f9c78e60f73793e465061a8ea270afbb1f9e1631",
+    "candidate_commit": "15fd6bc8274eaf02a65f802a705fd72dfaee3512",
     "canonical_commit": null,
     "canonical_repository": "https://github.com/Miko997/metriplane",
     "canonical_tag": "maniskill-pickcube-proof-v1",
