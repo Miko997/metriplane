@@ -325,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
     print("PASS  Evidence bundle: verified")
     print("PASS  Repeatable regression check: passed")
     print()
-    print("Report:")
+    print("Incident Report:")
     print(result.report_path)
     print()
     print("The generated check can be run again after the software or process rules change.")
