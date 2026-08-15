@@ -33,6 +33,23 @@ it does **not** control machinery or make safety or quality decisions.
 [![Research Software Directory](https://img.shields.io/badge/Research%20Software%20Directory-Metriplane-00856A)](https://research-software-directory.org/software/metriplane)
 [![Website](https://img.shields.io/badge/website-metriplane.com-2ea44f)](https://www.metriplane.com/)
 
+## Watch the AGV handoff demo
+
+In this bounded, observe-only demo, a finished pallet is ready, but the recorded
+AGV state does not enter the configured pickup zone within 60 seconds. See how
+Metriplane turns the missed handoff into an inspectable incident, an
+integrity-verified evidence bundle, and a repeatable regression check.
+
+<p align="center">
+  <a href="https://youtu.be/DGbQN8-sdLY">
+    <img src="docs/assets/metriplane-0.3.0-agv-handoff-readme.gif" alt="Watch the Metriplane 0.3.0 AGV handoff demo on YouTube" width="720">
+  </a>
+</p>
+
+<p align="center">
+  <strong><a href="https://youtu.be/DGbQN8-sdLY">Watch the full 52-second 4K film on YouTube →</a></strong>
+</p>
+
 ## Quickstart
 
 ```bash
