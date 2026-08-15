@@ -59,6 +59,25 @@ without browser dispatch:
 metriplane demo
 ```
 
+## WSL2: open the report from Windows
+
+Start from a writable Linux directory and use an explicit output path:
+
+```bash
+cd ~
+metriplane demo --out "$HOME/metriplane-demo"
+```
+
+If WSL2 has no Linux HTML handler, open the generated report through Windows:
+
+```bash
+explorer.exe "$(wslpath -w "$HOME/metriplane-demo/cell_truth_report.html")"
+```
+
+The stable filename remains `cell_truth_report.html` for compatibility, while
+the page itself is titled **Incident Report**. Browser opening remains best
+effort, and this does not establish native Windows support.
+
 ## Headless server, container, or SSH session
 
 Omit `--open`. Find the path under the final `Report:` line. You can copy
