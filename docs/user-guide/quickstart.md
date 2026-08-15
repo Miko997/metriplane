@@ -62,6 +62,26 @@ metriplane demo
 The analysis still runs and prints the report path. Browser-opening failure is
 nonfatal; open the printed `file://` address later.
 
+### WSL2
+
+Start from a writable Linux directory and give the demo an explicit output path:
+
+```bash
+cd ~
+metriplane demo --out "$HOME/metriplane-demo"
+```
+
+The demo normally creates a fresh `metriplane-demo*` directory under the current
+working directory. Using `--out` makes the location predictable. To open the
+generated report through Windows:
+
+```bash
+explorer.exe "$(wslpath -w "$HOME/metriplane-demo/cell_truth_report.html")"
+```
+
+Automatic browser dispatch remains best effort on WSL2. This is not a native
+Windows support claim.
+
 ## Next step
 
 Continue to [Use your own recorded run](use-your-own-run.md). It exports the
