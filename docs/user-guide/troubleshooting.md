@@ -80,9 +80,9 @@ effort, and this does not establish native Windows support.
 
 ## Headless server, container, or SSH session
 
-Omit `--open`. Find the path under the final `Incident Report:` line. You can
-copy `cell_truth_report.html` to your workstation or read
-`cell_truth_report.md` in a text editor. No web server is required.
+Omit `--open`. Find the path under the final `Report:` line. You can copy
+`cell_truth_report.html` to your workstation or read `cell_truth_report.md` in a
+text editor. No web server is required.
 
 ## The output directory already exists
 
@@ -173,5 +173,4 @@ metriplane atlas report --run-dir my-cell-run
 ```
 
 This prints `my-cell-run/cell_truth_report.html` and exits nonzero if the report
-does not exist. For the bundled demo, use the path printed below
-`Incident Report:`.
+does not exist. For the bundled demo, use the path printed below `Report:`.
