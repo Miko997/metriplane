@@ -1,0 +1,33 @@
+{
+  "architecture_counts": {
+    "ARM64/AArch64": 2,
+    "x86_64": 4
+  },
+  "archive_status": "HOLD",
+  "artifact": "metriplane==0.3.0",
+  "auxiliary_record_count": 2,
+  "auxiliary_statement": "2 commissioned records were retained as auxiliary evidence and excluded from the primary denominator.",
+  "compensation_totals_by_currency": {
+    "EUR": 57,
+    "USD": 22
+  },
+  "environment_counts": {
+    "Native Linux": 4,
+    "WSL2 Ubuntu": 1,
+    "macOS": 1
+  },
+  "evidence_class": "E2 commissioned external execution",
+  "installation_source": "PyPI",
+  "primary_cohort_count": 6,
+  "primary_core_pass_count": 6,
+  "primary_success_statement": "6 of 6 accepted primary records completed the bounded packaged first-use workflow in their observed environments.",
+  "protocol_id": "MP-EXT-UX-001",
+  "protocol_version": "1.0",
+  "python_minor_counts": {
+    "3.12": 4,
+    "3.13": 2
+  },
+  "report_date": "2026-08-15",
+  "report_version": "1.0.0",
+  "schema_version": "1.0.0"
+}

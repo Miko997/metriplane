@@ -20,6 +20,7 @@ the v0.2.0 evidence or the v0.1.3 measurements.
 - Historical DOI-archived baseline: `v0.1.4` at `10.5281/zenodo.20631037`
 - Repository: `https://github.com/Miko997/metriplane`
 - License: MIT
+- Commissioned first-use evaluation: [`docs/evaluations/commissioned-first-use-v030/README.md`](docs/evaluations/commissioned-first-use-v030/README.md)
 - Benchmark evidence baseline: preserved from `v0.1.3`
 - Benchmark evidence status: supplemental release evidence, not peer-reviewed publication
 - Paper status: v0.2.0 is the main SoftwareX paper artifact; no accepted peer-reviewed publication is claimed in this artifact file

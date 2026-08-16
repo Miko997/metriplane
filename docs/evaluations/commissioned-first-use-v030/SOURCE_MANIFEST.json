@@ -1,0 +1,159 @@
+{
+  "claims": [
+    {
+      "claim": "Six accepted primary commissioned records completed the bounded packaged workflow in their observed environments.",
+      "claim_id": "C01",
+      "limitation": "Selected and compensated sample; not an adoption or population estimate.",
+      "source_ids": [
+        "T01_PUBLIC_RESULT",
+        "T02_PUBLIC_RESULT",
+        "T03_PUBLIC_RESULT",
+        "T04_PUBLIC_RESULT",
+        "T05_PUBLIC_RESULT",
+        "T06_PUBLIC_RESULT"
+      ]
+    },
+    {
+      "claim": "The accepted cohort contained four Native Linux, one macOS, one WSL2 Ubuntu, four x86_64, two ARM64/AArch64, four Python 3.12, and two Python 3.13 environments.",
+      "claim_id": "C02",
+      "limitation": "Observed environments only; no broad support claim.",
+      "source_ids": [
+        "PUBLIC_RESULTS_CSV"
+      ]
+    },
+    {
+      "claim": "Primary evaluator compensation totaled USD 22 and EUR 57, kept as separate currencies.",
+      "claim_id": "C03",
+      "limitation": "Platform fees are excluded and currencies are not converted.",
+      "source_ids": [
+        "PUBLIC_RESULTS_CSV",
+        "PRIMARY_COMPENSATION_CROSSWALK"
+      ]
+    },
+    {
+      "claim": "The WSL2 usability finding led to issue #60, PR #61, and merge commit 5e5396f. The remediation was documentation only.",
+      "claim_id": "C04",
+      "limitation": "No post-fix run was added to the original denominator.",
+      "source_ids": [
+        "GH_ISSUE_60",
+        "GH_PR_61",
+        "GH_COMMIT_5E5396F"
+      ]
+    },
+    {
+      "claim": "Compensation was fixed and did not depend on success, favorable feedback, public praise, or endorsement.",
+      "claim_id": "C05",
+      "limitation": "Contracts and payment records are maintained outside the public repository.",
+      "source_ids": [
+        "FROZEN_PROTOCOL_ARCHIVE",
+        "PRIMARY_COMPENSATION_CROSSWALK"
+      ]
+    },
+    {
+      "claim": "The frozen protocol required one measured attempt, no rehearsal, no rerun after a meaningful failure, and no troubleshooting before evidence preservation.",
+      "claim_id": "C06",
+      "limitation": "The archived protocol is maintained outside the public repository.",
+      "source_ids": [
+        "FROZEN_PROTOCOL_ARCHIVE"
+      ]
+    }
+  ],
+  "privacy_boundary": "The public package uses cohort slots, public GitHub sources, local public data, and generic private archive references only. Private crosswalk contents and private records are not included.",
+  "schema_version": "1.0.0",
+  "sources": [
+    {
+      "limitation": "Canonical public primary table.",
+      "path": "public_results.csv",
+      "source_id": "PUBLIC_RESULTS_CSV",
+      "type": "local_file"
+    },
+    {
+      "limitation": "Canonical public auxiliary table.",
+      "path": "auxiliary_records.csv",
+      "source_id": "AUXILIARY_RECORDS_CSV",
+      "type": "local_file"
+    },
+    {
+      "limitation": "Maintained outside the public repository.",
+      "source_id": "FROZEN_PROTOCOL_ARCHIVE",
+      "type": "private_archived_protocol"
+    },
+    {
+      "limitation": "Payment and compensation records are archived privately.",
+      "source_id": "PRIMARY_COMPENSATION_CROSSWALK",
+      "type": "private_evidence_crosswalk"
+    },
+    {
+      "limitation": "Public result summary; missing structured fields remain NOT_RECORDED.",
+      "source_id": "T01_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5245208657"
+    },
+    {
+      "limitation": "Public result summary; missing structured fields remain NOT_RECORDED.",
+      "source_id": "T02_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5254521715"
+    },
+    {
+      "limitation": "Public result summary; missing structured fields remain NOT_RECORDED.",
+      "source_id": "T03_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5301659641"
+    },
+    {
+      "limitation": "Public result summary; missing structured fields remain NOT_RECORDED.",
+      "source_id": "T04_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5300948730"
+    },
+    {
+      "limitation": "Public result summary; missing structured fields remain NOT_RECORDED.",
+      "source_id": "T05_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5302021428"
+    },
+    {
+      "limitation": "Public result summary; missing structured fields remain NOT_RECORDED.",
+      "source_id": "T06_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5294135752"
+    },
+    {
+      "limitation": "Auxiliary record; excluded from the primary denominator.",
+      "source_id": "AUX_A_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5247489989"
+    },
+    {
+      "limitation": "Auxiliary record; excluded from the primary denominator.",
+      "source_id": "AUX_B_PUBLIC_RESULT",
+      "type": "github_comment",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5297940713"
+    },
+    {
+      "limitation": "Documentation finding.",
+      "source_id": "GH_ISSUE_60",
+      "type": "github_issue",
+      "url": "https://github.com/Miko997/metriplane/issues/60"
+    },
+    {
+      "limitation": "Documentation-only remediation.",
+      "source_id": "GH_PR_61",
+      "type": "github_pull_request",
+      "url": "https://github.com/Miko997/metriplane/pull/61"
+    },
+    {
+      "limitation": "Merged documentation-only remediation.",
+      "source_id": "GH_COMMIT_5E5396F",
+      "type": "github_commit",
+      "url": "https://github.com/Miko997/metriplane/commit/5e5396f0756b47ff02f6f0831ec62a44ea21c118"
+    },
+    {
+      "limitation": "Evaluated software release.",
+      "source_id": "METRIPLANE_V030_RELEASE",
+      "type": "github_release",
+      "url": "https://github.com/Miko997/metriplane/releases/tag/v0.3.0"
+    }
+  ]
+}
