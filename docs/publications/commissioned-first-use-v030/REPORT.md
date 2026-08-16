@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# Commissioned First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments
+# First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments
 
 **Miko Parkkinen**  
 Technical report, version 1.0.0  
@@ -165,7 +165,7 @@ Public tables use only the record labels T01 through T06, AUX-A, and AUX-B. They
 
 ## 10. Conclusion
 
-Six accepted commissioned records completed the same frozen Metriplane 0.3.0 packaged first-use workflow in six independently controlled computing environments. Two additional executions were retained separately because their first attempts did not satisfy the protocol. The study also produced a concrete WSL2 documentation improvement.
+Six accepted commissioned records completed the same frozen Metriplane 0.3.0 packaged first-use workflow in six indepently controlled computing environments. Two additional executions were retained separately because their first attempts did not satisfy the protocol. The study also produced a concrete WSL2 documentation improvement.
 
 These findings describe the evaluated workflow and environments. They do not establish broad compatibility, adoption, physical accuracy, safety, or production readiness.
 
