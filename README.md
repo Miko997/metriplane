@@ -24,7 +24,7 @@ it does **not** control machinery or make safety or quality decisions.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/Miko997/metriplane/blob/main/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/metriplane.svg)](https://pypi.org/project/metriplane/)
 [![Conda version](https://img.shields.io/conda/vn/conda-forge/metriplane.svg)](https://anaconda.org/conda-forge/metriplane)
-[![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-22314E?logo=ros)](https://github.com/ros/rosdistro/pull/53151)
+[![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-22314E?logo=ros)](https://index.ros.org/p/metriplane_ros/#jazzy)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14010/badge)](https://www.bestpractices.dev/projects/14010)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Miko997/metriplane/badge)](https://scorecard.dev/viewer/?uri=github.com/Miko997/metriplane)
 [![Research release: v0.2.0](https://img.shields.io/badge/research%20release-v0.2.0-blue)](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
@@ -141,7 +141,7 @@ Metriplane source code is preserved in the Software Heritage Archive.
 - Research Software Directory: https://research-software-directory.org/software/metriplane
 - SciCrunch registry: [Metriplane (RRID:SCR_028813)](https://scicrunch.org/resolver/RRID%3ASCR_028813)
 - Python package: https://pypi.org/project/metriplane/
-- ROS 2 Jazzy rosdistro indexing: [ros/rosdistro#53151](https://github.com/ros/rosdistro/pull/53151)
+- ROS 2 Jazzy package index: https://index.ros.org/p/metriplane_ros/#jazzy
 - v0.3.0 software release: https://github.com/Miko997/metriplane/releases/tag/v0.3.0
 - Product roadmap: [ROADMAP.md](ROADMAP.md)
 - 3-minute v0.2.0 demo: https://www.youtube.com/watch?v=7U5nbBbGGbw
@@ -246,8 +246,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 
 ## ROS 2 Jazzy
 
-The `metriplane_ros` bridge is indexed in the official ROS 2 Jazzy rosdistro via
-[ros/rosdistro#53151](https://github.com/ros/rosdistro/pull/53151). The bridge
+The `metriplane_ros` bridge is listed in the official ROS Index for Jazzy:
+[metriplane_ros](https://index.ros.org/p/metriplane_ros/#jazzy). The bridge
 connects to a running Metriplane WebSocket stream and republishes Metriplane
 frames, alerts, and incidents as `std_msgs/String` JSON topics.
 
