@@ -5,11 +5,9 @@ SPDX-License-Identifier: MIT
 
 # Commissioned First-Use Evaluation of Metriplane 0.3.0
 
-This directory is the publication edition of the Metriplane 0.3.0 commissioned first-use evaluation. It is written as a standalone technical report for public reading and archival citation. The report has not undergone peer review.
+This directory is the public technical-report edition of the Metriplane 0.3.0 commissioned first-use evaluation.
 
-Six compensated external evaluators completed the same frozen packaged workflow in six accepted computing environments. Two additional commissioned executions are documented separately because their first attempts did not satisfy the protocol. The report also documents a WSL2 report-access and documentation finding that led to a documentation-only change.
-
-The study is limited to the specified camera-free workflow and observed environments. It does not evaluate organic adoption, production deployment, physical measurement accuracy, safety, or broad platform compatibility.
+Six compensated external evaluators completed the same bounded packaged workflow in six observed computing environments. Two additional commissioned executions are retained as auxiliary records because their first attempts did not satisfy the frozen protocol. The report describes the evaluation method, compensation, results, missing data, protocol notes, WSL2 documentation response, and limitations.
 
 ## Files
 
@@ -20,12 +18,16 @@ The study is limited to the specified camera-free workflow and observed environm
 - [Aggregate summary](summary.json)
 - [Public source manifest](SOURCE_MANIFEST.json)
 - [Checksums](SHA256SUMS)
-- [License](LICENSE.txt)
+- [MIT License](LICENSE.txt)
 
-This publication package is released under the MIT License.
+## Software identifiers
 
-## Suggested citation before DOI assignment
+- Evaluated software: `metriplane==0.3.0` from PyPI
+- Software resource identifier: `RRID:SCR_028813`
+- Related prior frozen software artifact: Metriplane 0.2.0, DOI [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619)
 
-Parkkinen, M. (2026). *Commissioned First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments* (Version 1.0.0). Metriplane technical report.
+The RRID identifies Metriplane as a software resource. The related DOI identifies the earlier v0.2.0 frozen software artifact; it does not identify the v0.3.0 version evaluated in this report or the report itself.
 
-When an archival DOI is assigned, cite the DOI record instead of the repository path.
+The tables use only T01 through T06, AUX-A, and AUX-B. Private contracts, billing records, legal identities, private messages, and private evidence crosswalks are not included.
+
+This report is a technical report and has not undergone peer review.
