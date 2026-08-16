@@ -369,17 +369,34 @@ jobs:
           for path in root.rglob("*"):
               if not path.is_file():
                   continue
+              if path.suffix == ".zip":
+                  # Compressed ZIP bytes are not user-visible content and may
+                  # coincidentally match a path-shaped byte pattern. Inspect
+                  # member names and decompressed bodies instead.
+                  with zipfile.ZipFile(path) as archive:
+                      assert archive.testzip() is None, path
+                      for member in archive.infolist():
+                          member_raw = member.filename.encode()
+                          assert not any(value in member_raw for value in forbidden), (
+                              path,
+                              member.filename,
+                          )
+                          assert private.search(member_raw) is None, (
+                              path,
+                              member.filename,
+                          )
+                          if not member.is_dir():
+                              body = archive.read(member)
+                              assert not any(value in body for value in forbidden), (
+                                  path,
+                                  member.filename,
+                              )
+                              assert private.search(body) is None, (
+                                  path,
+                                  member.filename,
+                              )
+                  continue
               raw = path.read_bytes()
               assert not any(value in raw for value in forbidden), path
               assert private.search(raw) is None, path
-              if path.suffix == ".zip":
-                  with zipfile.ZipFile(path) as archive:
-                      for member in archive.infolist():
-                          member_raw = member.filename.encode()
-                          assert not any(value in member_raw for value in forbidden)
-                          assert private.search(member_raw) is None
-                          if not member.is_dir():
-                              body = archive.read(member)
-                              assert not any(value in body for value in forbidden)
-                              assert private.search(body) is None
           PY
