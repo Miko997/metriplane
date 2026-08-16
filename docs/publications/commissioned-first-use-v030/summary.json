@@ -1,0 +1,44 @@
+{
+  "architecture_counts": {
+    "ARM64/AArch64": 2,
+    "x86_64": 4
+  },
+  "assistance_field_coverage": {
+    "not_recorded": 1,
+    "recorded": 5,
+    "recorded_no": 5
+  },
+  "auxiliary_record_count": 2,
+  "compensation_totals_by_currency": {
+    "EUR": 57,
+    "USD": 22
+  },
+  "environment_counts": {
+    "Native Linux": 4,
+    "WSL2 Ubuntu": 1,
+    "macOS": 1
+  },
+  "evaluated_artifact": "metriplane==0.3.0",
+  "evaluated_tag_commit": "e8ee6c63deaee47bd450c5d6c7523d5bd699852a",
+  "first_confusion_field_coverage": {
+    "confusion_reported": 1,
+    "none_reported": 4,
+    "not_recorded": 1,
+    "recorded": 5
+  },
+  "installation_source": "PyPI",
+  "peer_reviewed": false,
+  "primary_core_completion_count": 6,
+  "primary_record_count": 6,
+  "protocol": "MP-EXT-UX-001 v1.0",
+  "python_minor_counts": {
+    "3.12": 4,
+    "3.13": 2
+  },
+  "report_date": "2026-08-16",
+  "report_title": "Commissioned First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments",
+  "report_type": "technical_report",
+  "report_version": "1.0.0",
+  "schema_version": "1.0.0",
+  "source_data_commit": "d2a13b800853a2acea1240ec8af6c34ef442dd77"
+}

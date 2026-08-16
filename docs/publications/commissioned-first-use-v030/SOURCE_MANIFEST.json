@@ -1,0 +1,81 @@
+{
+  "data_provenance_note": "The public CSV files are de-identified transcriptions of the accepted and auxiliary records. Eligibility, compensation, and administrative details were cross-checked against retained records. Private marketplace, billing, message, and identity records are not distributed.",
+  "public_sources": [
+    {
+      "description": "Evaluated Metriplane 0.3.0 release.",
+      "source_id": "METRIPLANE_V030_RELEASE",
+      "url": "https://github.com/Miko997/metriplane/releases/tag/v0.3.0"
+    },
+    {
+      "description": "Public technical result for T01.",
+      "source_id": "T01_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5245208657"
+    },
+    {
+      "description": "Public technical result for T02.",
+      "source_id": "T02_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5254521715"
+    },
+    {
+      "description": "Public technical result for T03.",
+      "source_id": "T03_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5301659641"
+    },
+    {
+      "description": "Public technical result for T04.",
+      "source_id": "T04_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5300948730"
+    },
+    {
+      "description": "Public technical result for T05.",
+      "source_id": "T05_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5302021428"
+    },
+    {
+      "description": "Public technical result for T06.",
+      "source_id": "T06_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5294135752"
+    },
+    {
+      "description": "Public technical result for AUX-A, retained as auxiliary evidence.",
+      "source_id": "AUX_A_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5247489989"
+    },
+    {
+      "description": "Public technical result for AUX-B, retained as auxiliary evidence.",
+      "source_id": "AUX_B_PUBLIC_RESULT",
+      "url": "https://github.com/Miko997/metriplane/issues/27#issuecomment-5297940713"
+    },
+    {
+      "description": "Public issue documenting the WSL2 first-use documentation finding.",
+      "source_id": "WSL2_FINDING_ISSUE",
+      "url": "https://github.com/Miko997/metriplane/issues/60"
+    },
+    {
+      "description": "Documentation-only pull request responding to the WSL2 finding.",
+      "source_id": "WSL2_DOCUMENTATION_PR",
+      "url": "https://github.com/Miko997/metriplane/pull/61"
+    },
+    {
+      "description": "Merged documentation-only response.",
+      "source_id": "WSL2_DOCUMENTATION_COMMIT",
+      "url": "https://github.com/Miko997/metriplane/commit/5e5396f0756b47ff02f6f0831ec62a44ea21c118"
+    },
+    {
+      "description": "Repository commit containing the source data used by this publication edition.",
+      "source_id": "SOURCE_DATA_COMMIT",
+      "url": "https://github.com/Miko997/metriplane/commit/d2a13b800853a2acea1240ec8af6c34ef442dd77"
+    }
+  ],
+  "report": {
+    "auxiliary_data": "auxiliary_records.csv",
+    "canonical_source": "REPORT.md",
+    "date": "2026-08-16",
+    "pdf": "commissioned_first_use_evaluation.pdf",
+    "primary_data": "public_results.csv",
+    "summary": "summary.json",
+    "title": "Commissioned First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments",
+    "version": "1.0.0"
+  },
+  "schema_version": "1.0.0"
+}
