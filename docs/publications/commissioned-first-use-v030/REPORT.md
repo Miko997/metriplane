@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: 2026 Miko Parkkinen
 SPDX-License-Identifier: MIT
 -->
 
-# Commissioned First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments
+# First-Use Evaluation of Metriplane 0.3.0 Across Six Computing Environments
 
 **Miko Parkkinen**  
 Technical report, version 1.0.0  
