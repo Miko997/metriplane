@@ -87,3 +87,10 @@ Comment: The container and synthetic values are Metriplane-authored MIT
  content. Embedded ROS interface schema text retains the upstream Apache-2.0
  and BSD-3-Clause terms recorded in the public rights matrix and packaged
  third-party notice.
+
+Files: docs/evaluations/commissioned-first-use-v030/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This subtree contains the public MET-12 report, public cohort data,
+ claim boundaries, source manifest, checksums, and generated PDF. Private
+ crosswalks and private evaluator records are not included.
