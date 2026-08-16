@@ -44,6 +44,9 @@ example inputs and use the supported recorded-run interface.
   inspectable example and move toward your own compatible data.
 - [External fixtures](user-guide/external-fixtures.md): validate and run a
   portable, contract-compliant fixture without its original source software.
+- [External evaluation package](external-evaluation/README.md): scope a bounded
+  2-to-4-week recorded-state evaluation, collect the right source information,
+  and review the result without requiring a production connection.
 - [Integrations and support](user-guide/integrations.md): distinguish supported,
   repository-only, experimental, and unsupported paths.
 - [External Source Contract v1](specs/external-source-contract-v1.md): inspect the
