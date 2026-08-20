@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "metriplane-massrobotics-amr-adapter"
+version = "1.0.0"
+description = "Isolated converter for one bounded synthetic MassRobotics AMR offline-replay profile"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = [
+  "metriplane-source-adapter-sdk==1.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==8.4.2",
+  "ruff==0.14.10",
+]
+
+[project.scripts]
+metriplane-massrobotics-amr = "massrobotics_amr_adapter.cli:main"
+
+[tool.uv.sources]
+metriplane-source-adapter-sdk = { path = "../source_adapter_sdk" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/massrobotics_amr_adapter"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config/frozen-config.json" = "massrobotics_amr_adapter/data/frozen-config.json"
+"source" = "massrobotics_amr_adapter/data/source"
+"uv.lock" = "massrobotics_amr_adapter/data/uv.lock"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
