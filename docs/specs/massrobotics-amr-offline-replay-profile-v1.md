@@ -159,8 +159,12 @@ The incident bundle alone is verified with `metriplane atlas bundle verify` and
 its generated regression is executed with `metriplane atlas test`. A control
 run must not manufacture either artifact.
 
+From the intended exact, clean checkout, capture its commit before running the
+commands:
+
 ```console
-export MET55_COMMIT="FULL_MET55_HEAD_COMMIT"
+export MET55_COMMIT="$(git rev-parse HEAD)"
+test -z "$(git status --porcelain)"
 metriplane external validate examples/external_sources/massrobotics_amr/incident
 metriplane external validate examples/external_sources/massrobotics_amr/control
 METRIPLANE_GIT_COMMIT="$MET55_COMMIT" metriplane external run examples/external_sources/massrobotics_amr/incident --out incident-run --run-id massrobotics_amr_incident

@@ -32,7 +32,8 @@ Choose a new temporary root outside the checkout:
 
 ```bash
 export MET55_ADAPTER_COMMIT="da33ad03beb8d4f3a3762cad085e2df4b2d9386c"
-export MET55_COMMIT="FULL_MET55_HEAD_COMMIT"
+export MET55_COMMIT="$(git rev-parse HEAD)"
+test -z "$(git status --porcelain)"
 export MET55_WORK_ROOT="$(mktemp -d)"
 
 uv run --project adapters/massrobotics_amr \

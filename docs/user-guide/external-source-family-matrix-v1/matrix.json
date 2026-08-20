@@ -1706,7 +1706,7 @@
           "identity": "bounded MassRobotics AMR offline-replay profile v1 mapping note",
           "kind": "repository_path",
           "path": "docs/specs/massrobotics-amr-offline-replay-profile-v1.md",
-          "sha256": "9f068b3f5214acac2187a6208f4b92814735cf4d34c55b98758cdf4df529b3bc",
+          "sha256": "5706f028f10e8ff0fe03a2994c0d6d9432353bf045e2e9e8ec56773500feac4e",
           "verification": "Hash recomputed at the MET-55 candidate head; this note defines scope, mappings, policies, results, and limitations."
         },
         {
