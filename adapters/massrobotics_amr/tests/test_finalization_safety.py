@@ -158,7 +158,7 @@ def test_finalizer_reconstructs_and_rejects_identical_rights_tampering(tmp_path:
     roots, run_ids = _six_conversions(tmp_path)
     for root in roots:
         (root / "rights-record.json").write_text(
-            '{"claim_classification":"external validation"}\n', encoding="utf-8"
+            '{"schema_version":"tampered"}\n', encoding="utf-8"
         )
         _rewrite_root_checksums(root)
     with pytest.raises(FinalizationError, match="exact frozen adapter output"):

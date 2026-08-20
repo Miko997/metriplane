@@ -96,7 +96,6 @@ def upstream_reference_register() -> dict[str, object]:
 
 def rights_record() -> dict[str, object]:
     return {
-        "claim_classification": "Owner-generated standards mapping and reproducible technical artifact",
         "components": [
             {
                 "component": "Metriplane-authored synthetic identity and status JSONL records",
@@ -118,8 +117,8 @@ def rights_record() -> dict[str, object]:
             },
         ],
         "conclusion": (
-            "Only Metriplane-authored MIT source and derived bytes are included. Upstream "
-            "MassRobotics materials remain immutable references and are not copied or packaged."
+            "Included bytes are limited to Metriplane-authored MIT source and derived fixture "
+            "data; MassRobotics materials are recorded only by immutable reference."
         ),
         "schema_version": "org.metriplane.massrobotics_amr.rights.v1",
     }
@@ -296,11 +295,10 @@ def capability_record(
             "semantics": {
                 **base,
                 "prohibited": [
-                    "General MassRobotics compatibility or conformance",
+                    "Source records outside the frozen two-AMR profile",
                     "Live MQTT, WebSocket, QoS, retained-message, or transport semantics",
                     "Cross-datum transforms, automatic unit inference, carry-forward, interpolation, or resampling",
-                    "Fleet management, task dispatch, path planning, robot control, production, safety, or ISO 21423 claims",
-                    "External-source evidence, organizational validation, endorsement, or vendor adoption",
+                    "Fleet management, task dispatch, path planning, robot control, production, safety, or ISO 21423 use",
                 ],
                 "supported": [
                     "One bounded two-AMR rendezvous replay from Metriplane-authored synthetic MassRobotics-format identity and current-status records"

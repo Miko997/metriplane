@@ -1,16 +1,14 @@
 # Bounded MassRobotics AMR offline-replay adapter
 
-This isolated package converts one frozen, Metriplane-authored synthetic
-MassRobotics-format scenario into External Source Contract v1 fixtures. It is
-not a generic importer, live transport implementation, conformance claim, or
-safety implementation.
+This isolated package converts the two included Metriplane-authored synthetic
+identity/status variants into External Source Contract v1 fixtures. It supports
+offline JSON/JSONL replay only.
 
 The package accepts only the two included complete-snapshot variants. It uses
 strict UTC timestamps, an operator-configured metre-to-metre identity binding,
 one expected planar datum, exactly two current-location records per timestamp,
 and no carry-forward, interpolation, resampling, prediction promotion, or
-cross-datum transform. Upstream MassRobotics artifacts are reference-only and
-are not packaged.
+cross-datum transform. Upstream MassRobotics artifacts are reference-only.
 
 ## Commands
 

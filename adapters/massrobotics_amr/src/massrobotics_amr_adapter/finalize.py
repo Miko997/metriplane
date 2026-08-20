@@ -314,7 +314,6 @@ def finalize_conversion_equivalence(
         incident_summary = grouped["incident"][0][3]
         summary = {
             "adapter_commit": adapter_commit,
-            "claim_classification": "Owner-generated standards mapping and reproducible technical artifact",
             "config_sha256": incident_summary["config_sha256"],
             "control": {
                 "capability_fingerprint_sha256": capability_fingerprint(
