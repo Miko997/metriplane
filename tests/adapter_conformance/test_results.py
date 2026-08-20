@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -22,6 +23,10 @@ from tools.cross_adapter_gate import (
 )
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
+REQUIRES_JSONSCHEMA = pytest.mark.skipif(
+    importlib.util.find_spec("jsonschema") is None,
+    reason="result-schema tests run in the locked cross-adapter gate environment",
+)
 
 
 def _commit() -> str:
@@ -214,6 +219,7 @@ def test_pr_and_exhaustive_matrices_have_exact_registry_cardinality() -> None:
     assert len(_fixture_matrix(registry, "exhaustive")["include"]) == 36
 
 
+@REQUIRES_JSONSCHEMA
 def test_result_shape_rejects_missing_or_extra_fields() -> None:
     record = _record("minimal-baseline", "linux", "3.12", commit=_commit())
     _validate_result_shape(record)
@@ -228,6 +234,7 @@ def test_result_shape_rejects_missing_or_extra_fields() -> None:
         _validate_result_shape(extra)
 
 
+@REQUIRES_JSONSCHEMA
 def test_result_schema_and_semantics_reject_vacuous_pass_records() -> None:
     record = _record("minimal-baseline", "linux", "3.12", commit=_commit())
     invalid_count = json.loads(json.dumps(record))
@@ -242,6 +249,7 @@ def test_result_schema_and_semantics_reject_vacuous_pass_records() -> None:
         _validate_result_semantics(REPOSITORY_ROOT, vacuous)
 
 
+@REQUIRES_JSONSCHEMA
 def test_package_only_python_result_cannot_claim_unexecuted_contract_evidence() -> None:
     record = _record("massrobotics-amr", "linux", "3.13", commit=_commit())
     _validate_result_shape(record)
@@ -253,13 +261,18 @@ def test_package_only_python_result_cannot_claim_unexecuted_contract_evidence() 
         _validate_result_semantics(REPOSITORY_ROOT, overstated)
 
 
-def test_command_redaction_preserves_shell_structure(tmp_path: Path) -> None:
-    command = f"true {tmp_path / 'one'}; true {tmp_path / 'two'}"
+@pytest.mark.parametrize(
+    "temporary_root",
+    ["/tmp/cross-adapter-test", "/private/var/folders/cross-adapter-test"],
+)
+def test_command_redaction_preserves_shell_structure(temporary_root: str) -> None:
+    command = f"true {temporary_root}/one; true {temporary_root}/two"
     record, _ = _run_command(command, cwd=REPOSITORY_ROOT)
 
     assert record["command"] == "true <temp>; true <temp>"
 
 
+@REQUIRES_JSONSCHEMA
 def test_summary_accepts_only_the_complete_exact_commit_result_set(tmp_path: Path) -> None:
     commit = _commit()
     results = tmp_path / "nested" / "results"
@@ -284,6 +297,7 @@ def test_summary_accepts_only_the_complete_exact_commit_result_set(tmp_path: Pat
     assert "minimal-baseline" in text
 
 
+@REQUIRES_JSONSCHEMA
 @pytest.mark.parametrize(
     "status",
     ["failure", "cancelled", "skipped", "neutral", "timed_out", "missing"],
@@ -302,6 +316,7 @@ def test_summary_rejects_every_non_success_job_result(tmp_path: Path, status: st
         )
 
 
+@REQUIRES_JSONSCHEMA
 def test_summary_rejects_a_missing_required_job(tmp_path: Path) -> None:
     commit = _commit()
     _write_complete_results(tmp_path, commit=commit)
@@ -318,6 +333,7 @@ def test_summary_rejects_a_missing_required_job(tmp_path: Path) -> None:
         )
 
 
+@REQUIRES_JSONSCHEMA
 def test_summary_rejects_missing_stale_duplicate_and_failed_records(tmp_path: Path) -> None:
     commit = _commit()
     paths = _write_complete_results(tmp_path, commit=commit)

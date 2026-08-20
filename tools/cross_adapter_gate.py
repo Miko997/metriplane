@@ -1102,7 +1102,7 @@ def _run_command(
     if runner_temp:
         display_command = display_command.replace(runner_temp, "<runner-temp>")
     display_command = re.sub(
-        r"(?<![A-Za-z0-9])/(?:tmp|var/folders)/[^\s'\";|&()<>]+",
+        r"(?<![A-Za-z0-9])/(?:tmp|(?:private/)?var/folders)/[^\s'\";|&()<>]+",
         "<temp>",
         display_command,
     )
