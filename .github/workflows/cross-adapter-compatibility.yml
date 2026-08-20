@@ -1,0 +1,513 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Cross-Adapter Compatibility Gate
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Validation depth
+        required: true
+        default: pr
+        type: choice
+        options:
+          - pr
+          - exhaustive
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-adapter-compatibility-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+
+jobs:
+  registry:
+    name: Registry and execution matrices
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      level: ${{ steps.level.outputs.level }}
+      sdk_matrix: ${{ steps.sdk-matrix.outputs.matrix }}
+      adapter_matrix: ${{ steps.adapter-matrix.outputs.matrix }}
+      fixture_matrix: ${{ steps.fixture-matrix.outputs.matrix }}
+      root_wheel_matrix: ${{ steps.root-wheel-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: uv sync --locked --project tests/adapter_conformance --python 3.12
+
+      - name: Select validation level
+        id: level
+        env:
+          DISPATCH_LEVEL: ${{ inputs.level }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          level=pr
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            level=exhaustive
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            level="$DISPATCH_LEVEL"
+          fi
+          case "$level" in
+            pr | exhaustive) ;;
+            *) echo "Unsupported validation level: $level" >&2; exit 1 ;;
+          esac
+          printf 'level=%s\n' "$level" >> "$GITHUB_OUTPUT"
+
+      - name: Validate authoritative registry
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          validate-registry --require-jsonschema
+
+      - name: Emit source adapter SDK matrix
+        id: sdk-matrix
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          matrix --kind sdk --level "${{ steps.level.outputs.level }}"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Emit isolated adapter matrix
+        id: adapter-matrix
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          matrix --kind adapters --level "${{ steps.level.outputs.level }}"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Emit portable fixture matrix
+        id: fixture-matrix
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          matrix --kind fixtures --level "${{ steps.level.outputs.level }}"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Emit root-wheel clean-room matrix
+        id: root-wheel-matrix
+        env:
+          LEVEL: ${{ steps.level.outputs.level }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+
+          combinations = [
+              {"os": "ubuntu-latest", "python_version": "3.12"},
+          ]
+          if os.environ["LEVEL"] == "exhaustive":
+              combinations.extend(
+                  [
+                      {"os": "ubuntu-latest", "python_version": "3.13"},
+                      {"os": "macos-latest", "python_version": "3.12"},
+                      {"os": "macos-latest", "python_version": "3.13"},
+                  ]
+              )
+          value = json.dumps({"include": combinations}, separators=(",", ":"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"matrix={value}\n")
+          PY
+
+  sdk:
+    name: SDK (${{ matrix.os }}, Python ${{ matrix.python_version }})
+    needs: registry
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.registry.outputs.sdk_matrix) }}
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python ${{ matrix.python_version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: >-
+          uv sync --locked --project tests/adapter_conformance
+          --python "${{ matrix.python_version }}"
+
+      - name: Check shared SDK component
+        env:
+          CROSS_ADAPTER_LEVEL: ${{ needs.registry.outputs.level }}
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          check-component --component-id "${{ matrix.component_id }}"
+          --results-dir "$RUNNER_TEMP/results"
+
+      - name: Upload SDK result record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-adapter-result-sdk-${{ strategy.job-index }}-${{ matrix.os }}-py${{ matrix.python_version }}
+          path: ${{ runner.temp }}/results/*.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  adapters:
+    name: Adapter ${{ matrix.component_id }} (${{ matrix.os }}, Python ${{ matrix.python_version }})
+    needs: registry
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.registry.outputs.adapter_matrix) }}
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python ${{ matrix.python_version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: >-
+          uv sync --locked --project tests/adapter_conformance
+          --python "${{ matrix.python_version }}"
+
+      - name: Check isolated adapter
+        env:
+          CROSS_ADAPTER_LEVEL: ${{ needs.registry.outputs.level }}
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          check-component --component-id "${{ matrix.component_id }}"
+          --results-dir "$RUNNER_TEMP/results"
+
+      - name: Upload adapter result record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-adapter-result-adapter-${{ strategy.job-index }}-${{ matrix.os }}-py${{ matrix.python_version }}
+          path: ${{ runner.temp }}/results/*.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  fixtures:
+    name: Fixture ${{ matrix.variant_id }} (${{ matrix.os }}, Python ${{ matrix.python_version }})
+    needs: registry
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.registry.outputs.fixture_matrix) }}
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python ${{ matrix.python_version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: >-
+          uv sync --locked --project tests/adapter_conformance
+          --python "${{ matrix.python_version }}"
+
+      - name: Check portable fixture variant
+        env:
+          CROSS_ADAPTER_LEVEL: ${{ needs.registry.outputs.level }}
+          REPETITIONS: ${{ needs.registry.outputs.level == 'exhaustive' && '5' || '3' }}
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          check-fixture --variant-id "${{ matrix.variant_id }}"
+          --results-dir "$RUNNER_TEMP/results" --repetitions "$REPETITIONS"
+
+      - name: Upload fixture result record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-adapter-result-fixture-${{ strategy.job-index }}-${{ matrix.os }}-py${{ matrix.python_version }}
+          path: ${{ runner.temp }}/results/*.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  shared-contract:
+    name: Shared contract and mutation boundaries
+    needs: registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: uv sync --locked --project tests/adapter_conformance --python 3.12
+
+      - name: Check shared contracts and mutations
+        env:
+          CROSS_ADAPTER_LEVEL: ${{ needs.registry.outputs.level }}
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          check-shared --results-dir "$RUNNER_TEMP/results"
+
+      - name: Upload shared-contract result record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-adapter-result-shared
+          path: ${{ runner.temp }}/results/*.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  root-wheel:
+    name: Root wheel (${{ matrix.os }}, Python ${{ matrix.python_version }})
+    needs: registry
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.registry.outputs.root_wheel_matrix) }}
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python ${{ matrix.python_version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: >-
+          uv sync --locked --project tests/adapter_conformance
+          --python "${{ matrix.python_version }}"
+
+      - name: Check clean-room root wheel
+        env:
+          CROSS_ADAPTER_LEVEL: ${{ needs.registry.outputs.level }}
+        run: >-
+          uv run --frozen --project tests/adapter_conformance python tools/cross_adapter_gate.py
+          check-root-wheel --results-dir "$RUNNER_TEMP/results"
+
+      - name: Upload root-wheel result record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-adapter-result-root-wheel-${{ strategy.job-index }}-${{ matrix.os }}-py${{ matrix.python_version }}
+          path: ${{ runner.temp }}/results/*.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14
+
+  required:
+    name: required
+    if: always()
+    needs:
+      - registry
+      - sdk
+      - adapters
+      - fixtures
+      - shared-contract
+      - root-wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.CANDIDATE_SHA }}
+
+      - name: Verify exact clean checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: uv sync --locked --project tests/adapter_conformance --python 3.12
+
+      - name: Download all machine result records
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: cross-adapter-result-*
+          path: ${{ runner.temp }}/cross-adapter-results
+          merge-multiple: true
+
+      - name: Summarize records and require every Level A job to pass
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          RESULTS_DIR: ${{ runner.temp }}/cross-adapter-results
+        shell: bash
+        run: |
+          set -uo pipefail
+          summary_status=0
+          needs_status=0
+
+          uv run --frozen --project tests/adapter_conformance \
+            python tools/cross_adapter_gate.py summarize \
+            --results-dir "$RESULTS_DIR" \
+            --expected-commit "$CANDIDATE_SHA" \
+            --needs-json "$NEEDS_JSON" \
+            --summary-markdown "$GITHUB_STEP_SUMMARY" \
+            || summary_status=$?
+
+          NEEDS_JSON="$NEEDS_JSON" python - <<'PY' || needs_status=$?
+          import json
+          import os
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          bad = {
+              job: value.get("result", "missing")
+              for job, value in sorted(needs.items())
+              if value.get("result") != "success"
+          }
+          if bad:
+              raise SystemExit(f"required jobs did not succeed: {bad}")
+          PY
+
+          if [[ "$summary_status" -ne 0 || "$needs_status" -ne 0 ]]; then
+            exit 1
+          fi

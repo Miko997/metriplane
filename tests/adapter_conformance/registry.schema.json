@@ -1,0 +1,893 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/cross-adapter-registry-v1.schema.json",
+  "title": "Metriplane cross-adapter registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "audited_base_commit",
+    "shared_infrastructure",
+    "adapters",
+    "fixtures",
+    "unsupported_families",
+    "discovery_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "metriplane.cross_adapter_registry.v1"
+    },
+    "audited_base_commit": {
+      "$ref": "#/$defs/sha"
+    },
+    "shared_infrastructure": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/sharedComponent"
+      }
+    },
+    "adapters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/adapter"
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/fixtureFamily"
+      }
+    },
+    "unsupported_families": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unsupportedFamily"
+      }
+    },
+    "discovery_policy": {
+      "$ref": "#/$defs/discoveryPolicy"
+    }
+  },
+  "$defs": {
+    "nonempty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "command": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nonempty"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notApplicable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "const": "not_applicable"
+        },
+        "reason": {
+          "$ref": "#/$defs/nonempty"
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "triggers",
+        "pull_request_paths_filtered",
+        "runs_every_pull_request"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "triggers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        },
+        "pull_request_paths_filtered": {
+          "type": "boolean"
+        },
+        "runs_every_pull_request": {
+          "type": "boolean"
+        }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sync",
+        "unit_tests",
+        "lint",
+        "format",
+        "type_check",
+        "build",
+        "import_check",
+        "cli_help",
+        "source_inspection",
+        "conversion",
+        "finalization"
+      ],
+      "properties": {
+        "sync": {
+          "$ref": "#/$defs/command"
+        },
+        "unit_tests": {
+          "$ref": "#/$defs/command"
+        },
+        "lint": {
+          "$ref": "#/$defs/command"
+        },
+        "format": {
+          "$ref": "#/$defs/command"
+        },
+        "type_check": {
+          "$ref": "#/$defs/command"
+        },
+        "build": {
+          "$ref": "#/$defs/command"
+        },
+        "import_check": {
+          "$ref": "#/$defs/command"
+        },
+        "cli_help": {
+          "$ref": "#/$defs/command"
+        },
+        "source_inspection": {
+          "$ref": "#/$defs/command"
+        },
+        "conversion": {
+          "$ref": "#/$defs/command"
+        },
+        "finalization": {
+          "$ref": "#/$defs/command"
+        }
+      }
+    },
+    "formatPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "expected_reformatted_files"
+          ],
+          "properties": {
+            "mode": {
+              "const": "checked_in"
+            },
+            "expected_reformatted_files": {
+              "type": "array",
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "expected_reformatted_files",
+            "reason"
+          ],
+          "properties": {
+            "mode": {
+              "const": "frozen_migration"
+            },
+            "expected_reformatted_files": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/path"
+              }
+            },
+            "reason": {
+              "$ref": "#/$defs/nonempty"
+            }
+          }
+        }
+      ]
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "component_id",
+        "component_type",
+        "display_name",
+        "package_path",
+        "package_name",
+        "package_version",
+        "package_license_expression",
+        "module_name",
+        "cli_name",
+        "python_versions",
+        "full_suite_python_versions",
+        "operating_systems",
+        "format_policy",
+        "commands",
+        "known_gaps"
+      ],
+      "properties": {
+        "component_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "component_type": {
+          "enum": [
+            "shared_infrastructure",
+            "source_adapter"
+          ]
+        },
+        "display_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "package_path": {
+          "$ref": "#/$defs/path"
+        },
+        "package_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "package_version": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "package_license_expression": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "module_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "cli_name": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/nonempty"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "python_versions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "3.12",
+              "3.13"
+            ]
+          }
+        },
+        "full_suite_python_versions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "3.12",
+              "3.13"
+            ]
+          }
+        },
+        "operating_systems": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ubuntu",
+              "macos"
+            ]
+          }
+        },
+        "format_policy": {
+          "$ref": "#/$defs/formatPolicy"
+        },
+        "commands": {
+          "$ref": "#/$defs/commands"
+        },
+        "known_gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        }
+      }
+    },
+    "sharedComponent": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/component"
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "adapter": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/component"
+        },
+        {
+          "type": "object",
+          "required": [
+            "adapter_id",
+            "classification",
+            "source_adapter_sdk_required",
+            "source_fixture_path",
+            "source_origin",
+            "source_rights_profile",
+            "portable_fixture_variants",
+            "proof",
+            "dedicated_workflow",
+            "source_conversion_available",
+            "source_conversion_requires_external_framework",
+            "source_conversion_requires_network",
+            "source_conversion_commit",
+            "source_conversion_python_versions",
+            "source_conversion_operating_systems",
+            "expected_results",
+            "determinism_policy",
+            "ignored_source_fields",
+            "forbidden_upstream_artifacts",
+            "required_notices",
+            "expected_wheel_contents",
+            "forbidden_wheel_contents",
+            "common_mutation_groups",
+            "adapter_specific_mutation_groups",
+            "known_limitations",
+            "claim_boundary",
+            "matrix_row_id",
+            "matrix_consistency"
+          ],
+          "properties": {
+            "component_type": {
+              "const": "source_adapter"
+            },
+            "adapter_id": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "classification": {
+              "enum": [
+                "proven_external_source",
+                "synthetic_format_engineering"
+              ]
+            },
+            "source_adapter_sdk_required": {
+              "type": "boolean"
+            },
+            "source_fixture_path": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/path"
+                },
+                {
+                  "$ref": "#/$defs/notApplicable"
+                }
+              ]
+            },
+            "source_origin": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "source_rights_profile": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "portable_fixture_variants": {
+              "type": "array",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "proof": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status",
+                    "paths"
+                  ],
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "dedicated",
+                        "distributed"
+                      ]
+                    },
+                    "paths": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "$ref": "#/$defs/path"
+                      }
+                    }
+                  }
+                },
+                {
+                  "$ref": "#/$defs/notApplicable"
+                }
+              ]
+            },
+            "dedicated_workflow": {
+              "$ref": "#/$defs/workflow"
+            },
+            "source_conversion_available": {
+              "type": "boolean"
+            },
+            "source_conversion_requires_external_framework": {
+              "type": "boolean"
+            },
+            "source_conversion_requires_network": {
+              "type": "boolean"
+            },
+            "source_conversion_commit": {
+              "$ref": "#/$defs/sha"
+            },
+            "source_conversion_python_versions": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "3.12",
+                  "3.13"
+                ]
+              }
+            },
+            "source_conversion_operating_systems": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "ubuntu",
+                  "macos"
+                ]
+              }
+            },
+            "expected_results": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "incident_fixture_id",
+                "control_fixture_id"
+              ],
+              "properties": {
+                "incident_fixture_id": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "control_fixture_id": {
+                  "$ref": "#/$defs/nonempty"
+                }
+              }
+            },
+            "determinism_policy": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "ignored_source_fields": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "forbidden_upstream_artifacts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "required_notices": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/path"
+              }
+            },
+            "expected_wheel_contents": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "forbidden_wheel_contents": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "common_mutation_groups": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "adapter_specific_mutation_groups": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "known_limitations": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/nonempty"
+              }
+            },
+            "claim_boundary": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "matrix_row_id": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "matrix_consistency": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "consistent"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "status",
+                    "matrix_decision",
+                    "deterministic_conversion_status",
+                    "reason"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "documented_gap"
+                    },
+                    "matrix_decision": {
+                      "$ref": "#/$defs/nonempty"
+                    },
+                    "deterministic_conversion_status": {
+                      "$ref": "#/$defs/nonempty"
+                    },
+                    "reason": {
+                      "$ref": "#/$defs/nonempty"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_id",
+        "ts",
+        "event_type"
+      ],
+      "properties": {
+        "frame_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ts": {
+          "type": "number"
+        },
+        "event_type": {
+          "$ref": "#/$defs/nonempty"
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_count",
+        "objects_per_frame",
+        "events",
+        "deviation_count",
+        "incident_count",
+        "incident_types",
+        "evidence_bundle",
+        "bundle_verification",
+        "generated_regression",
+        "regression_execution"
+      ],
+      "properties": {
+        "frame_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "objects_per_frame": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        },
+        "deviation_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "incident_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "incident_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        },
+        "evidence_bundle": {
+          "enum": [
+            "produced",
+            "not_produced"
+          ]
+        },
+        "bundle_verification": {
+          "enum": [
+            "pass",
+            "not_applicable"
+          ]
+        },
+        "generated_regression": {
+          "enum": [
+            "produced",
+            "not_produced"
+          ]
+        },
+        "regression_execution": {
+          "enum": [
+            "pass",
+            "not_applicable"
+          ]
+        }
+      }
+    },
+    "fixtureVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variant_id",
+        "kind",
+        "path",
+        "fixture_id",
+        "fixture_fingerprint",
+        "session_sha256",
+        "expected"
+      ],
+      "properties": {
+        "variant_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "kind": {
+          "enum": [
+            "baseline",
+            "incident",
+            "control"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "fixture_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "fixture_fingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "session_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "expected": {
+          "$ref": "#/$defs/expected"
+        }
+      }
+    },
+    "fixtureFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family_id",
+        "display_name",
+        "classification",
+        "adapter_id",
+        "family_path",
+        "source_framework_required_for_portable_evaluation",
+        "adapter_package_required_for_portable_evaluation",
+        "variants",
+        "deterministic_atlas_runs",
+        "relocation_required",
+        "expected_outcome_is_test_only",
+        "claim_boundary"
+      ],
+      "properties": {
+        "family_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "display_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "classification": {
+          "enum": [
+            "contract_baseline",
+            "proven_external_source",
+            "synthetic_format_engineering"
+          ]
+        },
+        "adapter_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "family_path": {
+          "$ref": "#/$defs/path"
+        },
+        "source_framework_required_for_portable_evaluation": {
+          "const": false
+        },
+        "adapter_package_required_for_portable_evaluation": {
+          "const": false
+        },
+        "variants": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/fixtureVariant"
+          }
+        },
+        "deterministic_atlas_runs": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "relocation_required": {
+          "const": true
+        },
+        "expected_outcome_is_test_only": {
+          "const": true
+        },
+        "claim_boundary": {
+          "$ref": "#/$defs/nonempty"
+        }
+      }
+    },
+    "unsupportedFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family_id",
+        "display_name",
+        "status",
+        "matrix_row_id",
+        "evidence_path",
+        "evidence_sha256",
+        "blocking_reasons",
+        "forbidden_adapter_glob",
+        "forbidden_fixture_glob",
+        "claim_boundary"
+      ],
+      "properties": {
+        "family_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "display_name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "status": {
+          "const": "NO-GO"
+        },
+        "matrix_row_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "evidence_path": {
+          "$ref": "#/$defs/path"
+        },
+        "evidence_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        },
+        "forbidden_adapter_glob": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "forbidden_fixture_glob": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "claim_boundary": {
+          "$ref": "#/$defs/nonempty"
+        }
+      }
+    },
+    "discoveryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter_root",
+        "fixture_root",
+        "proof_root",
+        "matrix_path",
+        "matrix_verified_statuses",
+        "matrix_nonverified_statuses"
+      ],
+      "properties": {
+        "adapter_root": {
+          "$ref": "#/$defs/path"
+        },
+        "fixture_root": {
+          "$ref": "#/$defs/path"
+        },
+        "proof_root": {
+          "$ref": "#/$defs/path"
+        },
+        "matrix_path": {
+          "$ref": "#/$defs/path"
+        },
+        "matrix_verified_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        },
+        "matrix_nonverified_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        }
+      }
+    }
+  }
+}

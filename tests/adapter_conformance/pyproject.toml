@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+[project]
+name = "metriplane-cross-adapter-gate"
+version = "1.0.0"
+description = "Locked test environment for Metriplane cross-adapter validation"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = [
+  "build>=1.2,<2",
+  "jsonschema>=4.25,<5",
+  "metriplane",
+  "packaging>=24,<27",
+  "pytest>=8.4,<9",
+  "reuse>=5,<6",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+metriplane = { path = "../..", editable = true }

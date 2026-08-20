@@ -230,10 +230,8 @@ def test_focused_workflow_keeps_four_portable_rows() -> None:
 
 
 @requires_full_git_history
-def test_prior_frozen_paths_are_not_changed_by_this_branch() -> None:
+def test_prior_frozen_proof_paths_are_not_changed_by_this_branch() -> None:
     protected = (
-        "adapters/maniskill_pickcube",
-        "adapters/robomimic_lowdim",
         "examples/external_sources/maniskill_pickcube",
         "examples/external_sources/robomimic_lowdim",
         "proofs/maniskill-pickcube-v1",

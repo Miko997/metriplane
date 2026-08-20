@@ -115,3 +115,11 @@ License: MIT
 Comment: This subtree contains the public MET-12 report, public cohort data,
  claim boundaries, source manifest, checksums, and generated PDF. Private
  crosswalks and private evaluator records are not included.
+
+Files: tests/adapter_conformance/*.json tests/adapter_conformance/uv.lock
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: These independently authored registry, mutation-catalog, result
+ schemas, and dependency lock define the repository's cross-adapter validation
+ gate. They contain metadata and test oracles only, not upstream source
+ artifacts.
