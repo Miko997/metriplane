@@ -1469,6 +1469,8 @@ def check_component(repo: Path, component_id: str, results_dir: Path) -> Path:
                 command_env = {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
                 if component_id in {"ros2-mcap", "massrobotics-amr"}:
                     command_env["PYTHONPATH"] = str(repo) if name == "unit_tests" else ""
+                if component_id in {"ros2-mcap", "massrobotics-amr"} and name == "unit_tests":
+                    command_env["CROSS_ADAPTER_ROOT_TEST_PYTHON"] = sys.executable
                 record, output = _run_command(
                     rendered,
                     cwd=package,
@@ -1898,7 +1900,7 @@ def check_shared(repo: Path, results_dir: Path) -> Path:
             "docs/specs/cross-adapter-validation-audit-v1.md "
             "tests/adapter_conformance/*.json tests/adapter_conformance/*.py "
             "tests/adapter_conformance/pyproject.toml tests/adapter_conformance/uv.lock "
-            "tools/cross_adapter_gate.py"
+            "tools/cross_adapter_gate.py tools/cross_adapter_pytest.py"
         ),
     ]
     outputs: list[str] = []

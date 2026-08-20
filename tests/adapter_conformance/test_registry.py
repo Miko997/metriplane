@@ -79,6 +79,18 @@ def test_registry_is_strict_and_matches_repository_discovery() -> None:
     discover_repository(REPOSITORY_ROOT, registry)
 
 
+def test_root_runtime_bridge_is_limited_to_base_python_adapter_tests() -> None:
+    registry = load_registry(REPOSITORY_ROOT)
+    bridged = {
+        adapter["component_id"]
+        for adapter in registry["adapters"]
+        if "tools.cross_adapter_pytest" in adapter["commands"]["unit_tests"]
+    }
+
+    assert bridged == {"massrobotics-amr", "ros2-mcap"}
+    assert (REPOSITORY_ROOT / "tools/cross_adapter_pytest.py").is_file()
+
+
 def test_registry_rejects_unknown_and_missing_schema_fields() -> None:
     registry = load_registry(REPOSITORY_ROOT)
 

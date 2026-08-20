@@ -357,7 +357,7 @@
       },
       "commands": {
         "sync": "uv sync --frozen --extra test",
-        "unit_tests": "uv run --frozen python -m pytest -q",
+        "unit_tests": "uv run --frozen python -m pytest -q -p tools.cross_adapter_pytest",
         "lint": "uv run --frozen ruff check .",
         "format": "uv run --frozen ruff format --check .",
         "type_check": null,
@@ -493,7 +493,7 @@
       },
       "commands": {
         "sync": "uv sync --frozen --extra test",
-        "unit_tests": "uv run --frozen python -m pytest -q",
+        "unit_tests": "uv run --frozen python -m pytest -q -p tools.cross_adapter_pytest",
         "lint": "uv run --frozen ruff check .",
         "format": "uv run --frozen ruff format --check .",
         "type_check": null,

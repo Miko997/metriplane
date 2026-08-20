@@ -4,16 +4,38 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from tools import cross_adapter_gate
+from tools import cross_adapter_gate, cross_adapter_pytest
 from tools.cross_adapter_gate import GateError, load_registry
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
+
+
+def test_root_runtime_pytest_bridge_requires_an_explicit_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(cross_adapter_pytest.ROOT_TEST_PYTHON_ENV, raising=False)
+
+    with pytest.raises(RuntimeError, match="is required"):
+        cross_adapter_pytest.pytest_configure()
+
+
+def test_root_runtime_pytest_bridge_uses_the_locked_gate_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = sys._base_executable
+    monkeypatch.setenv(cross_adapter_pytest.ROOT_TEST_PYTHON_ENV, sys.executable)
+    try:
+        cross_adapter_pytest.pytest_configure()
+        assert sys._base_executable == sys.executable
+    finally:
+        sys._base_executable = previous
 
 
 def _massrobotics_component() -> dict[str, object]:
