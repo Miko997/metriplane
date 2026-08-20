@@ -635,6 +635,23 @@ jobs:
             cd "$proof"
             sha256sum --check --strict CHECKSUMS.sha256
           )
+          uv run --frozen metriplane atlas bundle verify \
+            "$proof/artifacts/incident-evidence.zip" \
+            > "${RUNNER_TEMP}/committed-bundle-verification.json"
+          uv run --frozen metriplane atlas test \
+            "$proof/artifacts/incident-regression-portable.yaml" --json \
+            > "${RUNNER_TEMP}/committed-regression-result.json"
+          BUNDLE_RESULT="${RUNNER_TEMP}/committed-bundle-verification.json" \
+            REGRESSION_RESULT="${RUNNER_TEMP}/committed-regression-result.json" \
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          for variable in ("BUNDLE_RESULT", "REGRESSION_RESULT"):
+              result = json.loads(Path(os.environ[variable]).read_text())
+              assert result["pass"] is True
+          PY
           python - <<'PY'
           import json
           from pathlib import Path

@@ -155,6 +155,22 @@ for index in 1 2 3; do
 done
 ```
 
+The proof package also preserves the generated regression bytes and a portable
+copy whose only change is rebinding `source_bundle` to the colocated durable
+bundle. Verify the committed artifacts directly:
+
+```bash
+uv run metriplane atlas bundle verify \
+  proofs/massrobotics-amr-offline-replay-v1/artifacts/incident-evidence.zip
+
+uv run metriplane atlas test \
+  proofs/massrobotics-amr-offline-replay-v1/artifacts/incident-regression-portable.yaml \
+  --json
+```
+
+Both commands must report PASS. The generated regression's evaluation rules,
+tolerances, and expected values are unchanged in the portable copy.
+
 The control's bundle verification and regression execution are N/A, not failed
 or missing proof data.
 

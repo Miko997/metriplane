@@ -42,6 +42,7 @@ or conformance.
 | [`artifacts/incident-report.md`](artifacts/incident-report.md) | Generated incident report |
 | [`artifacts/incident-evidence.zip`](artifacts/incident-evidence.zip) | Verified incident evidence bundle |
 | [`artifacts/incident-regression.yaml`](artifacts/incident-regression.yaml) | Generated passing incident regression |
+| [`artifacts/incident-regression-portable.yaml`](artifacts/incident-regression-portable.yaml) | Semantically identical regression with only `source_bundle` rebound to the colocated durable bundle |
 | [`artifacts/bundle-verification.json`](artifacts/bundle-verification.json) | Sanitized bundle verifier result |
 | [`artifacts/regression-result.json`](artifacts/regression-result.json) | Sanitized generated-regression result |
 | [`artifacts/privacy-provenance-checks.json`](artifacts/privacy-provenance-checks.json) | Durable-output and ZIP-member boundary checks |
