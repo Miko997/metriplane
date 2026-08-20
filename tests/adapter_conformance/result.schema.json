@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/cross-adapter-result-v1.schema.json",
+  "title": "Metriplane cross-adapter gate result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "repository_commit",
+    "component_id",
+    "adapter_id",
+    "component_type",
+    "package_name",
+    "package_version",
+    "python_version",
+    "operating_system",
+    "level",
+    "commands",
+    "tests",
+    "fixture_variants",
+    "normalized_frame_counts",
+    "event_counts",
+    "deviation_counts",
+    "incident_counts",
+    "incident_bundle_presence",
+    "bundle_verification",
+    "regression_presence",
+    "regression_execution",
+    "conversion_equivalence",
+    "atlas_equivalence",
+    "contract_result",
+    "determinism_result",
+    "negative_tests_result",
+    "source_provenance_identities",
+    "package_content_result",
+    "rights_result",
+    "privacy_result",
+    "duration_seconds",
+    "final_result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "metriplane.cross_adapter_result.v1"
+    },
+    "repository_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "component_id": {
+      "$ref": "#/$defs/nonempty"
+    },
+    "adapter_id": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nonempty"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "component_type": {
+      "enum": [
+        "shared_infrastructure",
+        "source_adapter",
+        "portable_fixture",
+        "shared_contract",
+        "root_wheel"
+      ]
+    },
+    "package_name": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nonempty"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "package_version": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nonempty"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "python_version": {
+      "type": "string",
+      "pattern": "^3\\.(?:12|13)(?:\\.\\d+)?$"
+    },
+    "operating_system": {
+      "enum": [
+        "linux",
+        "macos"
+      ]
+    },
+    "level": {
+      "enum": [
+        "pr",
+        "exhaustive"
+      ]
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/commandResult"
+      }
+    },
+    "tests": {
+      "$ref": "#/$defs/testResult"
+    },
+    "fixture_variants": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nonempty"
+      }
+    },
+    "normalized_frame_counts": {
+      "$ref": "#/$defs/countMap"
+    },
+    "event_counts": {
+      "$ref": "#/$defs/countMap"
+    },
+    "deviation_counts": {
+      "$ref": "#/$defs/countMap"
+    },
+    "incident_counts": {
+      "$ref": "#/$defs/countMap"
+    },
+    "incident_bundle_presence": {
+      "$ref": "#/$defs/boolMap"
+    },
+    "bundle_verification": {
+      "$ref": "#/$defs/statusMap"
+    },
+    "regression_presence": {
+      "$ref": "#/$defs/boolMap"
+    },
+    "regression_execution": {
+      "$ref": "#/$defs/statusMap"
+    },
+    "conversion_equivalence": {
+      "enum": [
+        "pass",
+        "not_applicable",
+        "not_executed"
+      ]
+    },
+    "atlas_equivalence": {
+      "enum": [
+        "pass",
+        "not_applicable"
+      ]
+    },
+    "contract_result": {
+      "$ref": "#/$defs/checkStatus"
+    },
+    "determinism_result": {
+      "$ref": "#/$defs/checkStatus"
+    },
+    "negative_tests_result": {
+      "$ref": "#/$defs/checkStatus"
+    },
+    "source_provenance_identities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "package_content_result": {
+      "enum": [
+        "pass",
+        "not_applicable"
+      ]
+    },
+    "rights_result": {
+      "enum": [
+        "pass",
+        "not_applicable"
+      ]
+    },
+    "privacy_result": {
+      "enum": [
+        "pass",
+        "not_applicable"
+      ]
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "final_result": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    }
+  },
+  "$defs": {
+    "nonempty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*"
+    },
+    "commandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "exit_code",
+        "duration_seconds"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "testResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collected",
+        "passed",
+        "skipped",
+        "skip_reasons"
+      ],
+      "properties": {
+        "collected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          }
+        }
+      }
+    },
+    "countMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "boolMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "statusMap": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "pass",
+          "not_applicable"
+        ]
+      }
+    },
+    "checkStatus": {
+      "enum": [
+        "pass",
+        "not_applicable"
+      ]
+    }
+  }
+}

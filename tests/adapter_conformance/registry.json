@@ -1,0 +1,1088 @@
+{
+  "schema_version": "metriplane.cross_adapter_registry.v1",
+  "audited_base_commit": "34099903b3c3fdeb4f794edceddbf845a3f4aba8",
+  "shared_infrastructure": [
+    {
+      "component_id": "source-adapter-sdk",
+      "component_type": "shared_infrastructure",
+      "display_name": "Source Adapter SDK",
+      "package_path": "adapters/source_adapter_sdk",
+      "package_name": "metriplane-source-adapter-sdk",
+      "package_version": "1.0.0",
+      "package_license_expression": "MIT",
+      "module_name": "metriplane_source_adapter_sdk",
+      "cli_name": null,
+      "python_versions": [
+        "3.12",
+        "3.13"
+      ],
+      "full_suite_python_versions": [
+        "3.12",
+        "3.13"
+      ],
+      "operating_systems": [
+        "ubuntu",
+        "macos"
+      ],
+      "format_policy": {
+        "mode": "checked_in",
+        "expected_reformatted_files": []
+      },
+      "commands": {
+        "sync": "uv sync --frozen --extra test",
+        "unit_tests": "uv run --frozen python -m pytest -q",
+        "lint": "uv run --frozen ruff check .",
+        "format": "uv run --frozen ruff format --check .",
+        "type_check": null,
+        "build": "uv build --sdist --wheel --out-dir {dist}",
+        "import_check": "uv run --frozen python -c 'import metriplane_source_adapter_sdk'",
+        "cli_help": null,
+        "source_inspection": null,
+        "conversion": null,
+        "finalization": null
+      },
+      "known_gaps": [
+        "No package-local static type-check command is defined.",
+        "The bundled post-hoc record catalog contains ManiSkill and robomimic only; ROS 2/MCAP and MassRobotics records are validated from their fixture locations."
+      ]
+    }
+  ],
+  "adapters": [
+    {
+      "component_id": "maniskill-pickcube",
+      "component_type": "source_adapter",
+      "display_name": "ManiSkill PickCube adapter",
+      "package_path": "adapters/maniskill_pickcube",
+      "package_name": "maniskill-pickcube-adapter",
+      "package_version": "1.0.0",
+      "package_license_expression": "MIT",
+      "module_name": "maniskill_pickcube",
+      "cli_name": "maniskill-pickcube",
+      "python_versions": [
+        "3.12",
+        "3.13"
+      ],
+      "full_suite_python_versions": [
+        "3.12"
+      ],
+      "operating_systems": [
+        "ubuntu"
+      ],
+      "format_policy": {
+        "mode": "frozen_migration",
+        "expected_reformatted_files": [
+          "adapters/maniskill_pickcube/src/maniskill_pickcube/__init__.py",
+          "adapters/maniskill_pickcube/src/maniskill_pickcube/core.py",
+          "adapters/maniskill_pickcube/tests/test_anti_taint.py",
+          "adapters/maniskill_pickcube/tests/test_conversion.py",
+          "adapters/maniskill_pickcube/tests/test_negative.py"
+        ],
+        "reason": "The published proof pins these source bytes. Ruff is applied to a temporary copy, the exact rewrite set is checked, and Python syntax identity must remain unchanged."
+      },
+      "commands": {
+        "sync": "uv sync --frozen --extra test",
+        "unit_tests": "uv run --frozen python -m pytest -q",
+        "lint": "uv run --frozen ruff check .",
+        "format": "cross-adapter-gate:frozen-format-migration",
+        "type_check": null,
+        "build": "uv build --sdist --wheel --out-dir {dist}",
+        "import_check": "uv run --frozen python -c 'import maniskill_pickcube'",
+        "cli_help": "uv run --frozen maniskill-pickcube --help",
+        "source_inspection": null,
+        "conversion": null,
+        "finalization": null
+      },
+      "known_gaps": [
+        "Frozen source conversion is evidenced only on CPython 3.12, Linux x86_64.",
+        "The external ZIP/HDF5 source is reference-only and unavailable to the always-on gate.",
+        "Published proof bytes predate the current Ruff rendering; format migration is verified only in an ephemeral copy so the frozen identity remains unchanged.",
+        "No package-local static type-check command is defined."
+      ],
+      "adapter_id": "org.metriplane.maniskill_pickcube",
+      "classification": "proven_external_source",
+      "source_adapter_sdk_required": false,
+      "source_fixture_path": {
+        "status": "not_applicable",
+        "reason": "The pinned upstream source remains reference-only and is not committed."
+      },
+      "source_origin": "Pinned official ManiSkill demonstration episode 0, referenced by immutable artifact identity.",
+      "source_rights_profile": "Apache-2.0-treated modified normalized data; raw source bytes remain reference-only.",
+      "portable_fixture_variants": [
+        "maniskill-incident",
+        "maniskill-control"
+      ],
+      "proof": {
+        "status": "dedicated",
+        "paths": [
+          "proofs/maniskill-pickcube-v1"
+        ]
+      },
+      "dedicated_workflow": {
+        "path": ".github/workflows/maniskill-proof.yml",
+        "triggers": [
+          "pull_request",
+          "push",
+          "workflow_dispatch"
+        ],
+        "pull_request_paths_filtered": true,
+        "runs_every_pull_request": false
+      },
+      "source_conversion_available": true,
+      "source_conversion_requires_external_framework": true,
+      "source_conversion_requires_network": false,
+      "source_conversion_commit": "95d1134d9fb9273318c552c507952f1c5c26877e",
+      "source_conversion_python_versions": [
+        "3.12"
+      ],
+      "source_conversion_operating_systems": [
+        "ubuntu"
+      ],
+      "expected_results": {
+        "incident_fixture_id": "maniskill-pickcube-episode-0-planar-incident-v1",
+        "control_fixture_id": "maniskill-pickcube-episode-0-planar-control-v1"
+      },
+      "determinism_policy": "Three clean conversions and three Atlas runs per variant are compared using declared technical equivalence.",
+      "ignored_source_fields": [
+        "actions",
+        "reward",
+        "success",
+        "terminated",
+        "truncated",
+        "horizon",
+        "language labels",
+        "orientation"
+      ],
+      "forbidden_upstream_artifacts": [
+        "raw source ZIP",
+        "raw source HDF5",
+        "official trajectory JSON"
+      ],
+      "required_notices": [
+        "proofs/maniskill-pickcube-v1/NOTICE.md"
+      ],
+      "expected_wheel_contents": [
+        "maniskill_pickcube/*.py",
+        "maniskill_pickcube/data/frozen-config.json",
+        "maniskill_pickcube/data/uv.lock"
+      ],
+      "forbidden_wheel_contents": [
+        "**/*.zip",
+        "**/*.h5",
+        "**/*.hdf5"
+      ],
+      "common_mutation_groups": [
+        "json_structural",
+        "identity",
+        "time",
+        "coordinates",
+        "rights",
+        "trust_layers",
+        "filesystem"
+      ],
+      "adapter_specific_mutation_groups": [
+        "maniskill_trajectory",
+        "excluded_field_invariance"
+      ],
+      "known_limitations": [
+        "One pinned PickCube episode and planar projection only.",
+        "Portable evaluation does not reproduce simulator state restoration."
+      ],
+      "claim_boundary": "A bounded proof for one pinned ManiSkill trajectory, not general ManiSkill compatibility or simulator validation.",
+      "matrix_row_id": "maniskill",
+      "matrix_consistency": {
+        "status": "consistent"
+      }
+    },
+    {
+      "component_id": "robomimic-lowdim",
+      "component_type": "source_adapter",
+      "display_name": "robomimic low-dimensional adapter",
+      "package_path": "adapters/robomimic_lowdim",
+      "package_name": "robomimic-lowdim-adapter",
+      "package_version": "1.0.0",
+      "package_license_expression": "MIT",
+      "module_name": "robomimic_lowdim",
+      "cli_name": "robomimic-lowdim",
+      "python_versions": [
+        "3.12",
+        "3.13"
+      ],
+      "full_suite_python_versions": [
+        "3.12"
+      ],
+      "operating_systems": [
+        "ubuntu"
+      ],
+      "format_policy": {
+        "mode": "checked_in",
+        "expected_reformatted_files": []
+      },
+      "commands": {
+        "sync": "uv sync --frozen --extra test",
+        "unit_tests": "uv run --frozen python -m pytest -q",
+        "lint": "uv run --frozen ruff check .",
+        "format": "uv run --frozen ruff format --check .",
+        "type_check": null,
+        "build": "uv build --sdist --wheel --out-dir {dist}",
+        "import_check": "uv run --frozen python -c 'import robomimic_lowdim'",
+        "cli_help": "uv run --frozen robomimic-lowdim --help",
+        "source_inspection": null,
+        "conversion": null,
+        "finalization": null
+      },
+      "known_gaps": [
+        "Frozen source conversion is evidenced only on CPython 3.12, Linux x86_64.",
+        "Raw and prepared HDF5 sources are reference-only and unavailable to the always-on gate.",
+        "No package-local static type-check command is defined."
+      ],
+      "adapter_id": "org.metriplane.robomimic_lowdim",
+      "classification": "proven_external_source",
+      "source_adapter_sdk_required": false,
+      "source_fixture_path": {
+        "status": "not_applicable",
+        "reason": "The pinned upstream raw and prepared HDF5 artifacts are not committed."
+      },
+      "source_origin": "Pinned official robomimic Can proficient-human demo_0, referenced by immutable artifact identity.",
+      "source_rights_profile": "MIT-treated modified normalized data with attribution; raw and prepared HDF5 remain reference-only.",
+      "portable_fixture_variants": [
+        "robomimic-incident",
+        "robomimic-control"
+      ],
+      "proof": {
+        "status": "distributed",
+        "paths": [
+          "examples/external_sources/robomimic_lowdim/conversion-summary.json",
+          "docs/specs/robomimic-can-lowdim-verification.md",
+          "docs/specs/robomimic-can-lowdim-red-team.md",
+          "docs/specs/robomimic-can-lowdim-rights-matrix.md"
+        ]
+      },
+      "dedicated_workflow": {
+        "path": ".github/workflows/robomimic-lowdim.yml",
+        "triggers": [
+          "pull_request",
+          "push",
+          "workflow_dispatch"
+        ],
+        "pull_request_paths_filtered": false,
+        "runs_every_pull_request": true
+      },
+      "source_conversion_available": true,
+      "source_conversion_requires_external_framework": false,
+      "source_conversion_requires_network": false,
+      "source_conversion_commit": "cfc285a3e757fdf742858b1c4cf685c384d01e8b",
+      "source_conversion_python_versions": [
+        "3.12"
+      ],
+      "source_conversion_operating_systems": [
+        "ubuntu"
+      ],
+      "expected_results": {
+        "incident_fixture_id": "robomimic-can-ph-demo-0-planar-incident-v1",
+        "control_fixture_id": "robomimic-can-ph-demo-0-planar-control-v1"
+      },
+      "determinism_policy": "Three clean conversions and three Atlas runs per variant are compared using declared technical equivalence.",
+      "ignored_source_fields": [
+        "actions",
+        "rewards",
+        "dones",
+        "masks",
+        "interventions",
+        "episode metadata",
+        "next_obs",
+        "orientation"
+      ],
+      "forbidden_upstream_artifacts": [
+        "raw HDF5",
+        "prepared HDF5"
+      ],
+      "required_notices": [
+        "examples/external_sources/robomimic_lowdim/README.md"
+      ],
+      "expected_wheel_contents": [
+        "robomimic_lowdim/*.py",
+        "robomimic_lowdim/data/frozen-config.json",
+        "robomimic_lowdim/data/uv.lock"
+      ],
+      "forbidden_wheel_contents": [
+        "**/*.h5",
+        "**/*.hdf5"
+      ],
+      "common_mutation_groups": [
+        "json_structural",
+        "identity",
+        "time",
+        "coordinates",
+        "rights",
+        "trust_layers",
+        "filesystem"
+      ],
+      "adapter_specific_mutation_groups": [
+        "robomimic_hdf5",
+        "excluded_field_invariance"
+      ],
+      "known_limitations": [
+        "One pinned Can episode and two low-dimensional current-position fields only.",
+        "Portable evaluation does not require or validate robomimic/robosuite execution."
+      ],
+      "claim_boundary": "A bounded proof for one pinned robomimic trajectory, not general HDF5 or robomimic compatibility.",
+      "matrix_row_id": "robomimic",
+      "matrix_consistency": {
+        "status": "consistent"
+      }
+    },
+    {
+      "component_id": "ros2-mcap",
+      "component_type": "source_adapter",
+      "display_name": "Bounded ROS 2/MCAP recorded-state adapter",
+      "package_path": "adapters/ros2_mcap",
+      "package_name": "metriplane-ros2-mcap-adapter",
+      "package_version": "1.0.0",
+      "package_license_expression": "MIT AND Apache-2.0 AND BSD-3-Clause",
+      "module_name": "ros2_mcap_adapter",
+      "cli_name": "metriplane-ros2-mcap",
+      "python_versions": [
+        "3.12",
+        "3.13"
+      ],
+      "full_suite_python_versions": [
+        "3.12"
+      ],
+      "operating_systems": [
+        "ubuntu"
+      ],
+      "format_policy": {
+        "mode": "checked_in",
+        "expected_reformatted_files": []
+      },
+      "commands": {
+        "sync": "uv sync --frozen --extra test",
+        "unit_tests": "uv run --frozen python -m pytest -q",
+        "lint": "uv run --frozen ruff check .",
+        "format": "uv run --frozen ruff format --check .",
+        "type_check": null,
+        "build": "uv build --sdist --wheel --out-dir {dist}",
+        "import_check": "uv run --frozen python -c 'import ros2_mcap_adapter'",
+        "cli_help": "uv run --frozen metriplane-ros2-mcap --help",
+        "source_inspection": "uv run --frozen metriplane-ros2-mcap inspect --source source/metriplane-synthetic-recorded-state-v1.mcap",
+        "conversion": "uv run --frozen metriplane-ros2-mcap generate-source --out {temp}/generated-source.mcap && cmp source/metriplane-synthetic-recorded-state-v1.mcap {temp}/generated-source.mcap && for index in 1 2 3; do uv run --frozen metriplane-ros2-mcap convert --source {temp}/generated-source.mcap --config config/frozen-config.json --out {temp}/conversions/$index --adapter-commit {adapter_commit}; done",
+        "finalization": "uv run --frozen metriplane-ros2-mcap finalize-equivalence --conversion-root {temp}/conversions/1 --conversion-root {temp}/conversions/2 --conversion-root {temp}/conversions/3 --run-id clean-conversion-1 --run-id clean-conversion-2 --run-id clean-conversion-3 --out {temp}/final && diff --recursive --brief {repo}/examples/external_sources/ros2_mcap {temp}/final"
+      },
+      "known_gaps": [
+        "Frozen conversion/finalization requires CPython 3.12, Linux x86_64 and Linux no-clobber publication primitives.",
+        "The source-family matrix row is stale and still describes this bounded synthetic profile as not tested.",
+        "No package-local static type-check command is defined."
+      ],
+      "adapter_id": "org.metriplane.ros2_mcap_recorded_state",
+      "classification": "synthetic_format_engineering",
+      "source_adapter_sdk_required": false,
+      "source_fixture_path": "adapters/ros2_mcap/source/metriplane-synthetic-recorded-state-v1.mcap",
+      "source_origin": "Metriplane-authored synthetic ROS 2 PoseStamped and TF data in an MCAP container.",
+      "source_rights_profile": "MIT AND Apache-2.0 AND BSD-3-Clause with the checked-in third-party notice.",
+      "portable_fixture_variants": [
+        "ros2-mcap-incident",
+        "ros2-mcap-control"
+      ],
+      "proof": {
+        "status": "distributed",
+        "paths": [
+          "examples/external_sources/ros2_mcap/conversion-summary.json",
+          "docs/user-guide/ros2-mcap-recorded-state-profile"
+        ]
+      },
+      "dedicated_workflow": {
+        "path": ".github/workflows/ros2-mcap-recorded-state.yml",
+        "triggers": [
+          "pull_request",
+          "merge_group",
+          "push",
+          "workflow_dispatch"
+        ],
+        "pull_request_paths_filtered": true,
+        "runs_every_pull_request": false
+      },
+      "source_conversion_available": true,
+      "source_conversion_requires_external_framework": false,
+      "source_conversion_requires_network": false,
+      "source_conversion_commit": "686c38c2f8ca34439f851b5d62c8f7cd1cfddac8",
+      "source_conversion_python_versions": [
+        "3.12"
+      ],
+      "source_conversion_operating_systems": [
+        "ubuntu"
+      ],
+      "expected_results": {
+        "incident_fixture_id": "ros2_mcap_synthetic_incident_v1",
+        "control_fixture_id": "ros2_mcap_synthetic_control_v1"
+      },
+      "determinism_policy": "Three clean conversions and three Atlas runs per variant are compared using declared technical equivalence.",
+      "ignored_source_fields": [
+        "source_outcome.success",
+        "source_outcome.result",
+        "source_outcome.alarm",
+        "source_outcome.action",
+        "source_outcome.annotation",
+        "container log time",
+        "container publish time",
+        "orientation"
+      ],
+      "forbidden_upstream_artifacts": [],
+      "required_notices": [
+        "adapters/ros2_mcap/src/ros2_mcap_adapter/THIRD_PARTY_NOTICES.md"
+      ],
+      "expected_wheel_contents": [
+        "ros2_mcap_adapter/*.py",
+        "ros2_mcap_adapter/THIRD_PARTY_NOTICES.md",
+        "ros2_mcap_adapter/data/frozen-config.json",
+        "ros2_mcap_adapter/data/uv.lock"
+      ],
+      "forbidden_wheel_contents": [
+        "**/*.mcap",
+        "**/*.db3"
+      ],
+      "common_mutation_groups": [
+        "json_structural",
+        "identity",
+        "time",
+        "coordinates",
+        "rights",
+        "trust_layers",
+        "filesystem"
+      ],
+      "adapter_specific_mutation_groups": [
+        "ros2_mcap_streams",
+        "ros2_tf",
+        "excluded_field_invariance"
+      ],
+      "known_limitations": [
+        "One exact Metriplane-authored MCAP, two configured PoseStamped channels, one TF chain and exact co-timestamping only.",
+        "No ROS graph, arbitrary topic discovery, interpolation, extrapolation or live transport."
+      ],
+      "claim_boundary": "Synthetic format-engineering evidence for one recorded-state profile, not general ROS 2, MCAP, rosbag2 or TF2 compatibility.",
+      "matrix_row_id": "ros2_mcap_tf2",
+      "matrix_consistency": {
+        "status": "documented_gap",
+        "matrix_decision": "NOT TESTED",
+        "deterministic_conversion_status": "NOT APPLICABLE",
+        "reason": "The published source-family matrix predates the bounded synthetic ROS 2/MCAP profile; this gate records and tests the implementation without silently rewriting that publication artifact."
+      }
+    },
+    {
+      "component_id": "massrobotics-amr",
+      "component_type": "source_adapter",
+      "display_name": "Bounded MassRobotics AMR offline-replay adapter",
+      "package_path": "adapters/massrobotics_amr",
+      "package_name": "metriplane-massrobotics-amr-adapter",
+      "package_version": "1.0.0",
+      "package_license_expression": "MIT",
+      "module_name": "massrobotics_amr_adapter",
+      "cli_name": "metriplane-massrobotics-amr",
+      "python_versions": [
+        "3.12",
+        "3.13"
+      ],
+      "full_suite_python_versions": [
+        "3.12"
+      ],
+      "operating_systems": [
+        "ubuntu"
+      ],
+      "format_policy": {
+        "mode": "checked_in",
+        "expected_reformatted_files": []
+      },
+      "commands": {
+        "sync": "uv sync --frozen --extra test",
+        "unit_tests": "uv run --frozen python -m pytest -q",
+        "lint": "uv run --frozen ruff check .",
+        "format": "uv run --frozen ruff format --check .",
+        "type_check": null,
+        "build": "uv build --sdist --wheel --out-dir {dist}",
+        "import_check": "uv run --frozen python -c 'import massrobotics_amr_adapter'",
+        "cli_help": "uv run --frozen metriplane-massrobotics-amr --help",
+        "source_inspection": "uv run --frozen metriplane-massrobotics-amr inspect --source-root source/incident --config config/frozen-config.json",
+        "conversion": "for variant in incident control; do for index in 1 2 3; do uv run --frozen metriplane-massrobotics-amr convert --source-root source/$variant --config config/frozen-config.json --adapter-commit {adapter_commit} --out {temp}/conversions/$variant-$index; done; done",
+        "finalization": "uv run --frozen metriplane-massrobotics-amr finalize-equivalence --conversion-root {temp}/conversions/incident-1 --conversion-root {temp}/conversions/incident-2 --conversion-root {temp}/conversions/incident-3 --conversion-root {temp}/conversions/control-1 --conversion-root {temp}/conversions/control-2 --conversion-root {temp}/conversions/control-3 --run-id incident-clean-1 --run-id incident-clean-2 --run-id incident-clean-3 --run-id control-clean-1 --run-id control-clean-2 --run-id control-clean-3 --out {temp}/final && diff --recursive --brief {repo}/examples/external_sources/massrobotics_amr {temp}/final"
+      },
+      "known_gaps": [
+        "Frozen conversion identity records CPython 3.12, Linux x86_64; current dedicated CI covers Ubuntu 3.12 only.",
+        "Portable capability rows remain correctly recorded as not demonstrated.",
+        "No package-local static type-check command is defined."
+      ],
+      "adapter_id": "org.metriplane.massrobotics_amr_offline_replay",
+      "classification": "synthetic_format_engineering",
+      "source_adapter_sdk_required": true,
+      "source_fixture_path": "adapters/massrobotics_amr/source",
+      "source_origin": "Metriplane-authored synthetic MassRobotics-format identity and status records.",
+      "source_rights_profile": "Synthetic source is MIT; referenced MassRobotics materials are reference-only and excluded.",
+      "portable_fixture_variants": [
+        "massrobotics-amr-incident",
+        "massrobotics-amr-control"
+      ],
+      "proof": {
+        "status": "dedicated",
+        "paths": [
+          "proofs/massrobotics-amr-offline-replay-v1"
+        ]
+      },
+      "dedicated_workflow": {
+        "path": ".github/workflows/massrobotics-amr-offline-replay.yml",
+        "triggers": [
+          "pull_request",
+          "merge_group",
+          "push",
+          "workflow_dispatch"
+        ],
+        "pull_request_paths_filtered": true,
+        "runs_every_pull_request": false
+      },
+      "source_conversion_available": true,
+      "source_conversion_requires_external_framework": false,
+      "source_conversion_requires_network": false,
+      "source_conversion_commit": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
+      "source_conversion_python_versions": [
+        "3.12"
+      ],
+      "source_conversion_operating_systems": [
+        "ubuntu"
+      ],
+      "expected_results": {
+        "incident_fixture_id": "massrobotics_amr_synthetic_incident_v1",
+        "control_fixture_id": "massrobotics_amr_synthetic_control_v1"
+      },
+      "determinism_policy": "Three clean conversions per source variant and three Atlas runs per portable variant are compared using declared technical equivalence.",
+      "ignored_source_fields": [
+        "manufacturer",
+        "robot model",
+        "serial number",
+        "base envelope",
+        "operationalState",
+        "orientation after validation",
+        "velocity",
+        "battery",
+        "remaining runtime",
+        "load",
+        "error codes",
+        "destinations",
+        "path predictions"
+      ],
+      "forbidden_upstream_artifacts": [
+        "AMR_Interop_Standard.json",
+        "AMR_Interop_Standard.pdf",
+        "official example messages",
+        "official sender code",
+        "official receiver code"
+      ],
+      "required_notices": [
+        "proofs/massrobotics-amr-offline-replay-v1/rights-decision.md"
+      ],
+      "expected_wheel_contents": [
+        "massrobotics_amr_adapter/*.py",
+        "massrobotics_amr_adapter/data/frozen-config.json",
+        "massrobotics_amr_adapter/data/source/control/*.jsonl",
+        "massrobotics_amr_adapter/data/source/incident/*.jsonl",
+        "massrobotics_amr_adapter/data/uv.lock"
+      ],
+      "forbidden_wheel_contents": [
+        "**/AMR_Interop_Standard.json",
+        "**/AMR_Interop_Standard.pdf",
+        "**/identityReport1.json",
+        "**/statusReport1.json"
+      ],
+      "common_mutation_groups": [
+        "json_structural",
+        "identity",
+        "time",
+        "coordinates",
+        "rights",
+        "trust_layers",
+        "filesystem"
+      ],
+      "adapter_specific_mutation_groups": [
+        "massrobotics_clock",
+        "massrobotics_datum",
+        "massrobotics_complete_snapshot",
+        "excluded_field_invariance"
+      ],
+      "known_limitations": [
+        "Two synthetic AMRs, one datum, current location only, identity transform and operator-configured metre binding.",
+        "No transport, live session, path normalization, control, fleet semantics or standards conformance."
+      ],
+      "claim_boundary": "A bounded synthetic offline-replay mapping, not generic MassRobotics compatibility or conformance.",
+      "matrix_row_id": "massrobotics_amr_offline_replay",
+      "matrix_consistency": {
+        "status": "consistent"
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "family_id": "minimal",
+      "display_name": "Minimal External Source Contract fixture",
+      "classification": "contract_baseline",
+      "adapter_id": "org.metriplane.synthetic_fixture_adapter",
+      "family_path": "examples/external_sources/minimal",
+      "source_framework_required_for_portable_evaluation": false,
+      "adapter_package_required_for_portable_evaluation": false,
+      "variants": [
+        {
+          "variant_id": "minimal-baseline",
+          "kind": "baseline",
+          "path": "examples/external_sources/minimal",
+          "fixture_id": "synthetic-inspection-bench-v1",
+          "fixture_fingerprint": "de71713341e997da5154bbda79c84c8b37bc7e543ee40ba7293cbc42ab91845d",
+          "session_sha256": "79e5cb801fce1df9e1c54535f578ab9cd416493703fc4e9ca865aff52f1b056c",
+          "expected": {
+            "frame_count": 4,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 0,
+                "ts": 0.0,
+                "event_type": "step_completed"
+              },
+              {
+                "frame_id": 1,
+                "ts": 1.0,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 2,
+                "ts": 3.5,
+                "event_type": "step_delayed"
+              },
+              {
+                "frame_id": 3,
+                "ts": 4.0,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 3,
+                "ts": 4.0,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 1,
+            "incident_count": 1,
+            "incident_types": [
+              "missing_tool_caused_delay"
+            ],
+            "evidence_bundle": "produced",
+            "bundle_verification": "pass",
+            "generated_regression": "produced",
+            "regression_execution": "pass"
+          }
+        }
+      ],
+      "deterministic_atlas_runs": 3,
+      "relocation_required": true,
+      "expected_outcome_is_test_only": true,
+      "claim_boundary": "Source-independent Contract v1 and root-wheel baseline; it is not a source-adapter proof."
+    },
+    {
+      "family_id": "maniskill_pickcube",
+      "display_name": "ManiSkill PickCube",
+      "classification": "proven_external_source",
+      "adapter_id": "org.metriplane.maniskill_pickcube",
+      "family_path": "examples/external_sources/maniskill_pickcube",
+      "source_framework_required_for_portable_evaluation": false,
+      "adapter_package_required_for_portable_evaluation": false,
+      "variants": [
+        {
+          "variant_id": "maniskill-incident",
+          "kind": "incident",
+          "path": "examples/external_sources/maniskill_pickcube/incident",
+          "fixture_id": "maniskill-pickcube-episode-0-planar-incident-v1",
+          "fixture_fingerprint": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
+          "session_sha256": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df",
+          "expected": {
+            "frame_count": 75,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 66,
+                "ts": 3.3,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 70,
+                "ts": 3.5,
+                "event_type": "step_delayed"
+              },
+              {
+                "frame_id": 71,
+                "ts": 3.55,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 71,
+                "ts": 3.55,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 1,
+            "incident_count": 1,
+            "incident_types": [
+              "missing_tool_caused_delay"
+            ],
+            "evidence_bundle": "produced",
+            "bundle_verification": "pass",
+            "generated_regression": "produced",
+            "regression_execution": "pass"
+          }
+        },
+        {
+          "variant_id": "maniskill-control",
+          "kind": "control",
+          "path": "examples/external_sources/maniskill_pickcube/control",
+          "fixture_id": "maniskill-pickcube-episode-0-planar-control-v1",
+          "fixture_fingerprint": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
+          "session_sha256": "7302878b71b145df634fca84db321804b02764312584db43af6ad9e945f452df",
+          "expected": {
+            "frame_count": 75,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 66,
+                "ts": 3.3,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 71,
+                "ts": 3.55,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 71,
+                "ts": 3.55,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 0,
+            "incident_count": 0,
+            "incident_types": [],
+            "evidence_bundle": "not_produced",
+            "bundle_verification": "not_applicable",
+            "generated_regression": "not_produced",
+            "regression_execution": "not_applicable"
+          }
+        }
+      ],
+      "deterministic_atlas_runs": 3,
+      "relocation_required": true,
+      "expected_outcome_is_test_only": true,
+      "claim_boundary": "Portable evaluation of one pinned normalized trajectory pair; no source framework is installed."
+    },
+    {
+      "family_id": "robomimic_lowdim",
+      "display_name": "robomimic low-dimensional Can",
+      "classification": "proven_external_source",
+      "adapter_id": "org.metriplane.robomimic_lowdim",
+      "family_path": "examples/external_sources/robomimic_lowdim",
+      "source_framework_required_for_portable_evaluation": false,
+      "adapter_package_required_for_portable_evaluation": false,
+      "variants": [
+        {
+          "variant_id": "robomimic-incident",
+          "kind": "incident",
+          "path": "examples/external_sources/robomimic_lowdim/incident",
+          "fixture_id": "robomimic-can-ph-demo-0-planar-incident-v1",
+          "fixture_fingerprint": "6ea89f1d4a4ceb8605a8670db3f2065b09f8043b665ef5815d8799f2c5c3b0e6",
+          "session_sha256": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246",
+          "expected": {
+            "frame_count": 118,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 0,
+                "ts": 0.0,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 40,
+                "ts": 2.0,
+                "event_type": "step_delayed"
+              },
+              {
+                "frame_id": 42,
+                "ts": 2.1,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 42,
+                "ts": 2.1,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 1,
+            "incident_count": 1,
+            "incident_types": [
+              "missing_tool_caused_delay"
+            ],
+            "evidence_bundle": "produced",
+            "bundle_verification": "pass",
+            "generated_regression": "produced",
+            "regression_execution": "pass"
+          }
+        },
+        {
+          "variant_id": "robomimic-control",
+          "kind": "control",
+          "path": "examples/external_sources/robomimic_lowdim/control",
+          "fixture_id": "robomimic-can-ph-demo-0-planar-control-v1",
+          "fixture_fingerprint": "dc9d9f24a04f663e84489869eac3a648894d013674f6d62a889892cea592bddf",
+          "session_sha256": "bc97300ef173f2c60635197d9e54bef0447752a483d3bd747ca2f449a5455246",
+          "expected": {
+            "frame_count": 118,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 0,
+                "ts": 0.0,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 42,
+                "ts": 2.1,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 42,
+                "ts": 2.1,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 0,
+            "incident_count": 0,
+            "incident_types": [],
+            "evidence_bundle": "not_produced",
+            "bundle_verification": "not_applicable",
+            "generated_regression": "not_produced",
+            "regression_execution": "not_applicable"
+          }
+        }
+      ],
+      "deterministic_atlas_runs": 3,
+      "relocation_required": true,
+      "expected_outcome_is_test_only": true,
+      "claim_boundary": "Portable evaluation of one pinned normalized low-dimensional trajectory pair; no source framework is installed."
+    },
+    {
+      "family_id": "ros2_mcap",
+      "display_name": "Bounded ROS 2/MCAP recorded state",
+      "classification": "synthetic_format_engineering",
+      "adapter_id": "org.metriplane.ros2_mcap_recorded_state",
+      "family_path": "examples/external_sources/ros2_mcap",
+      "source_framework_required_for_portable_evaluation": false,
+      "adapter_package_required_for_portable_evaluation": false,
+      "variants": [
+        {
+          "variant_id": "ros2-mcap-incident",
+          "kind": "incident",
+          "path": "examples/external_sources/ros2_mcap/incident",
+          "fixture_id": "ros2_mcap_synthetic_incident_v1",
+          "fixture_fingerprint": "b88fe8731b3d9ed63414b6bd3d4af8be0d68e8259ed6c467fbf9df63e2bece66",
+          "session_sha256": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8",
+          "expected": {
+            "frame_count": 60,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 5,
+                "ts": 0.5,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 10,
+                "ts": 1.0,
+                "event_type": "step_delayed"
+              },
+              {
+                "frame_id": 15,
+                "ts": 1.5,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 15,
+                "ts": 1.5,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 1,
+            "incident_count": 1,
+            "incident_types": [
+              "missing_tool_caused_delay"
+            ],
+            "evidence_bundle": "produced",
+            "bundle_verification": "pass",
+            "generated_regression": "produced",
+            "regression_execution": "pass"
+          }
+        },
+        {
+          "variant_id": "ros2-mcap-control",
+          "kind": "control",
+          "path": "examples/external_sources/ros2_mcap/control",
+          "fixture_id": "ros2_mcap_synthetic_control_v1",
+          "fixture_fingerprint": "2d7b98ffba20bd91b13c8ee311bacf9365b64d8dd5b56b8eaa1898226c3c9062",
+          "session_sha256": "4404c092ef1d8940a115c68bcfde4f8f0ac1065a968aaa7e318f3fa8c61d2ee8",
+          "expected": {
+            "frame_count": 60,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 5,
+                "ts": 0.5,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 15,
+                "ts": 1.5,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 15,
+                "ts": 1.5,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 0,
+            "incident_count": 0,
+            "incident_types": [],
+            "evidence_bundle": "not_produced",
+            "bundle_verification": "not_applicable",
+            "generated_regression": "not_produced",
+            "regression_execution": "not_applicable"
+          }
+        }
+      ],
+      "deterministic_atlas_runs": 3,
+      "relocation_required": true,
+      "expected_outcome_is_test_only": true,
+      "claim_boundary": "Portable evaluation of a Metriplane-authored synthetic recorded-state profile; no transport or ROS graph is reconstructed."
+    },
+    {
+      "family_id": "massrobotics_amr",
+      "display_name": "Bounded MassRobotics AMR offline replay",
+      "classification": "synthetic_format_engineering",
+      "adapter_id": "org.metriplane.massrobotics_amr_offline_replay",
+      "family_path": "examples/external_sources/massrobotics_amr",
+      "source_framework_required_for_portable_evaluation": false,
+      "adapter_package_required_for_portable_evaluation": false,
+      "variants": [
+        {
+          "variant_id": "massrobotics-amr-incident",
+          "kind": "incident",
+          "path": "examples/external_sources/massrobotics_amr/incident",
+          "fixture_id": "massrobotics_amr_synthetic_incident_v1",
+          "fixture_fingerprint": "1fde0761f477e21a2edb70a0e0a9884b1b02d0ddc52c5ec0f070411e915df426",
+          "session_sha256": "1be26a22170825a2d6e7706ea74951bf7ed631a0c913f29df7d507fa3b190038",
+          "expected": {
+            "frame_count": 9,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 2,
+                "ts": 2.0,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 5,
+                "ts": 5.0,
+                "event_type": "step_delayed"
+              },
+              {
+                "frame_id": 6,
+                "ts": 6.0,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 6,
+                "ts": 6.0,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 1,
+            "incident_count": 1,
+            "incident_types": [
+              "missing_tool_caused_delay"
+            ],
+            "evidence_bundle": "produced",
+            "bundle_verification": "pass",
+            "generated_regression": "produced",
+            "regression_execution": "pass"
+          }
+        },
+        {
+          "variant_id": "massrobotics-amr-control",
+          "kind": "control",
+          "path": "examples/external_sources/massrobotics_amr/control",
+          "fixture_id": "massrobotics_amr_synthetic_control_v1",
+          "fixture_fingerprint": "be6b038868a69be056e40280abbe47135d7631bccfec74e29bec6ae86449b912",
+          "session_sha256": "abe0c0b9a1f8cc8968c8c2e5f9551b3f9bc042eddacf9149108e8ab3b7b35042",
+          "expected": {
+            "frame_count": 9,
+            "objects_per_frame": 2,
+            "events": [
+              {
+                "frame_id": 2,
+                "ts": 2.0,
+                "event_type": "required_asset_missing"
+              },
+              {
+                "frame_id": 4,
+                "ts": 4.0,
+                "event_type": "required_asset_present"
+              },
+              {
+                "frame_id": 4,
+                "ts": 4.0,
+                "event_type": "step_completed"
+              }
+            ],
+            "deviation_count": 0,
+            "incident_count": 0,
+            "incident_types": [],
+            "evidence_bundle": "not_produced",
+            "bundle_verification": "not_applicable",
+            "generated_regression": "not_produced",
+            "regression_execution": "not_applicable"
+          }
+        }
+      ],
+      "deterministic_atlas_runs": 3,
+      "relocation_required": true,
+      "expected_outcome_is_test_only": true,
+      "claim_boundary": "Portable evaluation of Metriplane-authored synthetic current-location records; no general MassRobotics support is claimed."
+    }
+  ],
+  "unsupported_families": [
+    {
+      "family_id": "calvin",
+      "display_name": "CALVIN",
+      "status": "NO-GO",
+      "matrix_row_id": "calvin",
+      "evidence_path": "docs/specs/calvin-semantic-state-adapter-audit.md",
+      "evidence_sha256": "e87fb2ee2509afba9633683074a7786325a3104619905a6129dda12655747388",
+      "blocking_reasons": [
+        "Dataset and derived-state redistribution rights are unresolved.",
+        "The audited source lacks a source-authoritative per-sample clock."
+      ],
+      "forbidden_adapter_glob": "adapters/calvin*",
+      "forbidden_fixture_glob": "examples/external_sources/calvin*",
+      "claim_boundary": "CALVIN remains an audited non-executable NO-GO family; no adapter or portable fixture exists."
+    }
+  ],
+  "discovery_policy": {
+    "adapter_root": "adapters",
+    "fixture_root": "examples/external_sources",
+    "proof_root": "proofs",
+    "matrix_path": "docs/user-guide/external-source-family-matrix-v1/matrix.json",
+    "matrix_verified_statuses": [
+      "VERIFIED"
+    ],
+    "matrix_nonverified_statuses": [
+      "NOT APPLICABLE"
+    ]
+  }
+}

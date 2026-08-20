@@ -1,0 +1,507 @@
+{
+  "schema_version": "metriplane.cross_adapter_mutation_catalog.v1",
+  "mutations": [
+    {
+      "mutation_id": "json.malformed",
+      "group": "json_structural",
+      "applies_to": ["shared"],
+      "mutation": "Replace a required JSON document with malformed JSON.",
+      "rejecting_component": "external_source_contract",
+      "failure_stage": "preflight_parse",
+      "error_category": "malformed_json",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "json.duplicate_key",
+      "group": "json_structural",
+      "applies_to": ["shared", "massrobotics-amr"],
+      "mutation": "Insert a duplicate JSON object key.",
+      "rejecting_component": "strict_json_loader",
+      "failure_stage": "preflight_parse",
+      "error_category": "duplicate_json_key",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py", "adapters/massrobotics_amr/tests/test_source_validation.py"]
+    },
+    {
+      "mutation_id": "json.invalid_utf8",
+      "group": "json_structural",
+      "applies_to": ["shared"],
+      "mutation": "Encode a required JSON file with invalid UTF-8.",
+      "rejecting_component": "external_source_contract",
+      "failure_stage": "preflight_parse",
+      "error_category": "invalid_encoding",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "json.unexpected_field",
+      "group": "json_structural",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Add an unexpected field to a strict model.",
+      "rejecting_component": "profile_validator",
+      "failure_stage": "preflight_schema",
+      "error_category": "unexpected_field",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py", "adapters/source_adapter_sdk/tests/test_validation_negative.py"]
+    },
+    {
+      "mutation_id": "json.missing_required",
+      "group": "json_structural",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Remove a required field.",
+      "rejecting_component": "profile_validator",
+      "failure_stage": "preflight_schema",
+      "error_category": "missing_required_field",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "json.nonfinite",
+      "group": "json_structural",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Replace a finite number with NaN or infinity.",
+      "rejecting_component": "profile_validator",
+      "failure_stage": "preflight_schema",
+      "error_category": "nonfinite_number",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py", "adapters/source_adapter_sdk/tests/test_canonical.py"]
+    },
+    {
+      "mutation_id": "json.unsupported_schema",
+      "group": "json_structural",
+      "applies_to": ["shared"],
+      "mutation": "Change the External Source Contract schema version.",
+      "rejecting_component": "external_source_contract",
+      "failure_stage": "preflight_schema",
+      "error_category": "unsupported_schema_version",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "identity.unknown_entity",
+      "group": "identity",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Add an unknown process-relevant source entity.",
+      "rejecting_component": "entity_mapping_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "unknown_entity",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "identity.duplicate_object",
+      "group": "identity",
+      "applies_to": ["shared"],
+      "mutation": "Duplicate a normalized object ID within one frame.",
+      "rejecting_component": "frame_state_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "duplicate_object_id",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "identity.missing_mapping",
+      "group": "identity",
+      "applies_to": ["shared"],
+      "mutation": "Remove a process-relevant entity mapping.",
+      "rejecting_component": "entity_mapping_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "missing_entity_mapping",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "identity.unknown_asset",
+      "group": "identity",
+      "applies_to": ["shared"],
+      "mutation": "Map a source entity to an unknown Atlas asset.",
+      "rejecting_component": "entity_mapping_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "unknown_asset",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "time.nonmonotonic",
+      "group": "time",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Move a source or normalized timestamp backwards.",
+      "rejecting_component": "clock_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "nonmonotonic_time",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "time.conflicting_duplicate",
+      "group": "time",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Duplicate a timestamp with conflicting current state.",
+      "rejecting_component": "clock_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "conflicting_duplicate_time",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "time.missing_authority",
+      "group": "time",
+      "applies_to": ["shared"],
+      "mutation": "Remove the declared authoritative clock.",
+      "rejecting_component": "external_source_contract",
+      "failure_stage": "preflight_semantics",
+      "error_category": "missing_clock_authority",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "time.undeclared_carry_forward",
+      "group": "time",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Request or perform carry-forward where the profile forbids it.",
+      "rejecting_component": "temporal_policy_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "undeclared_temporal_operation",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "time.undeclared_interpolation",
+      "group": "time",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Request or perform interpolation where the profile forbids it.",
+      "rejecting_component": "temporal_policy_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "undeclared_temporal_operation",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "time.missing_complete_snapshot",
+      "group": "time",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Remove one process-relevant entity from one frame.",
+      "rejecting_component": "completeness_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "incomplete_snapshot",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "coordinates.missing_frame",
+      "group": "coordinates",
+      "applies_to": ["shared"],
+      "mutation": "Remove the target coordinate frame declaration.",
+      "rejecting_component": "normalization_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "missing_coordinate_frame",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "coordinates.missing_unit",
+      "group": "coordinates",
+      "applies_to": ["shared"],
+      "mutation": "Remove the source or target linear unit.",
+      "rejecting_component": "normalization_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "missing_coordinate_unit",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "coordinates.unsupported_transform",
+      "group": "coordinates",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Request a transform outside the declared profile.",
+      "rejecting_component": "transform_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "unsupported_transform",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "coordinates.zone_transform_conflation",
+      "group": "coordinates",
+      "applies_to": ["shared"],
+      "mutation": "Declare zone assignment as a coordinate transform.",
+      "rejecting_component": "normalization_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "trust_layer_conflation",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "rights.reference_only_included",
+      "group": "rights",
+      "applies_to": ["shared", "maniskill-pickcube", "robomimic-lowdim", "massrobotics-amr"],
+      "mutation": "Mark reference-only upstream bytes as included or package them.",
+      "rejecting_component": "rights_validator",
+      "failure_stage": "preflight_rights",
+      "error_category": "reference_only_bytes_included",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py", "tests/external_sources/test_massrobotics_amr_offline_replay_fixture.py"]
+    },
+    {
+      "mutation_id": "rights.wrong_source_hash",
+      "group": "rights",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Change a frozen source SHA-256 without changing the source identity record.",
+      "rejecting_component": "source_identity_validator",
+      "failure_stage": "preflight_integrity",
+      "error_category": "source_hash_mismatch",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "rights.missing_notice",
+      "group": "rights",
+      "applies_to": ["ros2-mcap", "maniskill-pickcube"],
+      "mutation": "Remove a required third-party notice.",
+      "rejecting_component": "package_rights_check",
+      "failure_stage": "package_inspection",
+      "error_category": "missing_notice",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/ros2_mcap/tests/test_fixture.py", "tests/external_sources/test_maniskill_pickcube_fixture.py"]
+    },
+    {
+      "mutation_id": "trust.source_event",
+      "group": "trust_layers",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Insert a source annotation into FrameStateModel.events.",
+      "rejecting_component": "trust_layer_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "source_event_taint",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "trust.expected_outcome_input",
+      "group": "trust_layers",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Declare expected-outcome.json as a conversion or Atlas input.",
+      "rejecting_component": "trust_layer_validator",
+      "failure_stage": "preflight_semantics",
+      "error_category": "expected_outcome_taint",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "trust.source_outcome_incident",
+      "group": "trust_layers",
+      "applies_to": ["all_adapters"],
+      "mutation": "Use source success, failure, reward or error codes as Atlas incident truth.",
+      "rejecting_component": "adapter_profile_validator",
+      "failure_stage": "conversion",
+      "error_category": "source_outcome_taint",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/maniskill_pickcube/tests/test_anti_taint.py", "adapters/robomimic_lowdim/tests/test_anti_taint.py", "adapters/ros2_mcap/tests/test_anti_taint.py", "adapters/massrobotics_amr/tests/test_conversion.py"]
+    },
+    {
+      "mutation_id": "trust.prediction_promoted",
+      "group": "trust_layers",
+      "applies_to": ["massrobotics-amr"],
+      "mutation": "Promote a predicted path point to a current observation.",
+      "rejecting_component": "massrobotics_profile_validator",
+      "failure_stage": "conversion",
+      "error_category": "prediction_taint",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/massrobotics_amr/tests/test_source_validation.py"]
+    },
+    {
+      "mutation_id": "filesystem.checksum_mismatch",
+      "group": "filesystem",
+      "applies_to": ["shared"],
+      "mutation": "Modify an inventoried fixture file without updating its checksum.",
+      "rejecting_component": "fixture_integrity_validator",
+      "failure_stage": "preflight_integrity",
+      "error_category": "checksum_mismatch",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "filesystem.extra_file",
+      "group": "filesystem",
+      "applies_to": ["shared"],
+      "mutation": "Add an unrecognized portable fixture file.",
+      "rejecting_component": "fixture_inventory_validator",
+      "failure_stage": "preflight_integrity",
+      "error_category": "unexpected_file",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "filesystem.path_traversal",
+      "group": "filesystem",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Insert a parent-traversal, absolute, drive-prefixed or backslash path.",
+      "rejecting_component": "path_safety_validator",
+      "failure_stage": "preflight_paths",
+      "error_category": "unsafe_path",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py", "adapters/source_adapter_sdk/tests/test_validation_negative.py"]
+    },
+    {
+      "mutation_id": "filesystem.symlink",
+      "group": "filesystem",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Replace a required regular file with a symlink.",
+      "rejecting_component": "path_safety_validator",
+      "failure_stage": "preflight_paths",
+      "error_category": "symlink_rejected",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_source_contract_models.py"]
+    },
+    {
+      "mutation_id": "filesystem.output_overlap",
+      "group": "filesystem",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Choose an output that equals, contains or is contained by the input.",
+      "rejecting_component": "publication_boundary",
+      "failure_stage": "preflight_paths",
+      "error_category": "path_overlap",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["tests/external_sources/test_external_execution.py"]
+    },
+    {
+      "mutation_id": "filesystem.destination_collision",
+      "group": "filesystem",
+      "applies_to": ["shared", "all_adapters"],
+      "mutation": "Publish into an existing destination without an authorized overwrite path.",
+      "rejecting_component": "publication_boundary",
+      "failure_stage": "publication",
+      "error_category": "destination_exists",
+      "atlas_must_remain_uncalled": false,
+      "coverage_paths": ["tests/external_sources/test_external_execution.py"]
+    },
+    {
+      "mutation_id": "maniskill.trajectory_selection",
+      "group": "maniskill_trajectory",
+      "applies_to": ["maniskill-pickcube"],
+      "mutation": "Select another or incomplete trajectory or alter its frozen identity.",
+      "rejecting_component": "maniskill_profile_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "trajectory_identity_mismatch",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/maniskill_pickcube/tests/test_negative.py"]
+    },
+    {
+      "mutation_id": "robomimic.hdf5_shape",
+      "group": "robomimic_hdf5",
+      "applies_to": ["robomimic-lowdim"],
+      "mutation": "Remove a required group/dataset or change its length, dtype or shape.",
+      "rejecting_component": "robomimic_profile_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "hdf5_structure_mismatch",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/robomimic_lowdim/tests/test_negative.py"]
+    },
+    {
+      "mutation_id": "ros2.stream_identity",
+      "group": "ros2_mcap_streams",
+      "applies_to": ["ros2-mcap"],
+      "mutation": "Rename, retype, duplicate or remove a configured MCAP channel or schema.",
+      "rejecting_component": "ros2_mcap_profile_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "stream_identity_mismatch",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/ros2_mcap/tests/test_decoder.py"]
+    },
+    {
+      "mutation_id": "ros2.tf_ambiguity",
+      "group": "ros2_tf",
+      "applies_to": ["ros2-mcap"],
+      "mutation": "Remove a TF edge or create an ambiguous/cyclic transform graph.",
+      "rejecting_component": "ros2_tf_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "invalid_tf_chain",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/ros2_mcap/tests/test_decoder.py"]
+    },
+    {
+      "mutation_id": "massrobotics.clock",
+      "group": "massrobotics_clock",
+      "applies_to": ["massrobotics-amr"],
+      "mutation": "Use naive, over-precise, nonmonotonic or wrong-gap source timestamps.",
+      "rejecting_component": "massrobotics_clock_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "invalid_source_time",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/massrobotics_amr/tests/test_source_validation.py"]
+    },
+    {
+      "mutation_id": "massrobotics.datum",
+      "group": "massrobotics_datum",
+      "applies_to": ["massrobotics-amr"],
+      "mutation": "Remove, alter or conflict the authoritative current-location datum.",
+      "rejecting_component": "massrobotics_datum_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "invalid_datum",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/massrobotics_amr/tests/test_source_validation.py"]
+    },
+    {
+      "mutation_id": "massrobotics.snapshot",
+      "group": "massrobotics_complete_snapshot",
+      "applies_to": ["massrobotics-amr"],
+      "mutation": "Remove one AMR status from a required frame or request carry-forward.",
+      "rejecting_component": "massrobotics_snapshot_validator",
+      "failure_stage": "source_inspection",
+      "error_category": "incomplete_snapshot",
+      "atlas_must_remain_uncalled": true,
+      "coverage_paths": ["adapters/massrobotics_amr/tests/test_source_validation.py"]
+    }
+  ],
+  "metamorphic_tests": [
+    {
+      "test_id": "excluded_source_field_invariance",
+      "applies_to": ["all_adapters"],
+      "required_invariants": ["normalized_state", "domain_pack", "atlas_events", "deviations", "incidents"],
+      "permitted_changes": ["declared provenance summaries"],
+      "coverage_paths": ["adapters/maniskill_pickcube/tests/test_anti_taint.py", "adapters/robomimic_lowdim/tests/test_anti_taint.py", "adapters/ros2_mcap/tests/test_anti_taint.py", "adapters/massrobotics_amr/tests/test_conversion.py"]
+    },
+    {
+      "test_id": "expected_outcome_independence",
+      "applies_to": ["shared", "all_adapters"],
+      "required_invariants": ["conversion_output", "conversion_input_fingerprint", "evaluation_behavior"],
+      "permitted_changes": ["test oracle result"],
+      "coverage_paths": ["adapters/massrobotics_amr/tests/test_conversion.py", "tests/external_sources/test_external_execution.py"]
+    },
+    {
+      "test_id": "domain_pack_separation",
+      "applies_to": ["shared"],
+      "required_invariants": ["normalized_session"],
+      "permitted_changes": ["Atlas results according to the changed operator rule", "domain-pack provenance"],
+      "coverage_paths": ["tests/adapter_conformance/test_contract.py"]
+    },
+    {
+      "test_id": "relocation",
+      "applies_to": ["shared", "all_fixtures"],
+      "required_invariants": ["validation", "Atlas technical result", "bundle verification", "regression execution"],
+      "permitted_changes": ["run-specific output paths"],
+      "coverage_paths": ["tests/external_sources/test_external_execution.py", "tests/adapter_conformance/test_contract.py"]
+    },
+    {
+      "test_id": "tamper_detection",
+      "applies_to": ["shared", "all_fixtures"],
+      "required_invariants": ["tamper rejection"],
+      "permitted_changes": [],
+      "coverage_paths": ["tests/external_sources/test_external_execution.py", "tests/test_atlas_core.py"]
+    },
+    {
+      "test_id": "regression_sensitivity",
+      "applies_to": ["all_incident_fixtures"],
+      "required_invariants": ["intentional relevant perturbation is detected"],
+      "permitted_changes": [],
+      "coverage_paths": ["tests/test_atlas_core.py"]
+    },
+    {
+      "test_id": "relevant_state_sensitivity",
+      "applies_to": ["all_incident_fixtures"],
+      "required_invariants": ["normalized current state changes", "durable checksum identity changes", "Atlas regression detects the semantic change"],
+      "permitted_changes": ["Atlas results caused by the relevant state change"],
+      "coverage_paths": ["tests/test_atlas_core.py"]
+    }
+  ]
+}
