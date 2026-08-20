@@ -100,6 +100,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Atlas integration assertions intentionally execute with the base
+          # interpreter, matching the established isolated-adapter CI pattern.
+          uv pip install --system "$GITHUB_WORKSPACE"
           uv sync --locked --extra test --python 3.12
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
