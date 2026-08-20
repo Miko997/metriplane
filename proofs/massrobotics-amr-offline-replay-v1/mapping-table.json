@@ -1,0 +1,159 @@
+{
+  "adapter_id": "org.metriplane.massrobotics_amr_offline_replay",
+  "frame_state_model_version": "1.0",
+  "mappings": [
+    {
+      "atlas_effect": "Binds the normalized object to the configured Atlas asset through entity-mapping.json.",
+      "information_loss": "None for the UUID value.",
+      "normalized_target": "objects[].id",
+      "operation": "identity copy after UUID and registry validation",
+      "source_field": "identity.uuid and status.uuid",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None; identity time is not an evaluation frame.",
+      "information_loss": "Retained as source provenance only.",
+      "normalized_target": null,
+      "operation": "strict UTC parse and validation",
+      "source_field": "identity.timestamp",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "Determines ordered complete-snapshot frame times.",
+      "information_loss": "Absolute UTC remains provenance while elapsed evaluation time is normalized.",
+      "normalized_target": "frame_id, ts_sim_ns, ts",
+      "operation": "strict UTC parse; first status timestamp is origin; exact 1000000000 ns interval",
+      "source_field": "status.timestamp",
+      "trust_layer": "adapter_derived_fact"
+    },
+    {
+      "atlas_effect": "Supplies the current observed X coordinate used with the configured zone rule.",
+      "information_loss": "None under the fixture-specific metre identity binding.",
+      "normalized_target": "objects[].pos_world[0]",
+      "operation": "finite validation and identity copy",
+      "source_field": "status.location.x",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "Supplies the current observed Y coordinate used with the configured zone rule.",
+      "information_loss": "None under the fixture-specific metre identity binding.",
+      "normalized_target": "objects[].pos_world[1]",
+      "operation": "finite validation and identity copy",
+      "source_field": "status.location.y",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "Supplies explicit normalized Z; Atlas rendezvous truth remains planar.",
+      "information_loss": "No numeric loss; Z does not participate in polygon membership.",
+      "normalized_target": "objects[].pos_world[2]",
+      "operation": "finite validation and identity copy",
+      "source_field": "status.location.z",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "Rejects a missing, malformed, changed, or cross-entity datum before Atlas.",
+      "information_loss": "Validated datum is retained in provenance, not FrameStateModel.",
+      "normalized_target": null,
+      "operation": "validate as authoritative current-location datum against configured UUID",
+      "source_field": "status.location.planarDatum",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None.",
+      "information_loss": "Orientation is not normalized into Atlas state.",
+      "normalized_target": null,
+      "operation": "finite, nonzero-norm, tolerance validation; provenance summary only",
+      "source_field": "status.location.angle.{x,y,z,w}",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None; predictions cannot create frames, zone entry, or observations.",
+      "information_loss": "Predicted timestamps and poses remain prediction-validation provenance only.",
+      "normalized_target": null,
+      "operation": "strict timestamp/pose validation; missing datum inherits current datum only for validation; matching explicit datum accepted; conflict rejected",
+      "source_field": "status.path[]",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None.",
+      "information_loss": "Identity descriptive metadata is not normalized.",
+      "normalized_target": null,
+      "operation": "validate and retain or summarize in provenance",
+      "source_field": "identity.manufacturerName, identity.robotModel, identity.robotSerialNumber, identity.baseRobotEnvelope",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None; metamorphic changes cannot alter positions, zones, events, deviations, or incidents.",
+      "information_loss": "Operational state is provenance only.",
+      "normalized_target": null,
+      "operation": "validate and summarize in provenance",
+      "source_field": "status.operationalState",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None; scalar speed is not fabricated as Cartesian velocity.",
+      "information_loss": "Velocity is retained or summarized only as provenance; vel_world is omitted.",
+      "normalized_target": null,
+      "operation": "validate and summarize in provenance",
+      "source_field": "status.velocity",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "None; metamorphic error-code changes cannot alter process results.",
+      "information_loss": "These operational fields are provenance only and do not participate in evaluation.",
+      "normalized_target": null,
+      "operation": "validate and retain or summarize in provenance",
+      "source_field": "status.batteryPercentage, status.remainingRunTime, status.loadPercentageStillAvailable, status.errorCodes, status.destinations",
+      "trust_layer": "source_fact"
+    },
+    {
+      "atlas_effect": "Atlas evaluates only the emitted deterministic zone label.",
+      "information_loss": "Continuous XY remains in pos_world; membership adds a bounded operator interpretation.",
+      "normalized_target": "objects[].zone",
+      "operation": "inclusive polygon membership; overlap rejection; outside_workspace fallback",
+      "source_field": "status.location.x and status.location.y plus configured rendezvous polygon",
+      "trust_layer": "adapter_derived_fact"
+    },
+    {
+      "atlas_effect": "Provides no source event or hidden incident truth.",
+      "information_loss": "Not applicable; source events are absent from this profile.",
+      "normalized_target": "events",
+      "operation": "emit deterministic empty list",
+      "source_field": null,
+      "trust_layer": "adapter_derived_fact"
+    },
+    {
+      "atlas_effect": "Defines amr_1 as trigger, amr_2 as required, one zone/station, and max_wait_s 3.0.",
+      "information_loss": "Not source data; cannot be presented as a MassRobotics requirement.",
+      "normalized_target": "domain-pack assets, workspace, process, contracts, and work order",
+      "operation": "operator-authored engineering rule",
+      "source_field": null,
+      "trust_layer": "operator_configured_rule"
+    },
+    {
+      "atlas_effect": "Produces ordered process events, deviation/incident counts, report, and incident-only evidence/regression artifacts.",
+      "information_loss": "Results apply only to this bounded fixture and rule.",
+      "normalized_target": "Atlas run output",
+      "operation": "unchanged Atlas evaluation",
+      "source_field": null,
+      "trust_layer": "metriplane_derived_result"
+    }
+  ],
+  "normalization_invariants": {
+    "authoritative_collection": "objects",
+    "carry_forward": "none",
+    "complete_snapshot_entity_count": 2,
+    "cross_datum_transforms": 0,
+    "events": [],
+    "interpolation": "none",
+    "prediction_derived_frames": 0,
+    "resampling": "none",
+    "source_backend": "massrobotics_amr_offline_replay_v1_synthetic",
+    "target_frame": "metriplane_world",
+    "target_linear_unit": "m",
+    "transform": "identity",
+    "unit_authority": "operator_configured_fixture_binding"
+  },
+  "profile_id": "metriplane.massrobotics_amr_offline_replay.v1",
+  "schema_version": "org.metriplane.massrobotics_amr.mapping_table.v1"
+}

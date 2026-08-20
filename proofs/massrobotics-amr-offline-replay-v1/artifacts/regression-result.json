@@ -1,0 +1,8 @@
+{
+  "errors": [],
+  "pass": true,
+  "regression": "incident-regression.yaml",
+  "regression_sha256": "9c1c1a9ce0e4271af60e13535e87897642c6fe2977c17413215ec48ac9a74430",
+  "schema_version": "metriplane.atlas.regression_result.v1",
+  "test_id": "missing_tool_caused_delay_INC-0001"
+}

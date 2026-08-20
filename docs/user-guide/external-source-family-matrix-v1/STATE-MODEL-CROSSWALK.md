@@ -16,14 +16,18 @@ tested” means no value or policy is inferred.
 | MimicGen | **PARTIALLY SUPPORTED** | Not tested for the selected artifact | No frame, transform, projection, or zone model verified | Not tested | Not tested | HDF5 body not inspected for snapshot completeness, missing state, or partial updates | No preparation, synchronization, materialization, or carry-forward policy inspected or implemented |
 | RoboCasa / RoboCasa365 | **NOT TESTED** | Not tested | Not tested | Not tested | Not tested | Not tested | Not tested |
 | ROS 2 / MCAP + TF2 | **NOT TESTED** | No recording selected. A future bounded profile must choose one source/header/bag clock and domain and reject nominal rates, mixed clocks, default timestamps, and unjustified log time | No TF tree tested. A future profile must declare an acyclic path, static/dynamic transforms, and rejection of missing, ambiguous, or undeclared interpolation | Not tested | No source-entity mapping selected | No topic set, trigger, skew limit, staleness limit, or complete-snapshot rule tested | No policy implemented. A future profile must declare trigger, synchronization tolerance, bounded carry-forward, maximum staleness, and rejection behavior |
+| MassRobotics AMR offline replay | **PARTIALLY SUPPORTED** | Explicit-offset source timestamps normalized to UTC; first status is origin; nine exact 1,000,000,000 ns intervals; identity/prediction timestamps never become frames | `location.planarDatum` is authoritative; one datum only; fixture-specific identity binding into `metriplane_world`; missing, malformed, changed, mixed, path-conflicting, or transformed datums reject | Metres only by `operator_configured_fixture_binding`; no universal unit fact or inference | Source UUIDs map one-to-one to `amr_1` and `amr_2` in configured order | Every frame contains both current statuses; unknown/missing/duplicate state rejects before Atlas; normalized events are empty | Exact zero-skew same-timestamp join only; no cross-time carry-forward, interpolation, resampling, cross-datum transform, or prediction promotion |
 
-## Information deliberately excluded from the two GO fixtures
+## Information deliberately excluded from normalized fixtures
 
 Both proven paths are bounded, position-only evaluations. They exclude source Z,
 orientation, velocities, actions, contacts, grasp/controller state, source
 outcomes, images, and simulator realism claims. Source-specific records contain
 the longer exclusion lists. Neither row proves physical accuracy, general
 ManiSkill or robomimic support, general HDF5 support, or production readiness.
+The MassRobotics profile additionally discards validated orientation and keeps
+operational state, battery/runtime/load, errors, destinations, path, and
+predictions outside Atlas truth.
 
 The structured status and evidence for every cell are authoritative in
 [`matrix.json`](matrix.json).

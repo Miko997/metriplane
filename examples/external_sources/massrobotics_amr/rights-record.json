@@ -1,0 +1,24 @@
+{
+  "components": [
+    {
+      "component": "Metriplane-authored synthetic identity and status JSONL records",
+      "license": "MIT",
+      "origin": "Metriplane repository",
+      "redistribution": "allowed"
+    },
+    {
+      "component": "Portable normalized fixture and operator-authored domain pack",
+      "license": "MIT",
+      "origin": "Metriplane-authored",
+      "redistribution": "allowed"
+    },
+    {
+      "component": "MassRobotics AMR Interoperability Standard repository materials",
+      "included": false,
+      "origin": "MassRobotics-AMR/AMR_Interop_Standard",
+      "redistribution": "reference_only"
+    }
+  ],
+  "conclusion": "Included bytes are limited to Metriplane-authored MIT source and derived fixture data; MassRobotics materials are recorded only by immutable reference.",
+  "schema_version": "org.metriplane.massrobotics_amr.rights.v1"
+}

@@ -1,0 +1,20 @@
+{
+  "process_id": "synthetic_two_amr_rendezvous",
+  "schema_version": "metriplane.atlas.process_model.v1",
+  "steps": [
+    {
+      "expected_asset_types": [
+        "rendezvous_trigger_amr"
+      ],
+      "label": "Second AMR reaches the rendezvous zone",
+      "max_wait_s": 3.0,
+      "required_assets": [
+        "amr_2"
+      ],
+      "required_station": "rendezvous_station",
+      "required_zone": "rendezvous_zone",
+      "step_id": "two_amr_rendezvous"
+    }
+  ],
+  "work_order_type": "external_fixture"
+}

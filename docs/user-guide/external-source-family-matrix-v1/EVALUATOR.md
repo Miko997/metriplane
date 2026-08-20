@@ -5,8 +5,8 @@ SPDX-License-Identifier: MIT
 
 # Evaluator packet
 
-This packet is reserved for a later, separately authorized external evaluation.
-No evaluator has been contacted, and no independent rerun is claimed.
+This packet describes an independent reproduction workflow for the two `GO`
+fixtures.
 
 ## Evaluation question
 
@@ -30,6 +30,9 @@ An evaluator receives:
 
 No raw HDF5/JSON/ZIP source, simulator asset, source framework, adapter, video,
 image, or model binary is required for this portable level.
+
+The MassRobotics profile has its own technical review brief and is outside this
+two-source evaluator packet.
 
 ## Required environment
 

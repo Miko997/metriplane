@@ -23,13 +23,11 @@ MimicGen was only partially audited and was not implemented. RoboCasa was not
 inspected. ROS 2 / MCAP + TF2 remains future work and has not been tested. No
 third successful-source claim exists.
 
-This is first-party technical evidence. It does not claim independent adoption
-or validation, universal source neutrality, general simulator or HDF5 support,
-physical accuracy, safety, production readiness, or source-project endorsement.
+A seventh, non-counted row covers a synthetic two-AMR offline replay with strict
+current-location, timestamp, datum, and complete-snapshot handling. The fixture
+data is Metriplane-authored; the upstream standard identity is reference-only.
+
 Any future source path must separately establish immutable artifact identity,
 rights, authoritative timing, frames, units, entity identity, completeness,
 field provenance, information loss, deterministic conversion, and portable
 evaluation.
-
-This is a factual technical summary. No partner outreach or partnership offer
-is included.

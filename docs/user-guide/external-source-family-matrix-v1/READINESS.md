@@ -10,8 +10,10 @@ SPDX-License-Identifier: MIT
 **NOT READY: REVIEW CANDIDATE**
 
 The package starts from public Metriplane commit
-`5606b956e9309802570cfa46857714722fd70187`. Its technical rows reference
-frozen public evidence; they do not regenerate or modify that evidence.
+`5606b956e9309802570cfa46857714722fd70187`. Its original technical rows
+reference frozen public evidence and do not regenerate or modify it. The
+non-counted MassRobotics row references additive candidate-head MET-55 evidence
+and does not change the frozen two-path aggregate.
 
 ## Required review gates
 
@@ -21,9 +23,13 @@ frozen public evidence; they do not regenerate or modify that evidence.
   identity resolves and matches locally; exact-head CI must repeat the check.
 - [x] ManiSkill and robomimic fixture inventories remain unchanged locally.
 - [x] CALVIN remains documentation-only with no adapter or fixture.
+- [x] The MassRobotics row remains `PARTIALLY SUPPORTED`, synthetic,
+  reference-only, and non-counted.
 - [x] The candidate publication archive builds twice with byte-identical output.
-- [x] Strict documentation, package scans, focused tests, scoped REUSE, and the
-  full repository test suite pass locally.
+- [x] Strict documentation, package scans, and focused matrix tests pass
+  locally.
+- [ ] Scoped REUSE and the full repository test suite pass on the exact final
+  candidate head.
 - [ ] Both frozen fixture families pass installed-wheel evaluation on Ubuntu
   and macOS with Python 3.12 and 3.13.
 - [ ] Normal repository PR workflows and the focused publication workflow pass

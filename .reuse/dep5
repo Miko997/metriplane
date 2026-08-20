@@ -88,6 +88,27 @@ Comment: The container and synthetic values are Metriplane-authored MIT
  and BSD-3-Clause terms recorded in the public rights matrix and packaged
  third-party notice.
 
+Files: adapters/massrobotics_amr/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This isolated adapter and both format-engineering source variants are
+ independently authored. Upstream MassRobotics artifacts are reference-only
+ and are not redistributed in this subtree.
+
+Files: examples/external_sources/massrobotics_amr/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This subtree contains only Metriplane-authored synthetic source
+ records, normalized state, operator-authored rules, and provenance metadata.
+ The referenced MassRobotics standard, examples, and code are not included.
+
+Files: proofs/massrobotics-amr-offline-replay-v1/*
+Copyright: 2026 Miko Parkkinen
+License: MIT
+Comment: This independently authored proof package contains generated Atlas
+ incident evidence derived only from the included MIT synthetic fixture. It
+ contains no upstream MassRobotics standard, example, sender, or receiver byte.
+
 Files: docs/evaluations/commissioned-first-use-v030/*
 Copyright: 2026 Miko Parkkinen
 License: MIT

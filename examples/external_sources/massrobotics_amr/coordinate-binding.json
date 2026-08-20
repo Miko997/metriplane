@@ -1,0 +1,12 @@
+{
+  "cross_datum_transforms": 0,
+  "expected_planar_datum_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "schema_version": "org.metriplane.massrobotics_amr.coordinate_binding.v1",
+  "source_linear_unit": "m",
+  "target_frame": "metriplane_world",
+  "target_linear_unit": "m",
+  "transform": "identity",
+  "unit_authority": "operator_configured_fixture_binding",
+  "warning": "The metre binding is a fixture-specific operator interpretation and is not a universal MassRobotics standard fact.",
+  "zone_boundary_policy": "inclusive"
+}

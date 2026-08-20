@@ -1,0 +1,29 @@
+{
+  "mappings": [
+    {
+      "atlas_asset_id": "amr_1",
+      "description": "Explicit configured mapping from the synthetic AMR 1 status UUID.",
+      "normalized_object_id": "11111111-1111-4111-8111-111111111111",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "massrobotics_amr_status_jsonl",
+          "source_entity_id": "statusReport.uuid:11111111-1111-4111-8111-111111111111"
+        }
+      ]
+    },
+    {
+      "atlas_asset_id": "amr_2",
+      "description": "Explicit configured mapping from the synthetic AMR 2 status UUID.",
+      "normalized_object_id": "22222222-2222-4222-8222-222222222222",
+      "process_relevant": true,
+      "source_entities": [
+        {
+          "source_artifact_id": "massrobotics_amr_status_jsonl",
+          "source_entity_id": "statusReport.uuid:22222222-2222-4222-8222-222222222222"
+        }
+      ]
+    }
+  ],
+  "schema_version": "metriplane.external_entity_mapping.v1"
+}

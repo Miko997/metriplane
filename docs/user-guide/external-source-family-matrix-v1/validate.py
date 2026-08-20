@@ -13,7 +13,7 @@ import sys
 import zipfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 INVENTORY_NAME = "SHA256SUMS"
@@ -32,6 +32,11 @@ EXPECTED_ROWS = {
     "mimicgen": ("MimicGen", "PARTIALLY SUPPORTED", False),
     "robocasa": ("RoboCasa / RoboCasa365", "NOT TESTED", False),
     "ros2_mcap_tf2": ("ROS 2 / MCAP + TF2", "NOT TESTED", False),
+    "massrobotics_amr_offline_replay": (
+        "MassRobotics AMR offline replay",
+        "PARTIALLY SUPPORTED",
+        False,
+    ),
 }
 EXPECTED_BASELINE = "5606b956e9309802570cfa46857714722fd70187"
 EXPECTED_CONTRACT = "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
@@ -134,7 +139,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
 def _read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys)
     _require(isinstance(value, dict), f"expected JSON object: {path.name}")
-    return value
+    return cast(dict[str, Any], value)
 
 
 def _sha256(path: Path) -> str:
@@ -147,7 +152,7 @@ def _sha256(path: Path) -> str:
 
 def _schema_validate(schema: Mapping[str, Any], matrix: Mapping[str, Any], required: bool) -> str:
     try:
-        from jsonschema import Draft202012Validator, FormatChecker
+        from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
     except ImportError as exc:
         if required:
             raise PackageError("jsonschema is required; install jsonschema==4.25.1") from exc
@@ -191,9 +196,57 @@ def _validate_matrix(matrix: Mapping[str, Any]) -> None:
             if artifact["kind"] == "repository_path":
                 _require("path" in artifact and "sha256" in artifact, "incomplete path evidence")
     _require(sum(bool(row["compatibility_counted"]) for row in rows) == 2, "proven count changed")
-    for row_id, expected in EXPECTED_FIXTURES.items():
+    massrobotics = row_map["massrobotics_amr_offline_replay"]
+    _require(
+        massrobotics["status_label"] == "SYNTHETIC OFFLINE REPLAY PROFILE",
+        "MassRobotics label changed",
+    )
+    _require(
+        massrobotics["independent_rerun_status"]["status"] == "NOT TESTED",
+        "MassRobotics independent-rerun boundary changed",
+    )
+    _require(
+        massrobotics["frozen_fixture_identities"]["status"] == "PARTIAL",
+        "MassRobotics fixture identity boundary changed",
+    )
+    _require(
+        massrobotics["frozen_fixture_identities"]["shared_session_sha256"] is None,
+        "distinct MassRobotics sessions were represented as shared",
+    )
+    massrobotics_text = json.dumps(massrobotics, sort_keys=True)
+    for boundary in (
+        "synthetic_format_engineering",
+        "reference_only",
+        "two configured AMRs",
+        "Current-location-only",
+    ):
+        _require(boundary in massrobotics_text, f"MassRobotics boundary missing: {boundary}")
+    massrobotics_artifacts = {
+        artifact["id"]: artifact for artifact in massrobotics["supporting_artifacts"]
+    }
+    for reference_id in ("massrobotics-release", "massrobotics-snapshot"):
+        _require(
+            massrobotics_artifacts[reference_id]["kind"] == "external_artifact",
+            f"upstream reference was reclassified: {reference_id}",
+        )
+    forbidden_upstream_names = {
+        "AMR_Interop_Standard.json",
+        "AMR_Interop_Standard.pdf",
+        "identityReport1.json",
+        "statusReport1.json",
+    }
+    repository_names = {
+        PurePosixPath(artifact["path"]).name
+        for artifact in massrobotics["supporting_artifacts"]
+        if artifact["kind"] == "repository_path"
+    }
+    _require(
+        repository_names.isdisjoint(forbidden_upstream_names),
+        "upstream MassRobotics artifact appears as repository evidence",
+    )
+    for row_id, expected_fixture in EXPECTED_FIXTURES.items():
         identity = row_map[row_id]["frozen_fixture_identities"]
-        actual = (
+        actual_fixture = (
             identity["incident_fixture_id"],
             identity["control_fixture_id"],
             identity["shared_session_sha256"],
@@ -201,7 +254,8 @@ def _validate_matrix(matrix: Mapping[str, Any]) -> None:
             identity["control_fingerprint_sha256"],
         )
         _require(
-            identity["status"] == "VERIFIED" and actual == expected, f"fixture changed: {row_id}"
+            identity["status"] == "VERIFIED" and actual_fixture == expected_fixture,
+            f"fixture changed: {row_id}",
         )
 
 
@@ -277,7 +331,7 @@ def main() -> int:
     schema_status = _schema_validate(schema, matrix, arguments.require_jsonschema)
     _validate_matrix(matrix)
     result: dict[str, object] = {
-        "decision_count": 6,
+        "decision_count": 7,
         "inventory_count": _validate_inventory(),
         "json_schema": schema_status,
         "package_scan_file_count": _scan(),

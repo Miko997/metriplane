@@ -1,0 +1,712 @@
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Bounded MassRobotics AMR Offline Replay
+
+on:
+  push:
+    branches: [main]
+  merge_group:
+  pull_request:
+    paths:
+      - ".github/workflows/massrobotics-amr-offline-replay.yml"
+      - ".reuse/dep5"
+      - "adapters/massrobotics_amr/**"
+      - "adapters/source_adapter_sdk/**"
+      - "docs/README.md"
+      - "docs/specs/massrobotics-amr-offline-replay-profile-v1.md"
+      - "docs/user-guide/external-source-family-matrix-v1/**"
+      - "examples/external_sources/massrobotics_amr/**"
+      - "metriplane/atlas/**"
+      - "metriplane/external_sources/**"
+      - "metriplane/provenance/**"
+      - "mkdocs.yml"
+      - "proofs/massrobotics-amr-offline-replay-v1/**"
+      - "pyproject.toml"
+      - "schemas/metriplane.external_source_contract.v1.schema.json"
+      - "tests/external_sources/test_external_source_family_matrix.py"
+      - "tests/external_sources/test_massrobotics_amr_offline_replay_fixture.py"
+      - "tests/test_docs_front_door.py"
+      - "tools/build_external_source_family_matrix.py"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: massrobotics-amr-offline-replay-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  ADAPTER_COMMIT: da33ad03beb8d4f3a3762cad085e2df4b2d9386c
+  ADAPTER_TREE: 46057beb5e2fefe86ccf27031a93c0523d586b57
+  CONFIG_SHA256: 3cd20444f6b7efc95ab5c69486b4226a349a41ddda0d60d9a60a0ba215680423
+  LOCK_SHA256: f5ebec35efe702403c72689197cabf2631592791d87a2e26b7c1db6d6b61a45b
+  INCIDENT_IDENTITY_SHA256: e721cc90fe6c7641d6ae1dfae37c2697ca60b1a633904cace1ec0dcc08e5cf2c
+  INCIDENT_STATUS_SHA256: c3edfb18ffed5821b65d3c4954c5ffb987fb5de2569e1dc2731f07a82effaea5
+  CONTROL_IDENTITY_SHA256: e721cc90fe6c7641d6ae1dfae37c2697ca60b1a633904cace1ec0dcc08e5cf2c
+  CONTROL_STATUS_SHA256: 2988e1555e55f19196433d0aef0913e272881f65d52fc049adf3c826edf87ed2
+
+jobs:
+  adapter-quality:
+    name: Isolated adapter tests, lint, format, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: adapters/massrobotics_amr
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Verify frozen adapter and synthetic source identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${ADAPTER_COMMIT}^{commit}"
+          test "$(git rev-parse "${ADAPTER_COMMIT}:adapters/massrobotics_amr")" = "$ADAPTER_TREE"
+          git merge-base --is-ancestor "$ADAPTER_COMMIT" HEAD
+          git diff --exit-code "$ADAPTER_COMMIT" HEAD -- .
+          printf '%s  %s\n%s  %s\n%s  %s\n%s  %s\n%s  %s\n%s  %s\n' \
+            "$CONFIG_SHA256" config/frozen-config.json \
+            "$LOCK_SHA256" uv.lock \
+            "$INCIDENT_IDENTITY_SHA256" source/incident/identity.jsonl \
+            "$INCIDENT_STATUS_SHA256" source/incident/status.jsonl \
+            "$CONTROL_IDENTITY_SHA256" source/control/identity.jsonl \
+            "$CONTROL_STATUS_SHA256" source/control/status.jsonl \
+            | sha256sum --check --strict
+
+      - name: Sync and run isolated adapter quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Atlas integration assertions intentionally execute with the base
+          # interpreter, matching the established isolated-adapter CI pattern.
+          uv pip install --system "$GITHUB_WORKSPACE"
+          uv sync --locked --extra test --python 3.12
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen python -m pytest -q
+
+      - name: Build and inspect isolated adapter wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="${RUNNER_TEMP}/massrobotics-adapter-dist"
+          mkdir -p "$dist"
+          uv build --wheel --python 3.12 --out-dir "$dist" .
+          wheel_count="$(find "$dist" -maxdepth 1 -name '*.whl' -print | wc -l | tr -d ' ')"
+          test "$wheel_count" -eq 1
+          WHEEL="$(find "$dist" -maxdepth 1 -name '*.whl' -print)" python - <<'PY'
+          import hashlib
+          import os
+          import zipfile
+
+          forbidden_names = {
+              "amr_interop_standard.json",
+              "amr_interop_standard.pdf",
+              "identityreport1.json",
+              "statusreport1.json",
+          }
+          upstream_sha256 = {
+              "816c8f78e1d280d10983a1bcea69a3c8e6572e5bb6f777a0863e6a5b2c3fc288",
+              "99aa8cceb10247dbfd2957695695b5f11d347bf51a0452e3f330887b2f4e2ff2",
+              "7b4db4d9b5ca0a6735690f2b37228c234703e4a5bdbbee634106fc7ba9f1a4e5",
+              "c8c35e010535a83135f2dcaeacec42ae9e2411c108ce0b7035ab6438b0549a94",
+              "13b230e7e884c92bc551ba2800a5490259858af59b69e4470029c71060430cfd",
+          }
+          with zipfile.ZipFile(os.environ["WHEEL"]) as archive:
+              names = archive.namelist()
+              assert forbidden_names.isdisjoint(name.rsplit("/", 1)[-1].lower() for name in names)
+              digests = {
+                  hashlib.sha256(archive.read(name)).hexdigest()
+                  for name in names
+                  if not name.endswith("/")
+              }
+          assert digests.isdisjoint(upstream_sha256)
+          assert any(name.endswith("massrobotics_amr_adapter/data/frozen-config.json") for name in names)
+          assert any(name.endswith("massrobotics_amr_adapter/data/uv.lock") for name in names)
+          PY
+
+  deterministic-replay:
+    name: Deterministic conversion and exact Atlas replay
+    needs: adapter-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Convert each synthetic variant three times and finalize equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse "${ADAPTER_COMMIT}:adapters/massrobotics_amr")" = "$ADAPTER_TREE"
+          git diff --exit-code "$ADAPTER_COMMIT" HEAD -- adapters/massrobotics_amr
+          adapter="$GITHUB_WORKSPACE/adapters/massrobotics_amr"
+          conversions="${RUNNER_TEMP}/massrobotics-clean-conversions"
+          final="${RUNNER_TEMP}/massrobotics-final-fixture"
+          cd "$adapter"
+          uv sync --locked --python 3.12
+          for variant in incident control; do
+            uv run --frozen metriplane-massrobotics-amr inspect \
+              --source-root "source/$variant" \
+              --config config/frozen-config.json \
+              > "${RUNNER_TEMP}/inspect-$variant.json"
+            for index in 1 2 3; do
+              uv run --frozen metriplane-massrobotics-amr convert \
+                --source-root "source/$variant" \
+                --config config/frozen-config.json \
+                --adapter-commit "$ADAPTER_COMMIT" \
+                --out "$conversions/$variant-$index" \
+                > "${RUNNER_TEMP}/conversion-$variant-$index.json"
+            done
+          done
+          uv run --frozen metriplane-massrobotics-amr finalize-equivalence \
+            --conversion-root "$conversions/incident-1" \
+            --conversion-root "$conversions/incident-2" \
+            --conversion-root "$conversions/incident-3" \
+            --conversion-root "$conversions/control-1" \
+            --conversion-root "$conversions/control-2" \
+            --conversion-root "$conversions/control-3" \
+            --run-id incident-clean-1 \
+            --run-id incident-clean-2 \
+            --run-id incident-clean-3 \
+            --run-id control-clean-1 \
+            --run-id control-clean-2 \
+            --run-id control-clean-3 \
+            --out "$final" \
+            > "${RUNNER_TEMP}/conversion-equivalence.json"
+          diff --recursive --brief \
+            "$GITHUB_WORKSPACE/examples/external_sources/massrobotics_amr" "$final"
+          (
+            cd "$final"
+            sha256sum --check --strict SHA256SUMS
+            for variant in incident control; do
+              cd "$variant"
+              sha256sum --check --strict CHECKSUMS.sha256
+              cd ..
+            done
+          )
+          echo "FINAL_FIXTURE=$final" >> "$GITHUB_ENV"
+
+      - name: Verify exact source register, rights boundary, and acceptance counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          FINAL_FIXTURE="$FINAL_FIXTURE" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path(os.environ["FINAL_FIXTURE"])
+          register = json.loads((root / "source-reference-register.json").read_text())
+          assert register["formal_release"] == {
+              "commit": "7161a0d2b26606941f5a012cd03c7f113beb7a22",
+              "release_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/releases/tag/1.0",
+              "short_commit": "7161a0d",
+              "tag": "1.0",
+              "version": "1.0",
+          }
+          assert register["snapshot_commit"] == "f9357a423ecabc3f7112e6d10025a5231943ec50"
+          assert register["rights_decision"] == "reference_only"
+          assert register["upstream_artifacts_included"] is False
+          expected = {
+              "AMR_Interop_Standard.json": (
+                  "7ba8974ae46d81ea0f6f8ed0ac7899d9d279af98",
+                  "816c8f78e1d280d10983a1bcea69a3c8e6572e5bb6f777a0863e6a5b2c3fc288",
+              ),
+              "AMR_Interop_Standard.pdf": (
+                  "2436fee76da3a7b15516b518d85d237724925f90",
+                  "99aa8cceb10247dbfd2957695695b5f11d347bf51a0452e3f330887b2f4e2ff2",
+              ),
+              "README.md": (
+                  "4031260c9036672a6cd85b93111862b5daa568c3",
+                  "7b4db4d9b5ca0a6735690f2b37228c234703e4a5bdbbee634106fc7ba9f1a4e5",
+              ),
+              "examples/identityReport1.json": (
+                  "112ac8d1df62170f785dadf03419968c7e8b61df",
+                  "c8c35e010535a83135f2dcaeacec42ae9e2411c108ce0b7035ab6438b0549a94",
+              ),
+              "examples/statusReport1.json": (
+                  "b396acbf743c2ffcd448dd675dc830b77384b054",
+                  "13b230e7e884c92bc551ba2800a5490259858af59b69e4470029c71060430cfd",
+              ),
+          }
+          artifacts = {item["repository_path"]: item for item in register["artifacts"]}
+          assert set(artifacts) == set(expected)
+          for path, (blob, digest) in expected.items():
+              item = artifacts[path]
+              assert item["git_blob"] == blob
+              assert item["raw_sha256"] == digest
+              assert item["snapshot_commit"] == register["snapshot_commit"]
+              assert item["rights_decision"] == "reference_only"
+              assert item["included"] is False
+              assert register["snapshot_commit"] in item["immutable_url"]
+
+          rights = json.loads((root / "rights-record.json").read_text())
+          components = {item["component"]: item for item in rights["components"]}
+          upstream = components["MassRobotics AMR Interoperability Standard repository materials"]
+          assert upstream["included"] is False and upstream["redistribution"] == "reference_only"
+          assert all(
+              item.get("license") == "MIT"
+              for name, item in components.items()
+              if name != "MassRobotics AMR Interoperability Standard repository materials"
+          )
+
+          summary = json.loads((root / "conversion-summary.json").read_text())
+          assert summary["adapter_commit"] == os.environ["ADAPTER_COMMIT"]
+          assert summary["conversion_reproducibility"] == {
+              **summary["conversion_reproducibility"],
+              "equivalent": True,
+              "status": "demonstrated",
+          }
+          for variant in ("incident", "control"):
+              report = json.loads((root / variant / "normalization-report.json").read_text())
+              rows = [
+                  json.loads(line)
+                  for line in (root / variant / "session.jsonl").read_text().splitlines()
+              ]
+              source = root / variant / "source"
+              assert report["source_record_count"] == 18
+              assert report["normalized_frame_count"] == 9
+              assert report["process_relevant_entity_count"] == 2
+              assert report["conversion_reproducibility"]["status"] == "demonstrated"
+              assert report["conversion_reproducibility"]["equivalent"] is True
+              assert len(report["conversion_reproducibility"]["runs"]) == 3
+              assert len(rows) == 9 and all(len(row["objects"]) == 2 for row in rows)
+              assert all(row["events"] == [] for row in rows)
+              assert sum(1 for _ in (source / "identity.jsonl").read_text().splitlines()) == 2
+              assert sum(1 for _ in (source / "status.jsonl").read_text().splitlines()) == 18
+
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).split(b"\0")
+          prohibited_sha = {value[1] for value in expected.values()}
+          for encoded in tracked:
+              if encoded:
+                  path = Path(encoded.decode())
+                  if path.is_file():
+                      data = path.read_bytes()
+                      assert hashlib.sha256(data).hexdigest() not in prohibited_sha, encoded
+          PY
+
+      - name: Build and install only the ordinary Metriplane wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist="${RUNNER_TEMP}/metriplane-dist"
+          venv="${RUNNER_TEMP}/metriplane-venv"
+          mkdir -p "$dist"
+          uv build --wheel --python 3.12 --out-dir "$dist" .
+          wheel_count="$(find "$dist" -maxdepth 1 -name '*.whl' -print | wc -l | tr -d ' ')"
+          test "$wheel_count" -eq 1
+          WHEEL="$(find "$dist" -maxdepth 1 -name '*.whl' -print)" python - <<'PY'
+          import hashlib
+          import os
+          import re
+          import zipfile
+
+          upstream_sha256 = {
+              "816c8f78e1d280d10983a1bcea69a3c8e6572e5bb6f777a0863e6a5b2c3fc288",
+              "99aa8cceb10247dbfd2957695695b5f11d347bf51a0452e3f330887b2f4e2ff2",
+              "7b4db4d9b5ca0a6735690f2b37228c234703e4a5bdbbee634106fc7ba9f1a4e5",
+              "c8c35e010535a83135f2dcaeacec42ae9e2411c108ce0b7035ab6438b0549a94",
+              "13b230e7e884c92bc551ba2800a5490259858af59b69e4470029c71060430cfd",
+          }
+          with zipfile.ZipFile(os.environ["WHEEL"]) as archive:
+              names = archive.namelist()
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode().lower().splitlines()
+              digests = {
+                  hashlib.sha256(archive.read(name)).hexdigest()
+                  for name in names
+                  if not name.endswith("/")
+              }
+          lowered = [name.lower() for name in names]
+          assert not any("adapters/" in name for name in lowered)
+          assert not any("massrobotics_amr_adapter" in name for name in lowered)
+          assert not any("source_adapter_sdk" in name for name in lowered)
+          assert digests.isdisjoint(upstream_sha256)
+          requirements = [line for line in metadata if line.startswith("requires-dist:")]
+          for dependency in (
+              "metriplane-massrobotics-amr-adapter",
+              "metriplane-source-adapter-sdk",
+              "massrobotics",
+              "paho-mqtt",
+              "websockets",
+          ):
+              pattern = rf"requires-dist:\s*{re.escape(dependency)}(?:\s|\[|;|\(|$)"
+              assert not any(re.match(pattern, line) for line in requirements), dependency
+          PY
+          wheel="$(find "$dist" -maxdepth 1 -name '*.whl' -print)"
+          python -m venv "$venv"
+          "$venv/bin/python" -m pip install --no-cache-dir "$wheel"
+          "$venv/bin/python" -m pip check
+          echo "METRIPLANE_VENV=$venv" >> "$GITHUB_ENV"
+
+      - name: Validate and run incident and control three times
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="${RUNNER_TEMP}/massrobotics-portable-input"
+          output="${RUNNER_TEMP}/massrobotics-atlas-output"
+          mkdir -p "$input" "$output"
+          cp -R "$FINAL_FIXTURE/incident" "$input/incident"
+          cp -R "$FINAL_FIXTURE/control" "$input/control"
+          candidate_commit="$(git rev-parse HEAD)"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH
+          for variant in incident control; do
+            "$METRIPLANE_VENV/bin/metriplane" external validate \
+              "$input/$variant" --json > "validation-$variant.json"
+            for index in 1 2 3; do
+              METRIPLANE_GIT_COMMIT="$candidate_commit" \
+                "$METRIPLANE_VENV/bin/metriplane" external run \
+                  "$input/$variant" \
+                  --out "$output/$variant-$index" \
+                  --run-id "massrobotics_amr_$variant" --json \
+                  > "summary-$variant-$index.json"
+            done
+          done
+          echo "ATLAS_OUTPUT=$output" >> "$GITHUB_ENV"
+
+      - name: Assert exact Atlas results, determinism, incident artifacts, and control absence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$ATLAS_OUTPUT" TEMP_ROOT="$RUNNER_TEMP" MP="$METRIPLANE_VENV/bin/metriplane" \
+            "$METRIPLANE_VENV/bin/python" - <<'PY'
+          import json
+          import os
+          import subprocess
+          import zipfile
+          from pathlib import Path
+
+          import yaml
+
+          root = Path(os.environ["ROOT"])
+          temp = Path(os.environ["TEMP_ROOT"])
+          expected_counts = {
+              "incident": (9, 4, 1, 1),
+              "control": (9, 3, 0, 0),
+          }
+          expected_events = {
+              "incident": [
+                  (2, 2.0, "required_asset_missing"),
+                  (5, 5.0, "step_delayed"),
+                  (6, 6.0, "required_asset_present"),
+                  (6, 6.0, "step_completed"),
+              ],
+              "control": [
+                  (2, 2.0, "required_asset_missing"),
+                  (4, 4.0, "required_asset_present"),
+                  (4, 4.0, "step_completed"),
+              ],
+          }
+
+          def read_json(path):
+              return json.loads(path.read_text())
+
+          def read_jsonl(path):
+              return [json.loads(line) for line in path.read_text().splitlines() if line]
+
+          def archive_members(path):
+              with zipfile.ZipFile(path) as archive:
+                  assert archive.testzip() is None
+                  return {name: archive.read(name) for name in sorted(archive.namelist())}
+
+          def semantics(run):
+              regressions = []
+              for path in sorted((run / "regression_tests").glob("*.yaml")):
+                  value = yaml.safe_load(path.read_text())
+                  value.pop("source_bundle", None)
+                  regressions.append(value)
+              bundles = [
+                  archive_members(path)
+                  for path in sorted((run / "evidence_bundles").glob("*.zip"))
+              ]
+              return (
+                  read_jsonl(run / "state_segment.jsonl"),
+                  read_jsonl(run / "physical_event_log.jsonl"),
+                  read_jsonl(run / "deviations.jsonl"),
+                  read_jsonl(run / "incidents.jsonl"),
+                  read_json(run / "process_trace.json"),
+                  read_json(run / "reality_graph.json"),
+                  bundles,
+                  regressions,
+              )
+
+          for variant in ("incident", "control"):
+              validation = read_json(temp / f"validation-{variant}.json")
+              assert validation["pass"] is True
+              assert validation["frame_count"] == 9
+              values = []
+              for index in (1, 2, 3):
+                  summary = read_json(temp / f"summary-{variant}-{index}.json")
+                  actual = tuple(
+                      summary[key]
+                      for key in (
+                          "frame_count", "event_count", "deviation_count", "incident_count"
+                      )
+                  )
+                  assert summary["pass"] is True and actual == expected_counts[variant]
+                  run = root / f"{variant}-{index}"
+                  events = read_jsonl(run / "physical_event_log.jsonl")
+                  assert [
+                      (item["frame_id"], item["ts"], item["event_type"]) for item in events
+                  ] == expected_events[variant]
+                  incidents = read_jsonl(run / "incidents.jsonl")
+                  bundles = list((run / "evidence_bundles").glob("*.zip"))
+                  regressions = list((run / "regression_tests").glob("*.yaml"))
+                  if variant == "incident":
+                      assert [item["incident_type"] for item in incidents] == [
+                          "missing_tool_caused_delay"
+                      ]
+                      assert len(bundles) == len(regressions) == 1
+                  else:
+                      assert incidents == []
+                      assert bundles == [] and regressions == []
+                      assert not (run / "evidence_bundles").exists()
+                      assert not (run / "regression_tests").exists()
+                  values.append(semantics(run))
+              assert values[0] == values[1] == values[2]
+
+          incident = root / "incident-1"
+          bundle = next((incident / "evidence_bundles").glob("*.zip"))
+          regression = next((incident / "regression_tests").glob("*.yaml"))
+          subprocess.run([os.environ["MP"], "atlas", "bundle", "verify", str(bundle)], check=True)
+          result = subprocess.run(
+              [os.environ["MP"], "atlas", "test", str(regression), "--json"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          assert json.loads(result.stdout)["pass"] is True
+          PY
+
+      - name: Scan generated outputs and ZIP members for privacy and path leaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOTS="$FINAL_FIXTURE:$ATLAS_OUTPUT:$GITHUB_WORKSPACE/proofs/massrobotics-amr-offline-replay-v1" \
+          TEMP_ROOT="$RUNNER_TEMP" CHECKOUT="$GITHUB_WORKSPACE" python - <<'PY'
+          import os
+          import re
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          roots = [Path(value) for value in os.environ["ROOTS"].split(":")]
+          forbidden = [os.environ["TEMP_ROOT"].encode(), os.environ["CHECKOUT"].encode()]
+          private = re.compile(
+              rb"(?:/(?:home|Users|workspace)/[^/\s\"'<>]+(?:/|(?=[\s\"'<>]|$))|"
+              rb"(?<![A-Za-z0-9_+.-])[A-Za-z]:[\\/])"
+          )
+          mailbox = re.compile(rb"(?i)(?:from|to|cc|bcc):[^\r\n]+@|@gmail\.com")
+
+          def check(raw, where):
+              assert not any(value in raw for value in forbidden), where
+              assert private.search(raw) is None, where
+              assert mailbox.search(raw) is None, where
+
+          for root in roots:
+              assert root.is_dir(), root
+              for path in root.rglob("*"):
+                  if not path.is_file():
+                      continue
+                  if path.suffix.lower() == ".zip":
+                      with zipfile.ZipFile(path) as archive:
+                          assert archive.testzip() is None, path
+                          for member in archive.infolist():
+                              name = member.filename
+                              pure = PurePosixPath(name)
+                              assert not pure.is_absolute() and ".." not in pure.parts
+                              assert "\\" not in name
+                              check(name.encode(), f"{path}:{name}")
+                              if not member.is_dir():
+                                  check(archive.read(member), f"{path}:{name}")
+                  else:
+                      check(path.read_bytes(), path)
+          PY
+
+  repository-gates:
+    name: Matrix, documentation, proof, and repository boundaries
+    needs: adapter-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked development environment
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Run focused external-fixture and matrix tests
+        run: |
+          uv run --frozen python -m pytest -q \
+            tests/external_sources/test_massrobotics_amr_offline_replay_fixture.py \
+            tests/external_sources/test_external_source_family_matrix.py \
+            tests/test_docs_front_door.py
+
+      - name: Validate and deterministically rebuild the source-family matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          first="${RUNNER_TEMP}/external-source-family-matrix-a.zip"
+          second="${RUNNER_TEMP}/external-source-family-matrix-b.zip"
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python docs/user-guide/external-source-family-matrix-v1/validate.py \
+              --require-jsonschema --validate-only
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python tools/build_external_source_family_matrix.py \
+              --require-jsonschema --validate-only
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python tools/build_external_source_family_matrix.py \
+              --require-jsonschema --out "$first"
+          uv run --python 3.12 --with jsonschema==4.25.1 \
+            python tools/build_external_source_family_matrix.py \
+              --require-jsonschema --out "$second"
+          cmp "$first" "$second"
+          sha256sum "$first" "$second"
+
+      - name: Verify committed proof inventories and exact public result record
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="proofs/massrobotics-amr-offline-replay-v1"
+          test -f "$proof/CHECKSUMS.sha256"
+          (
+            cd "$proof"
+            sha256sum --check --strict CHECKSUMS.sha256
+          )
+          uv run --frozen metriplane atlas bundle verify \
+            "$proof/artifacts/incident-evidence.zip" \
+            > "${RUNNER_TEMP}/committed-bundle-verification.json"
+          uv run --frozen metriplane atlas test \
+            "$proof/artifacts/incident-regression-portable.yaml" --json \
+            > "${RUNNER_TEMP}/committed-regression-result.json"
+          BUNDLE_RESULT="${RUNNER_TEMP}/committed-bundle-verification.json" \
+            REGRESSION_RESULT="${RUNNER_TEMP}/committed-regression-result.json" \
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          for variable in ("BUNDLE_RESULT", "REGRESSION_RESULT"):
+              result = json.loads(Path(os.environ[variable]).read_text())
+              assert result["pass"] is True
+          PY
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("proofs/massrobotics-amr-offline-replay-v1")
+          result = json.loads((root / "artifacts/execution-summary.json").read_text())
+          assert result["atlas_determinism"] == {
+              "canonical_outputs_compared": [
+                  "state_segment",
+                  "physical_event_log",
+                  "deviations",
+                  "incidents",
+                  "process_trace",
+                  "reality_graph",
+                  "evidence_bundle_member_bytes",
+                  "generated_regression_semantics",
+              ],
+              "control_runs": 3,
+              "equivalent": True,
+              "incident_runs": 3,
+          }
+          assert (result["incident"]["frame_count"], result["incident"]["event_count"],
+                  result["incident"]["deviation_count"], result["incident"]["incident_count"]) == (
+                      9, 4, 1, 1
+                  )
+          assert result["incident"]["incident_type"] == "missing_tool_caused_delay"
+          assert result["incident"]["evidence_bundle_verification"] == "PASS"
+          assert result["incident"]["generated_regression_execution"] == "PASS"
+          assert (result["control"]["frame_count"], result["control"]["event_count"],
+                  result["control"]["deviation_count"], result["control"]["incident_count"]) == (
+                      9, 3, 0, 0
+                  )
+          assert result["control"]["evidence_bundle"] == "not produced"
+          assert result["control"]["evidence_bundle_verification"] == "N/A"
+          assert result["control"]["generated_regression"] == "not produced"
+          assert result["control"]["generated_regression_execution"] == "N/A"
+          privacy = json.loads((root / "artifacts/privacy-provenance-checks.json").read_text())
+          assert all(item["pass"] is True for item in privacy["checks"])
+          PY
+
+      - name: Build strict documentation
+        run: uv run --frozen mkdocs build --strict
+
+      - name: Run scoped REUSE validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' reuse_paths < <(
+            git ls-files -z -- \
+              .github/workflows/massrobotics-amr-offline-replay.yml \
+              adapters/massrobotics_amr \
+              docs/specs/massrobotics-amr-offline-replay-profile-v1.md \
+              docs/user-guide/external-source-family-matrix-v1 \
+              examples/external_sources/massrobotics_amr \
+              proofs/massrobotics-amr-offline-replay-v1 \
+              tests/external_sources/test_external_source_family_matrix.py \
+              tests/external_sources/test_massrobotics_amr_offline_replay_fixture.py \
+              tools/build_external_source_family_matrix.py
+          )
+          test "${#reuse_paths[@]}" -gt 0
+          uvx --from reuse==5.0.2 reuse lint-file "${reuse_paths[@]}"

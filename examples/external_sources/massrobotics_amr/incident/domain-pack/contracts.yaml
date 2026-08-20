@@ -1,0 +1,16 @@
+{
+  "contracts": [
+    {
+      "contract_id": "two_amr_rendezvous_deadline",
+      "kind": "process_asset_presence",
+      "max_wait_s": 3.0,
+      "note": "Operator-authored engineering rule; not source truth, not a MassRobotics requirement, and not a safety rule.",
+      "process_step_id": "two_amr_rendezvous",
+      "required_asset_id": "amr_2",
+      "severity": "warning",
+      "station_id": "rendezvous_station",
+      "zone_id": "rendezvous_zone"
+    }
+  ],
+  "schema_version": "metriplane.atlas.contracts.v1"
+}

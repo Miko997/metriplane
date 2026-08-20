@@ -21,11 +21,13 @@ independently download and rehash the complete body during that audit.
 | MimicGen | **PARTIALLY SUPPORTED** | `NVlabs/mimicgen` at `72bd767c255545f462e7ccfb2731f2e5d4c1d9bb`; v1.0.0 at `ea0988523f468ccf7570475f1906023f854962e9`; separate NVIDIA source terms with a noncommercial research/evaluation restriction. The completed audit did not freeze an exact formal license identifier or version | `amandlek/mimicgen_datasets` revision `33016f8a62c02334f929f2913af8fdd2a8a129e1`; CC BY 4.0 | Candidate `source/square.hdf5`, 16,451,426 bytes, recorded SHA-256 `c917e99362fd9bd11978d6e2642c1ea88272702fbf55b50367ed471febf550e2`; body not downloaded or locally rehashed. No immutable original-raw/preparation chain was completed |
 | RoboCasa / RoboCasa365 | **NOT TESTED** | No repository or revision selected or inspected | No dataset selected or inspected | No path, size, or hash exists in this publication |
 | ROS 2 / MCAP + TF2 | **NOT TESTED** | No adapter or tooling set selected or audited | No recording, message schema, calibration sidecar, or payload terms selected or inspected | No artifact, revision, path, or hash exists. Any future work requires separate authorization |
+| MassRobotics AMR offline replay | **PARTIALLY SUPPORTED** | Isolated Metriplane adapter under MIT; MassRobotics Version 1.0 release `7161a0d` and snapshot `f9357a423ecabc3f7112e6d10025a5231943ec50` are reference-only identities | Incident/control identity and status streams are Metriplane-authored synthetic records under MIT | Synthetic source paths, exact SHA-256 values, and upstream references are registered in `proofs/massrobotics-amr-offline-replay-v1/source-identity.json` and the two source manifests |
 
 The CALVIN **NO-GO** demonstrates that the rights and timing gates rejected an
 otherwise plausible mapping. It is not a compatibility result. MimicGen is
 partially audited but unimplemented; favorable dataset terms alone do not
-establish a source path.
+establish a source path. The MassRobotics row covers the synthetic offline-replay
+profile only.
 
 ## Published adapter and derivative treatment
 
@@ -37,6 +39,7 @@ establish a source path.
 | MimicGen | None | None | No derivative was created; code and dataset terms remain separate |
 | RoboCasa / RoboCasa365 | None | None | Not tested; no permission is inferred |
 | ROS 2 / MCAP + TF2 | None | None | Not tested; software licenses would not establish recording-payload rights |
+| MassRobotics AMR offline replay | Candidate MET-55 adapter provenance is recorded in the incident/control source manifests | Nine-frame incident and control position-only fixtures authored from synthetic source records; all upstream files excluded | Adapter, source records, and normalized fixtures are Metriplane-authored MIT material; upstream specification materials remain reference-only |
 
 The complete structured identities and evidence links are authoritative in
 [`matrix.json`](matrix.json).

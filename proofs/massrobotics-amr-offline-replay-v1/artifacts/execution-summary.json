@@ -1,0 +1,57 @@
+{
+  "atlas_determinism": {
+    "canonical_outputs_compared": [
+      "state_segment",
+      "physical_event_log",
+      "deviations",
+      "incidents",
+      "process_trace",
+      "reality_graph",
+      "evidence_bundle_member_bytes",
+      "generated_regression_semantics"
+    ],
+    "control_runs": 3,
+    "equivalent": true,
+    "incident_runs": 3
+  },
+  "control": {
+    "deviation_count": 0,
+    "events": [
+      {"event_type": "required_asset_missing", "frame_id": 2, "ts": 2.0},
+      {"event_type": "required_asset_present", "frame_id": 4, "ts": 4.0},
+      {"event_type": "step_completed", "frame_id": 4, "ts": 4.0}
+    ],
+    "evidence_bundle": "not produced",
+    "evidence_bundle_verification": "N/A",
+    "event_count": 3,
+    "frame_count": 9,
+    "generated_regression": "not produced",
+    "generated_regression_execution": "N/A",
+    "incident_count": 0,
+    "physical_event_log_sha256": "8cd2f3fc2242149a086344e50fea1934427b49c0f550a4f1f7ea185c848f8d9f",
+    "validation_pass": true
+  },
+  "evaluation_commit": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+  "incident": {
+    "deviation_count": 1,
+    "deviations_sha256": "f945c737cffb62feb7a3810a64059d51a4049cabf5169df79ce254a245155592",
+    "events": [
+      {"event_type": "required_asset_missing", "frame_id": 2, "ts": 2.0},
+      {"event_type": "step_delayed", "frame_id": 5, "ts": 5.0},
+      {"event_type": "required_asset_present", "frame_id": 6, "ts": 6.0},
+      {"event_type": "step_completed", "frame_id": 6, "ts": 6.0}
+    ],
+    "evidence_bundle": "artifacts/incident-evidence.zip",
+    "evidence_bundle_verification": "PASS",
+    "event_count": 4,
+    "frame_count": 9,
+    "generated_regression": "artifacts/incident-regression.yaml",
+    "generated_regression_execution": "PASS",
+    "incident_count": 1,
+    "incident_type": "missing_tool_caused_delay",
+    "incidents_sha256": "ea179dd23bdd1683e620e7c071178966c71baa2757867b30d4e114f3e7f2818c",
+    "physical_event_log_sha256": "f44ad8c40995f6fd00e5519e5f211ea34f360778a139f1255e909152e4b1fc4c",
+    "validation_pass": true
+  },
+  "schema_version": "org.metriplane.massrobotics_amr.proof_execution.v1"
+}

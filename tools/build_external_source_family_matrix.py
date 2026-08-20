@@ -44,6 +44,11 @@ EXPECTED_ROWS = {
     "mimicgen": ("MimicGen", "PARTIALLY SUPPORTED", False),
     "robocasa": ("RoboCasa / RoboCasa365", "NOT TESTED", False),
     "ros2_mcap_tf2": ("ROS 2 / MCAP + TF2", "NOT TESTED", False),
+    "massrobotics_amr_offline_replay": (
+        "MassRobotics AMR offline replay",
+        "PARTIALLY SUPPORTED",
+        False,
+    ),
 }
 EXPECTED_GIT = {
     "maniskill_adapter": "95d1134d9fb9273318c552c507952f1c5c26877e",
@@ -95,6 +100,9 @@ PROHIBITED_AFFIRMATIONS = (
     "Metriplane supports MCAP",
     "universal source neutrality is proven",
     "independently validated by users",
+    "Metriplane is MassRobotics compatible",
+    "MassRobotics certified Metriplane",
+    "MassRobotics validated Metriplane",
 )
 
 
@@ -149,7 +157,7 @@ def _require(condition: bool, message: str) -> None:
 
 def _schema_validate(schema: Mapping[str, Any], matrix: Mapping[str, Any], required: bool) -> str:
     try:
-        from jsonschema import Draft202012Validator, FormatChecker
+        from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
     except ImportError as exc:
         if required:
             raise MatrixBuildError("jsonschema is required; run with jsonschema==4.25.1") from exc
@@ -230,6 +238,57 @@ def _verify_matrix_semantics(matrix: Mapping[str, Any]) -> None:
         row_map["mimicgen"]["status_label"] == "PARTIALLY AUDITED / NOT IMPLEMENTED",
         "MimicGen label changed",
     )
+    massrobotics = row_map["massrobotics_amr_offline_replay"]
+    _require(
+        massrobotics["status_label"] == "SYNTHETIC OFFLINE REPLAY PROFILE",
+        "MassRobotics row label changed",
+    )
+    _require(
+        massrobotics["independent_rerun_status"]["status"] == "NOT TESTED",
+        "MassRobotics row must not imply an independent rerun",
+    )
+    _require(
+        massrobotics["frozen_fixture_identities"]["status"] == "PARTIAL",
+        "MassRobotics fixture identity must remain partial in the shared-session matrix model",
+    )
+    _require(
+        massrobotics["frozen_fixture_identities"]["shared_session_sha256"] is None,
+        "distinct MassRobotics incident/control sessions must not be represented as shared",
+    )
+    massrobotics_text = json.dumps(massrobotics, sort_keys=True)
+    for required_boundary in (
+        "synthetic_format_engineering",
+        "reference_only",
+        "two configured AMRs",
+        "Current-location-only",
+    ):
+        _require(
+            required_boundary in massrobotics_text,
+            f"MassRobotics row is missing boundary: {required_boundary}",
+        )
+    massrobotics_artifacts = {
+        artifact["id"]: artifact for artifact in massrobotics["supporting_artifacts"]
+    }
+    for reference_id in ("massrobotics-release", "massrobotics-snapshot"):
+        _require(
+            massrobotics_artifacts[reference_id]["kind"] == "external_artifact",
+            f"{reference_id} must remain an external reference",
+        )
+    forbidden_upstream_names = {
+        "AMR_Interop_Standard.json",
+        "AMR_Interop_Standard.pdf",
+        "identityReport1.json",
+        "statusReport1.json",
+    }
+    repository_names = {
+        PurePosixPath(artifact["path"]).name
+        for artifact in massrobotics["supporting_artifacts"]
+        if artifact["kind"] == "repository_path"
+    }
+    _require(
+        repository_names.isdisjoint(forbidden_upstream_names),
+        "MassRobotics upstream artifact is represented as packaged evidence",
+    )
     expected_fixtures = {
         "maniskill": (
             "maniskill-pickcube-episode-0-planar-incident-v1",
@@ -246,9 +305,9 @@ def _verify_matrix_semantics(matrix: Mapping[str, Any]) -> None:
             EXPECTED_IDENTITIES["robomimic_control"],
         ),
     }
-    for row_id, expected in expected_fixtures.items():
+    for row_id, expected_fixture in expected_fixtures.items():
         identity = row_map[row_id]["frozen_fixture_identities"]
-        actual = (
+        actual_fixture = (
             identity["incident_fixture_id"],
             identity["control_fixture_id"],
             identity["shared_session_sha256"],
@@ -256,7 +315,10 @@ def _verify_matrix_semantics(matrix: Mapping[str, Any]) -> None:
             identity["control_fingerprint_sha256"],
         )
         _require(identity["status"] == "VERIFIED", f"{row_id} fixture identity is not verified")
-        _require(actual == expected, f"{row_id} frozen fixture identities changed")
+        _require(
+            actual_fixture == expected_fixture,
+            f"{row_id} frozen fixture identities changed",
+        )
 
 
 def _verify_repository_artifacts(repo: Path, matrix: Mapping[str, Any]) -> int:

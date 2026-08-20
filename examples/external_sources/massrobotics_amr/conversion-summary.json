@@ -1,0 +1,37 @@
+{
+  "adapter_commit": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
+  "config_sha256": "3cd20444f6b7efc95ab5c69486b4226a349a41ddda0d60d9a60a0ba215680423",
+  "control": {
+    "capability_fingerprint_sha256": "66aa06fc57f74f18bfe4d5c668d906125dde74d09faafd89cb2859d801870ca8",
+    "fixture_fingerprint_sha256": "be6b038868a69be056e40280abbe47135d7631bccfec74e29bec6ae86449b912",
+    "fixture_id": "massrobotics_amr_synthetic_control_v1",
+    "run_ids": [
+      "control-clean-1",
+      "control-clean-2",
+      "control-clean-3"
+    ]
+  },
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "status": "demonstrated",
+    "variant_tree_sha256": {
+      "control": "419dd28114e726234a826638b55dfed341feb022d566bd56f4effb7e843e0cd2",
+      "incident": "8fed2f064042b13fcc77b6e29fd0e63db6793f791a9bceb66b2e8e3f17725060"
+    }
+  },
+  "incident": {
+    "capability_fingerprint_sha256": "498e06f487a2022ba0d5871e23553ab6c151173300467d8d85788cde3810082f",
+    "fixture_fingerprint_sha256": "1fde0761f477e21a2edb70a0e0a9884b1b02d0ddc52c5ec0f070411e915df426",
+    "fixture_id": "massrobotics_amr_synthetic_incident_v1",
+    "run_ids": [
+      "incident-clean-1",
+      "incident-clean-2",
+      "incident-clean-3"
+    ]
+  },
+  "profile": "metriplane.massrobotics_amr_offline_replay.v1",
+  "schema_version": "org.metriplane.massrobotics_amr.equivalence.v1",
+  "source_classification": "synthetic_format_engineering",
+  "source_description": "Metriplane-authored synthetic MassRobotics-format engineering fixture"
+}

@@ -1,0 +1,37 @@
+{
+  "cell_id": "synthetic_massrobotics_amr_rendezvous_fixture",
+  "schema_version": "metriplane.atlas.workspace.v1",
+  "stations": [
+    {
+      "label": "Operator-configured rendezvous station",
+      "station_id": "rendezvous_station",
+      "zone_id": "rendezvous_zone"
+    }
+  ],
+  "units": "meters",
+  "zones": [
+    {
+      "label": "Operator-configured rendezvous zone",
+      "polygon": [
+        [
+          4.0,
+          -1.0
+        ],
+        [
+          6.0,
+          -1.0
+        ],
+        [
+          6.0,
+          1.0
+        ],
+        [
+          4.0,
+          1.0
+        ]
+      ],
+      "zone_id": "rendezvous_zone",
+      "zone_type": "work_station"
+    }
+  ]
+}

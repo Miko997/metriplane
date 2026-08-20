@@ -289,6 +289,7 @@ The public Python package and command-line entry points remain named `metriplane
 | Demo datasets | `datasets/demo/` | Checked-in replay inputs for reproduction |
 | Evidence | `evidence/` | Release evidence, manifests, and experiment artifacts |
 | External-source proof | [`proofs/maniskill-pickcube-v1/`](proofs/maniskill-pickcube-v1/README.md) | Bounded ManiSkill PickCube publication candidate and evaluator packet |
+| Synthetic format proof | [`proofs/massrobotics-amr-offline-replay-v1/`](proofs/massrobotics-amr-offline-replay-v1/README.md) | Bounded MassRobotics-format offline replay with reference-only upstream identity |
 | Tools | `tools/` | Supported local helper scripts |
 | Docs | `docs/` | Technical documentation and runbooks |
 | Web UI | `web/` | Local operator and review interfaces |
@@ -309,6 +310,8 @@ maintainer-gate sequence are maintained in
 - Technical integration reference: [docs/INTEGRATIONS.md](https://github.com/Miko997/metriplane/blob/main/docs/INTEGRATIONS.md)
 - Exact-version research reproduction: [docs/softwarex_reproducibility.md](https://github.com/Miko997/metriplane/blob/main/docs/softwarex_reproducibility.md)
 - ManiSkill PickCube external-fixture proof candidate: [proof landing page](proofs/maniskill-pickcube-v1/README.md)
+- MassRobotics AMR synthetic offline-replay profile:
+  [mapping note](https://github.com/Miko997/metriplane/blob/main/docs/specs/massrobotics-amr-offline-replay-profile-v1.md)
 
 ## License
 

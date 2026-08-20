@@ -1,0 +1,36 @@
+{
+  "carry_forward": "none",
+  "expected_outcome_is_input": false,
+  "expected_planar_datum_uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "frame_interval_ns": 1000000000,
+  "interpolation": "none",
+  "operator_coordinate_binding": {
+    "source_linear_unit": "m",
+    "target_frame": "metriplane_world",
+    "target_linear_unit": "m",
+    "transform": "identity",
+    "unit_authority": "operator_configured_fixture_binding"
+  },
+  "outside_zone_label": "outside_workspace",
+  "process_relevant_entity_order": [
+    "11111111-1111-4111-8111-111111111111",
+    "22222222-2222-4222-8222-222222222222"
+  ],
+  "profile_id": "metriplane.massrobotics_amr_offline_replay.v1",
+  "promote_predictions_to_observations": false,
+  "resampling": "none",
+  "upstream_artifacts_included": false,
+  "upstream_rights": "reference_only",
+  "zone": {
+    "boundary_policy": "inclusive",
+    "outside_label": "outside_workspace",
+    "station_id": "rendezvous_station",
+    "vertices": [
+      [4.0, -1.0],
+      [6.0, -1.0],
+      [6.0, 1.0],
+      [4.0, 1.0]
+    ],
+    "zone_id": "rendezvous_zone"
+  }
+}

@@ -8,7 +8,9 @@ SPDX-License-Identifier: MIT
 This publication candidate consolidates Metriplane's frozen external-source
 evidence at public baseline
 `5606b956e9309802570cfa46857714722fd70187`. It does not alter the External
-Source Contract, an adapter, a fixture, Atlas, or any earlier proof.
+Source Contract, FrameStateModel, Atlas, or any earlier proof. Its seventh row
+references additive MET-55 adapter and fixture evidence while leaving the
+frozen two-path aggregate unchanged.
 
 > Metriplane's frozen external-source process has produced two successful,
 > source-specific portable evaluation paths: ManiSkill and robomimic. It also
@@ -30,6 +32,7 @@ gate enforcement; it is not compatibility.
 | MimicGen | Partially audited / not implemented | `PARTIALLY SUPPORTED` | No |
 | RoboCasa / RoboCasa365 | Not inspected / not tested | `NOT TESTED` | No |
 | ROS 2 / MCAP + TF2 | Planned / not tested | `NOT TESTED` | No |
+| MassRobotics AMR offline replay | Synthetic offline replay profile | `PARTIALLY SUPPORTED` | No |
 
 The decisions use only the controlled values `GO`, `PARTIALLY SUPPORTED`,
 `NO-GO`, `NOT TESTED`, and `NOT APPLICABLE`. The descriptive label does not
@@ -66,7 +69,9 @@ The two `GO` rows rely on owner-generated source audits, deterministic
 conversion records, portable installed-wheel evaluation, evidence verification,
 and regression results. Neither row records an attributable outside rerun or
 independent adoption. CALVIN is documentation-only. MimicGen is only partially
-audited. RoboCasa and ROS 2 / MCAP + TF2 were not tested.
+audited. RoboCasa and ROS 2 / MCAP + TF2 were not tested. The MassRobotics row
+records a reproducible mapping of Metriplane-authored synthetic
+MassRobotics-format records and is excluded from the proven-path count.
 
 The External Source Contract v1 schema remains
 `b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4`.

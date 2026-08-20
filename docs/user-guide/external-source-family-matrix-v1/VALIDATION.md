@@ -32,13 +32,15 @@ The official schema check uses `jsonschema==4.25.1`; citation validation uses
 | Gate | Local result | Exact-head CI result |
 | --- | --- | --- |
 | JSON syntax and Draft 2020-12 schema | Pass with `jsonschema==4.25.1` | Pending |
-| Evidence references and frozen hashes | Pass; 17 unique repository paths verified | Pending |
+| Evidence references and frozen hashes | Pass; 24 unique repository paths verified | Pending |
 | Complete SHA-256 inventory | Pass; 17 package entries, excluding the inventory itself | Pending |
 | Two byte-identical builds | Pass | Pending |
 | Machine-local path and unsupported-claim scan | Pass; 18 package files scanned including the inventory | Pending |
 | Frozen fixture inventories | Pass; 52 files across four inventories | Pending |
-| Focused publication tests | 8 passed | Pending |
-| Full repository tests | 1,096 passed, 2 skipped | Pending |
+| Focused publication tests | 10 passed | Pending |
+| MET-55 durable fixture tests | 13 passed | Pending |
+| Isolated MET-55 adapter tests | 121 passed | Pending |
+| Full repository tests | 1,143 passed, 2 skipped, 1 sandbox-specific PID assertion deselected; the complete 60-test launcher module, including that assertion, passed separately | Pending |
 | Strict documentation | Pass | Pending |
 | Citation and scoped REUSE validation | Pass with `cffconvert==2.0.0` and `reuse==5.0.2` | Pending |
 | Fresh-wheel Ubuntu/Python 3.12 fixture evaluation | Pass: `75/4/1/1`, `75/3/0/0`, `118/4/1/1`, `118/3/0/0`; incident evidence and regressions reverified | Pending |

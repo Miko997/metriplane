@@ -1,0 +1,23 @@
+expected_events:
+- asset_id: amr_2
+  event_type: required_asset_missing
+  process_step_id: two_amr_rendezvous
+  severity: warning
+  ts: 2.0
+- asset_id: amr_2
+  event_type: step_delayed
+  process_step_id: two_amr_rendezvous
+  severity: warning
+  ts: 5.0
+expected_incidents:
+- duration_s: 3.0
+  end_ts: 5.0
+  incident_type: missing_tool_caused_delay
+  severity: warning
+  start_ts: 2.0
+schema_version: metriplane.atlas.regression_test.v1
+source_bundle: incident-evidence.zip
+test_id: missing_tool_caused_delay_INC-0001
+tolerances:
+  duration_s: 1.0
+  event_time_s: 0.5
