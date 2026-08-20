@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 - Profile: `metriplane.massrobotics_amr_offline_replay.v1`
 - Evidence classification: **Owner-generated standards mapping and reproducible
   technical artifact**
-- Pull request: `MET55_PR_URL`
+- Pull request: <https://github.com/Miko997/metriplane/pull/74>
 - Source classification: `synthetic_format_engineering`
 - Source description: **Metriplane-authored synthetic MassRobotics-format
   engineering fixture**

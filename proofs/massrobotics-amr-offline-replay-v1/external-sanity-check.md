@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Status: **prepared, not sent**
 
-Pull request: `MET55_PR_URL`
+Pull request: <https://github.com/Miko997/metriplane/pull/74>
 
 Mapping note:
 [`docs/specs/massrobotics-amr-offline-replay-profile-v1.md`](../../docs/specs/massrobotics-amr-offline-replay-profile-v1.md)
