@@ -28,6 +28,9 @@ nav:
   - External Source Contract:
       - Contract v1: specs/external-source-contract-v1.md
       - Source-truth audit: specs/external-source-contract-v1-audit.md
+  - Cross-adapter validation:
+      - Coverage audit: specs/cross-adapter-validation-audit-v1.md
+      - Compatibility gate: specs/cross-adapter-compatibility-gate-v1.md
   - Bounded MassRobotics AMR replay: specs/massrobotics-amr-offline-replay-profile-v1.md
   - ManiSkill PickCube proof: user-guide/maniskill-pickcube-proof.md
   - External source-family matrix:
@@ -80,6 +83,8 @@ exclude_docs: |
   !user-guide/**
   !specs/external-source-contract-v1.md
   !specs/external-source-contract-v1-audit.md
+  !specs/cross-adapter-validation-audit-v1.md
+  !specs/cross-adapter-compatibility-gate-v1.md
   !specs/massrobotics-amr-offline-replay-profile-v1.md
   archive/**
   atlas/**
