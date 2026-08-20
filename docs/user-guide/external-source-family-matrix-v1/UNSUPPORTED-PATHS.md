@@ -11,6 +11,7 @@ SPDX-License-Identifier: MIT
 | MimicGen | `PARTIALLY SUPPORTED` | Identity and rights were partially inspected, but no immutable raw/prepared human-source chain, artifact-specific clock proof, or HDF5 body audit was completed | A bounded partial comparison record; no adapter, fixture, conversion, Atlas run, or compatibility proof |
 | RoboCasa / RoboCasa365 | `NOT TESTED` | The family was not inspected after robomimic satisfied the ordered source selection | No source identity, rights decision, clock, field map, adapter, fixture, or result |
 | ROS 2 / MCAP + TF2 | `NOT TESTED` | Future work has not selected one immutable recording, semantic profile, clock, frame path, or identity/completeness policy | No ROS 2 or MCAP compatibility claim |
+| MassRobotics AMR offline replay | `PARTIALLY SUPPORTED` | The implemented input is Metriplane-authored synthetic format-engineering data, upstream materials are reference-only, and no external AMR recording, transport semantics, independent reviewer, organization, vendor, certification, or conformance process supplied evidence | One bounded two-AMR incident/control mapping with deterministic owner runs, verified incident evidence/regression, and a no-incident control; it is not counted as a proven external-source path |
 | ManiSkill beyond the pinned PickCube path | `NOT APPLICABLE` to the `GO` row | The proof covers one episode, two normalized fixtures, and one operator scenario | Any broader task, dataset, field, platform-conversion, or semantic claim needs a new audit |
 | robomimic beyond the pinned Can path | `NOT APPLICABLE` to the `GO` row | The proof covers one 118-frame trajectory and one position-only operator scenario | Other tasks, episodes, prepared fields, formats, and HDF5 files are not covered |
 
@@ -22,3 +23,8 @@ No missing cell in this register is filled by analogy. Storage format, source
 project lineage, or simulator ancestry does not transfer semantics, rights,
 clock authority, frames, units, identity, or completeness from one row to
 another.
+
+The MassRobotics row does not expand by analogy from selected identity/status
+fields to the wider standard. Real recordings, other entities, path
+normalization, additional datums/units, non-identity transforms, live transport,
+fleet behavior, safety, and ISO 21423 remain outside the profile.

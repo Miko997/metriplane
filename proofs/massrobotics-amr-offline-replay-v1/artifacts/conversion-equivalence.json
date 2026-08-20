@@ -1,0 +1,21 @@
+{
+  "adapter_commit": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+  "comparison_policy": "sha256_byte_identity",
+  "control_clean_conversion_sha256s": [
+    "0f87b01ba6c03689ca482200e86c68ea6464979acab4dfe3cd065657596f415a",
+    "0f87b01ba6c03689ca482200e86c68ea6464979acab4dfe3cd065657596f415a",
+    "0f87b01ba6c03689ca482200e86c68ea6464979acab4dfe3cd065657596f415a"
+  ],
+  "control_equivalent": true,
+  "final_inventory_sha256": "29c906205091b5659b12be4d3a3b23b52eedea7458c0c17feb0ced4dc8ef1142",
+  "incident_clean_conversion_sha256s": [
+    "4e9884d8834a1ad50bd78127e8556d1181ecfb3ae0f02d6b0a0373e0be679240",
+    "4e9884d8834a1ad50bd78127e8556d1181ecfb3ae0f02d6b0a0373e0be679240",
+    "4e9884d8834a1ad50bd78127e8556d1181ecfb3ae0f02d6b0a0373e0be679240"
+  ],
+  "incident_equivalent": true,
+  "portable_conversion_summary_sha256": "7317a235a69816782a8583668e8f49fa36596e5e95cb48b248868a6012cd6ae5",
+  "profile_id": "metriplane.massrobotics_amr_offline_replay.v1",
+  "schema_version": "org.metriplane.massrobotics_amr.proof_conversion_equivalence.v1",
+  "status": "demonstrated"
+}

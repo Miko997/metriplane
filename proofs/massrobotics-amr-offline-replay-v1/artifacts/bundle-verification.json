@@ -1,0 +1,7 @@
+{
+  "bundle": "incident-evidence.zip",
+  "bundle_sha256": "a4a102fea4c6392f1e0d5a417b163108373f12c1716b424a1e28a5f8dfc6b6b7",
+  "errors": [],
+  "pass": true,
+  "schema_version": "metriplane.atlas.bundle_verifier.v1"
+}

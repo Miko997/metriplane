@@ -127,6 +127,9 @@ configs/*_local.yaml
 !examples/external_sources/robomimic_lowdim/
 !examples/external_sources/robomimic_lowdim/**/
 !examples/external_sources/robomimic_lowdim/**/*.jsonl
+!adapters/massrobotics_amr/source/**/*.jsonl
+!examples/external_sources/massrobotics_amr/**/*.jsonl
+!examples/external_sources/massrobotics_amr/**/*.csv
 !examples/external_sources/robomimic_lowdim/**/*.csv
 
 # Public MET-16 proof artifacts, including the single representative evidence bundle.

@@ -31,6 +31,11 @@ An evaluator receives:
 No raw HDF5/JSON/ZIP source, simulator asset, source framework, adapter, video,
 image, or model binary is required for this portable level.
 
+The non-counted MassRobotics row is outside this two-source evaluator packet.
+It has a separate, unsent sanity-check package for its owner-generated synthetic
+mapping and cannot be upgraded to independent or organizational validation by
+this procedure.
+
 ## Required environment
 
 - Ubuntu or macOS;

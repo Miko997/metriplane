@@ -18,7 +18,9 @@ abstract: >-
   Claim-bounded consolidation of frozen Metriplane external-source evidence:
   one source-specific ManiSkill GO, one CALVIN NO-GO, one source-specific
   robomimic GO, one partially audited MimicGen row, and untested RoboCasa and
-  ROS 2 / MCAP + TF2 rows. The package is owner-generated and does not claim
+  ROS 2 / MCAP + TF2 rows. A non-counted seventh row records a bounded
+  owner-generated synthetic MassRobotics-format mapping without claiming
+  compatibility or conformance. The package is owner-generated and does not claim
   independent validation, universal compatibility, physical accuracy, safety,
   production readiness, or source-project endorsement.
 keywords:
@@ -29,6 +31,7 @@ keywords:
   - ManiSkill
   - CALVIN
   - robomimic
+  - MassRobotics
   - reproducibility
 preferred-citation:
   type: data

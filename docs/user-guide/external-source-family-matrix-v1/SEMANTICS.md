@@ -15,6 +15,7 @@ SPDX-License-Identifier: MIT
 | MimicGen | No Atlas semantics demonstrated. |
 | RoboCasa / RoboCasa365 | No Atlas semantics demonstrated. |
 | ROS 2 / MCAP + TF2 | No Atlas semantics demonstrated. |
+| MassRobotics AMR offline replay | One owner-generated, two-AMR, current-location-only complete-snapshot mapping. The operator-authored `3.0 s` rendezvous wait produces incident `9/4/1/1` and control `9/3/0/0`. This is synthetic format-engineering evidence, not external AMR data or a compatibility/conformance result. |
 
 In both `GO` rows, the polygon, required role, and wait are Metriplane-authored
 Layer-C rules. They are not source-project labels or task-success criteria.
@@ -31,12 +32,18 @@ The package prohibits interpreting any row as evidence for:
 - quality, safety, certification, production readiness, source-project
   endorsement, or independent adoption;
 - general ManiSkill, robomimic, HDF5, CALVIN, MimicGen, RoboCasa, ROS 2,
-  rosbag2, MCAP, TF2, arbitrary-topic, or automatic-discovery support;
+  rosbag2, MCAP, TF2, MassRobotics, arbitrary-topic, or automatic-discovery
+  support;
+- MassRobotics conformance, certification, validation, vendor adoption,
+  production use, ISO 21423 conformance, or transport/session reconstruction;
 - three successful integrations or universal source neutrality.
 
 CALVIN's `NO-GO` is a successful enforcement result, not a successful source
 integration. MimicGen's `PARTIALLY SUPPORTED` decision describes a partial audit,
-not an implemented path. `NOT TESTED` cells contain no implied facts.
+not an implemented path. The MassRobotics `PARTIALLY SUPPORTED` decision
+describes an implemented owner-generated synthetic mapping that is deliberately
+not counted as external compatibility. `NOT TESTED` cells contain no implied
+facts.
 
 ## Claim register
 
@@ -45,6 +52,8 @@ not an implemented path. `NOT TESTED` cells contain no implied facts.
 | Two source-specific portable paths exist | Allowed | Exact ManiSkill and robomimic rows only |
 | CALVIN failed closed on rights and timing | Allowed | Documentation-only Phase-0 audit |
 | Both `GO` fixtures evaluate on Ubuntu/macOS and Python 3.12/3.13 | Allowed | Frozen portable fixtures; first-party CI |
-| Source conversion is portable across all four rows | Prohibited | The portable matrix evaluates normalized fixtures, not every source stack |
+| Source conversion is portable across all matrix rows | Prohibited | Portable fixture evaluation does not establish portability for every source stack |
 | Independent validation or adoption exists | Prohibited | No attributable outside rerun is recorded |
 | General source-family support exists | Prohibited | Every `GO` is artifact- and semantics-specific |
+| A bounded synthetic MassRobotics-format mapping exists | Allowed | Exact MET-55 incident/control fixtures only; first-party owner-generated artifact |
+| MassRobotics compatibility, conformance, or validation exists | Prohibited | No external recording, organizational review, certification, or conformance test exists |

@@ -23,6 +23,14 @@ MimicGen was only partially audited and was not implemented. RoboCasa was not
 inspected. ROS 2 / MCAP + TF2 remains future work and has not been tested. No
 third successful-source claim exists.
 
+A seventh, non-counted row records a bounded offline replay of
+Metriplane-authored synthetic MassRobotics-format identity/status records. It
+demonstrates strict current-location, timestamp, datum, complete-snapshot, and
+two-AMR rendezvous handling. The upstream standard is reference-only and no
+upstream files are included. This row is not external robot data, MassRobotics
+or vendor validation, general compatibility, conformance, certification,
+production deployment, or ISO 21423 conformance.
+
 This is first-party technical evidence. It does not claim independent adoption
 or validation, universal source neutrality, general simulator or HDF5 support,
 physical accuracy, safety, production readiness, or source-project endorsement.

@@ -26,6 +26,7 @@ EXPECTED_NAV = (
     "user-guide/integrations.md",
     "specs/external-source-contract-v1.md",
     "specs/external-source-contract-v1-audit.md",
+    "specs/massrobotics-amr-offline-replay-profile-v1.md",
     "user-guide/maniskill-pickcube-proof.md",
     "user-guide/external-source-family-matrix-v1/README.md",
     "user-guide/external-source-family-matrix-v1/MATRIX.md",

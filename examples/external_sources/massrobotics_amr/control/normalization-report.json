@@ -1,0 +1,121 @@
+{
+  "contract_schema_version": "metriplane.external_source_contract.v1",
+  "conversion_reproducibility": {
+    "comparison_policy": "sha256_byte_identity",
+    "equivalent": true,
+    "input_fingerprint_sha256": "e56ff9b0e708aa0c5719085289186a1195b03b01f6b28e7f6365fe0ff6762968",
+    "runs": [
+      {
+        "artifacts": {
+          "entity-mapping.json": "1551df6f120b37533ff443bfc28e5ca105861640d4e67144c7d3fb04c63a834c",
+          "session.jsonl": "abe0c0b9a1f8cc8968c8c2e5f9551b3f9bc042eddacf9149108e8ab3b7b35042"
+        },
+        "run_id": "control-clean-1"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "1551df6f120b37533ff443bfc28e5ca105861640d4e67144c7d3fb04c63a834c",
+          "session.jsonl": "abe0c0b9a1f8cc8968c8c2e5f9551b3f9bc042eddacf9149108e8ab3b7b35042"
+        },
+        "run_id": "control-clean-2"
+      },
+      {
+        "artifacts": {
+          "entity-mapping.json": "1551df6f120b37533ff443bfc28e5ca105861640d4e67144c7d3fb04c63a834c",
+          "session.jsonl": "abe0c0b9a1f8cc8968c8c2e5f9551b3f9bc042eddacf9149108e8ab3b7b35042"
+        },
+        "run_id": "control-clean-3"
+      }
+    ],
+    "status": "demonstrated"
+  },
+  "fixture_id": "massrobotics_amr_synthetic_control_v1",
+  "limitations": [
+    "Metriplane-authored synthetic MassRobotics-format engineering fixture",
+    "The metre binding is a fixture-specific operator interpretation.",
+    "Orientation is validated but not normalized into Atlas state.",
+    "Velocity, battery, runtime, load, errors, operational state, destinations, and path do not participate in evaluation.",
+    "Predictions never become observed frames or positions.",
+    "No transport/session semantics, datum transform, carry-forward, interpolation, or resampling is reconstructed."
+  ],
+  "normalized_frame_count": 9,
+  "omitted_process_relevant_observations": 0,
+  "operations": [
+    {
+      "applied": true,
+      "declaration_path": "normalization.clock",
+      "kind": "time_mapping",
+      "operation_id": "map-source-utc-to-relative-integer-nanoseconds",
+      "summary": "Parse strict UTC timestamps and subtract the first status timestamp."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.entity_mapping",
+      "kind": "entity_mapping",
+      "operation_id": "apply-explicit-uuid-entity-mapping",
+      "summary": "Map both configured source UUIDs one-to-one in deterministic order."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.coordinates.transform",
+      "kind": "coordinate_transform",
+      "operation_id": "identity-operator-coordinate-binding",
+      "summary": "Apply no transform under the explicit fixture-specific metre binding."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.coordinates.projection",
+      "kind": "projection",
+      "operation_id": "preserve-current-location-xyz",
+      "summary": "Copy explicit current-location x, y, and z without projection."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.zone_assignment",
+      "kind": "zone_assignment",
+      "operation_id": "assign-inclusive-rendezvous-polygon",
+      "summary": "Assign the operator-authored inclusive polygon after coordinate binding."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.completeness.materialization",
+      "kind": "partial_update_materialization",
+      "operation_id": "materialize-exact-two-amr-snapshot",
+      "summary": "Join both required status records only at exactly equal timestamps."
+    },
+    {
+      "applied": true,
+      "declaration_path": "normalization.temporal_alignment.synchronization",
+      "kind": "synchronization",
+      "operation_id": "exact-status-timestamp-join",
+      "summary": "Join both process-relevant AMRs with zero timestamp skew."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.resampling",
+      "kind": "resampling",
+      "operation_id": "no-resampling",
+      "summary": "Every complete source timestamp produces one normalized frame."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.temporal_alignment.interpolation",
+      "kind": "interpolation",
+      "operation_id": "no-interpolation",
+      "summary": "No current state or prediction is interpolated."
+    },
+    {
+      "applied": false,
+      "declaration_path": "normalization.completeness.carry_forward",
+      "kind": "carry_forward",
+      "operation_id": "no-carry-forward",
+      "summary": "Missing required current status rejects the source before Atlas."
+    }
+  ],
+  "process_relevant_entity_count": 2,
+  "result": "pass",
+  "schema_version": "metriplane.external_normalization_report.v1",
+  "source_record_count": 18,
+  "unknown_process_relevant_observations": 0,
+  "warnings": []
+}

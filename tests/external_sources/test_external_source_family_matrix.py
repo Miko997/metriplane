@@ -69,6 +69,41 @@ def test_matrix_has_exact_canonical_rows_and_decisions() -> None:
     assert sum(bool(row["compatibility_counted"]) for row in rows) == 2
 
 
+def test_massrobotics_row_is_bounded_and_not_counted_as_compatibility() -> None:
+    rows = {row["row_id"]: row for row in _read_json("matrix.json")["rows"]}
+    row = rows["massrobotics_amr_offline_replay"]
+    assert row["decision"] == "PARTIALLY SUPPORTED"
+    assert row["compatibility_counted"] is False
+    assert row["status_label"] == "OWNER-GENERATED FORMAT MAPPING / NOT EXTERNAL VALIDATION"
+    assert row["independent_rerun_status"]["status"] == "NOT TESTED"
+    assert row["frozen_fixture_identities"]["status"] == "PARTIAL"
+    assert row["frozen_fixture_identities"]["shared_session_sha256"] is None
+    serialized = json.dumps(row, sort_keys=True)
+    for boundary in (
+        "synthetic_format_engineering",
+        "reference_only",
+        "no general MassRobotics compatibility",
+        "no conformance",
+    ):
+        assert boundary in serialized
+    artifacts = {artifact["id"]: artifact for artifact in row["supporting_artifacts"]}
+    assert artifacts["massrobotics-release"]["kind"] == "external_artifact"
+    assert artifacts["massrobotics-snapshot"]["kind"] == "external_artifact"
+    repository_names = {
+        Path(artifact["path"]).name
+        for artifact in row["supporting_artifacts"]
+        if artifact["kind"] == "repository_path"
+    }
+    assert repository_names.isdisjoint(
+        {
+            "AMR_Interop_Standard.json",
+            "AMR_Interop_Standard.pdf",
+            "identityReport1.json",
+            "statusReport1.json",
+        }
+    )
+
+
 def test_go_rows_record_exact_frozen_fixture_identities() -> None:
     rows = {row["row_id"]: row for row in _read_json("matrix.json")["rows"]}
     assert rows["maniskill"]["frozen_fixture_identities"] == {
@@ -110,7 +145,7 @@ def test_candidate_content_validator_passes_without_git_history() -> None:
         require_git_history=False,
     )
     assert result["pass"] is True
-    assert result["decision_count"] == 6
+    assert result["decision_count"] == 7
     assert result["proven_path_count"] == 2
     assert result["metriplane_version"] == "0.3.0"
     assert result["git_history"] == "not_requested"
@@ -173,7 +208,15 @@ def test_human_publication_inventory_is_present() -> None:
     }
     assert required <= {path.name for path in PACKAGE_ROOT.iterdir() if path.is_file()}
     landing = (PACKAGE_ROOT / "README.md").read_text(encoding="utf-8")
-    for family in ("ManiSkill", "CALVIN", "robomimic", "MimicGen", "RoboCasa", "ROS 2"):
+    for family in (
+        "ManiSkill",
+        "CALVIN",
+        "robomimic",
+        "MimicGen",
+        "RoboCasa",
+        "ROS 2",
+        "MassRobotics",
+    ):
         assert family in landing
 
 

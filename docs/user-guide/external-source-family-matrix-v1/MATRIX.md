@@ -19,6 +19,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | Partially audited Square human source at dataset revision `33016f8a62c02334f929f2913af8fdd2a8a129e1`; recorded remote source hash `c917e99362fd9bd11978d6e2642c1ea88272702fbf55b50367ed471febf550e2` | `PARTIALLY SUPPORTED` | Not established; no immutable raw/prepared chain or clock proof |
 | RoboCasa / RoboCasa365 | No artifact selected or inspected | `NOT TESTED` | Not tested |
 | ROS 2 / MCAP + TF2 | No recording selected; any future work requires a separate bounded audit | `NOT TESTED` | Design target only; no compatibility proof |
+| MassRobotics AMR offline replay | Metriplane-authored synthetic identity/status JSONL; profile `metriplane.massrobotics_amr_offline_replay.v1`; MassRobotics Version 1.0 release `7161a0d` and snapshot `f9357a423ecabc3f7112e6d10025a5231943ec50` are reference-only identities | `PARTIALLY SUPPORTED` | Incident and control validate under Contract v1, but this is an owner-generated format mapping rather than external-source or conformance evidence |
 
 ## Rights and provenance boundary
 
@@ -30,6 +31,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | NVIDIA-restricted code terms are separate from CC BY 4.0 dataset terms; no code may enter Metriplane's MIT adapter | Candidate human HDF5 recorded remotely; no body inspection, authoritative preparation chain, derived output, or normalized fixture |
 | RoboCasa / RoboCasa365 | Not inspected | Unknown; no boundary inferred |
 | ROS 2 / MCAP + TF2 | Not tested; recording-specific rights remain required | No recording or topic/frame boundary selected |
+| MassRobotics AMR offline replay | Synthetic source and normalized fixtures are Metriplane-authored MIT material; upstream standard, examples, sender/receiver code, and ISO text are reference-only and excluded | Synthetic identity/status records → strict datum/time/current-location validation → nine complete two-AMR position snapshots; path predictions stay validation-only |
 
 ## State model
 
@@ -41,6 +43,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | No artifact-specific clock proof | No inspected frame, transform, or unit mapping | No verified identity, completeness, missing-state, or materialization policy |
 | RoboCasa / RoboCasa365 | Not tested | Not tested | Not tested |
 | ROS 2 / MCAP + TF2 | No clock/domain selected | No TF2 authority/path or units selected | No topic-to-entity identity, completeness, or materialization policy selected |
+| MassRobotics AMR offline replay | Offset-bearing status timestamps normalized to UTC; frames 0–8 at exact 1 s intervals | Current `location.planarDatum` authoritative; one configured datum; metres by fixture-specific operator binding; identity into `metriplane_world`; inclusive polygon | Two configured UUIDs on every frame; omissions and unknown entities reject; no carry-forward, interpolation, resampling, or transform |
 
 ## Field provenance and information loss
 
@@ -52,6 +55,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | No field body inspected | Unknown; no normalization performed |
 | RoboCasa / RoboCasa365 | Not tested | Not tested |
 | ROS 2 / MCAP + TF2 | Not tested | Not tested |
+| MassRobotics AMR offline replay | Source UUID, timestamp, current-location XYZ, current-location datum, and validated quaternion; adapter derives elapsed time, target position, ordering, and zone | Orientation, velocity, operational state, battery/runtime/load, error codes, destinations, path, and predictions excluded from Atlas truth |
 
 ## Evaluation and reproducibility
 
@@ -63,6 +67,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
 | RoboCasa / RoboCasa365 | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
 | ROS 2 / MCAP + TF2 | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
+| MassRobotics AMR offline replay | Operator-authored two-AMR rendezvous; incident `9/4/1/1`, control `9/3/0/0` | Three canonically equivalent owner conversions per variant | Portable Contract v1 fixtures; exact-head cross-platform CI remains first-party | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED`; no external reviewer or organization has validated it |
 
 ## Supported and prohibited interpretation
 
@@ -73,3 +78,9 @@ physical accuracy, simulator realism, safety, production fitness, endorsement,
 or family-wide compatibility. See the [semantics register](SEMANTICS.md),
 [unsupported-path register](UNSUPPORTED-PATHS.md), and
 [reopening criteria](REOPENING.md) for row-specific limits.
+
+The MassRobotics row is not a third `GO`: it demonstrates only a bounded
+owner-generated mapping using synthetic records and is excluded from the proven
+aggregate. Its matrix-level shared-session hash is intentionally null because
+the incident and control trajectories produce different normalized sessions;
+each variant instead has its own fixture identity and checksum inventory.

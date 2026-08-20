@@ -1,0 +1,273 @@
+{
+  "adapter": {
+    "adapter_id": "org.metriplane.massrobotics_amr_offline_replay",
+    "conversion_dependencies": [
+      "metriplane-source-adapter-sdk==1.0.0"
+    ],
+    "entrypoint": "massrobotics_amr_adapter.cli:main",
+    "environment": {
+      "architecture": "x86_64",
+      "dependency_lock_sha256": "f5ebec35efe702403c72689197cabf2631592791d87a2e26b7c1db6d6b61a45b",
+      "operating_system": "Linux",
+      "runtime": "CPython",
+      "runtime_version": "3.12"
+    },
+    "implementation_commit": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+    "repository_uri": "https://github.com/Miko997/metriplane",
+    "version": "1.0.0"
+  },
+  "capabilities": {
+    "anti_taint": {
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "excluded_fields": [
+        "statusReport.operationalState",
+        "statusReport.errorCodes",
+        "statusReport.destinations",
+        "statusReport.path"
+      ],
+      "frame_state_events_policy": "empty",
+      "inventory_complete": true,
+      "status": "verified",
+      "used_as_incident_truth": false,
+      "used_as_process_events": false
+    },
+    "artifact_identity": {
+      "all_required_artifacts_hashed": true,
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "status": "verified"
+    },
+    "clock": {
+      "authoritative": true,
+      "authority": "statusReport.timestamp with explicit UTC designator or offset",
+      "domain": "UTC",
+      "evaluation_field": "ts_sim_ns",
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "mapping_method": "affine",
+      "order_only": false,
+      "source_field": "statusReport.timestamp",
+      "source_unit": "nanoseconds",
+      "status": "verified"
+    },
+    "completeness": {
+      "carry_forward": {
+        "fields": [],
+        "max_gap_ns": null,
+        "method": "none"
+      },
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "frame_semantics": "complete_snapshot",
+      "interpolation": "none",
+      "materialization_method": "exact_snapshot_join",
+      "omission_policy": "reject_omission",
+      "partial_updates_materialized": true,
+      "resampling": "none",
+      "source_stream_semantics": "partial_updates",
+      "status": "verified",
+      "synchronization": "exact_timestamp",
+      "synchronization_tolerance_ns": 0,
+      "unknown_state_policy": "reject_fixture"
+    },
+    "coordinates": {
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "projection_method": "identity_3d",
+      "source_frame": "metriplane_world",
+      "source_units": "meters",
+      "status": "verified",
+      "target_frame": "metriplane_world",
+      "target_units": "meters",
+      "transform_method": "identity operator-configured fixture binding"
+    },
+    "deterministic_conversion": {
+      "clean_run_count": 3,
+      "compared_output_count": 3,
+      "comparison_policy": "byte_identity",
+      "equivalent": true,
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "input_fingerprint_sha256": "ccf82d85135f70a9c9c5f2ab0f368f56675952b232ae422014d3424f9572f08a",
+      "status": "verified"
+    },
+    "entity_identity": {
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "explicit_mapping": true,
+      "mapping_schema": "metriplane.external_entity_mapping.v1",
+      "mapping_sha256": "1551df6f120b37533ff443bfc28e5ca105861640d4e67144c7d3fb04c63a834c",
+      "normalized_entities": [
+        {
+          "normalized_id": "11111111-1111-4111-8111-111111111111",
+          "process_relevant": true
+        },
+        {
+          "normalized_id": "22222222-2222-4222-8222-222222222222",
+          "process_relevant": true
+        }
+      ],
+      "required_entities": [
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222"
+      ],
+      "stable": true,
+      "status": "verified"
+    },
+    "field_provenance": {
+      "complete": true,
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "status": "verified",
+      "trust_layers_separated": true
+    },
+    "information_loss": {
+      "declared": true,
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "items": [
+        "validated current orientation is not normalized",
+        "linear velocity is not converted to Cartesian vel_world",
+        "path and destinations remain predictions",
+        "battery, runtime, load, error, and operational state do not drive Atlas",
+        "live transport and session metadata do not exist"
+      ],
+      "status": "verified"
+    },
+    "portable_evaluation": {
+      "environments": [
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.12",
+          "status": "required"
+        },
+        {
+          "operating_system": "Ubuntu",
+          "python_version": "3.13",
+          "status": "required"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.12",
+          "status": "required"
+        },
+        {
+          "operating_system": "macOS",
+          "python_version": "3.13",
+          "status": "required"
+        }
+      ],
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "source_dependencies_required": false,
+      "status": "not_demonstrated"
+    },
+    "rights": {
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "status": "verified"
+    },
+    "semantics": {
+      "evidence_ids": [
+        "massrobotics_amr_adapter_commit"
+      ],
+      "prohibited": [
+        "General MassRobotics compatibility or conformance",
+        "Live MQTT, WebSocket, QoS, retained-message, or transport semantics",
+        "Cross-datum transforms, automatic unit inference, carry-forward, interpolation, or resampling",
+        "Fleet management, task dispatch, path planning, robot control, production, safety, or ISO 21423 claims",
+        "External-source evidence, organizational validation, endorsement, or vendor adoption"
+      ],
+      "status": "verified",
+      "supported": [
+        "One bounded two-AMR rendezvous replay from Metriplane-authored synthetic MassRobotics-format identity and current-status records"
+      ]
+    }
+  },
+  "contract": {
+    "fit": "verified",
+    "frame_state_model_version": "1.0",
+    "profile": "metriplane.atlas.complete_snapshot.v1",
+    "version": "metriplane.external_source_contract.v1"
+  },
+  "evidence": [
+    {
+      "evidence_id": "massrobotics_amr_adapter_commit",
+      "identity": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+      "kind": "git_commit",
+      "uri": "https://github.com/Miko997/metriplane/commit/6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15"
+    }
+  ],
+  "limitations": [
+    "Metriplane-authored synthetic MassRobotics-format engineering fixture",
+    "One exact configured single-datum current-location profile",
+    "Upstream standard materials are reference-only and excluded",
+    "Portable operating-system rows remain required until CI passes"
+  ],
+  "record": {
+    "classification": "native",
+    "evidence_classification": "synthetic_format_engineering",
+    "statement": "Native capability declaration for one bounded Metriplane-authored synthetic format-engineering source.",
+    "subject": "candidate_adapter"
+  },
+  "schema_version": "metriplane.source_adapter_capability.v1",
+  "source": {
+    "artifacts": [
+      {
+        "artifact_id": "massrobotics_amr_identity_jsonl",
+        "byte_size": 498,
+        "presence": "included",
+        "rights_id": "metriplane_synthetic_source_rights",
+        "role": "synthetic_identity_reports",
+        "sha256": "e721cc90fe6c7641d6ae1dfae37c2697ca60b1a633904cace1ec0dcc08e5cf2c",
+        "uri": "urn:sha256:e721cc90fe6c7641d6ae1dfae37c2697ca60b1a633904cace1ec0dcc08e5cf2c"
+      },
+      {
+        "artifact_id": "massrobotics_amr_status_jsonl",
+        "byte_size": 5013,
+        "presence": "included",
+        "rights_id": "metriplane_synthetic_source_rights",
+        "role": "synthetic_status_reports",
+        "sha256": "2988e1555e55f19196433d0aef0913e272881f65d52fc049adf3c826edf87ed2",
+        "uri": "urn:sha256:2988e1555e55f19196433d0aef0913e272881f65d52fc049adf3c826edf87ed2"
+      }
+    ],
+    "family": "Bounded synthetic MassRobotics AMR identity and status JSONL records",
+    "project_uri": "https://github.com/Miko997/metriplane",
+    "revision": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+    "revision_kind": "adapter_commit",
+    "rights": {
+      "derived_fixture": {
+        "basis": "MIT Metriplane-authored normalized state and operator rules.",
+        "redistribution": "verified",
+        "rights_id": "synthetic_normalized_fixture",
+        "subject": "normalized_fixture"
+      },
+      "source_bytes_in_fixture": true,
+      "source_records": [
+        {
+          "basis": "Metriplane-authored synthetic records under the repository MIT license.",
+          "rights_id": "metriplane_synthetic_source_rights",
+          "source_redistribution": "allowed",
+          "source_use": "verified",
+          "subject_artifact_ids": [
+            "massrobotics_amr_identity_jsonl",
+            "massrobotics_amr_status_jsonl"
+          ]
+        }
+      ]
+    }
+  }
+}

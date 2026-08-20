@@ -1,0 +1,76 @@
+{
+  "artifacts": [
+    {
+      "artifact_name": "AMR_Interop_Standard.json",
+      "git_blob": "7ba8974ae46d81ea0f6f8ed0ac7899d9d279af98",
+      "immutable_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/blob/f9357a423ecabc3f7112e6d10025a5231943ec50/AMR_Interop_Standard.json",
+      "included": false,
+      "raw_sha256": "816c8f78e1d280d10983a1bcea69a3c8e6572e5bb6f777a0863e6a5b2c3fc288",
+      "repository_path": "AMR_Interop_Standard.json",
+      "retrieval_date": "2026-08-20",
+      "rights_decision": "reference_only",
+      "role": "referenced_schema",
+      "snapshot_commit": "f9357a423ecabc3f7112e6d10025a5231943ec50"
+    },
+    {
+      "artifact_name": "AMR_Interop_Standard.pdf",
+      "git_blob": "2436fee76da3a7b15516b518d85d237724925f90",
+      "immutable_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/blob/f9357a423ecabc3f7112e6d10025a5231943ec50/AMR_Interop_Standard.pdf",
+      "included": false,
+      "raw_sha256": "99aa8cceb10247dbfd2957695695b5f11d347bf51a0452e3f330887b2f4e2ff2",
+      "repository_path": "AMR_Interop_Standard.pdf",
+      "retrieval_date": "2026-08-20",
+      "rights_decision": "reference_only",
+      "role": "referenced_standard_document",
+      "snapshot_commit": "f9357a423ecabc3f7112e6d10025a5231943ec50"
+    },
+    {
+      "artifact_name": "README.md",
+      "git_blob": "4031260c9036672a6cd85b93111862b5daa568c3",
+      "immutable_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/blob/f9357a423ecabc3f7112e6d10025a5231943ec50/README.md",
+      "included": false,
+      "raw_sha256": "7b4db4d9b5ca0a6735690f2b37228c234703e4a5bdbbee634106fc7ba9f1a4e5",
+      "repository_path": "README.md",
+      "retrieval_date": "2026-08-20",
+      "rights_decision": "reference_only",
+      "role": "repository_scope_context",
+      "snapshot_commit": "f9357a423ecabc3f7112e6d10025a5231943ec50"
+    },
+    {
+      "artifact_name": "examples/identityReport1.json",
+      "git_blob": "112ac8d1df62170f785dadf03419968c7e8b61df",
+      "immutable_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/blob/f9357a423ecabc3f7112e6d10025a5231943ec50/examples/identityReport1.json",
+      "included": false,
+      "raw_sha256": "c8c35e010535a83135f2dcaeacec42ae9e2411c108ce0b7035ab6438b0549a94",
+      "repository_path": "examples/identityReport1.json",
+      "retrieval_date": "2026-08-20",
+      "rights_decision": "reference_only",
+      "role": "official_example_identity_message",
+      "snapshot_commit": "f9357a423ecabc3f7112e6d10025a5231943ec50"
+    },
+    {
+      "artifact_name": "examples/statusReport1.json",
+      "git_blob": "b396acbf743c2ffcd448dd675dc830b77384b054",
+      "immutable_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/blob/f9357a423ecabc3f7112e6d10025a5231943ec50/examples/statusReport1.json",
+      "included": false,
+      "raw_sha256": "13b230e7e884c92bc551ba2800a5490259858af59b69e4470029c71060430cfd",
+      "repository_path": "examples/statusReport1.json",
+      "retrieval_date": "2026-08-20",
+      "rights_decision": "reference_only",
+      "role": "official_example_status_message",
+      "snapshot_commit": "f9357a423ecabc3f7112e6d10025a5231943ec50"
+    }
+  ],
+  "formal_release": {
+    "commit": "7161a0d2b26606941f5a012cd03c7f113beb7a22",
+    "release_url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/releases/tag/1.0",
+    "short_commit": "7161a0d",
+    "tag": "1.0",
+    "version": "1.0"
+  },
+  "repository": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard",
+  "rights_decision": "reference_only",
+  "schema_version": "org.metriplane.massrobotics_amr.source_reference.v1",
+  "snapshot_commit": "f9357a423ecabc3f7112e6d10025a5231943ec50",
+  "upstream_artifacts_included": false
+}

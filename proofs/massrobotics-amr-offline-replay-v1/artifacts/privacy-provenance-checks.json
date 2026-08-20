@@ -1,0 +1,13 @@
+{
+  "checks": [
+    {"check": "durable portable fixture machine-local path scan", "pass": true},
+    {"check": "incident evidence ZIP member name and byte scan", "pass": true},
+    {"check": "private email and mailbox material scan", "pass": true},
+    {"check": "reference-only upstream byte identity exclusion", "pass": true},
+    {"check": "expected outcome excluded from conversion and Atlas inputs", "pass": true},
+    {"check": "source-conversion and Atlas run provenance separation", "pass": true},
+    {"check": "atomic no-clobber publication and overlap rejection", "pass": true}
+  ],
+  "evidence_classification": "Owner-generated standards mapping and reproducible technical artifact",
+  "schema_version": "org.metriplane.massrobotics_amr.privacy_provenance_checks.v1"
+}
