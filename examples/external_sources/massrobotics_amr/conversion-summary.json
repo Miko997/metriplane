@@ -1,10 +1,9 @@
 {
-  "adapter_commit": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
-  "claim_classification": "Owner-generated standards mapping and reproducible technical artifact",
+  "adapter_commit": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
   "config_sha256": "3cd20444f6b7efc95ab5c69486b4226a349a41ddda0d60d9a60a0ba215680423",
   "control": {
-    "capability_fingerprint_sha256": "da8774700e9158dbd9b2ccd141559b6dbd9d80d5b8fcf0fc8458cb3c785bafb3",
-    "fixture_fingerprint_sha256": "ae871d79a0af4d723653664a52c289434e9b2c917882af75026a92d3d0de1dc2",
+    "capability_fingerprint_sha256": "66aa06fc57f74f18bfe4d5c668d906125dde74d09faafd89cb2859d801870ca8",
+    "fixture_fingerprint_sha256": "be6b038868a69be056e40280abbe47135d7631bccfec74e29bec6ae86449b912",
     "fixture_id": "massrobotics_amr_synthetic_control_v1",
     "run_ids": [
       "control-clean-1",
@@ -17,13 +16,13 @@
     "equivalent": true,
     "status": "demonstrated",
     "variant_tree_sha256": {
-      "control": "ebead0a01ef31380f5f2d639fcfa574ac166261c3cf0546896c0601a34e095e7",
-      "incident": "4cc7d07a068bb5c9ce99ddc04c58f0322fa8479b01968cb9da7383aee43a680b"
+      "control": "419dd28114e726234a826638b55dfed341feb022d566bd56f4effb7e843e0cd2",
+      "incident": "8fed2f064042b13fcc77b6e29fd0e63db6793f791a9bceb66b2e8e3f17725060"
     }
   },
   "incident": {
-    "capability_fingerprint_sha256": "bedd33140560d8799765854e8755d249e0dc47c0bf623df05c6ac84df8236bdf",
-    "fixture_fingerprint_sha256": "d032311efe8d5799f11708f59ca93ad9fa07e34eb0a66fde3430aa872bd2ba10",
+    "capability_fingerprint_sha256": "498e06f487a2022ba0d5871e23553ab6c151173300467d8d85788cde3810082f",
+    "fixture_fingerprint_sha256": "1fde0761f477e21a2edb70a0e0a9884b1b02d0ddc52c5ec0f070411e915df426",
     "fixture_id": "massrobotics_amr_synthetic_incident_v1",
     "run_ids": [
       "incident-clean-1",

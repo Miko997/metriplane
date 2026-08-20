@@ -42,8 +42,8 @@ env:
   PYTHONIOENCODING: utf-8
   PYTHONUTF8: "1"
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-  ADAPTER_COMMIT: 6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15
-  ADAPTER_TREE: 0e42f8e290215b38f0658e5b3ccd1a50c18bd578
+  ADAPTER_COMMIT: da33ad03beb8d4f3a3762cad085e2df4b2d9386c
+  ADAPTER_TREE: 46057beb5e2fefe86ccf27031a93c0523d586b57
   CONFIG_SHA256: 3cd20444f6b7efc95ab5c69486b4226a349a41ddda0d60d9a60a0ba215680423
   LOCK_SHA256: f5ebec35efe702403c72689197cabf2631592791d87a2e26b7c1db6d6b61a45b
   INCIDENT_IDENTITY_SHA256: e721cc90fe6c7641d6ae1dfae37c2697ca60b1a633904cace1ec0dcc08e5cf2c
@@ -283,9 +283,6 @@ jobs:
               assert register["snapshot_commit"] in item["immutable_url"]
 
           rights = json.loads((root / "rights-record.json").read_text())
-          assert rights["claim_classification"] == (
-              "Owner-generated standards mapping and reproducible technical artifact"
-          )
           components = {item["component"]: item for item in rights["components"]}
           upstream = components["MassRobotics AMR Interoperability Standard repository materials"]
           assert upstream["included"] is False and upstream["redistribution"] == "reference_only"

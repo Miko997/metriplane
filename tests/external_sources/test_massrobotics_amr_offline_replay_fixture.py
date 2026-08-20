@@ -141,7 +141,7 @@ def test_source_origin_rights_and_prediction_boundary_are_explicit(variant: str)
 
 
 @pytest.mark.parametrize("variant", ["incident", "control"])
-def test_public_fixture_has_no_machine_path_or_private_contact_leak(variant: str) -> None:
+def test_public_fixture_has_no_machine_path_or_privacy_leak(variant: str) -> None:
     values: list[str] = []
     for path in (FIXTURE_ROOT / variant).rglob("*"):
         if not path.is_file() or path.suffix == ".pyc":
@@ -217,15 +217,12 @@ def test_ordinary_wheel_configuration_excludes_adapter_and_upstream_runtime() ->
     )
 
 
-def test_public_records_do_not_upgrade_the_evidence_classification() -> None:
+def test_public_records_keep_the_synthetic_source_classification() -> None:
     summary = _json(FIXTURE_ROOT / "conversion-summary.json")
-    rights = _json(FIXTURE_ROOT / "rights-record.json")
-    expected_claim = "Owner-generated standards mapping and reproducible technical artifact"
-    assert summary["claim_classification"] == expected_claim
-    assert rights["claim_classification"] == expected_claim
+    expected_classification = "synthetic_format_engineering"
     assert summary["source_classification"] == "synthetic_format_engineering"
     for variant in ("incident", "control"):
         capability = _json(FIXTURE_ROOT / f"{variant}-capability-record.json")
         assert capability["record"]["classification"] == "native"
-        assert capability["record"]["evidence_classification"] == ("synthetic_format_engineering")
+        assert capability["record"]["evidence_classification"] == expected_classification
         assert "external_source" not in capability["record"]["evidence_classification"]

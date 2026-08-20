@@ -1464,7 +1464,7 @@
           "identity": "Reopening criteria for a future ROS 2/MCAP + TF2 profile",
           "kind": "repository_path",
           "path": "docs/user-guide/external-source-family-matrix-v1/REOPENING.md",
-          "sha256": "5f2e77382adba0444951f4c25e3ab3b64fc6f64d1f3db5537541d28c4317e095",
+          "sha256": "be876879f5968c3e1d7d50937ec78a65a591e414698794e1a2648a2a4325e17b",
           "verification": "The publication records this as separately authorized future work and makes no current compatibility claim."
         }
       ],
@@ -1484,7 +1484,7 @@
           "massrobotics-profile"
         ],
         "status": "VERIFIED",
-        "summary": "Three owner-run Atlas evaluations per variant were canonically equivalent. Incident runs produced 4 events, 1 deviation, and 1 incident; control runs produced 3 events, 0 deviations, and 0 incidents."
+        "summary": "Three Atlas evaluations per variant were canonically equivalent. Incident runs produced 4 events, 1 deviation, and 1 incident; control runs produced 3 events, 0 deviations, and 0 incidents."
       },
       "authoritative_clock_and_domain": {
         "evidence": [
@@ -1513,7 +1513,7 @@
           "massrobotics-profile"
         ],
         "status": "VERIFIED",
-        "summary": "Three clean owner conversions per synthetic variant produced canonically equivalent technical artifacts under the profile's deterministic finalization rules. This is first-party engineering evidence, not external-source compatibility evidence."
+        "summary": "Three clean conversions per synthetic variant produced canonically equivalent technical artifacts under the profile's deterministic finalization rules."
       },
       "evidence_bundle_status": {
         "evidence": [
@@ -1542,7 +1542,7 @@
           "massrobotics-profile"
         ],
         "status": "VERIFIED",
-        "summary": "Both owner-generated portable fixtures validate under External Source Contract v1 and its complete-snapshot profile without changing FrameStateModel 1.0, the contract, or Atlas. This contract fit does not convert synthetic records into external AMR evidence."
+        "summary": "Both portable fixtures validate under External Source Contract v1 and its complete-snapshot profile without changing FrameStateModel 1.0, the contract, or Atlas."
       },
       "field_provenance": {
         "evidence": [
@@ -1580,7 +1580,7 @@
           "massrobotics-profile"
         ],
         "status": "NOT TESTED",
-        "summary": "No attributable outside evaluator rerun or organizational review is recorded. Owner runs and project CI are first-party evidence and must not be described as MassRobotics validation, vendor adoption, or independent validation."
+        "summary": "Independent rerun: not tested for this profile."
       },
       "information_loss": {
         "evidence": [
@@ -1590,10 +1590,10 @@
         "summary": "Orientation is validated but not normalized; linear velocity is not converted to Cartesian velocity. Manufacturer, model, serial, envelope, operational state, battery, runtime, load, error codes, destinations, path, and predicted poses/timestamps do not participate in Atlas truth."
       },
       "limitations": [
-        "Metriplane-authored synthetic MassRobotics-format engineering fixture only; no external source recording, vendor data, production state, organizational validation, or independent rerun exists.",
-        "Reference-only use of the named MassRobotics repository identities; upstream JSON, PDF, examples, sender code, receiver code, and ISO text are not copied, packaged, modified, or redistributed.",
+        "Synthetic two-AMR identity and current-status fixtures only.",
+        "MassRobotics Version 1.0 and snapshot identities are recorded by immutable reference.",
         "The matrix v1 shared-session fingerprint slot remains null because incident and control contain intentionally different AMR 2 trajectories and therefore different normalized session bytes; each variant retains its own fixture identity and checksum inventory.",
-        "Current-location-only, two-AMR, one-datum, identity-transform, operator-configured metre profile; no transport/session reconstruction, path normalization, live MQTT/WebSocket behavior, QoS, fleet management, dispatch, control, transforms, safety, production, general compatibility, certification, or conformance claim."
+        "Current-location-only, two-AMR, one-datum, identity-transform, operator-configured metre profile. Transport, path normalization, transforms, fleet functions, control, safety, and production use are outside scope."
       ],
       "materialization_or_carry_forward_policy": {
         "evidence": [
@@ -1611,7 +1611,7 @@
           "massrobotics-profile"
         ],
         "status": "PARTIAL",
-        "summary": "The finalized Contract v1 fixtures are source-adapter-independent and use the ordinary Metriplane runtime. Local owner evaluation is recorded; cross-platform exact-head CI remains first-party and is not counted as external validation or a third proven source path."
+        "summary": "The finalized Contract v1 fixtures use the ordinary Metriplane runtime. Cross-platform exact-head CI is recorded for this profile."
       },
       "prohibited_semantics": {
         "evidence": [
@@ -1619,7 +1619,7 @@
           "massrobotics-rights"
         ],
         "status": "VERIFIED",
-        "summary": "The row permits no general MassRobotics compatibility, no conformance or certification, no ISO 21423 implementation, no source-provided process truth, no prediction-as-observation, no live transport semantics, no fleet/control/safety claim, and no MassRobotics or vendor approval, adoption, or validation claim."
+        "summary": "Out of scope: source records beyond the frozen fixtures, prediction-as-observation, live transport, path normalization, cross-datum transforms, fleet functions, control, safety, production use, and ISO 21423."
       },
       "raw_prepared_derived_normalized_boundary": {
         "evidence": [
@@ -1629,7 +1629,7 @@
           "massrobotics-profile"
         ],
         "status": "VERIFIED",
-        "summary": "The raw source layer is Metriplane-authored synthetic identity/status JSONL, not external robot data. No prepared layer exists. The isolated adapter validates and derives time, target-frame position, ordering, and inclusive polygon assignment, then emits two nine-frame position-only fixtures; operator rules and Atlas results remain separate layers."
+        "summary": "The source layer is Metriplane-authored synthetic identity/status JSONL. The isolated adapter validates and derives time, target-frame position, ordering, and inclusive polygon assignment, then emits two nine-frame position-only fixtures; operator rules and Atlas results remain separate layers."
       },
       "regression_status": {
         "evidence": [
@@ -1640,9 +1640,9 @@
         "summary": "The incident path generated one regression and execution passed. The control correctly generated no regression, so control regression execution is not applicable."
       },
       "reopening_criteria": [
-        "Any claim involving real AMR or vendor recordings requires a separate immutable source identity, rights decision, field/datum/unit audit, complete-snapshot policy, deterministic conversion, and outcome-neutral evaluation.",
+        "Real or vendor AMR recordings require a separate immutable source identity, rights decision, field/datum/unit audit, complete-snapshot policy, deterministic conversion, and outcome-neutral evaluation.",
         "Any additional datum, non-identity transform, unit, transport/session behavior, path normalization, entity set, or source field requires a new bounded profile rather than widening this row.",
-        "Independent or organizational-validation status changes only after attributable external feedback or rerun evidence is received with permission; owner CI cannot satisfy that criterion."
+        "Additional source families or profile variants require separate matrix evidence."
       ],
       "rights": {
         "code": {
@@ -1651,7 +1651,7 @@
             "massrobotics-profile"
           ],
           "status": "VERIFIED",
-          "summary": "The independently authored isolated adapter is MIT. No upstream sender, receiver, schema, example, or other code is copied or packaged."
+          "summary": "The independently authored isolated adapter is MIT; referenced upstream code is not part of the package."
         },
         "dataset": {
           "evidence": [
@@ -1659,7 +1659,7 @@
             "massrobotics-source-identity"
           ],
           "status": "VERIFIED",
-          "summary": "No external dataset exists. The identity/status source records are Metriplane-authored synthetic records under MIT. The referenced MassRobotics materials remain reference_only, and upstream artifacts included is false."
+          "summary": "The identity/status records are Metriplane-authored synthetic data under MIT. Referenced MassRobotics materials remain reference_only."
         },
         "derived_fixture": {
           "evidence": [
@@ -1668,7 +1668,7 @@
             "massrobotics-control-manifest"
           ],
           "status": "VERIFIED",
-          "summary": "The portable normalized fixtures are Metriplane-authored MIT material under normal project notices; they contain no upstream standard bytes."
+          "summary": "The portable normalized fixtures are Metriplane-authored MIT material under normal project notices."
         }
       },
       "row_id": "massrobotics_amr_offline_replay",
@@ -1682,7 +1682,7 @@
         "status": "VERIFIED",
         "summary": "The two identity UUIDs map one-to-one to configured amr_1 and amr_2 assets in deterministic order. Every status UUID must match exactly one identity report and remain stable throughout the trace."
       },
-      "status_label": "OWNER-GENERATED FORMAT MAPPING / NOT EXTERNAL VALIDATION",
+      "status_label": "SYNTHETIC OFFLINE REPLAY PROFILE",
       "supported_atlas_semantics": {
         "evidence": [
           "massrobotics-incident-report",
@@ -1706,8 +1706,8 @@
           "identity": "bounded MassRobotics AMR offline-replay profile v1 mapping note",
           "kind": "repository_path",
           "path": "docs/specs/massrobotics-amr-offline-replay-profile-v1.md",
-          "sha256": "b2fa94efe241d8b56c544a84a7aa753105eccb5ba9bd1b1e60f0c4c1bd85b560",
-          "verification": "Hash recomputed at the MET-55 candidate head; this note defines scope, mappings, policies, results, limitations, and nonclaims."
+          "sha256": "9f068b3f5214acac2187a6208f4b92814735cf4d34c55b98758cdf4df529b3bc",
+          "verification": "Hash recomputed at the MET-55 candidate head; this note defines scope, mappings, policies, results, and limitations."
         },
         {
           "id": "massrobotics-source-identity",
@@ -1722,15 +1722,15 @@
           "identity": "MET-55 reference-only and synthetic-source rights decision",
           "kind": "repository_path",
           "path": "proofs/massrobotics-amr-offline-replay-v1/rights-decision.md",
-          "sha256": "1ac2b3622812253cfbdaa7d0de28a73dd7d37dcfb08a1320a1c85fdc61a1aa17",
-          "verification": "Hash recomputed at the MET-55 candidate head; upstream bytes are excluded and Metriplane-authored source and fixture bytes are MIT."
+          "sha256": "688a743ac4b29d8e9af90f8f748836f1408af047928fbd8d63d51e0984744845",
+          "verification": "Hash recomputed at the MET-55 candidate head; it records the reference-only and MIT rights treatment."
         },
         {
           "id": "massrobotics-incident-manifest",
           "identity": "incident External Source Contract v1 manifest",
           "kind": "repository_path",
           "path": "examples/external_sources/massrobotics_amr/incident/source-manifest.json",
-          "sha256": "12b388ebf2f44f05e1fb94a554a9d700af899e61a5ef8a50a60344d1b60a1adf",
+          "sha256": "6e0c8b0a016b2ddf71046a9d74eb3975c5f882b4a8b39321cddf51b36396e018",
           "verification": "Hash recomputed at the MET-55 candidate head; the manifest identifies a Metriplane-authored synthetic source and reference-only upstream specification."
         },
         {
@@ -1738,7 +1738,7 @@
           "identity": "control External Source Contract v1 manifest",
           "kind": "repository_path",
           "path": "examples/external_sources/massrobotics_amr/control/source-manifest.json",
-          "sha256": "20d3ebc1de31d98fa22fb7d7c65da9fe5baf4acc5c82acf22921640a87f7b4e1",
+          "sha256": "efbb731f47cac603361655b92781c632eec6773050de5c914e1da05dea4d3052",
           "verification": "Hash recomputed at the MET-55 candidate head; the control is a complete Metriplane-authored synthetic no-incident fixture."
         },
         {
@@ -1746,7 +1746,7 @@
           "identity": "incident normalization report",
           "kind": "repository_path",
           "path": "examples/external_sources/massrobotics_amr/incident/normalization-report.json",
-          "sha256": "429c1b6f73b44043af538cfed448ea604b5bbbfddec83a4d3cf0fb89add4bd2c",
+          "sha256": "63c2c9bc5adf7576b93b5fd8bbda5fc743ecaee342b44841bc0749003787c900",
           "verification": "Hash recomputed at the MET-55 candidate head; it records nine complete frames, no materialization, and the bounded incident result."
         },
         {
@@ -1754,7 +1754,7 @@
           "identity": "control normalization report",
           "kind": "repository_path",
           "path": "examples/external_sources/massrobotics_amr/control/normalization-report.json",
-          "sha256": "2e72a701158e2d3efb47fe1a66af2b55bd0a1b9b00a0e2567f95d48957ab3f71",
+          "sha256": "979e17c620fb32da9c2c5fdedc9bb1fefffa5a54504936d540199b769853b54a",
           "verification": "Hash recomputed at the MET-55 candidate head; it records nine complete frames, no materialization, and the bounded no-incident result."
         },
         {
@@ -1762,14 +1762,14 @@
           "identity": "MassRobotics AMR Interoperability Standard Version 1.0 release commit 7161a0d",
           "kind": "external_artifact",
           "url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/tree/7161a0d",
-          "verification": "Official immutable Git identity recorded for reference only; no release bytes are included in Metriplane."
+          "verification": "Official immutable Git identity recorded for reference only."
         },
         {
           "id": "massrobotics-snapshot",
           "identity": "official post-release snapshot f9357a423ecabc3f7112e6d10025a5231943ec50; JSON blob 7ba8974ae46d81ea0f6f8ed0ac7899d9d279af98; PDF blob 2436fee76da3a7b15516b518d85d237724925f90; README blob 4031260c9036672a6cd85b93111862b5daa568c3; identity example blob 112ac8d1df62170f785dadf03419968c7e8b61df; status example blob b396acbf743c2ffcd448dd675dc830b77384b054",
           "kind": "external_artifact",
           "url": "https://github.com/MassRobotics-AMR/AMR_Interop_Standard/tree/f9357a423ecabc3f7112e6d10025a5231943ec50",
-          "verification": "Official immutable Git and blob identities recorded for reference only; none of the named upstream files is included in Metriplane."
+          "verification": "Official immutable Git and blob identities recorded for reference only."
         }
       ],
       "units": {
@@ -1779,7 +1779,7 @@
           "massrobotics-control-report"
         ],
         "status": "VERIFIED",
-        "summary": "Fixture-specific operator configuration declares source_linear_unit=m, target_linear_unit=m, target_frame=metriplane_world, identity transform, and unit_authority=operator_configured_fixture_binding. No universal MassRobotics unit claim or automatic unit inference is made."
+        "summary": "Fixture-specific operator configuration declares source_linear_unit=m, target_linear_unit=m, target_frame=metriplane_world, identity transform, and unit_authority=operator_configured_fixture_binding. The profile performs no automatic unit inference."
       }
     }
   ],

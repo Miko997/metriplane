@@ -1,7 +1,7 @@
 {
   "adapter": {
     "adapter_id": "org.metriplane.massrobotics_amr_offline_replay",
-    "commit": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+    "commit": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
     "entrypoint": "massrobotics_amr_adapter.cli:main",
     "environment": {
       "architecture": "x86_64",
@@ -108,13 +108,12 @@
   },
   "limitations": [
     "Metriplane-authored synthetic MassRobotics-format engineering fixture",
-    "This exact profile does not establish general MassRobotics compatibility or conformance.",
-    "The metre/frame binding and rendezvous rule are operator-configured fixture interpretations.",
-    "Only strict current-location identity, UTC timestamp, xyz, quaternion validation, and one datum are accepted.",
-    "Orientation, velocity, operational state, battery, runtime, load, errors, destinations, and path do not drive Atlas.",
-    "No prediction is treated as an observation or evaluation frame.",
-    "No live transport, retained-message, MQTT, WebSocket, QoS, fleet, planning, dispatch, control, cross-datum, production, safety, or ISO 21423 semantics are implemented.",
-    "No external source recording, organizational validation, endorsement, adoption, certification, or vendor evidence exists."
+    "Profile scope: the frozen two-AMR synthetic incident and control fixtures.",
+    "The metre/frame binding and rendezvous rule are operator-configured.",
+    "Accepted current-location fields: identity, UTC timestamp, XYZ, validated quaternion, and one datum.",
+    "Orientation, velocity, operational state, battery, runtime, load, errors, destinations, and path are retained outside Atlas inputs.",
+    "Path predictions are validation-only and never become observations or frames.",
+    "Out of scope: live transport, retained messages, MQTT, WebSocket, QoS, fleet functions, planning, dispatch, control, cross-datum transforms, production use, safety use, and ISO 21423."
   ],
   "normalization": {
     "atlas_asset_mapping": {
@@ -471,7 +470,7 @@
     "normalization_report": {
       "media_type": "application/json",
       "path": "normalization-report.json",
-      "sha256": "2e72a701158e2d3efb47fe1a66af2b55bd0a1b9b00a0e2567f95d48957ab3f71"
+      "sha256": "979e17c620fb32da9c2c5fdedc9bb1fefffa5a54504936d540199b769853b54a"
     },
     "session": {
       "frame_count": 9,
@@ -504,7 +503,7 @@
         "citation": [
           {
             "text": "Metriplane-authored synthetic MassRobotics-format engineering fixture: control",
-            "uri": "https://github.com/Miko997/metriplane/blob/6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15/adapters/massrobotics_amr/source/control/identity.jsonl"
+            "uri": "https://github.com/Miko997/metriplane/blob/da33ad03beb8d4f3a3762cad085e2df4b2d9386c/adapters/massrobotics_amr/source/control/identity.jsonl"
           }
         ],
         "license": {
@@ -541,7 +540,7 @@
       "rights_id": "metriplane-synthetic-massrobotics-format-rights-v1",
       "role": "synthetic_identity_reports",
       "sha256": "e721cc90fe6c7641d6ae1dfae37c2697ca60b1a633904cace1ec0dcc08e5cf2c",
-      "uri": "https://github.com/Miko997/metriplane/blob/6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15/adapters/massrobotics_amr/source/control/identity.jsonl"
+      "uri": "https://github.com/Miko997/metriplane/blob/da33ad03beb8d4f3a3762cad085e2df4b2d9386c/adapters/massrobotics_amr/source/control/identity.jsonl"
     },
     {
       "artifact_id": "massrobotics_amr_status_jsonl",
@@ -553,7 +552,7 @@
       "rights_id": "metriplane-synthetic-massrobotics-format-rights-v1",
       "role": "synthetic_status_reports",
       "sha256": "2988e1555e55f19196433d0aef0913e272881f65d52fc049adf3c826edf87ed2",
-      "uri": "https://github.com/Miko997/metriplane/blob/6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15/adapters/massrobotics_amr/source/control/status.jsonl"
+      "uri": "https://github.com/Miko997/metriplane/blob/da33ad03beb8d4f3a3762cad085e2df4b2d9386c/adapters/massrobotics_amr/source/control/status.jsonl"
     }
   ],
   "source_project": {
@@ -561,7 +560,7 @@
     "name": "Metriplane synthetic MassRobotics-format engineering source",
     "revision": {
       "kind": "git_commit",
-      "value": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15"
+      "value": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c"
     },
     "version": "1.0.0"
   },

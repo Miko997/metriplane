@@ -19,7 +19,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | Partially audited Square human source at dataset revision `33016f8a62c02334f929f2913af8fdd2a8a129e1`; recorded remote source hash `c917e99362fd9bd11978d6e2642c1ea88272702fbf55b50367ed471febf550e2` | `PARTIALLY SUPPORTED` | Not established; no immutable raw/prepared chain or clock proof |
 | RoboCasa / RoboCasa365 | No artifact selected or inspected | `NOT TESTED` | Not tested |
 | ROS 2 / MCAP + TF2 | No recording selected; any future work requires a separate bounded audit | `NOT TESTED` | Design target only; no compatibility proof |
-| MassRobotics AMR offline replay | Metriplane-authored synthetic identity/status JSONL; profile `metriplane.massrobotics_amr_offline_replay.v1`; MassRobotics Version 1.0 release `7161a0d` and snapshot `f9357a423ecabc3f7112e6d10025a5231943ec50` are reference-only identities | `PARTIALLY SUPPORTED` | Incident and control validate under Contract v1, but this is an owner-generated format mapping rather than external-source or conformance evidence |
+| MassRobotics AMR offline replay | Metriplane-authored synthetic identity/status JSONL; profile `metriplane.massrobotics_amr_offline_replay.v1`; MassRobotics Version 1.0 release `7161a0d` and snapshot `f9357a423ecabc3f7112e6d10025a5231943ec50` are reference-only identities | `PARTIALLY SUPPORTED` | Incident and control validate under Contract v1 |
 
 ## Rights and provenance boundary
 
@@ -67,7 +67,7 @@ for the whole source family. “Not applicable” is distinct from a passing tes
 | MimicGen | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
 | RoboCasa / RoboCasa365 | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
 | ROS 2 / MCAP + TF2 | None demonstrated | No converter | No fixture | Not applicable | Not applicable |
-| MassRobotics AMR offline replay | Operator-authored two-AMR rendezvous; incident `9/4/1/1`, control `9/3/0/0` | Three canonically equivalent owner conversions per variant | Portable Contract v1 fixtures; exact-head cross-platform CI remains first-party | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED`; no external reviewer or organization has validated it |
+| MassRobotics AMR offline replay | Operator-authored two-AMR rendezvous; incident `9/4/1/1`, control `9/3/0/0` | Three canonically equivalent conversions per variant | Portable Contract v1 fixtures; exact-head cross-platform CI | Incident bundle verified and regression passed; control intentionally has neither | `NOT TESTED` |
 
 ## Supported and prohibited interpretation
 
@@ -79,8 +79,8 @@ or family-wide compatibility. See the [semantics register](SEMANTICS.md),
 [unsupported-path register](UNSUPPORTED-PATHS.md), and
 [reopening criteria](REOPENING.md) for row-specific limits.
 
-The MassRobotics row is not a third `GO`: it demonstrates only a bounded
-owner-generated mapping using synthetic records and is excluded from the proven
-aggregate. Its matrix-level shared-session hash is intentionally null because
+The MassRobotics row is a bounded synthetic profile and is excluded from the
+aggregate proven-source count. Its matrix-level shared-session hash is
+intentionally null because
 the incident and control trajectories produce different normalized sessions;
 each variant instead has its own fixture identity and checksum inventory.

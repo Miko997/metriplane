@@ -24,7 +24,7 @@ and does not change the frozen two-path aggregate.
 - [x] ManiSkill and robomimic fixture inventories remain unchanged locally.
 - [x] CALVIN remains documentation-only with no adapter or fixture.
 - [x] The MassRobotics row remains `PARTIALLY SUPPORTED`, synthetic,
-  reference-only, non-counted, and free of compatibility/conformance claims.
+  reference-only, and non-counted.
 - [x] The candidate publication archive builds twice with byte-identical output.
 - [x] Strict documentation, package scans, and focused matrix tests pass
   locally.

@@ -6,14 +6,12 @@ SPDX-License-Identifier: MIT
 # Metriplane MassRobotics AMR offline-replay proof v1
 
 - Profile: `metriplane.massrobotics_amr_offline_replay.v1`
-- Evidence classification: **Owner-generated standards mapping and reproducible
-  technical artifact**
 - Pull request: <https://github.com/Miko997/metriplane/pull/74>
 - Source classification: `synthetic_format_engineering`
 - Source description: **Metriplane-authored synthetic MassRobotics-format
   engineering fixture**
 
-## Exact bounded claim
+## Scope and result
 
 An isolated adapter converts two independently authored, synthetic identity and
 current-status streams into nine complete FrameStateModel `1.0` snapshots. An
@@ -23,10 +21,6 @@ deadline. The incident variant produces four events, one deviation, one
 generated regression. The control produces three events, no deviation or
 incident, and no incident-derived artifacts.
 
-This is not external robot data, vendor data, production state, independent
-validation, organizational evaluation, adoption, endorsement, certification,
-or conformance.
-
 ## Proof inventory
 
 | File | Role |
@@ -35,7 +29,7 @@ or conformance.
 | [`source-identity.json`](source-identity.json) | Frozen upstream reference register and synthetic-origin distinction |
 | [`rights-decision.md`](rights-decision.md) | Artifact-scoped reference-only and MIT rights decision |
 | [`mapping-table.json`](mapping-table.json) | Machine-readable source-to-normalized trust-layer map |
-| [`external-sanity-check.md`](external-sanity-check.md) | Prepared, unsent review package |
+| [`technical-review-brief.md`](technical-review-brief.md) | Compact technical review brief |
 | [`../../docs/specs/massrobotics-amr-offline-replay-profile-v1.md`](../../docs/specs/massrobotics-amr-offline-replay-profile-v1.md) | Public bounded-profile note |
 | [`artifacts/conversion-equivalence.json`](artifacts/conversion-equivalence.json) | Three-run byte-equivalence record for both variants |
 | [`artifacts/execution-summary.json`](artifacts/execution-summary.json) | Exact validation, event, incident/control, and Atlas determinism result |
@@ -75,20 +69,13 @@ interpolation operations, cross-datum transforms, and prediction-derived
 frames. The control's bundle verification and regression execution are N/A,
 because no such artifacts may be produced without an incident.
 
-## Claim and rights boundary
+## Scope and rights
 
 The upstream standard, schema, PDF, README, official examples, sender, and
-receiver remain immutable references only. The proof includes no upstream
-bytes. The actual fixture bytes are Metriplane-authored and MIT-licensed. The
-metre binding, identity transform, polygon, Atlas assets, station, and deadline
-are operator configuration, not MassRobotics requirements or safety rules.
+receiver are represented only by immutable references. The fixture bytes are
+Metriplane-authored and MIT-licensed. The metre binding, identity transform,
+polygon, Atlas assets, station, and deadline are operator configuration.
 
-This artifact is a bounded owner-generated interoperability mapping and replay
-demonstration using Metriplane-authored synthetic MassRobotics-format records.
-It does not claim general MassRobotics compatibility, conformance,
-certification, organizational validation, vendor adoption, production
-deployment, safety validation, or ISO 21423 conformance.
-
-No external party was contacted in preparing this package. The sanity-check
-packet is prepared but not sent, and no endorsement or organizational review
-exists.
+The profile is limited to the included synthetic two-AMR current-state replay.
+Live transport, cross-datum transforms, fleet functions, robot control,
+production use, safety use, and ISO 21423 are outside its scope.

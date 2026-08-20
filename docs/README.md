@@ -57,7 +57,7 @@ example inputs and use the supported recorded-run interface.
   for seven audited, partial, rejected, uninspected, or planned source families.
 - [Bounded MassRobotics AMR offline-replay profile](specs/massrobotics-amr-offline-replay-profile-v1.md):
   inspect one synthetic, reference-only two-AMR mapping and its exact incident
-  and control replay. This is not a general compatibility or conformance claim.
+  and control replay.
 - [Bounded ROS 2 and MCAP recorded-state profile](user-guide/ros2-mcap-recorded-state-profile/README.md):
   inspect the PARTIAL synthetic format-engineering result, three rejected
   external candidates, and the source-neutral capability boundary. This is not

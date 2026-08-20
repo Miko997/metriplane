@@ -20,8 +20,8 @@ upstream materials reference-only**.
 | `AMR_Interop_Standard.json` | Referenced MassRobotics repository artifact | No | Immutable URL, commit, Git blob, and paraphrased factual role only |
 | `AMR_Interop_Standard.pdf` | Referenced MassRobotics repository artifact | No | Immutable URL, commit, Git blob, and short paraphrase only |
 | Official identity/status examples | Referenced MassRobotics repository artifacts | No | Immutable URL, commit, Git blob, and factual role only; not copied or derived |
-| Official sender/receiver code | Referenced MassRobotics repository artifacts | No | Not vendored, executed, modified, packaged, or redistributed |
-| ISO 21423 text | ISO copyrighted material | No | Public metadata note only; no implementation or conformance claim |
+| Official sender/receiver code | Referenced MassRobotics repository artifacts | No | Immutable reference only |
+| ISO 21423 text | ISO copyrighted material | No | Public metadata note only |
 
 No upstream file byte, excerpt, schema fragment, example record, sender code, or
 receiver code is required to build, install, convert, validate, or execute the
@@ -32,17 +32,12 @@ identities are recorded in [`source-identity.json`](source-identity.json).
 
 The actual source artifacts are the four independently authored JSONL files in
 `adapters/massrobotics_amr/source/`. Their source project is the Metriplane
-repository. MassRobotics is recorded only as the identity of the referenced
-interoperability specification; it is not named as creator, owner, provider,
-recorder, reviewer, or validator of the synthetic fixture.
+repository. MassRobotics identifies the referenced interoperability
+specification, not the synthetic fixture.
 
 The fixture description is:
 
 > Metriplane-authored synthetic MassRobotics-format engineering fixture
-
-The description does not imply vendor data, real AMR state, an official
-example, production use, permission, adoption, endorsement, or organizational
-evaluation.
 
 ## Redistribution boundary
 
@@ -57,12 +52,8 @@ MIT license and normal notices. That MIT statement applies only to
 Metriplane-authored material and does not relicense any referenced upstream
 artifact.
 
-## Claim boundary
+## Profile scope
 
-This rights treatment permits an owner-generated mapping and reproducible
-technical artifact. It does not establish MassRobotics or Vecna validation,
-general compatibility, certification, conformance, organizational review,
-external adoption, or permission to reproduce the referenced standard.
-
-ISO 21423 is a related future interoperability audit target. MET-55 does not
-implement or claim conformance with ISO 21423.
+This decision covers the included synthetic source, adapter, normalized
+fixtures, mapping, and proof metadata. MassRobotics materials remain immutable
+references. ISO 21423 is outside the MET-55 profile.

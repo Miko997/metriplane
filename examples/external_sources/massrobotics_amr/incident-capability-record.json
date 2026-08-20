@@ -12,7 +12,7 @@
       "runtime": "CPython",
       "runtime_version": "3.12"
     },
-    "implementation_commit": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+    "implementation_commit": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
     "repository_uri": "https://github.com/Miko997/metriplane",
     "version": "1.0.0"
   },
@@ -184,11 +184,10 @@
         "massrobotics_amr_adapter_commit"
       ],
       "prohibited": [
-        "General MassRobotics compatibility or conformance",
+        "Source records outside the frozen two-AMR profile",
         "Live MQTT, WebSocket, QoS, retained-message, or transport semantics",
         "Cross-datum transforms, automatic unit inference, carry-forward, interpolation, or resampling",
-        "Fleet management, task dispatch, path planning, robot control, production, safety, or ISO 21423 claims",
-        "External-source evidence, organizational validation, endorsement, or vendor adoption"
+        "Fleet management, task dispatch, path planning, robot control, production, safety, or ISO 21423 use"
       ],
       "status": "verified",
       "supported": [
@@ -205,9 +204,9 @@
   "evidence": [
     {
       "evidence_id": "massrobotics_amr_adapter_commit",
-      "identity": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+      "identity": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
       "kind": "git_commit",
-      "uri": "https://github.com/Miko997/metriplane/commit/6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15"
+      "uri": "https://github.com/Miko997/metriplane/commit/da33ad03beb8d4f3a3762cad085e2df4b2d9386c"
     }
   ],
   "limitations": [
@@ -246,7 +245,7 @@
     ],
     "family": "Bounded synthetic MassRobotics AMR identity and status JSONL records",
     "project_uri": "https://github.com/Miko997/metriplane",
-    "revision": "6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15",
+    "revision": "da33ad03beb8d4f3a3762cad085e2df4b2d9386c",
     "revision_kind": "adapter_commit",
     "rights": {
       "derived_fixture": {

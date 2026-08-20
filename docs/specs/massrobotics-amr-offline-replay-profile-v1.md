@@ -7,10 +7,7 @@ SPDX-License-Identifier: MIT
 
 Profile ID: `metriplane.massrobotics_amr_offline_replay.v1`
 
-Evidence classification: **Owner-generated standards mapping and reproducible
-technical artifact**
-
-## Purpose and evidence boundary
+## Purpose and profile scope
 
 This profile demonstrates one bounded, local, offline conversion of two
 Metriplane-authored identity/status streams into External Source Contract v1
@@ -25,15 +22,9 @@ The isolated package is `metriplane-massrobotics-amr-adapter`, adapter ID
 ordinary Metriplane runtime dependency.
 
 The source is a **Metriplane-authored synthetic MassRobotics-format engineering
-fixture**. It is not external robot data, vendor data, real AMR data, production
-state, an independent evaluation, or a MassRobotics-provided example. No live
-transport, session, fleet, dispatch, planning, or control behavior is recreated.
-
-This artifact is a bounded owner-generated interoperability mapping and replay
-demonstration using Metriplane-authored synthetic MassRobotics-format records.
-It does not claim general MassRobotics compatibility, conformance,
-certification, organizational validation, vendor adoption, production
-deployment, safety validation, or ISO 21423 conformance.
+fixture**. The records were written for this profile and are not derived from a
+robot recording or an official example. The profile covers offline current-state
+replay only.
 
 ## Frozen reference identity and rights
 
@@ -52,10 +43,8 @@ blob identities are:
 | `examples/identityReport1.json` | `112ac8d1df62170f785dadf03419968c7e8b61df` |
 | `examples/statusReport1.json` | `b396acbf743c2ffcd448dd675dc830b77384b054` |
 
-These upstream materials are reference-only. Metriplane does not vendor, copy,
-modify, package, or redistribute the schema, PDF, official examples, sender or
-receiver code, or copyrighted ISO text. The complete immutable URL register is
-in
+These upstream materials are reference-only and are represented by immutable
+identifiers rather than stored files. The complete URL register is in
 `proofs/massrobotics-amr-offline-replay-v1/source-identity.json`,
 and the artifact-scoped decision is in
 `proofs/massrobotics-amr-offline-replay-v1/rights-decision.md`.
@@ -95,8 +84,7 @@ The fixture-specific operator binding is:
 | Transform | identity |
 | Unit authority | `operator_configured_fixture_binding` |
 
-The metre binding is a fixture-specific operator interpretation, not a claim
-that all MassRobotics data universally uses metres. The rendezvous polygon is
+The metre binding is a fixture-specific operator interpretation. The rendezvous polygon is
 `[(4,-1), (6,-1), (6,1), (4,1)]`, with the External Source Contract v1 polygon
 implementation, inclusive boundary, overlap rejection, and
 `outside_workspace` outside label. Zone assignment is adapter-derived from the
@@ -105,9 +93,8 @@ operator rule, not source truth.
 Atlas maps the two UUIDs to `amr_1` of type `rendezvous_trigger_amr` and
 `amr_2` of type `rendezvous_required_amr`. The sole step requires `amr_2` in
 `rendezvous_zone` / `rendezvous_station` no more than `3.0 s` after `amr_1`
-enters. This is an operator-authored engineering rule. It is not source truth,
-not a MassRobotics requirement, and not a safety rule. The exact field-to-trust-layer
-mapping is in
+enters. This operator-authored engineering rule is separate from the source
+records and referenced standard. The exact field-to-trust-layer mapping is in
 `proofs/massrobotics-amr-offline-replay-v1/mapping-table.json`.
 
 ## Clock, datum, prediction, and completeness policies
@@ -182,13 +169,9 @@ metriplane atlas bundle verify incident-run/evidence_bundles/INC-0001.zip
 metriplane atlas test incident-run/regression_tests/INC-0001.yaml
 ```
 
-The profile covers only two complete synthetic current-status streams, one
-datum, one operator-configured metre/identity binding, one polygon, and one
-deadline. It does not normalize paths or destinations; reconstruct transport,
-QoS, retained messages, or sessions; ingest an external recording; validate
-other coordinate systems; implement cross-datum transforms; or establish
-general format coverage. It changes no core schema, Atlas semantics, evidence
-schema, regression behavior, or trust-layer model.
-
-ISO 21423 is a related future interoperability audit target. MET-55 does not
-implement or claim conformance with ISO 21423.
+The profile covers two complete synthetic current-status streams, one datum,
+one operator-configured metre/identity binding, one polygon, and one deadline.
+Paths, destinations, live transport, QoS, retained messages, sessions,
+cross-datum transforms, fleet functions, robot control, production use, safety
+use, and ISO 21423 are outside its scope. Core schemas and Atlas behavior are
+unchanged.

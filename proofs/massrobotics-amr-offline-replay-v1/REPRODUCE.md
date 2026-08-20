@@ -31,7 +31,7 @@ fixtures, and separately identify the checkout used for Atlas run provenance.
 Choose a new temporary root outside the checkout:
 
 ```bash
-export MET55_ADAPTER_COMMIT="6a24ebf1bda47860bda9c5a9bca2c0d94eb37b15"
+export MET55_ADAPTER_COMMIT="da33ad03beb8d4f3a3762cad085e2df4b2d9386c"
 export MET55_COMMIT="FULL_MET55_HEAD_COMMIT"
 export MET55_WORK_ROOT="$(mktemp -d)"
 
@@ -177,8 +177,8 @@ or missing proof data.
 ## 5. Review the boundary
 
 Confirm that durable output and ZIP-member scans contain no machine-local
-absolute paths, usernames, home directories, mailbox material, private
-correspondence, or upstream standard bytes. Confirm that
+absolute paths, usernames, home directories, unexpected personal data, or
+upstream standard bytes. Confirm that
 `expected-outcome.json` is never a converter or Atlas input. Confirm that the
 ordinary wheel excludes the isolated adapter and all referenced upstream
 artifacts.

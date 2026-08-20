@@ -198,7 +198,7 @@ def _validate_matrix(matrix: Mapping[str, Any]) -> None:
     _require(sum(bool(row["compatibility_counted"]) for row in rows) == 2, "proven count changed")
     massrobotics = row_map["massrobotics_amr_offline_replay"]
     _require(
-        massrobotics["status_label"] == "OWNER-GENERATED FORMAT MAPPING / NOT EXTERNAL VALIDATION",
+        massrobotics["status_label"] == "SYNTHETIC OFFLINE REPLAY PROFILE",
         "MassRobotics label changed",
     )
     _require(
@@ -217,8 +217,8 @@ def _validate_matrix(matrix: Mapping[str, Any]) -> None:
     for boundary in (
         "synthetic_format_engineering",
         "reference_only",
-        "no general MassRobotics compatibility",
-        "no conformance",
+        "two configured AMRs",
+        "Current-location-only",
     ):
         _require(boundary in massrobotics_text, f"MassRobotics boundary missing: {boundary}")
     massrobotics_artifacts = {

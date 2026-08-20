@@ -69,12 +69,12 @@ def test_matrix_has_exact_canonical_rows_and_decisions() -> None:
     assert sum(bool(row["compatibility_counted"]) for row in rows) == 2
 
 
-def test_massrobotics_row_is_bounded_and_not_counted_as_compatibility() -> None:
+def test_massrobotics_row_is_bounded_and_non_counted() -> None:
     rows = {row["row_id"]: row for row in _read_json("matrix.json")["rows"]}
     row = rows["massrobotics_amr_offline_replay"]
     assert row["decision"] == "PARTIALLY SUPPORTED"
     assert row["compatibility_counted"] is False
-    assert row["status_label"] == "OWNER-GENERATED FORMAT MAPPING / NOT EXTERNAL VALIDATION"
+    assert row["status_label"] == "SYNTHETIC OFFLINE REPLAY PROFILE"
     assert row["independent_rerun_status"]["status"] == "NOT TESTED"
     assert row["frozen_fixture_identities"]["status"] == "PARTIAL"
     assert row["frozen_fixture_identities"]["shared_session_sha256"] is None
@@ -82,8 +82,8 @@ def test_massrobotics_row_is_bounded_and_not_counted_as_compatibility() -> None:
     for boundary in (
         "synthetic_format_engineering",
         "reference_only",
-        "no general MassRobotics compatibility",
-        "no conformance",
+        "two configured AMRs",
+        "Current-location-only",
     ):
         assert boundary in serialized
     artifacts = {artifact["id"]: artifact for artifact in row["supporting_artifacts"]}

@@ -18,7 +18,7 @@ Contract v1 evaluation.
 | MimicGen | **PARTIALLY SUPPORTED** | Approve a narrower source boundary or obtain an official immutable original-raw and preparation record for the selected human source; establish artifact-specific authoritative clock evidence; then perform deterministic local preparation and complete rights, field, frame, unit, identity, completeness, and information-loss audits before a new decision. There is currently no adapter or fixture |
 | RoboCasa / RoboCasa365 | **NOT TESTED** | Open a separately authorized source audit with one exact artifact and immutable revision. Verify source-specific rights, clock, frames, units, identity, completeness, provenance, information loss, and deterministic conversion before any implementation or support decision. Do not populate cells from another HDF5 family |
 | ROS 2 / MCAP + TF2 | **NOT TESTED** | Begin a separate bounded profile only after owner authorization. Select one legally usable immutable recording and pin its schemas, topics, entities, TF path, units, authoritative clock/domain, snapshot/materialization policy, rights, and hashes. Implement a deterministic isolated conversion and ROS-independent portable fixture before changing this row. No ROS 2 or MCAP claim exists today |
-| MassRobotics AMR offline replay | **PARTIALLY SUPPORTED** | The exact synthetic MET-55 mapping needs no widening. Any real/vendor recording or broader field, entity, path, unit, datum, transform, transport, fleet, or semantic claim requires a new bounded audit and fixture. Independent or organizational status requires attributable external evidence received with permission; owner runs and CI do not qualify |
+| MassRobotics AMR offline replay | **PARTIALLY SUPPORTED** | The exact synthetic MET-55 mapping needs no widening. Any real/vendor recording or broader field, entity, path, unit, datum, transform, transport, fleet, or semantic scope requires a new bounded audit and fixture |
 
 ## Decision interpretation
 
@@ -28,9 +28,8 @@ Contract v1 evaluation.
   compatibility.
 - **PARTIALLY SUPPORTED** for MimicGen means partially audited and not
   implemented. It is neither a GO nor a completed rejection.
-- **PARTIALLY SUPPORTED** for MassRobotics means a working owner-generated
-  synthetic format mapping whose evidence boundary is narrower than an
-  external-source compatibility or conformance claim.
+- **PARTIALLY SUPPORTED** for MassRobotics means the frozen synthetic
+  offline-replay profile is implemented.
 - **NOT TESTED** leaves unknown cells unknown. It is not evidence for or against
   eventual compatibility.
 

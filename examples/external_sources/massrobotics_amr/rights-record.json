@@ -1,5 +1,4 @@
 {
-  "claim_classification": "Owner-generated standards mapping and reproducible technical artifact",
   "components": [
     {
       "component": "Metriplane-authored synthetic identity and status JSONL records",
@@ -20,6 +19,6 @@
       "redistribution": "reference_only"
     }
   ],
-  "conclusion": "Only Metriplane-authored MIT source and derived bytes are included. Upstream MassRobotics materials remain immutable references and are not copied or packaged.",
+  "conclusion": "Included bytes are limited to Metriplane-authored MIT source and derived fixture data; MassRobotics materials are recorded only by immutable reference.",
   "schema_version": "org.metriplane.massrobotics_amr.rights.v1"
 }

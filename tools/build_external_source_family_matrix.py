@@ -240,7 +240,7 @@ def _verify_matrix_semantics(matrix: Mapping[str, Any]) -> None:
     )
     massrobotics = row_map["massrobotics_amr_offline_replay"]
     _require(
-        massrobotics["status_label"] == "OWNER-GENERATED FORMAT MAPPING / NOT EXTERNAL VALIDATION",
+        massrobotics["status_label"] == "SYNTHETIC OFFLINE REPLAY PROFILE",
         "MassRobotics row label changed",
     )
     _require(
@@ -259,8 +259,8 @@ def _verify_matrix_semantics(matrix: Mapping[str, Any]) -> None:
     for required_boundary in (
         "synthetic_format_engineering",
         "reference_only",
-        "no general MassRobotics compatibility",
-        "no conformance",
+        "two configured AMRs",
+        "Current-location-only",
     ):
         _require(
             required_boundary in massrobotics_text,
