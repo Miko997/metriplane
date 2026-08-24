@@ -16,7 +16,7 @@ import subprocess
 import sys
 import sysconfig
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -92,6 +92,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools" / "baseline_snapshot.py"
 SCHEMA_SOURCE = ROOT / "schemas" / "metriplane.baseline-snapshot.v1.schema.json"
 DOCS_PATH = ROOT / "docs" / "status" / "baseline-snapshot.md"
+_BOOTSTRAP_CLI_PYTHON = Path(sys.executable)
 
 for required_path in (TOOL_PATH, SCHEMA_SOURCE, DOCS_PATH):
     if not required_path.is_file():
@@ -1285,6 +1286,88 @@ def _run(
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def installed_bootstrap_cli_python(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[None]:
+    """Give capture subprocesses a real non-editable candidate installation."""
+    global _BOOTSTRAP_CLI_PYTHON
+    editable = False
+    for distribution in importlib_metadata.distributions(name="metriplane"):
+        direct_url = distribution.read_text("direct_url.json")
+        direct = json.loads(direct_url) if direct_url else {}
+        editable = editable or direct.get("dir_info", {}).get("editable") is True
+    if not editable:
+        yield
+        return
+
+    root = tmp_path_factory.mktemp("mp2-000-installed-bootstrap")
+    source = root / "source"
+    ignored_names = {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        "__pycache__",
+        "build",
+        "dist",
+    }
+
+    def ignore(_directory: str, names: list[str]) -> set[str]:
+        return {
+            name
+            for name in names
+            if name in ignored_names or name.endswith((".egg-info", ".pyc", ".pyo"))
+        }
+
+    shutil.copytree(ROOT, source, ignore=ignore)
+    uv = shutil.which("uv")
+    assert uv is not None
+    venv = root / "venv"
+    installed = _run(
+        [
+            uv,
+            "--no-config",
+            "sync",
+            "--offline",
+            "--frozen",
+            "--no-editable",
+            "--no-dev",
+            "--python",
+            sys.executable,
+        ],
+        cwd=source,
+        env={"UV_PROJECT_ENVIRONMENT": str(venv)},
+    )
+    assert installed.returncode == 0, installed.stderr.decode("utf-8", "replace")
+    binary = venv / ("Scripts" if os.name == "nt" else "bin")
+    probe = _run(
+        [
+            str(binary / "python"),
+            "-c",
+            (
+                "import importlib.metadata as m,json,metriplane; "
+                "d=m.distribution('metriplane'); "
+                "print(json.dumps({'direct_url':json.loads(d.read_text('direct_url.json') "
+                "or '{}'),'module':metriplane.__file__},sort_keys=True))"
+            ),
+        ],
+        cwd=root,
+    )
+    assert probe.returncode == 0, probe.stderr.decode("utf-8", "replace")
+    identity = json.loads(probe.stdout)
+    assert identity["direct_url"].get("dir_info", {}).get("editable") is not True
+    assert Path(identity["module"]).resolve().is_relative_to(venv.resolve())
+
+    previous = _BOOTSTRAP_CLI_PYTHON
+    _BOOTSTRAP_CLI_PYTHON = binary / "python"
+    try:
+        yield
+    finally:
+        _BOOTSTRAP_CLI_PYTHON = previous
+
+
 def _validate_value(
     parent: Path,
     value: dict[str, Any],
@@ -1409,7 +1492,7 @@ raise SystemExit(module.main(sys.argv[3:]))
 def _run_bootstrap_cli(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     return _run(
         [
-            sys.executable,
+            str(_BOOTSTRAP_CLI_PYTHON),
             "-c",
             BOOTSTRAP_CLI_WRAPPER,
             str(TOOL_PATH),
@@ -4100,20 +4183,8 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     dist.mkdir()
     uv = shutil.which("uv")
     assert uv is not None
-    installer_cache = tmp_path / "installer-uv-cache"
-    installer_cache.mkdir()
-    installer_env = {"UV_CACHE_DIR": str(installer_cache)}
-    base_python = Path(getattr(sys, "_base_executable", sys.executable))
-    build_backend = _run(
-        [
-            str(base_python),
-            "-c",
-            "import setuptools,wheel; print(setuptools.__version__,wheel.__version__)",
-        ],
-        cwd=source,
-        env=installer_env,
-    )
-    assert build_backend.returncode == 0, build_backend.stderr.decode("utf-8", "replace")
+    installer_env: dict[str, str] = {}
+    base_python = Path(sys.executable)
     built = _run(
         [
             uv,
@@ -4121,7 +4192,6 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
             "build",
             "--wheel",
             "--offline",
-            "--no-build-isolation",
             "--python",
             str(base_python),
             "--out-dir",
@@ -4138,6 +4208,7 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     created = _run(
         [
             uv,
+            "--no-config",
             "venv",
             "--system-site-packages",
             "--python",
@@ -4159,8 +4230,10 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     installed = _run(
         [
             uv,
+            "--no-config",
             "pip",
             "install",
+            "--offline",
             "--no-deps",
             "--python",
             str(binary / "python"),
