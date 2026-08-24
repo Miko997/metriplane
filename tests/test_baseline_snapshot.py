@@ -14,7 +14,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import sysconfig
 import threading
 from collections.abc import Callable, Iterator
 from importlib import metadata as importlib_metadata
@@ -1297,7 +1296,7 @@ def installed_bootstrap_cli_python(
         direct_url = distribution.read_text("direct_url.json")
         direct = json.loads(direct_url) if direct_url else {}
         editable = editable or direct.get("dir_info", {}).get("editable") is True
-    if not editable:
+    if not editable and sys.version_info[:2] == (3, 12):
         yield
         return
 
@@ -1324,21 +1323,29 @@ def installed_bootstrap_cli_python(
     shutil.copytree(ROOT, source, ignore=ignore)
     uv = shutil.which("uv")
     assert uv is not None
+    cross_minor = sys.version_info[:2] != (3, 12)
+    bootstrap_python = "3.12" if cross_minor else sys.executable
     venv = root / "venv"
+    sync_args = [
+        uv,
+        "--no-config",
+        "sync",
+        "--frozen",
+        "--no-editable",
+        "--no-dev",
+        "--python",
+        str(bootstrap_python),
+    ]
+    sync_env = {"UV_PROJECT_ENVIRONMENT": str(venv)}
+    if cross_minor:
+        sync_args.append("--managed-python")
+        sync_env["UV_PYTHON_INSTALL_DIR"] = str(root / "python")
+    else:
+        sync_args.insert(3, "--offline")
     installed = _run(
-        [
-            uv,
-            "--no-config",
-            "sync",
-            "--offline",
-            "--frozen",
-            "--no-editable",
-            "--no-dev",
-            "--python",
-            sys.executable,
-        ],
+        sync_args,
         cwd=source,
-        env={"UV_PROJECT_ENVIRONMENT": str(venv)},
+        env=sync_env,
     )
     assert installed.returncode == 0, installed.stderr.decode("utf-8", "replace")
     binary = venv / ("Scripts" if os.name == "nt" else "bin")
@@ -1347,10 +1354,11 @@ def installed_bootstrap_cli_python(
             str(binary / "python"),
             "-c",
             (
-                "import importlib.metadata as m,json,metriplane; "
+                "import importlib.metadata as m,json,metriplane,sys; "
                 "d=m.distribution('metriplane'); "
                 "print(json.dumps({'direct_url':json.loads(d.read_text('direct_url.json') "
-                "or '{}'),'module':metriplane.__file__},sort_keys=True))"
+                "or '{}'),'module':metriplane.__file__,'python':"
+                "[sys.version_info.major,sys.version_info.minor]},sort_keys=True))"
             ),
         ],
         cwd=root,
@@ -1359,6 +1367,7 @@ def installed_bootstrap_cli_python(
     identity = json.loads(probe.stdout)
     assert identity["direct_url"].get("dir_info", {}).get("editable") is not True
     assert Path(identity["module"]).resolve().is_relative_to(venv.resolve())
+    assert identity["python"] == [3, 12]
 
     previous = _BOOTSTRAP_CLI_PYTHON
     _BOOTSTRAP_CLI_PYTHON = binary / "python"
@@ -4184,7 +4193,26 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     uv = shutil.which("uv")
     assert uv is not None
     installer_env: dict[str, str] = {}
-    base_python = Path(sys.executable)
+    base_python = Path(_BOOTSTRAP_CLI_PYTHON)
+    bootstrap_paths_result = _run(
+        [
+            str(base_python),
+            "-c",
+            (
+                "import json,sys,sysconfig; "
+                "print(json.dumps({'prefix':sys.prefix,'purelib':"
+                "sysconfig.get_paths()['purelib']},sort_keys=True))"
+            ),
+        ],
+        cwd=source,
+    )
+    assert bootstrap_paths_result.returncode == 0, bootstrap_paths_result.stderr.decode(
+        "utf-8", "replace"
+    )
+    bootstrap_paths = json.loads(bootstrap_paths_result.stdout)
+    bootstrap_prefix = Path(bootstrap_paths["prefix"])
+    bootstrap_site_packages = Path(bootstrap_paths["purelib"])
+    assert bootstrap_site_packages.resolve().is_relative_to(bootstrap_prefix.resolve())
     built = _run(
         [
             uv,
@@ -4212,7 +4240,7 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
             "venv",
             "--system-site-packages",
             "--python",
-            sys.executable,
+            str(base_python),
             str(venv),
         ],
         cwd=tmp_path,
@@ -4220,8 +4248,6 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     )
     assert created.returncode == 0, created.stderr.decode("utf-8", "replace")
     binary = venv / ("Scripts" if os.name == "nt" else "bin")
-    bootstrap_site_packages = Path(sysconfig.get_paths()["purelib"])
-    assert bootstrap_site_packages.is_relative_to(Path(sys.prefix))
     installed_site_packages = list(venv.glob("lib/python*/site-packages"))
     assert len(installed_site_packages) == 1
     (installed_site_packages[0] / "bootstrap-dependency-inventory.pth").write_text(
