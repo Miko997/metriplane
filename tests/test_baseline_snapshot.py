@@ -2778,6 +2778,20 @@ def test_checksum_sidecar_n_minus_one_n_n_plus_one(
         assert raised.value.code == "INVALID_SIZE"
 
 
+CONDITIONAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {"enum": ["number", "text"]},
+        "value": {},
+    },
+    "required": ["kind", "value"],
+    "additionalProperties": False,
+    "if": {"properties": {"kind": {"const": "number"}}},
+    "then": {"properties": {"value": {"type": "integer"}}},
+    "else": {"properties": {"value": {"type": "string"}}},
+}
+
+
 SCHEMA_ENGINE_DIFFERENTIAL_CASES = (
     pytest.param(
         "ok",
@@ -2877,6 +2891,42 @@ SCHEMA_ENGINE_DIFFERENTIAL_CASES = (
         id="uri-format",
     ),
     pytest.param(
+        "2026-08-24T00:00:00Z",
+        {"type": "string", "format": "date-time"},
+        True,
+        id="rfc3339-date-time-valid",
+    ),
+    pytest.param(
+        "2026-02-30T00:00:00Z",
+        {"type": "string", "format": "date-time"},
+        False,
+        id="rfc3339-date-time-invalid",
+    ),
+    pytest.param(
+        {"kind": "number", "value": 1},
+        CONDITIONAL_SCHEMA,
+        True,
+        id="if-then-valid",
+    ),
+    pytest.param(
+        {"kind": "number", "value": "wrong"},
+        CONDITIONAL_SCHEMA,
+        False,
+        id="if-then-invalid",
+    ),
+    pytest.param(
+        {"kind": "text", "value": "ok"},
+        CONDITIONAL_SCHEMA,
+        True,
+        id="if-else-valid",
+    ),
+    pytest.param(
+        {"kind": "text", "value": 1},
+        CONDITIONAL_SCHEMA,
+        False,
+        id="if-else-invalid",
+    ),
+    pytest.param(
         {"": 1},
         {
             "type": "object",
@@ -2904,6 +2954,172 @@ def test_internal_schema_engine_has_fixed_keyword_verdicts_and_pinned_parity(
     if external is not None:
         assert external is expected
         assert external is internal
+
+
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+def test_internal_schema_engine_preflights_unselected_conditional_branches(
+    _obligation: str,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    schema = {
+        "if": {"const": "selected"},
+        "then": True,
+        "else": {"type": []},
+    }
+    with pytest.raises(tool.SnapshotError) as raised:
+        tool._internal_validate("selected", schema)
+    assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
+
+
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+def test_hash_locked_authority_schemas_have_fail_closed_internal_fallback(
+    _obligation: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    original_version = tool.importlib.metadata.version
+
+    def missing_validator_pins(distribution: str) -> str:
+        if distribution in {"jsonschema", "rfc3339-validator"}:
+            raise importlib_metadata.PackageNotFoundError(distribution)
+        return cast(str, original_version(distribution))
+
+    monkeypatch.setattr(tool.importlib.metadata, "version", missing_validator_pins)
+    assert (
+        tool._validate_with_available_engine(
+            "2026-08-24T00:00:00Z",
+            {"type": "string", "format": "date-time"},
+        )
+        == "internal-exact-schema-v1"
+    )
+    with pytest.raises(tool.SnapshotError) as raised:
+        tool._validate_with_available_engine(
+            "2026-02-30T00:00:00Z",
+            {"type": "string", "format": "date-time"},
+        )
+    assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    environment = _synthetic_environment(repository, os_release="Synthetic Linux")
+    remote = _synthetic_remote_proof(repository)
+
+    tool._validate_pinned_authority_schema(
+        environment,
+        encoded=tool._BOOTSTRAP_ENVIRONMENT_SCHEMA_ZLIB_BASE64,
+        expected_bytes=tool.BOOTSTRAP_ENVIRONMENT_SCHEMA_BYTES,
+        expected_sha256=tool.BOOTSTRAP_ENVIRONMENT_SCHEMA_SHA256,
+        expected_id=tool.BOOTSTRAP_ENVIRONMENT_SCHEMA_ID,
+        label="bootstrap environment observation",
+    )
+
+    def validate_remote(candidate: dict[str, Any]) -> None:
+        tool._validate_pinned_authority_schema(
+            candidate,
+            encoded=tool._GITHUB_REMOTE_SCHEMA_ZLIB_BASE64,
+            expected_bytes=tool.GITHUB_REMOTE_SCHEMA_BYTES,
+            expected_sha256=tool.GITHUB_REMOTE_SCHEMA_SHA256,
+            expected_id=tool.GITHUB_REMOTE_SCHEMA_ID,
+            label="GitHub remote collision proof",
+        )
+
+    validate_remote(remote)
+
+    then_receipt = copy.deepcopy(remote)
+    then_receipt["collection_receipts"].append(
+        tool._receipt(
+            "mcp__codex_apps__github_fetch_pr",
+            1,
+            {"pr_number": 1, "repo_full_name": "Miko997/metriplane"},
+            {"head_sha": AUDITED_BASE_SHA},
+        )
+    )
+    validate_remote(then_receipt)
+
+    invalid_then_receipt = copy.deepcopy(remote)
+    invalid_then_receipt["collection_receipts"].append(
+        tool._receipt(
+            "mcp__codex_apps__github_fetch_pr",
+            None,
+            {"pr_number": 1, "repo_full_name": "Miko997/metriplane"},
+            {"head_sha": AUDITED_BASE_SHA},
+        )
+    )
+    with pytest.raises(tool.SnapshotError) as raised:
+        validate_remote(invalid_then_receipt)
+    assert raised.value.code == "READY_INSTANCE_INVALID"
+
+    invalid_else_receipt = copy.deepcopy(remote)
+    invalid_else_receipt["collection_receipts"][0]["pr_number"] = 1
+    with pytest.raises(tool.SnapshotError) as raised:
+        validate_remote(invalid_else_receipt)
+    assert raised.value.code == "READY_INSTANCE_INVALID"
+
+    invalid_no_collision = copy.deepcopy(remote)
+    invalid_no_collision["authenticated_actor"]["permission"] = "read"
+    with pytest.raises(tool.SnapshotError) as raised:
+        validate_remote(invalid_no_collision)
+    assert raised.value.code == "READY_INSTANCE_INVALID"
+
+    collision = copy.deepcopy(remote)
+    collision["verdict"] = "COLLISION"
+    collision["authenticated_actor"]["permission"] = "read"
+    collision["collisions"] = ["synthetic collision"]
+    validate_remote(collision)
+
+
+@pytest.mark.parametrize(
+    "fallback_reason",
+    ["version-mismatch", "broken-import", "missing-date-time-format"],
+)
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+def test_internal_schema_fallback_covers_unusable_external_engine(
+    _obligation: str,
+    monkeypatch: pytest.MonkeyPatch,
+    fallback_reason: str,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    original_version = tool.importlib.metadata.version
+    original_import = tool.importlib.import_module
+
+    def validator_version(distribution: str) -> str:
+        if distribution == "jsonschema" and fallback_reason == "version-mismatch":
+            return "4.25.0"
+        if distribution == "jsonschema":
+            return "4.25.1"
+        if distribution == "rfc3339-validator":
+            return "0.1.4"
+        return cast(str, original_version(distribution))
+
+    def validator_import(module: str, package: str | None = None) -> Any:
+        if module == "jsonschema" and fallback_reason == "broken-import":
+            raise ImportError("synthetic broken validator import")
+        if module == "jsonschema" and fallback_reason == "missing-date-time-format":
+            jsonschema = original_import(module, package)
+
+            class MissingDateTimeFormatChecker:
+                def __init__(self) -> None:
+                    self.checkers: dict[str, Any] = {}
+
+            class MissingDateTimeEngine:
+                Draft202012Validator = jsonschema.Draft202012Validator
+                FormatChecker = MissingDateTimeFormatChecker
+                exceptions = jsonschema.exceptions
+
+            return MissingDateTimeEngine
+        return original_import(module, package)
+
+    monkeypatch.setattr(tool.importlib.metadata, "version", validator_version)
+    monkeypatch.setattr(tool.importlib, "import_module", validator_import)
+    schema = {"type": "string", "format": "date-time"}
+    assert (
+        tool._validate_with_available_engine("2026-08-24T00:00:00Z", schema)
+        == "internal-exact-schema-v1"
+    )
+    with pytest.raises(tool.SnapshotError) as raised:
+        tool._validate_with_available_engine("2026-02-30T00:00:00Z", schema)
+    assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
 
 
 RELATIVE_PATH_SECTIONS = (
@@ -3884,8 +4100,8 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     dist.mkdir()
     uv = shutil.which("uv")
     assert uv is not None
-    installer_cache = Path(os.environ["UV_CACHE_DIR"])
-    assert installer_cache.is_dir()
+    installer_cache = tmp_path / "installer-uv-cache"
+    installer_cache.mkdir()
     installer_env = {"UV_CACHE_DIR": str(installer_cache)}
     base_python = Path(getattr(sys, "_base_executable", sys.executable))
     build_backend = _run(
@@ -3934,7 +4150,7 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     assert created.returncode == 0, created.stderr.decode("utf-8", "replace")
     binary = venv / ("Scripts" if os.name == "nt" else "bin")
     bootstrap_site_packages = Path(sysconfig.get_paths()["purelib"])
-    assert bootstrap_site_packages.is_relative_to(Path(os.environ["UV_PROJECT_ENVIRONMENT"]))
+    assert bootstrap_site_packages.is_relative_to(Path(sys.prefix))
     installed_site_packages = list(venv.glob("lib/python*/site-packages"))
     assert len(installed_site_packages) == 1
     (installed_site_packages[0] / "bootstrap-dependency-inventory.pth").write_text(

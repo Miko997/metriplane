@@ -1700,21 +1700,7 @@ def _validate_pinned_authority_schema(
     expected_id: str,
     label: str,
 ) -> None:
-    """Validate bootstrap-only evidence with the authority-pinned validator."""
-    try:
-        jsonschema_version = importlib.metadata.version("jsonschema")
-        rfc3339_version = importlib.metadata.version("rfc3339-validator")
-    except importlib.metadata.PackageNotFoundError:
-        _fail(
-            "BOOTSTRAP_VALIDATOR_UNAVAILABLE",
-            f"{label} validation requires jsonschema==4.25.1 and rfc3339-validator==0.1.4",
-        )
-    if jsonschema_version != "4.25.1" or rfc3339_version != "0.1.4":
-        _fail(
-            "BOOTSTRAP_VALIDATOR_UNAVAILABLE",
-            f"{label} validator pins differ: jsonschema={jsonschema_version}, "
-            f"rfc3339-validator={rfc3339_version}",
-        )
+    """Validate bootstrap evidence with the pinned or exact internal engine."""
     schema = _embedded_authority_schema(
         encoded,
         expected_bytes=expected_bytes,
@@ -1723,23 +1709,13 @@ def _validate_pinned_authority_schema(
         label=label,
     )
     try:
-        jsonschema = importlib.import_module("jsonschema")
-    except ImportError:
-        _fail(
-            "BOOTSTRAP_VALIDATOR_UNAVAILABLE",
-            f"{label} cannot import the authority-pinned validator",
-        )
-    try:
-        validator_class = jsonschema.Draft202012Validator
-        validator_class.check_schema(schema)
-        validator_class(schema, format_checker=jsonschema.FormatChecker()).validate(value)
-    except (
-        jsonschema.exceptions.SchemaError,
-        jsonschema.exceptions.ValidationError,
-    ) as exc:
+        _validate_with_available_engine(value, schema)
+    except SnapshotError as exc:
+        if exc.code != "SCHEMA_VALIDATION_FAILED":
+            raise
         _fail(
             "READY_INSTANCE_INVALID",
-            f"{label} authority-schema validation failed: {exc}",
+            f"{label} authority-schema validation failed: {exc.message}",
         )
 
 
@@ -4071,7 +4047,9 @@ _SUPPORTED_SCHEMA_KEYWORDS = {
     "const",
     "description",
     "enum",
+    "else",
     "format",
+    "if",
     "items",
     "maxItems",
     "maxLength",
@@ -4086,10 +4064,113 @@ _SUPPORTED_SCHEMA_KEYWORDS = {
     "properties",
     "propertyNames",
     "required",
+    "then",
     "title",
     "type",
     "uniqueItems",
 }
+
+_SUPPORTED_JSON_TYPES = {
+    "null",
+    "boolean",
+    "integer",
+    "number",
+    "string",
+    "array",
+    "object",
+}
+
+
+def _check_schema_definition(schema: Any, root: dict[str, Any], path: str = "$schema") -> None:
+    """Preflight every node in the hash-locked supported Draft 2020-12 subset."""
+    if isinstance(schema, bool):
+        return
+    if not isinstance(schema, dict):
+        raise _SchemaViolation(path, "schema node is neither an object nor boolean")
+    unknown = set(schema) - _SUPPORTED_SCHEMA_KEYWORDS
+    if unknown:
+        raise _SchemaViolation(path, f"unsupported schema keyword(s): {sorted(unknown)!r}")
+
+    for keyword in ("$schema", "$id", "$ref", "title", "description", "pattern", "format"):
+        if keyword in schema and not isinstance(schema[keyword], str):
+            raise _SchemaViolation(path, f"{keyword} must be a string")
+    if "$ref" in schema:
+        _resolve_local_ref(root, schema["$ref"])
+    if "pattern" in schema:
+        try:
+            re.compile(schema["pattern"])
+        except re.error as exc:
+            raise _SchemaViolation(path, f"pattern is invalid: {exc}") from exc
+    if schema.get("format") not in (None, "uri", "date-time"):
+        raise _SchemaViolation(path, f"unsupported string format: {schema['format']}")
+
+    definitions = schema.get("$defs", {})
+    properties = schema.get("properties", {})
+    for keyword, values in (("$defs", definitions), ("properties", properties)):
+        if not isinstance(values, dict):
+            raise _SchemaViolation(path, f"{keyword} must be an object")
+        for name, child in values.items():
+            _check_schema_definition(child, root, f"{path}/{keyword}/{name}")
+
+    for keyword in ("allOf", "oneOf", "prefixItems"):
+        if keyword not in schema:
+            continue
+        values = schema[keyword]
+        if not isinstance(values, list) or not values:
+            raise _SchemaViolation(path, f"{keyword} must be a nonempty array")
+        for index, child in enumerate(values):
+            _check_schema_definition(child, root, f"{path}/{keyword}/{index}")
+
+    for keyword in ("additionalProperties", "items", "propertyNames", "if", "then", "else"):
+        if keyword in schema:
+            _check_schema_definition(schema[keyword], root, f"{path}/{keyword}")
+
+    if "type" in schema:
+        declared = schema["type"]
+        types = [declared] if isinstance(declared, str) else declared
+        if (
+            not isinstance(types, list)
+            or not types
+            or any(not isinstance(item, str) or item not in _SUPPORTED_JSON_TYPES for item in types)
+            or len(types) != len(set(types))
+        ):
+            raise _SchemaViolation(path, "type must contain unique supported JSON types")
+
+    required = schema.get("required", [])
+    if (
+        not isinstance(required, list)
+        or any(not isinstance(item, str) for item in required)
+        or len(required) != len(set(required))
+    ):
+        raise _SchemaViolation(path, "required must contain unique strings")
+    if "enum" in schema:
+        values = schema["enum"]
+        if not isinstance(values, list) or not values:
+            raise _SchemaViolation(path, "enum must be a nonempty array")
+        identities = [_canonical_bytes(item) for item in values]
+        if len(identities) != len(set(identities)):
+            raise _SchemaViolation(path, "enum values must be unique")
+
+    for keyword in (
+        "minItems",
+        "maxItems",
+        "minLength",
+        "maxLength",
+        "minProperties",
+    ):
+        if keyword in schema and (
+            not isinstance(schema[keyword], int)
+            or isinstance(schema[keyword], bool)
+            or schema[keyword] < 0
+        ):
+            raise _SchemaViolation(path, f"{keyword} must be a nonnegative integer")
+    for keyword in ("minimum", "maximum"):
+        if keyword in schema and (
+            not isinstance(schema[keyword], (int, float)) or isinstance(schema[keyword], bool)
+        ):
+            raise _SchemaViolation(path, f"{keyword} must be a number")
+    if "uniqueItems" in schema and not isinstance(schema["uniqueItems"], bool):
+        raise _SchemaViolation(path, "uniqueItems must be a boolean")
 
 
 def _schema_equal(left: Any, right: Any) -> bool:
@@ -4196,6 +4277,16 @@ def _validate_schema_node(instance: Any, schema: Any, root: dict[str, Any], path
         if matches != 1:
             raise _SchemaViolation(path, f"oneOf matched {matches} branches instead of exactly one")
 
+    if "if" in schema:
+        try:
+            _validate_schema_node(instance, schema["if"], root, path)
+        except _SchemaViolation:
+            branch = "else"
+        else:
+            branch = "then"
+        if branch in schema:
+            _validate_schema_node(instance, schema[branch], root, path)
+
     expected_type = schema.get("type")
     if expected_type is not None:
         types = [expected_type] if isinstance(expected_type, str) else expected_type
@@ -4299,15 +4390,16 @@ def _validate_schema_node(instance: Any, schema: Any, root: dict[str, Any], path
             raise _SchemaViolation(path, f"number is greater than maximum {maximum}")
 
 
-def _internal_validate(instance: dict[str, Any], schema: dict[str, Any]) -> None:
+def _internal_validate(instance: Any, schema: dict[str, Any]) -> None:
     """Validate the hash-locked v1 artifact without an external runtime dependency."""
     try:
+        _check_schema_definition(schema, schema)
         _validate_schema_node(instance, schema, schema, "$")
     except _SchemaViolation as exc:
         _fail("SCHEMA_VALIDATION_FAILED", f"{exc.path}: {exc.message}")
 
 
-def _validate_with_available_engine(instance: dict[str, Any], schema: dict[str, Any]) -> str:
+def _validate_with_available_engine(instance: Any, schema: dict[str, Any]) -> str:
     try:
         jsonschema_version = importlib.metadata.version("jsonschema")
         rfc3339_version = importlib.metadata.version("rfc3339-validator")
@@ -4317,19 +4409,23 @@ def _validate_with_available_engine(instance: dict[str, Any], schema: dict[str, 
     if jsonschema_version == "4.25.1" and rfc3339_version == "0.1.4":
         try:
             jsonschema = importlib.import_module("jsonschema")
-
             validator_class = jsonschema.Draft202012Validator
-            validator_class.check_schema(schema)
-            validator_class(schema, format_checker=jsonschema.FormatChecker()).validate(instance)
-        except (
-            jsonschema.exceptions.SchemaError,
-            jsonschema.exceptions.ValidationError,
-        ) as exc:
-            _fail(
-                "SCHEMA_VALIDATION_FAILED",
-                f"Draft 2020-12 schema validation failed: {exc}",
-            )
-        return "jsonschema-4.25.1"
+            format_checker = jsonschema.FormatChecker()
+            schema_error = jsonschema.exceptions.SchemaError
+            validation_error = jsonschema.exceptions.ValidationError
+        except (ImportError, AttributeError):
+            pass
+        else:
+            if "date-time" in format_checker.checkers:
+                try:
+                    validator_class.check_schema(schema)
+                    validator_class(schema, format_checker=format_checker).validate(instance)
+                except (schema_error, validation_error) as exc:
+                    _fail(
+                        "SCHEMA_VALIDATION_FAILED",
+                        f"Draft 2020-12 schema validation failed: {exc}",
+                    )
+                return "jsonschema-4.25.1"
     _internal_validate(instance, schema)
     return "internal-exact-schema-v1"
 
