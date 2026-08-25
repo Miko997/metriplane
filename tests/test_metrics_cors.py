@@ -81,6 +81,7 @@ def metrics_server():
     server, port = _make_server(get_health=lambda: health_payload)
     yield port
     server.shutdown()
+    server.server_close()
 
 
 @pytest.fixture(scope="module")
@@ -89,6 +90,7 @@ def metrics_server_no_health():
     server, port = _make_server(get_health=None)
     yield port
     server.shutdown()
+    server.server_close()
 
 
 # ---------------------------------------------------------------------------

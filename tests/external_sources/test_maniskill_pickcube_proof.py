@@ -10,6 +10,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 import zipfile
 from collections.abc import Iterable, Mapping
 from datetime import date
@@ -32,6 +33,9 @@ CONTROL_FIXTURE = FIXTURE_ROOT / "control"
 SCHEMA_PATH = PROOF_ROOT / "proof-record.schema.json"
 RECORD_PATH = PROOF_ROOT / "proof-record.json"
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "maniskill-proof.yml"
+EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
+EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
+EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
 
 PROOF_TAG = "maniskill-pickcube-proof-v1"
 BASELINE_COMMIT = "1549d0a05e03db51efc0ee08edb7d9db66196b4e"
@@ -953,9 +957,8 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     candidate = record["proof_identity"]["candidate_commit"]
     frozen_identity_paths = (
         "metriplane",
+        f":(exclude){EVIDENCE_LAKE_PATH}",
         "integrations",
-        "pyproject.toml",
-        "uv.lock",
         "LICENSE",
         "NOTICE",
         "adapters/maniskill_pickcube",
@@ -980,6 +983,56 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
+    def read_git_bytes(revision: str, path: str) -> bytes:
+        git_show = subprocess.run(
+            ["git", "show", f"{revision}:{path}"],
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+        )
+        assert git_show.returncode == 0, git_show.stderr.decode()
+        return git_show.stdout
+
+    assert (
+        hashlib.sha256(read_git_bytes(candidate, EVIDENCE_LAKE_PATH)).hexdigest()
+        == EVIDENCE_LAKE_FROZEN_SHA256
+    )
+    assert (
+        hashlib.sha256(read_git_bytes("HEAD", EVIDENCE_LAKE_PATH)).hexdigest()
+        == EVIDENCE_LAKE_REPAIRED_SHA256
+    )
+
+    def read_git_toml(revision: str, path: str) -> dict[str, Any]:
+        git_show = subprocess.run(
+            ["git", "show", f"{revision}:{path}"],
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert git_show.returncode == 0, git_show.stderr
+        return tomllib.loads(git_show.stdout)
+
+    def normalized_lock(revision: str) -> dict[str, Any]:
+        lock = read_git_toml(revision, "uv.lock")
+        root_packages = [
+            package
+            for package in lock["package"]
+            if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+        ]
+        assert len(root_packages) == 1, root_packages
+        metadata = root_packages[0].get("metadata")
+        assert isinstance(metadata, dict)
+        assert "requires-dev" in metadata
+        metadata.pop("requires-dev")
+        return lock
+
+    candidate_pyproject = read_git_toml(candidate, "pyproject.toml")
+    checkout_pyproject = read_git_toml("HEAD", "pyproject.toml")
+    assert candidate_pyproject["project"] == checkout_pyproject["project"]
+    assert candidate_pyproject["tool"]["setuptools"] == checkout_pyproject["tool"]["setuptools"]
+    assert normalized_lock(candidate) == normalized_lock("HEAD")
+
 
 def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -1002,11 +1055,28 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert "jsonschema" in text and "cffconvert" in text and "reuse lint-file" in text
     assert "tools/build_maniskill_pickcube_proof.py" in text
     assert "diff --recursive --brief" in text
+    assert 'git worktree add --detach "$candidate_template" "$candidate_commit"' in text
+    assert 'echo "CANDIDATE_SOURCE=$candidate_template"' in text
+    assert text.count('--repo-root "$CANDIDATE_SOURCE"') == 2
     assert 'record["proof_identity"]["candidate_commit"]' in text
     assert "fetch-depth: 0" in text
     assert 'git archive --format=tar "$candidate_commit"' in text
     assert 'git merge-base --is-ancestor "$candidate_commit" HEAD' not in text
     assert text.count('git diff --exit-code "$candidate_commit" HEAD --') == 2
+    identity_blocks = re.findall(
+        r"candidate_identity_paths=\(\n(?P<body>.*?)\n\s*\)", text, re.DOTALL
+    )
+    assert len(identity_blocks) == 2
+    assert all("pyproject.toml" not in block for block in identity_blocks)
+    assert all("uv.lock" not in block for block in identity_blocks)
+    identity_exception = '":(exclude)metriplane/atlas/evidence_lake.py"'
+    assert all(block.count(identity_exception) == 1 for block in identity_blocks)
+    assert text.count('candidate_pyproject["project"]') == 2
+    assert text.count('candidate_pyproject["tool"]["setuptools"]') == 2
+    assert text.count('metadata.pop("requires-dev")') == 2
+    assert text.count('normalized_lock(candidate_commit) != normalized_lock("HEAD")') == 2
+    assert text.count(f'EVIDENCE_LAKE_FROZEN_SHA256 = "{EVIDENCE_LAKE_FROZEN_SHA256}"') == 2
+    assert text.count(f'EVIDENCE_LAKE_REPAIRED_SHA256 = "{EVIDENCE_LAKE_REPAIRED_SHA256}"') == 2
     for identity_path in (
         "metriplane",
         "integrations",

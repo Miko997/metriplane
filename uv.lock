@@ -689,14 +689,14 @@ provides-extras = ["gpu-cuda12x", "gpu-cuda13x", "gpu", "plots"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "build", specifier = ">=1.2,<2" },
-    { name = "mkdocs", specifier = ">=1.6,<2" },
-    { name = "mypy", specifier = ">=1.17,<2" },
-    { name = "playwright", specifier = ">=1.55,<2" },
-    { name = "pytest", specifier = ">=8.4,<9" },
-    { name = "ruff", specifier = ">=0.12,<1" },
-    { name = "twine", specifier = ">=6.1,<7" },
-    { name = "types-pyyaml", specifier = ">=6.0,<7" },
+    { name = "build", specifier = "==1.5.0" },
+    { name = "mkdocs", specifier = "==1.6.1" },
+    { name = "mypy", specifier = "==1.20.2" },
+    { name = "playwright", specifier = "==1.62.0" },
+    { name = "pytest", specifier = "==8.4.2" },
+    { name = "ruff", specifier = "==0.16.2" },
+    { name = "twine", specifier = "==6.2.0" },
+    { name = "types-pyyaml", specifier = "==6.0.12.20260724" },
 ]
 
 [[package]]

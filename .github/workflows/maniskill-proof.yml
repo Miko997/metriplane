@@ -166,9 +166,8 @@ jobs:
           git cat-file -e "${candidate_commit}^{commit}"
           candidate_identity_paths=(
             metriplane
+            ":(exclude)metriplane/atlas/evidence_lake.py"
             integrations
-            pyproject.toml
-            uv.lock
             LICENSE
             NOTICE
             adapters/maniskill_pickcube
@@ -186,7 +185,68 @@ jobs:
           )
           git diff --exit-code "$candidate_commit" HEAD -- \
             "${candidate_identity_paths[@]}"
+          python - "$candidate_commit" <<'PY'
+          import hashlib
+          import subprocess
+          import sys
+          import tomllib
+
+
+          EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
+          EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
+          EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+
+
+          def read_bytes(revision, path):
+              return subprocess.check_output(["git", "show", f"{revision}:{path}"])
+
+
+          def read_toml(revision, path):
+              return tomllib.loads(read_bytes(revision, path).decode("utf-8"))
+
+
+          def normalized_lock(revision):
+              lock = read_toml(revision, "uv.lock")
+              root_packages = [
+                  package
+                  for package in lock["package"]
+                  if package.get("name") == "metriplane"
+                  and package.get("source") == {"editable": "."}
+              ]
+              if len(root_packages) != 1:
+                  raise SystemExit(f"expected one editable root package: {root_packages!r}")
+              metadata = root_packages[0].get("metadata")
+              if not isinstance(metadata, dict) or "requires-dev" not in metadata:
+                  raise SystemExit("editable root package is missing metadata.requires-dev")
+              metadata.pop("requires-dev")
+              return lock
+
+
+          candidate_commit = sys.argv[1]
+          if (
+              hashlib.sha256(read_bytes(candidate_commit, EVIDENCE_LAKE_PATH)).hexdigest()
+              != EVIDENCE_LAKE_FROZEN_SHA256
+          ):
+              raise SystemExit("recorded candidate evidence-lake identity differs")
+          if (
+              hashlib.sha256(read_bytes("HEAD", EVIDENCE_LAKE_PATH)).hexdigest()
+              != EVIDENCE_LAKE_REPAIRED_SHA256
+          ):
+              raise SystemExit("checkout evidence-lake repair identity differs")
+          candidate_pyproject = read_toml(candidate_commit, "pyproject.toml")
+          checkout_pyproject = read_toml("HEAD", "pyproject.toml")
+          if candidate_pyproject["project"] != checkout_pyproject["project"]:
+              raise SystemExit("candidate and checkout [project] tables differ")
+          if (
+              candidate_pyproject["tool"]["setuptools"]
+              != checkout_pyproject["tool"]["setuptools"]
+          ):
+              raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
+          if normalized_lock(candidate_commit) != normalized_lock("HEAD"):
+              raise SystemExit("candidate and checkout runtime lock identities differ")
+          PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
+          candidate_template="${RUNNER_TEMP}/metriplane-candidate-template"
           candidate_dist="${RUNNER_TEMP}/metriplane-candidate-dist"
           candidate_venv="${RUNNER_TEMP}/metriplane-candidate-venv"
           mkdir -p "$candidate_source" "$candidate_dist"
@@ -200,9 +260,11 @@ jobs:
           python -m venv "$candidate_venv"
           "$candidate_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
           "$candidate_venv/bin/python" -m pip check
+          git worktree add --detach "$candidate_template" "$candidate_commit"
           {
             echo "CANDIDATE_COMMIT=$candidate_commit"
             echo "CANDIDATE_METRIPLANE=$candidate_venv/bin/metriplane"
+            echo "CANDIDATE_SOURCE=$candidate_template"
           } >> "$GITHUB_ENV"
 
       - name: Rebuild proof twice and require deterministic output
@@ -212,13 +274,13 @@ jobs:
           first="${RUNNER_TEMP}/proof-build-a"
           second="${RUNNER_TEMP}/proof-build-b"
           uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
-            --repo-root . \
+            --repo-root "$CANDIDATE_SOURCE" \
             --out "$first" \
             --metriplane-commit "$CANDIDATE_COMMIT" \
             --publication-date 2026-08-12 \
             --metriplane-command "$CANDIDATE_METRIPLANE"
           uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
-            --repo-root . \
+            --repo-root "$CANDIDATE_SOURCE" \
             --out "$second" \
             --metriplane-commit "$CANDIDATE_COMMIT" \
             --publication-date 2026-08-12 \
@@ -283,9 +345,8 @@ jobs:
           git cat-file -e "${candidate_commit}^{commit}"
           candidate_identity_paths=(
             metriplane
+            ":(exclude)metriplane/atlas/evidence_lake.py"
             integrations
-            pyproject.toml
-            uv.lock
             LICENSE
             NOTICE
             adapters/maniskill_pickcube
@@ -303,6 +364,66 @@ jobs:
           )
           git diff --exit-code "$candidate_commit" HEAD -- \
             "${candidate_identity_paths[@]}"
+          python - "$candidate_commit" <<'PY'
+          import hashlib
+          import subprocess
+          import sys
+          import tomllib
+
+
+          EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
+          EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
+          EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+
+
+          def read_bytes(revision, path):
+              return subprocess.check_output(["git", "show", f"{revision}:{path}"])
+
+
+          def read_toml(revision, path):
+              return tomllib.loads(read_bytes(revision, path).decode("utf-8"))
+
+
+          def normalized_lock(revision):
+              lock = read_toml(revision, "uv.lock")
+              root_packages = [
+                  package
+                  for package in lock["package"]
+                  if package.get("name") == "metriplane"
+                  and package.get("source") == {"editable": "."}
+              ]
+              if len(root_packages) != 1:
+                  raise SystemExit(f"expected one editable root package: {root_packages!r}")
+              metadata = root_packages[0].get("metadata")
+              if not isinstance(metadata, dict) or "requires-dev" not in metadata:
+                  raise SystemExit("editable root package is missing metadata.requires-dev")
+              metadata.pop("requires-dev")
+              return lock
+
+
+          candidate_commit = sys.argv[1]
+          if (
+              hashlib.sha256(read_bytes(candidate_commit, EVIDENCE_LAKE_PATH)).hexdigest()
+              != EVIDENCE_LAKE_FROZEN_SHA256
+          ):
+              raise SystemExit("recorded candidate evidence-lake identity differs")
+          if (
+              hashlib.sha256(read_bytes("HEAD", EVIDENCE_LAKE_PATH)).hexdigest()
+              != EVIDENCE_LAKE_REPAIRED_SHA256
+          ):
+              raise SystemExit("checkout evidence-lake repair identity differs")
+          candidate_pyproject = read_toml(candidate_commit, "pyproject.toml")
+          checkout_pyproject = read_toml("HEAD", "pyproject.toml")
+          if candidate_pyproject["project"] != checkout_pyproject["project"]:
+              raise SystemExit("candidate and checkout [project] tables differ")
+          if (
+              candidate_pyproject["tool"]["setuptools"]
+              != checkout_pyproject["tool"]["setuptools"]
+          ):
+              raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
+          if normalized_lock(candidate_commit) != normalized_lock("HEAD"):
+              raise SystemExit("candidate and checkout runtime lock identities differ")
+          PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           dist_dir="${RUNNER_TEMP}/metriplane-proof-dist"
           mkdir -p "$candidate_source" "$dist_dir"
