@@ -167,8 +167,6 @@ jobs:
           candidate_identity_paths=(
             metriplane
             integrations
-            pyproject.toml
-            uv.lock
             LICENSE
             NOTICE
             adapters/maniskill_pickcube
@@ -186,6 +184,49 @@ jobs:
           )
           git diff --exit-code "$candidate_commit" HEAD -- \
             "${candidate_identity_paths[@]}"
+          python - "$candidate_commit" <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+
+          def read_toml(revision, path):
+              content = subprocess.check_output(
+                  ["git", "show", f"{revision}:{path}"],
+              )
+              return tomllib.loads(content.decode("utf-8"))
+
+
+          def normalized_lock(revision):
+              lock = read_toml(revision, "uv.lock")
+              root_packages = [
+                  package
+                  for package in lock["package"]
+                  if package.get("name") == "metriplane"
+                  and package.get("source") == {"editable": "."}
+              ]
+              if len(root_packages) != 1:
+                  raise SystemExit(f"expected one editable root package: {root_packages!r}")
+              metadata = root_packages[0].get("metadata")
+              if not isinstance(metadata, dict) or "requires-dev" not in metadata:
+                  raise SystemExit("editable root package is missing metadata.requires-dev")
+              metadata.pop("requires-dev")
+              return lock
+
+
+          candidate_commit = sys.argv[1]
+          candidate_pyproject = read_toml(candidate_commit, "pyproject.toml")
+          checkout_pyproject = read_toml("HEAD", "pyproject.toml")
+          if candidate_pyproject["project"] != checkout_pyproject["project"]:
+              raise SystemExit("candidate and checkout [project] tables differ")
+          if (
+              candidate_pyproject["tool"]["setuptools"]
+              != checkout_pyproject["tool"]["setuptools"]
+          ):
+              raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
+          if normalized_lock(candidate_commit) != normalized_lock("HEAD"):
+              raise SystemExit("candidate and checkout runtime lock identities differ")
+          PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           candidate_dist="${RUNNER_TEMP}/metriplane-candidate-dist"
           candidate_venv="${RUNNER_TEMP}/metriplane-candidate-venv"
@@ -284,8 +325,6 @@ jobs:
           candidate_identity_paths=(
             metriplane
             integrations
-            pyproject.toml
-            uv.lock
             LICENSE
             NOTICE
             adapters/maniskill_pickcube
@@ -303,6 +342,49 @@ jobs:
           )
           git diff --exit-code "$candidate_commit" HEAD -- \
             "${candidate_identity_paths[@]}"
+          python - "$candidate_commit" <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+
+          def read_toml(revision, path):
+              content = subprocess.check_output(
+                  ["git", "show", f"{revision}:{path}"],
+              )
+              return tomllib.loads(content.decode("utf-8"))
+
+
+          def normalized_lock(revision):
+              lock = read_toml(revision, "uv.lock")
+              root_packages = [
+                  package
+                  for package in lock["package"]
+                  if package.get("name") == "metriplane"
+                  and package.get("source") == {"editable": "."}
+              ]
+              if len(root_packages) != 1:
+                  raise SystemExit(f"expected one editable root package: {root_packages!r}")
+              metadata = root_packages[0].get("metadata")
+              if not isinstance(metadata, dict) or "requires-dev" not in metadata:
+                  raise SystemExit("editable root package is missing metadata.requires-dev")
+              metadata.pop("requires-dev")
+              return lock
+
+
+          candidate_commit = sys.argv[1]
+          candidate_pyproject = read_toml(candidate_commit, "pyproject.toml")
+          checkout_pyproject = read_toml("HEAD", "pyproject.toml")
+          if candidate_pyproject["project"] != checkout_pyproject["project"]:
+              raise SystemExit("candidate and checkout [project] tables differ")
+          if (
+              candidate_pyproject["tool"]["setuptools"]
+              != checkout_pyproject["tool"]["setuptools"]
+          ):
+              raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
+          if normalized_lock(candidate_commit) != normalized_lock("HEAD"):
+              raise SystemExit("candidate and checkout runtime lock identities differ")
+          PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           dist_dir="${RUNNER_TEMP}/metriplane-proof-dist"
           mkdir -p "$candidate_source" "$dist_dir"
