@@ -10,7 +10,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from metriplane.release_control import make_record, write_immutable_json
-from tools.release_artifacts import create_manifest, inspect_sdist, release_artifacts
+
+if __package__:
+    from tools.release_artifacts import create_manifest, inspect_sdist, release_artifacts
+else:
+    from release_artifacts import create_manifest, inspect_sdist, release_artifacts
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

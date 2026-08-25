@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -174,6 +176,18 @@ def test_all_stable_release_tool_paths_are_present() -> None:
     assert "from tools.release_artifacts import" in artifact_adapter
     assert "create_manifest" in artifact_adapter
     assert "inspect_sdist" in artifact_adapter
+
+
+def test_release_artifact_adapter_is_directly_executable() -> None:
+    completed = subprocess.run(
+        [sys.executable, "tools/build_release_artifacts.py", "--help"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "--manifest" in completed.stdout
 
 
 def test_release_fixtures_are_exact_and_valid_fixtures_are_digest_bound() -> None:
