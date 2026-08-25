@@ -8,7 +8,12 @@ from typing import Any
 
 import pytest
 
-from tools.observe_main_health import REQUIRED_WORKFLOWS, observe_jobs, select_runs
+from tools.observe_main_health import (
+    REQUIRED_WORKFLOWS,
+    invalidate_selection,
+    observe_jobs,
+    select_runs,
+)
 
 REPOSITORY = "Miko997/metriplane"
 SHA = "a" * 40
@@ -175,3 +180,15 @@ def test_triggering_ci_attempt_is_bound_exactly() -> None:
     jobs["metriplane"][0]["run_attempt"] = CI_ATTEMPT - 1
     result = observe_jobs(selection=selection, jobs_by_key=jobs, repository=REPOSITORY)
     assert result["conclusion"] == "failure"
+
+
+def test_changed_selection_becomes_structurally_valid_failure() -> None:
+    result = invalidate_selection(_selection())
+    assert result == {
+        "conclusion": "failure",
+        "obligations": [
+            {"id": terminal, "result": "failure"}
+            for terminal, _workflow in REQUIRED_WORKFLOWS.values()
+        ],
+        "ready": False,
+    }

@@ -161,6 +161,7 @@ def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path, suffix: str
     (
         "    name: ${{ matrix.terminal }}\n",
         "    name: >-\n      ${{\n        matrix.terminal\n      }}\n",
+        "    name: \"${{ contains('x}}', 'x') && matrix.terminal }}\"\n",
     ),
 )
 def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(
@@ -228,7 +229,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" in writer
     assert writer.count("--paginate") == 3
     assert "cmp -s" in writer
-    assert 'changed["ready"] = False' in writer
+    assert "observe_main_health.py invalidate" in writer
     assert "github.event.workflow_run.run_attempt" in str(health["jobs"]["persist-health"]["steps"])
     assert "tools/observe_main_health.py" in writer
     assert REQUIRED_WORKFLOWS == {

@@ -258,6 +258,18 @@ def observe_jobs(
     return {"conclusion": conclusion, "obligations": obligations, "ready": ready}
 
 
+def invalidate_selection(selection: Selection) -> Observation:
+    """Convert a changed provider selection into valid fail-closed evidence."""
+    return {
+        "conclusion": "failure",
+        "obligations": [
+            Obligation(id=terminal, result="failure")
+            for terminal, _workflow in REQUIRED_WORKFLOWS.values()
+        ],
+        "ready": False,
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -273,6 +285,9 @@ def _parser() -> argparse.ArgumentParser:
     observe.add_argument("--selection", type=Path, required=True)
     observe.add_argument("--jobs-root", type=Path, required=True)
     observe.add_argument("--repository", required=True)
+
+    invalidate = subparsers.add_parser("invalidate")
+    invalidate.add_argument("--selection", type=Path, required=True)
     return parser
 
 
@@ -293,7 +308,7 @@ def main() -> int:
                 run_conclusion=args.run_conclusion,
                 sha=args.sha,
             )
-        else:
+        elif args.command == "observe":
             selection = cast(Selection, _load_object(args.selection))
             jobs_by_key = {
                 key: _load_json_lines(args.jobs_root / f"{key}.jsonl") for key in REQUIRED_WORKFLOWS
@@ -303,6 +318,8 @@ def main() -> int:
                 jobs_by_key=jobs_by_key,
                 repository=args.repository,
             )
+        else:
+            result = invalidate_selection(cast(Selection, _load_object(args.selection)))
     except (KeyError, TypeError, ObservationError) as exc:
         raise SystemExit(f"main-health observation failed: {exc}") from exc
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))

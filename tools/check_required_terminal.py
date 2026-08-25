@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -96,9 +95,19 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         for job_name in job_names:
             if "${{" not in job_name:
                 continue
-            literal_parts = re.split(r"\$\{\{.*?\}\}", job_name, flags=re.DOTALL)
-            pattern = ".*".join(re.escape(part) for part in literal_parts)
-            ambiguous = [name for name in expected_names if re.fullmatch(pattern, name)]
+            expression_start = job_name.find("${{")
+            expression_end = job_name.rfind("}}")
+            if expression_end < expression_start:
+                raise TerminalValidationError(f"{workflow_name}: malformed dynamic job name")
+            prefix = job_name[:expression_start]
+            suffix = job_name[expression_end + 2 :]
+            ambiguous = [
+                name
+                for name in expected_names
+                if name.startswith(prefix)
+                and name.endswith(suffix)
+                and len(name) >= len(prefix) + len(suffix)
+            ]
             if ambiguous:
                 raise TerminalValidationError(
                     f"{workflow_name}: dynamic job name may produce protected terminal(s) "

@@ -231,17 +231,8 @@ jobs:
                   --run-conclusion "$RUN_CONCLUSION" \
                   --sha "$RUN_SHA" > "$verify_selection_file"
                 if ! cmp -s "$selection_file" "$verify_selection_file"; then
-                  observation="$(python - "$verify_selection_file" <<'PY'
-                  import json
-                  import pathlib
-                  import sys
-
-                  changed = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-                  changed["conclusion"] = "failure"
-                  changed["ready"] = False
-                  print(json.dumps(changed, sort_keys=True, separators=(",", ":")))
-                  PY
-                  )"
+                  observation="$(python tools/observe_main_health.py invalidate \
+                    --selection "$verify_selection_file")"
                   ready=false
                 fi
               fi
