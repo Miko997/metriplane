@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "candidate_mutates_global_state": {"const": false},
+    "global_cadences": {"const": ["protected-main", "nightly", "weekly"]},
+    "prehistory_disposition": {"const": "not_measured"},
+    "repair_requires_non_author": {"const": true},
+    "schema_version": {"const": 1},
+    "state_branch": {"const": "metriplane-main-health-state"},
+    "writer_workflow": {"const": ".github/workflows/main-health.yml"}
+  },
+  "required": ["candidate_mutates_global_state", "global_cadences", "prehistory_disposition", "repair_requires_non_author", "schema_version", "state_branch", "writer_workflow"],
+  "type": "object"
+}

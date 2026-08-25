@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "failing_obligations": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+    "first_bad_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "opened_at": {"format": "date-time", "type": "string"},
+    "result_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "schema_version": {"const": 1},
+    "status": {"const": "open"}
+  },
+  "required": ["failing_obligations", "first_bad_sha", "opened_at", "result_digest", "schema_version", "status"],
+  "type": "object"
+}

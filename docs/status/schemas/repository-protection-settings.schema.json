@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor_exclusivity_enforced": {"type": "boolean"},
+    "captured_at": {"format": "date-time", "type": "string"},
+    "default_branch": {"minLength": 1, "type": "string"},
+    "deletion_blocked": {"type": "boolean"},
+    "merge_queue_enabled": {"type": "boolean"},
+    "non_fast_forward_blocked": {"type": "boolean"},
+    "pull_request_required": {"type": "boolean"},
+    "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
+    "required_status_checks": {"items": {"minLength": 1, "type": "string"}, "type": "array", "uniqueItems": true},
+    "ruleset_enforcement": {"enum": ["active", "evaluate", "disabled"]},
+    "ruleset_id": {"minimum": 1, "type": "integer"},
+    "schema_version": {"const": 1},
+    "source_digests": {
+      "additionalProperties": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+      "minProperties": 3,
+      "type": "object"
+    },
+    "strict_up_to_date": {"type": "boolean"}
+  },
+  "required": ["actor_exclusivity_enforced", "captured_at", "default_branch", "deletion_blocked", "merge_queue_enabled", "non_fast_forward_blocked", "pull_request_required", "repository", "required_status_checks", "ruleset_enforcement", "ruleset_id", "schema_version", "source_digests", "strict_up_to_date"],
+  "type": "object"
+}

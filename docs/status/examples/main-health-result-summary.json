@@ -1,0 +1,22 @@
+{
+  "cadence": "protected-main",
+  "conclusion": "success",
+  "obligations": [
+    {
+      "id": "Metriplane / required",
+      "result": "success"
+    },
+    {
+      "id": "Documentation / required",
+      "result": "success"
+    },
+    {
+      "id": "Security / required",
+      "result": "success"
+    }
+  ],
+  "recorded_at": "2026-08-25T17:45:00Z",
+  "run_id": "32870340728",
+  "schema_version": 1,
+  "sha": "2969636357140598d742bd0befed034a25463251"
+}
