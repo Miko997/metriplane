@@ -242,8 +242,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "statuses": "write",
     }
     reconcile = "\n".join(
-        step.get("run", "")
-        for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
+        step.get("run", "") for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
     )
     assert "validate-git" in reconcile
     assert "state=open" in reconcile

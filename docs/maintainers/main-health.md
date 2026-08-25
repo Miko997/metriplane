@@ -31,7 +31,7 @@ without creating or changing state. The candidate workflow runs as
 and publishes `Main health / required` as a commit status on the exact head SHA.
 Candidate-controlled code is never executed with the status-writing token. The
 same trusted workflow reconciles every open pull request immediately after each
-durable main-health transition and every five minutes. It overwrites earlier
+durable main-health transition and on a five-minute schedule. It overwrites earlier
 success with failure when health turns red, the base becomes stale, the 36-hour
 window expires, or an emergency manifest expires; a persistent commit status is
 never treated as an unbounded lease. The

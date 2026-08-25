@@ -574,7 +574,12 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             manifest=manifest,
             collaborators=[
                 {"id": 100, "login": "Miko997", "role_name": "admin"},
-                {"id": 200, "login": "reviewer", "role_name": "write"},
+                {
+                    "id": 200,
+                    "login": "reviewer",
+                    "permissions": {"push": True},
+                    "role_name": "custom-reviewer",
+                },
             ],
             invitations=[],
             owner_permission="admin",

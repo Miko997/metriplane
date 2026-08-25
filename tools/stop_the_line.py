@@ -8,12 +8,10 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
-import io
 import json
 import os
 import re
 import subprocess
-import tarfile
 import tempfile
 import urllib.error
 import urllib.request
@@ -508,13 +506,25 @@ def _github_collaboration_inventory(
     normalized_collaborators: list[dict[str, str]] = []
     for item in collaborators:
         login = item.get("login")
-        permission = item.get("role_name")
-        if permission == "push":
-            permission = "write"
-        if not isinstance(login, str) or not login or not isinstance(permission, str):
+        provider_permissions = item.get("permissions") or {}
+        if provider_permissions.get("admin") is True:
+            collaborator_permission: Any = "admin"
+        elif provider_permissions.get("maintain") is True:
+            collaborator_permission = "maintain"
+        elif provider_permissions.get("push") is True:
+            collaborator_permission = "write"
+        else:
+            collaborator_permission = item.get("role_name")
+        if collaborator_permission == "push":
+            collaborator_permission = "write"
+        if not isinstance(login, str) or not login or not isinstance(collaborator_permission, str):
             raise HealthError("GitHub collaborator inventory is malformed")
         normalized_collaborators.append(
-            {"id": str(item.get("id", "")), "login": login, "permission": permission}
+            {
+                "id": str(item.get("id", "")),
+                "login": login,
+                "permission": collaborator_permission,
+            }
         )
     normalized_collaborators.sort(key=lambda item: item["login"].casefold())
     if any(not item["id"] for item in normalized_collaborators) or len(
@@ -526,13 +536,21 @@ def _github_collaboration_inventory(
     for item in invitations:
         invitee = item.get("invitee") or {}
         identity = invitee.get("login") or item.get("email")
-        permission = item.get("permissions")
-        if permission == "push":
-            permission = "write"
-        if not isinstance(identity, str) or not identity or not isinstance(permission, str):
+        invitation_permission = item.get("permissions")
+        if invitation_permission == "push":
+            invitation_permission = "write"
+        if (
+            not isinstance(identity, str)
+            or not identity
+            or not isinstance(invitation_permission, str)
+        ):
             raise HealthError("GitHub collaborator invitation inventory is malformed")
         normalized_invitations.append(
-            {"id": str(item.get("id", "")), "invitee": identity, "permission": permission}
+            {
+                "id": str(item.get("id", "")),
+                "invitee": identity,
+                "permission": invitation_permission,
+            }
         )
     normalized_invitations.sort(key=lambda item: (item["invitee"].casefold(), item["id"]))
     if any(not item["id"] for item in normalized_invitations) or len(
@@ -1484,24 +1502,6 @@ def _git_output(root: Path, *arguments: str) -> bytes:
     return completed.stdout
 
 
-def _git_snapshot(root: Path, commit: str) -> tuple[dict[str, Any], dict[str, bytes]]:
-    archive = _git_output(root, "archive", "--format=tar", commit)
-    with tempfile.TemporaryDirectory(prefix="main-health-git-") as temporary:
-        snapshot_root = Path(temporary)
-        try:
-            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as stream:
-                stream.extractall(snapshot_root, filter="data")
-        except (tarfile.TarError, OSError) as exc:
-            raise HealthError(f"cannot materialize retained state Git snapshot: {exc}") from exc
-        state = validate_history(snapshot_root)
-        files = {
-            path.relative_to(snapshot_root).as_posix(): path.read_bytes()
-            for path in snapshot_root.rglob("*")
-            if path.is_file()
-        }
-    return state, files
-
-
 def validate_git_history(root: Path) -> dict[str, Any]:
     """Prove every state-branch commit is one append-only validated transition."""
     if _git_output(root, "status", "--porcelain", "--untracked-files=all"):
@@ -1511,34 +1511,60 @@ def validate_git_history(root: Path) -> dict[str, Any]:
     commits = _git_output(root, "rev-list", "--reverse", "--first-parent", head).decode().split()
     if not commits:
         raise HealthError("retained state Git history is empty")
-    previous_files: dict[str, bytes] | None = None
-    previous_generation = 0
-    final_state: dict[str, Any] | None = None
+    allowed_addition_directories = {
+        "approval-evidence",
+        "history",
+        "incidents",
+        "policy-amendments",
+        "repair-authorizations",
+        "resolutions",
+        "results",
+        "retention",
+    }
     for ordinal, commit in enumerate(commits, start=1):
         _validate_sha(commit)
         ancestry = _git_output(root, "rev-list", "--parents", "-n", "1", commit).decode().split()
         expected_length = 1 if ordinal == 1 else 2
         if len(ancestry) != expected_length or ancestry[0] != commit:
             raise HealthError("retained state Git history is not a single-parent chain")
-        state, files = _git_snapshot(root, commit)
-        if state["generation"] != ordinal or state["generation"] != previous_generation + 1:
+        try:
+            state = json.loads(_git_output(root, "show", f"{commit}:state.json"))
+        except json.JSONDecodeError as exc:
+            raise HealthError("retained state Git commit has malformed state") from exc
+        if not isinstance(state, dict) or state.get("generation") != ordinal:
             raise HealthError("retained state Git commit does not add exactly one generation")
-        if previous_files is not None:
-            for path, payload in previous_files.items():
-                if path != "state.json" and files.get(path) != payload:
-                    raise HealthError("retained state Git history rewrites immutable evidence")
-        previous_files = files
-        previous_generation = state["generation"]
-        final_state = state
-    if final_state is None or previous_files is None:
-        raise HealthError("retained state Git history has no validated state")
+        if ordinal == 1:
+            continue
+        changes = (
+            _git_output(
+                root,
+                "diff-tree",
+                "--no-commit-id",
+                "--name-status",
+                "--no-renames",
+                "-r",
+                "-z",
+                ancestry[1],
+                commit,
+            )
+            .decode()
+            .split("\0")
+        )
+        if changes and changes[-1] == "":
+            changes.pop()
+        if len(changes) % 2 != 0:
+            raise HealthError("retained state Git transition is malformed")
+        pairs = list(zip(changes[0::2], changes[1::2], strict=True))
+        if pairs.count(("M", "state.json")) != 1:
+            raise HealthError("retained state Git transition does not update its pointer once")
+        for status, path in pairs:
+            if path == "state.json":
+                if status != "M":
+                    raise HealthError("retained state Git transition replaces its pointer")
+            elif status != "A" or Path(path).parts[0] not in allowed_addition_directories:
+                raise HealthError("retained state Git history rewrites immutable evidence")
     current_state = validate_history(root)
-    current_files = {
-        path.relative_to(root).as_posix(): path.read_bytes()
-        for path in root.rglob("*")
-        if path.is_file() and ".git" not in path.relative_to(root).parts
-    }
-    if current_state != final_state or current_files != previous_files:
+    if current_state["generation"] != len(commits):
         raise HealthError("retained state checkout does not match its Git HEAD")
     return {**current_state, "state_commit": head}
 
