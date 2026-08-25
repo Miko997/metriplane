@@ -481,7 +481,7 @@ def test_print_log_tail_reports_only_requested_lines(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def launcher_env(tmp_path):
+def launcher_env(tmp_path, monkeypatch):
     """
     Override state file to tmp_path, use free ports, cleanup on exit.
     """
@@ -491,6 +491,16 @@ def launcher_env(tmp_path):
     import metriplane.launcher as lm
     original_state = lm._STATE_FILE
     lm._STATE_FILE = tmp_path / "launcher-state.json"
+    original_launch = lm._launch
+    processes: list[subprocess.Popen] = []
+
+    def tracked_launch(*args, **kwargs):
+        process = original_launch(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(lm, "_launch", tracked_launch)
+    monkeypatch.setattr(lm, "_log_dir_path", lambda _runs_dir, _timestamp: tmp_path)
 
     yield {
         "runner_port": runner_port,
@@ -512,6 +522,19 @@ def launcher_env(tmp_path):
                     os.kill(pid, signal.SIGKILL)
                 except Exception:
                     pass
+    for process in processes:
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                process.kill()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
     lm._clear_state()
     lm._STATE_FILE = original_state
 

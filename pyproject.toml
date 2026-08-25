@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools==82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -50,14 +50,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "build>=1.2,<2",
-  "mkdocs>=1.6,<2",
-  "mypy>=1.17,<2",
-  "playwright>=1.55,<2",
-  "pytest>=8.4,<9",
-  "ruff>=0.12,<1",
-  "twine>=6.1,<7",
-  "types-PyYAML>=6.0,<7",
+  "build==1.5.0",
+  "mkdocs==1.6.1",
+  "mypy==1.20.2",
+  "playwright==1.62.0",
+  "pytest==8.4.2",
+  "ruff==0.16.2",
+  "twine==6.2.0",
+  "types-PyYAML==6.0.12.20260724",
 ]
 
 [project.urls]
@@ -91,7 +91,7 @@ plots = [
 ]
 
 [tool.uv]
-required-version = ">=0.12,<0.13"
+required-version = "==0.12.0"
 
 [tool.ruff]
 line-length = 100
@@ -103,8 +103,13 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
-addopts = "-p no:ament_pep257 -p no:ament_flake8 -p no:ament_copyright -p no:ament_xmllint -p no:ament_lint"
+addopts = "--strict-config --strict-markers -p no:ament_pep257 -p no:ament_flake8 -p no:ament_copyright -p no:ament_xmllint -p no:ament_lint"
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.metriplane.testing]
+warning_allowlist_version = 1
+warning_allowlist = []
 
 [tool.setuptools]
 include-package-data = true
