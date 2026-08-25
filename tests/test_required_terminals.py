@@ -238,6 +238,16 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "validate-git" in reconcile
     assert "state=open" in reconcile
     assert 'context="Main health / required"' in reconcile
+    reconcile_step = next(
+        step
+        for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
+        if step.get("name") == "Reconcile every open pull request head"
+    )
+    assert reconcile_step["env"]["PERSIST_RESULT"] == "${{ needs.persist-health.result }}"
+    assert '[[ "$PERSIST_RESULT" == success ]]' in reconcile
+    assert "\"$SCHEDULE\" == '*/5 * * * *'" in reconcile
+    assert '[[ "$admission_ready" == true ]]' in reconcile
+    assert '[[ "$state_available" == true ]]' in reconcile
     writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
     assert "stop_the_line.py ingest" in writer
     assert "git rev-parse origin/main" in writer

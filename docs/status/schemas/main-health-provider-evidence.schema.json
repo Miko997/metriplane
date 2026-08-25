@@ -29,11 +29,11 @@
     "reviewer": {"minLength": 1, "type": "string"},
     "reviewer_id": {"minLength": 1, "type": "string"},
     "reviewer_permission": {"enum": ["admin", "maintain", "write"]},
-    "ruleset_exception": {"oneOf": [{"type": "object"}, {"type": "null"}]},
-    "ruleset_exception_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "merge_gate": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "merge_gate_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "schema_version": {"const": 1},
     "state": {"enum": ["APPROVED", "OWNER_EMERGENCY"]}
   },
-  "required": ["admission", "admission_digest", "authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "collaborators", "decision_at", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pending_invitations", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "ruleset_exception", "ruleset_exception_digest", "schema_version", "state"],
+  "required": ["admission", "admission_digest", "authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "collaborators", "decision_at", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pending_invitations", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "merge_gate", "merge_gate_digest", "schema_version", "state"],
   "type": "object"
 }

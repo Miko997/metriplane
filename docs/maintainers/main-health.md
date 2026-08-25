@@ -118,8 +118,8 @@ normal PR contract body must contain exactly one verbatim copy of the correspond
 two-line owner-emergency marker. Automated reconciliation never grants a red-health
 owner emergency; it continues to publish failure. Caller-supplied provider JSON is
 not accepted as operational admission evidence. `capture-owner-admission` fetches
-the live pull request, complete file list, collaborators, pending invitations, and
-active main ruleset itself with an owner-authenticated token. It records that
+the live pull request, complete file list, and a stable invitation/collaborator
+snapshot itself with an owner-authenticated token. It records that
 independent approval did not exist and publishes the canonical admission payload
 and digest in an unedited GitHub comment before merge. The manifest also carries the exact
 incident-only amendment of `repair_requires_non_author`; it does not change the
@@ -128,19 +128,22 @@ head, captures the complete collaborator and pending-invitation inventories, and
 requires that neither contains an eligible non-author reviewer. Admission requires
 their combined canonical digest to match the manifest. The provider comment starts
 a five-minute lease; editing it invalidates the admission. `merge-owner-emergency`
-re-fetches both inventories and the exact head, removes only
-`Main health / required` from the admitted ruleset, merges that head, and restores
-the complete admitted ruleset in a `finally` block. It publishes before/during/after
-ruleset payloads and the merge identity in a second unedited GitHub comment.
-Post-merge capture re-fetches both comments, both collaboration inventories, the
-commits, and the restored ruleset. Provider timestamps must bracket the merge, and
+re-fetches a stable inventory snapshot and the exact head, rechecks the lease at
+the merge boundary, and publishes a provider-timestamped `Main health / required`
+success on only that head. It submits the SHA-conditional merge without changing
+the ruleset, then publishes failure in a `finally` block. The independent
+five-minute reconciler is the crash-recovery path and also overwrites the lease
+with failure while global health is red. The command publishes both status records
+and the merge identity in a second unedited GitHub comment. Post-merge capture
+re-fetches both comments, a stable collaboration snapshot, and both commits.
+Provider timestamps must bracket the merge, and
 the merge must precede manifest expiry. Post-merge `captured_at` is the actual provider
 retrieval time, not the earlier merge timestamp. Its manifest digest and
 policy-amendment digest must match the authorization.
 
 Retain the JSON outputs from `capture-owner-admission` and
 `merge-owner-emergency` as `owner-admission.json` and
-`ruleset-exception.json`. After that exact PR merges, run the `Main Health`
+`owner-merge-gate.json`. After that exact PR merges, run the `Main Health`
 workflow manually once for each deep cadence. Capture the merged owner decision
 with both provider attestations,
 construct the authorization from the captured evidence, and run `resolve`. The
@@ -158,17 +161,17 @@ git clone --single-branch --branch metriplane-main-health-state \
 GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-admission \
   --root main-health-state --repository Miko997/metriplane \
   --pull-request <number> --issue MET-NNN --incident-digest <digest> \
-  --expected-head-sha <reviewed-head> --ruleset-id <main-ruleset-id> \
+  --expected-head-sha <reviewed-head> \
   > owner-admission.json
 GITHUB_TOKEN=<token> python tools/stop_the_line.py merge-owner-emergency \
   --root main-health-state --repository Miko997/metriplane \
   --pull-request <number> --issue MET-NNN --incident-digest <digest> \
-  --admission-json owner-admission.json > ruleset-exception.json
+  --admission-json owner-admission.json > owner-merge-gate.json
 GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-emergency \
   --repository Miko997/metriplane --pull-request <number> \
   --issue MET-NNN --incident-digest <digest> \
   --admission-json owner-admission.json \
-  --ruleset-exception-json ruleset-exception.json > provider-evidence.json
+  --merge-gate-json owner-merge-gate.json > provider-evidence.json
 expected_commit="$(git -C main-health-state rev-parse HEAD)"
 python tools/stop_the_line.py validate-git --root main-health-state
 GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
@@ -177,7 +180,7 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
   --approval-evidence-json provider-evidence.json \
   --repaired-main-json "$(cat repaired-protected-main-result.json)" \
   --owner-admission-json owner-admission.json \
-  --owner-ruleset-exception-json ruleset-exception.json \
+  --owner-merge-gate-json owner-merge-gate.json \
   --expected-generation <generation>
 git -C main-health-state add --all
 git -C main-health-state commit -m "Resolve main health for <merge-sha>"
@@ -194,13 +197,10 @@ git clone --single-branch --branch metriplane-main-health-state \
 python tools/stop_the_line.py validate-git --root main-health-readback
 ```
 
-Because automated reconciliation never converts red health into an owner-emergency
-success, the governed merge command performs the incident-bound ruleset exception.
-Resolution requires its provider-anchored before/during/after evidence, exact
-restoration, exact reviewed head and ordered merge parents, and the admitted
-collaboration digest. Re-fetch the collaboration inventories immediately after
-merge and require the normalized digest to match the admitted
-manifest. Deletion, non-fast-forward, pull-request,
-and every other required-check rule stay active throughout. This ruleset operation
+Automated reconciliation never converts red health into an owner-emergency
+success. The governed merge command's provider-anchored status lease admits only
+the exact qualified head while every ruleset protection stays active. Resolution
+requires the success-before-merge and failure-after-merge records, exact reviewed
+head and ordered merge parents, and the admitted collaboration digest. This lease
 admits only the code merge; it does not clear red health or substitute for retained
 protected-main, nightly, weekly, provider, authorization, and resolution evidence.

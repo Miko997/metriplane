@@ -328,12 +328,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          PERSIST_RESULT: ${{ needs.persist-health.result }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
           state_root="$RUNNER_TEMP/main-health-state"
-          git clone --quiet --single-branch --branch "$STATE_BRANCH" \
-            "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
-          python tools/stop_the_line.py validate-git --root "$state_root"
+          admission_ready=false
+          if [[ "$GITHUB_EVENT_NAME" == schedule && "$SCHEDULE" == '*/5 * * * *' ]] || \
+            [[ "$PERSIST_RESULT" == success ]]; then
+            admission_ready=true
+          fi
+          state_available=false
+          if [[ "$admission_ready" == true ]] && \
+            git clone --quiet --single-branch --branch "$STATE_BRANCH" \
+              "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root" && \
+            python tools/stop_the_line.py validate-git --root "$state_root"; then
+            state_available=true
+          fi
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
@@ -347,7 +358,7 @@ jobs:
             checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             state=failure
             description="Main health admission failed"
-            if python tools/stop_the_line.py candidate \
+            if [[ "$state_available" == true ]] && python tools/stop_the_line.py candidate \
               --root "$state_root" \
               --base-sha "$base_sha" \
               --checked-at "$checked_at" \
