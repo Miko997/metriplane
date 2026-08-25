@@ -13,6 +13,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+from metriplane.paths import PlatformPaths
+
 log = logging.getLogger("metriplane.cli")
 
 
@@ -47,7 +49,7 @@ Existing `metriplane --config ...` invocations remain supported as runtime short
     return 0
 
 
-def _main_run(argv: list[str]) -> int:
+def _main_run(argv: list[str], *, paths: PlatformPaths | None = None) -> int:
     # Lazy imports to allow doctor command to run without dependencies
     from metriplane.config import load_config
     from metriplane.run import run_loop
@@ -69,7 +71,7 @@ def _main_run(argv: list[str]) -> int:
         "--runs-dir",
         default=None,
         help=(
-            "Override runs base dir (default: /data/runs in docker, ./runs on host). "
+            "Override runs base dir (default: platform data directory). "
             "Example: --runs-dir /path/to/runs"
         ),
     )
@@ -107,6 +109,7 @@ def _main_run(argv: list[str]) -> int:
         argv=["metriplane", *argv],
         run_id=str(args.run_id) if args.run_id else None,
         runs_dir=str(args.runs_dir) if args.runs_dir else None,
+        paths=paths,
     )
 
 
@@ -528,7 +531,11 @@ def _main_status(argv: list[str]) -> int:
     return cmd_status()
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Fast-path commands that need no logging setup
@@ -561,7 +568,9 @@ def main(argv: list[str] | None = None) -> int:
         return contracts_main(argv[1:])
     if argv and argv[0] == "sentinel":
         from metriplane.sentinel.cli_runtime import main_sentinel
-        return main_sentinel(argv[1:])
+        if paths is None:
+            return main_sentinel(argv[1:])
+        return main_sentinel(argv[1:], paths=paths)
     if argv and argv[0] == "test":
         from metriplane.testing.cli import main_test
         return main_test(argv[1:])
@@ -601,10 +610,14 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging()
 
     if argv and argv[0] == "run":
-        return _main_run(argv[1:])
+        if paths is None:
+            return _main_run(argv[1:])
+        return _main_run(argv[1:], paths=paths)
     if argv and argv[0] == "replay":
         return _main_replay(argv[1:])
-    return _main_run(argv)
+    if paths is None:
+        return _main_run(argv)
+    return _main_run(argv, paths=paths)
 
 
 if __name__ == "__main__":

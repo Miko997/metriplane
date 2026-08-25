@@ -208,6 +208,7 @@ async function runnerPost(path, body = {}) {
 // ── Runner connection check ───────────────────────────────────────────────────
 
 async function checkRunner() {
+  const wasConnected = state.runnerConnected;
   try {
     const d = await opApi('GET', '/status');
     if (d && d.service) {
@@ -216,6 +217,7 @@ async function checkRunner() {
       const lbl = document.getElementById('runner-label');
       if (pill) { pill.classList.add('connected'); }
       if (lbl) lbl.textContent = 'runner :9000 ✓';
+      if (!wasConnected) await refreshLatestRun();
     } else {
       setRunnerDisconnected();
     }
@@ -1496,7 +1498,6 @@ async function init() {
   if (state.runnerConnected) {
     const env = await opApi('GET', '/operator/env');
     renderEnv(env);
-    await refreshLatestRun();
   }
   // Default anchor table render
   fillDefaultAnchors();

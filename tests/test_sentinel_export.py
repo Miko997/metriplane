@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from metriplane.paths import PlatformPaths
 from metriplane.schema import ObjectStateModel
 from metriplane.sentinel.cli_runtime import main_sentinel
 from metriplane.sentinel.config import SentinelConfig
@@ -24,6 +25,15 @@ def obj(marker, x, y, zone=None):
 def _runtime(run_dir, run_id="t"):
     cfg = SentinelConfig(enabled=True, contracts_file=CONTRACT, objects_file=OBJECTS)
     return SentinelRuntime(cfg, run_dir=run_dir, run_id=run_id)
+
+
+def _platform_paths(root):
+    return PlatformPaths(
+        config_dir=root / "config",
+        data_dir=root / "data",
+        cache_dir=root / "cache",
+        state_dir=root / "state",
+    )
 
 
 def test_close_writes_summary(tmp_path):
@@ -62,10 +72,11 @@ def test_no_fail_fast_marks_degraded():
 
 
 def test_cli_run_end_to_end(tmp_path, capsys):
+    injected = _platform_paths(tmp_path / "injected")
     rc = main_sentinel([
         "run", "--config", "configs/sentinel_demo.yaml",
         "--run-id", "sentinel_runtime_001", "--runs-dir", str(tmp_path),
-    ])
+    ], paths=injected)
     assert rc == 0
     out = capsys.readouterr().out
     assert "mode=shadow_auditor" in out
@@ -76,6 +87,26 @@ def test_cli_run_end_to_end(tmp_path, capsys):
     data = json.loads(summary.read_text())
     assert data["alerts_total"] >= 1
     assert data["incidents_total"] >= 1
+    assert not injected.runs_dir.exists()
+
+
+def test_cli_run_uses_injected_platform_runs_dir_by_default(tmp_path, capsys):
+    paths = _platform_paths(tmp_path)
+
+    rc = main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            "sentinel_injected",
+        ],
+        paths=paths,
+    )
+
+    assert rc == 0
+    capsys.readouterr()
+    assert (paths.runs_dir / "sentinel_injected" / "sentinel_summary.json").is_file()
 
 
 def test_cli_status_prints_summary(tmp_path, capsys):

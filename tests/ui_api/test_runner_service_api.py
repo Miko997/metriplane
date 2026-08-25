@@ -8,17 +8,22 @@ import threading
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
+from metriplane.paths import PlatformPaths
 from metriplane.runner import service
 from metriplane.runner.executor import CommandExecutor
 
 
 @contextmanager
-def runner_server():
+def runner_server(paths: PlatformPaths | None = None):
     original_executor = service.executor
+    original_operator_api = service.operator_api
+    original_runner_paths = service.runner_paths
     service.executor = CommandExecutor()
+    service._configure_platform_paths(paths)
     server = service.LocalHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -29,6 +34,8 @@ def runner_server():
         server.server_close()
         thread.join(timeout=5)
         service.executor = original_executor
+        service.operator_api = original_operator_api
+        service.runner_paths = original_runner_paths
 
 
 def request_json(
@@ -67,6 +74,29 @@ def test_commands_shape_exposes_allowlist_metadata():
     assert payload["commands"]
     first = payload["commands"][0]
     assert {"id", "title", "enabled", "timeout_s", "requires_gpu", "requires_cameras"} <= set(first)
+
+
+def test_runner_uses_one_injected_runs_root_for_status_commands_and_operator(
+    tmp_path: Path,
+):
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    ).with_runs_dir(tmp_path / "recordings")
+
+    with runner_server(paths) as base:
+        _, status_payload = request_json(f"{base}/status")
+        _, commands_payload = request_json(f"{base}/commands")
+        _, latest_payload = request_json(f"{base}/operator/latest-run")
+
+    sentinel = next(
+        command for command in commands_payload["commands"] if command["id"] == "sentinel-demo"
+    )
+    assert status_payload["runs_dir"] == str(paths.runs_dir)
+    assert str(paths.runs_dir) in sentinel["command"]
+    assert latest_payload["runs_dir"] == str(paths.runs_dir)
 
 
 @pytest.mark.parametrize(

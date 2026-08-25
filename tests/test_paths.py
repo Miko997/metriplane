@@ -65,9 +65,40 @@ def test_windows_paths_use_roaming_and_local_app_data(tmp_path: Path):
     )
 
     assert paths.config_dir == roaming / "metriplane"
-    assert paths.data_dir == roaming / "metriplane"
+    assert paths.data_dir == local / "metriplane"
+    assert paths.runs_dir == local / "metriplane" / "runs"
     assert paths.cache_dir == local / "metriplane" / "cache"
     assert paths.state_dir == local / "metriplane" / "state"
+
+
+def test_windows_paths_fall_back_to_user_profile_app_data(tmp_path: Path):
+    paths = resolve_platform_paths(
+        environment={"USERPROFILE": str(tmp_path)},
+        system="Windows",
+    )
+
+    assert paths.config_dir == tmp_path / "AppData" / "Roaming" / "metriplane"
+    assert paths.runs_dir == tmp_path / "AppData" / "Local" / "metriplane" / "runs"
+
+
+def test_explicit_runs_dir_is_canonical_and_does_not_change_other_paths(
+    tmp_path: Path,
+    monkeypatch,
+):
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    overridden = paths.with_runs_dir("recordings")
+
+    assert overridden.runs_dir == tmp_path / "recordings"
+    assert overridden.config_dir == paths.config_dir
+    assert overridden.data_dir == paths.data_dir
+    assert paths.runs_dir == tmp_path / "data" / "runs"
 
 
 def test_no_home_works_with_complete_xdg_environment(tmp_path: Path):
@@ -143,7 +174,9 @@ def test_runtime_modules_import_without_home_or_xdg_paths(tmp_path: Path):
         environment.pop(name, None)
 
     imports = (
-        "import metriplane.launcher; import metriplane.runner.allowlist; "
+        "import metriplane.cli; import metriplane.launcher; import metriplane.run; "
+        "import metriplane.run_fusion; import metriplane.runner.allowlist; "
+        "import metriplane.runner.service; import metriplane.sentinel.cli_runtime; "
         "import tools.run_ui_demo_replay; import benchmarks.run_latency_breakdown"
     )
     result = subprocess.run(

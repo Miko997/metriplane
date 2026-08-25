@@ -86,15 +86,20 @@ Metriplane resolves paths at command or request time, so tests and embedding app
 inject isolated directories without changing the process home. No directories are created during
 module import.
 
-| Platform | Config and data base | Cache base | State base |
-|----------|----------------------|------------|------------|
-| Linux and other Unix | `$XDG_CONFIG_HOME` and `$XDG_DATA_HOME`, falling back to `~/.config` and `~/.local/share` | `$XDG_CACHE_HOME`, falling back to `~/.cache` | `$XDG_STATE_HOME`, falling back to `~/.local/state` |
-| macOS | XDG overrides when set, otherwise `~/Library/Application Support` | XDG override or `~/Library/Caches` | XDG override or `~/Library/Application Support` |
-| Windows | `%APPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` |
+| Platform | Config base | Data and run-recording base | Cache base | State base |
+|----------|-------------|-----------------------------|------------|------------|
+| Linux and other Unix | `$XDG_CONFIG_HOME`, falling back to `~/.config` | `$XDG_DATA_HOME`, falling back to `~/.local/share` | `$XDG_CACHE_HOME`, falling back to `~/.cache` | `$XDG_STATE_HOME`, falling back to `~/.local/state` |
+| macOS | XDG override or `~/Library/Application Support` | XDG override or `~/Library/Application Support` | XDG override or `~/Library/Caches` | XDG override or `~/Library/Application Support` |
+| Windows | `%APPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` |
 
 The application directory `metriplane/` is appended to each base. Runs therefore default to the
 `runs/` child of the platform data directory. `--runs-dir PATH` remains an explicit override and
 existing configs with an explicit `runs_dir` or `record_jsonl` continue to use that value.
+
+On Windows, configuration is roaming but machine-local data and run recordings are not. When
+`APPDATA` or `LOCALAPPDATA` is unset, Metriplane derives the corresponding
+`AppData/Roaming` or `AppData/Local` base from absolute `USERPROFILE` (then `HOME`). If neither the
+environment variable nor a usable profile/home is available, resolution fails without writing.
 
 On POSIX systems with no usable `HOME`, set all four XDG variables to absolute paths. A read-only
 home is supported when writable XDG paths are supplied. If required bases are missing or relative,

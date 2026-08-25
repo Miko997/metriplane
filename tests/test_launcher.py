@@ -34,6 +34,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,6 +56,7 @@ from metriplane.launcher import (
     _save_state,
     _state_file,
     _start_fusion,
+    _start_runner,
     _wait_for_port_free,
     cmd_start,
     cmd_cleanup,
@@ -210,6 +212,72 @@ class TestLauncherDefaults:
         )
 
         assert captured["cmd"][1:3] == ["-m", "metriplane._local_http"]
+
+    def test_runner_start_serializes_one_injected_platform_path_set(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        captured = {}
+        paths = _test_platform_paths(tmp_path).with_runs_dir(tmp_path / "recordings")
+
+        def fake_launch(cmd, log_file, repo_root, env=None):
+            captured["cmd"] = cmd
+            return object()
+
+        monkeypatch.setattr("metriplane.launcher._launch", fake_launch)
+
+        _start_runner(
+            host="127.0.0.1",
+            port=9000,
+            dashboard_host="127.0.0.1",
+            dashboard_port=8088,
+            log_file=tmp_path / "runner.log",
+            repo_root=Path.cwd(),
+            paths=paths,
+        )
+
+        command = captured["cmd"]
+        assert command[command.index("--config-dir") + 1] == str(paths.config_dir)
+        assert command[command.index("--data-dir") + 1] == str(paths.data_dir)
+        assert command[command.index("--cache-dir") + 1] == str(paths.cache_dir)
+        assert command[command.index("--state-dir") + 1] == str(paths.state_dir)
+        assert command[command.index("--runs-dir") + 1] == str(paths.runs_dir)
+
+    def test_start_canonicalizes_explicit_runs_dir_before_runner_start(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path / "platform")
+        captured = {}
+        processes = iter((SimpleNamespace(pid=101), SimpleNamespace(pid=102)))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
+        monkeypatch.setattr(lm, "_wait_for_port", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(lm, "_get_pgid", lambda pid: pid)
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **kwargs: (captured.update(kwargs), next(processes))[1],
+        )
+        monkeypatch.setattr(lm, "_start_dashboard", lambda **_kwargs: next(processes))
+
+        assert (
+            lm.cmd_start(
+                runs_dir="recordings",
+                paths=paths,
+                open_browser=False,
+            )
+            == 0
+        )
+
+        expected = tmp_path / "recordings"
+        assert captured["paths"].runs_dir == expected
+        assert lm._load_state(paths)["runs_dir"] == str(expected)
 
 class TestNoState:
     def setup_method(self):

@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import platform
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 _APP_NAME = "metriplane"
@@ -26,17 +26,32 @@ class PlatformPaths:
     data_dir: Path
     cache_dir: Path
     state_dir: Path
+    run_records_dir: Path | None = None
 
     def __post_init__(self) -> None:
-        for name in ("config_dir", "data_dir", "cache_dir", "state_dir"):
-            value = Path(getattr(self, name))
+        for name in (
+            "config_dir",
+            "data_dir",
+            "cache_dir",
+            "state_dir",
+            "run_records_dir",
+        ):
+            raw_value = getattr(self, name)
+            if name == "run_records_dir" and raw_value is None:
+                continue
+            value = Path(raw_value)
             if not value.is_absolute():
                 raise PlatformPathError(f"{name} must be an absolute path: {value}")
             object.__setattr__(self, name, value)
 
     @property
     def runs_dir(self) -> Path:
-        return self.data_dir / "runs"
+        return self.run_records_dir or self.data_dir / "runs"
+
+    def with_runs_dir(self, runs_dir: str | Path) -> PlatformPaths:
+        """Return a copy with one canonical explicit run-recording root."""
+        resolved = Path(runs_dir).expanduser().resolve()
+        return replace(self, run_records_dir=resolved)
 
     @property
     def launcher_state_file(self) -> Path:
@@ -101,7 +116,7 @@ def resolve_platform_paths(
         )
         return PlatformPaths(
             config_dir=roaming / _APP_NAME,
-            data_dir=roaming / _APP_NAME,
+            data_dir=local / _APP_NAME,
             cache_dir=local / _APP_NAME / "cache",
             state_dir=local / _APP_NAME / "state",
         )

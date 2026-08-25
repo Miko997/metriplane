@@ -7,7 +7,7 @@ set -euo pipefail
 # Metriplane DEMO_ALL: "run everything and map PASS/FAIL"
 #
 # Produces:
-#   runs/demo_all_YYYYmmdd_HHMMSS/
+#   <platform-runs-dir>/demo_all_YYYYmmdd_HHMMSS/
 #     - *.log (one per step)
 #     - manifest.tsv (step/status/rc/log/cmd)
 #
@@ -87,17 +87,22 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT/.venv"
 PYTHON="$VENV_DIR/bin/python"
 RUN_ID="demo_all_$(date +%Y%m%d_%H%M%S)"
-LOG_DIR="$ROOT/runs/$RUN_ID"
-mkdir -p "$LOG_DIR"
-
-MANIFEST="$LOG_DIR/manifest.tsv"
-printf "step\tstatus\trc\tseconds\tlog\tcmd\n" > "$MANIFEST"
 
 if [[ -n "${RUNS:-}" ]]; then
   RUNS_DIR="$RUNS"
 else
-  RUNS_DIR="$(cd "$ROOT" && python3 -c 'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+  PATHS_PYTHON="python3"
+  if [[ -x "$PYTHON" ]]; then
+    PATHS_PYTHON="$PYTHON"
+  fi
+  RUNS_DIR="$(cd "$ROOT" && "$PATHS_PYTHON" -c \
+    'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
 fi
+LOG_DIR="$RUNS_DIR/$RUN_ID"
+mkdir -p "$LOG_DIR"
+
+MANIFEST="$LOG_DIR/manifest.tsv"
+printf "step\tstatus\trc\tseconds\tlog\tcmd\n" > "$MANIFEST"
 
 echo "Repo root : $ROOT"
 echo "Venv dir  : $VENV_DIR"

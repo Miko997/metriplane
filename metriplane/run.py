@@ -29,6 +29,7 @@ from metriplane.provenance.run_provenance import (
     is_header_record,
     open_jsonl_writer,
 )
+from metriplane.paths import PlatformPaths, resolve_platform_paths
 
 
 from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
@@ -666,7 +667,11 @@ def run_loop(
     argv: list[str] | None = None,
     run_id: str | None = None,
     runs_dir: str | None = None,
+    paths: PlatformPaths | None = None,
 ) -> int:
+    effective_runs_dir = runs_dir
+    if not effective_runs_dir and not cfg.runs_dir:
+        effective_runs_dir = str((paths or resolve_platform_paths()).runs_dir)
     resources = _RunResources()
     try:
         return _run_loop_impl(
@@ -675,7 +680,7 @@ def run_loop(
             config_path=config_path,
             argv=argv,
             run_id=run_id,
-            runs_dir=runs_dir,
+            runs_dir=effective_runs_dir,
             _resources=resources,
         )
     finally:
@@ -1566,7 +1571,7 @@ def _run_dummy_mode(
 
 
 
-def main(argv=None) -> int:
+def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
     import sys
     from pathlib import Path
@@ -1603,6 +1608,7 @@ def main(argv=None) -> int:
         argv=["metriplane", *argv_in],
         run_id=args.run_id,
         runs_dir=args.runs_dir,
+        paths=paths,
     )
 
 

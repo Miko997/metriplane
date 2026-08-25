@@ -334,6 +334,7 @@ def _start_runner(
     dashboard_port: int,
     log_file: Path,
     repo_root: Path,
+    paths: PlatformPaths,
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
@@ -349,6 +350,16 @@ def _start_runner(
         f"http://localhost:{dashboard_port}",
         "--trusted-origin",
         f"http://127.0.0.1:{dashboard_port}",
+        "--config-dir",
+        str(paths.config_dir),
+        "--data-dir",
+        str(paths.data_dir),
+        "--cache-dir",
+        str(paths.cache_dir),
+        "--state-dir",
+        str(paths.state_dir),
+        "--runs-dir",
+        str(paths.runs_dir),
     ]
     return _launch(cmd, log_file, repo_root)
 
@@ -488,7 +499,9 @@ def cmd_start(
     """Start the local Metriplane stack. Returns exit code."""
     try:
         resolved_paths = _effective_paths(paths)
-        effective_runs_dir = str(Path(runs_dir).expanduser()) if runs_dir else str(resolved_paths.runs_dir)
+        if runs_dir:
+            resolved_paths = resolved_paths.with_runs_dir(runs_dir)
+        effective_runs_dir = str(resolved_paths.runs_dir)
         state = _load_state(resolved_paths)
         _state_dir(resolved_paths)
     except (OSError, PlatformPathError) as exc:
@@ -551,7 +564,8 @@ def cmd_start(
     print(f"\n▶  Starting runner on http://{runner_host}:{runner_port}/")
     rp = _start_runner(host=runner_host, port=runner_port,
                        dashboard_host=dashboard_host, dashboard_port=dashboard_port,
-                       log_file=log_d / "runner.log", repo_root=repo_root)
+                       log_file=log_d / "runner.log", repo_root=repo_root,
+                       paths=resolved_paths)
     if not _wait_for_port(runner_host, runner_port, timeout=8.0):
         print(f"  ❌ Runner did not start within 8s (pid={rp.pid})")
         runner_log = log_d / "runner.log"
@@ -612,6 +626,7 @@ def cmd_start(
         "started_at": datetime.now().isoformat(),
         "repo_root": str(repo_root),
         "log_dir": str(log_d),
+        "runs_dir": effective_runs_dir,
         "timestamp": timestamp,
         "runner": {**_make_proc_entry(rp), "host": runner_host, "port": runner_port},
         "dashboard": {**_make_proc_entry(dp), "host": dashboard_host, "port": dashboard_port},

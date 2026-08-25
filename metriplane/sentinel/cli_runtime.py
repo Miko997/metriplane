@@ -7,16 +7,25 @@ import argparse
 import json
 from pathlib import Path
 
+from metriplane.paths import PlatformPaths, resolve_platform_paths
 
-def main_sentinel(argv: list[str]) -> int:
+
+def main_sentinel(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     p = argparse.ArgumentParser("metriplane sentinel")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     run = sub.add_parser("run", help="Run Sentinel shadow auditor over a replay session")
     run.add_argument("--config", required=True, help="Sentinel YAML config")
     run.add_argument("--run-id", default=None)
-    run.add_argument("--runs-dir", default=None,
-                     help="Base directory for run artifacts (default: ./runs)")
+    run.add_argument(
+        "--runs-dir",
+        default=None,
+        help="Base directory for run artifacts (default: platform data directory)",
+    )
 
     status = sub.add_parser("status", help="Print a sentinel_summary.json")
     status.add_argument("run_dir")
@@ -24,13 +33,13 @@ def main_sentinel(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     if args.cmd == "run":
-        return _run(args)
+        return _run(args, paths=paths)
     if args.cmd == "status":
         return _status(args)
     return 1
 
 
-def _run(args) -> int:
+def _run(args, *, paths: PlatformPaths | None = None) -> int:
     import yaml
 
     from metriplane.sentinel.config import SentinelConfig
@@ -50,7 +59,7 @@ def _run(args) -> int:
         return 1
 
     run_id = args.run_id or "sentinel_run"
-    runs_dir = Path(args.runs_dir) if args.runs_dir else Path("runs")
+    runs_dir = Path(args.runs_dir) if args.runs_dir else (paths or resolve_platform_paths()).runs_dir
     run_dir = runs_dir / run_id
 
     try:

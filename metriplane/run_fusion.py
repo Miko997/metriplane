@@ -26,6 +26,7 @@ from metriplane.compute.select import select_fusion_backend
 from metriplane.fusion.kalman_cv import MultiObjectKalman
 from metriplane.mapping.planar_multi import MultiPlanarMapper, load_multi_planar_mapper
 from metriplane.metrics import MetricsRegistry, start_metrics_server
+from metriplane.paths import PlatformPaths, resolve_platform_paths
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
@@ -362,7 +363,11 @@ def run_loop_fusion(
     run_id: str | None = None,
     runs_dir: str | None = None,
     duration_s: float = 0.0,
+    paths: PlatformPaths | None = None,
 ) -> int:
+    effective_runs_dir = runs_dir
+    if not effective_runs_dir and not cfg.runs_dir:
+        effective_runs_dir = str((paths or resolve_platform_paths()).runs_dir)
     resources = _FusionResources()
     try:
         return _run_loop_fusion_impl(
@@ -372,7 +377,7 @@ def run_loop_fusion(
             config_path=config_path,
             argv=argv,
             run_id=run_id,
-            runs_dir=runs_dir,
+            runs_dir=effective_runs_dir,
             duration_s=duration_s,
             _resources=resources,
         )
@@ -1051,7 +1056,7 @@ def _run_loop_fusion_impl(
 
 
 
-def main(argv=None) -> int:
+def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
     import sys
 
@@ -1061,7 +1066,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--runs-dir",
         default=None,
-        help="Override runs base dir (default: /data/runs in docker, ./runs on host).",
+        help="Override runs base dir (default: platform data directory).",
     )
     ap.add_argument(
         "--fault",
@@ -1084,6 +1089,7 @@ def main(argv=None) -> int:
         run_id=args.run_id,
         runs_dir=args.runs_dir,
         duration_s=args.duration_s,
+        paths=paths,
     )
 
 
