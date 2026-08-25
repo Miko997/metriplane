@@ -230,8 +230,8 @@ jobs:
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
           candidate_dist="${RUNNER_TEMP}/metriplane-candidate-dist"
           candidate_venv="${RUNNER_TEMP}/metriplane-candidate-venv"
-          mkdir -p "$candidate_source" "$candidate_dist"
-          git archive --format=tar "$candidate_commit" | tar -xf - -C "$candidate_source"
+          mkdir -p "$candidate_dist"
+          git worktree add --detach "$candidate_source" "$candidate_commit"
           uv run --python 3.12 python -m build \
             --wheel \
             --outdir "$candidate_dist" \
@@ -244,6 +244,7 @@ jobs:
           {
             echo "CANDIDATE_COMMIT=$candidate_commit"
             echo "CANDIDATE_METRIPLANE=$candidate_venv/bin/metriplane"
+            echo "CANDIDATE_SOURCE=$candidate_source"
           } >> "$GITHUB_ENV"
 
       - name: Rebuild proof twice and require deterministic output
@@ -253,13 +254,13 @@ jobs:
           first="${RUNNER_TEMP}/proof-build-a"
           second="${RUNNER_TEMP}/proof-build-b"
           uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
-            --repo-root . \
+            --repo-root "$CANDIDATE_SOURCE" \
             --out "$first" \
             --metriplane-commit "$CANDIDATE_COMMIT" \
             --publication-date 2026-08-12 \
             --metriplane-command "$CANDIDATE_METRIPLANE"
           uv run --python 3.12 python tools/build_maniskill_pickcube_proof.py \
-            --repo-root . \
+            --repo-root "$CANDIDATE_SOURCE" \
             --out "$second" \
             --metriplane-commit "$CANDIDATE_COMMIT" \
             --publication-date 2026-08-12 \

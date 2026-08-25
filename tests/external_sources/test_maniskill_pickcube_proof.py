@@ -1032,6 +1032,9 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert "jsonschema" in text and "cffconvert" in text and "reuse lint-file" in text
     assert "tools/build_maniskill_pickcube_proof.py" in text
     assert "diff --recursive --brief" in text
+    assert 'git worktree add --detach "$candidate_source" "$candidate_commit"' in text
+    assert 'echo "CANDIDATE_SOURCE=$candidate_source"' in text
+    assert text.count('--repo-root "$CANDIDATE_SOURCE"') == 2
     assert 'record["proof_identity"]["candidate_commit"]' in text
     assert "fetch-depth: 0" in text
     assert 'git archive --format=tar "$candidate_commit"' in text
