@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -208,9 +209,10 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "pull_request" not in health_trigger
     assert "pull_request_target" not in health_trigger
     assert health_trigger["workflow_run"]["workflows"] == ["CI"]
-    assert health_trigger["workflow_dispatch"]["inputs"]["cadence"]["options"] == [
-        "nightly",
-        "weekly",
+    assert "workflow_dispatch" not in health_trigger
+    assert health_trigger["repository_dispatch"]["types"] == [
+        "main-health-nightly",
+        "main-health-weekly",
     ]
     assert {item["cron"] for item in health_trigger["schedule"]} == {
         "*/5 * * * *",
@@ -220,26 +222,36 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     concurrency_group = str(health["concurrency"]["group"])
     assert concurrency_group == "main-health-serialized"
     assert health["concurrency"]["queue"] == "max"
+    assert "github.event.workflow_run.event" in health["run-name"]
+    assert "github.event.action" in health["run-name"]
     assert "candidate-health" not in health["jobs"]
     assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
     for job_name in ("scheduled-deep", "persist-health", "reconcile-candidate-statuses"):
         job_if = str(health["jobs"][job_name]["if"])
-        assert "github.event_name == 'workflow_dispatch'" in job_if
-        assert "github.ref == 'refs/heads/main'" in job_if
+        assert "github.event_name == 'repository_dispatch'" in job_if
     scheduled_checkout = health["jobs"]["scheduled-deep"]["steps"][0]
     reconcile_checkout = health["jobs"]["reconcile-candidate-statuses"]["steps"][0]
+    terminal_checkout = health["jobs"]["main-health-required"]["steps"][0]
     assert scheduled_checkout["with"]["ref"] == "refs/heads/main"
     assert reconcile_checkout["with"]["ref"] == "refs/heads/main"
+    assert terminal_checkout["with"]["ref"] == "refs/heads/main"
     assert health["jobs"]["persist-health"]["permissions"] == {
         "actions": "read",
         "contents": "write",
+        "statuses": "write",
     }
-    assert health["jobs"]["main-health-required"]["permissions"] == {"contents": "read"}
-    assert health["jobs"]["reconcile-candidate-statuses"]["permissions"] == {
+    assert health["jobs"]["invalidate-writer"]["permissions"] == {
+        "contents": "read",
+        "statuses": "write",
+    }
+    candidate_permissions = {
         "contents": "read",
         "pull-requests": "read",
         "statuses": "write",
     }
+    assert health["jobs"]["invalidate-candidate-statuses"]["permissions"] == (candidate_permissions)
+    assert health["jobs"]["main-health-required"]["permissions"] == {"contents": "read"}
+    assert health["jobs"]["reconcile-candidate-statuses"]["permissions"] == (candidate_permissions)
     reconcile = "\n".join(
         step.get("run", "") for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
     )
@@ -252,24 +264,43 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         if step.get("name") == "Reconcile every open pull request head"
     )
     assert reconcile_step["env"]["PERSIST_RESULT"] == "${{ needs.persist-health.result }}"
-    assert '[[ "$PERSIST_RESULT" == success && "$PERSIST_STATE_COMMIT"' in reconcile
+    assert '"$PERSIST_RESULT" == success' in reconcile
     assert "\"$SCHEDULE\" == '*/5 * * * *'" in reconcile
     assert '[[ "$admission_ready" == true ]]' in reconcile
     assert '"$state_available" == true ]]' in reconcile
-    assert "actions/workflows/main-health.yml/runs?event=workflow_run&branch=main" in reconcile
+    assert "Main health writer / latest" in reconcile
+    assert "commits/${expected_main_sha}/statuses" in reconcile
     assert 'job.get("name") == "persist-health"' in reconcile
     assert 'cmp -s "$run_before" "$run_after"' in reconcile
     assert 'cmp -s "$state_before" "$state_after"' in reconcile
-    assert reconcile.index("Main health reconciliation in progress") < reconcile.index(
-        "admission_ready=false"
-    )
-    assert reconcile.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}"') >= 3
+    assert 'cmp -s "$writer_before" "$writer_after"' in reconcile
+    assert 'cmp -s "$latest_before" "$latest_after"' in reconcile
+    assert 'cmp -s "$writer_snapshot" "$boundary_writer"' in reconcile
+    assert "while [[ $page -le 10 ]]" in reconcile
+    assert "runs?branch=main&per_page=100&page=${page}" in reconcile
+    assert "Main Health / workflow_run / push" in reconcile
+    assert "Main Health / repository_dispatch / main-health-nightly" in reconcile
+    assert "Main Health / repository_dispatch / main-health-weekly" in reconcile
+    assert "Main Health / schedule / 23 3 * * 0" in reconcile
+    assert "Main Health / schedule / 23 3 * * 1-6" in reconcile
+    assert 'cmp -s "$latest_snapshot" "$boundary_latest"' in reconcile
+    assert reconcile.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}"') >= 2
     assert 'status.get("creator", {}).get("login") == "github-actions[bot]"' in reconcile
     assert 'status.get("created_at") == status.get("updated_at")' in reconcile
-    assert "Record main health run ${run_id}/${run_attempt}" in reconcile
+    assert "Main health success could not be provider-verified" in reconcile
+    invalidator = "\n".join(
+        step.get("run", "") for step in health["jobs"]["invalidate-candidate-statuses"]["steps"]
+    )
+    assert "Main health reconciliation in progress" in invalidator
+    assert "failed=0" in invalidator
+    assert 'exit "$failed"' in invalidator
     assert health["jobs"]["persist-health"]["outputs"]["state_commit"] == (
         "${{ steps.publish.outputs.state_commit }}"
     )
+    assert health["jobs"]["reconcile-candidate-statuses"]["needs"] == [
+        "invalidate-candidate-statuses",
+        "persist-health",
+    ]
     writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
     assert "stop_the_line.py ingest" in writer
     assert "git rev-parse origin/main" in writer
@@ -280,6 +311,8 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "observe_main_health.py invalidate" in writer
     assert "github.event.workflow_run.run_attempt" in str(health["jobs"]["persist-health"]["steps"])
     assert "tools/observe_main_health.py" in writer
+    assert 'context="Main health writer / latest"' in writer
+    assert "state ${local_commit} run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}" in writer
     assert REQUIRED_WORKFLOWS == {
         "metriplane": ("Metriplane / required", "CI"),
         "documentation": ("Documentation / required", "Documentation"),
@@ -288,7 +321,10 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert '"obligations": json.loads(obligations)' in writer
     assert "stop_the_line.py candidate" in reconcile
     assert "stop_the_line.py repair-candidate" not in reconcile
-    assert health["jobs"]["persist-health"]["needs"] == "scheduled-deep"
+    assert health["jobs"]["persist-health"]["needs"] == [
+        "scheduled-deep",
+        "invalidate-writer",
+    ]
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
     ci_trigger = ci.get("on", ci.get(True))
@@ -334,6 +370,19 @@ def test_main_health_candidate_reconciliation_step_is_valid_bash() -> None:
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_main_health_embedded_python_is_valid() -> None:
+    workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
+    snippets: list[str] = []
+    for job in workflow["jobs"].values():
+        for step in job.get("steps", []):
+            snippets.extend(
+                re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", step.get("run", ""), re.DOTALL)
+            )
+    assert len(snippets) == 9
+    for index, snippet in enumerate(snippets):
+        compile(snippet, f"main-health-heredoc-{index}.py", "exec")
 
 
 def test_policy_validation_does_not_mutate_input() -> None:

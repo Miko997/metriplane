@@ -2,18 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 name: Main Health
+run-name: Main Health / ${{ github.event_name }} / ${{ github.event.workflow_run.event || github.event.action || github.event.schedule }}
 
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-  workflow_dispatch:
-    inputs:
-      cadence:
-        description: Exact retained deep-repair cadence
-        required: true
-        type: choice
-        options: [nightly, weekly]
+  repository_dispatch:
+    types: [main-health-nightly, main-health-weekly]
   schedule:
     - cron: "*/5 * * * *"
     - cron: "23 3 * * 1-6"
@@ -32,7 +28,7 @@ env:
 jobs:
   scheduled-deep:
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'repository_dispatch' ||
       (github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *')
     runs-on: ubuntu-latest
     permissions:
@@ -70,19 +66,83 @@ jobs:
           uv run python -m playwright install chromium --with-deps
           uv run python -m pytest -q
 
+  invalidate-writer:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
+      github.event_name == 'repository_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    outputs:
+      measured_sha: ${{ steps.invalidate.outputs.sha }}
+    steps:
+      - name: Fail closed before the writer starts
+        id: invalidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          sha="$SOURCE_SHA"
+          if [[ -z "$sha" ]]; then
+            sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" \
+              --jq '.object.sha')"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          response="$RUNNER_TEMP/main-health-writer-invalidated.json"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
+            -f state=failure \
+            -f context="Main health writer / latest" \
+            -f description="Writer ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT} has not committed state" \
+            -f target_url="$target_url" > "$response"
+          python - "$response" "$sha" "$target_url" "$checked_at" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import sys
+
+          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          checked_at = datetime.datetime.fromisoformat(sys.argv[4].replace("Z", "+00:00"))
+          created_at = datetime.datetime.fromisoformat(
+              str(status.get("created_at", "")).replace("Z", "+00:00")
+          )
+          if not (
+              status.get("sha") == sys.argv[2]
+              and status.get("state") == "failure"
+              and status.get("context") == "Main health writer / latest"
+              and status.get("target_url") == sys.argv[3]
+              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and isinstance(status.get("id"), int)
+              and created_at >= checked_at
+          ):
+              raise SystemExit("provider did not attest writer invalidation")
+          PY
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   persist-health:
     if: >-
       always() &&
+      needs.invalidate-writer.result == 'success' &&
       ((github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
-       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'repository_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'))
-    needs: scheduled-deep
+    needs:
+      - scheduled-deep
+      - invalidate-writer
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: write
+      statuses: write
     outputs:
       measured_sha: ${{ steps.ingest.outputs.sha }}
       state_commit: ${{ steps.publish.outputs.state_commit }}
@@ -223,8 +283,8 @@ jobs:
           DEEP_OUTCOME: ${{ needs.scheduled-deep.result }}
           EVENT_NAME: ${{ github.event_name }}
           RUN_IDENTITY: ${{ github.event.workflow_run.id || github.run_id }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          RUN_WORKFLOW: ${{ github.event.workflow_run.name || github.event.inputs.cadence || github.event.schedule }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha || needs.invalidate-writer.outputs.measured_sha }}
+          RUN_WORKFLOW: ${{ github.event.workflow_run.name || github.event.action || github.event.schedule }}
           OBSERVED_CONCLUSION: ${{ steps.observed.outputs.conclusion }}
           OBSERVED_OBLIGATIONS: ${{ steps.observed.outputs.obligations }}
           STATE_ROOT: ${{ steps.backend.outputs.root }}
@@ -237,8 +297,8 @@ jobs:
             cadence=protected-main
             conclusion="$OBSERVED_CONCLUSION"
             obligations="$OBSERVED_OBLIGATIONS"
-          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
-            cadence="$RUN_WORKFLOW"
+          elif [[ "$EVENT_NAME" == repository_dispatch ]]; then
+            cadence="${RUN_WORKFLOW#main-health-}"
             conclusion="$DEEP_OUTCOME"
           elif [[ "$RUN_WORKFLOW" == "23 3 * * 0" ]]; then
             cadence=weekly
@@ -282,6 +342,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_COMMIT: ${{ steps.backend.outputs.expected_commit }}
+          GH_TOKEN: ${{ github.token }}
           MEASURED_SHA: ${{ steps.ingest.outputs.sha }}
           STATE_ROOT: ${{ steps.backend.outputs.root }}
         run: |
@@ -309,16 +370,118 @@ jobs:
           status="$(python tools/stop_the_line.py status --root "$readback" \
             | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
           test "$status" != red
+          checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          description="state ${local_commit} run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}"
+          writer_status="$RUNNER_TEMP/main-health-writer-success.json"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${MEASURED_SHA}" \
+            -f state=success \
+            -f context="Main health writer / latest" \
+            -f description="$description" \
+            -f target_url="$target_url" > "$writer_status"
+          python - "$writer_status" "$MEASURED_SHA" "$description" "$target_url" \
+            "$checked_at" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import sys
+
+          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          checked_at = datetime.datetime.fromisoformat(sys.argv[5].replace("Z", "+00:00"))
+          created_at = datetime.datetime.fromisoformat(
+              str(status.get("created_at", "")).replace("Z", "+00:00")
+          )
+          if not (
+              status.get("sha") == sys.argv[2]
+              and status.get("state") == "success"
+              and status.get("context") == "Main health writer / latest"
+              and status.get("description") == sys.argv[3]
+              and status.get("target_url") == sys.argv[4]
+              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and isinstance(status.get("id"), int)
+              and created_at >= checked_at
+          ):
+              raise SystemExit("provider did not attest the exact committed state")
+          PY
+
+  invalidate-candidate-statuses:
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'repository_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Fail every open pull request before reconciliation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[]' > "$pulls" || exit 1
+          failed=0
+          while IFS= read -r pull; do
+            number="$(jq -er '.number' <<<"$pull")" || { failed=1; continue; }
+            current="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}")" || {
+              failed=1
+              continue
+            }
+            head_sha="$(jq -er '.head.sha | select(test("^[0-9a-f]{40}$"))' \
+              <<<"$current")" || { failed=1; continue; }
+            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            response="$RUNNER_TEMP/main-health-invalidate-${number}.json"
+            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state=failure \
+              -f context="Main health / required" \
+              -f description="Main health reconciliation in progress" \
+              -f target_url="$target_url" > "$response" || \
+              ! python - "$response" "$head_sha" "$target_url" "$checked_at" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import sys
+
+          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          checked_at = datetime.datetime.fromisoformat(sys.argv[4].replace("Z", "+00:00"))
+          created_at = datetime.datetime.fromisoformat(
+              str(status.get("created_at", "")).replace("Z", "+00:00")
+          )
+          if not (
+              status.get("sha") == sys.argv[2]
+              and status.get("state") == "failure"
+              and status.get("context") == "Main health / required"
+              and status.get("target_url") == sys.argv[3]
+              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and isinstance(status.get("id"), int)
+              and created_at >= checked_at
+          ):
+              raise SystemExit("provider did not attest candidate invalidation")
+          PY
+            then
+              failed=1
+            fi
+          done < "$pulls"
+          exit "$failed"
 
   reconcile-candidate-statuses:
     if: >-
       always() &&
       (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'repository_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'))
-    needs: persist-health
+    needs:
+      - invalidate-candidate-statuses
+      - persist-health
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -335,6 +498,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          INVALIDATE_RESULT: ${{ needs.invalidate-candidate-statuses.result }}
+          PERSIST_MEASURED_SHA: ${{ needs.persist-health.outputs.measured_sha }}
           PERSIST_RESULT: ${{ needs.persist-health.result }}
           PERSIST_STATE_COMMIT: ${{ needs.persist-health.outputs.state_commit }}
           SCHEDULE: ${{ github.event.schedule }}
@@ -348,12 +513,12 @@ jobs:
             local description="$3"
             local checked_at="$4"
             local status_file="$RUNNER_TEMP/main-health-status-${head_sha}.json"
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            if gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               -f state="$state" \
               -f context="Main health / required" \
               -f description="$description" \
-              -f target_url="$target_url" > "$status_file"
-            python - "$status_file" "$head_sha" "$state" "$target_url" "$checked_at" <<'PY'
+              -f target_url="$target_url" > "$status_file" && \
+              python - "$status_file" "$head_sha" "$state" "$target_url" "$checked_at" <<'PY'
           import datetime
           import json
           import pathlib
@@ -377,58 +542,134 @@ jobs:
           ):
               raise SystemExit("provider status response does not bind the reconciled head")
           PY
+            then
+              return 0
+            fi
+            if [[ "$state" == success ]]; then
+              post_main_health_status "$head_sha" failure \
+                "Main health success could not be provider-verified" \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+            fi
+            return 1
           }
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
-          while IFS= read -r pull; do
-            number="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' \
-              <<<"$pull")"
-            head_sha="$(python -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])' \
-              <<<"$pull")"
-            if current_pull="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}")" && \
-              current_head="$(python -c \
-                'import json,sys; print(json.load(sys.stdin)["head"]["sha"])' \
-                <<<"$current_pull")" && [[ "$current_head" =~ ^[0-9a-f]{40}$ ]]; then
-              head_sha="$current_head"
-            fi
-            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            post_main_health_status "$head_sha" failure \
-              "Main health reconciliation in progress" "$checked_at"
-          done < "$pulls"
+          writer_binding() {
+            python - "$1" "$2" "$GITHUB_REPOSITORY" <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          match = re.fullmatch(
+              r"state ([0-9a-f]{40}) run ([1-9][0-9]*)/([1-9][0-9]*)",
+              str(status.get("description", "")),
+          )
+          if not (
+              match
+              and status.get("sha") == sys.argv[2]
+              and status.get("state") == "success"
+              and status.get("context") == "Main health writer / latest"
+              and status.get("target_url")
+              == f"https://github.com/{sys.argv[3]}/actions/runs/{match.group(2)}"
+              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and isinstance(status.get("id"), int)
+          ):
+              raise SystemExit("latest writer status is not an exact provider attestation")
+          print(match.group(1), match.group(2), match.group(3), sep="\t")
+          PY
+          }
+          latest_writer_run() {
+            local output="$1"
+            local page=1
+            local batch="$RUNNER_TEMP/main-health-runs-page.json"
+            while [[ $page -le 10 ]]; do
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/main-health.yml/runs?branch=main&per_page=100&page=${page}" \
+                > "$batch" || return 1
+              jq -c '[.workflow_runs[] | select(.display_title == "Main Health / workflow_run / push" or .display_title == "Main Health / repository_dispatch / main-health-nightly" or .display_title == "Main Health / repository_dispatch / main-health-weekly" or .display_title == "Main Health / schedule / 23 3 * * 0" or .display_title == "Main Health / schedule / 23 3 * * 1-6")] | sort_by(.run_number) | reverse | .[0] // empty | {event,head_sha,id,run_attempt,status}' \
+                "$batch" > "$output" || return 1
+              if [[ -s "$output" ]]; then
+                return 0
+              fi
+              [[ "$(jq -er '.workflow_runs | length' "$batch")" == 100 ]] || return 1
+              page=$((page + 1))
+            done
+            return 1
+          }
           admission_ready=false
           expected_state_commit=""
+          expected_main_sha=""
           run_id=""
           run_attempt=""
-          main_after=""
-          if [[ "$PERSIST_RESULT" == success && "$PERSIST_STATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            admission_ready=true
+          writer_snapshot="$RUNNER_TEMP/main-health-writer.json"
+          latest_snapshot="$RUNNER_TEMP/main-health-latest-writer-run.json"
+          if [[ "$INVALIDATE_RESULT" == success && "$PERSIST_RESULT" == success && \
+            "$PERSIST_MEASURED_SHA" =~ ^[0-9a-f]{40}$ && \
+            "$PERSIST_STATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            expected_main_sha="$PERSIST_MEASURED_SHA"
             expected_state_commit="$PERSIST_STATE_COMMIT"
-          elif [[ "$GITHUB_EVENT_NAME" == schedule && "$SCHEDULE" == '*/5 * * * *' ]]; then
+            if gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${expected_main_sha}/statuses?per_page=100&page=1" \
+              --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
+              > "$writer_snapshot" && \
+              binding="$(writer_binding "$writer_snapshot" "$expected_main_sha")" && \
+              IFS=$'\t' read -r bound_state run_id run_attempt <<<"$binding" && \
+              latest_writer_run "$latest_snapshot" && \
+              [[ "$bound_state" == "$expected_state_commit" && \
+                 "$run_id" == "$GITHUB_RUN_ID" && \
+                 "$run_attempt" == "$GITHUB_RUN_ATTEMPT" && \
+                 "$(jq -er '.id' "$latest_snapshot")" == "$run_id" && \
+                 "$(jq -er '.run_attempt' "$latest_snapshot")" == "$run_attempt" ]]; then
+              admission_ready=true
+            fi
+          elif [[ "$INVALIDATE_RESULT" == success && "$GITHUB_EVENT_NAME" == schedule && \
+            "$SCHEDULE" == '*/5 * * * *' ]]; then
             main_before="$RUNNER_TEMP/main-before"
             main_after="$RUNNER_TEMP/main-after"
-            run_before="$RUNNER_TEMP/writer-before.json"
-            run_after="$RUNNER_TEMP/writer-after.json"
+            state_ref_before="$RUNNER_TEMP/state-ref-before"
+            state_ref_after="$RUNNER_TEMP/state-ref-after"
+            writer_before="$RUNNER_TEMP/writer-before.json"
+            writer_after="$RUNNER_TEMP/writer-after.json"
+            latest_before="$RUNNER_TEMP/writer-latest-before.json"
+            latest_after="$RUNNER_TEMP/writer-latest-after.json"
+            run_before="$RUNNER_TEMP/writer-run-before.json"
+            run_after="$RUNNER_TEMP/writer-run-after.json"
             jobs="$RUNNER_TEMP/writer-jobs.jsonl"
             if git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main \
-              | cut -f1 > "$main_before" && gh api \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/main-health.yml/runs?event=workflow_run&branch=main&per_page=100" \
-              --jq '.workflow_runs | sort_by(.run_number) | reverse | .[0] | {conclusion,event,head_sha,id,run_attempt,status}' \
-              > "$run_before" && \
-              run_id="$(python -c 'import json,sys; print(json.load(sys.stdin)["id"])' \
-                < "$run_before")" && [[ "$run_id" =~ ^[1-9][0-9]*$ ]] && \
-              run_attempt="$(python -c \
-                'import json,sys; print(json.load(sys.stdin)["run_attempt"])' \
-                < "$run_before")" && [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]] && \
+              | cut -f1 > "$main_before" && \
+              git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
+                "refs/heads/$STATE_BRANCH" | cut -f1 > "$state_ref_before" && \
+              [[ "$(cat "$main_before")" =~ ^[0-9a-f]{40}$ && \
+                 "$(cat "$state_ref_before")" =~ ^[0-9a-f]{40}$ ]] && \
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/commits/$(cat "$main_before")/statuses?per_page=100&page=1" \
+                --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
+                > "$writer_before" && \
+              binding="$(writer_binding "$writer_before" "$(cat "$main_before")")" && \
+              IFS=$'\t' read -r bound_state run_id run_attempt <<<"$binding" && \
+              [[ "$bound_state" == "$(cat "$state_ref_before")" ]] && \
+              latest_writer_run "$latest_before" && \
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
+                --jq '{conclusion,event,head_sha,id,run_attempt,status}' > "$run_before" && \
               gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" \
-              --jq '.jobs[]' > "$jobs" && gh api \
-              "repos/${GITHUB_REPOSITORY}/actions/workflows/main-health.yml/runs?event=workflow_run&branch=main&per_page=100" \
-              --jq '.workflow_runs | sort_by(.run_number) | reverse | .[0] | {conclusion,event,head_sha,id,run_attempt,status}' \
-              > "$run_after" && \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" \
+                --jq '.jobs[]' > "$jobs" && \
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
+                --jq '{conclusion,event,head_sha,id,run_attempt,status}' > "$run_after" && \
+              latest_writer_run "$latest_after" && \
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/commits/$(cat "$main_before")/statuses?per_page=100&page=1" \
+                --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
+                > "$writer_after" && \
               git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main \
                 | cut -f1 > "$main_after" && \
-              writer_ready="$(python - "$run_after" "$jobs" <<'PY'
+              git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
+                "refs/heads/$STATE_BRANCH" | cut -f1 > "$state_ref_after" && \
+              writer_ready="$(python - "$run_after" "$jobs" "$run_id" "$run_attempt" \
+                "$(cat "$main_after")" <<'PY'
           import json
           import pathlib
           import sys
@@ -437,19 +678,28 @@ jobs:
           jobs = [json.loads(line) for line in pathlib.Path(sys.argv[2]).read_text().splitlines()]
           writers = [job for job in jobs if job.get("name") == "persist-health"]
           ready = (
-              run.get("event") == "workflow_run"
+              run.get("event") in {"repository_dispatch", "schedule", "workflow_run"}
               and run.get("status") == "completed"
+              and str(run.get("id")) == sys.argv[3]
+              and str(run.get("run_attempt")) == sys.argv[4]
+              and run.get("head_sha") == sys.argv[5]
               and len(writers) == 1
               and writers[0].get("status") == "completed"
               and writers[0].get("conclusion") == "success"
           )
           print(str(ready).lower())
           PY
-              )" && [[ "$(cat "$main_before")" =~ ^[0-9a-f]{40}$ ]] && \
-              cmp -s "$main_before" "$main_after" && cmp -s "$run_before" "$run_after" && \
-              [[ "$writer_ready" == true ]] && \
-              [[ "$(cat "$main_after")" == "$(python -c \
-                'import json,sys; print(json.load(sys.stdin)["head_sha"])' < "$run_after")" ]]; then
+              )" && cmp -s "$main_before" "$main_after" && \
+              cmp -s "$state_ref_before" "$state_ref_after" && \
+              cmp -s "$writer_before" "$writer_after" && \
+              cmp -s "$latest_before" "$latest_after" && \
+              cmp -s "$run_before" "$run_after" && [[ "$writer_ready" == true ]] && \
+              [[ "$(jq -er '.id' "$latest_after")" == "$run_id" && \
+                 "$(jq -er '.run_attempt' "$latest_after")" == "$run_attempt" ]]; then
+              expected_main_sha="$(cat "$main_after")"
+              expected_state_commit="$(cat "$state_ref_after")"
+              cp "$writer_after" "$writer_snapshot"
+              cp "$latest_after" "$latest_snapshot"
               admission_ready=true
             fi
           fi
@@ -459,19 +709,14 @@ jobs:
           if [[ "$admission_ready" == true ]] && \
             git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
               "refs/heads/$STATE_BRANCH" | cut -f1 > "$state_before" && \
-            [[ "$(cat "$state_before")" =~ ^[0-9a-f]{40}$ ]] && \
+            [[ "$(cat "$state_before")" == "$expected_state_commit" ]] && \
             git clone --quiet --single-branch --branch "$STATE_BRANCH" \
               "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root" && \
             python tools/stop_the_line.py validate-git --root "$state_root"; then
             state_commit="$(git -C "$state_root" rev-parse HEAD)"
-            state_message="$(git -C "$state_root" log -1 --format=%s)"
-            if [[ "$state_commit" == "$(cat "$state_before")" ]] && \
+            if [[ "$state_commit" == "$expected_state_commit" ]] && \
               git -C "$state_root" ls-remote origin "refs/heads/$STATE_BRANCH" \
-                | cut -f1 > "$state_after" && cmp -s "$state_before" "$state_after" && \
-              { [[ -n "$expected_state_commit" && \
-                   "$state_commit" == "$expected_state_commit" ]] || \
-                [[ -z "$expected_state_commit" && "$state_message" == \
-                  "Record main health run ${run_id}/${run_attempt} for $(cat "$main_after")" ]]; }; then
+                | cut -f1 > "$state_after" && cmp -s "$state_before" "$state_after"; then
               state_available=true
             fi
           fi
@@ -509,8 +754,25 @@ jobs:
                   <<<"$current_after")" && \
                 [[ "$base_after" =~ ^[0-9a-f]{40}$ && "$head_after" =~ ^[0-9a-f]{40}$ ]]; then
                 head_sha="$head_after"
+                boundary_main="$RUNNER_TEMP/main-boundary-${number}"
+                boundary_state="$RUNNER_TEMP/state-boundary-${number}"
+                boundary_writer="$RUNNER_TEMP/writer-boundary-${number}.json"
+                boundary_latest="$RUNNER_TEMP/latest-boundary-${number}.json"
                 if [[ "$candidate_ready" == true && "$base_after" == "$base_before" && \
-                  "$head_after" == "$head_before" ]]; then
+                  "$head_after" == "$head_before" ]] && \
+                  git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main \
+                    | cut -f1 > "$boundary_main" && \
+                  git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
+                    "refs/heads/$STATE_BRANCH" | cut -f1 > "$boundary_state" && \
+                  gh api \
+                    "repos/${GITHUB_REPOSITORY}/commits/${expected_main_sha}/statuses?per_page=100&page=1" \
+                    --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
+                    > "$boundary_writer" && \
+                  latest_writer_run "$boundary_latest" && \
+                  [[ "$(cat "$boundary_main")" == "$expected_main_sha" && \
+                     "$(cat "$boundary_state")" == "$expected_state_commit" ]] && \
+                  cmp -s "$writer_snapshot" "$boundary_writer" && \
+                  cmp -s "$latest_snapshot" "$boundary_latest"; then
                   state=success
                   description="Main health admission passed"
                 fi
@@ -524,7 +786,7 @@ jobs:
     if: >-
       always() &&
       ((github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
-       github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'repository_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'))
@@ -541,6 +803,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: refs/heads/main
       - name: Validate exact main-health terminal result
         shell: bash
         run: |

@@ -163,6 +163,36 @@
     }
   },
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "admission": {"type": "null"},
+        "admission_digest": {"type": "null"},
+        "authorization_mode": {"const": "independent-review"},
+        "collaborators": {"type": "null"},
+        "manifest": {"type": "null"},
+        "manifest_digest": {"type": "null"},
+        "merge_gate": {"type": "null"},
+        "merge_gate_digest": {"type": "null"},
+        "pending_invitations": {"type": "null"},
+        "state": {"const": "APPROVED"}
+      }
+    },
+    {
+      "properties": {
+        "admission": {"$ref": "#/$defs/admission"},
+        "admission_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "collaborators": {"items": {"$ref": "#/$defs/collaborator"}, "minItems": 1, "type": "array"},
+        "manifest": {"$ref": "#/$defs/manifest"},
+        "manifest_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "merge_gate": {"$ref": "#/$defs/mergeGate"},
+        "merge_gate_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "pending_invitations": {"items": {"$ref": "#/$defs/invitation"}, "type": "array"},
+        "state": {"const": "OWNER_EMERGENCY"}
+      }
+    }
+  ],
   "properties": {
     "admission": {"oneOf": [{"$ref": "#/$defs/admission"}, {"type": "null"}]},
     "admission_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
@@ -182,7 +212,7 @@
     "manifest": {"oneOf": [{"$ref": "#/$defs/manifest"}, {"type": "null"}]},
     "manifest_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
-    "merge_parent_shas": {"items": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "minItems": 2, "type": "array", "uniqueItems": true},
+    "merge_parent_shas": {"items": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "maxItems": 2, "minItems": 2, "type": "array", "uniqueItems": true},
     "merge_tree_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "pending_invitations": {"oneOf": [{"items": {"$ref": "#/$defs/invitation"}, "type": "array"}, {"type": "null"}]},
     "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},

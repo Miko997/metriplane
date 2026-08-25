@@ -31,20 +31,24 @@ without creating or changing state. The trusted default-branch workflow publishe
 reconciliation and immediately after every durable transition. Pull request events
 do not run privileged admission or occupy the serialized writer queue, and
 candidate-controlled code is never executed with the status-writing token. The
-reconciler overwrites earlier success with failure when health turns red, the base
+checkout-free invalidator overwrites earlier success with failure for every open
+head before the reconciler starts. The reconciler keeps failure when health turns red, the base
 becomes stale, or the 36-hour window expires; a persistent commit status is never
 treated as an unbounded lease. All status publishers and durable writers are
 trusted triggers in one serialized concurrency group, so an older green snapshot
-cannot publish success after a newer red transition. A five-minute tick reads the
-default branch and latest `workflow_run` writer record before and after the jobs
-query, rejects drift or a queued/in-progress/newer attempt, requires exactly one
-successful `persist-health` job, and requires the validated state-branch HEAD
-message to bind that exact run ID, attempt, and main SHA. Immediate reconciliation
-instead requires the successful dependency's exact `state_commit` output. Both
-paths verify the state ref after validation and re-fetch each PR head immediately
-before publishing. The
-completed protected-main CI workflow and the nightly and weekly schedules are the
-only normal writer triggers. A
+cannot publish success after a newer red transition. Every writer first publishes
+provider-verified failure on its measured main SHA. Only after CAS and read-back
+does the successful `persist-health` job publish a GitHub Actions status binding
+that main SHA to the exact state commit, run ID, and attempt. A five-minute tick
+reads the main ref, state ref, writer status, exact run, and exact attempt jobs
+before and after validation; it requires all snapshots to remain unchanged and
+exactly one successful `persist-health` job. Immediate reconciliation requires the
+same provider status plus the successful dependency's exact main and state-commit
+outputs. Both paths recheck main, state, writer status, and PR base/head at the
+success boundary. A success response that cannot be provider-verified is followed
+by failure. The completed protected-main CI workflow, nightly and weekly schedules,
+and default-branch-only `repository_dispatch` deep runs are the only normal writer
+triggers. A
 protected-main writer binds the triggering CI run attempt, selects the exact
 commit's latest Documentation and CodeQL attempts, and reads every selected
 attempt's paginated provider job records. It requires exactly one Metriplane,
@@ -159,8 +163,16 @@ policy-amendment digest must match the authorization.
 Retain the JSON outputs from `capture-owner-admission` and
 `merge-owner-emergency` as `owner-admission.json` and
 `owner-merge-gate.json`. After that exact PR merges, run the `Main Health`
-workflow manually once for each deep cadence. Capture the merged owner decision
-with both provider attestations,
+deep cadences through trusted default-branch repository dispatches:
+
+```console
+gh api --method POST repos/Miko997/metriplane/dispatches \
+  -f event_type=main-health-nightly
+gh api --method POST repos/Miko997/metriplane/dispatches \
+  -f event_type=main-health-weekly
+```
+
+Capture the merged owner decision with the provider admission and raw merge gate,
 construct the authorization from the captured evidence, and run `resolve`. The
 resolver re-fetches the owner/admin identity and merge proof, requires retained
 green protected-main plus both deep results, appends the resolution through CAS,

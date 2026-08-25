@@ -731,6 +731,24 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
     del malformed_schema_evidence["merge_gate"]["bypass_actor"]
     with pytest.raises(SnapshotError):
         _internal_validate(malformed_schema_evidence, provider_schema)
+    null_emergency_evidence = copy.deepcopy(evidence)
+    for field in (
+        "admission",
+        "admission_digest",
+        "collaborators",
+        "manifest",
+        "manifest_digest",
+        "merge_gate",
+        "merge_gate_digest",
+        "pending_invitations",
+    ):
+        null_emergency_evidence[field] = None
+    with pytest.raises(SnapshotError):
+        _internal_validate(null_emergency_evidence, provider_schema)
+    extra_parent_evidence = copy.deepcopy(evidence)
+    extra_parent_evidence["merge_parent_shas"].append("9" * 40)
+    with pytest.raises(SnapshotError):
+        _internal_validate(extra_parent_evidence, provider_schema)
     authorization = {
         "authorization_mode": evidence["authorization_mode"],
         "approval_digest": digest(evidence),
@@ -1145,6 +1163,7 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
         "node_id": "PR_node",
     }
     pull_after = {
+        "base": {"sha": BAD_SHA},
         "head": {"sha": REVIEWED_SHA},
         "merge_commit_sha": REPAIR_SHA,
         "merged": True,
@@ -1162,9 +1181,18 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
             return _main_health_ruleset()
+        if path.endswith(f"/git/commits/{REVIEWED_SHA}"):
+            return {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}}
+        if path.endswith(f"/git/commits/{REPAIR_SHA}"):
+            return {
+                "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            }
         raise AssertionError(path)
 
     graphql: list[dict[str, object]] = []
+    provider_times: list[str] = []
 
     def merge_graphql(_query: str, variables: dict[str, object], _token: str) -> dict[str, object]:
         graphql.append(variables)
@@ -1178,8 +1206,12 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
             }
         }
 
+    def provider_now(_token: str) -> object:
+        provider_times.append("checked")
+        return stop_the_line._timestamp("2026-08-25T21:44:59Z")
+
     monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
-    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2026-08-25T21:44:59Z")
+    monkeypatch.setattr(stop_the_line, "_github_provider_now", provider_now)
     monkeypatch.setattr(stop_the_line, "_refetch_github_artifact", lambda **_kwargs: admission)
     monkeypatch.setattr(stop_the_line, "_github_get", get)
     monkeypatch.setattr(stop_the_line, "_github_graphql", merge_graphql)
@@ -1217,6 +1249,7 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
             }
         }
     ]
+    assert provider_times == ["checked", "checked", "checked"]
 
 
 def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed_out(
@@ -1235,12 +1268,14 @@ def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed
     artifact = admission["artifact"]
     assert isinstance(artifact, dict)
     merged_pull = {
+        "base": {"sha": BAD_SHA},
         "head": {"sha": REVIEWED_SHA},
         "merge_commit_sha": REPAIR_SHA,
         "merged": True,
         "merged_at": "2026-08-25T21:45:00Z",
         "merged_by": {"id": 100, "login": "Miko997"},
     }
+    commit_fetches: list[str] = []
 
     def get(path: str, _token: str) -> object:
         if path.endswith("/pulls/123"):
@@ -1251,10 +1286,24 @@ def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
             return _main_health_ruleset()
+        if path.endswith(f"/git/commits/{REVIEWED_SHA}"):
+            commit_fetches.append(REVIEWED_SHA)
+            return {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}}
+        if path.endswith(f"/git/commits/{REPAIR_SHA}"):
+            commit_fetches.append(REPAIR_SHA)
+            return {
+                "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            }
         raise AssertionError(path)
 
     monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
-    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2026-08-26T21:44:59Z")
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_provider_now",
+        lambda _token: stop_the_line._timestamp("2026-08-26T21:44:59Z"),
+    )
     monkeypatch.setattr(stop_the_line, "_refetch_github_artifact", lambda **_kwargs: admission)
     monkeypatch.setattr(stop_the_line, "_github_get", get)
     monkeypatch.setattr(stop_the_line, "_github_list", lambda *_args: [])
@@ -1286,6 +1335,7 @@ def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed
         admission_attestation=admission,
         token="token",
     ) == _owner_merge_gate(admission)
+    assert commit_fetches == [REVIEWED_SHA, REPAIR_SHA]
 
 
 def test_provider_evidence_rejects_merge_from_a_different_base() -> None:

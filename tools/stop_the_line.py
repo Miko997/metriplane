@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import email.utils
 import hashlib
 import json
 import os
@@ -813,6 +814,33 @@ def _github_get(path: str, token: str) -> Any:
     return _github_request(path, token)
 
 
+def _github_provider_now(token: str) -> datetime:
+    request = urllib.request.Request(
+        "https://api.github.com/rate_limit",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            json.load(response)
+            provider_date = response.headers.get("Date")
+        parsed = email.utils.parsedate_to_datetime(provider_date)
+    except (
+        TypeError,
+        ValueError,
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+    ) as exc:
+        raise HealthError(f"GitHub provider time capture failed: {exc}") from exc
+    if parsed.tzinfo is None:
+        raise HealthError("GitHub provider time response has no timezone")
+    return parsed.astimezone(UTC)
+
+
 def _github_graphql(query: str, variables: dict[str, Any], token: str) -> dict[str, Any]:
     response = _github_request(
         "graphql",
@@ -1288,7 +1316,7 @@ def merge_github_owner_emergency(
         ):
             raise HealthError("owner admission does not bind the requested merge")
         admitted_at = _timestamp(attestation["comment_created_at"])
-        checked_at = _timestamp(_utc_now())
+        checked_at = _github_provider_now(token)
         if (
             attestation["comment_author"].casefold() != repository_owner.casefold()
             or _timestamp(admission["checked_at"]) > admitted_at
@@ -1328,7 +1356,11 @@ def merge_github_owner_emergency(
             or digest(main_health) != admission.get("main_health_ruleset_digest")
         ):
             raise HealthError("owner admission ruleset policy changed before merge")
-        candidate_checked_at = pull.get("merged_at") if pull.get("merged") else _utc_now()
+        candidate_checked_at = (
+            pull.get("merged_at")
+            if pull.get("merged")
+            else checked_at.isoformat().replace("+00:00", "Z")
+        )
         if not isinstance(candidate_checked_at, str):
             raise HealthError("GitHub owner merge timestamp is malformed")
         live_admission = validate_owner_emergency_candidate(
@@ -1355,6 +1387,13 @@ def merge_github_owner_emergency(
         raise HealthError("owner merge preflight did not produce stable provider state")
     admission = last_attestation["artifact"]
     if not last_pull.get("merged"):
+        provider_now = _github_provider_now(token)
+        admitted_at = _timestamp(last_attestation["comment_created_at"])
+        if (
+            provider_now > _timestamp(last_manifest["expires_at"])
+            or (provider_now - admitted_at).total_seconds() > OWNER_ADMISSION_MAX_AGE_SECONDS
+        ):
+            raise HealthError("owner admission expired immediately before merge")
         node_id = last_pull.get("node_id")
         if not isinstance(node_id, str) or not node_id:
             raise HealthError("GitHub pull request node identity is missing")
@@ -1400,6 +1439,15 @@ def merge_github_owner_emergency(
     ):
         raise HealthError("GitHub owner bypass did not merge the exact admitted head")
     _validate_sha(merge_sha)
+    head_commit = _github_get(f"repos/{repository}/git/commits/{admission['head_sha']}", token)
+    merge_commit = _github_get(f"repos/{repository}/git/commits/{merge_sha}", token)
+    if not isinstance(head_commit, dict) or not isinstance(merge_commit, dict):
+        raise HealthError("GitHub owner merge commit proof responses are malformed")
+    _github_merge_proof(
+        pull=merged_pull,
+        head_commit=head_commit,
+        merge_commit=merge_commit,
+    )
     return {
         "admission_comment_id": last_attestation["comment_id"],
         "admission_digest": digest(last_attestation),
