@@ -1,0 +1,29 @@
+{
+  "authorization_mode": "independent-review",
+  "approval_id": "provider-approval-1",
+  "approval_provider": "github",
+  "author": "repair-author",
+  "author_id": "100",
+  "captured_at": "2026-08-26T17:00:00Z",
+  "changed_paths": [
+    "metriplane/example.py",
+    "tests/test_example.py"
+  ],
+  "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+  "issue": "MET-999",
+  "merge_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "merge_parent_shas": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "merge_tree_sha": "dddddddddddddddddddddddddddddddddddddddd",
+  "pull_request": "123",
+  "repository": "Miko997/metriplane",
+  "reviewed_tree_sha": "dddddddddddddddddddddddddddddddddddddddd",
+  "reviewer": "independent-reviewer",
+  "reviewer_id": "200",
+  "reviewer_permission": "write",
+  "schema_version": 1,
+  "state": "APPROVED"
+}

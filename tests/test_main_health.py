@@ -15,17 +15,21 @@ from tools.stop_the_line import (
     canonical_bytes,
     digest,
     github_approval_evidence,
+    github_owner_emergency_evidence,
     ingest,
     resolve,
     validate_candidate,
     validate_history,
+    validate_owner_emergency_candidate,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "docs" / "status"
 GOOD_SHA = "a" * 40
 BAD_SHA = "b" * 40
-REPAIR_SHA = "c" * 40
+REVIEWED_SHA = "c" * 40
+REPAIR_SHA = "d" * 40
+TREE_SHA = "e" * 40
 POLICY = json.loads((STATUS / "main-health-policy.json").read_text(encoding="utf-8"))
 
 
@@ -159,13 +163,15 @@ def test_failure_persists_red_across_ordinary_green_ingestion(tmp_path: Path) ->
 def _red_with_repair_results(
     root: Path,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
-    ingest(
+    red = ingest(
         root,
         scope="main",
         summary=_summary(BAD_SHA, "failure"),
         activation_policy=POLICY,
         expected_generation=-1,
     )
+    incident_digest = red["incident_digest"]
+    assert isinstance(incident_digest, str)
     repaired_main = _summary(
         REPAIR_SHA,
         recorded_at="2026-08-25T19:00:00Z",
@@ -195,23 +201,38 @@ def _red_with_repair_results(
         expected_generation=3,
     )
     approved_review = {
-        "body": "Main-health repair authorization: MET-999",
-        "commit_id": REPAIR_SHA,
+        "body": f"Main-health repair authorization: MET-999\nIncident: {incident_digest}",
+        "commit_id": REVIEWED_SHA,
         "id": 321,
         "state": "APPROVED",
         "submitted_at": "2026-08-25T21:30:00Z",
         "user": {"id": 200, "login": "reviewer"},
     }
     approval_evidence = github_approval_evidence(
-        pull={"head": {"sha": REPAIR_SHA}, "user": {"id": 100, "login": "author"}},
+        pull={
+            "head": {"sha": REVIEWED_SHA},
+            "merge_commit_sha": REPAIR_SHA,
+            "merged": True,
+            "merged_at": "2026-08-25T21:45:00Z",
+            "user": {"id": 100, "login": "author"},
+        },
         review=approved_review,
         reviews=[approved_review],
         files=[{"filename": "tests/test_fix.py"}, {"filename": "metriplane/fix.py"}],
+        head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+        merge_commit={
+            "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+            "sha": REPAIR_SHA,
+            "tree": {"sha": TREE_SHA},
+        },
+        reviewer_permission="write",
         repository="Miko997/metriplane",
         pull_request="123",
         issue="MET-999",
+        incident_digest=incident_digest,
     )
     authorization = {
+        "authorization_mode": approval_evidence["authorization_mode"],
         "approval_digest": digest(approval_evidence),
         "approval_id": approval_evidence["approval_id"],
         "approval_provider": approval_evidence["approval_provider"],
@@ -221,24 +242,188 @@ def _red_with_repair_results(
         "changed_paths_digest": digest(sorted(approval_evidence["changed_paths"])),
         "expires_at": "2026-08-26T22:00:00Z",
         "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
         "issue": "MET-999",
-        "proposed_repair_sha": REPAIR_SHA,
+        "proposed_repair_sha": REVIEWED_SHA,
         "pull_request": approval_evidence["pull_request"],
         "repository": approval_evidence["repository"],
         "required_cadences": ["nightly", "weekly"],
         "reviewer": approval_evidence["reviewer"],
         "reviewer_id": approval_evidence["reviewer_id"],
+        "reviewer_permission": approval_evidence["reviewer_permission"],
         "schema_version": 1,
     }
     return repaired_main, authorization, approval_evidence
+
+
+def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) -> None:
+    red = ingest(
+        tmp_path,
+        scope="main",
+        summary=_summary(BAD_SHA, "failure"),
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+    incident_digest = red["incident_digest"]
+    assert isinstance(incident_digest, str)
+    allowed_paths = [
+        "docs/status/main-health-owner-emergency.json",
+        "tests/test_fix.py",
+    ]
+    manifest = {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "allowed_paths": allowed_paths,
+        "base_sha": BAD_SHA,
+        "expires_at": "2026-08-26T23:00:00Z",
+        "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
+        "issue": "MET-999",
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+        "required_cadences": ["nightly", "weekly"],
+        "schema_version": 1,
+    }
+    pull = {
+        "base": {"repo": {"full_name": "Miko997/metriplane"}, "sha": BAD_SHA},
+        "body": f"Main-health owner emergency: MET-999\nIncident: {incident_digest}",
+        "head": {"sha": REVIEWED_SHA},
+        "number": 123,
+        "user": {"id": 100, "login": "Miko997"},
+    }
+    before = {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    result = validate_owner_emergency_candidate(
+        tmp_path,
+        manifest=manifest,
+        pull=pull,
+        changed_paths=allowed_paths,
+        author_permission="admin",
+        checked_at="2026-08-25T22:00:00Z",
+    )
+    assert result["status"] == "repair-candidate"
+    assert result["head_sha"] == REVIEWED_SHA
+    assert before == {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    with pytest.raises(HealthError, match="exact changed paths"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest=manifest,
+            pull=pull,
+            changed_paths=[*allowed_paths, "unapproved.py"],
+            author_permission="admin",
+            checked_at="2026-08-25T22:00:00Z",
+        )
+    with pytest.raises(HealthError, match="identity or marker"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest=manifest,
+            pull={**pull, "user": {"id": 200, "login": "outsider"}},
+            changed_paths=allowed_paths,
+            author_permission="write",
+            checked_at="2026-08-25T22:00:00Z",
+        )
+
+
+def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
+    tmp_path: Path,
+) -> None:
+    repaired_main, _, _ = _red_with_repair_results(tmp_path)
+    state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    incident_digest = state["incident_digest"]
+    pull = {
+        "body": f"Main-health owner emergency: MET-999\nIncident: {incident_digest}",
+        "head": {"sha": REVIEWED_SHA},
+        "merge_commit_sha": REPAIR_SHA,
+        "merged": True,
+        "merged_at": "2026-08-25T21:45:00Z",
+        "user": {"id": 100, "login": "Miko997"},
+    }
+    evidence = github_owner_emergency_evidence(
+        pull=pull,
+        files=[{"filename": "metriplane/fix.py"}, {"filename": "tests/test_fix.py"}],
+        head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+        merge_commit={
+            "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+            "sha": REPAIR_SHA,
+            "tree": {"sha": TREE_SHA},
+        },
+        owner_permission="admin",
+        repository="Miko997/metriplane",
+        pull_request="123",
+        issue="MET-999",
+        incident_digest=incident_digest,
+    )
+    authorization = {
+        "authorization_mode": evidence["authorization_mode"],
+        "approval_digest": digest(evidence),
+        "approval_id": evidence["approval_id"],
+        "approval_provider": evidence["approval_provider"],
+        "allowed_paths": evidence["changed_paths"],
+        "author": evidence["author"],
+        "author_id": evidence["author_id"],
+        "changed_paths_digest": digest(evidence["changed_paths"]),
+        "expires_at": "2026-08-26T22:00:00Z",
+        "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
+        "issue": evidence["issue"],
+        "proposed_repair_sha": REVIEWED_SHA,
+        "pull_request": evidence["pull_request"],
+        "repository": evidence["repository"],
+        "required_cadences": ["nightly", "weekly"],
+        "reviewer": evidence["reviewer"],
+        "reviewer_id": evidence["reviewer_id"],
+        "reviewer_permission": evidence["reviewer_permission"],
+        "schema_version": 1,
+    }
+    resolved = resolve(
+        tmp_path,
+        authorization=authorization,
+        approval_evidence=evidence,
+        repaired_main=repaired_main,
+        resolved_at="2026-08-25T22:00:00Z",
+        expected_generation=4,
+    )
+    assert resolved["status"] == "green"
+    resolution = json.loads(next((tmp_path / "resolutions").glob("*.json")).read_text())
+    assert resolution["authorization_mode"] == "single-maintainer-owner-emergency"
+
+    with pytest.raises(HealthError, match="admin permission"):
+        github_owner_emergency_evidence(
+            pull=pull,
+            files=[{"filename": "tests/test_fix.py"}],
+            head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+            merge_commit={
+                "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            },
+            owner_permission="write",
+            repository="Miko997/metriplane",
+            pull_request="123",
+            issue="MET-999",
+            incident_digest=incident_digest,
+        )
+
+
+def test_provider_evidence_rejects_reviewed_to_merge_tree_drift(tmp_path: Path) -> None:
+    repaired_main, authorization, approval_evidence = _red_with_repair_results(tmp_path)
+    approval_evidence["merge_tree_sha"] = GOOD_SHA
+    authorization["approval_digest"] = digest(approval_evidence)
+    with pytest.raises(HealthError, match="reviewed head to repaired main"):
+        resolve(
+            tmp_path,
+            authorization=authorization,
+            approval_evidence=approval_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
 
 
 def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_results(
     tmp_path: Path,
 ) -> None:
     approved = {
-        "body": "Main-health repair authorization: MET-999",
-        "commit_id": REPAIR_SHA,
+        "body": f"Main-health repair authorization: MET-999\nIncident: {'f' * 64}",
+        "commit_id": REVIEWED_SHA,
         "id": 1,
         "state": "APPROVED",
         "submitted_at": "2026-08-25T20:00:00Z",
@@ -253,13 +438,27 @@ def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_result
     }
     with pytest.raises(HealthError, match="superseded"):
         github_approval_evidence(
-            pull={"head": {"sha": REPAIR_SHA}, "user": {"id": 100, "login": "author"}},
+            pull={
+                "head": {"sha": REVIEWED_SHA},
+                "merge_commit_sha": REPAIR_SHA,
+                "merged": True,
+                "merged_at": "2026-08-25T21:00:00Z",
+                "user": {"id": 100, "login": "author"},
+            },
             review=approved,
             reviews=[approved, requested],
             files=[{"filename": "metriplane/fix.py"}],
+            head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+            merge_commit={
+                "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            },
+            reviewer_permission="write",
             repository="Miko997/metriplane",
             pull_request="123",
             issue="MET-999",
+            incident_digest="f" * 64,
         )
     repaired_main, authorization, approval_evidence = _red_with_repair_results(tmp_path)
     wrong_cadence = {**repaired_main, "cadence": "nightly"}
@@ -447,13 +646,15 @@ def test_repair_faults_fail_closed(tmp_path: Path, fault: str) -> None:
 
 
 def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
-    ingest(
+    red = ingest(
         tmp_path,
         scope="main",
         summary=_summary(BAD_SHA, "failure"),
         activation_policy=POLICY,
         expected_generation=-1,
     )
+    incident_digest = red["incident_digest"]
+    assert isinstance(incident_digest, str)
     repaired = _summary(REPAIR_SHA, recorded_at="2026-08-25T19:00:00Z", run_id="2")
     ingest(tmp_path, scope="main", summary=repaired, expected_generation=1)
     for cadence in ("nightly", "weekly"):
@@ -462,22 +663,30 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
             json.dumps(forged), encoding="utf-8"
         )
     approval_evidence = {
+        "authorization_mode": "independent-review",
         "approval_id": "321",
         "approval_provider": "github",
         "author": "author",
         "author_id": "100",
         "captured_at": "2026-08-25T21:30:00Z",
         "changed_paths": ["metriplane/fix.py"],
-        "commit_sha": REPAIR_SHA,
+        "head_sha": REVIEWED_SHA,
+        "incident_digest": incident_digest,
         "issue": "MET-999",
+        "merge_commit_sha": REPAIR_SHA,
+        "merge_parent_shas": [GOOD_SHA, REVIEWED_SHA],
+        "merge_tree_sha": TREE_SHA,
         "pull_request": "123",
         "repository": "Miko997/metriplane",
+        "reviewed_tree_sha": TREE_SHA,
         "reviewer": "reviewer",
         "reviewer_id": "200",
+        "reviewer_permission": "write",
         "schema_version": 1,
         "state": "APPROVED",
     }
     authorization = {
+        "authorization_mode": approval_evidence["authorization_mode"],
         "approval_digest": digest(approval_evidence),
         "approval_id": approval_evidence["approval_id"],
         "approval_provider": approval_evidence["approval_provider"],
@@ -487,13 +696,15 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
         "changed_paths_digest": digest(approval_evidence["changed_paths"]),
         "expires_at": "2026-08-26T22:00:00Z",
         "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
         "issue": "MET-999",
-        "proposed_repair_sha": REPAIR_SHA,
+        "proposed_repair_sha": REVIEWED_SHA,
         "pull_request": approval_evidence["pull_request"],
         "repository": approval_evidence["repository"],
         "required_cadences": ["nightly", "weekly"],
         "reviewer": approval_evidence["reviewer"],
         "reviewer_id": approval_evidence["reviewer_id"],
+        "reviewer_permission": approval_evidence["reviewer_permission"],
         "schema_version": 1,
     }
     with pytest.raises(HealthError, match="orphaned|incomplete"):
@@ -560,6 +771,8 @@ def test_schema_policy_and_example_families_are_complete_json() -> None:
         "main-health-history-activation",
         "main-health-history",
         "main-health-incident",
+        "main-health-owner-emergency",
+        "main-health-provider-evidence",
         "main-health-repair-authorization",
         "main-health-resolution",
         "main-health-result-summary",

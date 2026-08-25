@@ -1,0 +1,20 @@
+{
+  "authorization_mode": "single-maintainer-owner-emergency",
+  "allowed_paths": [
+    "tests/test_example.py"
+  ],
+  "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expires_at": "2026-08-27T03:23:00Z",
+  "failing_obligations": [
+    "Metriplane / required"
+  ],
+  "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+  "issue": "MET-999",
+  "pull_request": "123",
+  "repository": "Miko997/metriplane",
+  "required_cadences": [
+    "nightly",
+    "weekly"
+  ],
+  "schema_version": 1
+}

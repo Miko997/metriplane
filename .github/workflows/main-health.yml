@@ -9,6 +9,13 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      cadence:
+        description: Exact retained deep-repair cadence
+        required: true
+        type: choice
+        options: [nightly, weekly]
   schedule:
     - cron: "23 3 * * 1-6"
     - cron: "23 3 * * 0"
@@ -16,6 +23,7 @@ on:
 concurrency:
   group: >-
     ${{ (github.event_name == 'schedule' ||
+         github.event_name == 'workflow_dispatch' ||
          (github.event_name == 'workflow_run' &&
           github.event.workflow_run.head_branch == 'main' &&
           github.event.workflow_run.event == 'push')) &&
@@ -35,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
@@ -49,17 +58,42 @@ jobs:
 
       - name: Read and validate global health
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           state_root="$RUNNER_TEMP/main-health-state"
           if git ls-remote --exit-code --heads origin "$STATE_BRANCH" >/dev/null; then
             git clone --quiet --single-branch --branch "$STATE_BRANCH" \
               "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
-            python tools/stop_the_line.py candidate \
+            if python tools/stop_the_line.py candidate \
               --root "$state_root" \
               --base-sha "${{ github.event.pull_request.base.sha }}" \
               --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --max-age-seconds 129600
+              --max-age-seconds 129600; then
+              exit 0
+            fi
+            manifest=docs/status/main-health-owner-emergency.json
+            test -f "$manifest"
+            pull_file="$RUNNER_TEMP/main-health-repair-pull.json"
+            paths_file="$RUNNER_TEMP/main-health-repair-paths.txt"
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}" \
+              > "$pull_file"
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
+              --jq '.[].filename' | LC_ALL=C sort > "$paths_file"
+            author="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["user"]["login"])' \
+              "$pull_file")"
+            permission="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/collaborators/${author}/permission" \
+              --jq '.permission')"
+            python tools/stop_the_line.py repair-candidate \
+              --root "$state_root" \
+              --manifest-json "$(cat "$manifest")" \
+              --pull-json "$pull_file" \
+              --changed-paths-file "$paths_file" \
+              --author-permission "$permission" \
+              --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           else
             if git cat-file -e \
               "${{ github.event.pull_request.base.sha }}:tools/stop_the_line.py" 2>/dev/null; then
@@ -70,7 +104,7 @@ jobs:
           fi
 
   scheduled-deep:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -110,6 +144,7 @@ jobs:
     if: >-
       always() &&
       (github.event_name == 'schedule' ||
+       github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'))
@@ -257,7 +292,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RUN_IDENTITY: ${{ github.event.workflow_run.id || github.run_id }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          RUN_WORKFLOW: ${{ github.event.workflow_run.name || github.event.schedule }}
+          RUN_WORKFLOW: ${{ github.event.workflow_run.name || github.event.inputs.cadence || github.event.schedule }}
           OBSERVED_CONCLUSION: ${{ steps.observed.outputs.conclusion }}
           OBSERVED_OBLIGATIONS: ${{ steps.observed.outputs.obligations }}
           STATE_ROOT: ${{ steps.backend.outputs.root }}
@@ -270,6 +305,9 @@ jobs:
             cadence=protected-main
             conclusion="$OBSERVED_CONCLUSION"
             obligations="$OBSERVED_OBLIGATIONS"
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            cadence="$RUN_WORKFLOW"
+            conclusion="$DEEP_OUTCOME"
           elif [[ "$RUN_WORKFLOW" == "23 3 * * 0" ]]; then
             cadence=weekly
             conclusion="$DEEP_OUTCOME"
@@ -336,6 +374,7 @@ jobs:
       always() &&
       (github.event_name == 'pull_request' ||
        github.event_name == 'schedule' ||
+       github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'))

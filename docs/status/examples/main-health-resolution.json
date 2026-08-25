@@ -1,4 +1,5 @@
 {
+  "authorization_mode": "independent-review",
   "authorization_digest": "6666666666666666666666666666666666666666666666666666666666666666",
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "repaired_main_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

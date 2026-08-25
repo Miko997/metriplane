@@ -51,29 +51,49 @@ failures become a retained failure result. Before any write, the writer fetches
 
 ## Repair
 
-A repair authorization must name the repository, pull request, issue, author,
-different reviewer, expiry, exact failing obligations, exact proposed repair SHA,
-digest of the provider file list, allowed paths, and required deep cadences. The
-repaired SHA must have retained green `protected-main` plus all required cadence
-results. Self-approved, expired, stale, unrelated, broadened, or incomplete
-repairs fail closed.
+A repair authorization names the repository, pull request, issue, incident,
+author, authorization mode, expiry, exact failing obligations, reviewed head SHA,
+provider file-list digest, allowed paths, and canonical deep cadences. Provider
+evidence separately binds that reviewed head to the merge commit through the
+merge parents and identical reviewed/merged tree IDs. The merged SHA must have
+retained green `protected-main`, `nightly`, and `weekly` results. Expired, stale,
+unrelated, broadened, unauthorized, or incomplete repairs fail closed.
 
-Use a GitHub review whose body is exactly
-`Main-health repair authorization: MET-NNN`. Capture it first, then bind the
-canonical evidence digest and changed-path digest into the authorization:
+The ordinary path uses a current GitHub review from a collaborator with write,
+maintain, or admin permission. Its body is exactly two lines:
+
+```text
+Main-health repair authorization: MET-NNN
+Incident: <64-character incident digest>
+```
+
+Capture it after merge, then bind the canonical evidence digest and changed-path
+digest into the authorization:
 
 ```console
 GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-approval \
   --repository Miko997/metriplane --pull-request <number> \
-  --review-id <review-id> --issue MET-NNN
+  --review-id <review-id> --issue MET-NNN --incident-digest <digest>
 ```
 
-The operational `resolve` command accepts no caller-supplied approval evidence. It
-re-fetches the named review, pull request, current reviewed commit, and complete
-provider file list with `GITHUB_TOKEN`, then retains that evidence alongside the
-authorization and resolution. A newer review from the named reviewer supersedes
-the selected approval, and any current requested-changes review fails closed.
+The operational `resolve` command accepts no caller-supplied provider evidence. It
+re-fetches the review, reviewer permission, pull request, reviewed and merge
+commits, and complete provider file list with `GITHUB_TOKEN`, then retains that
+evidence alongside the authorization and resolution. A newer review from the
+named reviewer supersedes the selected approval, and any current requested-changes
+review fails closed.
 
-This repository currently has one authenticated collaborator. Therefore no live
-repair can be approved until a provider-authenticated non-author reviewer is
-explicitly bound. Green activation and normal ingestion do not waive that rule.
+For a personal repository with no independent collaborator, the only exception is
+the explicitly named `single-maintainer-owner-emergency` mode. The repair PR must
+contain `docs/status/main-health-owner-emergency.json`, whose base SHA, open
+incident digest, issue, PR number, complete sorted changed-path inventory, expiry,
+and fixed `[nightly, weekly]` cadence policy match provider state exactly. The PR
+body is exactly the corresponding two-line owner-emergency marker. Candidate
+admission remains read-only and records that independent approval did not exist.
+
+After that exact PR merges, run the `Main Health` workflow manually once for each
+deep cadence. Capture the merged owner decision with `capture-owner-emergency`,
+construct the authorization from the captured evidence, and run `resolve`. The
+resolver re-fetches the owner/admin identity and merge proof, requires retained
+green protected-main plus both deep results, appends the resolution through CAS,
+and validates the complete retained history. No state commit is rewritten.

@@ -207,13 +207,20 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     health_trigger = health.get("on", health.get(True))
     assert "edited" in health_trigger["pull_request"]["types"]
     assert health_trigger["workflow_run"]["workflows"] == ["CI"]
+    assert health_trigger["workflow_dispatch"]["inputs"]["cadence"]["options"] == [
+        "nightly",
+        "weekly",
+    ]
     concurrency_group = str(health["concurrency"]["group"])
     assert "main-health-state-writer" in concurrency_group
     assert "github.event.workflow_run.head_branch == 'main'" in concurrency_group
     assert "github.event.workflow_run.event == 'push'" in concurrency_group
     assert "github.run_id" in concurrency_group
     assert health["concurrency"]["queue"] == "max"
-    assert health["jobs"]["candidate-health"]["permissions"] == {"contents": "read"}
+    assert health["jobs"]["candidate-health"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+    }
     assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
     assert health["jobs"]["persist-health"]["permissions"] == {
         "actions": "read",
@@ -241,6 +248,9 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "stop_the_line.py candidate" in "\n".join(
         step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
     )
+    assert "stop_the_line.py repair-candidate" in "\n".join(
+        step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
+    )
     assert health["jobs"]["persist-health"]["needs"] == "scheduled-deep"
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
@@ -260,6 +270,24 @@ def test_main_health_observer_step_is_valid_bash() -> None:
         item
         for item in workflow["jobs"]["persist-health"]["steps"]
         if item.get("name") == "Observe exact protected-main terminals"
+    )
+    completed = subprocess.run(
+        ["bash", "-n"],
+        input=step["run"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
+def test_main_health_candidate_admission_step_is_valid_bash() -> None:
+    workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["candidate-health"]["steps"]
+        if item.get("name") == "Read and validate global health"
     )
     completed = subprocess.run(
         ["bash", "-n"],

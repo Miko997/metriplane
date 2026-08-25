@@ -1,4 +1,5 @@
 {
+  "authorization_mode": "independent-review",
   "approval_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
   "approval_id": "provider-approval-1",
   "approval_provider": "github",
@@ -13,6 +14,7 @@
   "failing_obligations": [
     "Metriplane / required"
   ],
+  "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "issue": "MET-999",
   "proposed_repair_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "pull_request": "123",
@@ -23,5 +25,6 @@
   ],
   "reviewer": "independent-reviewer",
   "reviewer_id": "200",
+  "reviewer_permission": "write",
   "schema_version": 1
 }
