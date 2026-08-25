@@ -206,7 +206,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     health = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
     health_trigger = health.get("on", health.get(True))
     assert "pull_request" not in health_trigger
-    assert "edited" in health_trigger["pull_request_target"]["types"]
+    assert "pull_request_target" not in health_trigger
     assert health_trigger["workflow_run"]["workflows"] == ["CI"]
     assert health_trigger["workflow_dispatch"]["inputs"]["cadence"]["options"] == [
         "nightly",
@@ -220,19 +220,13 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     concurrency_group = str(health["concurrency"]["group"])
     assert concurrency_group == "main-health-serialized"
     assert health["concurrency"]["queue"] == "max"
-    assert health["jobs"]["candidate-health"]["permissions"] == {
-        "contents": "read",
-        "pull-requests": "read",
-    }
+    assert "candidate-health" not in health["jobs"]
     assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
     assert health["jobs"]["persist-health"]["permissions"] == {
         "actions": "read",
         "contents": "write",
     }
-    assert health["jobs"]["main-health-required"]["permissions"] == {
-        "contents": "read",
-        "statuses": "write",
-    }
+    assert health["jobs"]["main-health-required"]["permissions"] == {"contents": "read"}
     assert health["jobs"]["reconcile-candidate-statuses"]["permissions"] == {
         "contents": "read",
         "pull-requests": "read",
@@ -244,9 +238,6 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "validate-git" in reconcile
     assert "state=open" in reconcile
     assert 'context="Main health / required"' in reconcile
-    assert "stop_the_line.py ingest" not in "\n".join(
-        step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
-    )
     writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
     assert "stop_the_line.py ingest" in writer
     assert "git rev-parse origin/main" in writer
@@ -263,12 +254,8 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "security": ("Security / required", "CodeQL"),
     }
     assert '"obligations": json.loads(obligations)' in writer
-    assert "stop_the_line.py candidate" in "\n".join(
-        step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
-    )
-    assert "stop_the_line.py repair-candidate" in "\n".join(
-        step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
-    )
+    assert "stop_the_line.py candidate" in reconcile
+    assert "stop_the_line.py repair-candidate" not in reconcile
     assert health["jobs"]["persist-health"]["needs"] == "scheduled-deep"
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
@@ -300,12 +287,12 @@ def test_main_health_observer_step_is_valid_bash() -> None:
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
-def test_main_health_candidate_admission_step_is_valid_bash() -> None:
+def test_main_health_candidate_reconciliation_step_is_valid_bash() -> None:
     workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
     step = next(
         item
-        for item in workflow["jobs"]["candidate-health"]["steps"]
-        if item.get("name") == "Read and validate global health"
+        for item in workflow["jobs"]["reconcile-candidate-statuses"]["steps"]
+        if item.get("name") == "Reconcile every open pull request head"
     )
     completed = subprocess.run(
         ["bash", "-n"],

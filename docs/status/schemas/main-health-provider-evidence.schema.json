@@ -2,6 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "admission": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "admission_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "authorization_mode": {"enum": ["independent-review", "single-maintainer-owner-emergency"]},
     "approval_id": {"minLength": 1, "type": "string"},
     "approval_provider": {"const": "github"},
@@ -30,6 +32,6 @@
     "schema_version": {"const": 1},
     "state": {"enum": ["APPROVED", "OWNER_EMERGENCY"]}
   },
-  "required": ["authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "collaborators", "decision_at", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pending_invitations", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "schema_version", "state"],
+  "required": ["admission", "admission_digest", "authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "collaborators", "decision_at", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pending_invitations", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "schema_version", "state"],
   "type": "object"
 }

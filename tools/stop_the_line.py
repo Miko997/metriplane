@@ -8,10 +8,12 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess
+import tarfile
 import tempfile
 import urllib.error
 import urllib.request
@@ -433,6 +435,8 @@ def github_approval_evidence(
         merge_commit=merge_commit,
     )
     return {
+        "admission": None,
+        "admission_digest": None,
         "authorization_mode": "independent-review",
         "approval_id": str(review["id"]),
         "approval_provider": "github",
@@ -570,6 +574,7 @@ def github_owner_emergency_evidence(
     head_commit: dict[str, Any],
     merge_commit: dict[str, Any],
     manifest: dict[str, Any],
+    admission: dict[str, Any],
     collaborators: list[dict[str, Any]],
     invitations: list[dict[str, Any]],
     captured_at: str,
@@ -596,10 +601,13 @@ def github_owner_emergency_evidence(
         item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitation_inventory
     ):
         raise HealthError("owner emergency requires no eligible independent collaborator")
-    if manifest["collaboration_digest"] != digest(collaborator_inventory):
+    if manifest["collaboration_digest"] != digest(
+        {
+            "collaborators": collaborator_inventory,
+            "pending_invitations": invitation_inventory,
+        }
+    ):
         raise HealthError("owner emergency collaborator inventory changed since admission")
-    if _timestamp(captured_at) < _timestamp(pull["merged_at"]):
-        raise HealthError("owner emergency capture predates the merge")
     marker = f"Main-health owner emergency: {issue}\nIncident: {incident_digest}"
     if (pull.get("body") or "").count(marker) != 1:
         raise HealthError("owner-emergency pull request does not bind the exact issue and incident")
@@ -613,12 +621,56 @@ def github_owner_emergency_evidence(
         or manifest["repository"] != repository
     ):
         raise HealthError("owner-emergency manifest disagrees with provider state")
+    expected_admission_fields = {
+        "authorization_mode",
+        "base_sha",
+        "changed_paths",
+        "checked_at",
+        "collaboration_digest",
+        "collaborators",
+        "head_sha",
+        "incident_digest",
+        "issue",
+        "manifest_digest",
+        "pending_invitations",
+        "pull_request",
+        "repository",
+        "schema_version",
+        "status",
+    }
+    if (
+        set(admission) != expected_admission_fields
+        or admission["schema_version"] != SCHEMA_VERSION
+        or admission["status"] != "repair-candidate"
+        or admission["authorization_mode"] != "single-maintainer-owner-emergency"
+        or admission["base_sha"] != pull["base"]["sha"]
+        or admission["changed_paths"] != changed_paths
+        or admission["collaboration_digest"] != manifest["collaboration_digest"]
+        or admission["collaborators"] != collaborator_inventory
+        or admission["head_sha"] != pull["head"]["sha"]
+        or admission["incident_digest"] != incident_digest
+        or admission["issue"] != issue
+        or admission["manifest_digest"] != digest(manifest)
+        or admission["pending_invitations"] != invitation_inventory
+        or admission["pull_request"] != pull_request
+        or admission["repository"] != repository
+    ):
+        raise HealthError("owner emergency admission does not bind provider state")
+    admission_at = _timestamp(admission["checked_at"])
+    merged_at = _timestamp(pull["merged_at"])
+    captured = _timestamp(captured_at)
+    if admission_at > merged_at or merged_at > captured:
+        raise HealthError("owner emergency admission and capture do not bracket the merge")
+    if merged_at > _timestamp(manifest["expires_at"]):
+        raise HealthError("owner emergency merge occurred after manifest expiry")
     merge_proof = _github_merge_proof(
         pull=pull,
         head_commit=head_commit,
         merge_commit=merge_commit,
     )
     return {
+        "admission": admission,
+        "admission_digest": digest(admission),
         "authorization_mode": "single-maintainer-owner-emergency",
         "approval_id": f"owner-emergency:{pull_request}:{merge_proof['merge_commit_sha']}",
         "approval_provider": "github",
@@ -752,6 +804,7 @@ def capture_github_owner_emergency(
     pull_request: str,
     issue: str,
     incident_digest: str,
+    admission: dict[str, Any],
     token: str,
 ) -> dict[str, Any]:
     """Fetch exact provider state for a merged owner-emergency repair."""
@@ -817,6 +870,7 @@ def capture_github_owner_emergency(
         head_commit=head_commit,
         merge_commit=merge_commit,
         manifest=manifest,
+        admission=admission,
         collaborators=collaborators,
         invitations=invitations,
         captured_at=_utc_now(),
@@ -937,6 +991,8 @@ def _validate_repair_binding(
     ):
         raise HealthError("repair authorization path or obligation inventory is invalid")
     expected_evidence = {
+        "admission",
+        "admission_digest",
         "authorization_mode",
         "approval_id",
         "approval_provider",
@@ -1000,6 +1056,8 @@ def _validate_repair_binding(
     if mode == "independent-review":
         if (
             manifest is not None
+            or approval_evidence["admission"] is not None
+            or approval_evidence["admission_digest"] is not None
             or approval_evidence["manifest_digest"] is not None
             or approval_evidence["collaborators"] is not None
             or approval_evidence["pending_invitations"] is not None
@@ -1008,6 +1066,33 @@ def _validate_repair_binding(
     else:
         if not isinstance(manifest, dict):
             raise HealthError("owner-emergency provider evidence is missing its manifest")
+        admission = approval_evidence["admission"]
+        if (
+            not isinstance(admission, dict)
+            or set(admission)
+            != {
+                "authorization_mode",
+                "base_sha",
+                "changed_paths",
+                "checked_at",
+                "collaboration_digest",
+                "collaborators",
+                "head_sha",
+                "incident_digest",
+                "issue",
+                "manifest_digest",
+                "pending_invitations",
+                "pull_request",
+                "repository",
+                "schema_version",
+                "status",
+            }
+            or admission.get("schema_version") != SCHEMA_VERSION
+            or admission.get("status") != "repair-candidate"
+            or admission.get("authorization_mode") != "single-maintainer-owner-emergency"
+            or approval_evidence["admission_digest"] != digest(admission)
+        ):
+            raise HealthError("owner-emergency evidence is missing its pre-merge admission")
         _validate_owner_manifest(manifest)
         manifest_digest = digest(manifest)
         amendment_digest = digest(manifest["policy_amendment"])
@@ -1063,9 +1148,34 @@ def _validate_repair_binding(
                 for item in invitations
             )
             or any(item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitations)
-            or digest(collaborators) != manifest["collaboration_digest"]
+            or digest(
+                {
+                    "collaborators": collaborators,
+                    "pending_invitations": invitations,
+                }
+            )
+            != manifest["collaboration_digest"]
         ):
             raise HealthError("owner-emergency evidence does not prove single-maintainer status")
+        admission_checked_at = admission.get("checked_at")
+        if not isinstance(admission_checked_at, str):
+            raise HealthError("owner-emergency admission timestamp is invalid")
+        if (
+            admission.get("collaborators") != collaborators
+            or admission.get("pending_invitations") != invitations
+            or admission.get("collaboration_digest") != manifest["collaboration_digest"]
+            or admission.get("manifest_digest") != manifest_digest
+            or admission.get("head_sha") != approval_evidence["head_sha"]
+            or admission.get("base_sha") != approval_evidence["base_sha"]
+            or admission.get("changed_paths") != approval_evidence["changed_paths"]
+            or admission.get("incident_digest") != authorization["incident_digest"]
+            or admission.get("issue") != authorization["issue"]
+            or admission.get("pull_request") != authorization["pull_request"]
+            or admission.get("repository") != authorization["repository"]
+            or _timestamp(admission_checked_at) > decision_at
+            or decision_at > _timestamp(manifest["expires_at"])
+        ):
+            raise HealthError("owner-emergency admission does not bracket the exact merge")
     if (
         approval_evidence["head_sha"] != authorization["proposed_repair_sha"]
         or approval_evidence["merge_commit_sha"] != repaired_main_sha
@@ -1589,6 +1699,31 @@ def _expected_git_additions(root: Path) -> list[set[str]]:
     return additions_by_generation
 
 
+def _validate_git_snapshot(root: Path, commit: str, generation: int) -> None:
+    archive_bytes = _git_output(root, "archive", "--format=tar", commit)
+    with tempfile.TemporaryDirectory(prefix="main-health-snapshot-") as directory:
+        snapshot = Path(directory)
+        with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:") as archive:
+            for member in archive.getmembers():
+                relative = Path(member.name)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise HealthError("retained state Git snapshot contains an unsafe path")
+                target = snapshot / relative
+                if member.isdir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                if not member.isfile():
+                    raise HealthError("retained state Git snapshot contains a non-regular entry")
+                source = archive.extractfile(member)
+                if source is None:
+                    raise HealthError("retained state Git snapshot file cannot be read")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read())
+        validated = validate_history(snapshot)
+        if validated["generation"] != generation:
+            raise HealthError("retained state Git commit does not contain its exact generation")
+
+
 def validate_git_history(root: Path) -> dict[str, Any]:
     """Prove every state-branch commit is one append-only validated transition."""
     if _git_output(root, "status", "--porcelain", "--untracked-files=all"):
@@ -1614,6 +1749,7 @@ def validate_git_history(root: Path) -> dict[str, Any]:
             raise HealthError("retained state Git commit has malformed state") from exc
         if not isinstance(state, dict) or state.get("generation") != ordinal:
             raise HealthError("retained state Git commit does not add exactly one generation")
+        _validate_git_snapshot(root, commit, ordinal)
         if ordinal == 1:
             actual = set(
                 _git_output(root, "ls-tree", "-r", "--name-only", "-z", commit).decode().split("\0")
@@ -1755,6 +1891,7 @@ def validate_owner_emergency_candidate(
     pull: dict[str, Any],
     files: list[dict[str, Any]],
     collaborators: list[dict[str, Any]],
+    invitations: list[dict[str, Any]],
     expected_head_sha: str,
     checked_at: str,
 ) -> dict[str, Any]:
@@ -1765,15 +1902,24 @@ def validate_owner_emergency_candidate(
     changed_paths = _github_changed_paths(pull, files)
     if changed_paths != allowed_paths:
         raise HealthError("owner-emergency candidate does not bind the exact changed paths")
-    collaborator_inventory, _ = _github_collaboration_inventory(collaborators, [])
+    collaborator_inventory, invitation_inventory = _github_collaboration_inventory(
+        collaborators, invitations
+    )
     repository_owner = manifest["repository"].split("/", 1)[0]
     if any(
         item["login"].casefold() != repository_owner.casefold()
         and item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS
         for item in collaborator_inventory
+    ) or any(
+        item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitation_inventory
     ):
         raise HealthError("owner-emergency admission found an eligible independent collaborator")
-    collaboration_digest = digest(collaborator_inventory)
+    collaboration_digest = digest(
+        {
+            "collaborators": collaborator_inventory,
+            "pending_invitations": invitation_inventory,
+        }
+    )
     if collaboration_digest != manifest["collaboration_digest"]:
         raise HealthError("owner-emergency admission collaboration digest is stale")
     state = _load_state(root)
@@ -1816,10 +1962,16 @@ def validate_owner_emergency_candidate(
         "authorization_mode": manifest["authorization_mode"],
         "base_sha": manifest["base_sha"],
         "checked_at": checked_at,
+        "changed_paths": changed_paths,
         "collaboration_digest": collaboration_digest,
+        "collaborators": collaborator_inventory,
         "head_sha": pull_head_sha,
         "incident_digest": manifest["incident_digest"],
+        "issue": manifest["issue"],
+        "manifest_digest": digest(manifest),
+        "pending_invitations": invitation_inventory,
         "pull_request": pull_number,
+        "repository": manifest["repository"],
         "schema_version": SCHEMA_VERSION,
         "status": "repair-candidate",
     }
@@ -1858,6 +2010,16 @@ def _json_object_lines_file_argument(value: str) -> list[dict[str, Any]]:
     return parsed
 
 
+def _validate_current_provider_capture(retained: dict[str, Any], current: dict[str, Any]) -> None:
+    if set(retained) != set(current):
+        raise HealthError("retained and current provider evidence shapes differ")
+    for field, value in retained.items():
+        if field != "captured_at" and value != current[field]:
+            raise HealthError(f"retained provider evidence is stale at {field}")
+    if _timestamp(current["captured_at"]) < _timestamp(retained["captured_at"]):
+        raise HealthError("current provider capture predates retained evidence")
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1871,8 +2033,10 @@ def _parser() -> argparse.ArgumentParser:
     resolve_parser = subparsers.add_parser("resolve")
     resolve_parser.add_argument("--root", type=Path, required=True)
     resolve_parser.add_argument("--authorization-json", type=_json_argument, required=True)
+    resolve_parser.add_argument("--approval-evidence-json", type=_json_file_argument, required=True)
     resolve_parser.add_argument("--repaired-main-json", type=_json_argument, required=True)
     resolve_parser.add_argument("--expected-generation", type=int, required=True)
+    resolve_parser.add_argument("--owner-admission-json", type=_json_file_argument)
 
     approval_parser = subparsers.add_parser("capture-approval")
     approval_parser.add_argument("--repository", required=True)
@@ -1886,6 +2050,7 @@ def _parser() -> argparse.ArgumentParser:
     owner_parser.add_argument("--pull-request", required=True)
     owner_parser.add_argument("--issue", required=True)
     owner_parser.add_argument("--incident-digest", required=True)
+    owner_parser.add_argument("--admission-json", type=_json_file_argument, required=True)
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", type=Path, required=True)
@@ -1909,8 +2074,10 @@ def _parser() -> argparse.ArgumentParser:
     repair_candidate_parser.add_argument(
         "--collaborators-jsonl", type=_json_object_lines_file_argument, required=True
     )
+    repair_candidate_parser.add_argument(
+        "--invitations-jsonl", type=_json_object_lines_file_argument, required=True
+    )
     repair_candidate_parser.add_argument("--expected-head-sha", required=True)
-    repair_candidate_parser.add_argument("--checked-at", required=True)
 
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--root", type=Path, required=True)
@@ -1932,11 +2099,12 @@ def main() -> int:
         elif args.command == "resolve":
             validate_git_history(args.root)
             authorization = args.authorization_json
+            approval_evidence = args.approval_evidence_json
             token = os.environ.get("GITHUB_TOKEN")
             if not token:
                 raise HealthError("GITHUB_TOKEN is required for provider authentication")
             if authorization.get("authorization_mode") == "independent-review":
-                approval_evidence = capture_github_approval(
+                current_evidence = capture_github_approval(
                     repository=authorization["repository"],
                     pull_request=authorization["pull_request"],
                     review_id=authorization["approval_id"],
@@ -1945,15 +2113,19 @@ def main() -> int:
                     token=token,
                 )
             elif authorization.get("authorization_mode") == "single-maintainer-owner-emergency":
-                approval_evidence = capture_github_owner_emergency(
+                if args.owner_admission_json is None:
+                    raise HealthError("owner emergency resolution requires pre-merge admission")
+                current_evidence = capture_github_owner_emergency(
                     repository=authorization["repository"],
                     pull_request=authorization["pull_request"],
                     issue=authorization["issue"],
                     incident_digest=authorization["incident_digest"],
+                    admission=args.owner_admission_json,
                     token=token,
                 )
             else:
                 raise HealthError("operational resolver authorization mode is unsupported")
+            _validate_current_provider_capture(approval_evidence, current_evidence)
             result = resolve(
                 args.root,
                 authorization=authorization,
@@ -1983,6 +2155,7 @@ def main() -> int:
                 pull_request=args.pull_request,
                 issue=args.issue,
                 incident_digest=args.incident_digest,
+                admission=args.admission_json,
                 token=token,
             )
         elif args.command == "validate":
@@ -2005,8 +2178,9 @@ def main() -> int:
                 pull=args.pull_json,
                 files=args.files_jsonl,
                 collaborators=args.collaborators_jsonl,
+                invitations=args.invitations_jsonl,
                 expected_head_sha=args.expected_head_sha,
-                checked_at=args.checked_at,
+                checked_at=_utc_now(),
             )
         else:
             state = _load_state(args.root)

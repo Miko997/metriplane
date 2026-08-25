@@ -56,6 +56,32 @@ def _summary(
     }
 
 
+def _owner_admission(
+    manifest: dict[str, object],
+    *,
+    changed_paths: list[str],
+    checked_at: str = "2026-08-25T21:44:00Z",
+) -> dict[str, object]:
+    collaborators = [{"id": "100", "login": "Miko997", "permission": "admin"}]
+    return {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "base_sha": manifest["base_sha"],
+        "changed_paths": changed_paths,
+        "checked_at": checked_at,
+        "collaboration_digest": digest({"collaborators": collaborators, "pending_invitations": []}),
+        "collaborators": collaborators,
+        "head_sha": REVIEWED_SHA,
+        "incident_digest": manifest["incident_digest"],
+        "issue": manifest["issue"],
+        "manifest_digest": digest(manifest),
+        "pending_invitations": [],
+        "pull_request": str(manifest["pull_request"]),
+        "repository": manifest["repository"],
+        "schema_version": 1,
+        "status": "repair-candidate",
+    }
+
+
 def test_candidate_result_never_mutates_global_state(tmp_path: Path) -> None:
     result = ingest(
         tmp_path,
@@ -326,7 +352,12 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         "authorization_mode": "single-maintainer-owner-emergency",
         "allowed_paths": allowed_paths,
         "base_sha": BAD_SHA,
-        "collaboration_digest": digest([{"id": "100", "login": "Miko997", "permission": "admin"}]),
+        "collaboration_digest": digest(
+            {
+                "collaborators": [{"id": "100", "login": "Miko997", "permission": "admin"}],
+                "pending_invitations": [],
+            }
+        ),
         "expires_at": "2026-08-26T23:00:00Z",
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
@@ -366,6 +397,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             {"filename": allowed_paths[1], "status": "modified"},
         ],
         collaborators=collaborators,
+        invitations=[],
         expected_head_sha=REVIEWED_SHA,
         checked_at="2026-08-25T22:00:00Z",
     )
@@ -385,6 +417,27 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 *collaborators,
                 {"id": 200, "login": "reviewer", "role_name": "write"},
             ],
+            invitations=[],
+            expected_head_sha=REVIEWED_SHA,
+            checked_at="2026-08-25T22:00:00Z",
+        )
+    with pytest.raises(HealthError, match="eligible independent collaborator"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest=manifest,
+            pull=pull,
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+            ],
+            collaborators=collaborators,
+            invitations=[
+                {
+                    "id": 300,
+                    "invitee": {"login": "invited-reviewer"},
+                    "permissions": "write",
+                }
+            ],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -398,6 +451,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
             collaborators=collaborators,
+            invitations=[],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -412,6 +466,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": "unapproved.py", "status": "added"},
             ],
             collaborators=collaborators,
+            invitations=[],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -425,6 +480,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
             collaborators=collaborators,
+            invitations=[],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -438,6 +494,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
             collaborators=collaborators,
+            invitations=[],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -451,6 +508,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
             collaborators=collaborators,
+            invitations=[],
             expected_head_sha=GOOD_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -466,7 +524,12 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         "authorization_mode": "single-maintainer-owner-emergency",
         "allowed_paths": ["metriplane/fix.py", "tests/test_fix.py"],
         "base_sha": BAD_SHA,
-        "collaboration_digest": digest([{"id": "100", "login": "Miko997", "permission": "admin"}]),
+        "collaboration_digest": digest(
+            {
+                "collaborators": [{"id": "100", "login": "Miko997", "permission": "admin"}],
+                "pending_invitations": [],
+            }
+        ),
         "expires_at": "2026-08-26T22:00:00Z",
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
@@ -484,6 +547,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         "required_cadences": ["nightly", "weekly"],
         "schema_version": 1,
     }
+    admission = _owner_admission(manifest, changed_paths=["metriplane/fix.py", "tests/test_fix.py"])
     pull = {
         "base": {"sha": BAD_SHA},
         "body": (
@@ -512,6 +576,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             "tree": {"sha": TREE_SHA},
         },
         manifest=manifest,
+        admission=admission,
         collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
         invitations=[],
         captured_at="2026-08-25T21:46:00Z",
@@ -566,6 +631,53 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             resolved_at="2026-08-25T20:00:00Z",
             expected_generation=4,
         )
+    late_admission_evidence = copy.deepcopy(evidence)
+    late_admission_evidence["admission"]["checked_at"] = "2026-08-25T21:46:00Z"
+    late_admission_evidence["admission_digest"] = digest(late_admission_evidence["admission"])
+    with pytest.raises(HealthError, match="bracket"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(late_admission_evidence),
+            },
+            approval_evidence=late_admission_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    invalid_admission_evidence = copy.deepcopy(evidence)
+    invalid_admission_evidence["admission"]["status"] = "approved"
+    invalid_admission_evidence["admission_digest"] = digest(invalid_admission_evidence["admission"])
+    with pytest.raises(HealthError, match="pre-merge admission"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(invalid_admission_evidence),
+            },
+            approval_evidence=invalid_admission_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    changed_inventory_evidence = copy.deepcopy(evidence)
+    changed_inventory_evidence["admission"]["pending_invitations"] = [
+        {"id": "300", "invitee": "former-reader", "permission": "read"}
+    ]
+    changed_inventory_evidence["admission_digest"] = digest(changed_inventory_evidence["admission"])
+    with pytest.raises(HealthError, match="bracket"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(changed_inventory_evidence),
+            },
+            approval_evidence=changed_inventory_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
     resolved = resolve(
         tmp_path,
         authorization=authorization,
@@ -589,6 +701,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
                 "tree": {"sha": TREE_SHA},
             },
             manifest=manifest,
+            admission=admission,
             collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
             invitations=[],
             captured_at="2026-08-25T21:46:00Z",
@@ -612,6 +725,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
                 "tree": {"sha": TREE_SHA},
             },
             manifest=manifest,
+            admission=admission,
             collaborators=[
                 {"id": 100, "login": "Miko997", "role_name": "admin"},
                 {
@@ -1049,6 +1163,8 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
             json.dumps(forged), encoding="utf-8"
         )
     approval_evidence = {
+        "admission": None,
+        "admission_digest": None,
         "authorization_mode": "independent-review",
         "approval_id": "321",
         "approval_provider": "github",
@@ -1283,7 +1399,53 @@ def test_git_history_rejects_evidence_committed_before_its_generation(tmp_path: 
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "generation 3 pointer"], check=True)
 
     assert validate_history(root)["generation"] == 3
-    with pytest.raises(HealthError, match="invalid generation evidence"):
+    with pytest.raises(HealthError, match="complete history|invalid generation evidence"):
+        validate_git_history(root)
+
+
+def test_git_history_rejects_an_invalid_intermediate_state_pointer(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True
+    )
+    for generation in (1, 2):
+        ingest(
+            root,
+            scope="main",
+            summary=_summary(
+                GOOD_SHA,
+                recorded_at=f"2026-08-25T{17 + generation:02d}:00:00Z",
+                run_id=str(generation),
+            ),
+            activation_policy=POLICY,
+            expected_generation=-1 if generation == 1 else generation - 1,
+        )
+        if generation == 2:
+            valid_state = (root / "state.json").read_bytes()
+            state = json.loads(valid_state)
+            state["history_head"] = "f" * 64
+            (root / "state.json").write_text(json.dumps(state), encoding="utf-8")
+        subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+        subprocess.run(
+            ["git", "-C", str(root), "commit", "-qm", f"generation {generation}"], check=True
+        )
+
+    (root / "state.json").write_bytes(valid_state)
+    ingest(
+        root,
+        scope="main",
+        summary=_summary(GOOD_SHA, recorded_at="2026-08-25T20:00:00Z", run_id="3"),
+        activation_policy=POLICY,
+        expected_generation=2,
+    )
+    subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "generation 3"], check=True)
+
+    assert validate_history(root)["generation"] == 3
+    with pytest.raises(HealthError, match="state does not point to the complete history"):
         validate_git_history(root)
 
 

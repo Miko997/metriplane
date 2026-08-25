@@ -26,17 +26,16 @@ incident identity, and any resolution's authorization and approval evidence.
 ## Normal ingestion
 
 Pull requests use `scope=candidate`; the tool validates the result and returns
-without creating or changing state. The candidate workflow runs as
-`pull_request_target`, checks out and executes only the exact pull request base,
-and publishes `Main health / required` as a commit status on the exact head SHA.
-Candidate-controlled code is never executed with the status-writing token. The
-same trusted workflow reconciles every open pull request immediately after each
-durable main-health transition and on a five-minute schedule. It overwrites earlier
-success with failure when health turns red, the base becomes stale, the 36-hour
-window expires, or an emergency manifest expires; a persistent commit status is
-never treated as an unbounded lease. Scheduled reconciliation and durable writers
-share one serialized concurrency group, so an older green snapshot cannot publish
-success after a newer red transition. The
+without creating or changing state. The trusted default-branch workflow publishes
+`Main health / required` on each exact open pull request head during its five-minute
+reconciliation and immediately after every durable transition. Pull request events
+do not run privileged admission or occupy the serialized writer queue, and
+candidate-controlled code is never executed with the status-writing token. The
+reconciler overwrites earlier success with failure when health turns red, the base
+becomes stale, or the 36-hour window expires; a persistent commit status is never
+treated as an unbounded lease. All status publishers and durable writers are
+trusted triggers in one serialized concurrency group, so an older green snapshot
+cannot publish success after a newer red transition. The
 completed protected-main CI workflow and the nightly and weekly schedules are the
 only normal writer triggers. A
 protected-main writer binds the triggering CI run attempt, selects the exact
@@ -46,10 +45,8 @@ Documentation, and Security aggregate terminal and retains one combined result.
 Missing, duplicate, cancelled, skipped, stale, wrong-attempt, wrong-SHA,
 malformed, timed-out, or failing obligations do not become success.
 
-Workflow completions that are not protected-main push results receive unique
-non-writer concurrency groups. They cannot occupy or replace a durable writer.
-Durable writers use the provider's maximum pending queue so
-one protected-main or scheduled result cannot replace another while it waits.
+Durable writers use the provider's maximum pending queue so one protected-main,
+scheduled, or reconciliation result cannot replace another while it waits.
 
 Candidate admission reads the external branch and requires fresh green evidence
 for the pull request's exact base SHA. Evidence older than 36 hours fails closed.
@@ -101,15 +98,16 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-approval \
   --review-id <review-id> --issue MET-NNN --incident-digest <digest>
 ```
 
-The operational `resolve` command accepts no caller-supplied provider evidence. It
-re-fetches the review, reviewer permission, pull request, reviewed and merge
-commits, and complete provider file list with `GITHUB_TOKEN`, then retains that
-evidence alongside the authorization and resolution. A newer review from the
-named authorized reviewer supersedes the selected approval, and any current
-requested-changes review by an authorized reviewer fails closed. Comments and
-reviews from identities without write, maintain, or admin permission do not alter
-the decisive review state. Resolution time is generated internally and must fall
-between provider capture and authorization expiry.
+The operational `resolve` command accepts the retained provider evidence as an
+artifact, not as an assertion to trust. It re-fetches the review, reviewer
+permission, pull request, reviewed and merge commits, and complete provider file
+list with `GITHUB_TOKEN`, then requires every field except the later capture time
+to match before retaining the evidence alongside the authorization and resolution.
+A newer review from the named authorized reviewer supersedes the selected approval,
+and any current requested-changes review by an authorized reviewer fails closed.
+Comments and reviews from identities without write, maintain, or admin permission
+do not alter the decisive review state. Resolution time is generated internally
+and must fall between provider capture and authorization expiry.
 
 For a personal repository with no independent collaborator, the only exception is
 the explicitly named `single-maintainer-owner-emergency` mode. The repair PR must
@@ -117,20 +115,26 @@ contain `docs/status/main-health-owner-emergency.json`, whose base SHA, open
 incident digest, issue, PR number, complete sorted changed-path inventory, expiry,
 and fixed `[nightly, weekly]` cadence policy match provider state exactly. The
 normal PR contract body must contain exactly one verbatim copy of the corresponding
-two-line owner-emergency marker. Candidate admission remains read-only and records
-that independent approval did not exist. The manifest also carries the exact
+two-line owner-emergency marker. Automated reconciliation never grants a red-health
+owner emergency; it continues to publish failure. Manual `repair-candidate`
+admission remains read-only and records that independent approval did not exist.
+The manifest also carries the exact
 incident-only amendment of `repair_requires_non_author`; it does not change the
 global activation policy. Provider capture re-reads the manifest from the reviewed
 head, captures the complete collaborator and pending-invitation inventories, and
-requires that neither contains an eligible non-author reviewer. Admission binds
-the accepted-collaborator inventory available to the workflow token; post-merge
-capture requires the same canonical collaborator digest and separately rejects
-an eligible pending invitation. Post-merge `captured_at` is the actual provider
+requires that neither contains an eligible non-author reviewer. Manual admission
+uses an owner-authenticated token to capture both inventories and requires their
+combined canonical digest to match the manifest. Post-merge capture requires the
+same combined digest and embeds the complete pre-merge admission object. Admission
+and capture timestamps must bracket the provider merge timestamp, and the merge
+must precede manifest expiry. Post-merge `captured_at` is the actual provider
 retrieval time, not the earlier merge timestamp. Its manifest digest and
 policy-amendment digest must match the authorization.
 
-After that exact PR merges, run the `Main Health` workflow manually once for each
-deep cadence. Capture the merged owner decision with `capture-owner-emergency`,
+Retain the JSON output from the final `repair-candidate` invocation as
+`owner-admission.json`. After that exact PR merges, run the `Main Health` workflow
+manually once for each deep cadence. Capture the merged owner decision with
+`capture-owner-emergency --admission-json owner-admission.json`,
 construct the authorization from the captured evidence, and run `resolve`. The
 resolver re-fetches the owner/admin identity and merge proof, requires retained
 green protected-main plus both deep results, appends the resolution through CAS,
@@ -148,7 +152,9 @@ python tools/stop_the_line.py validate-git --root main-health-state
 GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
   --root main-health-state \
   --authorization-json "$(cat repair-authorization.json)" \
+  --approval-evidence-json provider-evidence.json \
   --repaired-main-json "$(cat repaired-protected-main-result.json)" \
+  --owner-admission-json owner-admission.json \
   --expected-generation <generation>
 git -C main-health-state add --all
 git -C main-health-state commit -m "Resolve main health for <merge-sha>"
@@ -165,9 +171,9 @@ git clone --single-branch --branch metriplane-main-health-state \
 python tools/stop_the_line.py validate-git --root main-health-readback
 ```
 
-When this trusted base-branch admission workflow is first introduced while health
-is already red, it cannot publish the current repair PR's trusted head status. For
-that one bootstrap incident, retain the complete active ruleset and its digest,
+Because automated reconciliation never converts red health into an owner-emergency
+success, this incident-bound exception uses an explicit ruleset operation. Retain
+the complete active ruleset and its digest,
 the pre-merge provider collaborator and invitation responses and their digest,
 remove only the `Main health / required` context, merge the exact qualified PR
 normally, immediately restore and digest the original ruleset, and verify the

@@ -4,8 +4,6 @@
 name: Main Health
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -32,80 +30,6 @@ env:
   STATE_BRANCH: metriplane-main-health-state
 
 jobs:
-  candidate-health:
-    if: github.event_name == 'pull_request_target'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      collaboration_digest: ${{ steps.admission.outputs.collaboration_digest }}
-      source_sha: ${{ steps.source.outputs.sha }}
-    steps:
-      - name: Check out candidate
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.pull_request.base.sha }}
-
-      - name: Record checked-out source
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Read and validate global health
-        id: admission
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          state_root="$RUNNER_TEMP/main-health-state"
-          if git ls-remote --exit-code --heads origin "$STATE_BRANCH" >/dev/null; then
-            git clone --quiet --single-branch --branch "$STATE_BRANCH" \
-              "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
-            if python tools/stop_the_line.py candidate \
-              --root "$state_root" \
-              --base-sha "${{ github.event.pull_request.base.sha }}" \
-              --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --max-age-seconds 129600; then
-              exit 0
-            fi
-            manifest="$RUNNER_TEMP/main-health-owner-emergency.json"
-            pull_file="$RUNNER_TEMP/main-health-repair-pull.json"
-            files_file="$RUNNER_TEMP/main-health-repair-files.jsonl"
-            collaborators_file="$RUNNER_TEMP/main-health-repair-collaborators.jsonl"
-            gh api \
-              "repos/${GITHUB_REPOSITORY}/contents/docs/status/main-health-owner-emergency.json?ref=${{ github.event.pull_request.head.sha }}" \
-              --jq '.content' | base64 --decode > "$manifest"
-            gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}" \
-              > "$pull_file"
-            gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
-              --jq '.[] | {filename, status, previous_filename}' > "$files_file"
-            gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/collaborators?affiliation=all&per_page=100" \
-              --jq '.[]' > "$collaborators_file"
-            admission="$(python tools/stop_the_line.py repair-candidate \
-              --root "$state_root" \
-              --manifest-json "$(cat "$manifest")" \
-              --pull-json "$pull_file" \
-              --files-jsonl "$files_file" \
-              --collaborators-jsonl "$collaborators_file" \
-              --expected-head-sha "${{ github.event.pull_request.head.sha }}" \
-              --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
-            collaboration_digest="$(python -c \
-              'import json,sys; print(json.load(sys.stdin)["collaboration_digest"])' \
-              <<<"$admission")"
-            echo "collaboration_digest=$collaboration_digest" >> "$GITHUB_OUTPUT"
-          else
-            if git cat-file -e \
-              "${{ github.event.pull_request.base.sha }}:tools/stop_the_line.py" 2>/dev/null; then
-              printf '%s\n' 'Main health state is missing after activation.' >&2
-              exit 1
-            fi
-            printf '%s\n' 'MP2-004 transition has no prior main-health state.'
-          fi
-
   scheduled-deep:
     if: >-
       github.event_name == 'workflow_dispatch' ||
@@ -411,12 +335,8 @@ jobs:
             "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
           python tools/stop_the_line.py validate-git --root "$state_root"
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
-          collaborators_file="$RUNNER_TEMP/main-health-collaborators.jsonl"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
-          gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/collaborators?affiliation=all&per_page=100" \
-            --jq '.[]' > "$collaborators_file"
           while IFS= read -r pull; do
             number="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' \
               <<<"$pull")"
@@ -424,10 +344,6 @@ jobs:
               <<<"$pull")"
             head_sha="$(python -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])' \
               <<<"$pull")"
-            pull_file="$RUNNER_TEMP/main-health-pull-${number}.json"
-            manifest="$RUNNER_TEMP/main-health-manifest-${number}.json"
-            files_file="$RUNNER_TEMP/main-health-files-${number}.jsonl"
-            printf '%s\n' "$pull" > "$pull_file"
             checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             state=failure
             description="Main health admission failed"
@@ -438,25 +354,6 @@ jobs:
               --max-age-seconds 129600; then
               state=success
               description="Main health admission passed"
-            elif gh api \
-              "repos/${GITHUB_REPOSITORY}/contents/docs/status/main-health-owner-emergency.json?ref=${head_sha}" \
-              --jq '.content' | base64 --decode > "$manifest" &&
-              gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/pulls/${number}/files?per_page=100" \
-              --jq '.[] | {filename, status, previous_filename}' > "$files_file" &&
-              admission="$(python tools/stop_the_line.py repair-candidate \
-              --root "$state_root" \
-              --manifest-json "$(cat "$manifest")" \
-              --pull-json "$pull_file" \
-              --files-jsonl "$files_file" \
-              --collaborators-jsonl "$collaborators_file" \
-              --expected-head-sha "$head_sha" \
-              --checked-at "$checked_at")"; then
-              collaboration_digest="$(python -c \
-                'import json,sys; print(json.load(sys.stdin)["collaboration_digest"])' \
-                <<<"$admission")"
-              state=success
-              description="Repair admission ${collaboration_digest}"
             fi
             gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               -f state="$state" \
@@ -469,25 +366,18 @@ jobs:
     name: Main health / required
     if: >-
       always() &&
-      (github.event_name == 'pull_request_target' ||
-       (github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
+      ((github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
        github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
         github.event.workflow_run.event == 'push'))
     needs:
-      - candidate-health
       - scheduled-deep
       - persist-health
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      statuses: write
     env:
-      CANDIDATE_COLLABORATION_DIGEST: ${{ needs.candidate-health.outputs.collaboration_digest }}
-      CANDIDATE_RESULT: ${{ needs.candidate-health.result }}
-      CANDIDATE_SHA: ${{ needs.candidate-health.outputs.source_sha }}
-      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PERSIST_RESULT: ${{ needs.persist-health.result }}
       PERSIST_SHA: ${{ needs.persist-health.outputs.measured_sha }}
     steps:
@@ -498,15 +388,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == pull_request_target ]]; then
-            dependency=candidate-health
-            result="$CANDIDATE_RESULT"
-            measured_sha="$CANDIDATE_SHA"
-          else
-            dependency=persist-health
-            result="$PERSIST_RESULT"
-            measured_sha="$PERSIST_SHA"
-          fi
+          dependency=persist-health
+          result="$PERSIST_RESULT"
+          measured_sha="$PERSIST_SHA"
           results="$(python - "$dependency" "$result" "$measured_sha" <<'PY'
           import json
           import sys
@@ -523,21 +407,4 @@ jobs:
             --results-json "$results"
           aggregate_status=$?
           set -e
-          if [[ "$GITHUB_EVENT_NAME" == pull_request_target ]]; then
-            state=failure
-            description="Main health admission failed"
-            if [[ $aggregate_status -eq 0 ]]; then
-              state=success
-              description="Main health admission passed"
-              if [[ -n "$CANDIDATE_COLLABORATION_DIGEST" ]]; then
-                description="Repair admission ${CANDIDATE_COLLABORATION_DIGEST}"
-              fi
-            fi
-            GH_TOKEN="${{ github.token }}" gh api \
-              --method POST "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
-              -f state="$state" \
-              -f context="Main health / required" \
-              -f description="$description" \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          fi
           exit "$aggregate_status"

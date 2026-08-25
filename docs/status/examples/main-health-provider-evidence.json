@@ -1,4 +1,6 @@
 {
+  "admission": null,
+  "admission_digest": null,
   "authorization_mode": "independent-review",
   "approval_id": "provider-approval-1",
   "approval_provider": "github",
