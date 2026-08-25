@@ -20,9 +20,19 @@ incident identity, and any resolution's authorization and approval evidence.
 ## Normal ingestion
 
 Pull requests use `scope=candidate`; the tool validates the result and returns
-without creating or changing state. Protected-main, nightly, and weekly results
-are retained globally. Missing, cancelled, skipped, stale, wrong-SHA, malformed,
-or failing obligations do not become success.
+without creating or changing state. The completed protected-main CI workflow and
+the nightly and weekly schedules are the only normal writer triggers. A
+protected-main writer binds the triggering CI run attempt, selects the exact
+commit's latest Documentation and CodeQL attempts, and reads every selected
+attempt's paginated provider job records. It requires exactly one Metriplane,
+Documentation, and Security aggregate terminal and retains one combined result.
+Missing, duplicate, cancelled, skipped, stale, wrong-attempt, wrong-SHA,
+malformed, timed-out, or failing obligations do not become success.
+
+Workflow completions that are not protected-main push results receive unique
+non-writer concurrency groups. They cannot occupy or replace a durable writer.
+Durable writers use the provider's maximum pending queue so
+one protected-main or scheduled result cannot replace another while it waits.
 
 Candidate admission reads the external branch and requires fresh green evidence
 for the pull request's exact base SHA. Evidence older than 36 hours fails closed.

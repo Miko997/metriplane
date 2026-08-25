@@ -7,18 +7,21 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_run:
-    workflows:
-      - CI
-      - Documentation
-      - CodeQL
+    workflows: [CI]
     types: [completed]
   schedule:
     - cron: "23 3 * * 1-6"
     - cron: "23 3 * * 0"
 
 concurrency:
-  group: main-health-state-writer
-  cancel-in-progress: false
+  group: >-
+    ${{ (github.event_name == 'schedule' ||
+         (github.event_name == 'workflow_run' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.event == 'push')) &&
+        'main-health-state-writer' ||
+        format('main-health-nonwriter-{0}', github.run_id) }}
+  queue: max
 
 permissions:
   contents: read
@@ -113,6 +116,7 @@ jobs:
     needs: scheduled-deep
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     outputs:
       measured_sha: ${{ steps.ingest.outputs.sha }}
@@ -154,16 +158,108 @@ jobs:
           printf 'root=%s\nexpected_commit=%s\ngeneration=%s\n' \
             "$state_root" "$expected_commit" "$generation" >> "$GITHUB_OUTPUT"
 
+      - name: Observe exact protected-main terminals
+        if: github.event_name == 'workflow_run'
+        id: observed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_IDENTITY: ${{ github.event.workflow_run.id }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 600))
+          jobs_root="$RUNNER_TEMP/main-health-jobs"
+          runs_file="$RUNNER_TEMP/main-health-workflow-runs.jsonl"
+          verify_runs_file="$RUNNER_TEMP/main-health-verify-workflow-runs.jsonl"
+          selection_file="$RUNNER_TEMP/main-health-selection.json"
+          verify_selection_file="$RUNNER_TEMP/main-health-verify-selection.json"
+          targets_file="$RUNNER_TEMP/main-health-targets.tsv"
+          while true; do
+            if ! gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RUN_SHA}&per_page=100" \
+              --jq '.workflow_runs[]' > "$runs_file"; then
+              : > "$runs_file"
+            fi
+            python tools/observe_main_health.py select \
+              --workflow-runs "$runs_file" \
+              --run-id "$RUN_IDENTITY" \
+              --run-attempt "$RUN_ATTEMPT" \
+              --run-conclusion "$RUN_CONCLUSION" \
+              --sha "$RUN_SHA" > "$selection_file"
+            observation="$(cat "$selection_file")"
+            ready="$(python -c 'import json,sys; print(str(json.load(sys.stdin)["ready"]).lower())' \
+              <<<"$observation")"
+            if [[ "$ready" == true ]]; then
+              rm -rf "$jobs_root"
+              mkdir -p "$jobs_root"
+              python - "$selection_file" > "$targets_file" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          selection = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          for run in selection["runs"]:
+              print(run["key"], run["id"], run["run_attempt"], sep="\t")
+          PY
+              while IFS=$'\t' read -r key run_id run_attempt; do
+                if ! gh api --paginate \
+                  "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" \
+                  --jq '.jobs[]' > "$jobs_root/${key}.jsonl"; then
+                  : > "$jobs_root/${key}.jsonl"
+                fi
+              done < "$targets_file"
+              observation="$(python tools/observe_main_health.py observe \
+                --selection "$selection_file" \
+                --jobs-root "$jobs_root" \
+                --repository "$GITHUB_REPOSITORY")"
+              ready="$(python -c \
+                'import json,sys; print(str(json.load(sys.stdin)["ready"]).lower())' \
+                <<<"$observation")"
+              if [[ "$ready" == true ]]; then
+                if ! gh api --paginate \
+                  "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RUN_SHA}&per_page=100" \
+                  --jq '.workflow_runs[]' > "$verify_runs_file"; then
+                  : > "$verify_runs_file"
+                fi
+                python tools/observe_main_health.py select \
+                  --workflow-runs "$verify_runs_file" \
+                  --run-id "$RUN_IDENTITY" \
+                  --run-attempt "$RUN_ATTEMPT" \
+                  --run-conclusion "$RUN_CONCLUSION" \
+                  --sha "$RUN_SHA" > "$verify_selection_file"
+                if ! cmp -s "$selection_file" "$verify_selection_file"; then
+                  observation="$(python tools/observe_main_health.py invalidate \
+                    --selection "$verify_selection_file")"
+                  ready=false
+                fi
+              fi
+            fi
+            if [[ "$ready" == true || $SECONDS -ge $deadline ]]; then
+              break
+            fi
+            sleep 10
+          done
+          echo "conclusion=$(python -c \
+            'import json,sys; print(json.load(sys.stdin)["conclusion"])' \
+            <<<"$observation")" >> "$GITHUB_OUTPUT"
+          echo "obligations=$(python -c \
+            'import json,sys; print(json.dumps(json.load(sys.stdin)["obligations"], separators=(",", ":")))' \
+            <<<"$observation")" >> "$GITHUB_OUTPUT"
+
       - name: Ingest protected-main or scheduled result
         id: ingest
         shell: bash
         env:
           DEEP_OUTCOME: ${{ needs.scheduled-deep.result }}
           EVENT_NAME: ${{ github.event_name }}
-          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           RUN_IDENTITY: ${{ github.event.workflow_run.id || github.run_id }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           RUN_WORKFLOW: ${{ github.event.workflow_run.name || github.event.schedule }}
+          OBSERVED_CONCLUSION: ${{ steps.observed.outputs.conclusion }}
+          OBSERVED_OBLIGATIONS: ${{ steps.observed.outputs.obligations }}
           STATE_ROOT: ${{ steps.backend.outputs.root }}
           EXPECTED_GENERATION: ${{ steps.backend.outputs.generation }}
         run: |
@@ -172,7 +268,8 @@ jobs:
           test "$RUN_SHA" = "$(git rev-parse origin/main)"
           if [[ "$EVENT_NAME" == workflow_run ]]; then
             cadence=protected-main
-            conclusion="$RUN_CONCLUSION"
+            conclusion="$OBSERVED_CONCLUSION"
+            obligations="$OBSERVED_OBLIGATIONS"
           elif [[ "$RUN_WORKFLOW" == "23 3 * * 0" ]]; then
             cadence=weekly
             conclusion="$DEEP_OUTCOME"
@@ -181,16 +278,19 @@ jobs:
             conclusion="$DEEP_OUTCOME"
           fi
           [[ "$conclusion" == success ]] || conclusion=failure
+          if [[ "$EVENT_NAME" != workflow_run ]]; then
+            obligations="[{\"id\":\"$RUN_WORKFLOW\",\"result\":\"$conclusion\"}]"
+          fi
           recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          summary="$(python - "$cadence" "$conclusion" "$RUN_IDENTITY" "$RUN_SHA" "$RUN_WORKFLOW" "$recorded_at" <<'PY'
+          summary="$(python - "$cadence" "$conclusion" "$RUN_IDENTITY" "$RUN_SHA" "$obligations" "$recorded_at" <<'PY'
           import json
           import sys
 
-          cadence, conclusion, run_id, sha, workflow, recorded_at = sys.argv[1:]
+          cadence, conclusion, run_id, sha, obligations, recorded_at = sys.argv[1:]
           print(json.dumps({
               "cadence": cadence,
               "conclusion": conclusion,
-              "obligations": [{"id": workflow, "result": conclusion}],
+              "obligations": json.loads(obligations),
               "recorded_at": recorded_at,
               "run_id": run_id,
               "schema_version": 1,
