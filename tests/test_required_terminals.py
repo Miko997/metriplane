@@ -244,10 +244,24 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         if step.get("name") == "Reconcile every open pull request head"
     )
     assert reconcile_step["env"]["PERSIST_RESULT"] == "${{ needs.persist-health.result }}"
-    assert '[[ "$PERSIST_RESULT" == success ]]' in reconcile
+    assert '[[ "$PERSIST_RESULT" == success && "$PERSIST_STATE_COMMIT"' in reconcile
     assert "\"$SCHEDULE\" == '*/5 * * * *'" in reconcile
     assert '[[ "$admission_ready" == true ]]' in reconcile
-    assert '[[ "$state_available" == true ]]' in reconcile
+    assert '"$state_available" == true ]]' in reconcile
+    assert "actions/workflows/main-health.yml/runs?event=workflow_run&branch=main" in reconcile
+    assert 'job.get("name") == "persist-health"' in reconcile
+    assert 'cmp -s "$run_before" "$run_after"' in reconcile
+    assert 'cmp -s "$state_before" "$state_after"' in reconcile
+    assert reconcile.index("Main health reconciliation in progress") < reconcile.index(
+        "admission_ready=false"
+    )
+    assert reconcile.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}"') >= 3
+    assert 'status.get("creator", {}).get("login") == "github-actions[bot]"' in reconcile
+    assert 'status.get("created_at") == status.get("updated_at")' in reconcile
+    assert "Record main health run ${run_id}/${run_attempt}" in reconcile
+    assert health["jobs"]["persist-health"]["outputs"]["state_commit"] == (
+        "${{ steps.publish.outputs.state_commit }}"
+    )
     writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
     assert "stop_the_line.py ingest" in writer
     assert "git rev-parse origin/main" in writer

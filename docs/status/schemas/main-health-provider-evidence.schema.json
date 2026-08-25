@@ -1,8 +1,170 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "bypassActor": {
+      "additionalProperties": false,
+      "properties": {"actor_id": {"const": 5}, "actor_type": {"const": "RepositoryRole"}, "bypass_mode": {"const": "pull_request"}},
+      "required": ["actor_id", "actor_type", "bypass_mode"],
+      "type": "object"
+    },
+    "collaborator": {
+      "additionalProperties": false,
+      "properties": {"id": {"minLength": 1, "type": "string"}, "login": {"minLength": 1, "type": "string"}, "permission": {"minLength": 1, "type": "string"}},
+      "required": ["id", "login", "permission"],
+      "type": "object"
+    },
+    "invitation": {
+      "additionalProperties": false,
+      "properties": {"id": {"minLength": 1, "type": "string"}, "invitee": {"minLength": 1, "type": "string"}, "permission": {"minLength": 1, "type": "string"}},
+      "required": ["id", "invitee", "permission"],
+      "type": "object"
+    },
+    "ruleset": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "bypass_actors": {"const": []},
+            "name": {"const": "Protect main"},
+            "rules": {
+              "const": [
+                {"type": "deletion"},
+                {"type": "non_fast_forward"},
+                {
+                  "parameters": {
+                    "allowed_merge_methods": ["merge", "squash", "rebase"],
+                    "dismiss_stale_reviews_on_push": false,
+                    "require_code_owner_review": false,
+                    "require_extra_approval_for_unattributed_changes": true,
+                    "require_last_push_approval": false,
+                    "required_approving_review_count": 0,
+                    "required_review_thread_resolution": false,
+                    "required_reviewers": []
+                  },
+                  "type": "pull_request"
+                },
+                {
+                  "parameters": {
+                    "do_not_enforce_on_create": false,
+                    "required_status_checks": [
+                      {"context": "Metriplane / required", "integration_id": 15368},
+                      {"context": "Documentation / required", "integration_id": 15368},
+                      {"context": "Security / required", "integration_id": 15368}
+                    ],
+                    "strict_required_status_checks_policy": true
+                  },
+                  "type": "required_status_checks"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "bypass_actors": {"const": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]},
+            "name": {"const": "Protect main health admission"},
+            "rules": {
+              "const": [
+                {
+                  "parameters": {
+                    "do_not_enforce_on_create": false,
+                    "required_status_checks": [
+                      {"context": "Main health / required", "integration_id": 15368}
+                    ],
+                    "strict_required_status_checks_policy": true
+                  },
+                  "type": "required_status_checks"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "bypass_actors": {"items": {"$ref": "#/$defs/bypassActor"}, "type": "array"},
+        "conditions": {
+          "additionalProperties": false,
+          "properties": {"ref_name": {"additionalProperties": false, "properties": {"exclude": {"items": {"type": "string"}, "type": "array"}, "include": {"const": ["~DEFAULT_BRANCH"]}}, "required": ["exclude", "include"], "type": "object"}},
+          "required": ["ref_name"],
+          "type": "object"
+        },
+        "enforcement": {"const": "active"},
+        "name": {"enum": ["Protect main", "Protect main health admission"]},
+        "rules": {"items": {"type": "object"}, "minItems": 1, "type": "array"},
+        "target": {"const": "branch"}
+      },
+      "required": ["bypass_actors", "conditions", "enforcement", "name", "rules", "target"],
+      "type": "object"
+    },
+    "manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "allowed_paths": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "base_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "collaboration_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "expires_at": {"format": "date-time", "type": "string"},
+        "failing_obligations": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+        "policy_amendment": {
+          "additionalProperties": false,
+          "properties": {"amended_rule": {"const": "repair_requires_non_author"}, "authorization_mode": {"const": "single-maintainer-owner-emergency"}, "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "reason": {"const": "single-maintainer-no-independent-collaborator"}, "schema_version": {"const": 1}, "scope": {"const": "incident-only"}},
+          "required": ["amended_rule", "authorization_mode", "incident_digest", "reason", "schema_version", "scope"],
+          "type": "object"
+        },
+        "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
+        "required_cadences": {"const": ["nightly", "weekly"]},
+        "schema_version": {"const": 1}
+      },
+      "required": ["authorization_mode", "allowed_paths", "base_sha", "collaboration_digest", "expires_at", "failing_obligations", "incident_digest", "issue", "policy_amendment", "pull_request", "repository", "required_cadences", "schema_version"],
+      "type": "object"
+    },
+    "admissionArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "base_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "changed_paths": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+        "checked_at": {"format": "date-time", "type": "string"},
+        "collaboration_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "collaborators": {"items": {"$ref": "#/$defs/collaborator"}, "minItems": 1, "type": "array"},
+        "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+        "main_health_ruleset": {"$ref": "#/$defs/ruleset"},
+        "main_health_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "main_health_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "manifest_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "pending_invitations": {"items": {"$ref": "#/$defs/invitation"}, "type": "array"},
+        "protection_ruleset": {"$ref": "#/$defs/ruleset"},
+        "protection_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "protection_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
+        "schema_version": {"const": 1},
+        "status": {"const": "repair-candidate"}
+      },
+      "required": ["authorization_mode", "base_sha", "changed_paths", "checked_at", "collaboration_digest", "collaborators", "head_sha", "incident_digest", "issue", "main_health_ruleset", "main_health_ruleset_digest", "main_health_ruleset_id", "manifest_digest", "pending_invitations", "protection_ruleset", "protection_ruleset_digest", "protection_ruleset_id", "pull_request", "repository", "schema_version", "status"],
+      "type": "object"
+    },
+    "admission": {
+      "additionalProperties": false,
+      "properties": {"artifact": {"$ref": "#/$defs/admissionArtifact"}, "artifact_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "comment_author": {"minLength": 1, "type": "string"}, "comment_author_id": {"minLength": 1, "type": "string"}, "comment_created_at": {"format": "date-time", "type": "string"}, "comment_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "comment_updated_at": {"format": "date-time", "type": "string"}, "provider": {"const": "github"}, "schema_version": {"const": 1}},
+      "required": ["artifact", "artifact_digest", "comment_author", "comment_author_id", "comment_created_at", "comment_id", "comment_updated_at", "provider", "schema_version"],
+      "type": "object"
+    },
+    "mergeGate": {
+      "additionalProperties": false,
+      "properties": {"admission_comment_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "admission_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "bypass_actor": {"$ref": "#/$defs/bypassActor"}, "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "main_health_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "main_health_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "merged_at": {"format": "date-time", "type": "string"}, "merged_by": {"minLength": 1, "type": "string"}, "merged_by_id": {"minLength": 1, "type": "string"}, "protection_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "protection_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"}, "schema_version": {"const": 1}},
+      "required": ["admission_comment_id", "admission_digest", "bypass_actor", "head_sha", "main_health_ruleset_digest", "main_health_ruleset_id", "merge_commit_sha", "merged_at", "merged_by", "merged_by_id", "protection_ruleset_digest", "protection_ruleset_id", "pull_request", "repository", "schema_version"],
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
   "properties": {
-    "admission": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "admission": {"oneOf": [{"$ref": "#/$defs/admission"}, {"type": "null"}]},
     "admission_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "authorization_mode": {"enum": ["independent-review", "single-maintainer-owner-emergency"]},
     "approval_id": {"minLength": 1, "type": "string"},
@@ -12,24 +174,24 @@
     "base_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "captured_at": {"format": "date-time", "type": "string"},
     "changed_paths": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
-    "collaborators": {"oneOf": [{"items": {"additionalProperties": false, "properties": {"id": {"minLength": 1, "type": "string"}, "login": {"minLength": 1, "type": "string"}, "permission": {"minLength": 1, "type": "string"}}, "required": ["id", "login", "permission"], "type": "object"}, "minItems": 1, "type": "array"}, {"type": "null"}]},
+    "collaborators": {"oneOf": [{"items": {"$ref": "#/$defs/collaborator"}, "minItems": 1, "type": "array"}, {"type": "null"}]},
     "decision_at": {"format": "date-time", "type": "string"},
     "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
-    "manifest": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "manifest": {"oneOf": [{"$ref": "#/$defs/manifest"}, {"type": "null"}]},
     "manifest_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "merge_parent_shas": {"items": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "minItems": 2, "type": "array", "uniqueItems": true},
     "merge_tree_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
-    "pending_invitations": {"oneOf": [{"items": {"additionalProperties": false, "properties": {"id": {"minLength": 1, "type": "string"}, "invitee": {"minLength": 1, "type": "string"}, "permission": {"minLength": 1, "type": "string"}}, "type": "object", "required": ["id", "invitee", "permission"]}, "type": "array"}, {"type": "null"}]},
+    "pending_invitations": {"oneOf": [{"items": {"$ref": "#/$defs/invitation"}, "type": "array"}, {"type": "null"}]},
     "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
     "reviewed_tree_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "reviewer": {"minLength": 1, "type": "string"},
     "reviewer_id": {"minLength": 1, "type": "string"},
     "reviewer_permission": {"enum": ["admin", "maintain", "write"]},
-    "merge_gate": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "merge_gate": {"oneOf": [{"$ref": "#/$defs/mergeGate"}, {"type": "null"}]},
     "merge_gate_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "schema_version": {"const": 1},
     "state": {"enum": ["APPROVED", "OWNER_EMERGENCY"]}

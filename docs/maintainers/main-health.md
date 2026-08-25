@@ -35,7 +35,14 @@ reconciler overwrites earlier success with failure when health turns red, the ba
 becomes stale, or the 36-hour window expires; a persistent commit status is never
 treated as an unbounded lease. All status publishers and durable writers are
 trusted triggers in one serialized concurrency group, so an older green snapshot
-cannot publish success after a newer red transition. The
+cannot publish success after a newer red transition. A five-minute tick reads the
+default branch and latest `workflow_run` writer record before and after the jobs
+query, rejects drift or a queued/in-progress/newer attempt, requires exactly one
+successful `persist-health` job, and requires the validated state-branch HEAD
+message to bind that exact run ID, attempt, and main SHA. Immediate reconciliation
+instead requires the successful dependency's exact `state_commit` output. Both
+paths verify the state ref after validation and re-fetch each PR head immediately
+before publishing. The
 completed protected-main CI workflow and the nightly and weekly schedules are the
 only normal writer triggers. A
 protected-main writer binds the triggering CI run attempt, selects the exact
@@ -118,8 +125,15 @@ normal PR contract body must contain exactly one verbatim copy of the correspond
 two-line owner-emergency marker. Automated reconciliation never grants a red-health
 owner emergency; it continues to publish failure. Caller-supplied provider JSON is
 not accepted as operational admission evidence. `capture-owner-admission` fetches
-the live pull request, complete file list, and a stable invitation/collaborator
-snapshot itself with an owner-authenticated token. It records that
+the live pull request, complete file list, a stable invitation/collaborator
+snapshot, and both active default-branch rulesets itself with an
+owner-authenticated token. `Protect main` must retain the pull-request, deletion,
+non-fast-forward, and three non-health required-check protections without a
+bypass. `Protect main health admission` must contain only
+`Main health / required`, pin it to GitHub Actions integration `15368`, and grant
+repository role `5` only the `pull_request` bypass mode. This permanent split is
+the truthful single-maintainer capability boundary; it never permits a direct
+push, tag, or bypass of the other required checks. Admission records that
 independent approval did not exist and publishes the canonical admission payload
 and digest in an unedited GitHub comment before merge. The manifest also carries the exact
 incident-only amendment of `repair_requires_non_author`; it does not change the
@@ -128,15 +142,16 @@ head, captures the complete collaborator and pending-invitation inventories, and
 requires that neither contains an eligible non-author reviewer. Admission requires
 their combined canonical digest to match the manifest. The provider comment starts
 a five-minute lease; editing it invalidates the admission. `merge-owner-emergency`
-re-fetches a stable inventory snapshot and the exact head, rechecks the lease at
-the merge boundary, and publishes a provider-timestamped `Main health / required`
-success on only that head. It submits the SHA-conditional merge without changing
-the ruleset, then publishes failure in a `finally` block. The independent
-five-minute reconciler is the crash-recovery path and also overwrites the lease
-with failure while global health is red. The command publishes both status records
-and the merge identity in a second unedited GitHub comment. Post-merge capture
-re-fetches both comments, a stable collaboration snapshot, and both commits.
-Provider timestamps must bracket the merge, and
+re-fetches the comment, pull request, complete paths, manifest, owner permission,
+both rulesets, and a stable collaboration snapshot twice at the merge boundary.
+It then submits a GraphQL merge with `expectedHeadOid` through the governed
+pull-request-only bypass. No status is fabricated and no ruleset changes during
+the merge. The command is idempotent: if GitHub completed the merge but the client
+lost the response, a rerun accepts only the provider-recorded exact head, owner
+merge actor, merge timestamp, unchanged admission, and unchanged policy, then
+reconstructs the same `owner-merge-gate.json`. Post-merge capture re-fetches the
+admission comment, stable collaboration snapshot, both rulesets, pull request,
+permission, and both commits. Provider timestamps must bracket the merge, and
 the merge must precede manifest expiry. Post-merge `captured_at` is the actual provider
 retrieval time, not the earlier merge timestamp. Its manifest digest and
 policy-amendment digest must match the authorization.
@@ -162,6 +177,8 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-admission \
   --root main-health-state --repository Miko997/metriplane \
   --pull-request <number> --issue MET-NNN --incident-digest <digest> \
   --expected-head-sha <reviewed-head> \
+  --protection-ruleset-id 20613848 \
+  --main-health-ruleset-id 21500579 \
   > owner-admission.json
 GITHUB_TOKEN=<token> python tools/stop_the_line.py merge-owner-emergency \
   --root main-health-state --repository Miko997/metriplane \
@@ -198,9 +215,9 @@ python tools/stop_the_line.py validate-git --root main-health-readback
 ```
 
 Automated reconciliation never converts red health into an owner-emergency
-success. The governed merge command's provider-anchored status lease admits only
-the exact qualified head while every ruleset protection stays active. Resolution
-requires the success-before-merge and failure-after-merge records, exact reviewed
-head and ordered merge parents, and the admitted collaboration digest. This lease
-admits only the code merge; it does not clear red health or substitute for retained
+success. The governed merge command uses only the recorded pull-request bypass
+for the exact qualified head while every other ruleset protection stays active.
+Resolution requires the exact reviewed head, ordered merge parents, owner merge
+actor, unchanged split-policy digests, and admitted collaboration digest. The
+bypass admits only the code merge; it does not clear red health or substitute for retained
 protected-main, nightly, weekly, provider, authorization, and resolution evidence.
