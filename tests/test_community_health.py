@@ -140,18 +140,22 @@ def test_support_asks_for_reproducible_non_sensitive_information() -> None:
 
 def test_pull_request_template_covers_required_review_dimensions() -> None:
     template = _read(".github/PULL_REQUEST_TEMPLATE.md")
-    for heading in (
-        "## Problem",
-        "## Scope",
-        "## User-visible behavior",
-        "## Tests",
-        "## Documentation",
-        "## Compatibility",
-        "## Privacy and security",
-        "## Evidence and research impact",
-        "## Checklist",
-    ):
+    for heading in ("## Outcome", "## Changes", "## Validation", "## Boundaries"):
         assert heading in template
+    for prompt in (
+        "### Problem",
+        "### Scope",
+        "### User-visible behavior",
+        "### Tests",
+        "### Documentation",
+        "### Compatibility",
+        "### Privacy and security",
+        "### Evidence and research impact",
+        "### Checklist",
+    ):
+        assert prompt in template
+    assert len(re.findall(r"^## ", template, re.MULTILINE)) == 4
+    assert len(re.findall(r"^- \[ \] ", template, re.MULTILINE)) == 8
     assert "Frozen v0.2.0 evidence" in template
     assert "TIM v0.1.3" in template
 

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "terminals": [
+    {
+      "name": "Metriplane / required",
+      "owner": "MP2-004",
+      "producer": ".github/workflows/ci.yml",
+      "state": "active"
+    },
+    {
+      "name": "Documentation / required",
+      "owner": "MP2-004",
+      "producer": ".github/workflows/docs.yml",
+      "state": "active"
+    },
+    {
+      "name": "Security / required",
+      "owner": "MP2-004",
+      "producer": ".github/workflows/codeql.yml",
+      "state": "active"
+    },
+    {
+      "name": "Main health / required",
+      "owner": "MP2-004",
+      "producer": ".github/workflows/main-health.yml",
+      "state": "active"
+    },
+    {
+      "name": "Release / required",
+      "owner": "MP2-007",
+      "producer": null,
+      "state": "reserved"
+    }
+  ]
+}

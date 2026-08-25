@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "captured_at": {"format": "date-time", "type": "string"},
+    "default_branch": {"minLength": 1, "type": "string"},
+    "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
+    "schema_version": {"const": 1},
+    "selected_mode": {"enum": ["enforced_merge_queue", "serialized_strict_up_to_date"]},
+    "source_digests": {
+      "additionalProperties": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+      "minProperties": 3,
+      "type": "object"
+    },
+    "supports_merge_queue": {"type": "boolean"}
+  },
+  "required": ["captured_at", "default_branch", "repository", "schema_version", "selected_mode", "source_digests", "supports_merge_queue"],
+  "type": "object"
+}

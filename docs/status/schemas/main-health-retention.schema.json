@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "backend": {"const": "main-health-state-branch"},
+    "read_back_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "result_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "schema_version": {"const": 1}
+  },
+  "required": ["backend", "read_back_sha256", "result_digest", "schema_version"],
+  "type": "object"
+}

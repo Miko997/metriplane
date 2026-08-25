@@ -1,0 +1,12 @@
+{
+  "activation_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "first_bad_sha": null,
+  "generation": 1,
+  "history_head": "4444444444444444444444444444444444444444444444444444444444444444",
+  "incident_digest": null,
+  "last_good_sha": "2969636357140598d742bd0befed034a25463251",
+  "resolution_digest": null,
+  "schema_version": 1,
+  "status": "green",
+  "updated_at": "2026-08-25T17:45:00Z"
+}
