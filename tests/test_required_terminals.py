@@ -253,6 +253,24 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     )
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
+def test_main_health_observer_step_is_valid_bash() -> None:
+    workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["persist-health"]["steps"]
+        if item.get("name") == "Observe exact protected-main terminals"
+    )
+    completed = subprocess.run(
+        ["bash", "-n"],
+        input=step["run"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_policy_validation_does_not_mutate_input() -> None:
     before = json.loads(POLICY.read_text(encoding="utf-8"))
     snapshot = copy.deepcopy(before)
