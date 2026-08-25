@@ -190,6 +190,9 @@ EXPECTED_PROFILES: dict[str, dict[str, Any]] = {
     },
 }
 
+BASELINE_ROW_IDS = tuple(sorted(EXPECTED_ROWS))
+BASELINE_PROFILE_IDS = tuple(sorted(EXPECTED_PROFILES))
+
 EXPECTED_VALIDATORS = {
     "tests/test_functional_inventory.py::test_installed_console_scripts_match_frozen_cli_seed",
     "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
@@ -265,7 +268,11 @@ def _trace(downstream_task_ids: tuple[str, ...]) -> dict[str, Any]:
     }
 
 
-def _rebuild_inventory(baseline: dict[str, Any]) -> dict[str, Any]:
+def _ordered_by_id(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(copy.deepcopy(list(items)), key=lambda item: item["id"])
+
+
+def _baseline_rows(baseline: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for identifier, spec in sorted(EXPECTED_ROWS.items()):
         source_value = _resolve_pointer(baseline, spec["pointer"])
@@ -295,7 +302,14 @@ def _rebuild_inventory(baseline: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    inventory = {
+    return rows
+
+
+def _rebuild_inventory(
+    baseline: dict[str, Any], extension_rows: Iterable[dict[str, Any]] = ()
+) -> dict[str, Any]:
+    rows = _ordered_by_id([*_baseline_rows(baseline), *extension_rows])
+    return {
         "baseline": {
             "materialized_base_commit": BASE_COMMIT,
             "materialized_base_tree": BASE_TREE,
@@ -313,10 +327,9 @@ def _rebuild_inventory(baseline: dict[str, Any]) -> dict[str, Any]:
         "support_profiles_path": "docs/status/support-profiles.json",
         "trace": _trace(INVENTORY_DOWNSTREAM_TASK_IDS),
     }
-    return inventory
 
 
-def _rebuild_profiles(baseline: dict[str, Any]) -> dict[str, Any]:
+def _baseline_profiles(baseline: dict[str, Any]) -> list[dict[str, Any]]:
     profiles = []
     for identifier, spec in sorted(EXPECTED_PROFILES.items()):
         source_value = _resolve_pointer(baseline, spec["pointer"])
@@ -341,14 +354,30 @@ def _rebuild_profiles(baseline: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    registry = {
+    return profiles
+
+
+def _rebuild_profiles(
+    baseline: dict[str, Any], extension_profiles: Iterable[dict[str, Any]] = ()
+) -> dict[str, Any]:
+    profiles = _ordered_by_id([*_baseline_profiles(baseline), *extension_profiles])
+    return {
         "profiles": profiles,
         "profiles_sha256": _sha(profiles),
         "schema_path": "schemas/metriplane.functional-inventory.v1.schema.json",
         "schema_version": "metriplane.support-profiles.v1",
         "trace": _trace(PROFILE_DOWNSTREAM_TASK_IDS),
     }
-    return registry
+
+
+def _extension_rows(inventory: dict[str, Any]) -> list[dict[str, Any]]:
+    return [row for row in inventory["rows"] if row["id"] not in BASELINE_ROW_IDS]
+
+
+def _extension_profiles(profiles: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        profile for profile in profiles["profiles"] if profile["id"] not in BASELINE_PROFILE_IDS
+    ]
 
 
 def _rejects(instance: dict[str, Any], schema: dict[str, Any]) -> None:
@@ -357,17 +386,73 @@ def _rejects(instance: dict[str, Any], schema: dict[str, Any]) -> None:
     assert captured.value.code == "SCHEMA_VALIDATION_FAILED"
 
 
-@obligation("MP2-010.OBL.SCHEMA_VALIDATION")
-def test_schema_and_committed_registries_validate(_obligation: str) -> None:
-    schema, inventory, profiles, _baseline = _documents()
-    baseline_tool._check_schema_definition(schema, schema)
+def _task_id(reference: str) -> str:
+    task, separator, _suffix = reference.partition(".")
+    assert separator
+    return task
+
+
+def _assert_registry_pair(
+    schema: dict[str, Any],
+    inventory: dict[str, Any],
+    profiles: dict[str, Any],
+    baseline: dict[str, Any],
+) -> None:
     baseline_tool._internal_validate(inventory, schema)
     baseline_tool._internal_validate(profiles, schema)
+
+    rows = inventory["rows"]
+    profile_rows = profiles["profiles"]
+    row_ids = [row["id"] for row in rows]
+    profile_ids = [profile["id"] for profile in profile_rows]
+    all_ids = [*row_ids, *profile_ids]
+    assert row_ids == sorted(row_ids)
+    assert profile_ids == sorted(profile_ids)
+    assert len(all_ids) == len(set(all_ids))
+    assert inventory["rows_sha256"] == _sha(rows)
+    assert profiles["profiles_sha256"] == _sha(profile_rows)
+
+    baseline_rows = [row for row in rows if row["id"] in BASELINE_ROW_IDS]
+    baseline_profiles = [
+        profile for profile in profile_rows if profile["id"] in BASELINE_PROFILE_IDS
+    ]
+    assert _canonical_bytes(baseline_rows) == _canonical_bytes(_baseline_rows(baseline))
+    assert _canonical_bytes(baseline_profiles) == _canonical_bytes(_baseline_profiles(baseline))
+    assert (
+        tuple(identifier for identifier in row_ids if identifier.startswith("MP2-010.BASELINE."))
+        == BASELINE_ROW_IDS
+    )
+
+    profile_id_set = set(profile_ids)
+    assert {row["profile"] for row in rows} <= profile_id_set
+    for row in rows:
+        task = _task_id(row["id"])
+        if row["owner"]:
+            assert row["owner"] == task
+        if row["test"]:
+            assert _task_id(row["test"]) == task
+        assert all(_task_id(criterion) == task for criterion in row["trace_criterion_ids"])
+
+    for profile in profile_rows:
+        if profile["test"]:
+            assert _task_id(profile["test"]) == profile["owner"]
+
+    for trace in (inventory["trace"], profiles["trace"]):
+        task = trace["task"]
+        assert all(_task_id(criterion) == task for criterion in trace["criterion_ids"])
+        assert all(_task_id(identifier) == task for identifier in trace["obligation_ids"])
+
+
+@obligation("MP2-010.OBL.SCHEMA_VALIDATION")
+def test_schema_and_committed_registries_validate(_obligation: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    baseline_tool._check_schema_definition(schema, schema)
+    _assert_registry_pair(schema, inventory, profiles, baseline)
 
 
 @obligation("MP2-010.OBL.BASELINE_INTEGRITY")
 def test_inventory_is_exact_projection_of_frozen_baseline(_obligation: str) -> None:
-    _schema, inventory, _profiles, baseline = _documents()
+    schema, inventory, profiles, baseline = _documents()
     assert hashlib.sha256(BASELINE_PATH.read_bytes()).hexdigest() == BASELINE_SHA256
     assert inventory["baseline"] == {
         "materialized_base_commit": BASE_COMMIT,
@@ -379,8 +464,13 @@ def test_inventory_is_exact_projection_of_frozen_baseline(_obligation: str) -> N
         "source_tree": baseline["captured_source"]["tree"],
     }
 
-    rows = inventory["rows"]
-    assert [row["id"] for row in rows] == sorted(EXPECTED_ROWS)
+    _assert_registry_pair(schema, inventory, profiles, baseline)
+    rows = [row for row in inventory["rows"] if row["id"] in BASELINE_ROW_IDS]
+    profile_rows = [
+        profile for profile in profiles["profiles"] if profile["id"] in BASELINE_PROFILE_IDS
+    ]
+    assert [row["id"] for row in rows] == list(BASELINE_ROW_IDS)
+    assert [profile["id"] for profile in profile_rows] == list(BASELINE_PROFILE_IDS)
     for row in rows:
         spec = EXPECTED_ROWS[row["id"]]
         source_value = _resolve_pointer(baseline, spec["pointer"])
@@ -392,6 +482,10 @@ def test_inventory_is_exact_projection_of_frozen_baseline(_obligation: str) -> N
         }
         assert row["profile"] == spec["profile"]
         assert tuple(row["claim"]["limitation_ids"]) == spec["limitation_ids"]
+
+    for profile in profile_rows:
+        source_value = _resolve_pointer(baseline, EXPECTED_PROFILES[profile["id"]]["pointer"])
+        assert profile["source"]["digest_sha256"] == _sha(source_value)
 
 
 @obligation("MP2-010.OBL.ROW_MODEL_POSITIVE")
@@ -405,7 +499,7 @@ def test_row_model_accepts_a_typed_retired_row(_obligation: str) -> None:
 
 
 @obligation("MP2-010.OBL.ROW_MODEL_POSITIVE")
-def test_schema_accepts_representative_downstream_rows_and_measured_profile(
+def test_committed_like_downstream_extensions_preserve_registry_invariants(
     _obligation: str,
 ) -> None:
     schema, _inventory, _profiles, baseline = _documents()
@@ -426,6 +520,24 @@ def test_schema_accepts_representative_downstream_rows_and_measured_profile(
         "status": "active",
         "support_disposition": "measured",
         "test": "MP2-011.OBL.PROFILE",
+    }
+    browser_profile = {
+        "claim": {
+            "classification": "compatibility",
+            "limitation_ids": [],
+            "statement": "Measured Chromium profile for downstream UI inventory validation.",
+        },
+        "id": "linux.chromium.measured",
+        "kind": "measured_browser",
+        "owner": "MP2-012",
+        "source": {
+            "locator": "chromium",
+            "path": "tests/ui_coverage",
+            "type": "installed_discovery",
+        },
+        "status": "active",
+        "support_disposition": "measured",
+        "test": "MP2-012.OBL.PROFILE",
     }
     rows = [
         {
@@ -461,7 +573,7 @@ def test_schema_accepts_representative_downstream_rows_and_measured_profile(
             "kind": "ui_action",
             "name": "Start run",
             "owner": "MP2-012",
-            "profile": measured_profile["id"],
+            "profile": browser_profile["id"],
             "source": {
                 "locator": "button[data-command-id=run-start]",
                 "path": "web/dashboard/command-center.html",
@@ -497,19 +609,39 @@ def test_schema_accepts_representative_downstream_rows_and_measured_profile(
         },
     ]
 
-    representative_inventory = _rebuild_inventory(baseline)
-    representative_inventory["rows"] = rows
-    representative_inventory["rows_sha256"] = _sha(rows)
-    representative_profiles = _rebuild_profiles(baseline)
-    representative_profiles["profiles"].append(measured_profile)
-    representative_profiles["profiles"].sort(key=lambda profile: profile["id"])
-    representative_profiles["profiles_sha256"] = _sha(representative_profiles["profiles"])
+    extension_profiles = [measured_profile, browser_profile]
+    representative_inventory = _rebuild_inventory(baseline, reversed(rows))
+    representative_profiles = _rebuild_profiles(baseline, reversed(extension_profiles))
+    _assert_registry_pair(schema, representative_inventory, representative_profiles, baseline)
 
-    baseline_tool._internal_validate(representative_inventory, schema)
-    baseline_tool._internal_validate(representative_profiles, schema)
-    assert {row["profile"] for row in rows} <= {
+    expected_row_ids = [*BASELINE_ROW_IDS]
+    expected_row_ids.extend(cast(str, row["id"]) for row in rows)
+    expected_row_ids.sort()
+    expected_profile_ids = [*BASELINE_PROFILE_IDS]
+    expected_profile_ids.extend(cast(str, profile["id"]) for profile in extension_profiles)
+    expected_profile_ids.sort()
+    assert [row["id"] for row in representative_inventory["rows"]] == expected_row_ids
+    assert [profile["id"] for profile in representative_profiles["profiles"]] == (
+        expected_profile_ids
+    )
+    assert {row["profile"] for row in representative_inventory["rows"]} <= {
         profile["id"] for profile in representative_profiles["profiles"]
     }
+
+    inventory_projections = [
+        _canonical_bytes(_rebuild_inventory(copy.deepcopy(baseline), order))
+        for order in (rows, list(reversed(rows)), rows[1:] + rows[:1])
+    ]
+    profile_projections = [
+        _canonical_bytes(_rebuild_profiles(copy.deepcopy(baseline), order))
+        for order in (
+            extension_profiles,
+            list(reversed(extension_profiles)),
+            extension_profiles[1:] + extension_profiles[:1],
+        )
+    ]
+    assert len(set(inventory_projections)) == 1
+    assert len(set(profile_projections)) == 1
 
 
 @pytest.mark.parametrize("value", ["", " ", "\t"])
@@ -561,20 +693,98 @@ def test_row_model_rejects_unknown_fields(_obligation: str) -> None:
     _rejects(invalid, schema)
 
 
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_registry_pair_rejects_duplicate_stable_ids(_obligation: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+
+    duplicate_rows = copy.deepcopy(inventory)
+    duplicate_row = copy.deepcopy(duplicate_rows["rows"][0])
+    duplicate_row["name"] = "Different row with the same stable ID"
+    duplicate_rows["rows"].append(duplicate_row)
+    duplicate_rows["rows"].sort(key=lambda row: row["id"])
+    duplicate_rows["rows_sha256"] = _sha(duplicate_rows["rows"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, duplicate_rows, profiles, baseline)
+
+    duplicate_profiles = copy.deepcopy(profiles)
+    duplicate_profile = copy.deepcopy(duplicate_profiles["profiles"][0])
+    duplicate_profile["claim"]["statement"] = "Different profile with the same stable ID."
+    duplicate_profiles["profiles"].append(duplicate_profile)
+    duplicate_profiles["profiles"].sort(key=lambda profile: profile["id"])
+    duplicate_profiles["profiles_sha256"] = _sha(duplicate_profiles["profiles"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, inventory, duplicate_profiles, baseline)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("owner", "MP2-012"),
+        ("test", "MP2-012.OBL.WRONG_TASK"),
+        ("trace_criterion_ids", ["MP2-013.A01"]),
+    ],
+)
+@obligation("MP2-010.OBL.TRACE_CLOSURE")
+def test_row_lineage_is_derived_from_each_stable_id(
+    _obligation: str, field: str, value: str | list[str]
+) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    invalid = copy.deepcopy(inventory)
+    extension = copy.deepcopy(invalid["rows"][0])
+    extension["id"] = "MP2-011.CLI.COMMAND.DOCTOR"
+    extension["owner"] = "MP2-011"
+    extension["test"] = "MP2-011.OBL.COMMAND_DISCOVERY"
+    extension["trace_criterion_ids"] = ["MP2-011.A01"]
+    extension[field] = value
+    invalid["rows"].append(extension)
+    invalid["rows"].sort(key=lambda row: row["id"])
+    invalid["rows_sha256"] = _sha(invalid["rows"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid, profiles, baseline)
+
+
+@obligation("MP2-010.OBL.TRACE_CLOSURE")
+def test_profile_and_registry_trace_lineage_is_generic(_obligation: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+
+    invalid_profile = copy.deepcopy(profiles)
+    extension_profile = copy.deepcopy(invalid_profile["profiles"][0])
+    extension_profile["id"] = "linux.python312.installed"
+    extension_profile["owner"] = "MP2-011"
+    extension_profile["test"] = "MP2-012.OBL.WRONG_TASK"
+    invalid_profile["profiles"].append(extension_profile)
+    invalid_profile["profiles"].sort(key=lambda profile: profile["id"])
+    invalid_profile["profiles_sha256"] = _sha(invalid_profile["profiles"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, inventory, invalid_profile, baseline)
+
+    invalid_trace = copy.deepcopy(inventory)
+    invalid_trace["trace"]["task"] = "MP2-011"
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid_trace, profiles, baseline)
+
+
 @obligation("MP2-010.OBL.THREE_RUN_DETERMINISM")
 def test_three_run_determinism(_obligation: str) -> None:
     schema, inventory, profiles, _baseline = _documents()
+    baseline_row_projections = []
+    baseline_profile_projections = []
     inventory_projections = []
     profile_projections = []
     for _run in range(3):
         baseline = _read_canonical(BASELINE_PATH)
-        rebuilt_inventory = _rebuild_inventory(baseline)
-        rebuilt_profiles = _rebuild_profiles(baseline)
-        baseline_tool._internal_validate(rebuilt_inventory, schema)
-        baseline_tool._internal_validate(rebuilt_profiles, schema)
+        committed_inventory = _read_canonical(INVENTORY_PATH)
+        committed_profiles = _read_canonical(PROFILES_PATH)
+        rebuilt_inventory = _rebuild_inventory(baseline, _extension_rows(committed_inventory))
+        rebuilt_profiles = _rebuild_profiles(baseline, _extension_profiles(committed_profiles))
+        _assert_registry_pair(schema, rebuilt_inventory, rebuilt_profiles, baseline)
+        baseline_row_projections.append(_canonical_bytes(_baseline_rows(baseline)))
+        baseline_profile_projections.append(_canonical_bytes(_baseline_profiles(baseline)))
         inventory_projections.append(_canonical_bytes(rebuilt_inventory))
         profile_projections.append(_canonical_bytes(rebuilt_profiles))
 
+    assert len(set(baseline_row_projections)) == 1
+    assert len(set(baseline_profile_projections)) == 1
     assert len({*inventory_projections}) == 1
     assert len({*profile_projections}) == 1
     assert inventory_projections[0] == INVENTORY_PATH.read_bytes()
@@ -585,7 +795,8 @@ def test_three_run_determinism(_obligation: str) -> None:
 
 @obligation("MP2-010.OBL.TRACE_CLOSURE")
 def test_profile_references_are_closed(_obligation: str) -> None:
-    _schema, inventory, profiles, baseline = _documents()
+    schema, inventory, profiles, baseline = _documents()
+    _assert_registry_pair(schema, inventory, profiles, baseline)
     profile_rows = profiles["profiles"]
     profile_ids = {row["id"] for row in profile_rows}
     assert [row["id"] for row in profile_rows] == sorted(profile_ids)
@@ -593,13 +804,17 @@ def test_profile_references_are_closed(_obligation: str) -> None:
 
     limitation_ids = {row["limitation_id"] for row in baseline["limitations"]}
     for row in [*inventory["rows"], *profile_rows]:
-        assert set(row["claim"]["limitation_ids"]) <= limitation_ids
         if row["status"] == "active":
             assert all(row[field].strip() for field in ("owner", "status", "test"))
             if "profile" in row:
                 assert row["profile"].strip()
 
-    for row in profile_rows:
+    baseline_items = [
+        *[row for row in inventory["rows"] if row["id"] in BASELINE_ROW_IDS],
+        *[row for row in profile_rows if row["id"] in BASELINE_PROFILE_IDS],
+    ]
+    for row in baseline_items:
+        assert set(row["claim"]["limitation_ids"]) <= limitation_ids
         source_value = _resolve_pointer(baseline, row["source"]["json_pointer"])
         assert row["source"]["path"] == "docs/status/baseline-snapshot.v1.json"
         assert row["source"]["digest_sha256"] == _sha(source_value)
@@ -607,7 +822,8 @@ def test_profile_references_are_closed(_obligation: str) -> None:
 
 @obligation("MP2-010.OBL.TRACE_CLOSURE")
 def test_trace_graph_is_closed(_obligation: str) -> None:
-    _schema, inventory, profiles, _baseline = _documents()
+    schema, inventory, profiles, baseline = _documents()
+    _assert_registry_pair(schema, inventory, profiles, baseline)
     trace_expectations = (
         (inventory["trace"], INVENTORY_DOWNSTREAM_TASK_IDS),
         (profiles["trace"], PROFILE_DOWNSTREAM_TASK_IDS),
@@ -620,9 +836,10 @@ def test_trace_graph_is_closed(_obligation: str) -> None:
         assert tuple(trace["obligation_ids"]) == OBLIGATION_IDS
         assert tuple(trace["downstream_task_ids"]) == expected_downstream
 
-    validator_ids = {validator for row in inventory["rows"] for validator in row["validator_ids"]}
+    baseline_rows = [row for row in inventory["rows"] if row["id"] in BASELINE_ROW_IDS]
+    validator_ids = {validator for row in baseline_rows for validator in row["validator_ids"]}
     assert validator_ids == EXPECTED_VALIDATORS
-    for row in inventory["rows"]:
+    for row in baseline_rows:
         assert row["owner"] == "MP2-010"
         assert "MP2-017" in row["consumer_task_ids"]
         assert row["validator_ids"]
