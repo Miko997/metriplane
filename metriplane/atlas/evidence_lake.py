@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 
@@ -22,7 +23,7 @@ def build_lake(root: str | Path, db_path: str | Path) -> dict:
     root_path = Path(root)
     db = Path(db_path)
     db.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.executescript(
             """
             drop table if exists runs;
@@ -139,13 +140,13 @@ def lake_query(db_path: str | Path, table: str = "events", asset_id: str | None 
     if clauses:
         sql += " where " + " and ".join(clauses)
     sql += " order by 1, 2"
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         return [dict(row) for row in conn.execute(sql, values).fetchall()]
 
 
 def trend_summary(db_path: str | Path, out_path: str | Path | None = None) -> dict:
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.row_factory = sqlite3.Row
         by_cell = [dict(row) for row in conn.execute(
             "select cell_id, count(*) as runs, sum(event_count) as events, sum(incident_count) as incidents from runs group by cell_id order by cell_id"
