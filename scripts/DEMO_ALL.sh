@@ -41,7 +41,7 @@ Options:
   -h, --help           Show this help
 
 Environment:
-  RUNS (optional)      Where mp.sh writes run directories (default: $HOME/metriplane_runs)
+  RUNS (optional)      Where mp.sh writes run directories (default: platform data directory)
 EOF
 }
 
@@ -93,7 +93,11 @@ mkdir -p "$LOG_DIR"
 MANIFEST="$LOG_DIR/manifest.tsv"
 printf "step\tstatus\trc\tseconds\tlog\tcmd\n" > "$MANIFEST"
 
-RUNS_DIR="${RUNS:-$HOME/metriplane_runs}"
+if [[ -n "${RUNS:-}" ]]; then
+  RUNS_DIR="$RUNS"
+else
+  RUNS_DIR="$(cd "$ROOT" && python3 -c 'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+fi
 
 echo "Repo root : $ROOT"
 echo "Venv dir  : $VENV_DIR"

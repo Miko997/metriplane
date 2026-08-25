@@ -9,8 +9,7 @@ Manages the three local processes:
   - static dashboard web server (127.0.0.1:8088, serves from repo root)
   - optional runtime stream (127.0.0.1:8000 metrics/health, ws://127.0.0.1:8765)
 
-State: ~/.cache/metriplane/launcher-state.json
-Logs:  ~/metriplane-runs/_launcher/<timestamp>/{runner,dashboard,fusion}.log
+State and logs use the injected platform state and data directories.
 
 Key design decisions (v2):
 - start_new_session=True  → each child is its own process group leader (PGID = PID)
@@ -36,12 +35,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-_STATE_FILE = Path.home() / ".cache" / "metriplane" / "launcher-state.json"
 
 _DEFAULT_RUNNER_HOST = "127.0.0.1"
 _DEFAULT_RUNNER_PORT = 9000
@@ -49,7 +48,6 @@ _DEFAULT_DASHBOARD_PORT = 8088
 _DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 _DEFAULT_FUSION_CONFIG = "configs/local_demo_replay.yaml"
 _DEFAULT_DURATION_S = 7200
-_DEFAULT_RUNS_DIR = str(Path.home() / "metriplane-runs")
 
 # Ports known to be owned by Metriplane services (in priority order for cleanup)
 _METRIPLANE_KNOWN_PORTS = [8000, 8765, 9000, 8088]
@@ -71,29 +69,40 @@ _METRIPLANE_SAFE_PATTERNS = [
 # State helpers
 # ---------------------------------------------------------------------------
 
-def _state_dir() -> Path:
-    d = _STATE_FILE.parent
+def _effective_paths(paths: PlatformPaths | None) -> PlatformPaths:
+    return paths if paths is not None else resolve_platform_paths()
+
+
+def _state_file(paths: PlatformPaths | None = None) -> Path:
+    return _effective_paths(paths).launcher_state_file
+
+
+def _state_dir(paths: PlatformPaths | None = None) -> Path:
+    d = _state_file(paths).parent
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def _load_state() -> dict[str, Any]:
-    if _STATE_FILE.exists():
+def _load_state(paths: PlatformPaths | None = None) -> dict[str, Any]:
+    state_file = _state_file(paths)
+    if state_file.exists():
         try:
-            return json.loads(_STATE_FILE.read_text())
+            return json.loads(state_file.read_text())
         except Exception:
             pass
     return {}
 
 
-def _save_state(state: dict[str, Any]) -> None:
-    _state_dir()
-    _STATE_FILE.write_text(json.dumps(state, indent=2))
+def _save_state(state: dict[str, Any], paths: PlatformPaths | None = None) -> None:
+    state_file = _state_file(paths)
+    _state_dir(paths)
+    state_file.write_text(json.dumps(state, indent=2))
 
 
-def _clear_state() -> None:
-    if _STATE_FILE.exists():
-        _STATE_FILE.unlink()
+def _clear_state(paths: PlatformPaths | None = None) -> None:
+    state_file = _state_file(paths)
+    if state_file.exists():
+        state_file.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -471,13 +480,22 @@ def cmd_start(
     dashboard_port: int = _DEFAULT_DASHBOARD_PORT,
     runner_host: str = _DEFAULT_RUNNER_HOST,
     runner_port: int = _DEFAULT_RUNNER_PORT,
-    runs_dir: str = _DEFAULT_RUNS_DIR,
+    runs_dir: str | None = None,
     open_browser: bool = True,
     operator: bool = False,
+    paths: PlatformPaths | None = None,
 ) -> int:
     """Start the local Metriplane stack. Returns exit code."""
+    try:
+        resolved_paths = _effective_paths(paths)
+        effective_runs_dir = str(Path(runs_dir).expanduser()) if runs_dir else str(resolved_paths.runs_dir)
+        state = _load_state(resolved_paths)
+        _state_dir(resolved_paths)
+    except (OSError, PlatformPathError) as exc:
+        print(f"Cannot access Metriplane platform directories: {exc}")
+        return 2
+
     # Check for stale state with live processes
-    state = _load_state()
     if state:
         runner_pid = state.get("runner", {}).get("pid")
         dash_pid = state.get("dashboard", {}).get("pid")
@@ -485,11 +503,19 @@ def cmd_start(
             print("⚠️  Metriplane launcher is already running.")
             print("   Use `metriplane stop` first, or `metriplane status` to inspect.")
             return 1
-        _clear_state()
+        try:
+            _clear_state(resolved_paths)
+        except OSError as exc:
+            print(f"Cannot clear stale Metriplane launcher state: {exc}")
+            return 2
 
     repo_root = _find_repo_root()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_d = _log_dir_path(runs_dir, timestamp)
+    try:
+        log_d = _log_dir_path(effective_runs_dir, timestamp)
+    except OSError as exc:
+        print(f"Cannot create Metriplane run directory: {exc}")
+        return 2
 
     print(f"🔍 Repo root : {repo_root}")
     print(f"📋 Log dir  : {log_d}")
@@ -555,7 +581,7 @@ def cmd_start(
     if live:
         print(f"▶  Starting runtime stream  (config={config}, run_id={effective_run_id})")
         fp = _start_fusion(config=config, run_id=effective_run_id,
-                           runs_dir=runs_dir, duration_s=duration_s,
+                           runs_dir=effective_runs_dir, duration_s=duration_s,
                            backend=backend, log_file=log_d / "fusion.log",
                            repo_root=repo_root)
         fusion_entry = _make_proc_entry(fp)
@@ -577,7 +603,7 @@ def cmd_start(
             _wait_for_port_free(8765, timeout=3.0)
             _wait_for_port_free(dashboard_port, timeout=3.0)
             _wait_for_port_free(runner_port, timeout=3.0)
-            _clear_state()
+            _clear_state(resolved_paths)
             print("  ❌ Stack start aborted; all launcher children were stopped")
             return 1
 
@@ -592,7 +618,16 @@ def cmd_start(
     }
     if fusion_entry is not None:
         new_state["fusion"] = fusion_entry
-    _save_state(new_state)
+    try:
+        _save_state(new_state, resolved_paths)
+    except OSError as exc:
+        if fusion_entry is not None:
+            _stop_pg(fusion_entry.get("pgid"), fusion_entry.get("pid"),
+                     use_sigint=True, name="fusion")
+        _stop_pg(_get_pgid(dp.pid) or dp.pid, dp.pid, name="dashboard")
+        _stop_pg(_get_pgid(rp.pid) or rp.pid, rp.pid, name="runner")
+        print(f"Cannot save Metriplane launcher state: {exc}")
+        return 2
 
     # --- Print URLs ---
     dash_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/index.html"
@@ -612,7 +647,7 @@ def cmd_start(
     elif not live:
         print("  Runtime      : idle until Setup or Run starts a session")
     print(f"\n  Logs         : {log_d}/")
-    print(f"  State        : {_STATE_FILE}")
+    print(f"  State        : {resolved_paths.launcher_state_file}")
     print(f"\n  Stop with    : metriplane stop")
     print(f"{'='*60}")
 
@@ -623,16 +658,21 @@ def cmd_start(
     return 0
 
 
-def cmd_stop(force: bool = False) -> int:
+def cmd_stop(force: bool = False, *, paths: PlatformPaths | None = None) -> int:
     """Stop launcher-started processes and wait for ports to be released."""
-    state = _load_state()
+    try:
+        resolved_paths = _effective_paths(paths)
+        state = _load_state(resolved_paths)
+    except (OSError, PlatformPathError) as exc:
+        print(f"Cannot access Metriplane launcher state: {exc}")
+        return 2
     if not state and not force:
         print("ℹ️   No launcher state found. Use `metriplane cleanup` if processes are orphaned.")
         return 0
 
     if not state:
         # force mode: fall through to cleanup behavior
-        return cmd_cleanup()
+        return cmd_cleanup(paths=resolved_paths)
 
     runner_info = state.get("runner") or {}
     dash_info = state.get("dashboard") or {}
@@ -701,7 +741,11 @@ def cmd_stop(force: bool = False) -> int:
                     print(f"       Held by pid={owner['pid']}  {owner['cmdline'][:80]}")
                 all_free = False
 
-    _clear_state()
+    try:
+        _clear_state(resolved_paths)
+    except OSError as exc:
+        print(f"Cannot clear Metriplane launcher state: {exc}")
+        return 2
 
     if all_free:
         msg = "✅ All launcher services stopped." if stopped_any else "ℹ️   No live processes found (state cleared)."
@@ -711,8 +755,13 @@ def cmd_stop(force: bool = False) -> int:
     return 0
 
 
-def cmd_cleanup() -> int:
+def cmd_cleanup(*, paths: PlatformPaths | None = None) -> int:
     """Kill only known Metriplane orphans on known ports. Never kills unknown processes."""
+    try:
+        resolved_paths = _effective_paths(paths)
+    except PlatformPathError as exc:
+        print(f"Cannot resolve Metriplane launcher state: {exc}")
+        return 2
     print("🧹 Checking for orphaned Metriplane processes …")
 
     killed_any = False
@@ -741,7 +790,11 @@ def cmd_cleanup() -> int:
         else:
             print(f"  ⚠️  Port {port} still in use after kill")
 
-    _clear_state()  # Remove any stale state
+    try:
+        _clear_state(resolved_paths)  # Remove any stale state
+    except OSError as exc:
+        print(f"Cannot clear Metriplane launcher state: {exc}")
+        return 2
 
     if killed_any:
         print("\n✅ Orphan cleanup complete.")
@@ -761,15 +814,23 @@ def cmd_restart(
     dashboard_port: int = _DEFAULT_DASHBOARD_PORT,
     runner_host: str = _DEFAULT_RUNNER_HOST,
     runner_port: int = _DEFAULT_RUNNER_PORT,
-    runs_dir: str = _DEFAULT_RUNS_DIR,
+    runs_dir: str | None = None,
     open_browser: bool = True,
     operator: bool = False,
+    paths: PlatformPaths | None = None,
 ) -> int:
     """Stop all services (including orphans), then start fresh."""
+    try:
+        resolved_paths = _effective_paths(paths)
+        state = _load_state(resolved_paths)
+    except (OSError, PlatformPathError) as exc:
+        print(f"Cannot access Metriplane launcher state: {exc}")
+        return 2
     print("⟳  Stopping existing stack …")
-    state = _load_state()
     if state:
-        cmd_stop()
+        result = cmd_stop(paths=resolved_paths)
+        if result:
+            return result
     else:
         # Even without state, hunt for known orphaned VT processes
         cleanup_ports = [runner_port, dashboard_port]
@@ -778,7 +839,9 @@ def cmd_restart(
         needs_cleanup = any(_is_port_in_use("127.0.0.1", p) for p in cleanup_ports)
         if needs_cleanup:
             print("ℹ️   No launcher state but Metriplane ports are occupied — running cleanup …")
-            cmd_cleanup()
+            result = cmd_cleanup(paths=resolved_paths)
+            if result:
+                return result
 
     # Final check: wait a bit for ports to stabilize
     time.sleep(0.3)
@@ -791,20 +854,25 @@ def cmd_restart(
         live=live, backend=backend, config=config, duration_s=duration_s,
         run_id=run_id, dashboard_host=dashboard_host, dashboard_port=dashboard_port,
         runner_host=runner_host, runner_port=runner_port, runs_dir=runs_dir,
-        open_browser=open_browser, operator=operator,
+        open_browser=open_browser, operator=operator, paths=resolved_paths,
     )
 
 
-def cmd_status() -> int:
+def cmd_status(*, paths: PlatformPaths | None = None) -> int:
     """Show status of launcher services and probe known ports — even without state."""
-    state = _load_state()
+    try:
+        resolved_paths = _effective_paths(paths)
+        state = _load_state(resolved_paths)
+    except (OSError, PlatformPathError) as exc:
+        print(f"Cannot access Metriplane launcher state: {exc}")
+        return 2
 
     print("Metriplane Launcher Status")
     print("=" * 60)
 
     if state:
         started_at = state.get("started_at", "unknown")
-        print(f"  State file  : {_STATE_FILE}")
+        print(f"  State file  : {resolved_paths.launcher_state_file}")
         print(f"  Started at  : {started_at}")
         print(f"  Log dir     : {state.get('log_dir', 'unknown')}")
         print()

@@ -25,6 +25,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml  # type: ignore
 
+from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+
 # ── Safety patterns ────────────────────────────────────────────────────────────
 
 SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
@@ -232,11 +234,24 @@ class OperatorAPI:
     Injected with a reference to the CommandExecutor from service.py.
     """
 
-    def __init__(self, executor: Any, repo_root: Path) -> None:
+    def __init__(
+        self,
+        executor: Any,
+        repo_root: Path,
+        *,
+        paths: PlatformPaths | None = None,
+    ) -> None:
         self.executor = executor
         self.repo_root = repo_root
+        self._injected_paths = paths
         # Resolved once at startup — uses .venv/bin/python when present
         self._python: str = _resolve_python_executable(repo_root)
+
+    def _platform_paths(self) -> PlatformPaths:
+        return self._injected_paths or resolve_platform_paths()
+
+    def _runs_root(self) -> Path:
+        return self._platform_paths().runs_dir.resolve()
 
     def route(self, method: str, path: str, body: Dict[str, Any]) -> Tuple[int, Dict]:
         """
@@ -304,6 +319,8 @@ class OperatorAPI:
                     return self._cc_frames(body)
                 if sub == "/ask":
                     return self._cc_ask(body)
+        except PlatformPathError as exc:
+            return 503, {"error": f"Platform paths unavailable: {exc}"}
         except Exception as exc:
             return 500, {"error": f"Internal error: {exc}"}
 
@@ -437,7 +454,7 @@ class OperatorAPI:
     # ── GET /operator/latest-run ───────────────────────────────────────────────
 
     def _get_latest_run(self) -> Tuple[int, Dict]:
-        runs_root = Path.home() / "metriplane-runs"
+        runs_root = self._runs_root()
         if not runs_root.exists():
             return 200, {"latest_run": None, "runs_dir": str(runs_root)}
 
@@ -980,7 +997,7 @@ class OperatorAPI:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             run_id = f"operator_run_{ts}"
 
-        runs_dir = str(Path.home() / "metriplane-runs")
+        runs_dir = str(self._runs_root())
 
         command = [
             self._python, "-m", "metriplane.run_fusion",
@@ -1022,11 +1039,11 @@ class OperatorAPI:
         if report_type not in ("zones", "id-stability"):
             return 400, {"error": "type must be 'zones' or 'id-stability'"}
 
-        # Validate session path: must be in ~/metriplane-runs/ or absolute path resolving there
+        # Validate the session path against the active platform run root.
         session = Path(session_path).expanduser().resolve()
-        runs_root = (Path.home() / "metriplane-runs").resolve()
+        runs_root = self._runs_root()
         if not _is_relative_to(session, runs_root):
-            return 400, {"error": "session must be a path under ~/metriplane-runs/"}
+            return 400, {"error": "session must be under the platform runs directory"}
         if not session.exists():
             return 404, {"error": f"Session file not found: {session}"}
 
@@ -1095,12 +1112,12 @@ class OperatorAPI:
         path: str = body.get("path", "").strip()
 
         file_path = Path(path).expanduser().resolve()
-        runs_root = (Path.home() / "metriplane-runs").resolve()
+        runs_root = self._runs_root()
         evidence_root = (self.repo_root / "evidence").resolve()
 
-        # Only checksum files in ~/metriplane-runs/ or evidence/
+        # Only checksum files in the platform run root or evidence/.
         if not (_is_relative_to(file_path, runs_root) or _is_relative_to(file_path, evidence_root)):
-            return 400, {"error": "Can only checksum files under ~/metriplane-runs/ or evidence/"}
+            return 400, {"error": "Can only checksum files under platform runs or evidence/"}
 
         if not file_path.exists():
             return 404, {"error": f"File not found: {path}"}
@@ -1128,12 +1145,12 @@ class OperatorAPI:
     #
     # These expose the Sentinel artifacts (objects, incidents, traces, camera trust)
     # and the grounded assistant to the operator dashboard. All read-only. A run dir
-    # may be passed explicitly (validated to live under ~/metriplane-runs or the repo
-    # evidence/ tree); otherwise the latest run under ~/metriplane-runs is used.
+    # may be passed explicitly (validated against platform runs or the repo evidence/
+    # tree); otherwise the latest platform run is used.
 
     def _cc_allowed_roots(self) -> list[Path]:
         return [
-            (Path.home() / "metriplane-runs").resolve(),
+            self._runs_root(),
             (self.repo_root / "evidence").resolve(),
             (self.repo_root / "runs").resolve(),
         ]
@@ -1145,10 +1162,10 @@ class OperatorAPI:
             if any(p == r or r in p.parents for r in self._cc_allowed_roots()) and p.is_dir():
                 return p
             return None
-        # Fall back to the latest run under ~/metriplane-runs. Prefer runs with
+        # Fall back to the latest platform run. Prefer runs with
         # Command Center/Sentinel artifacts so a generic runtime session does not
         # hide the incident demo or an operator review run.
-        runs_root = Path.home() / "metriplane-runs"
+        runs_root = self._runs_root()
         if not runs_root.exists():
             return None
         command_center_markers = (

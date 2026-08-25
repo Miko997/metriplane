@@ -24,7 +24,7 @@ from typing import Dict, Any
 
 from metriplane._local_http import LocalHTTPServer
 
-from .allowlist import ALLOWLIST, get_command, validate_command_id
+from .allowlist import ALLOWLIST, get_command, get_commands, validate_command_id
 from .executor import CommandExecutor, find_repo_root
 from .operator_api import OperatorAPI
 
@@ -267,7 +267,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
     def handle_get_commands(self):
         """GET /commands"""
         commands = []
-        for cmd in ALLOWLIST:
+        for cmd in get_commands():
             commands.append({
                 "id": cmd.id,
                 "title": cmd.title,

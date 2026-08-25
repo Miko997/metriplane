@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
-from metriplane.runner.allowlist import ALLOWLIST, get_command, validate_command_id
+from pathlib import Path
+
+from metriplane.paths import PlatformPaths
+from metriplane.runner.allowlist import ALLOWLIST, get_command, get_commands, validate_command_id
 
 
 def test_allowlist_command_ids_validate():
@@ -41,3 +44,42 @@ def test_disabled_commands_explain_why():
     assert disabled
     for cmd in disabled:
         assert cmd.disabled_reason
+
+
+def test_platform_run_path_is_resolved_only_for_returned_commands(tmp_path: Path):
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+
+    static = next(command for command in ALLOWLIST if command.id == "sentinel-demo")
+    resolved = next(command for command in get_commands(paths=paths) if command.id == "sentinel-demo")
+
+    assert str(paths.runs_dir) not in static.command
+    assert str(paths.runs_dir) in resolved.command
+    assert get_command("sentinel-demo", paths=paths) == resolved
+
+
+def test_only_path_dependent_command_is_disabled_without_home(monkeypatch):
+    for name in (
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_STATE_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    commands = get_commands()
+    sentinel = next(command for command in commands if command.id == "sentinel-demo")
+    doctor = next(command for command in commands if command.id == "doctor")
+
+    assert sentinel.enabled is False
+    assert sentinel.disabled_reason is not None
+    assert "Platform paths unavailable" in sentinel.disabled_reason
+    assert doctor.enabled is True

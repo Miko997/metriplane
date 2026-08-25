@@ -70,7 +70,7 @@ def _main_run(argv: list[str]) -> int:
         default=None,
         help=(
             "Override runs base dir (default: /data/runs in docker, ./runs on host). "
-            "Example: --runs-dir ~/metriplane-runs"
+            "Example: --runs-dir /path/to/runs"
         ),
     )
 
@@ -424,7 +424,7 @@ Launcher flags (shared by start and restart):
   --run-id TEXT       Override run ID (default: live_YYYYMMDD_HHMMSS)
   --dashboard-port N  Dashboard web server port (default: 8088)
   --runner-port N     Dashboard runner API port (default: 9000)
-  --runs-dir PATH     Runs base directory (default: ~/metriplane-runs)
+  --runs-dir PATH     Runs base directory (default: platform data directory)
   --open / --no-open  Open browser after start (default: --open)
   --operator          Open operator.html instead of runtime dashboard
 """
@@ -455,7 +455,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
         p.add_argument("--runner-port", type=int, default=9000,
                        dest="runner_port", help="Runner API port (default: 9000)")
         p.add_argument("--runs-dir", default=None, dest="runs_dir",
-                       help="Runs base directory (default: ~/metriplane-runs)")
+                       help="Runs base directory (default: platform data directory)")
         p.add_argument("--open", action="store_true", default=True, dest="open_browser",
                        help="Open browser after start (default: on)")
         p.add_argument("--no-open", action="store_false", dest="open_browser",
@@ -466,10 +466,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
 
 
 def _main_start(argv: list[str]) -> int:
-    from metriplane.launcher import (
-        _DEFAULT_RUNS_DIR,
-        cmd_start,
-    )
+    from metriplane.launcher import cmd_start
     p = _build_launcher_parser("start")
     args = p.parse_args(argv)
     return cmd_start(
@@ -480,7 +477,7 @@ def _main_start(argv: list[str]) -> int:
         run_id=str(args.run_id) if args.run_id else None,
         dashboard_port=int(args.dashboard_port),
         runner_port=int(args.runner_port),
-        runs_dir=str(args.runs_dir) if args.runs_dir else _DEFAULT_RUNS_DIR,
+        runs_dir=str(args.runs_dir) if args.runs_dir else None,
         open_browser=bool(args.open_browser),
         operator=bool(args.operator),
     )
@@ -506,10 +503,7 @@ def _main_cleanup(argv: list[str]) -> int:
 
 
 def _main_restart(argv: list[str]) -> int:
-    from metriplane.launcher import (
-        _DEFAULT_RUNS_DIR,
-        cmd_restart,
-    )
+    from metriplane.launcher import cmd_restart
     p = _build_launcher_parser("restart")
     args = p.parse_args(argv)
     return cmd_restart(
@@ -520,7 +514,7 @@ def _main_restart(argv: list[str]) -> int:
         run_id=str(args.run_id) if args.run_id else None,
         dashboard_port=int(args.dashboard_port),
         runner_port=int(args.runner_port),
-        runs_dir=str(args.runs_dir) if args.runs_dir else _DEFAULT_RUNS_DIR,
+        runs_dir=str(args.runs_dir) if args.runs_dir else None,
         open_browser=bool(args.open_browser),
         operator=bool(args.operator),
     )

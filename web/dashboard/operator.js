@@ -111,7 +111,7 @@ const RUNBOOK_STEPS = {
     title: 'Run',
     purpose: 'Start the live fusion pipeline using the saved config. Monitor job output and run directory.',
     prerequisites: ['Config saved (Step 8)', 'Cameras connected', 'Runner connected'],
-    happens: ['Runs: python -m metriplane.run_fusion --config … --runs-dir ~/metriplane-runs --run-id …', 'Output streamed to the Job Output log', 'Session JSONL written to ~/metriplane-runs/<run_id>/session.jsonl', 'Latest Run Directory updates after completion'],
+    happens: ['Runs: python -m metriplane.run_fusion --config … --runs-dir <platform-runs-dir> --run-id …', 'Output streamed to the Job Output log', 'Session JSONL written to the platform runs directory', 'Latest Run Directory updates after completion'],
     success: 'session.jsonl is non-zero. Job output shows no errors. "Latest Run Directory" shows correct size.',
     tip: 'Set duration to 0 for unlimited run. Click Stop to cancel early. Session JSONL is not tracked in git (use checksum in Step 10).',
     troubleshooting: [
@@ -128,7 +128,7 @@ const RUNBOOK_STEPS = {
     tip: 'Export buttons are disabled if the session is empty (0 bytes). Re-run Step 9 if no data appears.',
     troubleshooting: [
       { q: 'Export buttons disabled', a: 'Session is empty — run failed before writing frames. Check Step 9 logs and fix config.' },
-      { q: '"session must be under ~/metriplane-runs/"', a: 'Only sessions in ~/metriplane-runs/ are accepted. Do not manually move the session file.' },
+      { q: '"session must be under the platform runs directory"', a: 'Only sessions in the active platform runs directory are accepted. Do not manually move the session file.' },
     ],
   },
 };
@@ -150,6 +150,7 @@ const state = {
   // Run
   activeJobId: null,
   activeJobCmdId: null,
+  runsDir: null,
   latestRunDir: null,
   latestSessionPath: null,
   // Config
@@ -158,7 +159,7 @@ const state = {
   stepStatus: {},
   // Run state
   lastRunOk: null,     // null=never ran, true=last run succeeded, false=last run failed
-  exportEnabled: false, // true only when session file is non-empty and in ~/metriplane-runs/
+  exportEnabled: false, // true only when the session is non-empty and under the active run root
   // Calibration success tracking for Step 5 navigation guard
   calibDone: { cam0: false, cam1: false },
 };
@@ -1138,7 +1139,8 @@ function buildConfigObject() {
 
   // record_jsonl must be a path string (or null), never a bool
   if (record) {
-    cfg.record_jsonl = '~/metriplane-runs/' + profile + '_session.jsonl';
+    const runsDir = state.runsDir || '<platform-runs-dir>';
+    cfg.record_jsonl = runsDir.replace(/\/$/, '') + '/' + profile + '_session.jsonl';
   }
 
   if (mode === 'single') {
@@ -1213,6 +1215,11 @@ function updateConfigPreview() {
 async function saveConfig() {
   const filename = (document.getElementById('cfg-filename')?.value || '').trim();
   if (!filename) { alert('Enter a filename.'); return; }
+  const record = document.getElementById('cfg-record')?.value === 'true';
+  if (record && !state.runsDir) {
+    alert('The platform runs directory is unavailable. Reconnect the runner and try again.');
+    return;
+  }
   setStepStatus(8, 'running');
   showLog('step-8-log', '<span class="log-running">● Saving config…</span>');
 
@@ -1282,9 +1289,10 @@ function updateRunPreview() {
   const dur = document.getElementById('run-duration')?.value || '60';
   const rid = document.getElementById('run-id')?.value?.trim() || '<auto>';
   const el = document.getElementById('run-cmd-preview');
+  const runsDir = state.runsDir || '<platform-runs-dir>';
   if (el) {
     el.innerHTML = '<span class="cmd-label">Command preview</span>' +
-      escHtml(`python -m metriplane.run_fusion --config ${cfg} --runs-dir ~/metriplane-runs --run-id ${rid} --duration-s ${dur}`);
+      escHtml(`python -m metriplane.run_fusion --config ${cfg} --runs-dir ${runsDir} --run-id ${rid} --duration-s ${dur}`);
   }
 }
 
@@ -1344,10 +1352,15 @@ async function stopFusion() {
 
 async function refreshLatestRun() {
   const data = await opApi('GET', '/operator/latest-run');
+  if (!data.error && data.runs_dir) {
+    state.runsDir = data.runs_dir;
+    updateConfigPreview();
+    updateRunPreview();
+  }
   const el = document.getElementById('latest-run-info');
   if (!el) return;
   if (data.error || !data.latest_run) {
-    el.textContent = 'No runs found in ' + (data.runs_dir || '~/metriplane-runs');
+    el.textContent = data.error ? data.error : 'No runs found in ' + (data.runs_dir || 'the platform runs directory');
     return;
   }
   const r = data.latest_run;
@@ -1378,6 +1391,7 @@ function setExportEnabled(enabled) {
 
 async function refreshLatestRunForExport() {
   const data = await opApi('GET', '/operator/latest-run');
+  if (!data.error && data.runs_dir) state.runsDir = data.runs_dir;
   const el = document.getElementById('export-session-info');
   if (!el) return;
   if (data.error || !data.latest_run) {
@@ -1482,6 +1496,7 @@ async function init() {
   if (state.runnerConnected) {
     const env = await opApi('GET', '/operator/env');
     renderEnv(env);
+    await refreshLatestRun();
   }
   // Default anchor table render
   fillDefaultAnchors();

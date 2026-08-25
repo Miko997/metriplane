@@ -37,6 +37,7 @@ from pathlib import Path
 
 import pytest
 
+from metriplane.cli import main as cli_main
 from metriplane.launcher import (
     _DEFAULT_FUSION_CONFIG,
     _clear_state,
@@ -52,6 +53,7 @@ from metriplane.launcher import (
     _read_cmdline,
     _runtime_module_for_config,
     _save_state,
+    _state_file,
     _start_fusion,
     _wait_for_port_free,
     cmd_start,
@@ -59,7 +61,7 @@ from metriplane.launcher import (
     cmd_status,
     cmd_stop,
 )
-from metriplane.cli import main as cli_main
+from metriplane.paths import PlatformPaths
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +83,15 @@ def _wait_for_port(host: str, port: int, timeout: float = 10.0) -> bool:
         except OSError:
             time.sleep(0.1)
     return False
+
+
+def _test_platform_paths(root: Path) -> PlatformPaths:
+    return PlatformPaths(
+        config_dir=root / "config",
+        data_dir=root / "data",
+        cache_dir=root / "cache",
+        state_dir=root / "state",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -239,44 +250,61 @@ class TestNoState:
         out = capsys.readouterr().out
         assert "orphan" in out.lower() or "No Metriplane orphans" in out
 
+    def test_status_without_home_or_xdg_paths_fails_cleanly(self, monkeypatch, capsys):
+        for name in (
+            "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+            "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+        assert cmd_status() == 2
+        assert "launcher state" in capsys.readouterr().out.lower()
+
+    def test_start_with_read_only_run_root_fails_before_launch(self, tmp_path, monkeypatch, capsys):
+        read_only = tmp_path / "read-only"
+        read_only.mkdir()
+        read_only.chmod(0o500)
+        paths = PlatformPaths(
+            config_dir=tmp_path / "config",
+            data_dir=read_only,
+            cache_dir=tmp_path / "cache",
+            state_dir=tmp_path / "state",
+        )
+        monkeypatch.setattr("metriplane.launcher._find_repo_root", lambda: Path.cwd())
+        try:
+            assert cmd_start(paths=paths, open_browser=False) == 2
+        finally:
+            read_only.chmod(0o700)
+        assert "run directory" in capsys.readouterr().out.lower()
+
 
 # ---------------------------------------------------------------------------
 # State helpers
 # ---------------------------------------------------------------------------
 
 class TestStateHelpers:
-    def setup_method(self):
-        _clear_state()
+    def test_load_empty_when_no_file(self, tmp_path):
+        assert _load_state(_test_platform_paths(tmp_path)) == {}
 
-    def teardown_method(self):
-        _clear_state()
-
-    def test_load_empty_when_no_file(self):
-        assert _load_state() == {}
-
-    def test_save_and_load(self):
-        _save_state({"runner": {"pid": 99999, "pgid": 99999, "port": 9000}})
-        loaded = _load_state()
+    def test_save_and_load(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        _save_state({"runner": {"pid": 99999, "pgid": 99999, "port": 9000}}, paths)
+        loaded = _load_state(paths)
         assert loaded["runner"]["pid"] == 99999
         assert loaded["runner"]["pgid"] == 99999
 
-    def test_clear_removes_file(self):
-        from metriplane.launcher import _STATE_FILE
-        _save_state({"x": 1})
-        assert _STATE_FILE.exists()
-        _clear_state()
-        assert not _STATE_FILE.exists()
+    def test_clear_removes_file(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        _save_state({"x": 1}, paths)
+        assert _state_file(paths).exists()
+        _clear_state(paths)
+        assert not _state_file(paths).exists()
 
-    def test_load_returns_empty_on_corrupt(self, tmp_path, monkeypatch):
-        fake = tmp_path / "state.json"
-        fake.write_text("{NOT JSON}}")
-        import metriplane.launcher as lm
-        orig = lm._STATE_FILE
-        lm._STATE_FILE = fake
-        try:
-            assert _load_state() == {}
-        finally:
-            lm._STATE_FILE = orig
+    def test_load_returns_empty_on_corrupt(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        paths.state_dir.mkdir(parents=True)
+        paths.launcher_state_file.write_text("{NOT JSON}}")
+        assert _load_state(paths) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -489,8 +517,8 @@ def launcher_env(tmp_path, monkeypatch):
     dash_port = _free_port()
 
     import metriplane.launcher as lm
-    original_state = lm._STATE_FILE
-    lm._STATE_FILE = tmp_path / "launcher-state.json"
+    paths = _test_platform_paths(tmp_path)
+    monkeypatch.setattr(lm, "resolve_platform_paths", lambda: paths)
     original_launch = lm._launch
     processes: list[subprocess.Popen] = []
 
@@ -506,6 +534,7 @@ def launcher_env(tmp_path, monkeypatch):
         "runner_port": runner_port,
         "dash_port": dash_port,
         "tmp_path": tmp_path,
+        "paths": paths,
     }
 
     # Guaranteed cleanup: kill anything the test started
@@ -536,7 +565,6 @@ def launcher_env(tmp_path, monkeypatch):
             process.kill()
             process.wait(timeout=5)
     lm._clear_state()
-    lm._STATE_FILE = original_state
 
 
 class TestStartStatusStop:
@@ -549,7 +577,8 @@ class TestStartStatusStop:
         processes = iter(
             [types.SimpleNamespace(pid=101), types.SimpleNamespace(pid=102), types.SimpleNamespace(pid=103)]
         )
-        monkeypatch.setattr(lm, "_STATE_FILE", tmp_path / "launcher-state.json")
+        paths = _test_platform_paths(tmp_path)
+        monkeypatch.setattr(lm, "resolve_platform_paths", lambda: paths)
         monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
         monkeypatch.setattr(lm, "_log_dir_path", lambda runs_dir, timestamp: tmp_path)
         monkeypatch.setattr(lm, "_is_port_in_use", lambda host, port: False)
@@ -574,7 +603,7 @@ class TestStartStatusStop:
 
         assert rc == 1
         assert stopped == [103, 102, 101]
-        assert not lm._STATE_FILE.exists()
+        assert not lm._state_file(paths).exists()
         assert "stack is running" not in capsys.readouterr().out.lower()
 
     def test_start_returns_zero(self, launcher_env):
@@ -627,9 +656,9 @@ class TestStartStatusStop:
         from metriplane.launcher import cmd_start, cmd_stop
         cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
                   runner_port=launcher_env["runner_port"], open_browser=False)
-        assert lm._STATE_FILE.exists()
+        assert lm._state_file(launcher_env["paths"]).exists()
         cmd_stop()
-        assert not lm._STATE_FILE.exists()
+        assert not lm._state_file(launcher_env["paths"]).exists()
 
     def test_stop_releases_runner_port(self, launcher_env):
         """After stop, runner port must be free (PGID kill works correctly)."""

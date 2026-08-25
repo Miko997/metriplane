@@ -4,7 +4,9 @@
 
 set -euo pipefail
 
-RUNS_DIR="${RUNS_DIR:-~/metriplane-runs}"
+if [[ -z "${RUNS_DIR:-}" ]]; then
+  RUNS_DIR="$(python -c 'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+fi
 CFG="${CFG:-configs/fusion_health.yaml}"
 
 RUN_ID="${RUN_ID:-sd4_test_001}"
@@ -80,10 +82,10 @@ echo
 # 2) Verify config hash matches meta.json
 # -------------------------
 echo "==> 2) Verify config hash matches meta.json"
-python - <<'PY'
-import hashlib, json
+RUN_DIR="$RUN_DIR" python - <<'PY'
+import hashlib, json, os
 from pathlib import Path
-run_dir = Path.home() / "metriplane-runs" / "sd4_test_001"
+run_dir = Path(os.environ["RUN_DIR"])
 canon = run_dir.joinpath("config.canonical.json").read_bytes()
 meta  = json.loads(run_dir.joinpath("meta.json").read_text())
 h = hashlib.sha256(canon).hexdigest()

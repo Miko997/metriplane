@@ -9,7 +9,10 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
 # Match your transcript defaults.
-export RUNS="${RUNS:-~/metriplane-runs}"
+if [[ -z "${RUNS:-}" ]]; then
+  RUNS="$(python -c 'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+fi
+export RUNS
 export CONFIG="${CONFIG:-configs/fusion_health_300fps.yaml}"
 
 mkdir -p "$RUNS"

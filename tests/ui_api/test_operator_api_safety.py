@@ -6,13 +6,23 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from metriplane.paths import PlatformPaths
 from metriplane.runner.operator_api import OperatorAPI
 
 
 def make_api(tmp_path: Path) -> OperatorAPI:
     executor = MagicMock()
     executor.execute.return_value = "job-ui-api"
-    return OperatorAPI(executor=executor, repo_root=tmp_path)
+    return OperatorAPI(
+        executor=executor,
+        repo_root=tmp_path,
+        paths=PlatformPaths(
+            config_dir=tmp_path / "platform" / "config",
+            data_dir=tmp_path / "platform" / "data",
+            cache_dir=tmp_path / "platform" / "cache",
+            state_dir=tmp_path / "platform" / "state",
+        ),
+    )
 
 
 def test_save_config_rejects_path_traversal_filename(tmp_path: Path):
@@ -76,24 +86,22 @@ def test_checksum_rejects_evidence_sibling_prefix(tmp_path: Path):
     assert "Can only checksum" in payload["error"]
 
 
-def test_generate_report_rejects_runs_sibling_prefix(tmp_path: Path, monkeypatch):
+def test_generate_report_rejects_runs_sibling_prefix(tmp_path: Path):
     api = make_api(tmp_path)
-    home = tmp_path / "home"
-    runs_evil = home / "metriplane-runs-evil"
+    runs_root = api._runs_root()
+    runs_evil = runs_root.parent / f"{runs_root.name}-evil"
     runs_evil.mkdir(parents=True)
     session = runs_evil / "session.jsonl"
     session.write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     status, payload = api._generate_report(
         {"type": "zones", "session": str(session), "prefix": "safe"}
     )
     assert status == 400
-    assert "under ~/metriplane-runs" in payload["error"]
+    assert "under the platform runs directory" in payload["error"]
 
 
 def test_calibrate_rejects_unsafe_camera_path_before_job(tmp_path: Path):
-    executor = MagicMock()
-    api = OperatorAPI(executor=executor, repo_root=tmp_path)
+    api = make_api(tmp_path)
     status, payload = api._calibrate(
         {
             "profile": "local_test",
@@ -103,7 +111,7 @@ def test_calibrate_rejects_unsafe_camera_path_before_job(tmp_path: Path):
     )
     assert status == 400
     assert "Invalid camera path" in payload["error"]
-    executor.execute.assert_not_called()
+    api.executor.execute.assert_not_called()
 
 
 def test_create_profile_rejects_unsafe_camera_paths(tmp_path: Path):
@@ -118,3 +126,23 @@ def test_create_profile_rejects_unsafe_camera_paths(tmp_path: Path):
     )
     assert status == 400
     assert "camera" in payload["error"].lower()
+
+
+def test_latest_run_fails_cleanly_without_home_or_platform_bases(tmp_path: Path, monkeypatch):
+    for name in (
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_STATE_HOME",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    api = OperatorAPI(executor=MagicMock(), repo_root=tmp_path)
+
+    status, payload = api.route("GET", "/operator/latest-run", {})
+
+    assert status == 503
+    assert "Platform paths unavailable" in payload["error"]

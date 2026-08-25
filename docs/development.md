@@ -73,12 +73,32 @@ metriplane stop
 | `--run-id TEXT` | auto | Override run ID |
 | `--dashboard-port N` | 8088 | Web server port |
 | `--runner-port N` | 9000 | Runner API port |
-| `--runs-dir PATH` | `~/metriplane-runs` | Runs base directory |
+| `--runs-dir PATH` | platform data directory + `runs/` | Runs base directory |
 | `--open/--no-open` | open | Open browser automatically |
 | `--operator` | off | Open operator.html |
 
-Launcher state lives in `~/.cache/metriplane/launcher-state.json`.  
-Logs live in `~/metriplane-runs/_launcher/<timestamp>/`.
+Launcher state lives in the platform state directory as `launcher-state.json`.
+Logs live in the platform runs directory under `_launcher/<timestamp>/`.
+
+### Platform directories
+
+Metriplane resolves paths at command or request time, so tests and embedding applications can
+inject isolated directories without changing the process home. No directories are created during
+module import.
+
+| Platform | Config and data base | Cache base | State base |
+|----------|----------------------|------------|------------|
+| Linux and other Unix | `$XDG_CONFIG_HOME` and `$XDG_DATA_HOME`, falling back to `~/.config` and `~/.local/share` | `$XDG_CACHE_HOME`, falling back to `~/.cache` | `$XDG_STATE_HOME`, falling back to `~/.local/state` |
+| macOS | XDG overrides when set, otherwise `~/Library/Application Support` | XDG override or `~/Library/Caches` | XDG override or `~/Library/Application Support` |
+| Windows | `%APPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` |
+
+The application directory `metriplane/` is appended to each base. Runs therefore default to the
+`runs/` child of the platform data directory. `--runs-dir PATH` remains an explicit override and
+existing configs with an explicit `runs_dir` or `record_jsonl` continue to use that value.
+
+On POSIX systems with no usable `HOME`, set all four XDG variables to absolute paths. A read-only
+home is supported when writable XDG paths are supplied. If required bases are missing or relative,
+the command reports a platform-path error instead of silently writing elsewhere.
 
 ---
 

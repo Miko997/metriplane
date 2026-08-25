@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from metriplane.paths import PlatformPaths
 from metriplane.runner.operator_api import OperatorAPI
 
 REPO = Path(__file__).resolve().parents[1]
@@ -17,8 +18,17 @@ DEMO = str((REPO / "evidence/experiments/assistant_demo").resolve())
 
 
 @pytest.fixture
-def api():
-    return OperatorAPI(executor=None, repo_root=REPO)
+def api(tmp_path):
+    return OperatorAPI(
+        executor=None,
+        repo_root=REPO,
+        paths=PlatformPaths(
+            config_dir=tmp_path / "config",
+            data_dir=tmp_path / "data",
+            cache_dir=tmp_path / "cache",
+            state_dir=tmp_path / "state",
+        ),
+    )
 
 
 def test_incidents_endpoint(api):
@@ -121,17 +131,14 @@ def test_unknown_endpoint_still_404(api):
     assert st == 404
 
 
-def test_get_endpoints_no_data_safe(api, monkeypatch, tmp_path):
-    # point HOME at an empty dir so there is no ~/metriplane-runs latest run
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+def test_get_endpoints_no_data_safe(api):
     st, data = api.route("GET", "/operator/objects", {})
     assert st == 200
     assert data["objects"] == []
 
 
-def test_latest_command_center_run_prefers_incident_artifacts(api, monkeypatch, tmp_path):
-    runs_root = tmp_path / "metriplane-runs"
+def test_latest_command_center_run_prefers_incident_artifacts(api):
+    runs_root = api._runs_root()
     generic = runs_root / "new_generic_runtime"
     command_center = runs_root / "older_command_center"
     generic.mkdir(parents=True)
@@ -150,9 +157,6 @@ def test_latest_command_center_run_prefers_incident_artifacts(api, monkeypatch, 
     )
     os.utime(command_center, (1000, 1000))
     os.utime(generic, (2000, 2000))
-
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 
     st, data = api.route("GET", "/operator/live-summary", {})
 

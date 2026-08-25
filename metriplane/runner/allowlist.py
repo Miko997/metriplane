@@ -8,12 +8,13 @@ Defines safe, pre-approved commands that can be executed via the dashboard.
 No arbitrary command execution allowed.
 """
 
-from dataclasses import dataclass
-from pathlib import Path
 import sys
+from dataclasses import dataclass, replace
 from typing import List, Optional
 
-_RUNS_DIR = str(Path.home() / "metriplane-runs")
+from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+
+_RUNS_DIR_TOKEN = "{metriplane_platform_runs_dir}"
 _ATLAS_UI_RUN = "web/dashboard/atlas_run"
 _ATLAS_UI_BUNDLE_DIR = f"{_ATLAS_UI_RUN}/evidence_bundles/INC-0001"
 _ATLAS_UI_BUNDLE = f"{_ATLAS_UI_RUN}/evidence_bundles/INC-0001.zip"
@@ -174,7 +175,7 @@ ALLOWLIST: List[AllowedCommand] = [
         description="Run the camera-free incident sample and write a run the Command Center can display",
         command=[_PYTHON, "-m", "metriplane.cli", "sentinel", "run",
                  "--config", "configs/sentinel_operator_demo.yaml",
-                 "--run-id", "metriplane_demo", "--runs-dir", _RUNS_DIR],
+                 "--run-id", "metriplane_demo", "--runs-dir", _RUNS_DIR_TOKEN],
         enabled=True,
         disabled_reason=None,
         timeout_s=60,
@@ -375,11 +376,35 @@ ALLOWLIST: List[AllowedCommand] = [
 ]
 
 
-def get_command(command_id: str) -> Optional[AllowedCommand]:
+def _resolve_command(command: AllowedCommand, paths: PlatformPaths | None) -> AllowedCommand:
+    if _RUNS_DIR_TOKEN not in command.command:
+        return command
+    try:
+        resolved_paths = paths if paths is not None else resolve_platform_paths()
+    except PlatformPathError as exc:
+        return replace(
+            command,
+            enabled=False,
+            disabled_reason=f"Platform paths unavailable: {exc}",
+        )
+    argv = [str(resolved_paths.runs_dir) if part == _RUNS_DIR_TOKEN else part for part in command.command]
+    return replace(command, command=argv)
+
+
+def get_commands(*, paths: PlatformPaths | None = None) -> List[AllowedCommand]:
+    """Return allowlisted commands with platform paths resolved at request time."""
+    return [_resolve_command(command, paths) for command in ALLOWLIST]
+
+
+def get_command(
+    command_id: str,
+    *,
+    paths: PlatformPaths | None = None,
+) -> Optional[AllowedCommand]:
     """Get command by ID from allowlist"""
     for cmd in ALLOWLIST:
         if cmd.id == command_id:
-            return cmd
+            return _resolve_command(cmd, paths)
     return None
 
 
@@ -390,4 +415,4 @@ def validate_command_id(command_id: str) -> bool:
         return False
     if '..' in command_id or '/' in command_id:
         return False
-    return get_command(command_id) is not None
+    return any(command.id == command_id for command in ALLOWLIST)

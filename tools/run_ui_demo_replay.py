@@ -9,9 +9,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from metriplane.paths import resolve_platform_paths
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNS_DIR = Path.home() / "metriplane-runs"
 EVIDENCE_RUN = ROOT / "web/dashboard/atlas_run"
 INCIDENT_DIR = EVIDENCE_RUN / "evidence_bundles/INC-0001"
 
@@ -24,7 +24,8 @@ def run_step(label: str, command: list[str]) -> None:
 
 def main() -> int:
     py = sys.executable
-    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    runs_dir = resolve_platform_paths().runs_dir
+    runs_dir.mkdir(parents=True, exist_ok=True)
 
     run_step(
         "Build incident replay for Command Center",
@@ -39,7 +40,7 @@ def main() -> int:
             "--run-id",
             "metriplane_demo",
             "--runs-dir",
-            str(RUNS_DIR),
+            str(runs_dir),
         ],
     )
     run_step(

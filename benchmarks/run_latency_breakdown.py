@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 
+from metriplane.paths import resolve_platform_paths
 from metriplane.provenance.run_provenance import generate_run_id
 
 
@@ -33,7 +34,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="M9.5 latency breakdown runner")
     ap.add_argument("--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)")
     ap.add_argument("--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)")
-    ap.add_argument("--runs-dir", type=str, default=str(Path.home() / "metriplane-runs"), help="Runs base dir")
+    ap.add_argument(
+        "--runs-dir",
+        type=str,
+        default=None,
+        help="Runs base dir (default: platform data directory)",
+    )
     ap.add_argument("--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path")
     ap.add_argument(
         "--runner",
@@ -44,7 +50,11 @@ def main() -> int:
     ap.add_argument("--run-id", type=str, default=None, help="Optional run id override (otherwise auto)")
     args = ap.parse_args()
 
-    runs_dir = Path(args.runs_dir).expanduser().resolve()
+    runs_dir = (
+        Path(args.runs_dir).expanduser().resolve()
+        if args.runs_dir
+        else resolve_platform_paths().runs_dir
+    )
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     run_id = args.run_id or generate_run_id("m95_latency")
