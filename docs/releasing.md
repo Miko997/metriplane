@@ -5,17 +5,27 @@ SPDX-License-Identifier: MIT
 
 # Releasing Metriplane
 
-Metriplane uses PyPI Trusted Publishing. A release tag starts a workflow that
-builds one wheel and one source distribution, records their SHA-256 hashes,
-publishes those exact files to TestPyPI, and verifies them. Production
-publication is a separate owner-only manual dispatch that names the successful
-tag workflow run, version, and an exact confirmation phrase. The `pypi`
-environment is an additional protection layer, not the only approval control.
+Metriplane uses PyPI Trusted Publishing behind the cumulative MP2-007 release
+state machine. The same state machine qualifies every milestone from `v0.4`
+through `v1.0`; tags are observed inputs, not staging or approval authority.
+The existing publication workflow remains the one artifact publisher and
+reuses `tools/release_artifacts.py` to build one wheel and one source distribution.
+Production publication is a manual
+dispatch that consumes the successful artifact run plus a digest-bound live
+qualification run. The `pypi` environment and repository-owner confirmation
+are additional controls, not substitutes for non-author approval or retained
+two-store/CAS evidence.
 
 PyPI files are immutable. Never tag a candidate until its pull request is
 merged, every required check is green, and the owner has approved the release
 sequence. Never try to replace a bad published file; fix the problem and use a
 new version.
+
+See the [cumulative qualification runbook](releases/qualification-runbook.md)
+for the ordered stages, exact local commands, recovery rules, and live stop
+gates. A synthetic fixture can prove implementation behavior but can never
+satisfy live approval, provider identity, publication, external-store, CAS, or
+real merge predicates.
 
 ## Reusable manual product-understanding check
 
@@ -201,16 +211,22 @@ The workflow performs this sequence:
 10. compare TestPyPI's file hashes with the build manifest and install the
     staged package;
 11. stop after verified TestPyPI publication;
-12. from the latest `main`, have the owner manually run **Publish Python
-    distributions** with the successful tag workflow run ID, exact version,
+12. complete the cumulative release qualification and retain its exact live
+    role, non-author approval, qualification, two-store receipt, attempt-index,
+    and promotion-plan records;
+13. from the latest `main`, have the owner manually run **Publish Python
+    distributions** with the successful artifact workflow run ID,
+    qualification workflow run ID, qualification-record SHA-256, exact version,
     and exact confirmation
     `publish metriplane <version> to production`;
-13. verify that the named source run was a successful tag run for the same
+14. verify that the named source run was a successful tag run for the same
     annotated tag and commit and that it has one unexpired immutable artifact;
-14. re-download that exact artifact set and compare it with TestPyPI before the
+15. re-download that exact artifact set and compare it with TestPyPI before the
     `pypi` environment is entered;
-15. publish the verified files to PyPI;
-16. compare production PyPI's hashes with the same manifest and verify a clean
+16. validate the downloaded qualification record, role assignment, approval,
+    retention receipts, and live readiness before entering `pypi`;
+17. publish the verified files to PyPI;
+18. compare production PyPI's hashes with the same manifest and verify a clean
     production installation.
 
 Do not start the production workflow dispatch until the TestPyPI verification

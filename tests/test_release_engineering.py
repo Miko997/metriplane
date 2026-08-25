@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 RELEASING = ROOT / "docs" / "releasing.md"
@@ -56,7 +55,13 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
 
     assert set(trigger) == {"push", "workflow_dispatch"}
     inputs = trigger["workflow_dispatch"]["inputs"]
-    assert set(inputs) == {"release_run_id", "version", "confirmation"}
+    assert set(inputs) == {
+        "release_run_id",
+        "qualification_run_id",
+        "qualification_record_digest",
+        "version",
+        "confirmation",
+    }
     assert all(item["required"] is True for item in inputs.values())
 
     request = jobs["validate-production-request"]
@@ -81,6 +86,14 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         'test "$GITHUB_REF" = "refs/heads/main"',
         'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
         "publish metriplane ${RELEASE_VERSION} to production",
+        "release-qualification-evidence",
+        "release-qualification.json",
+        "validate_release_qualification.py",
+        "validate_release_role_assignments.py",
+        "validate_release_approval.py",
+        "validate_release_retention.py",
+        "check_release_readiness.py",
+        "--mode live",
         "/actions/runs/${RELEASE_RUN_ID}",
         "/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100",
         '"event": "push"',
@@ -107,9 +120,7 @@ def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     ):
         uses = [step.get("uses", "") for step in jobs[name]["steps"]]
         checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
-        download = next(
-            i for i, value in enumerate(uses) if "actions/download-artifact@" in value
-        )
+        download = next(i for i, value in enumerate(uses) if "actions/download-artifact@" in value)
         assert checkout < download, name
 
 
@@ -119,7 +130,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
-        "git merge-base --is-ancestor \"$tag_commit\" origin/main",
+        'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",
@@ -179,9 +190,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     )
     assert all(topic in migration for topic in required_migration_topics)
 
-    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index(
-        "## Install and run"
-    )
+    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index("## Install and run")
     for result in ("six events", "one incident", "35.0 seconds", "verified", "passed"):
         assert result in notes
     assert "No unfamiliar-user comprehension study was completed before release" in notes

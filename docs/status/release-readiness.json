@@ -1,0 +1,15 @@
+{
+  "blockers": [
+    "LIVE_NON_AUTHOR_APPROVAL_REQUIRED",
+    "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED",
+    "HOSTED_PROTECTION_AND_REAL_MERGE_PROOF_REQUIRED",
+    "MP2_018_POPULATED_INVENTORY_REQUIRED"
+  ],
+  "first_release": "v0.4",
+  "framework": "READY",
+  "last_release": "v1.0",
+  "live_release": "BLOCKED_NOT_READY",
+  "owner": "MP2-007",
+  "required_terminal": "Release / required",
+  "schema_version": "metriplane.release-readiness.v1"
+}

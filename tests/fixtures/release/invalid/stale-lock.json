@@ -1,0 +1,6 @@
+{
+  "epoch": 1,
+  "lease_until": 200,
+  "now": 100,
+  "owner": "other"
+}

@@ -13,6 +13,14 @@ on:
         description: "Successful tag-publication workflow run ID"
         required: true
         type: string
+      qualification_run_id:
+        description: "Release qualification workflow run containing retained live authority"
+        required: true
+        type: string
+      qualification_record_digest:
+        description: "SHA-256 of the exact retained live qualification record"
+        required: true
+        type: string
       version:
         description: "Exact version to promote, without the v prefix"
         required: true
@@ -23,6 +31,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -348,7 +357,42 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Require owner confirmation and a successful tag workflow
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-qualification-evidence
+          path: release-authority/
+          run-id: ${{ inputs.qualification_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require retained cumulative release authority
+        env:
+          QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$QUALIFICATION_RECORD_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          test "$(sha256sum release-authority/release-qualification.json | awk '{print $1}')" = \
+            "$QUALIFICATION_RECORD_DIGEST"
+          python tools/validate_release_qualification.py \
+            --input release-authority/release-qualification.json \
+            --mode live
+          python tools/validate_release_role_assignments.py \
+            --input release-authority/release-role-assignments.json \
+            --mode live
+          python tools/validate_release_approval.py \
+            --input release-authority/release-approval.json \
+            --roles release-authority/release-role-assignments.json \
+            --mode live
+          python tools/validate_release_retention.py \
+            --input release-authority/release-retention-receipts.json \
+            --mode live
+          python tools/check_release_readiness.py \
+            --repository . \
+            --mode live
+
+      - name: Require owner confirmation and a successful artifact workflow
         id: request
         env:
           CONFIRMATION: ${{ inputs.confirmation }}

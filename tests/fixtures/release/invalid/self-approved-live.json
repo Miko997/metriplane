@@ -1,0 +1,27 @@
+{
+  "data": {
+    "author_id": "fixture-author",
+    "candidate_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "conflicts": [],
+    "decision": "APPROVED",
+    "reviewer_id": "fixture-author"
+  },
+  "invocation_id": "invalid-self-approval-001",
+  "payload_digest": "101c042054b013fe36363de1f453f9bc1e7562132ac1395cc2d17ee70f9a1280",
+  "record_id": "c798c61d1e802b05f99387a6ed16babb75f69719df33d584fc429ce7fe24677d",
+  "record_type": "release-approval",
+  "schema_version": "metriplane.release-record.v1",
+  "sequence": 1,
+  "signatures": [
+    {
+      "actor_id": "fixture-author",
+      "algorithm": "provider-attestation-v1",
+      "provider": "linear",
+      "signature": "b3a9fb263b67aac74bd1f149e2643d410154adb9cd3f6b516cd9a5b0f4341317",
+      "subject_digest": "101c042054b013fe36363de1f453f9bc1e7562132ac1395cc2d17ee70f9a1280",
+      "synthetic": false
+    }
+  ],
+  "status": "PASS",
+  "synthetic": false
+}

@@ -1,0 +1,56 @@
+{
+  "owner": "MP2-007",
+  "scenarios": [
+    {
+      "expected": "PASS",
+      "id": "complete-fake-release",
+      "mode": "fixture"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "self-approval",
+      "mode": "live"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "synthetic-live-approval",
+      "mode": "live"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "partial-publication",
+      "mode": "fixture"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "artifact-mismatch",
+      "mode": "fixture"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "stale-lock",
+      "mode": "fixture"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "concurrent-writer",
+      "mode": "fixture"
+    },
+    {
+      "expected": "RECOVER",
+      "id": "kill-after-cas",
+      "mode": "fixture"
+    },
+    {
+      "expected": "BURN",
+      "id": "capability-limited-tag-burn",
+      "mode": "fixture"
+    },
+    {
+      "expected": "BLOCKED",
+      "id": "external-store-outage",
+      "mode": "live"
+    }
+  ],
+  "schema_version": "metriplane.release-scenarios.v1"
+}

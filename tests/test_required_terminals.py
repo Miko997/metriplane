@@ -112,28 +112,26 @@ def test_missing_extra_and_wrong_sha_fail_closed() -> None:
         )
 
 
-def test_terminal_inventory_has_four_sole_producers_and_release_handoff() -> None:
+def test_terminal_inventory_has_five_sole_producers() -> None:
     policy = validate_policy(POLICY, WORKFLOWS)
     active = [item for item in policy["terminals"] if item["state"] == "active"]
-    reserved = [item for item in policy["terminals"] if item["state"] == "reserved"]
     assert [item["name"] for item in active] == [
         "Metriplane / required",
         "Documentation / required",
         "Security / required",
         "Main health / required",
+        "Release / required",
     ]
-    assert reserved == [
-        {
-            "name": "Release / required",
-            "owner": "MP2-007",
-            "producer": None,
-            "state": "reserved",
-        }
-    ]
+    assert active[-1] == {
+        "name": "Release / required",
+        "owner": "MP2-007",
+        "producer": ".github/workflows/release-required.yml",
+        "state": "active",
+    }
 
 
 @pytest.mark.parametrize("suffix", (".yml", ".yaml"))
-def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path, suffix: str) -> None:
+def test_duplicate_or_missing_producer_is_rejected(tmp_path: Path, suffix: str) -> None:
     workflow_root = tmp_path / "workflows"
     workflow_root.mkdir()
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
@@ -149,10 +147,10 @@ def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path, suffix: str
     with pytest.raises(TerminalValidationError, match="sole producer"):
         validate_policy(POLICY, workflow_root)
     duplicate.write_text(
-        "name: early\njobs:\n  required:\n    name: Release / required\n",
+        "name: duplicate\njobs:\n  required:\n    name: Release / required\n",
         encoding="utf-8",
     )
-    with pytest.raises(TerminalValidationError, match="producer-free"):
+    with pytest.raises(TerminalValidationError, match="sole producer"):
         validate_policy(POLICY, workflow_root)
 
 
@@ -188,6 +186,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "docs.yml": "Documentation / required",
         "codeql.yml": "Security / required",
         "main-health.yml": "Main health / required",
+        "release-required.yml": "Release / required",
     }
     for filename, terminal in expected.items():
         workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))

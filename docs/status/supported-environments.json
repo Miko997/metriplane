@@ -1,0 +1,26 @@
+{
+  "environments": [
+    {
+      "id": "ubuntu-24.04-py312",
+      "python": "3.12",
+      "required": true
+    },
+    {
+      "id": "ubuntu-24.04-py313",
+      "python": "3.13",
+      "required": true
+    },
+    {
+      "id": "macos-15-py312",
+      "python": "3.12",
+      "required": true
+    },
+    {
+      "id": "windows-11-py312",
+      "python": "3.12",
+      "required": true
+    }
+  ],
+  "owner": "MP2-007",
+  "schema_version": "metriplane.release-supported-environments.v1"
+}

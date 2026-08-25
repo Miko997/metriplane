@@ -1,0 +1,17 @@
+{
+  "approval": {
+    "decision": "APPROVED",
+    "non_author_required": true,
+    "provider_authenticated": true
+  },
+  "implementation": {
+    "allowed_states": [
+      "In Progress"
+    ],
+    "assignment_required": true,
+    "provider": "linear",
+    "synthetic_live_authority": false
+  },
+  "owner": "MP2-007",
+  "schema_version": "metriplane.release-task-state-policy.v1"
+}

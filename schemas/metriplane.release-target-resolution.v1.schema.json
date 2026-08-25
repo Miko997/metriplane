@@ -1,0 +1,329 @@
+{
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "stage": {
+      "enum": [
+        "roles",
+        "task-state",
+        "staging",
+        "targets",
+        "predecessor",
+        "source-freeze",
+        "candidate",
+        "qualification",
+        "approval",
+        "prepromotion",
+        "promotion",
+        "reconciliation",
+        "retention",
+        "closed"
+      ]
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-target-resolution.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "artifacts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/digest"
+          },
+          "type": "object"
+        },
+        "attempt_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "author_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "authorized_executor_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "candidate_milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "cells": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "closed_decision_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "conflicts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "decision": {
+          "enum": [
+            "APPROVED",
+            "REJECTED",
+            "INVALIDATED"
+          ]
+        },
+        "environment": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "epoch": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidence_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "expected_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inputs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "sha256": {
+                "$ref": "#/$defs/digest"
+              }
+            },
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "lease_until": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lkg_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "non_author_reviewer_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "observations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "owner": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "predecessor_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "publisher_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "receipts": {
+          "items": {
+            "$ref": "#/$defs/digest"
+          },
+          "minItems": 2,
+          "type": "array"
+        },
+        "required_terminals": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "reviewer_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "stage": {
+          "$ref": "#/$defs/stage"
+        },
+        "state": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "stores": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "target": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "task_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tool": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-target-resolution"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "algorithm": {
+            "enum": [
+              "provider-attestation-v1",
+              "test-sha256-v1"
+            ]
+          },
+          "provider": {
+            "enum": [
+              "github",
+              "linear",
+              "test-fixture"
+            ]
+          },
+          "signature": {
+            "minLength": 16,
+            "type": "string"
+          },
+          "subject_digest": {
+            "$ref": "#/$defs/digest"
+          },
+          "synthetic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "actor_id",
+          "algorithm",
+          "provider",
+          "signature",
+          "subject_digest",
+          "synthetic"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "BLOCKED",
+        "CANCELLED",
+        "FAIL",
+        "INVALIDATED",
+        "OPEN",
+        "PASS",
+        "READY",
+        "SKIPPED"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-target-resolution record",
+  "type": "object"
+}

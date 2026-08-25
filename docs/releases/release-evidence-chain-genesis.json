@@ -1,0 +1,7 @@
+{
+  "predecessor": null,
+  "release": "v0.3.0",
+  "release_genesis_digest": "9ec6347b0fb2890dcbe1c3f3537ce4e0daed3dfdef7d8071748c8b126d6a4200",
+  "schema_version": "metriplane.release-evidence-chain-genesis.v1",
+  "sequence": 0
+}

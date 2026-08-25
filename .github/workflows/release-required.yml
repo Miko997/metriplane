@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Release qualification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Validate release contracts
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - run: uv sync --locked --group dev
+
+      - name: Validate closed schemas, tools, fixtures, and workflow contracts
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          uv run python -m pytest -q \
+            tests/test_release_contracts.py \
+            tests/test_release_workflow.py
+          uv run python tools/check_release_readiness.py \
+            --repository . \
+            --mode fixture
+
+  fake-release:
+    name: Execute deterministic fake release and mutations
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - run: uv sync --locked --group dev
+
+      - name: Exercise every release stage and recovery boundary
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: uv run python -m pytest -q tests/release/test_local_fake_release.py
+
+  required:
+    name: Release / required
+    if: always()
+    needs: [contracts, fake-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Aggregate exact same-SHA terminal results
+        env:
+          CONTRACTS_RESULT: ${{ needs.contracts.result }}
+          CONTRACTS_SHA: ${{ needs.contracts.outputs.source_sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FAKE_RELEASE_RESULT: ${{ needs.fake-release.result }}
+          FAKE_RELEASE_SHA: ${{ needs.fake-release.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          results="$(jq -cn \
+            --arg contracts_result "$CONTRACTS_RESULT" \
+            --arg contracts_sha "$CONTRACTS_SHA" \
+            --arg fake_result "$FAKE_RELEASE_RESULT" \
+            --arg fake_sha "$FAKE_RELEASE_SHA" \
+            '{
+              contracts: {result: $contracts_result, sha: $contracts_sha},
+              "fake-release": {result: $fake_result, sha: $fake_sha}
+            }')"
+          python tools/check_required_terminal.py aggregate \
+            --terminal "Release / required" \
+            --expected-sha "$EXPECTED_SHA" \
+            --expected-dependency contracts \
+            --expected-dependency fake-release \
+            --results-json "$results"

@@ -1,0 +1,19 @@
+{
+  "data": {
+    "observations": [
+      "github-release",
+      "pypi",
+      "testpypi"
+    ],
+    "tool": "fake-targets"
+  },
+  "invocation_id": "fixture-targets-001",
+  "payload_digest": "7919c9b5e1aa4b8ecf1b2b2667f3e790863f3dde5c59386ceba7243c2759c351",
+  "record_id": "f651261dd4abb7864208368f1f71de5a859ca4a471b0a5bf7926078b4dea3576",
+  "record_type": "release-target-observations",
+  "schema_version": "metriplane.release-record.v1",
+  "sequence": 1,
+  "signatures": [],
+  "status": "PASS",
+  "synthetic": true
+}

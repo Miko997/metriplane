@@ -57,12 +57,11 @@ def validate_terminal(
 
 
 def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
-    """Validate sole producers and the future Release handoff."""
+    """Validate the exact sole producer of every required terminal."""
     try:
         import yaml
     except ImportError as exc:
         raise TerminalValidationError("policy validation requires PyYAML") from exc
-
     policy = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(policy, dict):
         raise TerminalValidationError("terminal policy must be a JSON object")
@@ -117,19 +116,18 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         producers = [
             name for name, job_names in workflow_job_names.items() if terminal["name"] in job_names
         ]
-        if terminal["state"] == "active":
-            if producers != [Path(terminal["producer"]).name]:
-                raise TerminalValidationError(
-                    f"{terminal['name']}: expected sole producer "
-                    f"{terminal['producer']!r}, found {producers!r}"
-                )
-        else:
-            if terminal["name"] != "Release / required":
-                raise TerminalValidationError("only Release / required may be reserved")
-            if terminal["owner"] != "MP2-007" or producers:
-                raise TerminalValidationError(
-                    "Release / required must be producer-free and reserved for MP2-007"
-                )
+        if terminal["state"] != "active" or not isinstance(terminal["producer"], str):
+            raise TerminalValidationError(f"{terminal['name']}: terminal is not active")
+        if producers != [Path(terminal["producer"]).name]:
+            raise TerminalValidationError(
+                f"{terminal['name']}: expected sole producer "
+                f"{terminal['producer']!r}, found {producers!r}"
+            )
+    release = next(item for item in terminals if item["name"] == "Release / required")
+    if release["owner"] != "MP2-007" or release["producer"] != (
+        ".github/workflows/release-required.yml"
+    ):
+        raise TerminalValidationError("Release / required has the wrong owner or producer")
     return dict(policy)
 
 

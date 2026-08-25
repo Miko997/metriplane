@@ -1,0 +1,22 @@
+{
+  "attempt_index": {
+    "backend": null,
+    "cas_required": true,
+    "read_back_required": true
+  },
+  "live_status": "BLOCKED_NOT_READY",
+  "owner": "MP2-007",
+  "schema_version": "metriplane.release-evidence-stores.v1",
+  "stores": [
+    {
+      "id": "store-a",
+      "independence_group": "primary",
+      "live_binding": null
+    },
+    {
+      "id": "store-b",
+      "independence_group": "secondary",
+      "live_binding": null
+    }
+  ]
+}

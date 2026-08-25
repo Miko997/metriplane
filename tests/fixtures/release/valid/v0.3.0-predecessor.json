@@ -1,0 +1,17 @@
+{
+  "data": {
+    "candidate_milestone": "v0.4",
+    "closed_decision_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "lkg_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "version": "v0.3.0"
+  },
+  "invocation_id": "fixture-predecessor-001",
+  "payload_digest": "ce019ecc2ee4d90664107eccdc84b38101706b82e9258d9623bb2be296ec7862",
+  "record_id": "be015351aaa58622d833f5631d64a62835ba61f12b4abcabcbc84de87ad67873",
+  "record_type": "release-predecessor",
+  "schema_version": "metriplane.release-record.v1",
+  "sequence": 1,
+  "signatures": [],
+  "status": "PASS",
+  "synthetic": false
+}

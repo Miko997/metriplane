@@ -1,0 +1,219 @@
+{
+  "base_commit": "6a3db5897e51f4bd0f9414820596e2fb42e2ac19",
+  "commands": [
+    "python -m pytest -q tests/release/test_local_fake_release.py",
+    "python -m pytest -q tests/test_release_contracts.py tests/test_release_workflow.py"
+  ],
+  "materialization_id": "58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7",
+  "obligations": [
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN"
+      ],
+      "id": "MP2-007.A01",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a01_cumulative_release_system",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/01-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "FAULT"
+      ],
+      "id": "MP2-007.A02",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a02_signed_roles_and_task_state",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/02-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN"
+      ],
+      "id": "MP2-007.A03",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a03_tag_independent_staging",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/03-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN"
+      ],
+      "id": "MP2-007.A04",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a04_target_burn_and_patch_resolution",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/04-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN"
+      ],
+      "id": "MP2-007.A05",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a05_actual_predecessor_resolution",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/05-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "SEMANTIC",
+        "UI"
+      ],
+      "id": "MP2-007.A06",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a06_build_once_candidate_identity",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/06-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "SEMANTIC"
+      ],
+      "id": "MP2-007.A07",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a07_terminal_matrix_two_store_index",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/07-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "SECURITY"
+      ],
+      "id": "MP2-007.A08",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a08_non_author_approval_boundary",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/08-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "FAULT",
+        "SECURITY",
+        "SEMANTIC",
+        "RELEASE"
+      ],
+      "id": "MP2-007.A09",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a09_fenced_promotion_lock_and_recovery",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/09-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "FAULT",
+        "SEMANTIC",
+        "UI",
+        "RELEASE"
+      ],
+      "id": "MP2-007.A10",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a10_exact_byte_reconciliation",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/10-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "FAULT",
+        "SECURITY",
+        "SEMANTIC",
+        "RELEASE"
+      ],
+      "id": "MP2-007.A11",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a11_retention_chain_lkg_and_invalidation",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/11-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "FAULT",
+        "BOUNDARY",
+        "PARSER",
+        "RELEASE"
+      ],
+      "id": "MP2-007.A12",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a12_immutable_recovery_and_new_invocations",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/12-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    },
+    {
+      "families": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "FAULT",
+        "PROFILE",
+        "UI",
+        "RELEASE"
+      ],
+      "id": "MP2-007.A13",
+      "node_id": "tests/release/test_local_fake_release.py::test_mp2_007_a13_complete_mutation_suite_and_mp2_018_fence",
+      "result": "build/work-orders/MP2-007/6a3db5897e51f4bd0f9414820596e2fb42e2ac19/58f423e458827239e7abf5d4e6f38638d0fa59e05a7587de8f28e2523723a7e7/evidence/13-result.json",
+      "validator": "tools/validate_release_qualification.py"
+    }
+  ],
+  "owner": "MP2-007",
+  "schema_version": "metriplane.release-test-obligations.v1"
+}

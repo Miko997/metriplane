@@ -28,8 +28,8 @@
     {
       "name": "Release / required",
       "owner": "MP2-007",
-      "producer": null,
-      "state": "reserved"
+      "producer": ".github/workflows/release-required.yml",
+      "state": "active"
     }
   ]
 }

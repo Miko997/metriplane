@@ -1,0 +1,87 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+SPDX-License-Identifier: MIT
+-->
+
+# Cumulative release qualification
+
+MP2-007 defines one release state machine for every milestone from `v0.4`
+through `v1.0`. A release attempt is an immutable sequence. It cannot skip a
+stage, reopen a failed stage, replace retained output, or treat a tag as
+authority.
+
+## Ordered state machine
+
+Every attempt runs these stages in order:
+
+1. resolve signed role assignments and provider-observed task state;
+2. stage the candidate independently of tags;
+3. observe every release target and retain any burn;
+4. resolve the actual last-known-good predecessor and closed decision;
+5. freeze the source and build the candidate once through
+   `tools/release_artifacts.py`;
+6. terminalize the complete environment, scenario, and obligation matrix;
+7. retain and read-verify evidence in two independent stores and the attempt
+   index;
+8. obtain conflict-free provider-authenticated approval from the assigned
+   non-author reviewer;
+9. bind a promotion plan to the candidate, approval, controls, target state,
+   index checkpoint, actions, and expiry;
+10. acquire the fenced compare-and-swap promotion lock;
+11. observe publication and reconcile exact bytes for every target;
+12. retain both-store receipts, append the success chain, advance last known
+    good, and retain its pointer envelope and index entry;
+13. close the attempt. A later product contradiction uses the signed
+    invalidation path and never rewrites the successful record.
+
+The exact milestone and test inventories are in
+`docs/status/release-targets.json` and
+`docs/status/release-test-obligations.json`. The `v0.4` predecessor is the
+observed `v0.3.0` genesis. Later milestones require the preceding closed
+decision and last-known-good transition.
+
+## Local qualification
+
+Use the repository-pinned `uv==0.12.0` and disable external pytest plugins:
+
+```console
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen python -m pytest -q \
+  tests/release/test_local_fake_release.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen python -m pytest -q \
+  tests/test_release_contracts.py tests/test_release_workflow.py
+uv run --frozen python tools/check_release_readiness.py \
+  --repository . --mode fixture
+```
+
+The fake-release suite proves deterministic state transitions, mutation
+failures, target burns, exact-byte conflicts, concurrent writers, expired and
+dead-owner lock recovery, kill-after-CAS reconstruction, and output
+no-overwrite. Synthetic records are test inputs only.
+
+## Live stop gates
+
+`--mode live` fails closed until all of these external facts exist and read
+back exactly:
+
+- a digest-bound executor delegation and task-state observation from the live
+  providers;
+- an approval from the assigned non-author reviewer, distinct from the author;
+- two independent durable evidence stores and a fenced CAS attempt-index,
+  lock, and last-known-good backend;
+- every populated target, environment, scenario, obligation, receipt,
+  candidate, predecessor, platform, and open-BOM prerequisite required by
+  MP2-018;
+- hosted protection recapture and a retained real merge-path proof.
+
+No fixture identity, repository-owner check, tag, environment approval, or
+locally written signature can satisfy those predicates. Missing authority
+leaves the attempt `BLOCKED_NOT_READY` and cannot reach a publication job.
+
+## Failure and recovery
+
+A partial target, digest mismatch, mutable observation, unknown terminal,
+store outage, or stale writer is retained as a blocker or burn. A retry uses a
+new invocation and sequence. Kill-after-CAS recovery may reconstruct only the
+exact committed operation named by the immutable recovery envelope. Conflicting
+successors fail; successful, failed, cancelled, skipped, blocked, burn, and
+recovery records are never overwritten.
