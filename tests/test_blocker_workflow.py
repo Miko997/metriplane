@@ -870,6 +870,43 @@ def test_provider_commit_cap_cannot_hide_registry_change_actors(tmp_path: Path) 
     assert any("verifiable REST inventory limit" in error for error in report["errors"])
 
 
+@pytest.mark.parametrize("commit_count", [None, False, 0, "1"])
+def test_provider_pull_commit_count_must_be_a_positive_integer(
+    tmp_path: Path, commit_count: Any
+) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade")
+    payload["pull"]["commits"] = commit_count
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("commit count is malformed" in error for error in report["errors"])
+
+
+def test_provider_pull_commit_count_must_match_enumerated_commits(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade")
+    payload["pull"]["commits"] = 2
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("commit inventory count is incomplete" in error for error in report["errors"])
+
+
+def test_provider_pull_commit_inventory_rejects_duplicate_shas(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade")
+    payload["pull"]["commits"] = 2
+    payload["commits"] = [{"sha": COMMIT_SHA}, {"sha": COMMIT_SHA}]
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("commit inventory contains duplicates" in error for error in report["errors"])
+
+
 def test_commit_file_cap_cannot_hide_registry_change_actors(tmp_path: Path) -> None:
     blocker = _valid_downgrade(tmp_path)
     payload = _synthetic_provider_payload(blocker, "downgrade")
