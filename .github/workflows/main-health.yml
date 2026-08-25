@@ -173,7 +173,9 @@ jobs:
           deadline=$((SECONDS + 600))
           jobs_root="$RUNNER_TEMP/main-health-jobs"
           runs_file="$RUNNER_TEMP/main-health-workflow-runs.jsonl"
+          verify_runs_file="$RUNNER_TEMP/main-health-verify-workflow-runs.jsonl"
           selection_file="$RUNNER_TEMP/main-health-selection.json"
+          verify_selection_file="$RUNNER_TEMP/main-health-verify-selection.json"
           targets_file="$RUNNER_TEMP/main-health-targets.tsv"
           while true; do
             if ! gh api --paginate \
@@ -216,6 +218,33 @@ jobs:
               ready="$(python -c \
                 'import json,sys; print(str(json.load(sys.stdin)["ready"]).lower())' \
                 <<<"$observation")"
+              if [[ "$ready" == true ]]; then
+                if ! gh api --paginate \
+                  "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RUN_SHA}&per_page=100" \
+                  --jq '.workflow_runs[]' > "$verify_runs_file"; then
+                  : > "$verify_runs_file"
+                fi
+                python tools/observe_main_health.py select \
+                  --workflow-runs "$verify_runs_file" \
+                  --run-id "$RUN_IDENTITY" \
+                  --run-attempt "$RUN_ATTEMPT" \
+                  --run-conclusion "$RUN_CONCLUSION" \
+                  --sha "$RUN_SHA" > "$verify_selection_file"
+                if ! cmp -s "$selection_file" "$verify_selection_file"; then
+                  observation="$(python - "$verify_selection_file" <<'PY'
+                  import json
+                  import pathlib
+                  import sys
+
+                  changed = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+                  changed["conclusion"] = "failure"
+                  changed["ready"] = False
+                  print(json.dumps(changed, sort_keys=True, separators=(",", ":")))
+                  PY
+                  )"
+                  ready=false
+                fi
+              fi
             fi
             if [[ "$ready" == true || $SECONDS -ge $deadline ]]; then
               break

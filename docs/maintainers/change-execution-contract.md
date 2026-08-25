@@ -59,6 +59,8 @@ protected-main writer observes the triggering CI attempt and the exact commit's
 latest Documentation and CodeQL attempts through paginated provider job APIs. It
 requires one exact aggregate terminal in each selected attempt and ingests them as
 one result; missing, duplicate, non-successful, or timed-out terminals retain failure.
+The selected provider attempts must remain unchanged in a second paginated read
+immediately before acceptance; a changed selection is observed again.
 Non-main and non-push workflow completions use unique non-writer concurrency
 groups and cannot displace the durable writer. Durable writers use the provider's
 maximum FIFO pending queue instead of pending-run replacement. The

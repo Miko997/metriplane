@@ -156,7 +156,16 @@ def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path, suffix: str
         validate_policy(POLICY, workflow_root)
 
 
-def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "job_name",
+    (
+        "    name: ${{ matrix.terminal }}\n",
+        "    name: >-\n      ${{\n        matrix.terminal\n      }}\n",
+    ),
+)
+def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(
+    tmp_path: Path, job_name: str
+) -> None:
     workflow_root = tmp_path / "workflows"
     workflow_root.mkdir()
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
@@ -165,7 +174,7 @@ def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(tmp_path: Path)
             source = ROOT / terminal["producer"]
             shutil.copyfile(source, workflow_root / source.name)
     (workflow_root / "dynamic.yaml").write_text(
-        "name: dynamic\njobs:\n  required:\n    name: ${{ matrix.terminal }}\n",
+        "name: dynamic\njobs:\n  required:\n" + job_name,
         encoding="utf-8",
     )
     with pytest.raises(TerminalValidationError, match="dynamic job name"):
@@ -217,7 +226,9 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "git rev-parse origin/main" in writer
     assert "actions/runs?head_sha=${RUN_SHA}&per_page=100" in writer
     assert "actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" in writer
-    assert writer.count("--paginate") == 2
+    assert writer.count("--paginate") == 3
+    assert "cmp -s" in writer
+    assert 'changed["ready"] = False' in writer
     assert "github.event.workflow_run.run_attempt" in str(health["jobs"]["persist-health"]["steps"])
     assert "tools/observe_main_health.py" in writer
     assert REQUIRED_WORKFLOWS == {

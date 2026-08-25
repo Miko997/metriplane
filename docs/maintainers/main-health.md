@@ -30,8 +30,8 @@ Missing, duplicate, cancelled, skipped, stale, wrong-attempt, wrong-SHA,
 malformed, timed-out, or failing obligations do not become success.
 
 Workflow completions that are not protected-main push results receive unique
-non-writer concurrency groups. They cannot occupy or replace the single pending
-durable-writer slot. Durable writers use the provider's maximum pending queue so
+non-writer concurrency groups. They cannot occupy or replace a durable writer.
+Durable writers use the provider's maximum pending queue so
 one protected-main or scheduled result cannot replace another while it waits.
 
 Candidate admission reads the external branch and requires fresh green evidence

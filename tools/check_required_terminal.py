@@ -96,7 +96,7 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         for job_name in job_names:
             if "${{" not in job_name:
                 continue
-            literal_parts = re.split(r"\$\{\{.*?\}\}", job_name)
+            literal_parts = re.split(r"\$\{\{.*?\}\}", job_name, flags=re.DOTALL)
             pattern = ".*".join(re.escape(part) for part in literal_parts)
             ambiguous = [name for name in expected_names if re.fullmatch(pattern, name)]
             if ambiguous:
