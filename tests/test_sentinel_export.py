@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from metriplane.paths import PlatformPaths
+from metriplane.paths import PlatformPathError, PlatformPaths
 from metriplane.schema import ObjectStateModel
 from metriplane.sentinel.cli_runtime import main_sentinel
 from metriplane.sentinel.config import SentinelConfig
@@ -107,6 +107,43 @@ def test_cli_run_uses_injected_platform_runs_dir_by_default(tmp_path, capsys):
     assert rc == 0
     capsys.readouterr()
     assert (paths.runs_dir / "sentinel_injected" / "sentinel_summary.json").is_file()
+
+
+def test_cli_run_generates_unique_default_run_ids(tmp_path, capsys, monkeypatch):
+    generated = iter(("sentinel_001", "sentinel_002"))
+    monkeypatch.setattr(
+        "metriplane.sentinel.cli_runtime.generate_run_id",
+        lambda _prefix: next(generated),
+    )
+
+    for _ in range(2):
+        assert main_sentinel([
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--runs-dir",
+            str(tmp_path),
+        ]) == 0
+
+    capsys.readouterr()
+    assert (tmp_path / "sentinel_001" / "sentinel_summary.json").is_file()
+    assert (tmp_path / "sentinel_002" / "sentinel_summary.json").is_file()
+
+
+def test_cli_run_reports_platform_path_failure_without_traceback(capsys, monkeypatch):
+    monkeypatch.setattr(
+        "metriplane.sentinel.cli_runtime.resolve_platform_paths",
+        lambda: (_ for _ in ()).throw(PlatformPathError("home unavailable")),
+    )
+
+    assert main_sentinel([
+        "run",
+        "--config",
+        "configs/sentinel_demo.yaml",
+        "--run-id",
+        "sentinel_path_failure",
+    ]) == 2
+    assert capsys.readouterr().out == "platform path error: home unavailable\n"
 
 
 @pytest.mark.parametrize(

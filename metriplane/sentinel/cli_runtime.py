@@ -8,7 +8,8 @@ import json
 import re
 from pathlib import Path
 
-from metriplane.paths import PlatformPaths, resolve_platform_paths
+from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.provenance.run_provenance import generate_run_id
 
 _SAFE_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
@@ -61,7 +62,7 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         print("config must set replay_input (path to a session JSONL)")
         return 1
 
-    run_id = args.run_id or "sentinel_run"
+    run_id = args.run_id or generate_run_id("sentinel")
     if _SAFE_RUN_ID.fullmatch(run_id) is None:
         print(
             "run_id must be a portable 1-128 character name using "
@@ -69,7 +70,15 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         )
         return 2
 
-    runs_dir = Path(args.runs_dir) if args.runs_dir else (paths or resolve_platform_paths()).runs_dir
+    try:
+        runs_dir = (
+            Path(args.runs_dir)
+            if args.runs_dir
+            else (paths or resolve_platform_paths()).runs_dir
+        )
+    except PlatformPathError as exc:
+        print(f"platform path error: {exc}")
+        return 2
     run_dir = runs_dir / run_id
     try:
         runs_dir.mkdir(parents=True, exist_ok=True)

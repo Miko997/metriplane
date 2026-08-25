@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -29,7 +30,7 @@ from metriplane.provenance.run_provenance import (
     is_header_record,
     open_jsonl_writer,
 )
-from metriplane.paths import PlatformPaths, resolve_platform_paths
+from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
 
 
 from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
@@ -671,7 +672,14 @@ def run_loop(
 ) -> int:
     effective_runs_dir = runs_dir
     if not effective_runs_dir and not cfg.runs_dir:
-        effective_runs_dir = str((paths or resolve_platform_paths()).runs_dir)
+        if paths is not None:
+            effective_runs_dir = str(paths.runs_dir)
+        elif not os.getenv("METRIPLANE_DATA_DIR"):
+            try:
+                effective_runs_dir = str(resolve_platform_paths().runs_dir)
+            except PlatformPathError as exc:
+                print(f"platform path error: {exc}", file=sys.stderr)
+                return 2
     resources = _RunResources()
     try:
         return _run_loop_impl(
@@ -1573,7 +1581,6 @@ def _run_dummy_mode(
 
 def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
-    import sys
     from pathlib import Path
 
     from metriplane.config import load_config

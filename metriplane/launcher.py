@@ -12,8 +12,8 @@ Manages the three local processes:
 State and logs use the injected platform state and data directories.
 
 Key design decisions (v2):
-- start_new_session=True  → each child is its own process group leader (PGID = PID)
-- os.killpg(pgid, sig)    → kills the entire process group, not just the wrapper
+- POSIX children run in their own session and process group (PGID = PID)
+- Windows children use CREATE_NEW_PROCESS_GROUP and taskkill /T lifecycle control
 - state stores both pid and pgid
 - stop: SIGTERM → wait 5s → SIGKILL → poll port-free before clearing state
 - status: shows port owners via ss -tlnp even when state file is absent
@@ -109,6 +109,10 @@ def _clear_state(paths: PlatformPaths | None = None) -> None:
 # Process helpers
 # ---------------------------------------------------------------------------
 
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
 def _is_running(pid: int | None) -> bool:
     """Return True if the process exists (any state)."""
     if pid is None:
@@ -124,6 +128,8 @@ def _is_running(pid: int | None) -> bool:
 
 def _get_pgid(pid: int) -> int | None:
     """Return process group ID of pid, or None if dead."""
+    if _is_windows():
+        return int(pid) if _is_running(pid) else None
     try:
         return os.getpgid(int(pid))
     except (ProcessLookupError, OSError):
@@ -299,7 +305,12 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
 
 
 def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) -> subprocess.Popen:
-    """Launch a subprocess in a new session and process group. Returns Popen."""
+    """Launch a subprocess in an isolated platform process group."""
+    group_options: dict[str, Any] = (
+        {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)}
+        if _is_windows()
+        else {"start_new_session": True}
+    )
     with open(log_file, "w") as fh:
         return subprocess.Popen(
             cmd,
@@ -307,7 +318,7 @@ def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) 
             stderr=fh,
             cwd=str(cwd),
             env=env,
-            start_new_session=True,
+            **group_options,
         )
 
 
@@ -418,6 +429,36 @@ def _start_fusion(*, config: str, run_id: str, runs_dir: str, duration_s: float,
 def _stop_pg(pgid: int | None, pid: int | None, *,
               use_sigint: bool = False, name: str = "process") -> None:
     """Stop a process group. Sends SIGINT/SIGTERM, waits 5s, then SIGKILL."""
+    if _is_windows():
+        if pid is None or not _is_running(pid):
+            return
+        subprocess.run(
+            ["taskkill", "/PID", str(int(pid)), "/T"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if not _is_running(pid):
+                return
+            time.sleep(0.1)
+        subprocess.run(
+            ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if not _is_running(pid):
+                break
+            time.sleep(0.05)
+        print(f"  [{name}] forced process-tree termination after 5s")
+        return
+
     # Build a list of targets: try by pgid first, fall back to pid
     def _send(sig: signal.Signals) -> bool:
         if pgid is not None:

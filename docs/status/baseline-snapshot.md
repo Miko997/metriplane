@@ -146,8 +146,9 @@ digest is
 schema validity, and all snapshot-internal count/order/digest invariants.
 `check` first performs the same validation, then resolves the exact Git commit
 and tree and recomputes tracked entries, terminal routes, schemas, resources,
-and workflows. It validates the frozen installed-help identities and stream
-digests recorded by bootstrap `capture`; it does not execute the invoking
+and workflows. It validates the frozen installed-help identities and exact governed
+superseding identities accepted by bootstrap `capture`; an unregistered byte stream fails.
+The committed historical stream and checksum remain unchanged. `check` does not execute the invoking
 interpreter's currently installed console scripts. When the exact qualifying
 local MP2-000 evidence is present, `check` also regenerates and exact-compares the retained
 test and environment projections. In an ordinary clean checkout where that
@@ -191,10 +192,11 @@ those support dispositions independently.
 - MP2-010 consumes this artifact as a census seed, not a complete typed baseline
   registry. MP2-014 imports the active `MP2-000.OBL.*` lineage. MP2-016 later
   migrates and validates the bootstrap records without rewriting their identity.
-- The frozen 0.3.0 version, installed-help streams, and root test obligations
-  remain active stop-the-line goldens. A legitimate change requires approval
-  and supersession through MP2-017; later work must not silently derive or
-  replace them from the current package version.
+- The frozen 0.3.0 version, historical installed-help streams, and root test obligations
+  remain active stop-the-line goldens. A reviewed help evolution is appended as an exact
+  size/digest identity; it does not rewrite the historical artifact. Broader legitimate changes
+  require approval and supersession through MP2-017, and later work must not silently derive or
+  replace historical identities from the current package version.
 
 The snapshot observes existing state. It does not characterize every success or
 failure contract, change compatibility, expand support, merge a pull request,

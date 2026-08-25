@@ -64,6 +64,9 @@ def test_platform_run_path_is_resolved_only_for_returned_commands(tmp_path: Path
         assert resolved.command[resolved.command.index("--runs-dir") + 1] == str(paths.runs_dir)
         assert get_command(command_id, paths=paths) == resolved
 
+    sentinel = next(command for command in resolved_commands if command.id == "sentinel-demo")
+    assert "--run-id" not in sentinel.command
+
 
 def test_only_path_dependent_command_is_disabled_without_home(monkeypatch):
     for name in (

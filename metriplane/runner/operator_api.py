@@ -26,6 +26,7 @@ from typing import Any, Dict, Optional, Tuple
 import yaml  # type: ignore
 
 from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.runner.command_center_api import find_run_artifact
 
 # ── Safety patterns ────────────────────────────────────────────────────────────
 
@@ -458,21 +459,31 @@ class OperatorAPI:
         if not runs_root.exists():
             return 200, {"latest_run": None, "runs_dir": str(runs_root)}
 
-        candidates = []
+        candidates: list[dict[str, Any]] = []
         for d in sorted(runs_root.iterdir()):
-            if d.is_dir():
-                session = d / "session.jsonl"
-                meta = d / "meta.json"
-                candidates.append(
-                    {
-                        "dir": str(d),
-                        "name": d.name,
-                        "session_exists": session.exists(),
-                        "session_size_mb": round(session.stat().st_size / 1e6, 1) if session.exists() else None,
-                        "meta_exists": meta.exists(),
-                        "mtime": d.stat().st_mtime,
-                    }
-                )
+            if d.is_symlink():
+                continue
+            try:
+                resolved = d.resolve(strict=True)
+                resolved.relative_to(runs_root)
+            except (OSError, ValueError):
+                continue
+            if not resolved.is_dir():
+                continue
+            session = find_run_artifact(resolved, ["session.jsonl"])
+            meta = find_run_artifact(resolved, ["meta.json"])
+            candidates.append(
+                {
+                    "dir": str(resolved),
+                    "name": resolved.name,
+                    "session_exists": session is not None,
+                    "session_size_mb": (
+                        round(session.stat().st_size / 1e6, 1) if session is not None else None
+                    ),
+                    "meta_exists": meta is not None,
+                    "mtime": resolved.stat().st_mtime,
+                }
+            )
 
         candidates.sort(key=lambda x: x["mtime"], reverse=True)
 
@@ -480,8 +491,8 @@ class OperatorAPI:
         if candidates:
             latest = candidates[0]
             # Try to read meta.json for run_id, git_commit
-            meta_path = Path(latest["dir"]) / "meta.json"
-            if meta_path.exists():
+            meta_path = find_run_artifact(Path(latest["dir"]), ["meta.json"])
+            if meta_path is not None:
                 try:
                     meta_data = json.loads(meta_path.read_text())
                     latest["meta"] = meta_data
@@ -1188,8 +1199,7 @@ class OperatorAPI:
                     continue
                 if runs_root not in resolved.parents or not resolved.is_dir():
                     continue
-                marker_paths = (resolved / marker for marker in markers)
-                if any(path.is_file() and not path.is_symlink() for path in marker_paths):
+                if find_run_artifact(resolved, markers) is not None:
                     candidates.append(resolved)
             return candidates
 
@@ -1235,8 +1245,8 @@ class OperatorAPI:
         if run is None:
             return 200, {"camera_trust": None}
         from metriplane.camera_trust.export import read_camera_trust_report
-        ct = run / "camera_trust.json"
-        if not ct.exists():
+        ct = find_run_artifact(run, ["camera_trust.json"])
+        if ct is None:
             return 200, {"camera_trust": None, "run_dir": str(run),
                          "note": "no camera_trust.json in this run"}
         try:

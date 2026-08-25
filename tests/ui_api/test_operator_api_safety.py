@@ -150,6 +150,37 @@ def test_latest_run_fails_cleanly_without_home_or_platform_bases(tmp_path: Path,
     assert "Platform paths unavailable" in payload["error"]
 
 
+def test_command_center_auto_discovery_ignores_external_artifact_symlink(tmp_path: Path):
+    api = make_api(tmp_path)
+    run = api._runs_root() / "candidate"
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    target = outside / "incident.json"
+    target.write_text('{"incident_id": "outside"}\n', encoding="utf-8")
+    (run / "incident.json").symlink_to(target)
+
+    assert api._cc_resolve_run_dir({}) is None
+
+
+def test_command_center_does_not_read_external_camera_trust_symlink(tmp_path: Path):
+    api = make_api(tmp_path)
+    run = api._runs_root() / "candidate"
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    (run / "session.jsonl").write_text("{}\n", encoding="utf-8")
+    target = outside / "camera_trust.json"
+    target.write_text('{"camera_scores": {"outside": 1.0}}\n', encoding="utf-8")
+    (run / "camera_trust.json").symlink_to(target)
+
+    status, payload = api._cc_camera_trust({})
+
+    assert status == 200
+    assert payload["camera_trust"] is None
+    assert payload["note"] == "no camera_trust.json in this run"
+
+
 def _symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool) -> None:
     try:
         link.symlink_to(target, target_is_directory=target_is_directory)

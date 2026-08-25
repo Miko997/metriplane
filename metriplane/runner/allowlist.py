@@ -180,7 +180,7 @@ ALLOWLIST: List[AllowedCommand] = [
         description="Run the camera-free incident sample and write a run the Command Center can display",
         command=[_PYTHON, "-m", "metriplane.cli", "sentinel", "run",
                  "--config", "configs/sentinel_operator_demo.yaml",
-                 "--run-id", "metriplane_demo", "--runs-dir", _RUNS_DIR_TOKEN],
+                 "--runs-dir", _RUNS_DIR_TOKEN],
         enabled=True,
         disabled_reason=None,
         timeout_s=60,

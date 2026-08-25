@@ -6,6 +6,7 @@ from __future__ import annotations
 import inspect
 import logging
 import os
+import sys
 import threading
 import time
 from metriplane.time.clock import RealTimeClock, Clock
@@ -26,7 +27,7 @@ from metriplane.compute.select import select_fusion_backend
 from metriplane.fusion.kalman_cv import MultiObjectKalman
 from metriplane.mapping.planar_multi import MultiPlanarMapper, load_multi_planar_mapper
 from metriplane.metrics import MetricsRegistry, start_metrics_server
-from metriplane.paths import PlatformPaths, resolve_platform_paths
+from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
@@ -367,7 +368,14 @@ def run_loop_fusion(
 ) -> int:
     effective_runs_dir = runs_dir
     if not effective_runs_dir and not cfg.runs_dir:
-        effective_runs_dir = str((paths or resolve_platform_paths()).runs_dir)
+        if paths is not None:
+            effective_runs_dir = str(paths.runs_dir)
+        elif not os.getenv("METRIPLANE_DATA_DIR"):
+            try:
+                effective_runs_dir = str(resolve_platform_paths().runs_dir)
+            except PlatformPathError as exc:
+                print(f"platform path error: {exc}", file=sys.stderr)
+                return 2
     resources = _FusionResources()
     try:
         return _run_loop_fusion_impl(
@@ -1058,7 +1066,6 @@ def _run_loop_fusion_impl(
 
 def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
-    import sys
 
     ap = argparse.ArgumentParser(description="Metriplane fusion runner")
     ap.add_argument("--config", "-c", default="config.example.yaml", help="Path to YAML config")

@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from metriplane.paths import resolve_platform_paths
+from metriplane.provenance.run_provenance import generate_run_id
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_RUN = ROOT / "web/dashboard/atlas_run"
@@ -30,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Run-recording base directory (default: platform data directory)",
     )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Portable run identifier (default: generate a unique identifier)",
+    )
     args = parser.parse_args(argv)
 
     py = sys.executable
@@ -39,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         else resolve_platform_paths().runs_dir
     )
     runs_dir.mkdir(parents=True, exist_ok=True)
+    run_id = args.run_id or generate_run_id("metriplane_demo")
 
     run_step(
         "Build incident replay for Command Center",
@@ -51,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
             "--config",
             "configs/sentinel_operator_demo.yaml",
             "--run-id",
-            "metriplane_demo",
+            run_id,
             "--runs-dir",
             str(runs_dir),
         ],
@@ -71,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             "--out",
             str(EVIDENCE_RUN.relative_to(ROOT)),
             "--run-id",
-            "metriplane_demo_replay",
+            run_id,
         ],
     )
     run_step(

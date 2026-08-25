@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from metriplane.config import Config
-from metriplane.paths import PlatformPaths
+from metriplane.paths import PlatformPathError, PlatformPaths
 from metriplane.provenance.run_provenance import create_run_context, open_jsonl_writer
 
 
@@ -44,10 +44,77 @@ def test_runtime_provenance_uses_injected_platform_runs_dir(
         return 17
 
     monkeypatch.setattr(module, implementation_name, fake_implementation)
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", str(tmp_path / "environment"))
     entrypoint = getattr(module, entrypoint_name)
 
     assert entrypoint(Config(), paths=_platform_paths(tmp_path)) == 17
     assert captured["runs_dir"] == str(tmp_path / "data" / "runs")
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_provenance_preserves_data_dir_environment_precedence(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 19
+
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", str(tmp_path / "docker-data"))
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+    monkeypatch.setattr(
+        module,
+        "resolve_platform_paths",
+        lambda: pytest.fail("METRIPLANE_DATA_DIR must precede ambient platform paths"),
+    )
+
+    assert getattr(module, entrypoint_name)(Config()) == 19
+    assert captured["runs_dir"] is None
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_path_resolution_failure_is_user_facing(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    monkeypatch.delenv("METRIPLANE_DATA_DIR", raising=False)
+    monkeypatch.setattr(
+        module,
+        "resolve_platform_paths",
+        lambda: (_ for _ in ()).throw(PlatformPathError("home unavailable")),
+    )
+    monkeypatch.setattr(
+        module,
+        implementation_name,
+        lambda *_args, **_kwargs: pytest.fail("runtime must not start"),
+    )
+
+    assert getattr(module, entrypoint_name)(Config()) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "platform path error: home unavailable\n"
 
 
 @pytest.mark.parametrize(
@@ -130,6 +197,30 @@ def test_ui_demo_replay_preserves_explicit_runs_dir(
     assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(
         runs_dir.resolve()
     )
+
+
+def test_ui_demo_replay_generates_a_unique_safe_run_id_each_time(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    commands: list[list[str]] = []
+    generated = iter(("metriplane_demo_001", "metriplane_demo_002"))
+    monkeypatch.setattr(run_ui_demo_replay, "generate_run_id", lambda _prefix: next(generated))
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda _label, command: commands.append(command),
+    )
+
+    for _ in range(2):
+        assert run_ui_demo_replay.main(["--runs-dir", str(tmp_path / "runs")]) == 0
+
+    sentinel_commands = commands[::3]
+    run_ids = [command[command.index("--run-id") + 1] for command in sentinel_commands]
+    assert run_ids == ["metriplane_demo_001", "metriplane_demo_002"]
+    assert len(set(run_ids)) == 2
 
 
 def test_metriplane_run_help_describes_platform_runs_default(capsys) -> None:

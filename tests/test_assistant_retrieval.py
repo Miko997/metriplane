@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from metriplane.assistant import retrieval
 
 BUNDLE = "evidence/incidents/INC-DIST-001"
@@ -49,6 +51,22 @@ def test_missing_files_produce_limitations(tmp_path):
     assert lims  # limitation, not crash
     rule, _, lims2 = retrieval.retrieve_rule(tmp_path, "x")
     assert rule is None and lims2
+
+
+def test_retrieval_does_not_follow_incident_symlink_outside_run(tmp_path: Path):
+    run = tmp_path / "run"
+    outside = tmp_path / "outside"
+    run.mkdir()
+    outside.mkdir()
+    target = outside / "incident.json"
+    target.write_text('{"incident_id": "outside"}\n', encoding="utf-8")
+    (run / "incident.json").symlink_to(target)
+
+    incidents, citations, limitations = retrieval.retrieve_incidents(run)
+
+    assert incidents == []
+    assert citations == []
+    assert limitations == ["no incident artifact found in run dir"]
 
 
 def test_known_object_ids():

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 
 from metriplane.assistant.citations import make_citation
@@ -11,10 +12,23 @@ from metriplane.assistant.models import CitationModel
 
 
 def _find(run_dir: Path, names: list[str]) -> Path | None:
-    for n in names:
-        p = run_dir / n
-        if p.exists():
-            return p
+    try:
+        root = run_dir.resolve(strict=True)
+    except OSError:
+        return None
+    if not root.is_dir():
+        return None
+    for name in names:
+        candidate = run_dir / name
+        try:
+            info = candidate.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                continue
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, ValueError):
+            continue
+        return resolved
     return None
 
 

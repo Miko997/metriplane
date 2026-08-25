@@ -456,6 +456,81 @@ class TestGetPgid:
             proc.wait()
 
 
+class TestWindowsProcessLifecycle:
+    def test_get_pgid_uses_pid_without_posix_api(self, monkeypatch):
+        import metriplane.launcher as lm
+
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm, "_is_running", lambda _pid: True)
+        monkeypatch.setattr(
+            lm.os,
+            "getpgid",
+            lambda _pid: pytest.fail("Windows must not call os.getpgid"),
+        )
+
+        assert lm._get_pgid(41) == 41
+
+    def test_launch_uses_windows_process_group_flags(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        captured = {}
+
+        def fake_popen(command, **kwargs):
+            captured["command"] = command
+            captured.update(kwargs)
+            return SimpleNamespace(pid=42)
+
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
+        monkeypatch.setattr(lm.subprocess, "Popen", fake_popen)
+
+        process = lm._launch(
+            [sys.executable, "-c", "pass"],
+            tmp_path / "child.log",
+            tmp_path,
+        )
+
+        assert process.pid == 42
+        assert captured["creationflags"] == 0x200
+        assert "start_new_session" not in captured
+
+    def test_stop_uses_taskkill_tree_without_posix_signals(self, monkeypatch):
+        import metriplane.launcher as lm
+
+        calls = []
+        running = iter((True, False))
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm, "_is_running", lambda _pid: next(running))
+        monkeypatch.setattr(lm.subprocess, "run", lambda command, **_kwargs: calls.append(command))
+        monkeypatch.setattr(
+            lm.os,
+            "killpg",
+            lambda *_args: pytest.fail("Windows must not call os.killpg"),
+        )
+
+        lm._stop_pg(43, 43)
+
+        assert calls == [["taskkill", "/PID", "43", "/T"]]
+
+    def test_stop_forces_windows_process_tree_after_timeout(self, monkeypatch, capsys):
+        import metriplane.launcher as lm
+
+        calls = []
+        monotonic = iter((0.0, 6.0, 10.0, 13.0))
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm, "_is_running", lambda _pid: True)
+        monkeypatch.setattr(lm.time, "monotonic", lambda: next(monotonic))
+        monkeypatch.setattr(lm.subprocess, "run", lambda command, **_kwargs: calls.append(command))
+
+        lm._stop_pg(44, 44, name="runner")
+
+        assert calls == [
+            ["taskkill", "/PID", "44", "/T"],
+            ["taskkill", "/PID", "44", "/T", "/F"],
+        ]
+        assert "forced process-tree termination" in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------------------
 # _make_proc_entry
 # ---------------------------------------------------------------------------

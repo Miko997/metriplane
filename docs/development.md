@@ -98,14 +98,22 @@ existing configs with an explicit `runs_dir` or `record_jsonl` continue to use t
 launcher override is propagated to the runner, its allowlisted replay command, and the `RUNS`
 environment used by allowlisted `tools/mp.sh` jobs.
 
+Runtime provenance resolves its run root in this order: direct `--runs-dir`, config `runs_dir`, an
+injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the XDG/platform default above. This
+keeps the Docker `/data` mount contract while allowing tests and embedding applications to inject
+one isolated root explicitly.
+
 Sentinel `--run-id` values are portable single-component names containing letters, numbers, dots,
-dashes, or underscores. Sentinel reserves a new run directory and refuses an existing one rather
-than overwriting its artifacts.
+dashes, or underscores. When omitted, Sentinel and the UI demo replay generate a unique portable
+identifier. Sentinel reserves a new run directory and refuses an existing one rather than
+overwriting its artifacts.
 
 On Windows, configuration is roaming but machine-local data and run recordings are not. When
 `APPDATA` or `LOCALAPPDATA` is unset, Metriplane derives the corresponding
 `AppData/Roaming` or `AppData/Local` base from absolute `USERPROFILE` (then `HOME`). If neither the
 environment variable nor a usable profile/home is available, resolution fails without writing.
+Launcher children use Windows process groups and `taskkill /T` for tree cleanup; POSIX launchers
+retain session/process-group signaling.
 
 On POSIX systems with no usable `HOME`, set all four XDG variables to absolute paths. A read-only
 home is supported when writable XDG paths are supplied. If required bases are missing or relative,
