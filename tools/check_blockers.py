@@ -27,6 +27,7 @@ SCHEMA_ID = "https://metriplane.com/schemas/metriplane.blockers.v1.schema.json"
 SEVERITY_RANK = {"P0": 0, "P1": 1, "P2": 2}
 REGISTRY_PATH = "docs/status/blockers.json"
 GITHUB_API_VERSION = "2022-11-28"
+GITHUB_COMMIT_FILES_LIMIT = 3000
 GITHUB_PULL_COMMITS_LIMIT = 250
 _GITHUB_ACTOR_RE = re.compile(r"github:([1-9][0-9]*)\Z")
 _GITHUB_LOGIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\Z")
@@ -635,6 +636,12 @@ def _github_registry_change_actors(
             changed.extend(
                 item.get("filename") if isinstance(item, dict) else None for item in page_files
             )
+            if len(changed) >= GITHUB_COMMIT_FILES_LIMIT and len(page_files) == 100:
+                errors.append(
+                    f"provider commit {sha} file inventory reached the unverifiable REST limit"
+                )
+                detail = None
+                break
             if len(page_files) < 100:
                 break
         else:

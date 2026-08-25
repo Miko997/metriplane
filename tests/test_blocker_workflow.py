@@ -870,6 +870,20 @@ def test_provider_commit_cap_cannot_hide_registry_change_actors(tmp_path: Path) 
     assert any("verifiable REST inventory limit" in error for error in report["errors"])
 
 
+def test_commit_file_cap_cannot_hide_registry_change_actors(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade")
+    payload["commit_pages"] = [
+        [{"filename": f"generated/page-{page:02d}-{index:03d}.txt"} for index in range(100)]
+        for page in range(30)
+    ]
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("unverifiable REST limit" in error for error in report["errors"])
+
+
 def test_release_validation_requires_merged_approval_ancestry(tmp_path: Path) -> None:
     blocker = _valid_downgrade(tmp_path)
     _write_json(tmp_path / "registry.json", _registry([blocker]))
