@@ -311,5 +311,9 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
 def test_canonical_collection_contract_is_documented() -> None:
     text = POLICY_DOC_PATH.read_text(encoding="utf-8")
     assert f"{EXPECTED_COLLECTION:,} items" in text
-    assert "1,569 passed and 2 expected skips" in text
+    assert "1,557 passed" in text
+    assert "14 expected skips" in text
+    assert "Twelve result-schema cases" in text
+    assert "one browser smoke case" in text
+    assert "one GPU-equivalence case" in text
     assert "pytest --collect-only -q -p no:cacheprovider" in text

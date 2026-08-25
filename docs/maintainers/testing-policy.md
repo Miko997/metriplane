@@ -47,7 +47,11 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cachep
 ```
 
 Each ordered node-id stream must contain exactly 1,571 items and have the same
-SHA-256 digest. A complete source run has 1,569 passed and 2 expected skips.
+SHA-256 digest. In the exact core environment above, without optional GPU
+extras and with the empty browser cache, a complete source run has 1,557 passed
+and 14 expected skips. Twelve result-schema cases run in the separate locked
+cross-adapter gate, one browser smoke case requires the separately installed
+Chromium binary, and one GPU-equivalence case requires an optional CuPy extra.
 The frozen MP2-000 1,194-item snapshot is a historical artifact and is not
 updated by this policy.
 
