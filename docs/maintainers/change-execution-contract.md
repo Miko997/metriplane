@@ -53,8 +53,15 @@ MP2-004; MP2-007 is its sole reserved owner.
 
 ## Main health
 
-Candidate checks read global health and never write it. Completed protected-main,
-nightly, and weekly results are the only normal writers. The
+Candidate checks read global health and never write it. Completed protected-main
+CI reconciliation, nightly, and weekly results are the only normal writers. The
+protected-main writer observes the triggering CI attempt and the exact commit's
+latest Documentation and CodeQL attempts through paginated provider job APIs. It
+requires one exact aggregate terminal in each selected attempt and ingests them as
+one result; missing, duplicate, non-successful, or timed-out terminals retain failure.
+Non-main and non-push workflow completions use unique non-writer concurrency
+groups and cannot displace the durable writer. Durable writers use the provider's
+maximum FIFO pending queue instead of pending-run replacement. The
 `metriplane-main-health-state` branch is a separate append-only state and retention
 backend; a normal fast-forward push is the external compare-and-swap. Every result,
 retention receipt, incident, history entry, authorization, and resolution is

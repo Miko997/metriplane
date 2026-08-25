@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,11 @@ def validate_terminal(
 
 def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
     """Validate sole producers and the future Release handoff."""
+    try:
+        import yaml
+    except ImportError as exc:
+        raise TerminalValidationError("policy validation requires PyYAML") from exc
+
     policy = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(policy, dict):
         raise TerminalValidationError("terminal policy must be a JSON object")
@@ -72,11 +78,36 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
     if {item["name"] for item in terminals} != expected_names:
         raise TerminalValidationError("terminal inventory is incomplete or contains extras")
 
-    workflow_text = {
-        path.name: path.read_text(encoding="utf-8") for path in sorted(workflow_root.glob("*.yml"))
-    }
+    workflow_job_names: dict[str, list[str]] = {}
+    workflow_paths = sorted((*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml")))
+    for workflow_path in workflow_paths:
+        try:
+            document = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            raise TerminalValidationError(f"{workflow_path.name}: invalid workflow YAML") from exc
+        if not isinstance(document, dict) or not isinstance(document.get("jobs"), dict):
+            raise TerminalValidationError(f"{workflow_path.name}: workflow jobs must be an object")
+        workflow_job_names[workflow_path.name] = [
+            job["name"]
+            for job in document["jobs"].values()
+            if isinstance(job, dict) and isinstance(job.get("name"), str)
+        ]
+    for workflow_name, job_names in workflow_job_names.items():
+        for job_name in job_names:
+            if "${{" not in job_name:
+                continue
+            literal_parts = re.split(r"\$\{\{.*?\}\}", job_name)
+            pattern = ".*".join(re.escape(part) for part in literal_parts)
+            ambiguous = [name for name in expected_names if re.fullmatch(pattern, name)]
+            if ambiguous:
+                raise TerminalValidationError(
+                    f"{workflow_name}: dynamic job name may produce protected terminal(s) "
+                    f"{ambiguous!r}"
+                )
     for terminal in terminals:
-        producers = [name for name, text in workflow_text.items() if terminal["name"] in text]
+        producers = [
+            name for name, job_names in workflow_job_names.items() if terminal["name"] in job_names
+        ]
         if terminal["state"] == "active":
             if producers != [Path(terminal["producer"]).name]:
                 raise TerminalValidationError(

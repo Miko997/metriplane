@@ -6,6 +6,8 @@ from __future__ import annotations
 import copy
 import json
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,7 @@ from tools.check_required_terminal import (
     validate_policy,
     validate_terminal,
 )
+from tools.observe_main_health import REQUIRED_WORKFLOWS
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "docs" / "status" / "required-terminals.json"
@@ -39,6 +42,32 @@ def test_exact_aggregate_succeeds() -> None:
     )
     assert result["result"] == "success"
     assert result["sha"] == SHA
+
+
+def test_aggregate_cli_has_no_third_party_import_requirement() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(ROOT / "tools" / "check_required_terminal.py"),
+            "aggregate",
+            "--terminal",
+            "Metriplane / required",
+            "--expected-sha",
+            SHA,
+            "--expected-dependency",
+            "linux",
+            "--expected-dependency",
+            "macos",
+            "--results-json",
+            json.dumps(_results()),
+        ],
+        check=False,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 @pytest.mark.parametrize("conclusion", ["failure", "cancelled", "skipped", "stale"])
@@ -103,7 +132,8 @@ def test_terminal_inventory_has_four_sole_producers_and_release_handoff() -> Non
     ]
 
 
-def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path) -> None:
+@pytest.mark.parametrize("suffix", (".yml", ".yaml"))
+def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path, suffix: str) -> None:
     workflow_root = tmp_path / "workflows"
     workflow_root.mkdir()
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
@@ -111,12 +141,34 @@ def test_duplicate_or_premature_producer_is_rejected(tmp_path: Path) -> None:
         if terminal["producer"]:
             source = ROOT / terminal["producer"]
             shutil.copyfile(source, workflow_root / source.name)
-    duplicate = workflow_root / "duplicate.yml"
-    duplicate.write_text("name: duplicate\n# Metriplane / required\n", encoding="utf-8")
+    duplicate = workflow_root / f"duplicate{suffix}"
+    duplicate.write_text(
+        "name: duplicate\njobs:\n  required:\n    name: Metriplane / required\n",
+        encoding="utf-8",
+    )
     with pytest.raises(TerminalValidationError, match="sole producer"):
         validate_policy(POLICY, workflow_root)
-    duplicate.write_text("name: early\n# Release / required\n", encoding="utf-8")
+    duplicate.write_text(
+        "name: early\njobs:\n  required:\n    name: Release / required\n",
+        encoding="utf-8",
+    )
     with pytest.raises(TerminalValidationError, match="producer-free"):
+        validate_policy(POLICY, workflow_root)
+
+
+def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(tmp_path: Path) -> None:
+    workflow_root = tmp_path / "workflows"
+    workflow_root.mkdir()
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    for terminal in policy["terminals"]:
+        if terminal["producer"]:
+            source = ROOT / terminal["producer"]
+            shutil.copyfile(source, workflow_root / source.name)
+    (workflow_root / "dynamic.yaml").write_text(
+        "name: dynamic\njobs:\n  required:\n    name: ${{ matrix.terminal }}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TerminalValidationError, match="dynamic job name"):
         validate_policy(POLICY, workflow_root)
 
 
@@ -144,15 +196,36 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     health = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
     health_trigger = health.get("on", health.get(True))
     assert "edited" in health_trigger["pull_request"]["types"]
+    assert health_trigger["workflow_run"]["workflows"] == ["CI"]
+    concurrency_group = str(health["concurrency"]["group"])
+    assert "main-health-state-writer" in concurrency_group
+    assert "github.event.workflow_run.head_branch == 'main'" in concurrency_group
+    assert "github.event.workflow_run.event == 'push'" in concurrency_group
+    assert "github.run_id" in concurrency_group
+    assert health["concurrency"]["queue"] == "max"
     assert health["jobs"]["candidate-health"]["permissions"] == {"contents": "read"}
     assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
-    assert health["jobs"]["persist-health"]["permissions"] == {"contents": "write"}
+    assert health["jobs"]["persist-health"]["permissions"] == {
+        "actions": "read",
+        "contents": "write",
+    }
     assert "stop_the_line.py ingest" not in "\n".join(
         step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
     )
     writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
     assert "stop_the_line.py ingest" in writer
     assert "git rev-parse origin/main" in writer
+    assert "actions/runs?head_sha=${RUN_SHA}&per_page=100" in writer
+    assert "actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" in writer
+    assert writer.count("--paginate") == 2
+    assert "github.event.workflow_run.run_attempt" in str(health["jobs"]["persist-health"]["steps"])
+    assert "tools/observe_main_health.py" in writer
+    assert REQUIRED_WORKFLOWS == {
+        "metriplane": ("Metriplane / required", "CI"),
+        "documentation": ("Documentation / required", "Documentation"),
+        "security": ("Security / required", "CodeQL"),
+    }
+    assert '"obligations": json.loads(obligations)' in writer
     assert "stop_the_line.py candidate" in "\n".join(
         step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
     )
