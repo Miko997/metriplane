@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from tools.stop_the_line import (
     ingest,
     resolve,
     validate_candidate,
+    validate_git_history,
     validate_history,
     validate_owner_emergency_candidate,
 )
@@ -471,6 +474,8 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             "tree": {"sha": TREE_SHA},
         },
         manifest=manifest,
+        collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
+        invitations=[],
         owner_permission="admin",
         repository="Miko997/metriplane",
         pull_request="123",
@@ -545,7 +550,34 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
                 "tree": {"sha": TREE_SHA},
             },
             manifest=manifest,
+            collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
+            invitations=[],
             owner_permission="write",
+            repository="Miko997/metriplane",
+            pull_request="123",
+            issue="MET-999",
+            incident_digest=incident_digest,
+        )
+    with pytest.raises(HealthError, match="no eligible independent collaborator"):
+        github_owner_emergency_evidence(
+            pull=pull,
+            files=[
+                {"filename": "metriplane/fix.py", "status": "modified"},
+                {"filename": "tests/test_fix.py", "status": "modified"},
+            ],
+            head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+            merge_commit={
+                "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            },
+            manifest=manifest,
+            collaborators=[
+                {"id": 100, "login": "Miko997", "role_name": "admin"},
+                {"id": 200, "login": "reviewer", "role_name": "write"},
+            ],
+            invitations=[],
+            owner_permission="admin",
             repository="Miko997/metriplane",
             pull_request="123",
             issue="MET-999",
@@ -565,6 +597,44 @@ def test_provider_evidence_rejects_reviewed_to_merge_tree_drift(tmp_path: Path) 
             repaired_main=repaired_main,
             resolved_at="2026-08-25T22:00:00Z",
             expected_generation=4,
+        )
+
+
+def test_provider_evidence_rejects_merge_from_a_different_base() -> None:
+    incident_digest = "f" * 64
+    approved = {
+        "body": f"Main-health repair authorization: MET-999\nIncident: {incident_digest}",
+        "commit_id": REVIEWED_SHA,
+        "id": 1,
+        "state": "APPROVED",
+        "submitted_at": "2026-08-25T20:00:00Z",
+        "user": {"id": 200, "login": "reviewer"},
+    }
+    with pytest.raises(HealthError, match="exact base"):
+        github_approval_evidence(
+            pull={
+                "base": {"sha": GOOD_SHA},
+                "changed_files": 1,
+                "head": {"sha": REVIEWED_SHA},
+                "merge_commit_sha": REPAIR_SHA,
+                "merged": True,
+                "merged_at": "2026-08-25T21:00:00Z",
+                "user": {"id": 100, "login": "author"},
+            },
+            review=approved,
+            reviews=[approved],
+            files=[{"filename": "metriplane/fix.py", "status": "modified"}],
+            head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+            merge_commit={
+                "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            },
+            reviewer_permissions={"reviewer": "write"},
+            repository="Miko997/metriplane",
+            pull_request="123",
+            issue="MET-999",
+            incident_digest=incident_digest,
         )
 
 
@@ -890,11 +960,13 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
         "base_sha": BAD_SHA,
         "captured_at": "2026-08-25T21:30:00Z",
         "changed_paths": ["metriplane/fix.py"],
+        "collaborators": None,
         "head_sha": REVIEWED_SHA,
         "incident_digest": incident_digest,
         "issue": "MET-999",
         "manifest": None,
         "manifest_digest": None,
+        "pending_invitations": None,
         "merge_commit_sha": REPAIR_SHA,
         "merge_parent_shas": [GOOD_SHA, REVIEWED_SHA],
         "merge_tree_sha": TREE_SHA,
@@ -987,6 +1059,59 @@ def test_identical_ingestion_is_byte_deterministic(tmp_path: Path) -> None:
         path.relative_to(second): path.read_bytes() for path in second.rglob("*") if path.is_file()
     }
     assert first_files == second_files
+
+
+def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    replacement = tmp_path / "replacement"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True
+    )
+    for generation in range(2):
+        ingest(
+            root,
+            scope="main",
+            summary=_summary(GOOD_SHA),
+            activation_policy=POLICY,
+            expected_generation=-1 if generation == 0 else generation,
+        )
+        subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+        subprocess.run(
+            ["git", "-C", str(root), "commit", "-qm", f"generation {generation + 1}"],
+            check=True,
+        )
+    assert validate_git_history(root)["generation"] == 2
+
+    ingest(
+        replacement,
+        scope="main",
+        summary=_summary(BAD_SHA),
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+    for path in root.iterdir():
+        if path.name == ".git":
+            continue
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    for path in replacement.iterdir():
+        target = root / path.name
+        if path.is_dir():
+            shutil.copytree(path, target)
+        else:
+            shutil.copy2(path, target)
+    subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "replace complete state tree"], check=True
+    )
+    assert validate_history(root)["generation"] == 1
+    with pytest.raises(HealthError, match="exactly one generation|rewrites immutable"):
+        validate_git_history(root)
 
 
 def test_schema_policy_and_example_families_are_complete_json() -> None:

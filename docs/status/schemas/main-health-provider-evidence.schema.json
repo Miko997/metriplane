@@ -10,6 +10,7 @@
     "base_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "captured_at": {"format": "date-time", "type": "string"},
     "changed_paths": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
+    "collaborators": {"oneOf": [{"items": {"additionalProperties": false, "properties": {"id": {"minLength": 1, "type": "string"}, "login": {"minLength": 1, "type": "string"}, "permission": {"minLength": 1, "type": "string"}}, "required": ["id", "login", "permission"], "type": "object"}, "minItems": 1, "type": "array"}, {"type": "null"}]},
     "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
@@ -18,6 +19,7 @@
     "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "merge_parent_shas": {"items": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "minItems": 2, "type": "array", "uniqueItems": true},
     "merge_tree_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "pending_invitations": {"oneOf": [{"items": {"additionalProperties": false, "properties": {"id": {"minLength": 1, "type": "string"}, "invitee": {"minLength": 1, "type": "string"}, "permission": {"minLength": 1, "type": "string"}}, "type": "object", "required": ["id", "invitee", "permission"]}, "type": "array"}, {"type": "null"}]},
     "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
     "reviewed_tree_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
@@ -27,6 +29,6 @@
     "schema_version": {"const": 1},
     "state": {"enum": ["APPROVED", "OWNER_EMERGENCY"]}
   },
-  "required": ["authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "schema_version", "state"],
+  "required": ["authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "collaborators", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pending_invitations", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "schema_version", "state"],
   "type": "object"
 }

@@ -10,9 +10,15 @@ MP2-004. The state lives outside the product branch on
 `incidents/`, `approval-evidence/`, `policy-amendments/`,
 `repair-authorizations/`, and `resolutions/` are immutable. Only `state.json` is a
 mutable pointer, and its generation advances by one per accepted transition. The
-branch commit is the external CAS generation; concurrent stale pushes fail.
+branch commit is the external CAS generation; concurrent stale pushes fail. A
+dedicated active ruleset for `metriplane-main-health-state` prohibits deletion and
+non-fast-forward updates. `validate-git` walks the complete first-parent branch,
+requires exactly one validated generation per commit, and proves every earlier
+immutable byte remains present. A fast-forward whole-tree replacement therefore
+fails even if its new tree is internally self-consistent.
 
-`python tools/stop_the_line.py validate --root <state-checkout>` verifies the
+`python tools/stop_the_line.py validate-git --root <state-checkout>` verifies the
+external Git chain. The underlying `validate` command verifies the
 activation digest, every history predecessor, every immutable filename digest,
 every retained result and receipt, generation continuity, the final pointer,
 incident identity, and any resolution's authorization and approval evidence.
@@ -24,6 +30,11 @@ without creating or changing state. The candidate workflow runs as
 `pull_request_target`, checks out and executes only the exact pull request base,
 and publishes `Main health / required` as a commit status on the exact head SHA.
 Candidate-controlled code is never executed with the status-writing token. The
+same trusted workflow reconciles every open pull request immediately after each
+durable main-health transition and every five minutes. It overwrites earlier
+success with failure when health turns red, the base becomes stale, the 36-hour
+window expires, or an emergency manifest expires; a persistent commit status is
+never treated as an unbounded lease. The
 completed protected-main CI workflow and the nightly and weekly schedules are the
 only normal writer triggers. A
 protected-main writer binds the triggering CI run attempt, selects the exact
@@ -59,7 +70,8 @@ A repair authorization names the repository, pull request, issue, incident,
 author, authorization mode, expiry, exact failing obligations, reviewed head SHA,
 provider file-list digest, allowed paths, and canonical deep cadences. Provider
 evidence separately binds that reviewed head to the merge commit through the
-merge parents and identical reviewed/merged tree IDs. The merged SHA must have
+exactly two parents, the admitted base and reviewed head, and through identical
+reviewed/merged tree IDs. The merged SHA must have
 retained green `protected-main`, `nightly`, and `weekly` results. Expired, stale,
 unrelated, broadened, unauthorized, or incomplete repairs fail closed.
 
@@ -107,7 +119,9 @@ two-line owner-emergency marker. Candidate admission remains read-only and recor
 that independent approval did not exist. The manifest also carries the exact
 incident-only amendment of `repair_requires_non_author`; it does not change the
 global activation policy. Provider capture re-reads the manifest from the reviewed
-head, and its digest and policy-amendment digest must match the authorization.
+head, captures the complete collaborator and pending-invitation inventories, and
+requires that neither contains an eligible non-author reviewer. Its manifest
+digest and policy-amendment digest must match the authorization.
 
 After that exact PR merges, run the `Main Health` workflow manually once for each
 deep cadence. Capture the merged owner decision with `capture-owner-emergency`,
@@ -124,7 +138,7 @@ then reject any concurrent remote change before the non-force push:
 git clone --single-branch --branch metriplane-main-health-state \
   https://github.com/Miko997/metriplane.git main-health-state
 expected_commit="$(git -C main-health-state rev-parse HEAD)"
-python tools/stop_the_line.py validate --root main-health-state
+python tools/stop_the_line.py validate-git --root main-health-state
 GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
   --root main-health-state \
   --authorization-json "$(cat repair-authorization.json)" \
@@ -132,6 +146,7 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
   --expected-generation <generation>
 git -C main-health-state add --all
 git -C main-health-state commit -m "Resolve main health for <merge-sha>"
+python tools/stop_the_line.py validate-git --root main-health-state
 test "$(git -C main-health-state ls-remote origin \
   refs/heads/metriplane-main-health-state | cut -f1)" = "$expected_commit"
 git -C main-health-state push origin \
@@ -141,7 +156,7 @@ test "$(git -C main-health-state ls-remote origin \
   "$(git -C main-health-state rev-parse HEAD)"
 git clone --single-branch --branch metriplane-main-health-state \
   https://github.com/Miko997/metriplane.git main-health-readback
-python tools/stop_the_line.py validate --root main-health-readback
+python tools/stop_the_line.py validate-git --root main-health-readback
 ```
 
 When this trusted base-branch admission workflow is first introduced while health

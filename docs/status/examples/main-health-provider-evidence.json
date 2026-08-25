@@ -10,6 +10,7 @@
     "metriplane/example.py",
     "tests/test_example.py"
   ],
+  "collaborators": null,
   "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "issue": "MET-999",
@@ -21,6 +22,7 @@
     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   ],
   "merge_tree_sha": "dddddddddddddddddddddddddddddddddddddddd",
+  "pending_invitations": null,
   "pull_request": "123",
   "repository": "Miko997/metriplane",
   "reviewed_tree_sha": "dddddddddddddddddddddddddddddddddddddddd",

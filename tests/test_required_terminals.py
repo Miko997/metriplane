@@ -212,6 +212,11 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "nightly",
         "weekly",
     ]
+    assert {item["cron"] for item in health_trigger["schedule"]} == {
+        "*/5 * * * *",
+        "23 3 * * 0",
+        "23 3 * * 1-6",
+    }
     concurrency_group = str(health["concurrency"]["group"])
     assert "main-health-state-writer" in concurrency_group
     assert "github.event.workflow_run.head_branch == 'main'" in concurrency_group
@@ -231,6 +236,18 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "contents": "read",
         "statuses": "write",
     }
+    assert health["jobs"]["reconcile-candidate-statuses"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+        "statuses": "write",
+    }
+    reconcile = "\n".join(
+        step.get("run", "")
+        for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
+    )
+    assert "validate-git" in reconcile
+    assert "state=open" in reconcile
+    assert 'context="Main health / required"' in reconcile
     assert "stop_the_line.py ingest" not in "\n".join(
         step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
     )

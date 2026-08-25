@@ -1,6 +1,6 @@
 {
   "authorization_mode": "independent-review",
-  "authorization_digest": "d143662b0b9b610395750683b9b7b2bf12b31285419ce37f532d94c24aef1f27",
+  "authorization_digest": "77505b46710c9ef47dcfb2b4dcf864b2687e61e8e30a1169581ad740a5295f09",
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "policy_amendment_digest": null,
   "repaired_main_sha": "cccccccccccccccccccccccccccccccccccccccc",

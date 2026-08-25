@@ -17,12 +17,13 @@ on:
         type: choice
         options: [nightly, weekly]
   schedule:
+    - cron: "*/5 * * * *"
     - cron: "23 3 * * 1-6"
     - cron: "23 3 * * 0"
 
 concurrency:
   group: >-
-    ${{ (github.event_name == 'schedule' ||
+    ${{ ((github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
          github.event_name == 'workflow_dispatch' ||
          (github.event_name == 'workflow_run' &&
           github.event.workflow_run.head_branch == 'main' &&
@@ -102,7 +103,9 @@ jobs:
           fi
 
   scheduled-deep:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -141,7 +144,7 @@ jobs:
   persist-health:
     if: >-
       always() &&
-      (github.event_name == 'schedule' ||
+      ((github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
        github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&
@@ -177,6 +180,7 @@ jobs:
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if git ls-remote --exit-code --heads "$remote" "$STATE_BRANCH" >/dev/null; then
             git clone --quiet --single-branch --branch "$STATE_BRANCH" "$remote" "$state_root"
+            python tools/stop_the_line.py validate-git --root "$state_root"
             expected_commit="$(git -C "$state_root" rev-parse HEAD)"
             generation="$(python tools/stop_the_line.py status --root "$state_root" \
               | python -c 'import json,sys; print(json.load(sys.stdin)["generation"])')"
@@ -354,6 +358,7 @@ jobs:
           git -C "$STATE_ROOT" config user.email github-actions@github.com
           git -C "$STATE_ROOT" add --all
           git -C "$STATE_ROOT" commit --quiet -m "Record main health for ${GITHUB_SHA}"
+          python tools/stop_the_line.py validate-git --root "$STATE_ROOT"
           observed_commit="$(git -C "$STATE_ROOT" ls-remote origin \
             "refs/heads/$STATE_BRANCH" | cut -f1)"
           test "$observed_commit" = "$EXPECTED_COMMIT"
@@ -362,16 +367,98 @@ jobs:
           remote_commit="$(git -C "$STATE_ROOT" ls-remote origin \
             "refs/heads/$STATE_BRANCH" | cut -f1)"
           test "$remote_commit" = "$local_commit"
-          status="$(python tools/stop_the_line.py status --root "$STATE_ROOT" \
+          readback="$RUNNER_TEMP/main-health-readback"
+          git clone --quiet --single-branch --branch "$STATE_BRANCH" \
+            "$(git -C "$STATE_ROOT" remote get-url origin)" "$readback"
+          test "$(git -C "$readback" rev-parse HEAD)" = "$local_commit"
+          python tools/stop_the_line.py validate-git --root "$readback"
+          status="$(python tools/stop_the_line.py status --root "$readback" \
             | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
           test "$status" != red
+
+  reconcile-candidate-statuses:
+    if: >-
+      always() &&
+      (github.event_name == 'schedule' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'push'))
+    needs: persist-health
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - name: Check out trusted admission code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Reconcile every open pull request head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          state_root="$RUNNER_TEMP/main-health-state"
+          git clone --quiet --single-branch --branch "$STATE_BRANCH" \
+            "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
+          python tools/stop_the_line.py validate-git --root "$state_root"
+          pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[]' > "$pulls"
+          while IFS= read -r pull; do
+            number="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' \
+              <<<"$pull")"
+            base_sha="$(python -c 'import json,sys; print(json.load(sys.stdin)["base"]["sha"])' \
+              <<<"$pull")"
+            head_sha="$(python -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])' \
+              <<<"$pull")"
+            pull_file="$RUNNER_TEMP/main-health-pull-${number}.json"
+            manifest="$RUNNER_TEMP/main-health-manifest-${number}.json"
+            files_file="$RUNNER_TEMP/main-health-files-${number}.jsonl"
+            printf '%s\n' "$pull" > "$pull_file"
+            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            state=failure
+            description="Main health admission failed"
+            if python tools/stop_the_line.py candidate \
+              --root "$state_root" \
+              --base-sha "$base_sha" \
+              --checked-at "$checked_at" \
+              --max-age-seconds 129600; then
+              state=success
+              description="Main health admission passed"
+            elif gh api \
+              "repos/${GITHUB_REPOSITORY}/contents/docs/status/main-health-owner-emergency.json?ref=${head_sha}" \
+              --jq '.content' | base64 --decode > "$manifest" &&
+              gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${number}/files?per_page=100" \
+              --jq '.[] | {filename, status, previous_filename}' > "$files_file" &&
+              python tools/stop_the_line.py repair-candidate \
+              --root "$state_root" \
+              --manifest-json "$(cat "$manifest")" \
+              --pull-json "$pull_file" \
+              --files-jsonl "$files_file" \
+              --expected-head-sha "$head_sha" \
+              --checked-at "$checked_at"; then
+              state=success
+              description="Main health repair admission passed"
+            fi
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state="$state" \
+              -f context="Main health / required" \
+              -f description="$description" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          done < "$pulls"
 
   main-health-required:
     name: Main health / required
     if: >-
       always() &&
       (github.event_name == 'pull_request_target' ||
-       github.event_name == 'schedule' ||
+       (github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
        github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.head_branch == 'main' &&

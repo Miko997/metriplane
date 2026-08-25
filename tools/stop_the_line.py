@@ -8,9 +8,12 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import io
 import json
 import os
 import re
+import subprocess
+import tarfile
 import tempfile
 import urllib.error
 import urllib.request
@@ -437,10 +440,12 @@ def github_approval_evidence(
         "base_sha": pull["base"]["sha"],
         "captured_at": review["submitted_at"],
         "changed_paths": changed_paths,
+        "collaborators": None,
         "incident_digest": incident_digest,
         "issue": issue,
         "manifest": None,
         "manifest_digest": None,
+        "pending_invitations": None,
         "pull_request": pull_request,
         "repository": repository,
         "reviewer": review["user"]["login"],
@@ -460,6 +465,7 @@ def _github_merge_proof(
 ) -> dict[str, Any]:
     if not pull.get("merged") or not pull.get("merged_at") or not pull.get("merge_commit_sha"):
         raise HealthError("GitHub repair pull request is not merged")
+    base_sha = pull.get("base", {}).get("sha")
     head_sha = pull.get("head", {}).get("sha")
     merge_sha = pull["merge_commit_sha"]
     if head_commit.get("sha") != head_sha or merge_commit.get("sha") != merge_sha:
@@ -472,11 +478,14 @@ def _github_merge_proof(
         raise HealthError("GitHub repair merge proof is malformed") from exc
     if (
         not isinstance(head_sha, str)
+        or not isinstance(base_sha, str)
         or not isinstance(merge_sha, str)
-        or head_sha not in merge_parent_shas
+        or len(merge_parent_shas) != 2
+        or set(merge_parent_shas) != {base_sha, head_sha}
         or reviewed_tree_sha != merge_tree_sha
     ):
-        raise HealthError("GitHub repair merge does not preserve the reviewed head tree")
+        raise HealthError("GitHub repair merge does not preserve the exact base and reviewed head")
+    _validate_sha(base_sha)
     _validate_sha(head_sha)
     _validate_sha(merge_sha)
     _validate_sha(reviewed_tree_sha)
@@ -492,6 +501,47 @@ def _github_merge_proof(
     }
 
 
+def _github_collaboration_inventory(
+    collaborators: list[dict[str, Any]],
+    invitations: list[dict[str, Any]],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    normalized_collaborators: list[dict[str, str]] = []
+    for item in collaborators:
+        login = item.get("login")
+        permission = item.get("role_name")
+        if permission == "push":
+            permission = "write"
+        if not isinstance(login, str) or not login or not isinstance(permission, str):
+            raise HealthError("GitHub collaborator inventory is malformed")
+        normalized_collaborators.append(
+            {"id": str(item.get("id", "")), "login": login, "permission": permission}
+        )
+    normalized_collaborators.sort(key=lambda item: item["login"].casefold())
+    if any(not item["id"] for item in normalized_collaborators) or len(
+        {item["login"].casefold() for item in normalized_collaborators}
+    ) != len(normalized_collaborators):
+        raise HealthError("GitHub collaborator inventory is incomplete or duplicated")
+
+    normalized_invitations: list[dict[str, str]] = []
+    for item in invitations:
+        invitee = item.get("invitee") or {}
+        identity = invitee.get("login") or item.get("email")
+        permission = item.get("permissions")
+        if permission == "push":
+            permission = "write"
+        if not isinstance(identity, str) or not identity or not isinstance(permission, str):
+            raise HealthError("GitHub collaborator invitation inventory is malformed")
+        normalized_invitations.append(
+            {"id": str(item.get("id", "")), "invitee": identity, "permission": permission}
+        )
+    normalized_invitations.sort(key=lambda item: (item["invitee"].casefold(), item["id"]))
+    if any(not item["id"] for item in normalized_invitations) or len(
+        {item["id"] for item in normalized_invitations}
+    ) != len(normalized_invitations):
+        raise HealthError("GitHub collaborator invitation inventory is incomplete or duplicated")
+    return normalized_collaborators, normalized_invitations
+
+
 def github_owner_emergency_evidence(
     *,
     pull: dict[str, Any],
@@ -499,6 +549,8 @@ def github_owner_emergency_evidence(
     head_commit: dict[str, Any],
     merge_commit: dict[str, Any],
     manifest: dict[str, Any],
+    collaborators: list[dict[str, Any]],
+    invitations: list[dict[str, Any]],
     owner_permission: str,
     repository: str,
     pull_request: str,
@@ -511,6 +563,17 @@ def github_owner_emergency_evidence(
     author = pull.get("user", {}).get("login", "")
     if author.casefold() != repository_owner.casefold() or owner_permission != "admin":
         raise HealthError("owner emergency requires the repository owner with admin permission")
+    collaborator_inventory, invitation_inventory = _github_collaboration_inventory(
+        collaborators, invitations
+    )
+    if any(
+        item["login"].casefold() != repository_owner.casefold()
+        and item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS
+        for item in collaborator_inventory
+    ) or any(
+        item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitation_inventory
+    ):
+        raise HealthError("owner emergency requires no eligible independent collaborator")
     marker = f"Main-health owner emergency: {issue}\nIncident: {incident_digest}"
     if (pull.get("body") or "").count(marker) != 1:
         raise HealthError("owner-emergency pull request does not bind the exact issue and incident")
@@ -538,10 +601,12 @@ def github_owner_emergency_evidence(
         "base_sha": pull["base"]["sha"],
         "captured_at": pull["merged_at"],
         "changed_paths": changed_paths,
+        "collaborators": collaborator_inventory,
         "incident_digest": incident_digest,
         "issue": issue,
         "manifest": manifest,
         "manifest_digest": digest(manifest),
+        "pending_invitations": invitation_inventory,
         "pull_request": pull_request,
         "repository": repository,
         "reviewer": author,
@@ -695,6 +760,24 @@ def capture_github_owner_emergency(
         raise HealthError("GitHub owner-emergency manifest response is malformed") from exc
     if not isinstance(manifest, dict):
         raise HealthError("GitHub owner-emergency manifest is not a JSON object")
+    collaborators: list[dict[str, Any]] = []
+    invitations: list[dict[str, Any]] = []
+    for endpoint, target in (
+        ("collaborators?affiliation=all", collaborators),
+        ("invitations", invitations),
+    ):
+        page = 1
+        while True:
+            separator = "&" if "?" in endpoint else "?"
+            batch = _github_get(
+                f"repos/{repository}/{endpoint}{separator}per_page=100&page={page}", token
+            )
+            if not isinstance(batch, list):
+                raise HealthError("GitHub owner-emergency collaboration response is malformed")
+            target.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
     head_commit = _github_get(f"repos/{repository}/git/commits/{head_sha}", token)
     merge_commit = _github_get(f"repos/{repository}/git/commits/{merge_sha}", token)
     permission = _github_get(f"repos/{repository}/collaborators/{author}/permission", token)
@@ -706,6 +789,8 @@ def capture_github_owner_emergency(
         head_commit=head_commit,
         merge_commit=merge_commit,
         manifest=manifest,
+        collaborators=collaborators,
+        invitations=invitations,
         owner_permission=permission.get("permission", ""),
         repository=repository,
         pull_request=pull_request,
@@ -831,6 +916,7 @@ def _validate_repair_binding(
         "base_sha",
         "captured_at",
         "changed_paths",
+        "collaborators",
         "head_sha",
         "incident_digest",
         "issue",
@@ -839,6 +925,7 @@ def _validate_repair_binding(
         "merge_commit_sha",
         "merge_parent_shas",
         "merge_tree_sha",
+        "pending_invitations",
         "pull_request",
         "repository",
         "reviewed_tree_sha",
@@ -878,7 +965,12 @@ def _validate_repair_binding(
         raise HealthError("repair authorization does not bind the open incident")
     manifest = approval_evidence["manifest"]
     if mode == "independent-review":
-        if manifest is not None or approval_evidence["manifest_digest"] is not None:
+        if (
+            manifest is not None
+            or approval_evidence["manifest_digest"] is not None
+            or approval_evidence["collaborators"] is not None
+            or approval_evidence["pending_invitations"] is not None
+        ):
             raise HealthError("independent repair evidence cannot carry an emergency manifest")
     else:
         if not isinstance(manifest, dict):
@@ -901,10 +993,48 @@ def _validate_repair_binding(
             or approval_evidence["base_sha"] != manifest["base_sha"]
         ):
             raise HealthError("owner-emergency authorization disagrees with admitted manifest")
+        collaborators = approval_evidence["collaborators"]
+        invitations = approval_evidence["pending_invitations"]
+        repository_owner = authorization["repository"].split("/", 1)[0]
+        if (
+            not isinstance(collaborators, list)
+            or not collaborators
+            or collaborators
+            != sorted(collaborators, key=lambda item: str(item.get("login", "")).casefold())
+            or not all(
+                isinstance(item, dict)
+                and set(item) == {"id", "login", "permission"}
+                and all(isinstance(item[field], str) and item[field] for field in item)
+                for item in collaborators
+            )
+            or not any(
+                item["login"].casefold() == repository_owner.casefold()
+                and item["permission"] == "admin"
+                for item in collaborators
+            )
+            or any(
+                item["login"].casefold() != repository_owner.casefold()
+                and item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS
+                for item in collaborators
+            )
+            or not isinstance(invitations, list)
+            or invitations
+            != sorted(
+                invitations,
+                key=lambda item: (str(item.get("invitee", "")).casefold(), str(item.get("id", ""))),
+            )
+            or not all(
+                isinstance(item, dict)
+                and set(item) == {"id", "invitee", "permission"}
+                and all(isinstance(item[field], str) and item[field] for field in item)
+                for item in invitations
+            )
+            or any(item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitations)
+        ):
+            raise HealthError("owner-emergency evidence does not prove single-maintainer status")
     if (
         approval_evidence["head_sha"] != authorization["proposed_repair_sha"]
         or approval_evidence["merge_commit_sha"] != repaired_main_sha
-        or approval_evidence["head_sha"] not in approval_evidence["merge_parent_shas"]
         or approval_evidence["reviewed_tree_sha"] != approval_evidence["merge_tree_sha"]
     ):
         raise HealthError("repair evidence does not bind the reviewed head to repaired main")
@@ -917,7 +1047,11 @@ def _validate_repair_binding(
     ):
         _validate_sha(approval_evidence[sha_field])
     parents = approval_evidence["merge_parent_shas"]
-    if not isinstance(parents, list) or len(parents) < 2 or len(parents) != len(set(parents)):
+    if (
+        not isinstance(parents, list)
+        or len(parents) != 2
+        or set(parents) != {approval_evidence["base_sha"], approval_evidence["head_sha"]}
+    ):
         raise HealthError("repair merge parent inventory is invalid")
     for parent_sha in parents:
         _validate_sha(parent_sha)
@@ -1335,6 +1469,80 @@ def validate_history(root: Path) -> dict[str, Any]:
     }
 
 
+def _git_output(root: Path, *arguments: str) -> bytes:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise HealthError(f"cannot execute Git for retained state: {exc}") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.decode(errors="replace").strip()
+        raise HealthError(f"cannot inspect retained state Git history: {detail}")
+    return completed.stdout
+
+
+def _git_snapshot(root: Path, commit: str) -> tuple[dict[str, Any], dict[str, bytes]]:
+    archive = _git_output(root, "archive", "--format=tar", commit)
+    with tempfile.TemporaryDirectory(prefix="main-health-git-") as temporary:
+        snapshot_root = Path(temporary)
+        try:
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as stream:
+                stream.extractall(snapshot_root, filter="data")
+        except (tarfile.TarError, OSError) as exc:
+            raise HealthError(f"cannot materialize retained state Git snapshot: {exc}") from exc
+        state = validate_history(snapshot_root)
+        files = {
+            path.relative_to(snapshot_root).as_posix(): path.read_bytes()
+            for path in snapshot_root.rglob("*")
+            if path.is_file()
+        }
+    return state, files
+
+
+def validate_git_history(root: Path) -> dict[str, Any]:
+    """Prove every state-branch commit is one append-only validated transition."""
+    if _git_output(root, "status", "--porcelain", "--untracked-files=all"):
+        raise HealthError("retained state Git checkout is not clean")
+    head = _git_output(root, "rev-parse", "HEAD").decode().strip()
+    _validate_sha(head)
+    commits = _git_output(root, "rev-list", "--reverse", "--first-parent", head).decode().split()
+    if not commits:
+        raise HealthError("retained state Git history is empty")
+    previous_files: dict[str, bytes] | None = None
+    previous_generation = 0
+    final_state: dict[str, Any] | None = None
+    for ordinal, commit in enumerate(commits, start=1):
+        _validate_sha(commit)
+        ancestry = _git_output(root, "rev-list", "--parents", "-n", "1", commit).decode().split()
+        expected_length = 1 if ordinal == 1 else 2
+        if len(ancestry) != expected_length or ancestry[0] != commit:
+            raise HealthError("retained state Git history is not a single-parent chain")
+        state, files = _git_snapshot(root, commit)
+        if state["generation"] != ordinal or state["generation"] != previous_generation + 1:
+            raise HealthError("retained state Git commit does not add exactly one generation")
+        if previous_files is not None:
+            for path, payload in previous_files.items():
+                if path != "state.json" and files.get(path) != payload:
+                    raise HealthError("retained state Git history rewrites immutable evidence")
+        previous_files = files
+        previous_generation = state["generation"]
+        final_state = state
+    if final_state is None or previous_files is None:
+        raise HealthError("retained state Git history has no validated state")
+    current_state = validate_history(root)
+    current_files = {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(root).parts
+    }
+    if current_state != final_state or current_files != previous_files:
+        raise HealthError("retained state checkout does not match its Git HEAD")
+    return {**current_state, "state_commit": head}
+
+
 def validate_candidate(
     root: Path,
     *,
@@ -1550,6 +1758,9 @@ def _parser() -> argparse.ArgumentParser:
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", type=Path, required=True)
 
+    validate_git_parser = subparsers.add_parser("validate-git")
+    validate_git_parser.add_argument("--root", type=Path, required=True)
+
     candidate_parser = subparsers.add_parser("candidate")
     candidate_parser.add_argument("--root", type=Path, required=True)
     candidate_parser.add_argument("--base-sha", required=True)
@@ -1584,6 +1795,7 @@ def main() -> int:
                 expected_generation=args.expected_generation,
             )
         elif args.command == "resolve":
+            validate_git_history(args.root)
             authorization = args.authorization_json
             token = os.environ.get("GITHUB_TOKEN")
             if not token:
@@ -1640,7 +1852,10 @@ def main() -> int:
             )
         elif args.command == "validate":
             result = validate_history(args.root)
+        elif args.command == "validate-git":
+            result = validate_git_history(args.root)
         elif args.command == "candidate":
+            validate_git_history(args.root)
             result = validate_candidate(
                 args.root,
                 base_sha=args.base_sha,
@@ -1648,6 +1863,7 @@ def main() -> int:
                 max_age_seconds=args.max_age_seconds,
             )
         elif args.command == "repair-candidate":
+            validate_git_history(args.root)
             result = validate_owner_emergency_candidate(
                 args.root,
                 manifest=args.manifest_json,
