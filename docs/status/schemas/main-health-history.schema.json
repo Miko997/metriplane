@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"cadence": {"const": "repair-resolution"}}, "required": ["cadence"]},
+      "then": {"properties": {"resolution_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}}},
+      "else": {"properties": {"resolution_digest": {"type": "null"}}}
+    }
+  ],
+  "properties": {
+    "cadence": {"minLength": 1, "type": "string"},
+    "generation": {"minimum": 1, "type": "integer"},
+    "previous_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "recorded_at": {"format": "date-time", "type": "string"},
+    "result_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "resolution_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "retention_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "schema_version": {"const": 1},
+    "sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "status": {"enum": ["green", "red"]}
+  },
+  "required": ["cadence", "generation", "previous_digest", "recorded_at", "result_digest", "resolution_digest", "retention_digest", "schema_version", "sha", "status"],
+  "type": "object"
+}

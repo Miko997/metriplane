@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-08-25T16:45:00Z",
+  "default_branch": "main",
+  "repository": "Miko997/metriplane",
+  "schema_version": 1,
+  "selected_mode": "serialized_strict_up_to_date",
+  "source_digests": {
+    "merge_queue": "bb70afb4ec7baeb74ab4afe9322b03ab48e94937998811d41bd00752929d777a",
+    "repository": "e1b1509a4c4873253d88db103ba58028852b53ca220dec2274c5dc7bad3e975f",
+    "rulesets": "2355a9c3c161ed30fb68af63efa1681b64420ffb612bb053c2f2e0b6148da80f"
+  },
+  "supports_merge_queue": false
+}

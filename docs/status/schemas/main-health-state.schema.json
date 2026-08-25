@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activation_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "first_bad_sha": {"oneOf": [{"pattern": "^[0-9a-f]{40}$", "type": "string"}, {"type": "null"}]},
+    "generation": {"minimum": 0, "type": "integer"},
+    "history_head": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "incident_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "last_good_sha": {"oneOf": [{"pattern": "^[0-9a-f]{40}$", "type": "string"}, {"type": "null"}]},
+    "resolution_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "schema_version": {"const": 1},
+    "status": {"enum": ["not_measured", "green", "red"]},
+    "updated_at": {"format": "date-time", "type": "string"}
+  },
+  "required": ["activation_digest", "first_bad_sha", "generation", "history_head", "incident_digest", "last_good_sha", "resolution_digest", "schema_version", "status", "updated_at"],
+  "type": "object"
+}

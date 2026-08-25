@@ -1,0 +1,7 @@
+{
+  "authorization_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+  "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+  "repaired_main_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "resolved_at": "2026-08-26T18:00:00Z",
+  "schema_version": 1
+}
