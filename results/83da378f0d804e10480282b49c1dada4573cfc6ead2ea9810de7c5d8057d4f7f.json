@@ -1,0 +1,1 @@
+{"cadence":"protected-main","conclusion":"failure","obligations":[{"id":"Metriplane / required","result":"failure"},{"id":"Documentation / required","result":"success"},{"id":"Security / required","result":"success"}],"recorded_at":"2026-08-25T20:15:34Z","run_id":"32893499507","schema_version":1,"sha":"9d5b4ffa5236521423196a84acc6a613f7f13108"}
