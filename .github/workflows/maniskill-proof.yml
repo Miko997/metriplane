@@ -228,10 +228,11 @@ jobs:
               raise SystemExit("candidate and checkout runtime lock identities differ")
           PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
+          candidate_template="${RUNNER_TEMP}/metriplane-candidate-template"
           candidate_dist="${RUNNER_TEMP}/metriplane-candidate-dist"
           candidate_venv="${RUNNER_TEMP}/metriplane-candidate-venv"
-          mkdir -p "$candidate_dist"
-          git worktree add --detach "$candidate_source" "$candidate_commit"
+          mkdir -p "$candidate_source" "$candidate_dist"
+          git archive --format=tar "$candidate_commit" | tar -xf - -C "$candidate_source"
           uv run --python 3.12 python -m build \
             --wheel \
             --outdir "$candidate_dist" \
@@ -241,10 +242,11 @@ jobs:
           python -m venv "$candidate_venv"
           "$candidate_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
           "$candidate_venv/bin/python" -m pip check
+          git worktree add --detach "$candidate_template" "$candidate_commit"
           {
             echo "CANDIDATE_COMMIT=$candidate_commit"
             echo "CANDIDATE_METRIPLANE=$candidate_venv/bin/metriplane"
-            echo "CANDIDATE_SOURCE=$candidate_source"
+            echo "CANDIDATE_SOURCE=$candidate_template"
           } >> "$GITHUB_ENV"
 
       - name: Rebuild proof twice and require deterministic output
