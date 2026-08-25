@@ -9,11 +9,24 @@
     "failing_obligations": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
     "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+    "policy_amendment": {
+      "additionalProperties": false,
+      "properties": {
+        "amended_rule": {"const": "repair_requires_non_author"},
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "reason": {"const": "single-maintainer-no-independent-collaborator"},
+        "schema_version": {"const": 1},
+        "scope": {"const": "incident-only"}
+      },
+      "required": ["amended_rule", "authorization_mode", "incident_digest", "reason", "schema_version", "scope"],
+      "type": "object"
+    },
     "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
     "required_cadences": {"const": ["nightly", "weekly"]},
     "schema_version": {"const": 1}
   },
-  "required": ["authorization_mode", "allowed_paths", "base_sha", "expires_at", "failing_obligations", "incident_digest", "issue", "pull_request", "repository", "required_cadences", "schema_version"],
+  "required": ["authorization_mode", "allowed_paths", "base_sha", "expires_at", "failing_obligations", "incident_digest", "issue", "policy_amendment", "pull_request", "repository", "required_cadences", "schema_version"],
   "type": "object"
 }

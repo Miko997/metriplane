@@ -4,6 +4,7 @@
   "approval_provider": "github",
   "author": "repair-author",
   "author_id": "100",
+  "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "captured_at": "2026-08-26T17:00:00Z",
   "changed_paths": [
     "metriplane/example.py",
@@ -12,6 +13,8 @@
   "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "issue": "MET-999",
+  "manifest": null,
+  "manifest_digest": null,
   "merge_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "merge_parent_shas": [
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

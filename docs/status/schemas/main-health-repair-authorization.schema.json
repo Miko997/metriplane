@@ -14,6 +14,8 @@
     "failing_obligations": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
     "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+    "manifest_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
+    "policy_amendment_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "proposed_repair_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"},
     "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
@@ -23,6 +25,6 @@
     "reviewer_permission": {"enum": ["admin", "maintain", "write"]},
     "schema_version": {"const": 1}
   },
-  "required": ["authorization_mode", "approval_digest", "approval_id", "approval_provider", "allowed_paths", "author", "author_id", "changed_paths_digest", "expires_at", "failing_obligations", "incident_digest", "issue", "proposed_repair_sha", "pull_request", "repository", "required_cadences", "reviewer", "reviewer_id", "reviewer_permission", "schema_version"],
+  "required": ["authorization_mode", "approval_digest", "approval_id", "approval_provider", "allowed_paths", "author", "author_id", "changed_paths_digest", "expires_at", "failing_obligations", "incident_digest", "issue", "manifest_digest", "policy_amendment_digest", "proposed_repair_sha", "pull_request", "repository", "required_cadences", "reviewer", "reviewer_id", "reviewer_permission", "schema_version"],
   "type": "object"
 }

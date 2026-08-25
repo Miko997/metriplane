@@ -7,11 +7,14 @@
     "approval_provider": {"const": "github"},
     "author": {"minLength": 1, "type": "string"},
     "author_id": {"minLength": 1, "type": "string"},
+    "base_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "captured_at": {"format": "date-time", "type": "string"},
     "changed_paths": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array", "uniqueItems": true},
     "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
     "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+    "manifest": {"oneOf": [{"type": "object"}, {"type": "null"}]},
+    "manifest_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
     "merge_parent_shas": {"items": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "minItems": 2, "type": "array", "uniqueItems": true},
     "merge_tree_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
@@ -24,6 +27,6 @@
     "schema_version": {"const": 1},
     "state": {"enum": ["APPROVED", "OWNER_EMERGENCY"]}
   },
-  "required": ["authorization_mode", "approval_id", "approval_provider", "author", "author_id", "captured_at", "changed_paths", "head_sha", "incident_digest", "issue", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "schema_version", "state"],
+  "required": ["authorization_mode", "approval_id", "approval_provider", "author", "author_id", "base_sha", "captured_at", "changed_paths", "head_sha", "incident_digest", "issue", "manifest", "manifest_digest", "merge_commit_sha", "merge_parent_shas", "merge_tree_sha", "pull_request", "repository", "reviewed_tree_sha", "reviewer", "reviewer_id", "reviewer_permission", "schema_version", "state"],
   "type": "object"
 }

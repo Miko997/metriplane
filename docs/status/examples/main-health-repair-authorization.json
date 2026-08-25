@@ -1,6 +1,6 @@
 {
   "authorization_mode": "independent-review",
-  "approval_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "approval_digest": "c1e233f89f82964617422cd99243f5f4193ad3848afd42b4a74cd7610f9f5366",
   "approval_id": "provider-approval-1",
   "approval_provider": "github",
   "allowed_paths": [
@@ -9,13 +9,15 @@
   ],
   "author": "repair-author",
   "author_id": "100",
-  "changed_paths_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "changed_paths_digest": "58ab3cde549168de90d897685494629f857971d6ab14afb53b9924a3526e7a33",
   "expires_at": "2026-08-27T03:23:00Z",
   "failing_obligations": [
     "Metriplane / required"
   ],
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "issue": "MET-999",
+  "manifest_digest": null,
+  "policy_amendment_digest": null,
   "proposed_repair_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "pull_request": "123",
   "repository": "Miko997/metriplane",

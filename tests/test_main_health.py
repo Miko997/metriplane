@@ -12,6 +12,7 @@ import pytest
 from tools.baseline_snapshot import SnapshotError, _internal_validate
 from tools.stop_the_line import (
     HealthError,
+    _github_changed_paths,
     canonical_bytes,
     digest,
     github_approval_evidence,
@@ -160,6 +161,45 @@ def test_failure_persists_red_across_ordinary_green_ingestion(tmp_path: Path) ->
         validate_history(tmp_path)
 
 
+def test_incident_identity_is_derived_from_immutable_opening_history(tmp_path: Path) -> None:
+    state = ingest(
+        tmp_path,
+        scope="main",
+        summary=_summary(BAD_SHA, "failure"),
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+    original_path = tmp_path / "incidents" / f"{state['incident_digest']}.json"
+    forged = json.loads(original_path.read_text(encoding="utf-8"))
+    forged["failing_obligations"] = ["forged"]
+    forged_digest = digest(forged)
+    (tmp_path / "incidents" / f"{forged_digest}.json").write_bytes(canonical_bytes(forged))
+    state["incident_digest"] = forged_digest
+    (tmp_path / "state.json").write_bytes(canonical_bytes(state))
+    with pytest.raises(HealthError, match="opening history|incident pointer"):
+        validate_history(tmp_path)
+
+
+def test_provider_file_inventory_includes_rename_source_and_rejects_truncation() -> None:
+    assert _github_changed_paths(
+        {"changed_files": 1},
+        [
+            {
+                "filename": "tests/allowed.py",
+                "previous_filename": "tools/protected.py",
+                "status": "renamed",
+            }
+        ],
+    ) == ["tests/allowed.py", "tools/protected.py"]
+    with pytest.raises(HealthError, match="incomplete|3,000"):
+        _github_changed_paths({"changed_files": 3_001}, [])
+    with pytest.raises(HealthError, match="incomplete|3,000"):
+        _github_changed_paths(
+            {"changed_files": 2},
+            [{"filename": "only-one.py", "status": "modified"}],
+        )
+
+
 def _red_with_repair_results(
     root: Path,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
@@ -210,6 +250,8 @@ def _red_with_repair_results(
     }
     approval_evidence = github_approval_evidence(
         pull={
+            "base": {"sha": GOOD_SHA},
+            "changed_files": 2,
             "head": {"sha": REVIEWED_SHA},
             "merge_commit_sha": REPAIR_SHA,
             "merged": True,
@@ -218,14 +260,17 @@ def _red_with_repair_results(
         },
         review=approved_review,
         reviews=[approved_review],
-        files=[{"filename": "tests/test_fix.py"}, {"filename": "metriplane/fix.py"}],
+        files=[
+            {"filename": "tests/test_fix.py", "status": "modified"},
+            {"filename": "metriplane/fix.py", "status": "modified"},
+        ],
         head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
         merge_commit={
             "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
             "sha": REPAIR_SHA,
             "tree": {"sha": TREE_SHA},
         },
-        reviewer_permission="write",
+        reviewer_permissions={"reviewer": "write"},
         repository="Miko997/metriplane",
         pull_request="123",
         issue="MET-999",
@@ -244,6 +289,8 @@ def _red_with_repair_results(
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
         "issue": "MET-999",
+        "manifest_digest": None,
+        "policy_amendment_digest": None,
         "proposed_repair_sha": REVIEWED_SHA,
         "pull_request": approval_evidence["pull_request"],
         "repository": approval_evidence["repository"],
@@ -278,6 +325,14 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
         "issue": "MET-999",
+        "policy_amendment": {
+            "amended_rule": "repair_requires_non_author",
+            "authorization_mode": "single-maintainer-owner-emergency",
+            "incident_digest": incident_digest,
+            "reason": "single-maintainer-no-independent-collaborator",
+            "schema_version": 1,
+            "scope": "incident-only",
+        },
         "pull_request": "123",
         "repository": "Miko997/metriplane",
         "required_cadences": ["nightly", "weekly"],
@@ -291,6 +346,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             "## Changes\n\nExact repair only."
         ),
         "head": {"sha": REVIEWED_SHA},
+        "changed_files": 2,
         "number": 123,
         "user": {"id": 100, "login": "Miko997"},
     }
@@ -299,7 +355,10 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         tmp_path,
         manifest=manifest,
         pull=pull,
-        changed_paths=allowed_paths,
+        files=[
+            {"filename": allowed_paths[0], "status": "modified"},
+            {"filename": allowed_paths[1], "status": "modified"},
+        ],
         expected_head_sha=REVIEWED_SHA,
         checked_at="2026-08-25T22:00:00Z",
     )
@@ -310,8 +369,12 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         validate_owner_emergency_candidate(
             tmp_path,
             manifest=manifest,
-            pull=pull,
-            changed_paths=[*allowed_paths, "unapproved.py"],
+            pull={**pull, "changed_files": 3},
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+                {"filename": "unapproved.py", "status": "added"},
+            ],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -320,7 +383,10 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             tmp_path,
             manifest=manifest,
             pull={**pull, "user": {"id": 200, "login": "outsider"}},
-            changed_paths=allowed_paths,
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+            ],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -329,7 +395,10 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             tmp_path,
             manifest=manifest,
             pull={**pull, "body": f"{pull['body']}\n\n{pull['body']}"},
-            changed_paths=allowed_paths,
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+            ],
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -338,7 +407,10 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             tmp_path,
             manifest=manifest,
             pull=pull,
-            changed_paths=allowed_paths,
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+            ],
             expected_head_sha=GOOD_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -350,27 +422,55 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
     repaired_main, _, _ = _red_with_repair_results(tmp_path)
     state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     incident_digest = state["incident_digest"]
+    manifest = {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "allowed_paths": ["metriplane/fix.py", "tests/test_fix.py"],
+        "base_sha": BAD_SHA,
+        "expires_at": "2026-08-26T22:00:00Z",
+        "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
+        "issue": "MET-999",
+        "policy_amendment": {
+            "amended_rule": "repair_requires_non_author",
+            "authorization_mode": "single-maintainer-owner-emergency",
+            "incident_digest": incident_digest,
+            "reason": "single-maintainer-no-independent-collaborator",
+            "schema_version": 1,
+            "scope": "incident-only",
+        },
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+        "required_cadences": ["nightly", "weekly"],
+        "schema_version": 1,
+    }
     pull = {
+        "base": {"sha": BAD_SHA},
         "body": (
             "## Outcome\n\nRepair the open incident.\n\n"
             f"Main-health owner emergency: MET-999\nIncident: {incident_digest}\n\n"
             "## Changes\n\nExact repair only."
         ),
         "head": {"sha": REVIEWED_SHA},
+        "changed_files": 2,
         "merge_commit_sha": REPAIR_SHA,
         "merged": True,
         "merged_at": "2026-08-25T21:45:00Z",
+        "number": 123,
         "user": {"id": 100, "login": "Miko997"},
     }
     evidence = github_owner_emergency_evidence(
         pull=pull,
-        files=[{"filename": "metriplane/fix.py"}, {"filename": "tests/test_fix.py"}],
+        files=[
+            {"filename": "metriplane/fix.py", "status": "modified"},
+            {"filename": "tests/test_fix.py", "status": "modified"},
+        ],
         head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
         merge_commit={
-            "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+            "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
             "sha": REPAIR_SHA,
             "tree": {"sha": TREE_SHA},
         },
+        manifest=manifest,
         owner_permission="admin",
         repository="Miko997/metriplane",
         pull_request="123",
@@ -390,6 +490,8 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
         "issue": evidence["issue"],
+        "manifest_digest": evidence["manifest_digest"],
+        "policy_amendment_digest": digest(manifest["policy_amendment"]),
         "proposed_repair_sha": REVIEWED_SHA,
         "pull_request": evidence["pull_request"],
         "repository": evidence["repository"],
@@ -399,6 +501,27 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         "reviewer_permission": evidence["reviewer_permission"],
         "schema_version": 1,
     }
+    with pytest.raises(HealthError, match="admitted manifest"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "allowed_paths": [*authorization["allowed_paths"], "unapproved.py"],
+            },
+            approval_evidence=evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    with pytest.raises(HealthError, match="expired"):
+        resolve(
+            tmp_path,
+            authorization=authorization,
+            approval_evidence=evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T20:00:00Z",
+            expected_generation=4,
+        )
     resolved = resolve(
         tmp_path,
         authorization=authorization,
@@ -417,10 +540,11 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             files=[{"filename": "tests/test_fix.py"}],
             head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
             merge_commit={
-                "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+                "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
                 "sha": REPAIR_SHA,
                 "tree": {"sha": TREE_SHA},
             },
+            manifest=manifest,
             owner_permission="write",
             repository="Miko997/metriplane",
             pull_request="123",
@@ -444,6 +568,73 @@ def test_provider_evidence_rejects_reviewed_to_merge_tree_drift(tmp_path: Path) 
         )
 
 
+def test_review_reduction_preserves_authorized_changes_requested() -> None:
+    incident_digest = "f" * 64
+    approved = {
+        "body": f"Main-health repair authorization: MET-999\nIncident: {incident_digest}",
+        "commit_id": REVIEWED_SHA,
+        "id": 1,
+        "state": "APPROVED",
+        "submitted_at": "2026-08-25T20:00:00Z",
+        "user": {"id": 200, "login": "reviewer"},
+    }
+    requested = {
+        **approved,
+        "body": "Please revise",
+        "id": 2,
+        "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-08-25T20:01:00Z",
+    }
+    commented = {
+        **approved,
+        "body": "A later non-decisive comment",
+        "id": 3,
+        "state": "COMMENTED",
+        "submitted_at": "2026-08-25T20:02:00Z",
+    }
+    outsider = {
+        **requested,
+        "id": 4,
+        "user": {"id": 300, "login": "outsider"},
+    }
+    kwargs = {
+        "pull": {
+            "base": {"sha": GOOD_SHA},
+            "changed_files": 1,
+            "head": {"sha": REVIEWED_SHA},
+            "merge_commit_sha": REPAIR_SHA,
+            "merged": True,
+            "merged_at": "2026-08-25T21:00:00Z",
+            "user": {"id": 100, "login": "author"},
+        },
+        "files": [{"filename": "metriplane/fix.py", "status": "modified"}],
+        "head_commit": {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+        "merge_commit": {
+            "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+            "sha": REPAIR_SHA,
+            "tree": {"sha": TREE_SHA},
+        },
+        "repository": "Miko997/metriplane",
+        "pull_request": "123",
+        "issue": "MET-999",
+        "incident_digest": incident_digest,
+    }
+    with pytest.raises(HealthError, match="superseded|requested changes"):
+        github_approval_evidence(
+            review=approved,
+            reviews=[approved, requested, commented],
+            reviewer_permissions={"reviewer": "write"},
+            **kwargs,  # type: ignore[arg-type]
+        )
+    evidence = github_approval_evidence(
+        review=approved,
+        reviews=[approved, outsider],
+        reviewer_permissions={"outsider": "none", "reviewer": "write"},
+        **kwargs,  # type: ignore[arg-type]
+    )
+    assert evidence["state"] == "APPROVED"
+
+
 def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_results(
     tmp_path: Path,
 ) -> None:
@@ -465,6 +656,8 @@ def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_result
     with pytest.raises(HealthError, match="superseded"):
         github_approval_evidence(
             pull={
+                "base": {"sha": GOOD_SHA},
+                "changed_files": 1,
                 "head": {"sha": REVIEWED_SHA},
                 "merge_commit_sha": REPAIR_SHA,
                 "merged": True,
@@ -473,14 +666,14 @@ def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_result
             },
             review=approved,
             reviews=[approved, requested],
-            files=[{"filename": "metriplane/fix.py"}],
+            files=[{"filename": "metriplane/fix.py", "status": "modified"}],
             head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
             merge_commit={
                 "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
                 "sha": REPAIR_SHA,
                 "tree": {"sha": TREE_SHA},
             },
-            reviewer_permission="write",
+            reviewer_permissions={"reviewer": "write"},
             repository="Miko997/metriplane",
             pull_request="123",
             issue="MET-999",
@@ -694,11 +887,14 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
         "approval_provider": "github",
         "author": "author",
         "author_id": "100",
+        "base_sha": BAD_SHA,
         "captured_at": "2026-08-25T21:30:00Z",
         "changed_paths": ["metriplane/fix.py"],
         "head_sha": REVIEWED_SHA,
         "incident_digest": incident_digest,
         "issue": "MET-999",
+        "manifest": None,
+        "manifest_digest": None,
         "merge_commit_sha": REPAIR_SHA,
         "merge_parent_shas": [GOOD_SHA, REVIEWED_SHA],
         "merge_tree_sha": TREE_SHA,
@@ -724,6 +920,8 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
         "issue": "MET-999",
+        "manifest_digest": None,
+        "policy_amendment_digest": None,
         "proposed_repair_sha": REVIEWED_SHA,
         "pull_request": approval_evidence["pull_request"],
         "repository": approval_evidence["repository"],
@@ -798,6 +996,7 @@ def test_schema_policy_and_example_families_are_complete_json() -> None:
         "main-health-history",
         "main-health-incident",
         "main-health-owner-emergency",
+        "main-health-policy-amendment",
         "main-health-provider-evidence",
         "main-health-repair-authorization",
         "main-health-resolution",
@@ -820,3 +1019,15 @@ def test_schema_policy_and_example_families_are_complete_json() -> None:
             repair = {**example, "cadence": "repair-resolution"}
             with pytest.raises(SnapshotError):
                 _internal_validate(repair, schema)
+    provider = json.loads(
+        (STATUS / "examples/main-health-provider-evidence.json").read_text(encoding="utf-8")
+    )
+    authorization = json.loads(
+        (STATUS / "examples/main-health-repair-authorization.json").read_text(encoding="utf-8")
+    )
+    resolution = json.loads(
+        (STATUS / "examples/main-health-resolution.json").read_text(encoding="utf-8")
+    )
+    assert authorization["approval_digest"] == digest(provider)
+    assert authorization["changed_paths_digest"] == digest(provider["changed_paths"])
+    assert resolution["authorization_digest"] == digest(authorization)

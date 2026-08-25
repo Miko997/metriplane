@@ -4,7 +4,7 @@
 name: Main Health
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_run:
     workflows: [CI]
@@ -39,7 +39,7 @@ env:
 
 jobs:
   candidate-health:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,6 +51,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
 
       - name: Record checked-out source
         id: source
@@ -73,20 +74,22 @@ jobs:
               --max-age-seconds 129600; then
               exit 0
             fi
-            manifest=docs/status/main-health-owner-emergency.json
-            test -f "$manifest"
+            manifest="$RUNNER_TEMP/main-health-owner-emergency.json"
             pull_file="$RUNNER_TEMP/main-health-repair-pull.json"
-            paths_file="$RUNNER_TEMP/main-health-repair-paths.jsonl"
+            files_file="$RUNNER_TEMP/main-health-repair-files.jsonl"
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/contents/docs/status/main-health-owner-emergency.json?ref=${{ github.event.pull_request.head.sha }}" \
+              --jq '.content' | base64 --decode > "$manifest"
             gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}" \
               > "$pull_file"
             gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
-              --jq '.[] | .filename | @json' > "$paths_file"
+              --jq '.[] | {filename, status, previous_filename}' > "$files_file"
             python tools/stop_the_line.py repair-candidate \
               --root "$state_root" \
               --manifest-json "$(cat "$manifest")" \
               --pull-json "$pull_file" \
-              --changed-paths-jsonl "$paths_file" \
+              --files-jsonl "$files_file" \
               --expected-head-sha "${{ github.event.pull_request.head.sha }}" \
               --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           else
@@ -367,7 +370,7 @@ jobs:
     name: Main health / required
     if: >-
       always() &&
-      (github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request_target' ||
        github.event_name == 'schedule' ||
        github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'workflow_run' &&
@@ -380,9 +383,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      statuses: write
     env:
       CANDIDATE_RESULT: ${{ needs.candidate-health.result }}
       CANDIDATE_SHA: ${{ needs.candidate-health.outputs.source_sha }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PERSIST_RESULT: ${{ needs.persist-health.result }}
       PERSIST_SHA: ${{ needs.persist-health.outputs.measured_sha }}
     steps:
@@ -393,7 +398,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == pull_request_target ]]; then
             dependency=candidate-health
             result="$CANDIDATE_RESULT"
             measured_sha="$CANDIDATE_SHA"
@@ -410,8 +415,26 @@ jobs:
           print(json.dumps({name: {"result": result, "sha": sha}}, separators=(",", ":")))
           PY
           )"
+          set +e
           python tools/check_required_terminal.py aggregate \
             --terminal "Main health / required" \
             --expected-sha "$GITHUB_SHA" \
             --expected-dependency "$dependency" \
             --results-json "$results"
+          aggregate_status=$?
+          set -e
+          if [[ "$GITHUB_EVENT_NAME" == pull_request_target ]]; then
+            state=failure
+            description="Main health admission failed"
+            if [[ $aggregate_status -eq 0 ]]; then
+              state=success
+              description="Main health admission passed"
+            fi
+            GH_TOKEN="${{ github.token }}" gh api \
+              --method POST "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \
+              -f state="$state" \
+              -f context="Main health / required" \
+              -f description="$description" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          fi
+          exit "$aggregate_status"

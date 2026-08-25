@@ -205,7 +205,8 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
 
     health = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
     health_trigger = health.get("on", health.get(True))
-    assert "edited" in health_trigger["pull_request"]["types"]
+    assert "pull_request" not in health_trigger
+    assert "edited" in health_trigger["pull_request_target"]["types"]
     assert health_trigger["workflow_run"]["workflows"] == ["CI"]
     assert health_trigger["workflow_dispatch"]["inputs"]["cadence"]["options"] == [
         "nightly",
@@ -225,6 +226,10 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert health["jobs"]["persist-health"]["permissions"] == {
         "actions": "read",
         "contents": "write",
+    }
+    assert health["jobs"]["main-health-required"]["permissions"] == {
+        "contents": "read",
+        "statuses": "write",
     }
     assert "stop_the_line.py ingest" not in "\n".join(
         step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
