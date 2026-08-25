@@ -196,14 +196,14 @@ jobs:
               rm -rf "$jobs_root"
               mkdir -p "$jobs_root"
               python - "$selection_file" > "$targets_file" <<'PY'
-              import json
-              import pathlib
-              import sys
+          import json
+          import pathlib
+          import sys
 
-              selection = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-              for run in selection["runs"]:
-                  print(run["key"], run["id"], run["run_attempt"], sep="\t")
-              PY
+          selection = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          for run in selection["runs"]:
+              print(run["key"], run["id"], run["run_attempt"], sep="\t")
+          PY
               while IFS=$'\t' read -r key run_id run_attempt; do
                 if ! gh api --paginate \
                   "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" \
