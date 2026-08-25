@@ -4,6 +4,7 @@
     "tests/test_example.py"
   ],
   "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "collaboration_digest": "fc1d47cad2975e1766bcf111ffd125b17ce59a67ea98acb4b5b1fb669e7b84e7",
   "expires_at": "2026-08-27T03:23:00Z",
   "failing_obligations": [
     "Metriplane / required"

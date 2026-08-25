@@ -274,6 +274,7 @@ def _red_with_repair_results(
             "tree": {"sha": TREE_SHA},
         },
         reviewer_permissions={"reviewer": "write"},
+        captured_at="2026-08-25T21:46:00Z",
         repository="Miko997/metriplane",
         pull_request="123",
         issue="MET-999",
@@ -320,10 +321,12 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         "docs/status/main-health-owner-emergency.json",
         "tests/test_fix.py",
     ]
+    collaborators = [{"id": 100, "login": "Miko997", "role_name": "admin"}]
     manifest = {
         "authorization_mode": "single-maintainer-owner-emergency",
         "allowed_paths": allowed_paths,
         "base_sha": BAD_SHA,
+        "collaboration_digest": digest([{"id": "100", "login": "Miko997", "permission": "admin"}]),
         "expires_at": "2026-08-26T23:00:00Z",
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
@@ -362,12 +365,42 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             {"filename": allowed_paths[0], "status": "modified"},
             {"filename": allowed_paths[1], "status": "modified"},
         ],
+        collaborators=collaborators,
         expected_head_sha=REVIEWED_SHA,
         checked_at="2026-08-25T22:00:00Z",
     )
     assert result["status"] == "repair-candidate"
     assert result["head_sha"] == REVIEWED_SHA
     assert before == {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    with pytest.raises(HealthError, match="eligible independent collaborator"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest=manifest,
+            pull=pull,
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+            ],
+            collaborators=[
+                *collaborators,
+                {"id": 200, "login": "reviewer", "role_name": "write"},
+            ],
+            expected_head_sha=REVIEWED_SHA,
+            checked_at="2026-08-25T22:00:00Z",
+        )
+    with pytest.raises(HealthError, match="collaboration digest is stale"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest={**manifest, "collaboration_digest": "0" * 64},
+            pull=pull,
+            files=[
+                {"filename": allowed_paths[0], "status": "modified"},
+                {"filename": allowed_paths[1], "status": "modified"},
+            ],
+            collaborators=collaborators,
+            expected_head_sha=REVIEWED_SHA,
+            checked_at="2026-08-25T22:00:00Z",
+        )
     with pytest.raises(HealthError, match="exact changed paths"):
         validate_owner_emergency_candidate(
             tmp_path,
@@ -378,6 +411,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[1], "status": "modified"},
                 {"filename": "unapproved.py", "status": "added"},
             ],
+            collaborators=collaborators,
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -390,6 +424,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[0], "status": "modified"},
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
+            collaborators=collaborators,
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -402,6 +437,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[0], "status": "modified"},
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
+            collaborators=collaborators,
             expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -414,6 +450,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
                 {"filename": allowed_paths[0], "status": "modified"},
                 {"filename": allowed_paths[1], "status": "modified"},
             ],
+            collaborators=collaborators,
             expected_head_sha=GOOD_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
@@ -429,6 +466,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         "authorization_mode": "single-maintainer-owner-emergency",
         "allowed_paths": ["metriplane/fix.py", "tests/test_fix.py"],
         "base_sha": BAD_SHA,
+        "collaboration_digest": digest([{"id": "100", "login": "Miko997", "permission": "admin"}]),
         "expires_at": "2026-08-26T22:00:00Z",
         "failing_obligations": ["suite"],
         "incident_digest": incident_digest,
@@ -476,6 +514,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         manifest=manifest,
         collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
         invitations=[],
+        captured_at="2026-08-25T21:46:00Z",
         owner_permission="admin",
         repository="Miko997/metriplane",
         pull_request="123",
@@ -552,6 +591,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             manifest=manifest,
             collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
             invitations=[],
+            captured_at="2026-08-25T21:46:00Z",
             owner_permission="write",
             repository="Miko997/metriplane",
             pull_request="123",
@@ -582,6 +622,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
                 },
             ],
             invitations=[],
+            captured_at="2026-08-25T21:46:00Z",
             owner_permission="admin",
             repository="Miko997/metriplane",
             pull_request="123",
@@ -636,6 +677,46 @@ def test_provider_evidence_rejects_merge_from_a_different_base() -> None:
                 "tree": {"sha": TREE_SHA},
             },
             reviewer_permissions={"reviewer": "write"},
+            captured_at="2026-08-25T21:00:00Z",
+            repository="Miko997/metriplane",
+            pull_request="123",
+            issue="MET-999",
+            incident_digest=incident_digest,
+        )
+
+
+def test_provider_evidence_rejects_reversed_merge_parents() -> None:
+    incident_digest = "f" * 64
+    approved = {
+        "body": f"Main-health repair authorization: MET-999\nIncident: {incident_digest}",
+        "commit_id": REVIEWED_SHA,
+        "id": 1,
+        "state": "APPROVED",
+        "submitted_at": "2026-08-25T20:00:00Z",
+        "user": {"id": 200, "login": "reviewer"},
+    }
+    with pytest.raises(HealthError, match="exact base"):
+        github_approval_evidence(
+            pull={
+                "base": {"sha": GOOD_SHA},
+                "changed_files": 1,
+                "head": {"sha": REVIEWED_SHA},
+                "merge_commit_sha": REPAIR_SHA,
+                "merged": True,
+                "merged_at": "2026-08-25T21:00:00Z",
+                "user": {"id": 100, "login": "author"},
+            },
+            review=approved,
+            reviews=[approved],
+            files=[{"filename": "metriplane/fix.py", "status": "modified"}],
+            head_commit={"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+            merge_commit={
+                "parents": [{"sha": REVIEWED_SHA}, {"sha": GOOD_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            },
+            reviewer_permissions={"reviewer": "write"},
+            captured_at="2026-08-25T21:00:00Z",
             repository="Miko997/metriplane",
             pull_request="123",
             issue="MET-999",
@@ -699,15 +780,25 @@ def test_review_reduction_preserves_authorized_changes_requested() -> None:
             review=approved,
             reviews=[approved, requested, commented],
             reviewer_permissions={"reviewer": "write"},
+            captured_at="2026-08-25T21:00:00Z",
             **kwargs,  # type: ignore[arg-type]
         )
     evidence = github_approval_evidence(
         review=approved,
         reviews=[approved, outsider],
         reviewer_permissions={"outsider": "none", "reviewer": "write"},
+        captured_at="2026-08-25T21:00:00Z",
         **kwargs,  # type: ignore[arg-type]
     )
     assert evidence["state"] == "APPROVED"
+    with pytest.raises(HealthError, match="capture predates"):
+        github_approval_evidence(
+            review=approved,
+            reviews=[approved],
+            reviewer_permissions={"reviewer": "write"},
+            captured_at="2026-08-25T19:59:59Z",
+            **kwargs,  # type: ignore[arg-type]
+        )
 
 
 def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_results(
@@ -749,6 +840,7 @@ def test_exact_non_author_repair_closes_only_after_retained_main_and_deep_result
                 "tree": {"sha": TREE_SHA},
             },
             reviewer_permissions={"reviewer": "write"},
+            captured_at="2026-08-25T21:00:00Z",
             repository="Miko997/metriplane",
             pull_request="123",
             issue="MET-999",
@@ -966,6 +1058,7 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
         "captured_at": "2026-08-25T21:30:00Z",
         "changed_paths": ["metriplane/fix.py"],
         "collaborators": None,
+        "decision_at": "2026-08-25T21:29:00Z",
         "head_sha": REVIEWED_SHA,
         "incident_digest": incident_digest,
         "issue": "MET-999",
@@ -1090,6 +1183,23 @@ def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Pat
         )
     assert validate_git_history(root)["generation"] == 2
 
+    ungoverned = tmp_path / "ungoverned"
+    shutil.copytree(root, ungoverned)
+    ingest(
+        ungoverned,
+        scope="main",
+        summary=_summary(GOOD_SHA),
+        activation_policy=POLICY,
+        expected_generation=2,
+    )
+    (ungoverned / "results/unvalidated-payload.bin").write_bytes(b"not governed")
+    subprocess.run(["git", "-C", str(ungoverned), "add", "--all"], check=True)
+    subprocess.run(
+        ["git", "-C", str(ungoverned), "commit", "-qm", "add ungoverned payload"], check=True
+    )
+    with pytest.raises(HealthError, match="ungoverned|rewrites immutable"):
+        validate_git_history(ungoverned)
+
     ingest(
         replacement,
         scope="main",
@@ -1115,7 +1225,65 @@ def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Pat
         ["git", "-C", str(root), "commit", "-qm", "replace complete state tree"], check=True
     )
     assert validate_history(root)["generation"] == 1
-    with pytest.raises(HealthError, match="exactly one generation|rewrites immutable"):
+    with pytest.raises(
+        HealthError,
+        match="does not match its generations|exactly one generation|rewrites immutable",
+    ):
+        validate_git_history(root)
+
+
+def test_git_history_rejects_evidence_committed_before_its_generation(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    future = tmp_path / "future"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True
+    )
+    ingest(
+        root,
+        scope="main",
+        summary=_summary(GOOD_SHA),
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+    subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "generation 1"], check=True)
+
+    ingest(
+        root,
+        scope="main",
+        summary=_summary(GOOD_SHA, recorded_at="2026-08-25T19:00:00Z", run_id="2"),
+        activation_policy=POLICY,
+        expected_generation=1,
+    )
+    shutil.copytree(root, future, ignore=shutil.ignore_patterns(".git"))
+    ingest(
+        future,
+        scope="main",
+        summary=_summary(GOOD_SHA, recorded_at="2026-08-25T20:00:00Z", run_id="3"),
+        activation_policy=POLICY,
+        expected_generation=2,
+    )
+    root_files = {path.relative_to(root) for path in root.rglob("*") if path.is_file()}
+    for source in future.rglob("*"):
+        relative = source.relative_to(future)
+        if source.is_file() and relative not in root_files and relative != Path("state.json"):
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+    subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "generation 2 plus future evidence"],
+        check=True,
+    )
+    shutil.copy2(future / "state.json", root / "state.json")
+    subprocess.run(["git", "-C", str(root), "add", "state.json"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "generation 3 pointer"], check=True)
+
+    assert validate_history(root)["generation"] == 3
+    with pytest.raises(HealthError, match="invalid generation evidence"):
         validate_git_history(root)
 
 

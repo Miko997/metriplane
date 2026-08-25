@@ -11,6 +11,7 @@
     "tests/test_example.py"
   ],
   "collaborators": null,
+  "decision_at": "2026-08-26T16:55:00Z",
   "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "issue": "MET-999",

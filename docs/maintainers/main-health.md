@@ -34,7 +34,9 @@ same trusted workflow reconciles every open pull request immediately after each
 durable main-health transition and on a five-minute schedule. It overwrites earlier
 success with failure when health turns red, the base becomes stale, the 36-hour
 window expires, or an emergency manifest expires; a persistent commit status is
-never treated as an unbounded lease. The
+never treated as an unbounded lease. Scheduled reconciliation and durable writers
+share one serialized concurrency group, so an older green snapshot cannot publish
+success after a newer red transition. The
 completed protected-main CI workflow and the nightly and weekly schedules are the
 only normal writer triggers. A
 protected-main writer binds the triggering CI run attempt, selects the exact
@@ -120,8 +122,12 @@ that independent approval did not exist. The manifest also carries the exact
 incident-only amendment of `repair_requires_non_author`; it does not change the
 global activation policy. Provider capture re-reads the manifest from the reviewed
 head, captures the complete collaborator and pending-invitation inventories, and
-requires that neither contains an eligible non-author reviewer. Its manifest
-digest and policy-amendment digest must match the authorization.
+requires that neither contains an eligible non-author reviewer. Admission binds
+the accepted-collaborator inventory available to the workflow token; post-merge
+capture requires the same canonical collaborator digest and separately rejects
+an eligible pending invitation. Post-merge `captured_at` is the actual provider
+retrieval time, not the earlier merge timestamp. Its manifest digest and
+policy-amendment digest must match the authorization.
 
 After that exact PR merges, run the `Main Health` workflow manually once for each
 deep cadence. Capture the merged owner decision with `capture-owner-emergency`,
@@ -162,9 +168,12 @@ python tools/stop_the_line.py validate-git --root main-health-readback
 When this trusted base-branch admission workflow is first introduced while health
 is already red, it cannot publish the current repair PR's trusted head status. For
 that one bootstrap incident, retain the complete active ruleset and its digest,
+the pre-merge provider collaborator and invitation responses and their digest,
 remove only the `Main health / required` context, merge the exact qualified PR
 normally, immediately restore and digest the original ruleset, and verify the
-before/after documents are identical. Deletion, non-fast-forward, pull-request,
+before/after documents are identical. Re-fetch the collaboration inventories
+immediately after merge and require the normalized digest to match the admitted
+manifest. Deletion, non-fast-forward, pull-request,
 and every other required-check rule stay active throughout. This ruleset operation
 admits only the code merge; it does not clear red health or substitute for retained
 protected-main, nightly, weekly, provider, authorization, and resolution evidence.

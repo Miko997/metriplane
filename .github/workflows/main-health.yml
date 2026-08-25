@@ -22,14 +22,7 @@ on:
     - cron: "23 3 * * 0"
 
 concurrency:
-  group: >-
-    ${{ ((github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *') ||
-         github.event_name == 'workflow_dispatch' ||
-         (github.event_name == 'workflow_run' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.event == 'push')) &&
-        'main-health-state-writer' ||
-        format('main-health-nonwriter-{0}', github.run_id) }}
+  group: main-health-serialized
   queue: max
 
 permissions:
@@ -46,6 +39,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      collaboration_digest: ${{ steps.admission.outputs.collaboration_digest }}
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - name: Check out candidate
@@ -59,6 +53,7 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Read and validate global health
+        id: admission
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,6 +73,7 @@ jobs:
             manifest="$RUNNER_TEMP/main-health-owner-emergency.json"
             pull_file="$RUNNER_TEMP/main-health-repair-pull.json"
             files_file="$RUNNER_TEMP/main-health-repair-files.jsonl"
+            collaborators_file="$RUNNER_TEMP/main-health-repair-collaborators.jsonl"
             gh api \
               "repos/${GITHUB_REPOSITORY}/contents/docs/status/main-health-owner-emergency.json?ref=${{ github.event.pull_request.head.sha }}" \
               --jq '.content' | base64 --decode > "$manifest"
@@ -86,13 +82,21 @@ jobs:
             gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
               --jq '.[] | {filename, status, previous_filename}' > "$files_file"
-            python tools/stop_the_line.py repair-candidate \
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/collaborators?affiliation=all&per_page=100" \
+              --jq '.[]' > "$collaborators_file"
+            admission="$(python tools/stop_the_line.py repair-candidate \
               --root "$state_root" \
               --manifest-json "$(cat "$manifest")" \
               --pull-json "$pull_file" \
               --files-jsonl "$files_file" \
+              --collaborators-jsonl "$collaborators_file" \
               --expected-head-sha "${{ github.event.pull_request.head.sha }}" \
-              --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+            collaboration_digest="$(python -c \
+              'import json,sys; print(json.load(sys.stdin)["collaboration_digest"])' \
+              <<<"$admission")"
+            echo "collaboration_digest=$collaboration_digest" >> "$GITHUB_OUTPUT"
           else
             if git cat-file -e \
               "${{ github.event.pull_request.base.sha }}:tools/stop_the_line.py" 2>/dev/null; then
@@ -407,8 +411,12 @@ jobs:
             "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
           python tools/stop_the_line.py validate-git --root "$state_root"
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
+          collaborators_file="$RUNNER_TEMP/main-health-collaborators.jsonl"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/collaborators?affiliation=all&per_page=100" \
+            --jq '.[]' > "$collaborators_file"
           while IFS= read -r pull; do
             number="$(python -c 'import json,sys; print(json.load(sys.stdin)["number"])' \
               <<<"$pull")"
@@ -436,15 +444,19 @@ jobs:
               gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/pulls/${number}/files?per_page=100" \
               --jq '.[] | {filename, status, previous_filename}' > "$files_file" &&
-              python tools/stop_the_line.py repair-candidate \
+              admission="$(python tools/stop_the_line.py repair-candidate \
               --root "$state_root" \
               --manifest-json "$(cat "$manifest")" \
               --pull-json "$pull_file" \
               --files-jsonl "$files_file" \
+              --collaborators-jsonl "$collaborators_file" \
               --expected-head-sha "$head_sha" \
-              --checked-at "$checked_at"; then
+              --checked-at "$checked_at")"; then
+              collaboration_digest="$(python -c \
+                'import json,sys; print(json.load(sys.stdin)["collaboration_digest"])' \
+                <<<"$admission")"
               state=success
-              description="Main health repair admission passed"
+              description="Repair admission ${collaboration_digest}"
             fi
             gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               -f state="$state" \
@@ -472,6 +484,7 @@ jobs:
       contents: read
       statuses: write
     env:
+      CANDIDATE_COLLABORATION_DIGEST: ${{ needs.candidate-health.outputs.collaboration_digest }}
       CANDIDATE_RESULT: ${{ needs.candidate-health.result }}
       CANDIDATE_SHA: ${{ needs.candidate-health.outputs.source_sha }}
       PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -516,6 +529,9 @@ jobs:
             if [[ $aggregate_status -eq 0 ]]; then
               state=success
               description="Main health admission passed"
+              if [[ -n "$CANDIDATE_COLLABORATION_DIGEST" ]]; then
+                description="Repair admission ${CANDIDATE_COLLABORATION_DIGEST}"
+              fi
             fi
             GH_TOKEN="${{ github.token }}" gh api \
               --method POST "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD_SHA}" \

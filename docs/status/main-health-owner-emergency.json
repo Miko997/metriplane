@@ -20,6 +20,7 @@
     "tools/stop_the_line.py"
   ],
   "base_sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+  "collaboration_digest": "9736c05f3de100448bfe0fc8ec8e78a3dfdab856dfec291c1522fbd3ddb8d2ce",
   "expires_at": "2026-08-27T00:00:00Z",
   "failing_obligations": [
     "Metriplane / required"

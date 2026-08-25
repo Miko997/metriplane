@@ -1,6 +1,6 @@
 {
   "authorization_mode": "independent-review",
-  "approval_digest": "9d367d503391e600be81a6bd3b48a7890adfd54fb50b670b361c11132a26cc1d",
+  "approval_digest": "28874f8131e149a1377919e6923b7fabdcb78b73be4e9b35ef131bda4fd35c0c",
   "approval_id": "provider-approval-1",
   "approval_provider": "github",
   "allowed_paths": [

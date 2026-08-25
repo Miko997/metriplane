@@ -218,10 +218,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "23 3 * * 1-6",
     }
     concurrency_group = str(health["concurrency"]["group"])
-    assert "main-health-state-writer" in concurrency_group
-    assert "github.event.workflow_run.head_branch == 'main'" in concurrency_group
-    assert "github.event.workflow_run.event == 'push'" in concurrency_group
-    assert "github.run_id" in concurrency_group
+    assert concurrency_group == "main-health-serialized"
     assert health["concurrency"]["queue"] == "max"
     assert health["jobs"]["candidate-health"]["permissions"] == {
         "contents": "read",
