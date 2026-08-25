@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorization_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "repaired_main_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "resolved_at": {"format": "date-time", "type": "string"},
+    "schema_version": {"const": 1}
+  },
+  "required": ["authorization_digest", "incident_digest", "repaired_main_sha", "resolved_at", "schema_version"],
+  "type": "object"
+}

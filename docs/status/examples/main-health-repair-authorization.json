@@ -1,0 +1,27 @@
+{
+  "approval_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "approval_id": "provider-approval-1",
+  "approval_provider": "github",
+  "allowed_paths": [
+    "metriplane/example.py",
+    "tests/test_example.py"
+  ],
+  "author": "repair-author",
+  "author_id": "100",
+  "changed_paths_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "expires_at": "2026-08-27T03:23:00Z",
+  "failing_obligations": [
+    "Metriplane / required"
+  ],
+  "issue": "MET-999",
+  "proposed_repair_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "pull_request": "123",
+  "repository": "Miko997/metriplane",
+  "required_cadences": [
+    "nightly",
+    "weekly"
+  ],
+  "reviewer": "independent-reviewer",
+  "reviewer_id": "200",
+  "schema_version": 1
+}

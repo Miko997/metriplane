@@ -1,0 +1,13 @@
+{
+  "candidate_mutates_global_state": false,
+  "global_cadences": [
+    "protected-main",
+    "nightly",
+    "weekly"
+  ],
+  "prehistory_disposition": "not_measured",
+  "repair_requires_non_author": true,
+  "schema_version": 1,
+  "state_branch": "metriplane-main-health-state",
+  "writer_workflow": ".github/workflows/main-health.yml"
+}

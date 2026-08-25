@@ -15,6 +15,8 @@ jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     permissions:
       contents: read
       security-events: write
@@ -29,6 +31,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
+      - name: Record checked-out source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
@@ -37,3 +43,25 @@ jobs:
 
       - name: Analyze
         uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+
+  security-required:
+    name: Security / required
+    if: always()
+    needs: analyze
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RESULTS_JSON: >-
+        {"analyze":{"result":"${{ needs.analyze.result }}","sha":"${{ needs.analyze.outputs.source_sha }}"}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate exact aggregate result
+        run: >-
+          python tools/check_required_terminal.py aggregate
+          --terminal "Security / required"
+          --expected-sha "$GITHUB_SHA"
+          --expected-dependency analyze
+          --results-json "$RESULTS_JSON"

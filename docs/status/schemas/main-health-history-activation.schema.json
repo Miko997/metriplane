@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activated_at": {"format": "date-time", "type": "string"},
+    "first_measured_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "policy_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "prehistory_disposition": {"const": "not_measured"},
+    "schema_version": {"const": 1}
+  },
+  "required": ["activated_at", "first_measured_sha", "policy_digest", "prehistory_disposition", "schema_version"],
+  "type": "object"
+}
