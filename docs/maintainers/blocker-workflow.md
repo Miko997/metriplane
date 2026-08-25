@@ -27,24 +27,33 @@ record. Lowering severity from P0 to P1/P2 or P1 to P2, or changing `security` f
 `false`, requires exactly one `downgrade` record that matches the immutable and current
 classifications.
 
+The registry is append-only relative to the exact validation base. A retained blocker ID cannot
+be deleted; its reporter, opening time, source, and initial classifications cannot be rewritten;
+and a retained downgrade or closure record cannot be removed or changed. New records and
+Git-tracked commits provide the audit trail instead of mutating accepted action history.
+
 A downgrade is valid only when all of the following are present and verified:
 
-1. At least one repository-relative reproduction-evidence file with its SHA-256.
-2. At least one repository-relative control-evidence file with its SHA-256.
+1. At least one repository-relative reproduction-evidence file with its SHA-256, tracked as a
+   regular-file blob at the exact validated commit.
+2. At least one repository-relative control-evidence file with the same commit-bound proof.
 3. A registry locator naming the exact GitHub repository and pull request, plus a
    `subject_sha256` over the canonical downgrade subject. The subject binds the blocker ID, exact
    reporter, transition, action actor, action time, and both evidence arrays.
-4. A live GitHub review fetched by the checker with `GITHUB_TOKEN`. The review must be the
-   reviewer's latest state, be `APPROVED` on the current pull-request head, follow the recorded
-   action, and have the exact marker documented below. Any current requested-changes review fails
-   the action closed.
-5. A provider-authenticated reviewer who differs from the pull-request author, every linked
+4. A live GitHub review fetched by the checker with `GITHUB_TOKEN`. The decisive review state must
+   be `APPROVED` on the current pull-request head, follow the recorded action, and have the exact
+   marker documented below. `COMMENTED` does not clear `CHANGES_REQUESTED`; only that reviewer's
+   later `APPROVED` state or a provider-visible dismissal does.
+5. A provider-authenticated reviewer whose live repository permission is `write`, `maintain`, or
+   `admin` and who differs from the pull-request author, every linked
    author and committer of a pull-request commit that changes `docs/status/blockers.json`, the
    original reporter, and the downgrade actor. Reporter and action identities must use comparable
    `github:<numeric-id>` provider IDs; missing or unlinked identities fail closed.
 
-Evidence paths reject absolute paths, `..`, symlinks in any component, non-files, repository-root
-escapes, and hash mismatches.
+Evidence paths reject absolute paths and `..`. The checker reads the exact path from the validated
+Git commit, requires mode `100644` or `100755`, and compares the committed blob bytes with the
+recorded SHA-256. Ignored, untracked, symlink, tree, current-worktree-only, and mismatched evidence
+fails closed.
 
 ## Closure
 
@@ -58,8 +67,11 @@ cannot predate the blocker or a governed downgrade.
 
 Registry fields are locators and action data, not authentication evidence. The checker re-fetches
 the pull request, all reviews, the complete pull-request file and commit inventories, and each
-commit that owns a blocker-registry change. It accepts no caller-supplied reviewer identity,
-decision, approval timestamp, or captured provider response.
+commit that owns a blocker-registry change. Pull-request lists and every commit's file list are
+paginated to exhaustion. For each approval candidate it also fetches the repository collaborator
+permission endpoint and binds the returned provider user to the review identity. It accepts no
+caller-supplied reviewer identity, authorization, decision, approval timestamp, or captured
+provider response.
 
 The review body must equal this marker exactly, with no surrounding prose:
 
@@ -75,11 +87,17 @@ subject_sha256=<canonical action subject SHA-256>
 
 The workflow checks out full history and supplies the current repository, pull-request number, head
 SHA, and base SHA on pull-request runs. It compares the current registry with that exact local base:
-a newly added or changed action must point to the current pull request, while an unchanged
+a newly added action must point to the current pull request, while an unchanged
 historical action is re-verified against the original pull request that approved it. A missing base
 commit, wrong repository or action-owning pull request, stale head or review, absent or altered
 marker, offline verification, malformed provider data, or superseding review fails closed. On
-protected branch runs, the checker re-verifies the locator's current provider state.
+protected branch and release runs, the checker compares the validated commit to its exact history
+base, requires every approval pull request to be provider-confirmed as merged, and requires that
+provider merge commit to be an ancestor of the exact validated release SHA.
+
+The production workflow reruns this live provider check at manual dispatch and again immediately
+before the trusted publish action, after the protected environment approval. A dismissed or edited
+approval therefore invalidates production even if the earlier tag workflow passed.
 
 `linear` remains a reserved schema value so existing planned integrations have an explicit
 disposition. It cannot authorize a production action until an equivalent live Linear verifier and
@@ -119,6 +137,7 @@ uv run python tools/check_blockers.py \
   --github-pull-request <number> \
   --github-change-sha <head-sha> \
   --github-base-sha <base-sha> \
+  --validated-sha <head-sha> \
   --json
 uv run python -m pytest -q tests/test_blocker_workflow.py
 ```

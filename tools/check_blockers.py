@@ -11,7 +11,6 @@ import importlib.util
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
 import urllib.request
@@ -29,6 +28,7 @@ SEVERITY_RANK = {"P0": 0, "P1": 1, "P2": 2}
 REGISTRY_PATH = "docs/status/blockers.json"
 GITHUB_API_VERSION = "2022-11-28"
 _GITHUB_ACTOR_RE = re.compile(r"github:([1-9][0-9]*)\Z")
+_GITHUB_LOGIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\Z")
 _GITHUB_REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _GIT_SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 _GITHUB_TIMESTAMP_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
@@ -38,6 +38,15 @@ _GITHUB_REVIEW_STATES = {
     "COMMENTED",
     "DISMISSED",
     "PENDING",
+}
+_GITHUB_REVIEWER_PERMISSIONS = {"admin", "maintain", "write"}
+_IMMUTABLE_BLOCKER_FIELDS = {
+    "id",
+    "reported_by_actor_id",
+    "opened_at",
+    "initial_severity",
+    "initial_security",
+    "source",
 }
 
 
@@ -56,11 +65,15 @@ class Approval(TypedDict):
 
 
 class ApprovalContext(TypedDict):
+    repo_root: Path
     expected_repository: str | None
     expected_pull_request: int | None
     expected_change_sha: str | None
+    validated_sha: str | None
+    require_merged_approval: bool
     github_token: str | None
     changed_action_keys: set[tuple[str, str]]
+    history_errors: list[str]
 
 
 class Downgrade(TypedDict):
@@ -297,16 +310,43 @@ def _action_digests(value: Any) -> dict[tuple[str, str], str]:
     return result
 
 
-def _base_action_digests(repo_root: Path, base_sha: str) -> dict[tuple[str, str], str]:
+def _require_local_commit(repo_root: Path, sha: str, label: str) -> None:
     root = repo_root.resolve(strict=True)
     commit = subprocess.run(
-        ["/usr/bin/git", "cat-file", "-e", f"{base_sha}^{{commit}}"],
+        ["/usr/bin/git", "cat-file", "-e", f"{sha}^{{commit}}"],
         cwd=root,
         capture_output=True,
         check=False,
     )
     if commit.returncode != 0:
-        _fail("GitHub base SHA is not an available local commit")
+        _fail(f"{label} is not an available local commit")
+
+
+def _strict_json_bytes(raw: bytes, label: str) -> Any:
+    if raw.startswith(b"\xef\xbb\xbf"):
+        _fail(f"{label} contains a prohibited UTF-8 BOM")
+
+    def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        parsed: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in parsed:
+                _fail(f"{label} contains duplicate JSON key {key!r}")
+            parsed[key] = item
+        return parsed
+
+    try:
+        return json.loads(
+            raw.decode("utf-8", "strict"),
+            object_pairs_hook=pairs_hook,
+            parse_constant=lambda token: _fail(f"{label} contains non-finite number {token}"),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _fail(f"{label} is not strict UTF-8 JSON: {exc}")
+
+
+def _base_registry(repo_root: Path, base_sha: str) -> Registry | None:
+    root = repo_root.resolve(strict=True)
+    _require_local_commit(root, base_sha, "GitHub base SHA")
     exists = subprocess.run(
         ["/usr/bin/git", "cat-file", "-e", f"{base_sha}:{REGISTRY_PATH}"],
         cwd=root,
@@ -314,7 +354,7 @@ def _base_action_digests(repo_root: Path, base_sha: str) -> dict[tuple[str, str]
         check=False,
     )
     if exists.returncode != 0:
-        return {}
+        return None
     captured = subprocess.run(
         ["/usr/bin/git", "show", f"{base_sha}:{REGISTRY_PATH}"],
         cwd=root,
@@ -323,41 +363,56 @@ def _base_action_digests(repo_root: Path, base_sha: str) -> dict[tuple[str, str]
     )
     if captured.returncode != 0:
         _fail("cannot read the blocker registry at the GitHub base SHA")
+    value = _strict_json_bytes(captured.stdout, "base blocker registry")
+    if not isinstance(value, dict) or not isinstance(value.get("blockers"), list):
+        _fail("base blocker registry has a malformed root")
+    _action_digests(value)
+    return cast(Registry, value)
 
-    def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        parsed: dict[str, Any] = {}
-        for key, item in pairs:
-            if key in parsed:
-                _fail(f"base blocker registry contains duplicate JSON key {key!r}")
-            parsed[key] = item
-        return parsed
 
-    try:
-        value = json.loads(
-            captured.stdout.decode("utf-8", "strict"),
-            object_pairs_hook=pairs_hook,
-            parse_constant=lambda token: _fail(
-                f"base blocker registry contains non-finite number {token}"
-            ),
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        _fail(f"base blocker registry is not strict UTF-8 JSON: {exc}")
-    return _action_digests(value)
+def _history_errors(registry: Registry, base: Registry | None) -> list[str]:
+    if base is None:
+        return []
+    errors: list[str] = []
+    current_by_id = {blocker["id"]: blocker for blocker in registry["blockers"]}
+    base_by_id = {blocker["id"]: blocker for blocker in base["blockers"]}
+    if len(base_by_id) != len(base["blockers"]):
+        return ["base blocker registry contains duplicate blocker IDs"]
+    for blocker_id, retained in base_by_id.items():
+        current = current_by_id.get(blocker_id)
+        if current is None:
+            errors.append(
+                f"{blocker_id}: retained blocker was removed; registry history is append-only"
+            )
+            continue
+        current_fields = cast(dict[str, Any], current)
+        retained_fields = cast(dict[str, Any], retained)
+        for field in sorted(_IMMUTABLE_BLOCKER_FIELDS):
+            if current_fields[field] != retained_fields[field]:
+                errors.append(f"{blocker_id}: immutable field {field} was rewritten")
+        for action in ("downgrade", "closure"):
+            retained_action = retained_fields[action]
+            if retained_action is not None and current_fields[action] != retained_action:
+                errors.append(
+                    f"{blocker_id}: retained {action} record was removed or rewritten; "
+                    "action history is append-only"
+                )
+    return errors
 
 
 def _changed_action_keys(
-    registry: Registry, repo_root: Path, base_sha: str | None, has_pull_context: bool
+    registry: Registry, base: Registry | None, has_pull_context: bool
 ) -> set[tuple[str, str]]:
     current = _action_digests(registry)
     if not has_pull_context:
         return set()
-    if base_sha is None:
+    if base is None:
         return set(current)
-    base = _base_action_digests(repo_root, base_sha)
-    return {key for key, digest in current.items() if base.get(key) != digest}
+    retained = _action_digests(base)
+    return {key for key, digest in current.items() if retained.get(key) != digest}
 
 
-def _evidence_path(repo_root: Path, relative: str) -> Path:
+def _clean_evidence_path(relative: str) -> str:
     pure = PurePosixPath(relative)
     if (
         pure.is_absolute()
@@ -366,24 +421,40 @@ def _evidence_path(repo_root: Path, relative: str) -> Path:
         or any(part in {"", ".", ".."} for part in pure.parts)
     ):
         _fail(f"evidence path is not a clean repository-relative path: {relative!r}")
+    return pure.as_posix()
+
+
+def _evidence_blob(repo_root: Path, validated_sha: str, relative: str) -> bytes:
+    clean = _clean_evidence_path(relative)
     root = repo_root.resolve(strict=True)
-    current = root
-    for part in pure.parts:
-        current = current / part
-        try:
-            mode = current.lstat().st_mode
-        except OSError as exc:
-            _fail(f"evidence path is unavailable: {relative!r}: {exc}")
-        if stat.S_ISLNK(mode):
-            _fail(f"evidence path contains a symlink: {relative!r}")
-    resolved = current.resolve(strict=True)
+    tree = subprocess.run(
+        ["/usr/bin/git", "ls-tree", "-z", validated_sha, "--", clean],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if tree.returncode != 0:
+        _fail(f"cannot inspect evidence at validated commit: {relative!r}")
+    records = [record for record in tree.stdout.split(b"\0") if record]
+    if len(records) != 1:
+        _fail(f"evidence is not tracked at the validated commit: {relative!r}")
     try:
-        resolved.relative_to(root)
-    except ValueError:
-        _fail(f"evidence path escapes repository root: {relative!r}")
-    if not resolved.is_file():
-        _fail(f"evidence path is not a regular file: {relative!r}")
-    return resolved
+        metadata, encoded_path = records[0].split(b"\t", 1)
+        mode, object_type, _object_id = metadata.split(b" ", 2)
+        tracked_path = encoded_path.decode("utf-8", "strict")
+    except (UnicodeDecodeError, ValueError):
+        _fail(f"evidence tree entry is malformed at the validated commit: {relative!r}")
+    if tracked_path != clean or object_type != b"blob" or mode not in {b"100644", b"100755"}:
+        _fail(f"evidence is not a tracked regular file at the validated commit: {relative!r}")
+    captured = subprocess.run(
+        ["/usr/bin/git", "show", f"{validated_sha}:{clean}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if captured.returncode != 0:
+        _fail(f"cannot read evidence blob at the validated commit: {relative!r}")
+    return captured.stdout
 
 
 def _check_evidence(
@@ -391,6 +462,7 @@ def _check_evidence(
     records: list[Evidence],
     expected_kind: str,
     repo_root: Path,
+    validated_sha: str | None,
     errors: list[str],
 ) -> None:
     identities = [_canonical_bytes(record) for record in records]
@@ -401,14 +473,19 @@ def _check_evidence(
             errors.append(
                 f"{blocker_id}: expected {expected_kind} evidence, found {record['kind']}"
             )
+        if validated_sha is None:
+            errors.append(f"{blocker_id}: --validated-sha is required for governed evidence")
+            continue
         try:
-            path = _evidence_path(repo_root, record["path"])
+            blob = _evidence_blob(repo_root, validated_sha, record["path"])
         except PolicyInputError as exc:
             errors.append(f"{blocker_id}: {exc}")
             continue
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = hashlib.sha256(blob).hexdigest()
         if digest != record["sha256"]:
-            errors.append(f"{blocker_id}: evidence SHA-256 mismatch: {record['path']}")
+            errors.append(
+                f"{blocker_id}: evidence SHA-256 mismatch at validated commit: {record['path']}"
+            )
 
 
 def _github_get(path: str, token: str) -> Any:
@@ -450,6 +527,27 @@ def _provider_actor_id(value: Any) -> str | None:
     if value.get("type") != "User":
         return None
     return f"github:{actor_id}"
+
+
+def _provider_actor_identity(value: Any) -> tuple[str, str] | None:
+    actor_id = _provider_actor_id(value)
+    if actor_id is None or not isinstance(value, dict):
+        return None
+    login = value.get("login")
+    if not isinstance(login, str) or _GITHUB_LOGIN_RE.fullmatch(login) is None:
+        return None
+    return actor_id, login
+
+
+def _github_reviewer_authorized(*, repository: str, reviewer: str, login: str, token: str) -> bool:
+    value = _github_get(f"repos/{repository}/collaborators/{login}/permission", token)
+    if not isinstance(value, dict):
+        _fail("GitHub reviewer permission response is malformed")
+    permission = value.get("permission")
+    provider_user = _provider_actor_identity(value.get("user"))
+    if provider_user is None or provider_user != (reviewer, login):
+        _fail("GitHub reviewer permission identity is malformed or mismatched")
+    return permission in _GITHUB_REVIEWER_PERMISSIONS
 
 
 def _approval_marker(
@@ -497,13 +595,39 @@ def _github_registry_change_actors(
         if not isinstance(sha, str) or _GIT_SHA_RE.fullmatch(sha) is None:
             errors.append("provider pull request contains a malformed commit SHA")
             continue
-        detail = _github_get(f"repos/{repository}/commits/{sha}", token)
-        if not isinstance(detail, dict) or not isinstance(detail.get("files"), list):
-            errors.append(f"provider commit {sha} has no verifiable file inventory")
+        changed: list[Any] = []
+        detail: dict[str, Any] | None = None
+        for page in range(1, 101):
+            value = _github_get(f"repos/{repository}/commits/{sha}?per_page=100&page={page}", token)
+            if not isinstance(value, dict) or not isinstance(value.get("files"), list):
+                errors.append(f"provider commit {sha} has no verifiable file inventory")
+                detail = None
+                break
+            if value.get("sha") != sha:
+                errors.append(f"provider commit {sha} detail identity is unbound")
+                detail = None
+                break
+            if detail is None:
+                detail = value
+            else:
+                for role in ("author", "committer"):
+                    if _provider_actor_id(value.get(role)) != _provider_actor_id(detail.get(role)):
+                        errors.append(f"provider commit {sha} identity changed between file pages")
+                        detail = None
+                        break
+                if detail is None:
+                    break
+            page_files = cast(list[Any], value["files"])
+            changed.extend(
+                item.get("filename") if isinstance(item, dict) else None for item in page_files
+            )
+            if len(page_files) < 100:
+                break
+        else:
+            errors.append(f"provider commit {sha} file inventory exceeded the page limit")
+            detail = None
+        if detail is None:
             continue
-        changed = [
-            item.get("filename") if isinstance(item, dict) else None for item in detail["files"]
-        ]
         if any(not isinstance(filename, str) for filename in changed):
             errors.append(f"provider commit {sha} file inventory is malformed")
             continue
@@ -524,6 +648,18 @@ def _github_registry_change_actors(
     if not registry_commit_found:
         errors.append("no provider commit verifiably owns the blocker registry change")
     return actors, errors
+
+
+def _git_is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
+    result = subprocess.run(
+        ["/usr/bin/git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=repo_root.resolve(strict=True),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode not in {0, 1}:
+        _fail("cannot verify approval merge ancestry in the local checkout")
+    return result.returncode == 0
 
 
 def _verify_github_approval(
@@ -591,6 +727,34 @@ def _verify_github_approval(
             errors.append(
                 f"{prefix}: provider pull request head is stale or not the validation SHA"
             )
+        validated_sha = context["validated_sha"]
+        if context["require_merged_approval"]:
+            merge_sha = pull.get("merge_commit_sha")
+            merged_at = pull.get("merged_at")
+            if (
+                pull.get("merged") is not True
+                or pull.get("state") != "closed"
+                or not isinstance(merge_sha, str)
+                or _GIT_SHA_RE.fullmatch(merge_sha) is None
+                or not isinstance(merged_at, str)
+                or _GITHUB_TIMESTAMP_RE.fullmatch(merged_at) is None
+            ):
+                errors.append(f"{prefix}: approval pull request is not verifiably merged")
+            elif validated_sha is None:
+                errors.append(f"{prefix}: merged approval requires an exact validated release SHA")
+            else:
+                try:
+                    _parse_timestamp(merged_at)
+                    _require_local_commit(
+                        context["repo_root"], merge_sha, "provider approval merge SHA"
+                    )
+                    if not _git_is_ancestor(context["repo_root"], merge_sha, validated_sha):
+                        errors.append(
+                            f"{prefix}: approval merge is not an ancestor of the validated "
+                            "release SHA"
+                        )
+                except (PolicyInputError, ValueError) as exc:
+                    errors.append(f"{prefix}: merged approval ancestry is invalid: {exc}")
         pull_author = _provider_actor_id(pull.get("user"))
         if pull_author is None:
             errors.append(f"{prefix}: pull-request author has no linked human provider identity")
@@ -607,7 +771,7 @@ def _verify_github_approval(
     except PolicyInputError as exc:
         return [f"{prefix}: {exc}"]
 
-    submitted_reviews: list[tuple[str, int, str, dict[str, Any]]] = []
+    submitted_reviews: list[tuple[str, int, str, str, dict[str, Any]]] = []
     malformed_reviews = False
     review_ids: set[int] = set()
     for review in reviews:
@@ -619,10 +783,11 @@ def _verify_github_approval(
             malformed_reviews = True
             continue
         review_ids.add(review_id)
-        reviewer = _provider_actor_id(review.get("user"))
-        if reviewer is None:
+        reviewer_identity = _provider_actor_identity(review.get("user"))
+        if reviewer_identity is None:
             malformed_reviews = True
             continue
+        reviewer, reviewer_login = reviewer_identity
         state = review.get("state")
         if state not in _GITHUB_REVIEW_STATES:
             malformed_reviews = True
@@ -643,16 +808,17 @@ def _verify_github_approval(
         except ValueError:
             malformed_reviews = True
             continue
-        submitted_reviews.append((submitted_at, review_id, reviewer, review))
+        submitted_reviews.append((submitted_at, review_id, reviewer, reviewer_login, review))
 
-    latest: dict[str, dict[str, Any]] = {}
-    for _submitted_at, _review_id, reviewer, review in sorted(
+    latest: dict[str, tuple[str, dict[str, Any]]] = {}
+    for _submitted_at, _review_id, reviewer, reviewer_login, review in sorted(
         submitted_reviews, key=lambda item: (item[0], item[1])
     ):
-        latest[reviewer] = review
+        if review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+            latest[reviewer] = (reviewer_login, review)
     if malformed_reviews:
         errors.append(f"{prefix}: provider reviews contain malformed state, time, or identity data")
-    if any(review.get("state") == "CHANGES_REQUESTED" for review in latest.values()):
+    if any(review.get("state") == "CHANGES_REQUESTED" for _login, review in latest.values()):
         errors.append(f"{prefix}: provider pull request has current requested changes")
     if errors:
         return errors
@@ -665,21 +831,27 @@ def _verify_github_approval(
         action=action,
         subject_sha256=approval["subject_sha256"],
     )
-    approved = [review for review in latest.values() if review.get("state") == "APPROVED"]
-    current = [review for review in approved if review.get("commit_id") == head_sha]
+    approved = [
+        (reviewer, login, review)
+        for reviewer, (login, review) in latest.items()
+        if review.get("state") == "APPROVED"
+    ]
+    current = [item for item in approved if item[2].get("commit_id") == head_sha]
     bound = [
-        review
-        for review in current
+        item
+        for item in current
+        for review in (item[2],)
         if isinstance(review.get("body"), str) and review["body"].strip() == marker
     ]
-    timely: list[dict[str, Any]] = []
-    for review in bound:
+    timely: list[tuple[str, str, dict[str, Any]]] = []
+    for item in bound:
+        review = item[2]
         submitted_at = review.get("submitted_at")
         if not isinstance(submitted_at, str):
             continue
         try:
             if _parse_timestamp(submitted_at) >= _parse_timestamp(action_at):
-                timely.append(review)
+                timely.append(item)
         except ValueError:
             continue
     if not approved:
@@ -694,12 +866,7 @@ def _verify_github_approval(
     conflict_actors = {blocker["reported_by_actor_id"], action_actor_id, *registry_actors}
     assert pull_author is not None
     conflict_actors.add(pull_author)
-    independent = [
-        review
-        for review in timely
-        if (reviewer := _provider_actor_id(review.get("user"))) is not None
-        and reviewer not in conflict_actors
-    ]
+    independent = [item for item in timely if item[0] not in conflict_actors]
     if not independent:
         return [
             (
@@ -707,6 +874,20 @@ def _verify_github_approval(
                 "author, registry-change authors/committers, reporter, and action actor"
             )
         ]
+    authorized: list[tuple[str, str, dict[str, Any]]] = []
+    try:
+        for reviewer, login, review in independent:
+            if _github_reviewer_authorized(
+                repository=repository,
+                reviewer=reviewer,
+                login=login,
+                token=token,
+            ):
+                authorized.append((reviewer, login, review))
+    except PolicyInputError as exc:
+        return [f"{prefix}: {exc}"]
+    if not authorized:
+        return [f"{prefix}: provider reviewer lacks eligible repository write permission"]
     return []
 
 
@@ -806,9 +987,21 @@ def _check_downgrade(
     if _parse_timestamp(downgrade["changed_at"]) < _parse_timestamp(blocker["opened_at"]):
         errors.append(f"{blocker['id']}: downgrade predates blocker creation")
     _check_evidence(
-        blocker["id"], downgrade["reproduction_evidence"], "reproduction", repo_root, errors
+        blocker["id"],
+        downgrade["reproduction_evidence"],
+        "reproduction",
+        repo_root,
+        approval_context["validated_sha"],
+        errors,
     )
-    _check_evidence(blocker["id"], downgrade["control_evidence"], "control", repo_root, errors)
+    _check_evidence(
+        blocker["id"],
+        downgrade["control_evidence"],
+        "control",
+        repo_root,
+        approval_context["validated_sha"],
+        errors,
+    )
     if len(errors) == initial_error_count:
         errors.extend(
             _approval_errors(
@@ -845,8 +1038,22 @@ def _check_closure(
         downgrade["changed_at"]
     ):
         errors.append(f"{blocker['id']}: closure predates downgrade")
-    _check_evidence(blocker["id"], closure["resolution_evidence"], "resolution", repo_root, errors)
-    _check_evidence(blocker["id"], closure["control_evidence"], "control", repo_root, errors)
+    _check_evidence(
+        blocker["id"],
+        closure["resolution_evidence"],
+        "resolution",
+        repo_root,
+        approval_context["validated_sha"],
+        errors,
+    )
+    _check_evidence(
+        blocker["id"],
+        closure["control_evidence"],
+        "control",
+        repo_root,
+        approval_context["validated_sha"],
+        errors,
+    )
     if len(errors) == initial_error_count:
         errors.extend(
             _approval_errors(
@@ -866,7 +1073,7 @@ def validate_registry(
     approval_context: ApprovalContext,
 ) -> tuple[list[str], list[str]]:
     """Return sorted semantic errors and release-blocking IDs."""
-    errors: list[str] = []
+    errors = list(approval_context["history_errors"])
     blockers = registry["blockers"]
     ids = [blocker["id"] for blocker in blockers]
     if len(ids) != len(set(ids)):
@@ -915,6 +1122,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--github-pull-request", type=int)
     parser.add_argument("--github-change-sha")
     parser.add_argument("--github-base-sha")
+    parser.add_argument("--validated-sha")
+    parser.add_argument("--require-merged-approval", action="store_true")
     parser.add_argument("--github-token-env", default="GITHUB_TOKEN")
     parser.add_argument("--json", action="store_true", help="emit deterministic JSON")
     return parser
@@ -930,6 +1139,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         expected_pull_request = cast(int | None, args.github_pull_request)
         expected_change_sha = cast(str | None, args.github_change_sha)
         expected_base_sha = cast(str | None, args.github_base_sha)
+        validated_sha = cast(str | None, args.validated_sha)
+        require_merged_approval = cast(bool, args.require_merged_approval)
         if (
             expected_repository is not None
             and _GITHUB_REPOSITORY_RE.fullmatch(expected_repository) is None
@@ -941,21 +1152,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             _fail("--github-change-sha must be a lowercase 40-character Git SHA")
         if expected_base_sha is not None and _GIT_SHA_RE.fullmatch(expected_base_sha) is None:
             _fail("--github-base-sha must be a lowercase 40-character Git SHA")
+        if validated_sha is not None and _GIT_SHA_RE.fullmatch(validated_sha) is None:
+            _fail("--validated-sha must be a lowercase 40-character Git SHA")
         if (expected_pull_request is None) != (expected_change_sha is None):
             _fail("--github-pull-request and --github-change-sha must be provided together")
         if expected_pull_request is not None and expected_repository is None:
             _fail("pull-request validation requires --github-repository")
-        if expected_base_sha is not None and expected_pull_request is None:
-            _fail("--github-base-sha requires pull-request validation context")
+        if expected_change_sha is not None and validated_sha != expected_change_sha:
+            _fail("pull-request validation SHA must equal --github-change-sha")
+        if require_merged_approval and validated_sha is None:
+            _fail("--require-merged-approval requires --validated-sha")
+        if validated_sha is not None:
+            _require_local_commit(repo_root, validated_sha, "validated SHA")
         token_env = cast(str, args.github_token_env)
         if not token_env or re.fullmatch(r"[A-Z][A-Z0-9_]*", token_env) is None:
             _fail("--github-token-env must be an uppercase environment variable name")
         approval_context: ApprovalContext = {
+            "repo_root": repo_root,
             "expected_repository": expected_repository,
             "expected_pull_request": expected_pull_request,
             "expected_change_sha": expected_change_sha,
+            "validated_sha": validated_sha,
+            "require_merged_approval": require_merged_approval,
             "github_token": os.environ.get(token_env),
             "changed_action_keys": set(),
+            "history_errors": [],
         }
         raw_schema = _strict_json(schema_path)
         if not isinstance(raw_schema, dict):
@@ -965,10 +1186,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         raw_registry = _strict_json(registry_path)
         _schema_validate(raw_registry, schema)
         registry = cast(Registry, raw_registry)
+        base_registry = (
+            _base_registry(repo_root, expected_base_sha) if expected_base_sha is not None else None
+        )
+        if base_registry is not None:
+            _schema_validate(base_registry, schema)
+        approval_context["history_errors"] = _history_errors(registry, base_registry)
         approval_context["changed_action_keys"] = _changed_action_keys(
             registry,
-            repo_root,
-            expected_base_sha,
+            base_registry,
             expected_pull_request is not None,
         )
         errors, blocking_ids = validate_registry(registry, repo_root, approval_context)

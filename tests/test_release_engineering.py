@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 RELEASING = ROOT / "docs" / "releasing.md"
@@ -74,6 +73,19 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     assert verify["needs"] == ["validate-production-request", "publish-pypi"]
     assert publish["environment"]["name"] == "pypi"
     assert publish["permissions"]["id-token"] == "write"
+    assert request["permissions"]["pull-requests"] == "read"
+    assert publish["permissions"]["pull-requests"] == "read"
+    assert text.count("uv run python tools/check_blockers.py") == 2
+    assert text.count("--require-merged-approval") == 2
+    assert text.count('--validated-sha "$RELEASE_COMMIT"') == 2
+
+    request_names = [step.get("name") for step in request["steps"]]
+    publish_names = [step.get("name") for step in publish["steps"]]
+    assert request_names[-1] == "Revalidate release blockers at production dispatch"
+    publish_index = publish_names.index("Publish the verified distributions to PyPI")
+    assert publish_names[publish_index - 1] == (
+        "Revalidate release blockers immediately before publish"
+    )
 
     required = (
         'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
@@ -107,9 +119,7 @@ def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     ):
         uses = [step.get("uses", "") for step in jobs[name]["steps"]]
         checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
-        download = next(
-            i for i, value in enumerate(uses) if "actions/download-artifact@" in value
-        )
+        download = next(i for i, value in enumerate(uses) if "actions/download-artifact@" in value)
         assert checkout < download, name
 
 
@@ -119,7 +129,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
-        "git merge-base --is-ancestor \"$tag_commit\" origin/main",
+        'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",
@@ -179,9 +189,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     )
     assert all(topic in migration for topic in required_migration_topics)
 
-    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index(
-        "## Install and run"
-    )
+    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index("## Install and run")
     for result in ("six events", "one incident", "35.0 seconds", "verified", "passed"):
         assert result in notes
     assert "No unfamiliar-user comprehension study was completed before release" in notes

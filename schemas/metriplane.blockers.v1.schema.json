@@ -16,6 +16,7 @@
       "const": "MP2-006.v1"
     },
     "blockers": {
+      "description": "Append-only blocker history; retained IDs, initial classifications, and governed action records are immutable relative to the validation base.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/blocker"
@@ -101,12 +102,14 @@
           "$ref": "#/$defs/timestamp"
         },
         "initial_severity": {
+          "description": "Immutable severity assigned when the blocker was opened.",
           "$ref": "#/$defs/severity"
         },
         "severity": {
           "$ref": "#/$defs/severity"
         },
         "initial_security": {
+          "description": "Immutable security classification assigned when the blocker was opened.",
           "type": "boolean"
         },
         "security": {
@@ -256,12 +259,14 @@
       ],
       "properties": {
         "path": {
+          "description": "Clean repository-relative path to a regular-file blob tracked at the exact validated commit.",
           "type": "string",
           "minLength": 1,
           "maxLength": 500,
           "pattern": "^[A-Za-z0-9_.-][A-Za-z0-9_./-]*$"
         },
         "sha256": {
+          "description": "SHA-256 of the evidence blob bytes at the exact validated commit.",
           "$ref": "#/$defs/sha256"
         },
         "kind": {

@@ -29,6 +29,7 @@ REPOSITORY = "Miko997/metriplane"
 PULL_REQUEST = 81
 HEAD_SHA = "a" * 40
 COMMIT_SHA = "b" * 40
+MERGE_SHA = "c" * 40
 ACTION_ACTOR = "github:100"
 REVIEWER_ACTOR = "github:200"
 REPORTER_ACTOR = "github:300"
@@ -149,20 +150,24 @@ def _synthetic_provider_payload(
     action: str,
     *,
     review_state: str = "APPROVED",
-    review_commit: str = HEAD_SHA,
+    head_sha: str = HEAD_SHA,
+    review_commit: str | None = None,
     review_body: str | None = None,
     reviewed_at: str = "2026-08-25T14:00:00Z",
     reviewer_id: int = 200,
     pull_author_id: int = 100,
     commit_author_id: int | None = 100,
     commit_committer_id: int | None = 101,
+    reviewer_permission: str = "write",
+    merged: bool = False,
+    merge_sha: str | None = None,
     extra_reviews: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     approval = blocker[action]["approval"]
     marker = tool._approval_marker(
         repository=approval["repository"],
         pull_request=approval["pull_request"],
-        change_sha=HEAD_SHA,
+        change_sha=head_sha,
         blocker_id=blocker["id"],
         action=action,
         subject_sha256=approval["subject_sha256"],
@@ -176,7 +181,7 @@ def _synthetic_provider_payload(
     review = {
         "id": 900,
         "state": review_state,
-        "commit_id": review_commit,
+        "commit_id": head_sha if review_commit is None else review_commit,
         "body": marker if review_body is None else review_body,
         "submitted_at": reviewed_at,
         "user": actor(reviewer_id, "synthetic-reviewer"),
@@ -185,8 +190,12 @@ def _synthetic_provider_payload(
         "pull": {
             "number": PULL_REQUEST,
             "base": {"repo": {"full_name": REPOSITORY}},
-            "head": {"sha": HEAD_SHA},
+            "head": {"sha": head_sha},
             "user": actor(pull_author_id, "synthetic-author"),
+            "state": "closed" if merged else "open",
+            "merged": merged,
+            "merged_at": "2026-08-25T15:00:00Z" if merged else None,
+            "merge_commit_sha": merge_sha,
         },
         "files": [{"filename": "docs/status/blockers.json"}],
         "commits": [{"sha": COMMIT_SHA}],
@@ -197,6 +206,12 @@ def _synthetic_provider_payload(
             "committer": actor(commit_committer_id, "synthetic-committer"),
         },
         "reviews": [review, *(extra_reviews or [])],
+        "permissions": {
+            "synthetic-reviewer": {
+                "permission": reviewer_permission,
+                "user": actor(reviewer_id, "synthetic-reviewer"),
+            }
+        },
     }
 
 
@@ -208,10 +223,21 @@ def _synthetic_provider_get(payload: dict[str, Any]) -> Any:
             return copy.deepcopy(payload["files"])
         if path.startswith(f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}/commits?"):
             return copy.deepcopy(payload["commits"])
-        if path == f"repos/{REPOSITORY}/commits/{COMMIT_SHA}":
-            return copy.deepcopy(payload["commit"])
+        if path.startswith(f"repos/{REPOSITORY}/commits/{COMMIT_SHA}?"):
+            page = int(path.rsplit("page=", 1)[1])
+            detail = copy.deepcopy(payload["commit"])
+            pages = payload.get("commit_pages")
+            if pages is not None:
+                detail["files"] = copy.deepcopy(pages[page - 1] if page <= len(pages) else [])
+            elif page > 1:
+                detail["files"] = []
+            return detail
         if path.startswith(f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}/reviews?"):
             return copy.deepcopy(payload["reviews"])
+        permission_prefix = f"repos/{REPOSITORY}/collaborators/"
+        if path.startswith(permission_prefix) and path.endswith("/permission"):
+            login = path.removeprefix(permission_prefix).removesuffix("/permission")
+            return copy.deepcopy(payload["permissions"].get(login, {}))
         raise AssertionError(f"unexpected synthetic provider path: {path}")
 
     return get
@@ -227,9 +253,40 @@ def _run(
     context_pull_request: int | None = None,
     context_change_sha: str | None = None,
     context_base_sha: str | None = None,
+    validated_sha: str | None = None,
+    require_merged_approval: bool = False,
+    include_pull_context: bool = True,
 ) -> tuple[int, dict[str, Any]]:
     registry = repo / "registry.json"
     _write_json(registry, _registry([]) if value is None else value)
+    has_action = bool(
+        value
+        and any(
+            blocker.get("downgrade") is not None or blocker.get("closure") is not None
+            for blocker in value.get("blockers", [])
+        )
+    )
+    if validated_sha is None and (
+        has_action or provider is not None or context_repository is not None
+    ):
+        validated_sha = _commit_fixture(repo, "fixture validation")
+    if (
+        provider is not None
+        and "pull" in provider
+        and include_pull_context
+        and validated_sha is not None
+        and validated_sha != HEAD_SHA
+    ):
+        provider = copy.deepcopy(provider)
+        provider["pull"]["head"]["sha"] = validated_sha
+        for review in provider["reviews"]:
+            if review.get("commit_id") == HEAD_SHA:
+                review["commit_id"] = validated_sha
+            body = review.get("body")
+            if isinstance(body, str):
+                review["body"] = body.replace(
+                    f"change_sha={HEAD_SHA}", f"change_sha={validated_sha}"
+                )
     argv = [
         "--registry",
         str(registry),
@@ -239,7 +296,7 @@ def _run(
         str(repo),
         "--json",
     ]
-    if provider is not None or context_repository is not None:
+    if (provider is not None and include_pull_context) or context_repository is not None:
         argv.extend(
             [
                 "--github-repository",
@@ -247,11 +304,17 @@ def _run(
                 "--github-pull-request",
                 str(context_pull_request or PULL_REQUEST),
                 "--github-change-sha",
-                context_change_sha or HEAD_SHA,
+                context_change_sha or validated_sha or HEAD_SHA,
             ]
         )
         if context_base_sha is not None:
             argv.extend(["--github-base-sha", context_base_sha])
+    elif provider is not None:
+        argv.extend(["--github-repository", REPOSITORY])
+    if validated_sha is not None:
+        argv.extend(["--validated-sha", validated_sha])
+    if require_merged_approval:
+        argv.append("--require-merged-approval")
     stdout = io.StringIO()
     provider_get = (
         _synthetic_provider_get(provider)
@@ -267,9 +330,9 @@ def _run(
     return cast(int, result), cast(dict[str, Any], json.loads(stdout.getvalue()))
 
 
-def _commit_base_registry(repo: Path, registry: dict[str, Any]) -> str:
-    _write_json(repo / "docs" / "status" / "blockers.json", registry)
-    subprocess.run(["/usr/bin/git", "init", "--quiet"], cwd=repo, check=True)
+def _commit_fixture(repo: Path, message: str) -> str:
+    if not (repo / ".git").is_dir():
+        subprocess.run(["/usr/bin/git", "init", "--quiet"], cwd=repo, check=True)
     subprocess.run(["/usr/bin/git", "add", "."], cwd=repo, check=True)
     subprocess.run(
         [
@@ -285,8 +348,9 @@ def _commit_base_registry(repo: Path, registry: dict[str, Any]) -> str:
             "commit",
             "--quiet",
             "--no-verify",
+            "--allow-empty",
             "-m",
-            "fixture base",
+            message,
         ],
         cwd=repo,
         check=True,
@@ -298,6 +362,11 @@ def _commit_base_registry(repo: Path, registry: dict[str, Any]) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _commit_base_registry(repo: Path, registry: dict[str, Any]) -> str:
+    _write_json(repo / "docs" / "status" / "blockers.json", registry)
+    return _commit_fixture(repo, "fixture base")
 
 
 def test_production_registry_is_valid_nonblocking_and_does_not_invoke_provider(
@@ -417,7 +486,6 @@ def test_unchanged_historical_action_reverifies_its_original_pull_request(
         registry,
         provider=payload,
         context_pull_request=99,
-        context_change_sha="d" * 40,
         context_base_sha=base_sha,
     )
 
@@ -439,7 +507,6 @@ def test_changed_action_must_bind_current_pull_request_and_available_base(
         _registry([changed]),
         provider={},
         context_pull_request=99,
-        context_change_sha="d" * 40,
         context_base_sha=base_sha,
     )
     assert result == 2
@@ -453,6 +520,56 @@ def test_changed_action_must_bind_current_pull_request_and_available_base(
     )
     assert result == 2
     assert any("base SHA is not an available local commit" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize(("severity", "security"), [("P0", False), ("P2", True)])
+def test_base_blocker_ids_are_append_only(tmp_path: Path, severity: str, security: bool) -> None:
+    blocker = _base_blocker()
+    blocker["initial_severity"] = blocker["severity"] = severity
+    blocker["initial_security"] = blocker["security"] = security
+    base_sha = _commit_base_registry(tmp_path, _registry([blocker]))
+
+    result, report = _run(
+        tmp_path,
+        _registry([]),
+        context_repository=REPOSITORY,
+        context_base_sha=base_sha,
+    )
+
+    assert result == 2
+    assert any("registry history is append-only" in error for error in report["errors"])
+
+
+def test_initial_classification_and_retained_actions_cannot_be_rewritten(
+    tmp_path: Path,
+) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    base_sha = _commit_base_registry(tmp_path, _registry([blocker]))
+
+    rewritten = copy.deepcopy(blocker)
+    rewritten["initial_severity"] = rewritten["severity"] = "P2"
+    rewritten["initial_security"] = rewritten["security"] = True
+    result, report = _run(
+        tmp_path,
+        _registry([rewritten]),
+        context_repository=REPOSITORY,
+        context_base_sha=base_sha,
+    )
+    assert result == 2
+    assert any("immutable field initial_severity" in error for error in report["errors"])
+    assert any("immutable field initial_security" in error for error in report["errors"])
+
+    erased = copy.deepcopy(blocker)
+    erased["severity"] = "P0"
+    erased["downgrade"] = None
+    result, report = _run(
+        tmp_path,
+        _registry([erased]),
+        context_repository=REPOSITORY,
+        context_base_sha=base_sha,
+    )
+    assert result == 2
+    assert any("action history is append-only" in error for error in report["errors"])
 
 
 def test_stale_wrong_subject_and_nonapproved_reviews_fail_closed(tmp_path: Path) -> None:
@@ -611,6 +728,55 @@ def test_current_requested_changes_and_predated_review_fail_closed(tmp_path: Pat
     assert any("predates" in error for error in report["errors"])
 
 
+def test_comment_does_not_clear_a_prior_changes_requested_decision(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    requested = {
+        "id": 899,
+        "state": "CHANGES_REQUESTED",
+        "commit_id": HEAD_SHA,
+        "body": "",
+        "submitted_at": "2026-08-25T13:30:00Z",
+        "user": {"id": 200, "login": "synthetic-reviewer", "type": "User"},
+    }
+    commented = {
+        "id": 901,
+        "state": "COMMENTED",
+        "commit_id": HEAD_SHA,
+        "body": "follow-up without approval",
+        "submitted_at": "2026-08-25T15:00:00Z",
+        "user": copy.deepcopy(requested["user"]),
+    }
+    payload = _synthetic_provider_payload(
+        blocker,
+        "downgrade",
+        review_state="COMMENTED",
+        extra_reviews=[requested, commented],
+    )
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("requested changes" in error for error in report["errors"])
+
+
+def test_dismissed_approval_fails_live_revalidation(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    dismissed = {
+        "id": 901,
+        "state": "DISMISSED",
+        "commit_id": HEAD_SHA,
+        "body": "",
+        "submitted_at": "2026-08-25T15:00:00Z",
+        "user": {"id": 200, "login": "synthetic-reviewer", "type": "User"},
+    }
+    payload = _synthetic_provider_payload(blocker, "downgrade", extra_reviews=[dismissed])
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("APPROVED review" in error for error in report["errors"])
+
+
 def test_latest_review_tie_uses_numeric_provider_review_id(tmp_path: Path) -> None:
     blocker = _valid_downgrade(tmp_path)
     payload = _synthetic_provider_payload(blocker, "downgrade")
@@ -649,6 +815,91 @@ def test_reviewer_must_differ_from_provider_authenticated_change_actors(
     result, report = _run(tmp_path, _registry([blocker]), provider=payload)
     assert result == 2, conflict
     assert any("not independent" in error for error in report["errors"])
+
+
+def test_reviewer_requires_provider_backed_repository_write_permission(
+    tmp_path: Path,
+) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade", reviewer_permission="read")
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("eligible repository write permission" in error for error in report["errors"])
+
+
+def test_later_commit_file_page_cannot_hide_a_registry_change_actor(
+    tmp_path: Path,
+) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(
+        blocker,
+        "downgrade",
+        commit_author_id=200,
+    )
+    payload["commit_pages"] = [
+        [{"filename": f"generated/page-one-{index:03d}.txt"} for index in range(100)],
+        [{"filename": "docs/status/blockers.json"}],
+    ]
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("not independent" in error for error in report["errors"])
+
+
+def test_release_validation_requires_merged_approval_ancestry(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    _write_json(tmp_path / "registry.json", _registry([blocker]))
+    approval_head = _commit_fixture(tmp_path, "approved action head")
+    merge_sha = _commit_fixture(tmp_path, "provider merge")
+    release_sha = _commit_fixture(tmp_path, "release candidate")
+    payload = _synthetic_provider_payload(
+        blocker,
+        "downgrade",
+        head_sha=approval_head,
+        merged=True,
+        merge_sha=merge_sha,
+    )
+
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        provider=payload,
+        validated_sha=release_sha,
+        require_merged_approval=True,
+        include_pull_context=False,
+    )
+    assert result == 0
+    assert report["valid"] is True
+
+    divergent_merge = _commit_fixture(tmp_path, "divergent copied approval")
+    payload["pull"]["merge_commit_sha"] = divergent_merge
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        provider=payload,
+        validated_sha=release_sha,
+        require_merged_approval=True,
+        include_pull_context=False,
+    )
+    assert result == 2
+    assert any("not an ancestor" in error for error in report["errors"])
+
+    payload["pull"]["merged"] = False
+    payload["pull"]["state"] = "open"
+    payload["pull"]["merged_at"] = None
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        provider=payload,
+        validated_sha=release_sha,
+        require_merged_approval=True,
+        include_pull_context=False,
+    )
+    assert result == 2
+    assert any("not verifiably merged" in error for error in report["errors"])
 
 
 @pytest.mark.parametrize("field", ["reported_by_actor_id", "changed_by_actor_id"])
@@ -711,13 +962,50 @@ def test_evidence_paths_fail_closed_on_escape_symlink_and_hash_mismatch(tmp_path
     evidence_path.symlink_to(outside)
     result, report = _run(tmp_path, _registry([linked]))
     assert result == 2
-    assert any("symlink" in error for error in report["errors"])
+    assert any("tracked regular file" in error for error in report["errors"])
 
     mismatched = _valid_downgrade(tmp_path)
     mismatched["downgrade"]["control_evidence"][0]["sha256"] = "f" * 64
     result, report = _run(tmp_path, _registry([mismatched]))
     assert result == 2
     assert any("SHA-256 mismatch" in error for error in report["errors"])
+
+
+def test_evidence_must_be_tracked_and_hashed_at_the_validated_commit(
+    tmp_path: Path,
+) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    reproduction = tmp_path / blocker["downgrade"]["reproduction_evidence"][0]["path"]
+    reproduction.unlink()
+    (tmp_path / ".gitignore").write_text("proof/reproduction.txt\n", encoding="utf-8")
+    validated_sha = _commit_fixture(tmp_path, "evidence without ignored reproduction")
+    reproduction.write_text("reproduction:reproduction.txt\n", encoding="utf-8")
+
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        validated_sha=validated_sha,
+    )
+    assert result == 2
+    assert any("not tracked at the validated commit" in error for error in report["errors"])
+
+    tracked = _valid_downgrade(tmp_path / "tracked")
+    tracked_repo = tmp_path / "tracked"
+    tracked_sha = _commit_fixture(tracked_repo, "tracked evidence")
+    tracked_path = tracked_repo / tracked["downgrade"]["control_evidence"][0]["path"]
+    tracked_path.write_text("current-worktree-only replacement\n", encoding="utf-8")
+    tracked["downgrade"]["control_evidence"][0]["sha256"] = hashlib.sha256(
+        tracked_path.read_bytes()
+    ).hexdigest()
+    _bind_action(tracked, "downgrade")
+
+    result, report = _run(
+        tracked_repo,
+        _registry([tracked]),
+        validated_sha=tracked_sha,
+    )
+    assert result == 2
+    assert any("mismatch at validated commit" in error for error in report["errors"])
 
 
 def test_report_is_deterministic_and_machine_readable(tmp_path: Path) -> None:
@@ -752,6 +1040,8 @@ def test_schema_checker_docs_trace_and_workflow_are_connected() -> None:
         "github.event.pull_request.number",
         "github.event.pull_request.head.sha",
         "github.event.pull_request.base.sha",
+        "--validated-sha",
+        "--require-merged-approval",
     ):
         assert provider_binding in workflow
 

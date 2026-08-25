@@ -55,6 +55,14 @@ jobs:
               --github-pull-request "${{ github.event.pull_request.number }}"
               --github-change-sha "${{ github.event.pull_request.head.sha }}"
               --github-base-sha "${{ github.event.pull_request.base.sha }}"
+              --validated-sha "${{ github.event.pull_request.head.sha }}"
+            )
+          else
+            history_base="$(git rev-parse "${GITHUB_SHA}^")"
+            context_args+=(
+              --github-base-sha "$history_base"
+              --validated-sha "$GITHUB_SHA"
+              --require-merged-approval
             )
           fi
           uv run python tools/check_blockers.py \
