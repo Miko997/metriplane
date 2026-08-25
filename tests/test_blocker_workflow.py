@@ -196,6 +196,7 @@ def _synthetic_provider_payload(
             "merged": merged,
             "merged_at": "2026-08-25T15:00:00Z" if merged else None,
             "merge_commit_sha": merge_sha,
+            "commits": 1,
         },
         "files": [{"filename": "docs/status/blockers.json"}],
         "commits": [{"sha": COMMIT_SHA}],
@@ -222,7 +223,11 @@ def _synthetic_provider_get(payload: dict[str, Any]) -> Any:
         if path.startswith(f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}/files?"):
             return copy.deepcopy(payload["files"])
         if path.startswith(f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}/commits?"):
-            return copy.deepcopy(payload["commits"])
+            page = int(path.rsplit("page=", 1)[1])
+            pages = payload.get("pull_commit_pages")
+            if pages is not None:
+                return copy.deepcopy(pages[page - 1] if page <= len(pages) else [])
+            return copy.deepcopy(payload["commits"] if page == 1 else [])
         if path.startswith(f"repos/{REPOSITORY}/commits/{COMMIT_SHA}?"):
             page = int(path.rsplit("page=", 1)[1])
             detail = copy.deepcopy(payload["commit"])
@@ -847,6 +852,22 @@ def test_later_commit_file_page_cannot_hide_a_registry_change_actor(
 
     assert result == 2
     assert any("not independent" in error for error in report["errors"])
+
+
+def test_provider_commit_cap_cannot_hide_registry_change_actors(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade")
+    payload["pull"]["commits"] = 251
+    payload["pull_commit_pages"] = [
+        [{"sha": f"{index:040x}"} for index in range(1, 101)],
+        [{"sha": f"{index:040x}"} for index in range(101, 201)],
+        [{"sha": f"{index:040x}"} for index in range(201, 251)],
+    ]
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any("verifiable REST inventory limit" in error for error in report["errors"])
 
 
 def test_release_validation_requires_merged_approval_ancestry(tmp_path: Path) -> None:

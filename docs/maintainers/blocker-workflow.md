@@ -68,7 +68,9 @@ cannot predate the blocker or a governed downgrade.
 Registry fields are locators and action data, not authentication evidence. The checker re-fetches
 the pull request, all reviews, the complete pull-request file and commit inventories, and each
 commit that owns a blocker-registry change. Pull-request lists and every commit's file list are
-paginated to exhaustion. For each approval candidate it also fetches the repository collaborator
+paginated to exhaustion. The enumerated commit count must equal the provider-backed pull-request
+total; pull requests above GitHub's 250-commit REST inventory limit fail closed rather than
+silently omitting actors. For each approval candidate it also fetches the repository collaborator
 permission endpoint and binds the returned provider user to the review identity. It accepts no
 caller-supplied reviewer identity, authorization, decision, approval timestamp, or captured
 provider response.

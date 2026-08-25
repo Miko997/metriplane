@@ -27,6 +27,7 @@ SCHEMA_ID = "https://metriplane.com/schemas/metriplane.blockers.v1.schema.json"
 SEVERITY_RANK = {"P0": 0, "P1": 1, "P2": 2}
 REGISTRY_PATH = "docs/status/blockers.json"
 GITHUB_API_VERSION = "2022-11-28"
+GITHUB_PULL_COMMITS_LIMIT = 250
 _GITHUB_ACTOR_RE = re.compile(r"github:([1-9][0-9]*)\Z")
 _GITHUB_LOGIN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\Z")
 _GITHUB_REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
@@ -512,6 +513,8 @@ def _github_pages(path: str, token: str) -> list[dict[str, Any]]:
         if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
             _fail(f"GitHub approval verification returned a malformed array for {path}")
         batch = cast(list[dict[str, Any]], value)
+        if len(batch) > 100:
+            _fail(f"GitHub approval verification exceeded the requested page size for {path}")
         records.extend(batch)
         if len(batch) < 100:
             return records
@@ -573,7 +576,7 @@ def _approval_marker(
 
 
 def _github_registry_change_actors(
-    *, repository: str, pull_request: int, token: str
+    *, repository: str, pull_request: int, expected_commit_count: int, token: str
 ) -> tuple[set[str], list[str]]:
     errors: list[str] = []
     files = _github_pages(f"repos/{repository}/pulls/{pull_request}/files", token)
@@ -587,9 +590,20 @@ def _github_registry_change_actors(
 
     actors: set[str] = set()
     registry_commit_found = False
+    if expected_commit_count > GITHUB_PULL_COMMITS_LIMIT:
+        return set(), [
+            "provider pull request commit count exceeds the verifiable REST inventory limit"
+        ]
     commits = _github_pages(f"repos/{repository}/pulls/{pull_request}/commits", token)
     if not commits:
         return set(), ["provider pull request commit inventory is empty"]
+    if len(commits) != expected_commit_count:
+        return set(), ["provider pull request commit inventory count is incomplete"]
+    commit_shas = [commit.get("sha") for commit in commits]
+    if any(not isinstance(sha, str) or _GIT_SHA_RE.fullmatch(sha) is None for sha in commit_shas):
+        return set(), ["provider pull request contains a malformed commit SHA"]
+    if len(commit_shas) != len(set(cast(list[str], commit_shas))):
+        return set(), ["provider pull request commit inventory contains duplicates"]
     for commit in commits:
         sha = commit.get("sha")
         if not isinstance(sha, str) or _GIT_SHA_RE.fullmatch(sha) is None:
@@ -717,6 +731,14 @@ def _verify_github_approval(
             errors.append(f"{prefix}: provider pull request belongs to the wrong repository")
         if pull.get("number") != pull_request:
             errors.append(f"{prefix}: provider pull request identity is unbound")
+        expected_commit_count = pull.get("commits")
+        if (
+            isinstance(expected_commit_count, bool)
+            or not isinstance(expected_commit_count, int)
+            or expected_commit_count <= 0
+        ):
+            errors.append(f"{prefix}: provider pull request commit count is malformed")
+            expected_commit_count = 0
         head = pull.get("head")
         head_sha = head.get("sha") if isinstance(head, dict) else None
         if not isinstance(head_sha, str) or _GIT_SHA_RE.fullmatch(head_sha) is None:
@@ -761,6 +783,7 @@ def _verify_github_approval(
         registry_actors, actor_errors = _github_registry_change_actors(
             repository=repository,
             pull_request=pull_request,
+            expected_commit_count=expected_commit_count,
             token=token,
         )
         errors.extend(f"{prefix}: {error}" for error in actor_errors)
