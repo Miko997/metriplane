@@ -1,0 +1,10 @@
+{
+  "failing_obligations": [
+    "Metriplane / required"
+  ],
+  "first_bad_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "opened_at": "2026-08-26T03:23:00Z",
+  "result_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+  "schema_version": 1,
+  "status": "open"
+}

@@ -6,12 +6,15 @@ name: CI
 on:
   push:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions: read-all
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
       METRIPLANE_V020_TAG: "v0.2.0"
@@ -23,6 +26,10 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Record checked-out source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -37,6 +44,23 @@ jobs:
 
       - name: Sync locked test environment
         run: uv sync --locked --group dev
+
+      - name: Validate pull request contract
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git cat-file -e "${BASE_SHA}:tools/check_pr_contract.py" 2>/dev/null; then
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews?per_page=100" \
+              | jq 'add' > "$RUNNER_TEMP/pr-reviews.json"
+            uv run python tools/check_pr_contract.py \
+              --event "$GITHUB_EVENT_PATH" \
+              --reviews-file "$RUNNER_TEMP/pr-reviews.json"
+          else
+            printf '%s\n' 'MP2-004 transition PR uses the previous repository template.'
+          fi
 
       - name: Install browser for E2E smoke
         run: uv run python -m playwright install chromium --with-deps
@@ -143,6 +167,8 @@ jobs:
   macos-regressions:
     name: macOS full suite (Python ${{ matrix.python-version }})
     runs-on: macos-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +180,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+      - name: Record checked-out source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
@@ -170,6 +199,8 @@ jobs:
   linux-python313:
     name: Linux full suite (Python 3.13)
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
@@ -177,6 +208,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+      - name: Record checked-out source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
@@ -191,3 +225,32 @@ jobs:
         run: uv run --python 3.13 python -m playwright install chromium --with-deps
       - name: Run full suite
         run: uv run --python 3.13 python -m pytest -q
+
+  metriplane-required:
+    name: Metriplane / required
+    if: always()
+    needs:
+      - test
+      - macos-regressions
+      - linux-python313
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RESULTS_JSON: >-
+        {"test":{"result":"${{ needs.test.result }}","sha":"${{ needs.test.outputs.source_sha }}"},
+        "macos-regressions":{"result":"${{ needs.macos-regressions.result }}","sha":"${{ needs.macos-regressions.outputs.source_sha }}"},
+        "linux-python313":{"result":"${{ needs.linux-python313.result }}","sha":"${{ needs.linux-python313.outputs.source_sha }}"}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate exact aggregate result
+        run: >-
+          python tools/check_required_terminal.py aggregate
+          --terminal "Metriplane / required"
+          --expected-sha "$GITHUB_SHA"
+          --expected-dependency test
+          --expected-dependency macos-regressions
+          --expected-dependency linux-python313
+          --results-json "$RESULTS_JSON"

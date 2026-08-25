@@ -2,26 +2,8 @@ name: Documentation
 
 on:
   pull_request:
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "tests/test_docs_front_door.py"
-      - "tests/test_human_comprehension_gate.py"
-      - "scripts/summarize_human_comprehension.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/docs.yml"
   push:
     branches: [main]
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "tests/test_docs_front_door.py"
-      - "tests/test_human_comprehension_gate.py"
-      - "scripts/summarize_human_comprehension.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,8 +13,13 @@ jobs:
   strict-build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Record checked-out source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
@@ -50,5 +37,29 @@ jobs:
           uv run python -m pytest -q
           tests/test_docs_front_door.py
           tests/test_human_comprehension_gate.py
+      - name: Check human-comprehension summary tooling
+        run: uv run python -m py_compile scripts/summarize_human_comprehension.py
       - name: Build documentation strictly
         run: uv run python -m mkdocs build --strict --site-dir /tmp/metriplane-docs-site
+
+  documentation-required:
+    name: Documentation / required
+    if: always()
+    needs: strict-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RESULTS_JSON: >-
+        {"strict-build":{"result":"${{ needs.strict-build.result }}","sha":"${{ needs.strict-build.outputs.source_sha }}"}}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate exact aggregate result
+        run: >-
+          python tools/check_required_terminal.py aggregate
+          --terminal "Documentation / required"
+          --expected-sha "$GITHUB_SHA"
+          --expected-dependency strict-build
+          --results-json "$RESULTS_JSON"

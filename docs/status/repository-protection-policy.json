@@ -1,0 +1,13 @@
+{
+  "claims_actor_exclusivity": false,
+  "repository": "Miko997/metriplane",
+  "required_terminals": [
+    "Metriplane / required",
+    "Documentation / required",
+    "Security / required",
+    "Main health / required"
+  ],
+  "schema_version": 1,
+  "selected_mode": "serialized_strict_up_to_date",
+  "settings_activation": "owner-applied after each terminal has produced a real successful check"
+}

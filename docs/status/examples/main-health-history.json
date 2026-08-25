@@ -1,0 +1,12 @@
+{
+  "cadence": "protected-main",
+  "generation": 1,
+  "previous_digest": null,
+  "recorded_at": "2026-08-25T17:45:00Z",
+  "result_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "resolution_digest": null,
+  "retention_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+  "schema_version": 1,
+  "sha": "2969636357140598d742bd0befed034a25463251",
+  "status": "green"
+}
