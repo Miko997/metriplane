@@ -8,9 +8,9 @@ import hashlib
 import importlib.metadata
 import importlib.util
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -27,6 +27,18 @@ BASELINE_SHA256 = "0753e370d8f61df201de98ac838cec9cb9e279f616bd10eab547a6f951157
 BASE_COMMIT = "2969636357140598d742bd0befed034a25463251"
 BASE_TREE = "09c4ccd6c418ba9a1b99f0f91c39d0162a544bfa"
 
+INVENTORY_DOWNSTREAM_TASK_IDS = (
+    "MP2-011",
+    "MP2-012",
+    "MP2-013",
+    "MP2-014",
+    "MP2-015",
+    "MP2-016",
+    "MP2-017",
+    "MP2-018",
+)
+PROFILE_DOWNSTREAM_TASK_IDS = ("MP2-007", *INVENTORY_DOWNSTREAM_TASK_IDS)
+
 OBLIGATION_IDS = (
     "MP2-010.OBL.ACTIVE_FIELDS_REQUIRED",
     "MP2-010.OBL.BASELINE_INTEGRITY",
@@ -39,49 +51,143 @@ OBLIGATION_IDS = (
     "MP2-010.OBL.TRACE_CLOSURE",
 )
 
-EXPECTED_ROWS = {
-    "MP2-010.BASELINE.CLI_ROOTS": (
-        "/commands_and_help/entries",
-        2,
-        "ce816d16ee650b9b038c8e09982f45a14c11d51cab4a03f79118ec3eba6bd104",
-        "bootstrap.lock-derived-root-suite",
-        ("CLI_ROOT_ONLY",),
-    ),
-    "MP2-010.BASELINE.HTTP_ROUTES": (
-        "/http_routes/entries",
-        48,
-        "c278c306fe36d7251da0a04d710fe02d8d90758c911c325e4c827a0b41e7abaf",
-        "baseline.static-source-census",
-        ("ROUTE_DECLARATIONS_ONLY", "ROUTE_OVERACCEPTANCE_UNCHARACTERIZED"),
-    ),
-    "MP2-010.BASELINE.RESOURCES": (
-        "/resources/entries",
-        256,
-        "c165504cf119027624e11a39a3c0f969a0975d51585f590f740b2fa8b15d7d94",
-        "baseline.static-source-census",
-        ("RESOURCE_SEED_ONLY",),
-    ),
-    "MP2-010.BASELINE.SCHEMAS": (
-        "/schemas/entries",
-        6,
-        "68069c30fce592538fe7b181396df64deac35abd48751bdaf5b1a5242bbfbaf6",
-        "baseline.static-source-census",
-        ("GENERATED_MODEL_SCHEMAS_DEFERRED",),
-    ),
-    "MP2-010.BASELINE.TESTS": (
-        "/tests/collection/node_ids",
-        1194,
-        "ba68bcaa580c7e392a435ddedd254a6487d8032db3e1e23ad0e6793c5e2a4469",
-        "bootstrap.lock-derived-root-suite",
-        (),
-    ),
-    "MP2-010.BASELINE.WORKFLOWS": (
-        "/workflows_and_jobs/entries",
-        15,
-        "76a647b24cba2203386722406fdd6626757fabcb79390dc1afb8fc20f36bc93c",
-        "baseline.static-source-census",
-        (),
-    ),
+EXPECTED_ROWS: dict[str, dict[str, Any]] = {
+    "MP2-010.BASELINE.CLI_ROOTS": {
+        "claim_classification": "bounded_seed",
+        "claim_statement": (
+            "The two installed root help surfaces are frozen; MP2-011 owns complete "
+            "leaf-action discovery."
+        ),
+        "consumer_task_ids": ("MP2-011", *INVENTORY_DOWNSTREAM_TASK_IDS[3:]),
+        "kind": "cli_root",
+        "limitation_ids": ("CLI_ROOT_ONLY",),
+        "name": "Installed root console-script help surfaces",
+        "pointer": "/commands_and_help/entries",
+        "profile": "bootstrap.lock-derived-root-suite",
+        "test": "MP2-010.OBL.INSTALLED_ENTRY_POINTS",
+        "validator_ids": (
+            "tests/test_functional_inventory.py::test_installed_console_scripts_match_frozen_cli_seed",
+            "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
+        ),
+    },
+    "MP2-010.BASELINE.HTTP_ROUTES": {
+        "claim_classification": "bounded_seed",
+        "claim_statement": (
+            "Terminal route declarations and forwarding provenance are frozen; MP2-012 owns "
+            "complete route, service, page, and action semantics."
+        ),
+        "consumer_task_ids": ("MP2-012", *INVENTORY_DOWNSTREAM_TASK_IDS[3:]),
+        "kind": "http_route_declarations",
+        "limitation_ids": (
+            "ROUTE_DECLARATIONS_ONLY",
+            "ROUTE_OVERACCEPTANCE_UNCHARACTERIZED",
+        ),
+        "name": "Terminal HTTP and WebSocket declaration seed",
+        "pointer": "/http_routes/entries",
+        "profile": "baseline.static-source-census",
+        "test": "MP2-010.OBL.BASELINE_INTEGRITY",
+        "validator_ids": (
+            "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
+            "tests/test_functional_inventory.py::test_trace_graph_is_closed",
+        ),
+    },
+    "MP2-010.BASELINE.RESOURCES": {
+        "claim_classification": "bounded_seed",
+        "claim_statement": (
+            "The bounded repository and package-data resource seed is frozen; MP2-013 owns "
+            "complete semantic resource classification."
+        ),
+        "consumer_task_ids": ("MP2-013", *INVENTORY_DOWNSTREAM_TASK_IDS[3:]),
+        "kind": "resource_seed",
+        "limitation_ids": ("RESOURCE_SEED_ONLY",),
+        "name": "Tracked resource seed",
+        "pointer": "/resources/entries",
+        "profile": "baseline.static-source-census",
+        "test": "MP2-010.OBL.BASELINE_INTEGRITY",
+        "validator_ids": (
+            "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
+            "tests/test_functional_inventory.py::test_trace_graph_is_closed",
+        ),
+    },
+    "MP2-010.BASELINE.SCHEMAS": {
+        "claim_classification": "bounded_seed",
+        "claim_statement": (
+            "Tracked JSON Schemas are frozen; MP2-013 owns generated model-schema and public "
+            "contract classification."
+        ),
+        "consumer_task_ids": ("MP2-013", *INVENTORY_DOWNSTREAM_TASK_IDS[3:]),
+        "kind": "schema_seed",
+        "limitation_ids": ("GENERATED_MODEL_SCHEMAS_DEFERRED",),
+        "name": "Tracked JSON Schema seed",
+        "pointer": "/schemas/entries",
+        "profile": "baseline.static-source-census",
+        "test": "MP2-010.OBL.SCHEMA_VALIDATION",
+        "validator_ids": (
+            "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
+            "tests/test_functional_inventory.py::test_schema_and_committed_registries_validate",
+        ),
+    },
+    "MP2-010.BASELINE.TESTS": {
+        "claim_classification": "frozen_baseline",
+        "claim_statement": (
+            "The ordered root pytest collection is frozen as an active stop-the-line baseline; "
+            "MP2-014 imports its obligation lineage."
+        ),
+        "consumer_task_ids": INVENTORY_DOWNSTREAM_TASK_IDS[3:],
+        "kind": "test_census",
+        "limitation_ids": (),
+        "name": "Ordered root pytest collection",
+        "pointer": "/tests/collection/node_ids",
+        "profile": "bootstrap.lock-derived-root-suite",
+        "test": "MP2-010.OBL.BASELINE_INTEGRITY",
+        "validator_ids": (
+            "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
+            "tests/test_functional_inventory.py::test_trace_graph_is_closed",
+        ),
+    },
+    "MP2-010.BASELINE.WORKFLOWS": {
+        "claim_classification": "bounded_seed",
+        "claim_statement": (
+            "Maintained workflow files and authored job IDs are frozen; MP2-013 owns complete "
+            "workflow and job classification."
+        ),
+        "consumer_task_ids": ("MP2-013", *INVENTORY_DOWNSTREAM_TASK_IDS[3:]),
+        "kind": "workflow_seed",
+        "limitation_ids": (),
+        "name": "Maintained workflow and job seed",
+        "pointer": "/workflows_and_jobs/entries",
+        "profile": "baseline.static-source-census",
+        "test": "MP2-010.OBL.BASELINE_INTEGRITY",
+        "validator_ids": (
+            "tests/test_functional_inventory.py::test_inventory_is_exact_projection_of_frozen_baseline",
+            "tests/test_functional_inventory.py::test_trace_graph_is_closed",
+        ),
+    },
+}
+
+EXPECTED_PROFILES: dict[str, dict[str, Any]] = {
+    "baseline.static-source-census": {
+        "claim_classification": "observed_not_supported",
+        "claim_statement": (
+            "Static source census at the frozen MP2-000 commit; this profile makes no runtime "
+            "platform support claim."
+        ),
+        "kind": "static_source",
+        "limitation_ids": (),
+        "pointer": "/captured_source",
+        "test": "MP2-010.OBL.BASELINE_INTEGRITY",
+    },
+    "bootstrap.lock-derived-root-suite": {
+        "claim_classification": "observed_not_supported",
+        "claim_statement": (
+            "One observed lock-derived bootstrap cell; it proves the frozen installed help and "
+            "root suite only and is not a supported-environment row."
+        ),
+        "kind": "observed_environment",
+        "limitation_ids": ("BOOTSTRAP_ENVIRONMENT_NOT_MEASURED",),
+        "pointer": "/environment",
+        "test": "MP2-010.OBL.INSTALLED_ENTRY_POINTS",
+    },
 }
 
 EXPECTED_VALIDATORS = {
@@ -148,6 +254,103 @@ def _resolve_pointer(document: Any, pointer: str) -> Any:
     return value
 
 
+def _trace(downstream_task_ids: tuple[str, ...]) -> dict[str, Any]:
+    return {
+        "criterion_ids": ["MP2-010.A01", "MP2-010.A02"],
+        "downstream_task_ids": list(downstream_task_ids),
+        "issue": "MET-71",
+        "materialization_sha256": MATERIALIZATION_SHA256,
+        "obligation_ids": list(OBLIGATION_IDS),
+        "task": "MP2-010",
+    }
+
+
+def _rebuild_inventory(baseline: dict[str, Any]) -> dict[str, Any]:
+    rows = []
+    for identifier, spec in sorted(EXPECTED_ROWS.items()):
+        source_value = _resolve_pointer(baseline, spec["pointer"])
+        rows.append(
+            {
+                "claim": {
+                    "classification": spec["claim_classification"],
+                    "limitation_ids": list(spec["limitation_ids"]),
+                    "statement": spec["claim_statement"],
+                },
+                "consumer_task_ids": list(spec["consumer_task_ids"]),
+                "id": identifier,
+                "kind": spec["kind"],
+                "name": spec["name"],
+                "owner": "MP2-010",
+                "profile": spec["profile"],
+                "source": {
+                    "count": len(source_value),
+                    "digest_sha256": _sha(source_value),
+                    "json_pointer": spec["pointer"],
+                    "path": "docs/status/baseline-snapshot.v1.json",
+                },
+                "status": "active",
+                "test": spec["test"],
+                "trace_criterion_ids": ["MP2-010.A01", "MP2-010.A02"],
+                "validator_ids": list(spec["validator_ids"]),
+            }
+        )
+
+    inventory = {
+        "baseline": {
+            "materialized_base_commit": BASE_COMMIT,
+            "materialized_base_tree": BASE_TREE,
+            "source_commit": baseline["captured_source"]["commit"],
+            "source_path": "docs/status/baseline-snapshot.v1.json",
+            "source_schema_version": baseline["schema_version"],
+            "source_sha256": _sha(baseline),
+            "source_tree": baseline["captured_source"]["tree"],
+        },
+        "registry_id": "metriplane.functional-inventory.baseline.v0.3",
+        "rows": rows,
+        "rows_sha256": _sha(rows),
+        "schema_path": "schemas/metriplane.functional-inventory.v1.schema.json",
+        "schema_version": "metriplane.functional-inventory.v1",
+        "support_profiles_path": "docs/status/support-profiles.json",
+        "trace": _trace(INVENTORY_DOWNSTREAM_TASK_IDS),
+    }
+    return inventory
+
+
+def _rebuild_profiles(baseline: dict[str, Any]) -> dict[str, Any]:
+    profiles = []
+    for identifier, spec in sorted(EXPECTED_PROFILES.items()):
+        source_value = _resolve_pointer(baseline, spec["pointer"])
+        profiles.append(
+            {
+                "claim": {
+                    "classification": spec["claim_classification"],
+                    "limitation_ids": list(spec["limitation_ids"]),
+                    "statement": spec["claim_statement"],
+                },
+                "id": identifier,
+                "kind": spec["kind"],
+                "owner": "MP2-010",
+                "source": {
+                    "digest_sha256": _sha(source_value),
+                    "json_pointer": spec["pointer"],
+                    "path": "docs/status/baseline-snapshot.v1.json",
+                },
+                "status": "active",
+                "support_disposition": "not_measured",
+                "test": spec["test"],
+            }
+        )
+
+    registry = {
+        "profiles": profiles,
+        "profiles_sha256": _sha(profiles),
+        "schema_path": "schemas/metriplane.functional-inventory.v1.schema.json",
+        "schema_version": "metriplane.support-profiles.v1",
+        "trace": _trace(PROFILE_DOWNSTREAM_TASK_IDS),
+    }
+    return registry
+
+
 def _rejects(instance: dict[str, Any], schema: dict[str, Any]) -> None:
     with pytest.raises(baseline_tool.SnapshotError) as captured:
         baseline_tool._internal_validate(instance, schema)
@@ -179,18 +382,16 @@ def test_inventory_is_exact_projection_of_frozen_baseline(_obligation: str) -> N
     rows = inventory["rows"]
     assert [row["id"] for row in rows] == sorted(EXPECTED_ROWS)
     for row in rows:
-        pointer, count, digest, profile, limitation_ids = EXPECTED_ROWS[row["id"]]
-        source_value = _resolve_pointer(baseline, pointer)
+        spec = EXPECTED_ROWS[row["id"]]
+        source_value = _resolve_pointer(baseline, spec["pointer"])
         assert row["source"] == {
-            "count": count,
-            "digest_sha256": digest,
-            "json_pointer": pointer,
+            "count": len(source_value),
+            "digest_sha256": _sha(source_value),
+            "json_pointer": spec["pointer"],
             "path": "docs/status/baseline-snapshot.v1.json",
         }
-        assert len(source_value) == count
-        assert _sha(source_value) == digest
-        assert row["profile"] == profile
-        assert tuple(row["claim"]["limitation_ids"]) == limitation_ids
+        assert row["profile"] == spec["profile"]
+        assert tuple(row["claim"]["limitation_ids"]) == spec["limitation_ids"]
 
 
 @obligation("MP2-010.OBL.ROW_MODEL_POSITIVE")
@@ -203,24 +404,152 @@ def test_row_model_accepts_a_typed_retired_row(_obligation: str) -> None:
     baseline_tool._internal_validate(retired, schema)
 
 
-@pytest.mark.parametrize("field", ["owner", "profile", "status", "test"])
+@obligation("MP2-010.OBL.ROW_MODEL_POSITIVE")
+def test_schema_accepts_representative_downstream_rows_and_measured_profile(
+    _obligation: str,
+) -> None:
+    schema, _inventory, _profiles, baseline = _documents()
+    measured_profile = {
+        "claim": {
+            "classification": "supported",
+            "limitation_ids": [],
+            "statement": "Measured installed Python 3.12 profile for downstream inventory validation.",
+        },
+        "id": "linux.python312.installed",
+        "kind": "measured_environment",
+        "owner": "MP2-011",
+        "source": {
+            "locator": "python:3.12",
+            "path": "uv.lock",
+            "type": "installed_discovery",
+        },
+        "status": "active",
+        "support_disposition": "measured",
+        "test": "MP2-011.OBL.PROFILE",
+    }
+    rows = [
+        {
+            "claim": {
+                "classification": "supported",
+                "limitation_ids": [],
+                "statement": "Installed leaf command discovered by MP2-011.",
+            },
+            "consumer_task_ids": ["MP2-014", "MP2-015", "MP2-016", "MP2-017", "MP2-018"],
+            "id": "MP2-011.CLI.COMMAND.DOCTOR",
+            "kind": "cli_command",
+            "name": "metriplane doctor",
+            "owner": "MP2-011",
+            "profile": measured_profile["id"],
+            "source": {
+                "locator": "console_scripts:metriplane doctor",
+                "path": "metriplane",
+                "type": "installed_discovery",
+            },
+            "status": "active",
+            "test": "MP2-011.OBL.COMMAND_DISCOVERY",
+            "trace_criterion_ids": ["MP2-011.A01", "MP2-011.A02"],
+            "validator_ids": ["tests/test_cli_inventory.py::test_leaf_commands_are_complete"],
+        },
+        {
+            "claim": {
+                "classification": "compatibility",
+                "limitation_ids": [],
+                "statement": "Maintained UI action discovered by MP2-012.",
+            },
+            "consumer_task_ids": ["MP2-014", "MP2-015", "MP2-016", "MP2-017", "MP2-018"],
+            "id": "MP2-012.UI.ACTION.RUN_START",
+            "kind": "ui_action",
+            "name": "Start run",
+            "owner": "MP2-012",
+            "profile": measured_profile["id"],
+            "source": {
+                "locator": "button[data-command-id=run-start]",
+                "path": "web/dashboard/command-center.html",
+                "type": "repository_discovery",
+            },
+            "status": "active",
+            "test": "MP2-012.OBL.UI_ACTION_DISCOVERY",
+            "trace_criterion_ids": ["MP2-012.A01", "MP2-012.A02"],
+            "validator_ids": ["tests/ui_coverage/test_inventory.py::test_actions_are_complete"],
+        },
+        {
+            "claim": {
+                "classification": "supported",
+                "limitation_ids": [],
+                "statement": "Public model export discovered by MP2-013.",
+            },
+            "consumer_task_ids": ["MP2-014", "MP2-015", "MP2-016", "MP2-017", "MP2-018"],
+            "id": "MP2-013.PUBLIC_API.OBJECT_STATE",
+            "kind": "public_api",
+            "name": "metriplane.schema.ObjectStateModel",
+            "owner": "MP2-013",
+            "profile": measured_profile["id"],
+            "source": {
+                "digest_sha256": _sha("metriplane.schema.ObjectStateModel"),
+                "locator": "ObjectStateModel",
+                "path": "metriplane/schema.py",
+                "type": "repository_discovery",
+            },
+            "status": "active",
+            "test": "MP2-013.OBL.PUBLIC_API_DISCOVERY",
+            "trace_criterion_ids": ["MP2-013.A01", "MP2-013.A02"],
+            "validator_ids": ["tests/test_public_api_inventory.py::test_exports_are_complete"],
+        },
+    ]
+
+    representative_inventory = _rebuild_inventory(baseline)
+    representative_inventory["rows"] = rows
+    representative_inventory["rows_sha256"] = _sha(rows)
+    representative_profiles = _rebuild_profiles(baseline)
+    representative_profiles["profiles"].append(measured_profile)
+    representative_profiles["profiles"].sort(key=lambda profile: profile["id"])
+    representative_profiles["profiles_sha256"] = _sha(representative_profiles["profiles"])
+
+    baseline_tool._internal_validate(representative_inventory, schema)
+    baseline_tool._internal_validate(representative_profiles, schema)
+    assert {row["profile"] for row in rows} <= {
+        profile["id"] for profile in representative_profiles["profiles"]
+    }
+
+
+@pytest.mark.parametrize("value", ["", " ", "\t"])
+@pytest.mark.parametrize("field", ["owner", "profile", "test"])
 @obligation("MP2-010.OBL.ACTIVE_FIELDS_REQUIRED")
-def test_active_rows_require_owner_profile_status_and_test(_obligation: str, field: str) -> None:
+def test_active_rows_reject_blank_owner_profile_and_test(
+    _obligation: str, field: str, value: str
+) -> None:
     schema, inventory, _profiles, _baseline = _documents()
     invalid = copy.deepcopy(inventory)
-    invalid["rows"][0][field] = ""
+    invalid["rows"][0][field] = value
     invalid["rows_sha256"] = _sha(invalid["rows"])
     _rejects(invalid, schema)
 
 
-@pytest.mark.parametrize("field", ["owner", "status", "test"])
+@pytest.mark.parametrize("value", ["", " ", "\t"])
+@pytest.mark.parametrize("field", ["owner", "test"])
 @obligation("MP2-010.OBL.ACTIVE_FIELDS_REQUIRED")
-def test_active_profiles_require_owner_status_and_test(_obligation: str, field: str) -> None:
+def test_active_profiles_reject_blank_owner_and_test(
+    _obligation: str, field: str, value: str
+) -> None:
     schema, _inventory, profiles, _baseline = _documents()
     invalid = copy.deepcopy(profiles)
-    invalid["profiles"][0][field] = ""
+    invalid["profiles"][0][field] = value
     invalid["profiles_sha256"] = _sha(invalid["profiles"])
     _rejects(invalid, schema)
+
+
+@obligation("MP2-010.OBL.ACTIVE_FIELDS_REQUIRED")
+def test_active_rows_and_profiles_require_valid_status(_obligation: str) -> None:
+    schema, inventory, profiles, _baseline = _documents()
+    invalid_inventory = copy.deepcopy(inventory)
+    invalid_inventory["rows"][0]["status"] = ""
+    invalid_inventory["rows_sha256"] = _sha(invalid_inventory["rows"])
+    _rejects(invalid_inventory, schema)
+
+    invalid_profiles = copy.deepcopy(profiles)
+    invalid_profiles["profiles"][0]["status"] = ""
+    invalid_profiles["profiles_sha256"] = _sha(invalid_profiles["profiles"])
+    _rejects(invalid_profiles, schema)
 
 
 @obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
@@ -235,14 +564,23 @@ def test_row_model_rejects_unknown_fields(_obligation: str) -> None:
 @obligation("MP2-010.OBL.THREE_RUN_DETERMINISM")
 def test_three_run_determinism(_obligation: str) -> None:
     schema, inventory, profiles, _baseline = _documents()
-    for document, digest_key, values_key in (
-        (inventory, "rows_sha256", "rows"),
-        (profiles, "profiles_sha256", "profiles"),
-    ):
-        projections = [_canonical_bytes(document) for _ in range(3)]
-        assert projections[0] == projections[1] == projections[2]
-        assert document[digest_key] == _sha(document[values_key])
-        baseline_tool._internal_validate(document, schema)
+    inventory_projections = []
+    profile_projections = []
+    for _run in range(3):
+        baseline = _read_canonical(BASELINE_PATH)
+        rebuilt_inventory = _rebuild_inventory(baseline)
+        rebuilt_profiles = _rebuild_profiles(baseline)
+        baseline_tool._internal_validate(rebuilt_inventory, schema)
+        baseline_tool._internal_validate(rebuilt_profiles, schema)
+        inventory_projections.append(_canonical_bytes(rebuilt_inventory))
+        profile_projections.append(_canonical_bytes(rebuilt_profiles))
+
+    assert len({*inventory_projections}) == 1
+    assert len({*profile_projections}) == 1
+    assert inventory_projections[0] == INVENTORY_PATH.read_bytes()
+    assert profile_projections[0] == PROFILES_PATH.read_bytes()
+    assert inventory["rows_sha256"] == _sha(inventory["rows"])
+    assert profiles["profiles_sha256"] == _sha(profiles["profiles"])
 
 
 @obligation("MP2-010.OBL.TRACE_CLOSURE")
@@ -270,21 +608,33 @@ def test_profile_references_are_closed(_obligation: str) -> None:
 @obligation("MP2-010.OBL.TRACE_CLOSURE")
 def test_trace_graph_is_closed(_obligation: str) -> None:
     _schema, inventory, profiles, _baseline = _documents()
-    traces = (inventory["trace"], profiles["trace"])
-    for trace in traces:
+    trace_expectations = (
+        (inventory["trace"], INVENTORY_DOWNSTREAM_TASK_IDS),
+        (profiles["trace"], PROFILE_DOWNSTREAM_TASK_IDS),
+    )
+    for trace, expected_downstream in trace_expectations:
         assert trace["task"] == "MP2-010"
         assert trace["issue"] == "MET-71"
         assert trace["materialization_sha256"] == MATERIALIZATION_SHA256
         assert trace["criterion_ids"] == ["MP2-010.A01", "MP2-010.A02"]
         assert tuple(trace["obligation_ids"]) == OBLIGATION_IDS
+        assert tuple(trace["downstream_task_ids"]) == expected_downstream
 
     validator_ids = {validator for row in inventory["rows"] for validator in row["validator_ids"]}
     assert validator_ids == EXPECTED_VALIDATORS
     for row in inventory["rows"]:
         assert row["owner"] == "MP2-010"
-        assert row["consumer_task_ids"]
+        assert "MP2-017" in row["consumer_task_ids"]
         assert row["validator_ids"]
         assert row["trace_criterion_ids"] == ["MP2-010.A01", "MP2-010.A02"]
+
+
+def _console_scripts(entry_points: Iterable[Any]) -> dict[str, str]:
+    return {
+        str(entry.name): str(entry.value)
+        for entry in entry_points
+        if entry.group == "console_scripts"
+    }
 
 
 @obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
@@ -295,14 +645,32 @@ def test_installed_console_scripts_match_frozen_cli_seed(_obligation: str) -> No
     expected = {row["command"]: row["entry_point"] for row in baseline_entries}
 
     distribution = importlib.metadata.distribution("metriplane")
-    installed = {
-        entry.name: entry.value
-        for entry in distribution.entry_points
-        if entry.group == "console_scripts" and entry.name in expected
-    }
+    installed = _console_scripts(distribution.entry_points)
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
     assert installed == expected
     assert pyproject["project"]["scripts"] == expected
+
+
+@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
+def test_console_script_projection_preserves_unexpected_entries(_obligation: str) -> None:
+    projected = _console_scripts(
+        [
+            SimpleNamespace(
+                group="console_scripts",
+                name="metriplane",
+                value="metriplane.cli:main",
+            ),
+            SimpleNamespace(
+                group="console_scripts",
+                name="unexpected-command",
+                value="unexpected.module:main",
+            ),
+        ]
+    )
+    assert projected == {
+        "metriplane": "metriplane.cli:main",
+        "unexpected-command": "unexpected.module:main",
+    }
 
 
 @obligation("MP2-010.OBL.CLEAN")
