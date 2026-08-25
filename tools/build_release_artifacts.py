@@ -8,10 +8,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from metriplane.release_control import make_record, write_immutable_json
 
-if __package__:
+if TYPE_CHECKING or __package__:
     from tools.release_artifacts import create_manifest, inspect_sdist, release_artifacts
 else:
     from release_artifacts import create_manifest, inspect_sdist, release_artifacts
