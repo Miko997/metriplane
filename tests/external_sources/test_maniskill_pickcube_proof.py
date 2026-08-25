@@ -33,6 +33,9 @@ CONTROL_FIXTURE = FIXTURE_ROOT / "control"
 SCHEMA_PATH = PROOF_ROOT / "proof-record.schema.json"
 RECORD_PATH = PROOF_ROOT / "proof-record.json"
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "maniskill-proof.yml"
+EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
+EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
+EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
 
 PROOF_TAG = "maniskill-pickcube-proof-v1"
 BASELINE_COMMIT = "1549d0a05e03db51efc0ee08edb7d9db66196b4e"
@@ -954,6 +957,7 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     candidate = record["proof_identity"]["candidate_commit"]
     frozen_identity_paths = (
         "metriplane",
+        f":(exclude){EVIDENCE_LAKE_PATH}",
         "integrations",
         "LICENSE",
         "NOTICE",
@@ -978,6 +982,25 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
         text=True,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    def read_git_bytes(revision: str, path: str) -> bytes:
+        git_show = subprocess.run(
+            ["git", "show", f"{revision}:{path}"],
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+        )
+        assert git_show.returncode == 0, git_show.stderr.decode()
+        return git_show.stdout
+
+    assert (
+        hashlib.sha256(read_git_bytes(candidate, EVIDENCE_LAKE_PATH)).hexdigest()
+        == EVIDENCE_LAKE_FROZEN_SHA256
+    )
+    assert (
+        hashlib.sha256(read_git_bytes("HEAD", EVIDENCE_LAKE_PATH)).hexdigest()
+        == EVIDENCE_LAKE_REPAIRED_SHA256
+    )
 
     def read_git_toml(revision: str, path: str) -> dict[str, Any]:
         git_show = subprocess.run(
@@ -1046,10 +1069,14 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert len(identity_blocks) == 2
     assert all("pyproject.toml" not in block for block in identity_blocks)
     assert all("uv.lock" not in block for block in identity_blocks)
+    identity_exception = '":(exclude)metriplane/atlas/evidence_lake.py"'
+    assert all(block.count(identity_exception) == 1 for block in identity_blocks)
     assert text.count('candidate_pyproject["project"]') == 2
     assert text.count('candidate_pyproject["tool"]["setuptools"]') == 2
     assert text.count('metadata.pop("requires-dev")') == 2
     assert text.count('normalized_lock(candidate_commit) != normalized_lock("HEAD")') == 2
+    assert text.count(f'EVIDENCE_LAKE_FROZEN_SHA256 = "{EVIDENCE_LAKE_FROZEN_SHA256}"') == 2
+    assert text.count(f'EVIDENCE_LAKE_REPAIRED_SHA256 = "{EVIDENCE_LAKE_REPAIRED_SHA256}"') == 2
     for identity_path in (
         "metriplane",
         "integrations",

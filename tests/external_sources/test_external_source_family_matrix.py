@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import zipfile
@@ -25,6 +26,9 @@ from tools.build_external_source_family_matrix import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPOSITORY_ROOT / PACKAGE_RELATIVE
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github/workflows/external-source-family-matrix.yml"
+EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
+EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
+EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
 
 
 def _git_object_exists(revision: str) -> bool:
@@ -239,6 +243,7 @@ def test_prior_frozen_proof_paths_are_not_changed_by_this_branch() -> None:
         "docs/specs/external-source-contract-v1.md",
         "schemas/metriplane.external_source_contract.v1.schema.json",
         "metriplane/atlas",
+        f":(exclude){EVIDENCE_LAKE_PATH}",
     )
     # This test compares the working candidate to the explicitly frozen baseline.
     result = subprocess.run(
@@ -256,3 +261,20 @@ def test_prior_frozen_proof_paths_are_not_changed_by_this_branch() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+    frozen_source = subprocess.run(
+        [
+            "git",
+            "show",
+            f"5606b956e9309802570cfa46857714722fd70187:{EVIDENCE_LAKE_PATH}",
+        ],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    assert frozen_source.returncode == 0, frozen_source.stderr.decode()
+    assert hashlib.sha256(frozen_source.stdout).hexdigest() == EVIDENCE_LAKE_FROZEN_SHA256
+    assert (
+        hashlib.sha256((REPOSITORY_ROOT / EVIDENCE_LAKE_PATH).read_bytes()).hexdigest()
+        == EVIDENCE_LAKE_REPAIRED_SHA256
+    )
