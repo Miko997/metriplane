@@ -34,10 +34,8 @@
       "type": "object",
       "required": [
         "provider",
-        "reviewer_actor_id",
-        "reviewer_display_name",
-        "approved_at",
-        "decision",
+        "repository",
+        "pull_request",
         "subject_sha256"
       ],
       "properties": {
@@ -47,19 +45,15 @@
             "linear"
           ]
         },
-        "reviewer_actor_id": {
-          "$ref": "#/$defs/actor_id"
-        },
-        "reviewer_display_name": {
+        "repository": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 200
+          "minLength": 3,
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
         },
-        "approved_at": {
-          "$ref": "#/$defs/timestamp"
-        },
-        "decision": {
-          "const": "approved"
+        "pull_request": {
+          "type": "integer",
+          "minimum": 1
         },
         "subject_sha256": {
           "$ref": "#/$defs/sha256"
