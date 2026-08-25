@@ -76,23 +76,18 @@ jobs:
             manifest=docs/status/main-health-owner-emergency.json
             test -f "$manifest"
             pull_file="$RUNNER_TEMP/main-health-repair-pull.json"
-            paths_file="$RUNNER_TEMP/main-health-repair-paths.txt"
+            paths_file="$RUNNER_TEMP/main-health-repair-paths.jsonl"
             gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}" \
               > "$pull_file"
             gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" \
-              --jq '.[].filename' | LC_ALL=C sort > "$paths_file"
-            author="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["user"]["login"])' \
-              "$pull_file")"
-            permission="$(gh api \
-              "repos/${GITHUB_REPOSITORY}/collaborators/${author}/permission" \
-              --jq '.permission')"
+              --jq '.[] | .filename | @json' > "$paths_file"
             python tools/stop_the_line.py repair-candidate \
               --root "$state_root" \
               --manifest-json "$(cat "$manifest")" \
               --pull-json "$pull_file" \
-              --changed-paths-file "$paths_file" \
-              --author-permission "$permission" \
+              --changed-paths-jsonl "$paths_file" \
+              --expected-head-sha "${{ github.event.pull_request.head.sha }}" \
               --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           else
             if git cat-file -e \

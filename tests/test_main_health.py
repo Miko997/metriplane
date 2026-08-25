@@ -285,7 +285,11 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
     }
     pull = {
         "base": {"repo": {"full_name": "Miko997/metriplane"}, "sha": BAD_SHA},
-        "body": f"Main-health owner emergency: MET-999\nIncident: {incident_digest}",
+        "body": (
+            "## Outcome\n\nRepair the open incident.\n\n"
+            f"Main-health owner emergency: MET-999\nIncident: {incident_digest}\n\n"
+            "## Changes\n\nExact repair only."
+        ),
         "head": {"sha": REVIEWED_SHA},
         "number": 123,
         "user": {"id": 100, "login": "Miko997"},
@@ -296,7 +300,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         manifest=manifest,
         pull=pull,
         changed_paths=allowed_paths,
-        author_permission="admin",
+        expected_head_sha=REVIEWED_SHA,
         checked_at="2026-08-25T22:00:00Z",
     )
     assert result["status"] == "repair-candidate"
@@ -308,7 +312,7 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             manifest=manifest,
             pull=pull,
             changed_paths=[*allowed_paths, "unapproved.py"],
-            author_permission="admin",
+            expected_head_sha=REVIEWED_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
     with pytest.raises(HealthError, match="identity or marker"):
@@ -317,7 +321,25 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
             manifest=manifest,
             pull={**pull, "user": {"id": 200, "login": "outsider"}},
             changed_paths=allowed_paths,
-            author_permission="write",
+            expected_head_sha=REVIEWED_SHA,
+            checked_at="2026-08-25T22:00:00Z",
+        )
+    with pytest.raises(HealthError, match="identity or marker"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest=manifest,
+            pull={**pull, "body": f"{pull['body']}\n\n{pull['body']}"},
+            changed_paths=allowed_paths,
+            expected_head_sha=REVIEWED_SHA,
+            checked_at="2026-08-25T22:00:00Z",
+        )
+    with pytest.raises(HealthError, match="identity or marker"):
+        validate_owner_emergency_candidate(
+            tmp_path,
+            manifest=manifest,
+            pull=pull,
+            changed_paths=allowed_paths,
+            expected_head_sha=GOOD_SHA,
             checked_at="2026-08-25T22:00:00Z",
         )
 
@@ -329,7 +351,11 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
     state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     incident_digest = state["incident_digest"]
     pull = {
-        "body": f"Main-health owner emergency: MET-999\nIncident: {incident_digest}",
+        "body": (
+            "## Outcome\n\nRepair the open incident.\n\n"
+            f"Main-health owner emergency: MET-999\nIncident: {incident_digest}\n\n"
+            "## Changes\n\nExact repair only."
+        ),
         "head": {"sha": REVIEWED_SHA},
         "merge_commit_sha": REPAIR_SHA,
         "merged": True,

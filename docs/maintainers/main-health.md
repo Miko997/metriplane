@@ -87,9 +87,10 @@ For a personal repository with no independent collaborator, the only exception i
 the explicitly named `single-maintainer-owner-emergency` mode. The repair PR must
 contain `docs/status/main-health-owner-emergency.json`, whose base SHA, open
 incident digest, issue, PR number, complete sorted changed-path inventory, expiry,
-and fixed `[nightly, weekly]` cadence policy match provider state exactly. The PR
-body is exactly the corresponding two-line owner-emergency marker. Candidate
-admission remains read-only and records that independent approval did not exist.
+and fixed `[nightly, weekly]` cadence policy match provider state exactly. The
+normal PR contract body must contain exactly one verbatim copy of the corresponding
+two-line owner-emergency marker. Candidate admission remains read-only and records
+that independent approval did not exist.
 
 After that exact PR merges, run the `Main Health` workflow manually once for each
 deep cadence. Capture the merged owner decision with `capture-owner-emergency`,

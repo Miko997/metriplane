@@ -473,7 +473,7 @@ def github_owner_emergency_evidence(
     if author.casefold() != repository_owner.casefold() or owner_permission != "admin":
         raise HealthError("owner emergency requires the repository owner with admin permission")
     marker = f"Main-health owner emergency: {issue}\nIncident: {incident_digest}"
-    if (pull.get("body") or "").strip() != marker:
+    if (pull.get("body") or "").count(marker) != 1:
         raise HealthError("owner-emergency pull request does not bind the exact issue and incident")
     changed_paths = sorted({item["filename"] for item in files})
     if not changed_paths or len(changed_paths) != len(files):
@@ -1201,7 +1201,7 @@ def validate_owner_emergency_candidate(
     manifest: dict[str, Any],
     pull: dict[str, Any],
     changed_paths: list[str],
-    author_permission: str,
+    expected_head_sha: str,
     checked_at: str,
 ) -> dict[str, Any]:
     """Admit one exact owner-authored repair candidate while main is red."""
@@ -1225,6 +1225,7 @@ def validate_owner_emergency_candidate(
     if manifest["required_cadences"] != CANONICAL_REPAIR_CADENCES:
         raise HealthError("owner-emergency candidate cadences do not match canonical policy")
     _validate_sha(manifest["base_sha"])
+    _validate_sha(expected_head_sha)
     if not re.fullmatch(r"[0-9a-f]{64}", manifest["incident_digest"]):
         raise HealthError("owner-emergency candidate incident digest is invalid")
     if (
@@ -1278,9 +1279,9 @@ def validate_owner_emergency_candidate(
         pull_number != str(manifest["pull_request"])
         or pull_repository != manifest["repository"]
         or pull_base_sha != manifest["base_sha"]
+        or pull_head_sha != expected_head_sha
         or pull_author.casefold() != repository_owner.casefold()
-        or author_permission != "admin"
-        or (pull.get("body") or "").strip() != marker
+        or (pull.get("body") or "").count(marker) != 1
     ):
         raise HealthError("owner-emergency provider identity or marker is invalid")
     checked = _timestamp(checked_at)
@@ -1310,6 +1311,27 @@ def _json_file_argument(value: str) -> dict[str, Any]:
         return _read(Path(value))
     except HealthError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _json_lines_file_argument(value: str) -> list[str]:
+    try:
+        lines = Path(value).read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise argparse.ArgumentTypeError(f"cannot read JSON-lines file {value}: {exc}") from exc
+    parsed: list[str] = []
+    for line in lines:
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise argparse.ArgumentTypeError(
+                f"cannot read JSON-lines file {value}: {exc}"
+            ) from exc
+        if not isinstance(item, str):
+            raise argparse.ArgumentTypeError("expected one JSON string per line")
+        parsed.append(item)
+    return sorted(parsed)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -1355,8 +1377,10 @@ def _parser() -> argparse.ArgumentParser:
     repair_candidate_parser.add_argument("--root", type=Path, required=True)
     repair_candidate_parser.add_argument("--manifest-json", type=_json_argument, required=True)
     repair_candidate_parser.add_argument("--pull-json", type=_json_file_argument, required=True)
-    repair_candidate_parser.add_argument("--changed-paths-file", type=Path, required=True)
-    repair_candidate_parser.add_argument("--author-permission", required=True)
+    repair_candidate_parser.add_argument(
+        "--changed-paths-jsonl", type=_json_lines_file_argument, required=True
+    )
+    repair_candidate_parser.add_argument("--expected-head-sha", required=True)
     repair_candidate_parser.add_argument("--checked-at", required=True)
 
     status_parser = subparsers.add_parser("status")
@@ -1441,17 +1465,13 @@ def main() -> int:
                 max_age_seconds=args.max_age_seconds,
             )
         elif args.command == "repair-candidate":
-            changed_paths = [
-                line.strip()
-                for line in args.changed_paths_file.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
+            changed_paths = args.changed_paths_jsonl
             result = validate_owner_emergency_candidate(
                 args.root,
                 manifest=args.manifest_json,
                 pull=args.pull_json,
                 changed_paths=changed_paths,
-                author_permission=args.author_permission,
+                expected_head_sha=args.expected_head_sha,
                 checked_at=args.checked_at,
             )
         else:
