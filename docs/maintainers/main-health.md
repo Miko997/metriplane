@@ -116,25 +116,33 @@ incident digest, issue, PR number, complete sorted changed-path inventory, expir
 and fixed `[nightly, weekly]` cadence policy match provider state exactly. The
 normal PR contract body must contain exactly one verbatim copy of the corresponding
 two-line owner-emergency marker. Automated reconciliation never grants a red-health
-owner emergency; it continues to publish failure. Manual `repair-candidate`
-admission remains read-only and records that independent approval did not exist.
-The manifest also carries the exact
+owner emergency; it continues to publish failure. Caller-supplied provider JSON is
+not accepted as operational admission evidence. `capture-owner-admission` fetches
+the live pull request, complete file list, collaborators, pending invitations, and
+active main ruleset itself with an owner-authenticated token. It records that
+independent approval did not exist and publishes the canonical admission payload
+and digest in an unedited GitHub comment before merge. The manifest also carries the exact
 incident-only amendment of `repair_requires_non_author`; it does not change the
 global activation policy. Provider capture re-reads the manifest from the reviewed
 head, captures the complete collaborator and pending-invitation inventories, and
-requires that neither contains an eligible non-author reviewer. Manual admission
-uses an owner-authenticated token to capture both inventories and requires their
-combined canonical digest to match the manifest. Post-merge capture requires the
-same combined digest and embeds the complete pre-merge admission object. Admission
-and capture timestamps must bracket the provider merge timestamp, and the merge
-must precede manifest expiry. Post-merge `captured_at` is the actual provider
+requires that neither contains an eligible non-author reviewer. Admission requires
+their combined canonical digest to match the manifest. The provider comment starts
+a five-minute lease; editing it invalidates the admission. `merge-owner-emergency`
+re-fetches both inventories and the exact head, removes only
+`Main health / required` from the admitted ruleset, merges that head, and restores
+the complete admitted ruleset in a `finally` block. It publishes before/during/after
+ruleset payloads and the merge identity in a second unedited GitHub comment.
+Post-merge capture re-fetches both comments, both collaboration inventories, the
+commits, and the restored ruleset. Provider timestamps must bracket the merge, and
+the merge must precede manifest expiry. Post-merge `captured_at` is the actual provider
 retrieval time, not the earlier merge timestamp. Its manifest digest and
 policy-amendment digest must match the authorization.
 
-Retain the JSON output from the final `repair-candidate` invocation as
-`owner-admission.json`. After that exact PR merges, run the `Main Health` workflow
-manually once for each deep cadence. Capture the merged owner decision with
-`capture-owner-emergency --admission-json owner-admission.json`,
+Retain the JSON outputs from `capture-owner-admission` and
+`merge-owner-emergency` as `owner-admission.json` and
+`ruleset-exception.json`. After that exact PR merges, run the `Main Health`
+workflow manually once for each deep cadence. Capture the merged owner decision
+with both provider attestations,
 construct the authorization from the captured evidence, and run `resolve`. The
 resolver re-fetches the owner/admin identity and merge proof, requires retained
 green protected-main plus both deep results, appends the resolution through CAS,
@@ -147,6 +155,20 @@ then reject any concurrent remote change before the non-force push:
 ```console
 git clone --single-branch --branch metriplane-main-health-state \
   https://github.com/Miko997/metriplane.git main-health-state
+GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-admission \
+  --root main-health-state --repository Miko997/metriplane \
+  --pull-request <number> --issue MET-NNN --incident-digest <digest> \
+  --expected-head-sha <reviewed-head> --ruleset-id <main-ruleset-id> \
+  > owner-admission.json
+GITHUB_TOKEN=<token> python tools/stop_the_line.py merge-owner-emergency \
+  --root main-health-state --repository Miko997/metriplane \
+  --pull-request <number> --issue MET-NNN --incident-digest <digest> \
+  --admission-json owner-admission.json > ruleset-exception.json
+GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-emergency \
+  --repository Miko997/metriplane --pull-request <number> \
+  --issue MET-NNN --incident-digest <digest> \
+  --admission-json owner-admission.json \
+  --ruleset-exception-json ruleset-exception.json > provider-evidence.json
 expected_commit="$(git -C main-health-state rev-parse HEAD)"
 python tools/stop_the_line.py validate-git --root main-health-state
 GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
@@ -155,6 +177,7 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
   --approval-evidence-json provider-evidence.json \
   --repaired-main-json "$(cat repaired-protected-main-result.json)" \
   --owner-admission-json owner-admission.json \
+  --owner-ruleset-exception-json ruleset-exception.json \
   --expected-generation <generation>
 git -C main-health-state add --all
 git -C main-health-state commit -m "Resolve main health for <merge-sha>"
@@ -172,13 +195,11 @@ python tools/stop_the_line.py validate-git --root main-health-readback
 ```
 
 Because automated reconciliation never converts red health into an owner-emergency
-success, this incident-bound exception uses an explicit ruleset operation. Retain
-the complete active ruleset and its digest,
-the pre-merge provider collaborator and invitation responses and their digest,
-remove only the `Main health / required` context, merge the exact qualified PR
-normally, immediately restore and digest the original ruleset, and verify the
-before/after documents are identical. Re-fetch the collaboration inventories
-immediately after merge and require the normalized digest to match the admitted
+success, the governed merge command performs the incident-bound ruleset exception.
+Resolution requires its provider-anchored before/during/after evidence, exact
+restoration, exact reviewed head and ordered merge parents, and the admitted
+collaboration digest. Re-fetch the collaboration inventories immediately after
+merge and require the normalized digest to match the admitted
 manifest. Deletion, non-fast-forward, pull-request,
 and every other required-check rule stay active throughout. This ruleset operation
 admits only the code merge; it does not clear red health or substitute for retained

@@ -8,12 +8,10 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
-import io
 import json
 import os
 import re
 import subprocess
-import tarfile
 import tempfile
 import urllib.error
 import urllib.request
@@ -32,6 +30,8 @@ CADENCE_BY_SCOPE = {
 PASS = "success"
 CANONICAL_REPAIR_CADENCES = ["nightly", "weekly"]
 AUTHORIZED_REVIEWER_PERMISSIONS = {"admin", "maintain", "write"}
+OWNER_ADMISSION_MAX_AGE_SECONDS = 300
+MAIN_HEALTH_CONTEXT = "Main health / required"
 ACTIVATION_POLICY = {
     "candidate_mutates_global_state": False,
     "global_cadences": ["protected-main", "nightly", "weekly"],
@@ -457,6 +457,8 @@ def github_approval_evidence(
         "reviewer": review["user"]["login"],
         "reviewer_id": str(review["user"]["id"]),
         "reviewer_permission": reviewer_permission,
+        "ruleset_exception": None,
+        "ruleset_exception_digest": None,
         "schema_version": SCHEMA_VERSION,
         "state": review["state"],
         **merge_proof,
@@ -575,6 +577,8 @@ def github_owner_emergency_evidence(
     merge_commit: dict[str, Any],
     manifest: dict[str, Any],
     admission: dict[str, Any],
+    ruleset_exception: dict[str, Any],
+    current_ruleset: dict[str, Any],
     collaborators: list[dict[str, Any]],
     invitations: list[dict[str, Any]],
     captured_at: str,
@@ -621,6 +625,8 @@ def github_owner_emergency_evidence(
         or manifest["repository"] != repository
     ):
         raise HealthError("owner-emergency manifest disagrees with provider state")
+    admission_payload = _validate_comment_attestation(admission, "owner admission")
+    exception_payload = _validate_comment_attestation(ruleset_exception, "ruleset exception")
     expected_admission_fields = {
         "authorization_mode",
         "base_sha",
@@ -635,31 +641,82 @@ def github_owner_emergency_evidence(
         "pending_invitations",
         "pull_request",
         "repository",
+        "ruleset_before",
+        "ruleset_before_digest",
+        "ruleset_id",
         "schema_version",
         "status",
     }
     if (
-        set(admission) != expected_admission_fields
-        or admission["schema_version"] != SCHEMA_VERSION
-        or admission["status"] != "repair-candidate"
-        or admission["authorization_mode"] != "single-maintainer-owner-emergency"
-        or admission["base_sha"] != pull["base"]["sha"]
-        or admission["changed_paths"] != changed_paths
-        or admission["collaboration_digest"] != manifest["collaboration_digest"]
-        or admission["collaborators"] != collaborator_inventory
-        or admission["head_sha"] != pull["head"]["sha"]
-        or admission["incident_digest"] != incident_digest
-        or admission["issue"] != issue
-        or admission["manifest_digest"] != digest(manifest)
-        or admission["pending_invitations"] != invitation_inventory
-        or admission["pull_request"] != pull_request
-        or admission["repository"] != repository
+        set(admission_payload) != expected_admission_fields
+        or admission_payload["schema_version"] != SCHEMA_VERSION
+        or admission_payload["status"] != "repair-candidate"
+        or admission_payload["authorization_mode"] != "single-maintainer-owner-emergency"
+        or admission_payload["base_sha"] != pull["base"]["sha"]
+        or admission_payload["changed_paths"] != changed_paths
+        or admission_payload["collaboration_digest"] != manifest["collaboration_digest"]
+        or admission_payload["collaborators"] != collaborator_inventory
+        or admission_payload["head_sha"] != pull["head"]["sha"]
+        or admission_payload["incident_digest"] != incident_digest
+        or admission_payload["issue"] != issue
+        or admission_payload["manifest_digest"] != digest(manifest)
+        or admission_payload["pending_invitations"] != invitation_inventory
+        or admission_payload["pull_request"] != pull_request
+        or admission_payload["repository"] != repository
+        or admission_payload["ruleset_before_digest"] != digest(admission_payload["ruleset_before"])
+        or admission["comment_author"].casefold() != repository_owner.casefold()
+        or ruleset_exception["comment_author"].casefold() != repository_owner.casefold()
     ):
         raise HealthError("owner emergency admission does not bind provider state")
-    admission_at = _timestamp(admission["checked_at"])
+    expected_exception_fields = {
+        "admission_comment_id",
+        "admission_digest",
+        "after",
+        "after_digest",
+        "before",
+        "before_digest",
+        "during",
+        "during_digest",
+        "head_sha",
+        "merge_commit_sha",
+        "merged_at",
+        "pull_request",
+        "repository",
+        "ruleset_id",
+        "schema_version",
+    }
+    if (
+        set(exception_payload) != expected_exception_fields
+        or exception_payload["schema_version"] != SCHEMA_VERSION
+        or exception_payload["admission_comment_id"] != admission["comment_id"]
+        or exception_payload["admission_digest"] != digest(admission)
+        or exception_payload["before"] != admission_payload["ruleset_before"]
+        or exception_payload["before_digest"] != digest(exception_payload["before"])
+        or exception_payload["during"] != _without_main_health_context(exception_payload["before"])
+        or exception_payload["during_digest"] != digest(exception_payload["during"])
+        or exception_payload["after"] != exception_payload["before"]
+        or exception_payload["after_digest"] != digest(exception_payload["after"])
+        or exception_payload["after"] != current_ruleset
+        or exception_payload["head_sha"] != pull["head"]["sha"]
+        or exception_payload["merge_commit_sha"] != pull["merge_commit_sha"]
+        or exception_payload["merged_at"] != pull["merged_at"]
+        or exception_payload["pull_request"] != pull_request
+        or exception_payload["repository"] != repository
+        or exception_payload["ruleset_id"] != admission_payload["ruleset_id"]
+    ):
+        raise HealthError("owner emergency ruleset exception is invalid or unrestored")
+    admission_at = _timestamp(admission_payload["checked_at"])
+    admitted_at = _timestamp(admission["comment_created_at"])
     merged_at = _timestamp(pull["merged_at"])
+    exception_at = _timestamp(ruleset_exception["comment_created_at"])
     captured = _timestamp(captured_at)
-    if admission_at > merged_at or merged_at > captured:
+    if (
+        admission_at > admitted_at
+        or admitted_at > merged_at
+        or (merged_at - admitted_at).total_seconds() > OWNER_ADMISSION_MAX_AGE_SECONDS
+        or merged_at > exception_at
+        or exception_at > captured
+    ):
         raise HealthError("owner emergency admission and capture do not bracket the merge")
     if merged_at > _timestamp(manifest["expires_at"]):
         raise HealthError("owner emergency merge occurred after manifest expiry")
@@ -691,18 +748,30 @@ def github_owner_emergency_evidence(
         "reviewer": author,
         "reviewer_id": str(pull["user"]["id"]),
         "reviewer_permission": owner_permission,
+        "ruleset_exception": ruleset_exception,
+        "ruleset_exception_digest": digest(ruleset_exception),
         "schema_version": SCHEMA_VERSION,
         "state": "OWNER_EMERGENCY",
         **merge_proof,
     }
 
 
-def _github_get(path: str, token: str) -> Any:
+def _github_request(
+    path: str,
+    token: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+) -> Any:
+    data = None if payload is None else canonical_bytes(payload)
     request = urllib.request.Request(
         f"https://api.github.com/{path}",
+        data=data,
+        method=method,
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
@@ -711,6 +780,201 @@ def _github_get(path: str, token: str) -> Any:
             return json.load(response)
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
         raise HealthError(f"GitHub approval capture failed: {exc}") from exc
+
+
+def _github_get(path: str, token: str) -> Any:
+    return _github_request(path, token)
+
+
+def _github_list(path: str, token: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        separator = "&" if "?" in path else "?"
+        batch = _github_get(f"{path}{separator}per_page=100&page={page}", token)
+        if not isinstance(batch, list) or not all(isinstance(item, dict) for item in batch):
+            raise HealthError("GitHub paginated response is malformed")
+        items.extend(batch)
+        if len(batch) < 100:
+            return items
+        page += 1
+
+
+def _github_manifest(repository: str, head_sha: str, token: str) -> dict[str, Any]:
+    response = _github_get(
+        f"repos/{repository}/contents/docs/status/main-health-owner-emergency.json?ref={head_sha}",
+        token,
+    )
+    try:
+        manifest = json.loads(base64.b64decode(response["content"], validate=False))
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HealthError("GitHub owner-emergency manifest response is malformed") from exc
+    if not isinstance(manifest, dict):
+        raise HealthError("GitHub owner-emergency manifest is not a JSON object")
+    return manifest
+
+
+def _provider_artifact_body(kind: str, artifact: dict[str, Any]) -> str:
+    return (
+        f"Metriplane main-health {kind}\n"
+        f"Digest: {digest(artifact)}\n\n"
+        f"{canonical_bytes(artifact).decode().rstrip()}"
+    )
+
+
+def _github_comment_attestation(
+    *,
+    artifact: dict[str, Any],
+    comment: dict[str, Any],
+    kind: str,
+    repository: str,
+    pull_request: str,
+) -> dict[str, Any]:
+    expected_body = _provider_artifact_body(kind, artifact)
+    issue_suffix = f"/repos/{repository}/issues/{pull_request}"
+    created_at = comment.get("created_at")
+    updated_at = comment.get("updated_at")
+    author = comment.get("user", {}).get("login")
+    author_id = comment.get("user", {}).get("id")
+    if (
+        comment.get("body") != expected_body
+        or not str(comment.get("issue_url", "")).endswith(issue_suffix)
+        or not isinstance(created_at, str)
+        or not isinstance(updated_at, str)
+        or created_at != updated_at
+        or not isinstance(author, str)
+        or not author
+        or author_id is None
+        or not str(comment.get("id", "")).isdigit()
+    ):
+        raise HealthError(f"GitHub {kind} comment is malformed, edited, or misplaced")
+    _timestamp(created_at)
+    return {
+        "artifact": artifact,
+        "artifact_digest": digest(artifact),
+        "comment_author": author,
+        "comment_author_id": str(author_id),
+        "comment_created_at": created_at,
+        "comment_id": str(comment["id"]),
+        "comment_updated_at": updated_at,
+        "provider": "github",
+        "schema_version": SCHEMA_VERSION,
+    }
+
+
+def _post_github_artifact(
+    *,
+    artifact: dict[str, Any],
+    kind: str,
+    repository: str,
+    pull_request: str,
+    token: str,
+) -> dict[str, Any]:
+    comment = _github_request(
+        f"repos/{repository}/issues/{pull_request}/comments",
+        token,
+        method="POST",
+        payload={"body": _provider_artifact_body(kind, artifact)},
+    )
+    if not isinstance(comment, dict):
+        raise HealthError(f"GitHub {kind} comment response is malformed")
+    return _github_comment_attestation(
+        artifact=artifact,
+        comment=comment,
+        kind=kind,
+        repository=repository,
+        pull_request=pull_request,
+    )
+
+
+def _refetch_github_artifact(
+    *,
+    retained: dict[str, Any],
+    kind: str,
+    repository: str,
+    pull_request: str,
+    token: str,
+) -> dict[str, Any]:
+    comment_id = retained.get("comment_id")
+    if not isinstance(comment_id, str) or not comment_id.isdigit():
+        raise HealthError(f"retained GitHub {kind} comment ID is invalid")
+    comment = _github_get(f"repos/{repository}/issues/comments/{comment_id}", token)
+    artifact = retained.get("artifact")
+    if not isinstance(comment, dict) or not isinstance(artifact, dict):
+        raise HealthError(f"retained GitHub {kind} attestation is malformed")
+    current = _github_comment_attestation(
+        artifact=artifact,
+        comment=comment,
+        kind=kind,
+        repository=repository,
+        pull_request=pull_request,
+    )
+    if current != retained:
+        raise HealthError(f"retained GitHub {kind} attestation is stale")
+    return current
+
+
+def _validate_comment_attestation(attestation: dict[str, Any], kind: str) -> dict[str, Any]:
+    artifact = attestation.get("artifact")
+    if (
+        set(attestation)
+        != {
+            "artifact",
+            "artifact_digest",
+            "comment_author",
+            "comment_author_id",
+            "comment_created_at",
+            "comment_id",
+            "comment_updated_at",
+            "provider",
+            "schema_version",
+        }
+        or attestation.get("schema_version") != SCHEMA_VERSION
+        or attestation.get("provider") != "github"
+        or not isinstance(artifact, dict)
+        or attestation.get("artifact_digest") != digest(artifact)
+        or not isinstance(attestation.get("comment_author"), str)
+        or not attestation["comment_author"]
+        or not isinstance(attestation.get("comment_author_id"), str)
+        or not attestation["comment_author_id"]
+        or not isinstance(attestation.get("comment_id"), str)
+        or not attestation["comment_id"].isdigit()
+        or attestation.get("comment_created_at") != attestation.get("comment_updated_at")
+        or not isinstance(attestation.get("comment_created_at"), str)
+    ):
+        raise HealthError(f"owner-emergency {kind} attestation is invalid")
+    _timestamp(attestation["comment_created_at"])
+    return artifact
+
+
+def _ruleset_configuration(ruleset: dict[str, Any]) -> dict[str, Any]:
+    required = {"bypass_actors", "conditions", "enforcement", "name", "rules", "target"}
+    if not required <= set(ruleset) or not isinstance(ruleset.get("rules"), list):
+        raise HealthError("GitHub main ruleset response is malformed")
+    return {field: ruleset[field] for field in sorted(required)}
+
+
+def _without_main_health_context(configuration: dict[str, Any]) -> dict[str, Any]:
+    updated = json.loads(json.dumps(configuration))
+    if not isinstance(updated, dict) or not isinstance(updated.get("rules"), list):
+        raise HealthError("GitHub main ruleset configuration is malformed")
+    matches = 0
+    for rule in updated["rules"]:
+        if rule.get("type") != "required_status_checks":
+            continue
+        checks = rule.get("parameters", {}).get("required_status_checks")
+        if not isinstance(checks, list):
+            raise HealthError("GitHub required-status-check ruleset is malformed")
+        retained = []
+        for check in checks:
+            if check.get("context") == MAIN_HEALTH_CONTEXT:
+                matches += 1
+            else:
+                retained.append(check)
+        rule["parameters"]["required_status_checks"] = retained
+    if matches != 1:
+        raise HealthError("main ruleset does not contain exactly one main-health context")
+    return updated
 
 
 def capture_github_approval(
@@ -798,6 +1062,212 @@ def capture_github_approval(
     )
 
 
+def capture_github_owner_admission(
+    *,
+    root: Path,
+    repository: str,
+    pull_request: str,
+    issue: str,
+    incident_digest: str,
+    expected_head_sha: str,
+    ruleset_id: str,
+    token: str,
+) -> dict[str, Any]:
+    """Fetch live owner-emergency state and anchor it before merge on GitHub."""
+    if (
+        not re.fullmatch(r"[^/\s]+/[^/\s]+", repository)
+        or not pull_request.isdigit()
+        or not ruleset_id.isdigit()
+        or not re.fullmatch(r"[0-9a-f]{64}", incident_digest)
+    ):
+        raise HealthError("invalid owner-admission provider identity")
+    _validate_sha(expected_head_sha)
+    validate_git_history(root)
+    pull = _github_get(f"repos/{repository}/pulls/{pull_request}", token)
+    if not isinstance(pull, dict) or pull.get("merged"):
+        raise HealthError("owner admission requires an unmerged GitHub pull request")
+    head_sha = pull.get("head", {}).get("sha", "")
+    if head_sha != expected_head_sha:
+        raise HealthError("owner admission does not bind the current pull request head")
+    files = _github_list(f"repos/{repository}/pulls/{pull_request}/files", token)
+    collaborators = _github_list(f"repos/{repository}/collaborators?affiliation=all", token)
+    invitations = _github_list(f"repos/{repository}/invitations", token)
+    manifest = _github_manifest(repository, head_sha, token)
+    author = pull.get("user", {}).get("login", "")
+    permission = _github_get(f"repos/{repository}/collaborators/{author}/permission", token)
+    ruleset = _github_get(f"repos/{repository}/rulesets/{ruleset_id}", token)
+    if not isinstance(permission, dict) or not isinstance(ruleset, dict):
+        raise HealthError("GitHub owner admission permission or ruleset is malformed")
+    repository_owner = repository.split("/", 1)[0]
+    if author.casefold() != repository_owner.casefold() or permission.get("permission") != "admin":
+        raise HealthError("owner admission requires the repository owner with admin permission")
+    admission = validate_owner_emergency_candidate(
+        root,
+        manifest=manifest,
+        pull=pull,
+        files=files,
+        collaborators=collaborators,
+        invitations=invitations,
+        expected_head_sha=expected_head_sha,
+        checked_at=_utc_now(),
+    )
+    ruleset_before = _ruleset_configuration(ruleset)
+    admission.update(
+        {
+            "ruleset_before": ruleset_before,
+            "ruleset_before_digest": digest(ruleset_before),
+            "ruleset_id": ruleset_id,
+        }
+    )
+    attestation = _post_github_artifact(
+        artifact=admission,
+        kind="owner admission",
+        repository=repository,
+        pull_request=pull_request,
+        token=token,
+    )
+    if (
+        attestation["comment_author"].casefold() != repository_owner.casefold()
+        or _timestamp(attestation["comment_created_at"]) < _timestamp(admission["checked_at"])
+        or _timestamp(attestation["comment_created_at"]) > _timestamp(manifest["expires_at"])
+    ):
+        raise HealthError("GitHub owner admission comment does not attest the owner decision")
+    return attestation
+
+
+def merge_github_owner_emergency(
+    *,
+    root: Path,
+    repository: str,
+    pull_request: str,
+    issue: str,
+    incident_digest: str,
+    admission_attestation: dict[str, Any],
+    token: str,
+) -> dict[str, Any]:
+    """Temporarily remove only main health, merge the exact head, and restore."""
+    validate_git_history(root)
+    attestation = _refetch_github_artifact(
+        retained=admission_attestation,
+        kind="owner admission",
+        repository=repository,
+        pull_request=pull_request,
+        token=token,
+    )
+    admission = attestation["artifact"]
+    if (
+        admission.get("repository") != repository
+        or admission.get("pull_request") != pull_request
+        or admission.get("issue") != issue
+        or admission.get("incident_digest") != incident_digest
+    ):
+        raise HealthError("owner admission does not bind the requested merge")
+    repository_owner = repository.split("/", 1)[0]
+    admitted_at = _timestamp(attestation["comment_created_at"])
+    merge_started_at = _timestamp(_utc_now())
+    if (
+        attestation["comment_author"].casefold() != repository_owner.casefold()
+        or _timestamp(admission["checked_at"]) > admitted_at
+        or admitted_at > merge_started_at
+        or (merge_started_at - admitted_at).total_seconds() > OWNER_ADMISSION_MAX_AGE_SECONDS
+    ):
+        raise HealthError("owner admission provider lease is invalid or expired")
+    pull = _github_get(f"repos/{repository}/pulls/{pull_request}", token)
+    if not isinstance(pull, dict) or pull.get("merged"):
+        raise HealthError("governed owner merge requires an unmerged pull request")
+    head_sha = pull.get("head", {}).get("sha", "")
+    manifest = _github_manifest(repository, head_sha, token)
+    if merge_started_at > _timestamp(manifest["expires_at"]):
+        raise HealthError("owner-emergency manifest expired before governed merge")
+    live_admission = validate_owner_emergency_candidate(
+        root,
+        manifest=manifest,
+        pull=pull,
+        files=_github_list(f"repos/{repository}/pulls/{pull_request}/files", token),
+        collaborators=_github_list(f"repos/{repository}/collaborators?affiliation=all", token),
+        invitations=_github_list(f"repos/{repository}/invitations", token),
+        expected_head_sha=admission["head_sha"],
+        checked_at=_utc_now(),
+    )
+    for field, value in live_admission.items():
+        if field != "checked_at" and admission.get(field) != value:
+            raise HealthError(f"owner admission is stale at {field}")
+    ruleset_id = admission.get("ruleset_id")
+    if not isinstance(ruleset_id, str) or not ruleset_id.isdigit():
+        raise HealthError("owner admission ruleset ID is invalid")
+    ruleset_response = _github_get(f"repos/{repository}/rulesets/{ruleset_id}", token)
+    if not isinstance(ruleset_response, dict):
+        raise HealthError("GitHub main ruleset response is malformed")
+    ruleset_before = _ruleset_configuration(ruleset_response)
+    if ruleset_before != admission.get("ruleset_before") or digest(ruleset_before) != admission.get(
+        "ruleset_before_digest"
+    ):
+        raise HealthError("GitHub main ruleset changed after owner admission")
+    ruleset_during = _without_main_health_context(ruleset_before)
+    restored: dict[str, Any] | None = None
+    merge_response: Any = None
+    try:
+        _github_request(
+            f"repos/{repository}/rulesets/{ruleset_id}",
+            token,
+            method="PUT",
+            payload=ruleset_during,
+        )
+        during_response = _github_get(f"repos/{repository}/rulesets/{ruleset_id}", token)
+        if (
+            not isinstance(during_response, dict)
+            or _ruleset_configuration(during_response) != ruleset_during
+        ):
+            raise HealthError("GitHub main ruleset exception was not applied exactly")
+        merge_response = _github_request(
+            f"repos/{repository}/pulls/{pull_request}/merge",
+            token,
+            method="PUT",
+            payload={"merge_method": "merge", "sha": head_sha},
+        )
+        if not isinstance(merge_response, dict) or merge_response.get("merged") is not True:
+            raise HealthError("GitHub rejected the governed owner-emergency merge")
+    finally:
+        _github_request(
+            f"repos/{repository}/rulesets/{ruleset_id}",
+            token,
+            method="PUT",
+            payload=ruleset_before,
+        )
+        restored_response = _github_get(f"repos/{repository}/rulesets/{ruleset_id}", token)
+        if isinstance(restored_response, dict):
+            restored = _ruleset_configuration(restored_response)
+        if restored != ruleset_before:
+            raise HealthError("GitHub main ruleset was not restored exactly")
+    merged_pull = _github_get(f"repos/{repository}/pulls/{pull_request}", token)
+    if not isinstance(merged_pull, dict) or not merged_pull.get("merged"):
+        raise HealthError("GitHub owner-emergency pull request is not merged")
+    exception = {
+        "admission_comment_id": attestation["comment_id"],
+        "admission_digest": digest(attestation),
+        "after": restored,
+        "after_digest": digest(restored),
+        "before": ruleset_before,
+        "before_digest": digest(ruleset_before),
+        "during": ruleset_during,
+        "during_digest": digest(ruleset_during),
+        "head_sha": head_sha,
+        "merge_commit_sha": merged_pull["merge_commit_sha"],
+        "merged_at": merged_pull["merged_at"],
+        "pull_request": pull_request,
+        "repository": repository,
+        "ruleset_id": ruleset_id,
+        "schema_version": SCHEMA_VERSION,
+    }
+    return _post_github_artifact(
+        artifact=exception,
+        kind="ruleset exception",
+        repository=repository,
+        pull_request=pull_request,
+        token=token,
+    )
+
+
 def capture_github_owner_emergency(
     *,
     repository: str,
@@ -805,6 +1275,7 @@ def capture_github_owner_emergency(
     issue: str,
     incident_digest: str,
     admission: dict[str, Any],
+    ruleset_exception: dict[str, Any],
     token: str,
 ) -> dict[str, Any]:
     """Fetch exact provider state for a merged owner-emergency repair."""
@@ -831,38 +1302,31 @@ def capture_github_owner_emergency(
     head_sha = pull.get("head", {}).get("sha", "")
     merge_sha = pull.get("merge_commit_sha", "")
     author = pull.get("user", {}).get("login", "")
-    manifest_response = _github_get(
-        f"repos/{repository}/contents/docs/status/main-health-owner-emergency.json?ref={head_sha}",
-        token,
+    manifest = _github_manifest(repository, head_sha, token)
+    collaborators = _github_list(f"repos/{repository}/collaborators?affiliation=all", token)
+    invitations = _github_list(f"repos/{repository}/invitations", token)
+    admission = _refetch_github_artifact(
+        retained=admission,
+        kind="owner admission",
+        repository=repository,
+        pull_request=pull_request,
+        token=token,
     )
-    try:
-        manifest = json.loads(base64.b64decode(manifest_response["content"], validate=False))
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise HealthError("GitHub owner-emergency manifest response is malformed") from exc
-    if not isinstance(manifest, dict):
-        raise HealthError("GitHub owner-emergency manifest is not a JSON object")
-    collaborators: list[dict[str, Any]] = []
-    invitations: list[dict[str, Any]] = []
-    for endpoint, target in (
-        ("collaborators?affiliation=all", collaborators),
-        ("invitations", invitations),
-    ):
-        page = 1
-        while True:
-            separator = "&" if "?" in endpoint else "?"
-            batch = _github_get(
-                f"repos/{repository}/{endpoint}{separator}per_page=100&page={page}", token
-            )
-            if not isinstance(batch, list):
-                raise HealthError("GitHub owner-emergency collaboration response is malformed")
-            target.extend(batch)
-            if len(batch) < 100:
-                break
-            page += 1
+    ruleset_exception = _refetch_github_artifact(
+        retained=ruleset_exception,
+        kind="ruleset exception",
+        repository=repository,
+        pull_request=pull_request,
+        token=token,
+    )
+    ruleset_id = admission.get("artifact", {}).get("ruleset_id", "")
+    current_ruleset = _github_get(f"repos/{repository}/rulesets/{ruleset_id}", token)
     head_commit = _github_get(f"repos/{repository}/git/commits/{head_sha}", token)
     merge_commit = _github_get(f"repos/{repository}/git/commits/{merge_sha}", token)
     permission = _github_get(f"repos/{repository}/collaborators/{author}/permission", token)
-    if not all(isinstance(item, dict) for item in (head_commit, merge_commit, permission)):
+    if not all(
+        isinstance(item, dict) for item in (head_commit, merge_commit, permission, current_ruleset)
+    ):
         raise HealthError("GitHub owner-emergency merge or permission responses are malformed")
     return github_owner_emergency_evidence(
         pull=pull,
@@ -871,6 +1335,8 @@ def capture_github_owner_emergency(
         merge_commit=merge_commit,
         manifest=manifest,
         admission=admission,
+        ruleset_exception=ruleset_exception,
+        current_ruleset=_ruleset_configuration(current_ruleset),
         collaborators=collaborators,
         invitations=invitations,
         captured_at=_utc_now(),
@@ -1018,6 +1484,8 @@ def _validate_repair_binding(
         "reviewer",
         "reviewer_id",
         "reviewer_permission",
+        "ruleset_exception",
+        "ruleset_exception_digest",
         "schema_version",
         "state",
     }
@@ -1061,15 +1529,26 @@ def _validate_repair_binding(
             or approval_evidence["manifest_digest"] is not None
             or approval_evidence["collaborators"] is not None
             or approval_evidence["pending_invitations"] is not None
+            or approval_evidence["ruleset_exception"] is not None
+            or approval_evidence["ruleset_exception_digest"] is not None
         ):
             raise HealthError("independent repair evidence cannot carry an emergency manifest")
     else:
         if not isinstance(manifest, dict):
             raise HealthError("owner-emergency provider evidence is missing its manifest")
-        admission = approval_evidence["admission"]
+        admission_attestation = approval_evidence["admission"]
+        ruleset_attestation = approval_evidence["ruleset_exception"]
         if (
-            not isinstance(admission, dict)
-            or set(admission)
+            not isinstance(admission_attestation, dict)
+            or not isinstance(ruleset_attestation, dict)
+            or approval_evidence["admission_digest"] != digest(admission_attestation)
+            or approval_evidence["ruleset_exception_digest"] != digest(ruleset_attestation)
+        ):
+            raise HealthError("owner-emergency evidence is missing provider attestations")
+        admission = _validate_comment_attestation(admission_attestation, "owner admission")
+        ruleset_exception = _validate_comment_attestation(ruleset_attestation, "ruleset exception")
+        if (
+            set(admission)
             != {
                 "authorization_mode",
                 "base_sha",
@@ -1084,13 +1563,15 @@ def _validate_repair_binding(
                 "pending_invitations",
                 "pull_request",
                 "repository",
+                "ruleset_before",
+                "ruleset_before_digest",
+                "ruleset_id",
                 "schema_version",
                 "status",
             }
             or admission.get("schema_version") != SCHEMA_VERSION
             or admission.get("status") != "repair-candidate"
             or admission.get("authorization_mode") != "single-maintainer-owner-emergency"
-            or approval_evidence["admission_digest"] != digest(admission)
         ):
             raise HealthError("owner-emergency evidence is missing its pre-merge admission")
         _validate_owner_manifest(manifest)
@@ -1160,6 +1641,34 @@ def _validate_repair_binding(
         admission_checked_at = admission.get("checked_at")
         if not isinstance(admission_checked_at, str):
             raise HealthError("owner-emergency admission timestamp is invalid")
+        expected_exception_fields = {
+            "admission_comment_id",
+            "admission_digest",
+            "after",
+            "after_digest",
+            "before",
+            "before_digest",
+            "during",
+            "during_digest",
+            "head_sha",
+            "merge_commit_sha",
+            "merged_at",
+            "pull_request",
+            "repository",
+            "ruleset_id",
+            "schema_version",
+        }
+        exception_before = ruleset_exception.get("before")
+        exception_during = ruleset_exception.get("during")
+        exception_after = ruleset_exception.get("after")
+        if (
+            not isinstance(exception_before, dict)
+            or not isinstance(exception_during, dict)
+            or not isinstance(exception_after, dict)
+        ):
+            raise HealthError("owner-emergency ruleset snapshots are malformed")
+        admitted_at = _timestamp(admission_attestation["comment_created_at"])
+        ruleset_recorded_at = _timestamp(ruleset_attestation["comment_created_at"])
         if (
             admission.get("collaborators") != collaborators
             or admission.get("pending_invitations") != invitations
@@ -1172,8 +1681,31 @@ def _validate_repair_binding(
             or admission.get("issue") != authorization["issue"]
             or admission.get("pull_request") != authorization["pull_request"]
             or admission.get("repository") != authorization["repository"]
-            or _timestamp(admission_checked_at) > decision_at
+            or admission.get("ruleset_before_digest") != digest(admission.get("ruleset_before"))
+            or admission_attestation["comment_author"].casefold() != repository_owner.casefold()
+            or ruleset_attestation["comment_author"].casefold() != repository_owner.casefold()
+            or _timestamp(admission_checked_at) > admitted_at
+            or admitted_at > decision_at
+            or (decision_at - admitted_at).total_seconds() > OWNER_ADMISSION_MAX_AGE_SECONDS
             or decision_at > _timestamp(manifest["expires_at"])
+            or decision_at > ruleset_recorded_at
+            or ruleset_recorded_at > captured_at
+            or set(ruleset_exception) != expected_exception_fields
+            or ruleset_exception.get("schema_version") != SCHEMA_VERSION
+            or ruleset_exception.get("admission_comment_id") != admission_attestation["comment_id"]
+            or ruleset_exception.get("admission_digest") != digest(admission_attestation)
+            or ruleset_exception.get("before") != admission.get("ruleset_before")
+            or ruleset_exception.get("before_digest") != digest(exception_before)
+            or exception_during != _without_main_health_context(exception_before)
+            or ruleset_exception.get("during_digest") != digest(exception_during)
+            or exception_after != exception_before
+            or ruleset_exception.get("after_digest") != digest(exception_after)
+            or ruleset_exception.get("head_sha") != approval_evidence["head_sha"]
+            or ruleset_exception.get("merge_commit_sha") != approval_evidence["merge_commit_sha"]
+            or ruleset_exception.get("merged_at") != approval_evidence["decision_at"]
+            or ruleset_exception.get("pull_request") != authorization["pull_request"]
+            or ruleset_exception.get("repository") != authorization["repository"]
+            or ruleset_exception.get("ruleset_id") != admission.get("ruleset_id")
         ):
             raise HealthError("owner-emergency admission does not bracket the exact merge")
     if (
@@ -1699,29 +2231,61 @@ def _expected_git_additions(root: Path) -> list[set[str]]:
     return additions_by_generation
 
 
-def _validate_git_snapshot(root: Path, commit: str, generation: int) -> None:
-    archive_bytes = _git_output(root, "archive", "--format=tar", commit)
-    with tempfile.TemporaryDirectory(prefix="main-health-snapshot-") as directory:
-        snapshot = Path(directory)
-        with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:") as archive:
-            for member in archive.getmembers():
-                relative = Path(member.name)
-                if relative.is_absolute() or ".." in relative.parts:
-                    raise HealthError("retained state Git snapshot contains an unsafe path")
-                target = snapshot / relative
-                if member.isdir():
-                    target.mkdir(parents=True, exist_ok=True)
-                    continue
-                if not member.isfile():
-                    raise HealthError("retained state Git snapshot contains a non-regular entry")
-                source = archive.extractfile(member)
-                if source is None:
-                    raise HealthError("retained state Git snapshot file cannot be read")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(source.read())
-        validated = validate_history(snapshot)
-        if validated["generation"] != generation:
-            raise HealthError("retained state Git commit does not contain its exact generation")
+def _expected_git_states(root: Path) -> list[dict[str, Any]]:
+    activation = _read(root / "activation.json")
+    state: dict[str, Any] = {
+        "activation_digest": digest(activation),
+        "first_bad_sha": None,
+        "generation": 0,
+        "history_head": None,
+        "incident_digest": None,
+        "last_good_sha": None,
+        "resolution_digest": None,
+        "schema_version": SCHEMA_VERSION,
+        "status": "not_measured",
+        "updated_at": activation["activated_at"],
+    }
+    states: list[dict[str, Any]] = []
+    for history_path in sorted((root / "history").glob("*.json")):
+        entry = _read(history_path)
+        result = _read(root / "results" / f"{entry['result_digest']}.json")
+        first_bad_sha = state["first_bad_sha"]
+        incident_digest = state["incident_digest"]
+        last_good_sha = state["last_good_sha"]
+        resolution_digest = state["resolution_digest"]
+        if entry["cadence"] == "repair-resolution":
+            first_bad_sha = None
+            incident_digest = None
+            last_good_sha = entry["sha"]
+            resolution_digest = entry["resolution_digest"]
+        elif result["conclusion"] != PASS and state["status"] != "red":
+            incident = {
+                "failing_obligations": sorted(
+                    item["id"] for item in result["obligations"] if item["result"] != PASS
+                ),
+                "first_bad_sha": result["sha"],
+                "opened_at": result["recorded_at"],
+                "result_digest": entry["result_digest"],
+                "schema_version": SCHEMA_VERSION,
+                "status": "open",
+            }
+            first_bad_sha = result["sha"]
+            incident_digest = digest(incident)
+        elif entry["status"] == "green":
+            last_good_sha = entry["sha"]
+        state = {
+            **state,
+            "first_bad_sha": first_bad_sha,
+            "generation": entry["generation"],
+            "history_head": digest(entry),
+            "incident_digest": incident_digest,
+            "last_good_sha": last_good_sha,
+            "resolution_digest": resolution_digest,
+            "status": entry["status"],
+            "updated_at": entry["recorded_at"],
+        }
+        states.append(state)
+    return states
 
 
 def validate_git_history(root: Path) -> dict[str, Any]:
@@ -1735,6 +2299,7 @@ def validate_git_history(root: Path) -> dict[str, Any]:
         raise HealthError("retained state Git history is empty")
     current_state = validate_history(root)
     expected_additions = _expected_git_additions(root)
+    expected_states = _expected_git_states(root)
     if len(expected_additions) != len(commits):
         raise HealthError("retained state Git history does not match its generations")
     for ordinal, commit in enumerate(commits, start=1):
@@ -1747,9 +2312,8 @@ def validate_git_history(root: Path) -> dict[str, Any]:
             state = json.loads(_git_output(root, "show", f"{commit}:state.json"))
         except json.JSONDecodeError as exc:
             raise HealthError("retained state Git commit has malformed state") from exc
-        if not isinstance(state, dict) or state.get("generation") != ordinal:
-            raise HealthError("retained state Git commit does not add exactly one generation")
-        _validate_git_snapshot(root, commit, ordinal)
+        if not isinstance(state, dict) or state != expected_states[ordinal - 1]:
+            raise HealthError("retained state Git commit has an invalid generation pointer")
         if ordinal == 1:
             actual = set(
                 _git_output(root, "ls-tree", "-r", "--name-only", "-z", commit).decode().split("\0")
@@ -1991,25 +2555,6 @@ def _json_file_argument(value: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
-def _json_object_lines_file_argument(value: str) -> list[dict[str, Any]]:
-    try:
-        lines = Path(value).read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        raise argparse.ArgumentTypeError(f"cannot read JSON-lines file {value}: {exc}") from exc
-    parsed: list[dict[str, Any]] = []
-    for line in lines:
-        if not line:
-            continue
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise argparse.ArgumentTypeError(f"cannot read JSON-lines file {value}: {exc}") from exc
-        if not isinstance(item, dict):
-            raise argparse.ArgumentTypeError("expected one JSON object per line")
-        parsed.append(item)
-    return parsed
-
-
 def _validate_current_provider_capture(retained: dict[str, Any], current: dict[str, Any]) -> None:
     if set(retained) != set(current):
         raise HealthError("retained and current provider evidence shapes differ")
@@ -2037,6 +2582,7 @@ def _parser() -> argparse.ArgumentParser:
     resolve_parser.add_argument("--repaired-main-json", type=_json_argument, required=True)
     resolve_parser.add_argument("--expected-generation", type=int, required=True)
     resolve_parser.add_argument("--owner-admission-json", type=_json_file_argument)
+    resolve_parser.add_argument("--owner-ruleset-exception-json", type=_json_file_argument)
 
     approval_parser = subparsers.add_parser("capture-approval")
     approval_parser.add_argument("--repository", required=True)
@@ -2045,12 +2591,30 @@ def _parser() -> argparse.ArgumentParser:
     approval_parser.add_argument("--issue", required=True)
     approval_parser.add_argument("--incident-digest", required=True)
 
+    admission_parser = subparsers.add_parser("capture-owner-admission")
+    admission_parser.add_argument("--root", type=Path, required=True)
+    admission_parser.add_argument("--repository", required=True)
+    admission_parser.add_argument("--pull-request", required=True)
+    admission_parser.add_argument("--issue", required=True)
+    admission_parser.add_argument("--incident-digest", required=True)
+    admission_parser.add_argument("--expected-head-sha", required=True)
+    admission_parser.add_argument("--ruleset-id", required=True)
+
+    merge_parser = subparsers.add_parser("merge-owner-emergency")
+    merge_parser.add_argument("--root", type=Path, required=True)
+    merge_parser.add_argument("--repository", required=True)
+    merge_parser.add_argument("--pull-request", required=True)
+    merge_parser.add_argument("--issue", required=True)
+    merge_parser.add_argument("--incident-digest", required=True)
+    merge_parser.add_argument("--admission-json", type=_json_file_argument, required=True)
+
     owner_parser = subparsers.add_parser("capture-owner-emergency")
     owner_parser.add_argument("--repository", required=True)
     owner_parser.add_argument("--pull-request", required=True)
     owner_parser.add_argument("--issue", required=True)
     owner_parser.add_argument("--incident-digest", required=True)
     owner_parser.add_argument("--admission-json", type=_json_file_argument, required=True)
+    owner_parser.add_argument("--ruleset-exception-json", type=_json_file_argument, required=True)
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", type=Path, required=True)
@@ -2063,21 +2627,6 @@ def _parser() -> argparse.ArgumentParser:
     candidate_parser.add_argument("--base-sha", required=True)
     candidate_parser.add_argument("--checked-at", required=True)
     candidate_parser.add_argument("--max-age-seconds", type=int, required=True)
-
-    repair_candidate_parser = subparsers.add_parser("repair-candidate")
-    repair_candidate_parser.add_argument("--root", type=Path, required=True)
-    repair_candidate_parser.add_argument("--manifest-json", type=_json_argument, required=True)
-    repair_candidate_parser.add_argument("--pull-json", type=_json_file_argument, required=True)
-    repair_candidate_parser.add_argument(
-        "--files-jsonl", type=_json_object_lines_file_argument, required=True
-    )
-    repair_candidate_parser.add_argument(
-        "--collaborators-jsonl", type=_json_object_lines_file_argument, required=True
-    )
-    repair_candidate_parser.add_argument(
-        "--invitations-jsonl", type=_json_object_lines_file_argument, required=True
-    )
-    repair_candidate_parser.add_argument("--expected-head-sha", required=True)
 
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--root", type=Path, required=True)
@@ -2113,14 +2662,15 @@ def main() -> int:
                     token=token,
                 )
             elif authorization.get("authorization_mode") == "single-maintainer-owner-emergency":
-                if args.owner_admission_json is None:
-                    raise HealthError("owner emergency resolution requires pre-merge admission")
+                if args.owner_admission_json is None or args.owner_ruleset_exception_json is None:
+                    raise HealthError("owner emergency resolution requires provider attestations")
                 current_evidence = capture_github_owner_emergency(
                     repository=authorization["repository"],
                     pull_request=authorization["pull_request"],
                     issue=authorization["issue"],
                     incident_digest=authorization["incident_digest"],
                     admission=args.owner_admission_json,
+                    ruleset_exception=args.owner_ruleset_exception_json,
                     token=token,
                 )
             else:
@@ -2156,6 +2706,34 @@ def main() -> int:
                 issue=args.issue,
                 incident_digest=args.incident_digest,
                 admission=args.admission_json,
+                ruleset_exception=args.ruleset_exception_json,
+                token=token,
+            )
+        elif args.command == "capture-owner-admission":
+            token = os.environ.get("GITHUB_TOKEN")
+            if not token:
+                raise HealthError("GITHUB_TOKEN is required for provider authentication")
+            result = capture_github_owner_admission(
+                root=args.root,
+                repository=args.repository,
+                pull_request=args.pull_request,
+                issue=args.issue,
+                incident_digest=args.incident_digest,
+                expected_head_sha=args.expected_head_sha,
+                ruleset_id=args.ruleset_id,
+                token=token,
+            )
+        elif args.command == "merge-owner-emergency":
+            token = os.environ.get("GITHUB_TOKEN")
+            if not token:
+                raise HealthError("GITHUB_TOKEN is required for provider authentication")
+            result = merge_github_owner_emergency(
+                root=args.root,
+                repository=args.repository,
+                pull_request=args.pull_request,
+                issue=args.issue,
+                incident_digest=args.incident_digest,
+                admission_attestation=args.admission_json,
                 token=token,
             )
         elif args.command == "validate":
@@ -2169,18 +2747,6 @@ def main() -> int:
                 base_sha=args.base_sha,
                 checked_at=args.checked_at,
                 max_age_seconds=args.max_age_seconds,
-            )
-        elif args.command == "repair-candidate":
-            validate_git_history(args.root)
-            result = validate_owner_emergency_candidate(
-                args.root,
-                manifest=args.manifest_json,
-                pull=args.pull_json,
-                files=args.files_jsonl,
-                collaborators=args.collaborators_jsonl,
-                invitations=args.invitations_jsonl,
-                expected_head_sha=args.expected_head_sha,
-                checked_at=_utc_now(),
             )
         else:
             state = _load_state(args.root)

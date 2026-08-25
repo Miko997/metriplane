@@ -32,6 +32,8 @@
   "reviewer": "independent-reviewer",
   "reviewer_id": "200",
   "reviewer_permission": "write",
+  "ruleset_exception": null,
+  "ruleset_exception_digest": null,
   "schema_version": 1,
   "state": "APPROVED"
 }

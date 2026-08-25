@@ -8,13 +8,16 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tools import stop_the_line
 from tools.baseline_snapshot import SnapshotError, _internal_validate
 from tools.stop_the_line import (
     HealthError,
     _github_changed_paths,
+    _validate_current_provider_capture,
     canonical_bytes,
     digest,
     github_approval_evidence,
@@ -63,7 +66,24 @@ def _owner_admission(
     checked_at: str = "2026-08-25T21:44:00Z",
 ) -> dict[str, object]:
     collaborators = [{"id": "100", "login": "Miko997", "permission": "admin"}]
-    return {
+    ruleset = {
+        "bypass_actors": [],
+        "conditions": {"ref_name": {"exclude": [], "include": ["~DEFAULT_BRANCH"]}},
+        "enforcement": "active",
+        "name": "Protect main",
+        "rules": [
+            {
+                "parameters": {
+                    "do_not_enforce_on_create": False,
+                    "required_status_checks": [{"context": "Main health / required"}],
+                    "strict_required_status_checks_policy": True,
+                },
+                "type": "required_status_checks",
+            }
+        ],
+        "target": "branch",
+    }
+    artifact = {
         "authorization_mode": "single-maintainer-owner-emergency",
         "base_sha": manifest["base_sha"],
         "changed_paths": changed_paths,
@@ -77,9 +97,61 @@ def _owner_admission(
         "pending_invitations": [],
         "pull_request": str(manifest["pull_request"]),
         "repository": manifest["repository"],
+        "ruleset_before": ruleset,
+        "ruleset_before_digest": digest(ruleset),
+        "ruleset_id": "1000",
         "schema_version": 1,
         "status": "repair-candidate",
     }
+    return {
+        "artifact": artifact,
+        "artifact_digest": digest(artifact),
+        "comment_author": "Miko997",
+        "comment_author_id": "100",
+        "comment_created_at": "2026-08-25T21:44:30Z",
+        "comment_id": "2000",
+        "comment_updated_at": "2026-08-25T21:44:30Z",
+        "provider": "github",
+        "schema_version": 1,
+    }
+
+
+def _ruleset_exception(admission: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+    admission_artifact = admission["artifact"]
+    assert isinstance(admission_artifact, dict)
+    before = admission_artifact["ruleset_before"]
+    assert isinstance(before, dict)
+    during = copy.deepcopy(before)
+    during["rules"][0]["parameters"]["required_status_checks"] = []
+    artifact = {
+        "admission_comment_id": admission["comment_id"],
+        "admission_digest": digest(admission),
+        "after": before,
+        "after_digest": digest(before),
+        "before": before,
+        "before_digest": digest(before),
+        "during": during,
+        "during_digest": digest(during),
+        "head_sha": REVIEWED_SHA,
+        "merge_commit_sha": REPAIR_SHA,
+        "merged_at": "2026-08-25T21:45:00Z",
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+        "ruleset_id": "1000",
+        "schema_version": 1,
+    }
+    attestation = {
+        "artifact": artifact,
+        "artifact_digest": digest(artifact),
+        "comment_author": "Miko997",
+        "comment_author_id": "100",
+        "comment_created_at": "2026-08-25T21:45:30Z",
+        "comment_id": "2001",
+        "comment_updated_at": "2026-08-25T21:45:30Z",
+        "provider": "github",
+        "schema_version": 1,
+    }
+    return attestation, before
 
 
 def test_candidate_result_never_mutates_global_state(tmp_path: Path) -> None:
@@ -548,6 +620,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         "schema_version": 1,
     }
     admission = _owner_admission(manifest, changed_paths=["metriplane/fix.py", "tests/test_fix.py"])
+    ruleset_exception, current_ruleset = _ruleset_exception(admission)
     pull = {
         "base": {"sha": BAD_SHA},
         "body": (
@@ -577,6 +650,8 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         },
         manifest=manifest,
         admission=admission,
+        ruleset_exception=ruleset_exception,
+        current_ruleset=current_ruleset,
         collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
         invitations=[],
         captured_at="2026-08-25T21:46:00Z",
@@ -632,7 +707,10 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             expected_generation=4,
         )
     late_admission_evidence = copy.deepcopy(evidence)
-    late_admission_evidence["admission"]["checked_at"] = "2026-08-25T21:46:00Z"
+    late_admission_evidence["admission"]["artifact"]["checked_at"] = "2026-08-25T21:46:00Z"
+    late_admission_evidence["admission"]["artifact_digest"] = digest(
+        late_admission_evidence["admission"]["artifact"]
+    )
     late_admission_evidence["admission_digest"] = digest(late_admission_evidence["admission"])
     with pytest.raises(HealthError, match="bracket"):
         resolve(
@@ -646,8 +724,46 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             resolved_at="2026-08-25T22:00:00Z",
             expected_generation=4,
         )
+    edited_admission_evidence = copy.deepcopy(evidence)
+    edited_admission_evidence["admission"]["comment_updated_at"] = "2026-08-25T21:45:01Z"
+    edited_admission_evidence["admission_digest"] = digest(edited_admission_evidence["admission"])
+    with pytest.raises(HealthError, match="attestation"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(edited_admission_evidence),
+            },
+            approval_evidence=edited_admission_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    stale_lease_evidence = copy.deepcopy(evidence)
+    stale_lease_evidence["admission"]["artifact"]["checked_at"] = "2026-08-25T21:29:59Z"
+    stale_lease_evidence["admission"]["artifact_digest"] = digest(
+        stale_lease_evidence["admission"]["artifact"]
+    )
+    stale_lease_evidence["admission"]["comment_created_at"] = "2026-08-25T21:30:00Z"
+    stale_lease_evidence["admission"]["comment_updated_at"] = "2026-08-25T21:30:00Z"
+    stale_lease_evidence["admission_digest"] = digest(stale_lease_evidence["admission"])
+    with pytest.raises(HealthError, match="bracket"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(stale_lease_evidence),
+            },
+            approval_evidence=stale_lease_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
     invalid_admission_evidence = copy.deepcopy(evidence)
-    invalid_admission_evidence["admission"]["status"] = "approved"
+    invalid_admission_evidence["admission"]["artifact"]["status"] = "approved"
+    invalid_admission_evidence["admission"]["artifact_digest"] = digest(
+        invalid_admission_evidence["admission"]["artifact"]
+    )
     invalid_admission_evidence["admission_digest"] = digest(invalid_admission_evidence["admission"])
     with pytest.raises(HealthError, match="pre-merge admission"):
         resolve(
@@ -662,9 +778,12 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             expected_generation=4,
         )
     changed_inventory_evidence = copy.deepcopy(evidence)
-    changed_inventory_evidence["admission"]["pending_invitations"] = [
+    changed_inventory_evidence["admission"]["artifact"]["pending_invitations"] = [
         {"id": "300", "invitee": "former-reader", "permission": "read"}
     ]
+    changed_inventory_evidence["admission"]["artifact_digest"] = digest(
+        changed_inventory_evidence["admission"]["artifact"]
+    )
     changed_inventory_evidence["admission_digest"] = digest(changed_inventory_evidence["admission"])
     with pytest.raises(HealthError, match="bracket"):
         resolve(
@@ -674,6 +793,24 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
                 "approval_digest": digest(changed_inventory_evidence),
             },
             approval_evidence=changed_inventory_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    unrestored_ruleset_evidence = copy.deepcopy(evidence)
+    exception = unrestored_ruleset_evidence["ruleset_exception"]
+    exception["artifact"]["after"] = exception["artifact"]["during"]
+    exception["artifact"]["after_digest"] = digest(exception["artifact"]["after"])
+    exception["artifact_digest"] = digest(exception["artifact"])
+    unrestored_ruleset_evidence["ruleset_exception_digest"] = digest(exception)
+    with pytest.raises(HealthError, match="bracket"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(unrestored_ruleset_evidence),
+            },
+            approval_evidence=unrestored_ruleset_evidence,
             repaired_main=repaired_main,
             resolved_at="2026-08-25T22:00:00Z",
             expected_generation=4,
@@ -702,6 +839,8 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             },
             manifest=manifest,
             admission=admission,
+            ruleset_exception=ruleset_exception,
+            current_ruleset=current_ruleset,
             collaborators=[{"id": 100, "login": "Miko997", "role_name": "admin"}],
             invitations=[],
             captured_at="2026-08-25T21:46:00Z",
@@ -726,6 +865,8 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             },
             manifest=manifest,
             admission=admission,
+            ruleset_exception=ruleset_exception,
+            current_ruleset=current_ruleset,
             collaborators=[
                 {"id": 100, "login": "Miko997", "role_name": "admin"},
                 {
@@ -758,6 +899,245 @@ def test_provider_evidence_rejects_reviewed_to_merge_tree_drift(tmp_path: Path) 
             resolved_at="2026-08-25T22:00:00Z",
             expected_generation=4,
         )
+
+
+def test_provider_refetch_rejects_field_drift_and_backward_time() -> None:
+    retained = {"captured_at": "2026-08-25T21:00:00Z", "head_sha": REVIEWED_SHA}
+    with pytest.raises(HealthError, match="stale at head_sha"):
+        _validate_current_provider_capture(
+            retained,
+            {"captured_at": "2026-08-25T21:01:00Z", "head_sha": GOOD_SHA},
+        )
+    with pytest.raises(HealthError, match="predates"):
+        _validate_current_provider_capture(
+            retained,
+            {"captured_at": "2026-08-25T20:59:00Z", "head_sha": REVIEWED_SHA},
+        )
+
+
+def test_owner_resolver_cli_refetches_both_provider_attestations(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    admission = {"comment_id": "10"}
+    ruleset_exception = {"comment_id": "11"}
+    retained = {"captured_at": "2026-08-25T21:00:00Z", "head_sha": REVIEWED_SHA}
+    authorization = {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "incident_digest": "f" * 64,
+        "issue": "MET-999",
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+    }
+    args = SimpleNamespace(
+        admission_json=None,
+        approval_evidence_json=retained,
+        authorization_json=authorization,
+        command="resolve",
+        expected_generation=4,
+        owner_admission_json=admission,
+        owner_ruleset_exception_json=ruleset_exception,
+        repaired_main_json={"sha": REPAIR_SHA},
+        root=Path("state"),
+    )
+    seen: dict[str, object] = {}
+
+    def capture(**kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {"captured_at": "2026-08-25T21:01:00Z", "head_sha": REVIEWED_SHA}
+
+    monkeypatch.setattr(stop_the_line, "_parser", lambda: SimpleNamespace(parse_args=lambda: args))
+    monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
+    monkeypatch.setattr(stop_the_line, "capture_github_owner_emergency", capture)
+    monkeypatch.setattr(stop_the_line, "resolve", lambda *_args, **_kwargs: {"status": "green"})
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+
+    assert stop_the_line.main() == 0
+    assert seen["admission"] is admission
+    assert seen["ruleset_exception"] is ruleset_exception
+    assert json.loads(capsys.readouterr().out) == {"status": "green"}
+
+
+def test_owner_admission_fetches_provider_state_and_publishes_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    pull = {
+        "head": {"sha": REVIEWED_SHA},
+        "merged": False,
+        "user": {"login": "Miko997"},
+    }
+    ruleset = {
+        "bypass_actors": [],
+        "conditions": {},
+        "enforcement": "active",
+        "name": "Protect main",
+        "rules": [],
+        "target": "branch",
+    }
+    manifest = {"expires_at": "2026-08-26T22:00:00Z"}
+    candidate = {
+        "checked_at": "2026-08-25T21:44:00Z",
+        "head_sha": REVIEWED_SHA,
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+    }
+
+    def get(path: str, _token: str) -> object:
+        calls.append(path)
+        if path.endswith("/pulls/123"):
+            return pull
+        if path.endswith("/collaborators/Miko997/permission"):
+            return {"permission": "admin"}
+        if path.endswith("/rulesets/1000"):
+            return ruleset
+        raise AssertionError(path)
+
+    def list_provider(path: str, _token: str) -> list[dict[str, object]]:
+        calls.append(path)
+        return []
+
+    def publish(**kwargs: object) -> dict[str, object]:
+        artifact = kwargs["artifact"]
+        assert isinstance(artifact, dict)
+        assert artifact["ruleset_before"] == ruleset
+        return {
+            "artifact": artifact,
+            "artifact_digest": digest(artifact),
+            "comment_author": "Miko997",
+            "comment_author_id": "100",
+            "comment_created_at": "2026-08-25T21:44:01Z",
+            "comment_id": "2000",
+            "comment_updated_at": "2026-08-25T21:44:01Z",
+            "provider": "github",
+            "schema_version": 1,
+        }
+
+    monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
+    monkeypatch.setattr(stop_the_line, "_github_get", get)
+    monkeypatch.setattr(stop_the_line, "_github_list", list_provider)
+    monkeypatch.setattr(stop_the_line, "_github_manifest", lambda *_args: manifest)
+    monkeypatch.setattr(
+        stop_the_line, "validate_owner_emergency_candidate", lambda *_args, **_kwargs: candidate
+    )
+    monkeypatch.setattr(stop_the_line, "_post_github_artifact", publish)
+
+    result = stop_the_line.capture_github_owner_admission(
+        root=Path("state"),
+        repository="Miko997/metriplane",
+        pull_request="123",
+        issue="MET-999",
+        incident_digest="f" * 64,
+        expected_head_sha=REVIEWED_SHA,
+        ruleset_id="1000",
+        token="token",
+    )
+    assert result["comment_id"] == "2000"
+    assert any("collaborators?affiliation=all" in path for path in calls)
+    assert any(path.endswith("/invitations") for path in calls)
+    assert any(path.endswith("/pulls/123/files") for path in calls)
+
+
+def test_governed_owner_merge_removes_only_health_and_restores_ruleset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admission = _owner_admission(
+        {
+            "base_sha": BAD_SHA,
+            "incident_digest": "f" * 64,
+            "issue": "MET-999",
+            "pull_request": "123",
+            "repository": "Miko997/metriplane",
+        },
+        changed_paths=["tools/stop_the_line.py"],
+    )
+    artifact = admission["artifact"]
+    assert isinstance(artifact, dict)
+    before = artifact["ruleset_before"]
+    assert isinstance(before, dict)
+    during = copy.deepcopy(before)
+    during["rules"][0]["parameters"]["required_status_checks"] = []
+    pull_before = {
+        "head": {"sha": REVIEWED_SHA},
+        "merged": False,
+    }
+    pull_after = {
+        "head": {"sha": REVIEWED_SHA},
+        "merge_commit_sha": REPAIR_SHA,
+        "merged": True,
+        "merged_at": "2026-08-25T21:45:00Z",
+    }
+    pulls = iter([pull_before, pull_after])
+    rulesets = iter([before, during, before])
+    updates: list[dict[str, object]] = []
+
+    def get(path: str, _token: str) -> object:
+        if path.endswith("/pulls/123"):
+            return next(pulls)
+        if path.endswith("/rulesets/1000"):
+            return next(rulesets)
+        raise AssertionError(path)
+
+    def request(
+        path: str,
+        _token: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, object] | None = None,
+    ) -> object:
+        assert method == "PUT"
+        assert payload is not None
+        if path.endswith("/rulesets/1000"):
+            updates.append(payload)
+            return {}
+        if path.endswith("/pulls/123/merge"):
+            assert payload == {"merge_method": "merge", "sha": REVIEWED_SHA}
+            return {"merged": True}
+        raise AssertionError(path)
+
+    live_candidate = {
+        key: value
+        for key, value in artifact.items()
+        if key not in {"ruleset_before", "ruleset_before_digest", "ruleset_id"}
+    }
+    published: dict[str, object] = {}
+
+    def publish(**kwargs: object) -> dict[str, object]:
+        published.update(kwargs)
+        return {"comment_id": "2001"}
+
+    monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
+    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2026-08-25T21:44:59Z")
+    monkeypatch.setattr(stop_the_line, "_refetch_github_artifact", lambda **_kwargs: admission)
+    monkeypatch.setattr(stop_the_line, "_github_get", get)
+    monkeypatch.setattr(stop_the_line, "_github_request", request)
+    monkeypatch.setattr(stop_the_line, "_github_list", lambda *_args: [])
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_manifest",
+        lambda *_args: {"expires_at": "2026-08-26T22:00:00Z"},
+    )
+    monkeypatch.setattr(
+        stop_the_line,
+        "validate_owner_emergency_candidate",
+        lambda *_args, **_kwargs: {**live_candidate, "checked_at": "2026-08-25T21:44:59Z"},
+    )
+    monkeypatch.setattr(stop_the_line, "_post_github_artifact", publish)
+
+    result = stop_the_line.merge_github_owner_emergency(
+        root=Path("state"),
+        repository="Miko997/metriplane",
+        pull_request="123",
+        issue="MET-999",
+        incident_digest="f" * 64,
+        admission_attestation=admission,
+        token="token",
+    )
+    assert result == {"comment_id": "2001"}
+    assert updates == [during, before]
+    exception = published["artifact"]
+    assert isinstance(exception, dict)
+    assert exception["before"] == exception["after"] == before
+    assert exception["during"] == during
 
 
 def test_provider_evidence_rejects_merge_from_a_different_base() -> None:
@@ -1190,6 +1570,8 @@ def test_incomplete_deep_results_fail_closed(tmp_path: Path) -> None:
         "reviewer": "reviewer",
         "reviewer_id": "200",
         "reviewer_permission": "write",
+        "ruleset_exception": None,
+        "ruleset_exception_digest": None,
         "schema_version": 1,
         "state": "APPROVED",
     }
@@ -1445,7 +1827,7 @@ def test_git_history_rejects_an_invalid_intermediate_state_pointer(tmp_path: Pat
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "generation 3"], check=True)
 
     assert validate_history(root)["generation"] == 3
-    with pytest.raises(HealthError, match="state does not point to the complete history"):
+    with pytest.raises(HealthError, match="invalid generation pointer"):
         validate_git_history(root)
 
 
