@@ -41,6 +41,15 @@ jobs:
         run: |
           uv run python -m pytest -q tests/test_release_fixture_integrity.py
 
+      - name: Enforce release blocker policy
+        run: |
+          uv run python tools/check_blockers.py \
+            --registry docs/status/blockers.json \
+            --schema schemas/metriplane.blockers.v1.schema.json \
+            --repo-root . \
+            --json
+          uv run python -m pytest -q tests/test_blocker_workflow.py
+
       - name: Confirm required fixture files are tracked
         run: |
           git ls-files tests/fixtures benchmarks/physical_observability evidence/incidents/INC-0001 evidence/incidents/INC-DIST-001 datasets/demo/atlas | sort
