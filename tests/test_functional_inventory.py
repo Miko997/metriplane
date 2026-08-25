@@ -30,6 +30,30 @@ MATERIALIZATION_SHA256 = "f5f8ad40229d5e77f40c6de6c7176b303264dfc8754192f631389d
 BASELINE_SHA256 = "0753e370d8f61df201de98ac838cec9cb9e279f616bd10eab547a6f9511575b3"
 BASE_COMMIT = "2969636357140598d742bd0befed034a25463251"
 BASE_TREE = "09c4ccd6c418ba9a1b99f0f91c39d0162a544bfa"
+RETAINED_EVIDENCE_ROOT_ENV = "METRIPLANE_MP2_010_MATERIALIZATION_ROOT"
+
+CRITERION_EVIDENCE_PATHS = {
+    "MP2-010.A01": "evidence/01-result.json",
+    "MP2-010.A02": "evidence/02-result.json",
+}
+CRITERION_FAMILIES = {
+    "MP2-010.A01": ("BASELINE", "POSITIVE", "NEGATIVE", "DETERMINISM", "TRACE", "CLEAN"),
+    "MP2-010.A02": (
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "DETERMINISM",
+        "TRACE",
+        "CLEAN",
+        "INSTALLED",
+    ),
+}
+EVIDENCE_ARTIFACT_PATHS = (
+    "docs/status/functional-inventory.json",
+    "docs/status/support-profiles.json",
+    "schemas/metriplane.functional-inventory.v1.schema.json",
+    "tests/test_functional_inventory.py",
+)
 
 INVENTORY_DOWNSTREAM_TASK_IDS = (
     "MP2-011",
@@ -247,6 +271,149 @@ def _documents() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[s
         _read_canonical(PROFILES_PATH),
         _read_canonical(BASELINE_PATH),
     )
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    return cast(
+        dict[str, Any],
+        baseline_tool._strict_json(path.read_bytes(), require_canonical=False),
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git_object(*args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _assert_final_criterion_evidence(
+    materialization_root: Path,
+    *,
+    artifact_root: Path,
+    expected_base_commit: str,
+    expected_commit: str,
+    expected_tree: str,
+    expected_materialization: str,
+) -> None:
+    materialization_root = materialization_root.resolve(strict=True)
+    artifact_root = artifact_root.resolve(strict=True)
+    assert materialization_root.name == expected_materialization
+    assert materialization_root.parent.name == expected_base_commit
+
+    canonical_input_path = (materialization_root / "canonical-input.json").resolve(strict=True)
+    assert canonical_input_path.parent == materialization_root
+    assert _sha256_file(canonical_input_path) == expected_materialization
+    canonical_input = _read_json(canonical_input_path)
+    assert canonical_input["task"] == "MP2-010"
+    assert canonical_input["issue"]["identifier"] == "MET-71"
+    assert canonical_input["base"]["commit"] == expected_base_commit
+
+    mappings = {mapping["criterion"]: mapping for mapping in canonical_input["criterion_mappings"]}
+    assert set(mappings) == set(CRITERION_EVIDENCE_PATHS)
+
+    expected_artifacts = {}
+    for relative_path in EVIDENCE_ARTIFACT_PATHS:
+        artifact_path = (artifact_root / relative_path).resolve(strict=True)
+        assert artifact_path.is_relative_to(artifact_root)
+        expected_artifacts[relative_path] = _sha256_file(artifact_path)
+
+    records = {}
+    for criterion, relative_path in CRITERION_EVIDENCE_PATHS.items():
+        mapping = mappings[criterion]
+        assert mapping["required_evidence"] == relative_path
+        assert mapping["required_verdict"] == "PASS"
+        assert tuple(mapping["families"]) == CRITERION_FAMILIES[criterion]
+
+        evidence_path = (materialization_root / relative_path).resolve(strict=True)
+        assert evidence_path.is_relative_to(materialization_root)
+        record = _read_json(evidence_path)
+        assert record["schema_version"] == "metriplane.criterion-evidence.v1"
+        assert record["task"] == "MP2-010"
+        assert record["issue"] == "MET-71"
+        assert record["criterion"] == criterion
+        assert record["base_commit"] == expected_base_commit
+        assert record["commit"] == expected_commit
+        assert record["tree"] == expected_tree
+        assert record["materialization_sha256"] == expected_materialization
+        assert tuple(record["families"]) == CRITERION_FAMILIES[criterion]
+        assert record["artifacts"] == expected_artifacts
+        assert record["pr"]["head"] == expected_commit
+        assert record["pr"]["state"] == "OPEN"
+        assert record["pr"]["ci"]["verdict"] == "GREEN"
+        assert record["exit_code"] == 0
+        assert record["verdict"] == "PASS"
+        records[criterion] = record
+
+    assert records["MP2-010.A01"]["artifacts"] == records["MP2-010.A02"]["artifacts"]
+
+
+def _synthetic_evidence_materialization(
+    tmp_path: Path,
+) -> tuple[Path, Path, str, str, str]:
+    artifact_root = tmp_path / "repo"
+    for index, relative_path in enumerate(EVIDENCE_ARTIFACT_PATHS):
+        artifact_path = artifact_root / relative_path
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_bytes(f"artifact-{index}\n".encode())
+
+    canonical_input = {
+        "base": {"commit": BASE_COMMIT},
+        "criterion_mappings": [
+            {
+                "criterion": criterion,
+                "families": list(CRITERION_FAMILIES[criterion]),
+                "required_evidence": relative_path,
+                "required_verdict": "PASS",
+            }
+            for criterion, relative_path in CRITERION_EVIDENCE_PATHS.items()
+        ],
+        "issue": {"identifier": "MET-71"},
+        "task": "MP2-010",
+    }
+    canonical_input_bytes = _canonical_bytes(canonical_input)
+    materialization = hashlib.sha256(canonical_input_bytes).hexdigest()
+    materialization_root = tmp_path / BASE_COMMIT / materialization
+    evidence_root = materialization_root / "evidence"
+    evidence_root.mkdir(parents=True)
+    (materialization_root / "canonical-input.json").write_bytes(canonical_input_bytes)
+
+    commit = "1" * 40
+    tree = "2" * 40
+    artifacts = {
+        relative_path: _sha256_file(artifact_root / relative_path)
+        for relative_path in EVIDENCE_ARTIFACT_PATHS
+    }
+    for criterion, relative_path in CRITERION_EVIDENCE_PATHS.items():
+        record = {
+            "artifacts": artifacts,
+            "base_commit": BASE_COMMIT,
+            "commit": commit,
+            "criterion": criterion,
+            "exit_code": 0,
+            "families": list(CRITERION_FAMILIES[criterion]),
+            "issue": "MET-71",
+            "materialization_sha256": materialization,
+            "pr": {
+                "ci": {"verdict": "GREEN"},
+                "head": commit,
+                "state": "OPEN",
+            },
+            "schema_version": "metriplane.criterion-evidence.v1",
+            "task": "MP2-010",
+            "tree": tree,
+            "verdict": "PASS",
+        }
+        (materialization_root / relative_path).write_bytes(_canonical_bytes(record))
+    return materialization_root, artifact_root, commit, tree, materialization
 
 
 def _resolve_pointer(document: Any, pointer: str) -> Any:
@@ -965,6 +1132,80 @@ def test_trace_graph_is_closed(_obligation: str) -> None:
         assert "MP2-017" in row["consumer_task_ids"]
         assert row["validator_ids"]
         assert row["trace_criterion_ids"] == ["MP2-010.A01", "MP2-010.A02"]
+
+
+@obligation("MP2-010.OBL.TRACE_CLOSURE")
+def test_final_criterion_evidence_bindings(_obligation: str) -> None:
+    raw_root = os.environ.get(RETAINED_EVIDENCE_ROOT_ENV)
+    if raw_root is None:
+        pytest.skip(f"requires governed retained evidence profile via {RETAINED_EVIDENCE_ROOT_ENV}")
+
+    _assert_final_criterion_evidence(
+        Path(raw_root),
+        artifact_root=ROOT,
+        expected_base_commit=BASE_COMMIT,
+        expected_commit=_git_object("rev-parse", "HEAD"),
+        expected_tree=_git_object("rev-parse", "HEAD^{tree}"),
+        expected_materialization=MATERIALIZATION_SHA256,
+    )
+
+
+def test_criterion_evidence_resolver_accepts_complete_bindings(tmp_path: Path) -> None:
+    materialization_root, artifact_root, commit, tree, materialization = (
+        _synthetic_evidence_materialization(tmp_path)
+    )
+    _assert_final_criterion_evidence(
+        materialization_root,
+        artifact_root=artifact_root,
+        expected_base_commit=BASE_COMMIT,
+        expected_commit=commit,
+        expected_tree=tree,
+        expected_materialization=materialization,
+    )
+
+
+def test_criterion_evidence_resolver_requires_both_records(tmp_path: Path) -> None:
+    materialization_root, artifact_root, commit, tree, materialization = (
+        _synthetic_evidence_materialization(tmp_path)
+    )
+    (materialization_root / CRITERION_EVIDENCE_PATHS["MP2-010.A02"]).unlink()
+    with pytest.raises(FileNotFoundError):
+        _assert_final_criterion_evidence(
+            materialization_root,
+            artifact_root=artifact_root,
+            expected_base_commit=BASE_COMMIT,
+            expected_commit=commit,
+            expected_tree=tree,
+            expected_materialization=materialization,
+        )
+
+
+@pytest.mark.parametrize("binding", ["commit", "tree", "materialization", "artifact"])
+def test_criterion_evidence_resolver_rejects_changed_bindings(tmp_path: Path, binding: str) -> None:
+    materialization_root, artifact_root, commit, tree, materialization = (
+        _synthetic_evidence_materialization(tmp_path)
+    )
+    expected_commit = commit
+    expected_tree = tree
+    expected_materialization = materialization
+    if binding == "commit":
+        expected_commit = "3" * 40
+    elif binding == "tree":
+        expected_tree = "4" * 40
+    elif binding == "materialization":
+        expected_materialization = "5" * 64
+    else:
+        (artifact_root / EVIDENCE_ARTIFACT_PATHS[0]).write_bytes(b"changed\n")
+
+    with pytest.raises(AssertionError):
+        _assert_final_criterion_evidence(
+            materialization_root,
+            artifact_root=artifact_root,
+            expected_base_commit=BASE_COMMIT,
+            expected_commit=expected_commit,
+            expected_tree=expected_tree,
+            expected_materialization=expected_materialization,
+        )
 
 
 def _console_scripts(entry_points: Iterable[Any]) -> dict[str, str]:
