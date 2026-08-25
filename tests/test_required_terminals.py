@@ -222,6 +222,14 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert health["concurrency"]["queue"] == "max"
     assert "candidate-health" not in health["jobs"]
     assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
+    for job_name in ("scheduled-deep", "persist-health", "reconcile-candidate-statuses"):
+        job_if = str(health["jobs"][job_name]["if"])
+        assert "github.event_name == 'workflow_dispatch'" in job_if
+        assert "github.ref == 'refs/heads/main'" in job_if
+    scheduled_checkout = health["jobs"]["scheduled-deep"]["steps"][0]
+    reconcile_checkout = health["jobs"]["reconcile-candidate-statuses"]["steps"][0]
+    assert scheduled_checkout["with"]["ref"] == "refs/heads/main"
+    assert reconcile_checkout["with"]["ref"] == "refs/heads/main"
     assert health["jobs"]["persist-health"]["permissions"] == {
         "actions": "read",
         "contents": "write",
