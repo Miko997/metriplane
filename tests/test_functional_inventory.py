@@ -7,6 +7,10 @@ import copy
 import hashlib
 import importlib.metadata
 import importlib.util
+import json
+import os
+import subprocess
+import sys
 import tomllib
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -22,7 +26,7 @@ PROFILES_PATH = ROOT / "docs" / "status" / "support-profiles.json"
 BASELINE_PATH = ROOT / "docs" / "status" / "baseline-snapshot.v1.json"
 BASELINE_TOOL_PATH = ROOT / "tools" / "baseline_snapshot.py"
 
-MATERIALIZATION_SHA256 = "7b04a54b40a2ebe57a76920ee2e6d838baf8c28d316b47500389b9a993f39648"
+MATERIALIZATION_SHA256 = "f5f8ad40229d5e77f40c6de6c7176b303264dfc8754192f631389d687e181192"
 BASELINE_SHA256 = "0753e370d8f61df201de98ac838cec9cb9e279f616bd10eab547a6f9511575b3"
 BASE_COMMIT = "2969636357140598d742bd0befed034a25463251"
 BASE_TREE = "09c4ccd6c418ba9a1b99f0f91c39d0162a544bfa"
@@ -423,9 +427,16 @@ def _assert_registry_pair(
         == BASELINE_ROW_IDS
     )
 
-    profile_id_set = set(profile_ids)
-    assert {row["profile"] for row in rows} <= profile_id_set
+    profiles_by_id = {profile["id"]: profile for profile in profile_rows}
     for row in rows:
+        profile_id = row["profile"]
+        if profile_id:
+            assert profile_id in profiles_by_id
+            if row["status"] in {"active", "deprecated"}:
+                assert profiles_by_id[profile_id]["status"] == "active"
+        else:
+            assert row["status"] == "retired"
+
         task = _task_id(row["id"])
         if row["owner"]:
             assert row["owner"] == task
@@ -489,13 +500,122 @@ def test_inventory_is_exact_projection_of_frozen_baseline(_obligation: str) -> N
 
 
 @obligation("MP2-010.OBL.ROW_MODEL_POSITIVE")
-def test_row_model_accepts_a_typed_retired_row(_obligation: str) -> None:
-    schema, inventory, _profiles, _baseline = _documents()
-    retired = copy.deepcopy(inventory)
-    retired["rows"] = [copy.deepcopy(retired["rows"][0])]
-    retired["rows"][0].update({"status": "retired", "owner": "", "profile": "", "test": ""})
-    retired["rows_sha256"] = _sha(retired["rows"])
-    baseline_tool._internal_validate(retired, schema)
+def test_retired_and_deprecated_rows_follow_full_registry_lifecycle(
+    _obligation: str,
+) -> None:
+    schema, inventory, profiles, baseline = _documents()
+
+    retired_inventory = copy.deepcopy(inventory)
+    retired_row = copy.deepcopy(retired_inventory["rows"][0])
+    retired_row.update(
+        {
+            "id": "MP2-011.RETIRED.CLI_ROOT",
+            "owner": "",
+            "profile": "",
+            "status": "retired",
+            "test": "",
+            "trace_criterion_ids": ["MP2-011.A01"],
+        }
+    )
+    retired_inventory["rows"].append(retired_row)
+    retired_inventory["rows"].sort(key=lambda row: row["id"])
+    retired_inventory["rows_sha256"] = _sha(retired_inventory["rows"])
+    _assert_registry_pair(schema, retired_inventory, profiles, baseline)
+
+    deprecated_inventory = copy.deepcopy(inventory)
+    deprecated_row = copy.deepcopy(deprecated_inventory["rows"][0])
+    deprecated_row.update(
+        {
+            "id": "MP2-011.DEPRECATED.CLI_ROOT",
+            "owner": "MP2-011",
+            "status": "deprecated",
+            "test": "MP2-011.OBL.DEPRECATED_CLI_ROOT",
+            "trace_criterion_ids": ["MP2-011.A01"],
+        }
+    )
+    deprecated_inventory["rows"].append(deprecated_row)
+    deprecated_inventory["rows"].sort(key=lambda row: row["id"])
+    deprecated_inventory["rows_sha256"] = _sha(deprecated_inventory["rows"])
+    _assert_registry_pair(schema, deprecated_inventory, profiles, baseline)
+
+
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_retired_and_deprecated_profile_closure_fails_closed(_obligation: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+
+    retired_with_missing_profile = copy.deepcopy(inventory)
+    retired_row = copy.deepcopy(retired_with_missing_profile["rows"][0])
+    retired_row.update(
+        {
+            "id": "MP2-011.RETIRED.CLI_ROOT",
+            "owner": "",
+            "profile": "missing.profile",
+            "status": "retired",
+            "test": "",
+            "trace_criterion_ids": ["MP2-011.A01"],
+        }
+    )
+    retired_with_missing_profile["rows"].append(retired_row)
+    retired_with_missing_profile["rows"].sort(key=lambda row: row["id"])
+    retired_with_missing_profile["rows_sha256"] = _sha(retired_with_missing_profile["rows"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, retired_with_missing_profile, profiles, baseline)
+
+    deprecated_without_profile = copy.deepcopy(inventory)
+    deprecated_row = copy.deepcopy(deprecated_without_profile["rows"][0])
+    deprecated_row.update(
+        {
+            "id": "MP2-011.DEPRECATED.CLI_ROOT",
+            "owner": "MP2-011",
+            "profile": "",
+            "status": "deprecated",
+            "test": "MP2-011.OBL.DEPRECATED_CLI_ROOT",
+            "trace_criterion_ids": ["MP2-011.A01"],
+        }
+    )
+    deprecated_without_profile["rows"].append(deprecated_row)
+    deprecated_without_profile["rows"].sort(key=lambda row: row["id"])
+    deprecated_without_profile["rows_sha256"] = _sha(deprecated_without_profile["rows"])
+    with pytest.raises(baseline_tool.SnapshotError):
+        _assert_registry_pair(schema, deprecated_without_profile, profiles, baseline)
+
+
+@pytest.mark.parametrize("status", ["active", "deprecated"])
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_maintained_rows_cannot_reference_a_retired_profile(_obligation: str, status: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+
+    profiles_with_retired = copy.deepcopy(profiles)
+    retired_profile = copy.deepcopy(profiles_with_retired["profiles"][0])
+    retired_profile.update(
+        {
+            "id": "retired.runtime.profile",
+            "owner": "",
+            "status": "retired",
+            "test": "",
+        }
+    )
+    profiles_with_retired["profiles"].append(retired_profile)
+    profiles_with_retired["profiles"].sort(key=lambda profile: profile["id"])
+    profiles_with_retired["profiles_sha256"] = _sha(profiles_with_retired["profiles"])
+
+    inventory_with_reference = copy.deepcopy(inventory)
+    maintained_row = copy.deepcopy(inventory_with_reference["rows"][0])
+    maintained_row.update(
+        {
+            "id": "MP2-011.MAINTAINED.CLI_ROOT",
+            "owner": "MP2-011",
+            "profile": retired_profile["id"],
+            "status": status,
+            "test": "MP2-011.OBL.MAINTAINED_CLI_ROOT",
+            "trace_criterion_ids": ["MP2-011.A01"],
+        }
+    )
+    inventory_with_reference["rows"].append(maintained_row)
+    inventory_with_reference["rows"].sort(key=lambda row: row["id"])
+    inventory_with_reference["rows_sha256"] = _sha(inventory_with_reference["rows"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, inventory_with_reference, profiles_with_retired, baseline)
 
 
 @obligation("MP2-010.OBL.ROW_MODEL_POSITIVE")
@@ -800,11 +920,12 @@ def test_profile_references_are_closed(_obligation: str) -> None:
     profile_rows = profiles["profiles"]
     profile_ids = {row["id"] for row in profile_rows}
     assert [row["id"] for row in profile_rows] == sorted(profile_ids)
-    assert {row["profile"] for row in inventory["rows"]} <= profile_ids
+    assert {row["profile"] for row in inventory["rows"] if row["profile"]} <= profile_ids
 
     limitation_ids = {row["limitation_id"] for row in baseline["limitations"]}
     for row in [*inventory["rows"], *profile_rows]:
-        if row["status"] == "active":
+        maintained_statuses = {"active", "deprecated"} if "profile" in row else {"active"}
+        if row["status"] in maintained_statuses:
             assert all(row[field].strip() for field in ("owner", "status", "test"))
             if "profile" in row:
                 assert row["profile"].strip()
@@ -854,18 +975,242 @@ def _console_scripts(entry_points: Iterable[Any]) -> dict[str, str]:
     }
 
 
-@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
-def test_installed_console_scripts_match_frozen_cli_seed(_obligation: str) -> None:
+def _distribution_metadata_path(distribution: importlib.metadata.Distribution) -> Path:
+    raw_path = getattr(distribution, "_path", None)
+    assert isinstance(raw_path, (str, os.PathLike))
+    return Path(raw_path).resolve(strict=True)
+
+
+def _assert_distribution_origin(
+    distribution: importlib.metadata.Distribution,
+    site_packages: Path,
+    expected_dist_info: Path,
+) -> None:
+    origin = _distribution_metadata_path(distribution)
+    assert origin == expected_dist_info
+    assert origin.parent == site_packages
+    assert origin.name.endswith(".dist-info")
+
+
+def _assert_non_editable_provenance(
+    direct_url: dict[str, Any], expected_kind: str, expected_url: str
+) -> None:
+    assert expected_kind in {"local", "sdist", "wheel"}
+    assert direct_url.get("dir_info", {}).get("editable") is not True
+    assert direct_url.get("url") == expected_url
+    if expected_kind == "local":
+        assert isinstance(direct_url.get("dir_info"), dict)
+        return
+
+    assert isinstance(direct_url.get("archive_info"), dict)
+    expected_suffix = ".whl" if expected_kind == "wheel" else ".tar.gz"
+    assert expected_url.endswith(expected_suffix)
+
+
+def _discover_isolated_distribution(
+    site_packages: Path, expected_dist_info: Path
+) -> importlib.metadata.Distribution:
+    distributions = [
+        distribution
+        for distribution in importlib.metadata.distributions(path=[str(site_packages)])
+        if str(distribution.metadata["Name"]).lower().replace("_", "-") == "metriplane"
+    ]
+    assert len(distributions) == 1
+    distribution = distributions[0]
+    _assert_distribution_origin(distribution, site_packages, expected_dist_info)
+    return distribution
+
+
+def _isolated_install_paths() -> tuple[Path, Path]:
+    prefix = Path(sys.prefix).resolve(strict=True)
+    site_packages_candidates = sorted((prefix / "lib").glob("python*/site-packages"))
+    assert len(site_packages_candidates) == 1
+    site_packages = site_packages_candidates[0].resolve(strict=True)
+    dist_info_candidates = sorted(site_packages.glob("metriplane-*.dist-info"))
+    assert len(dist_info_candidates) == 1
+    return site_packages, dist_info_candidates[0].resolve(strict=True)
+
+
+INSTALLED_METADATA_PROBE = r"""
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+import sys
+
+site_packages = Path(os.environ["METRIPLANE_ISOLATED_SITE_PACKAGES"]).resolve(strict=True)
+expected_dist_info = Path(os.environ["METRIPLANE_EXPECTED_DIST_INFO"]).resolve(strict=True)
+forbidden_checkout = Path(os.environ["METRIPLANE_FORBIDDEN_CHECKOUT"]).resolve(strict=True)
+expected_artifact_kind = os.environ["METRIPLANE_EXPECT_ARTIFACT_KIND"]
+expected_artifact_url = os.environ["METRIPLANE_EXPECT_ARTIFACT_URL"]
+
+resolved_sys_path = [Path(entry).resolve() for entry in sys.path if entry]
+assert all(
+    path != forbidden_checkout and forbidden_checkout not in path.parents
+    for path in resolved_sys_path
+)
+assert [path for path in resolved_sys_path if path.name == "site-packages"] == [
+    site_packages
+]
+
+distributions = [
+    distribution
+    for distribution in importlib.metadata.distributions(path=[str(site_packages)])
+    if str(distribution.metadata["Name"]).lower().replace("_", "-") == "metriplane"
+]
+assert len(distributions) == 1
+distribution = distributions[0]
+origin = Path(distribution._path).resolve(strict=True)
+assert origin == expected_dist_info
+assert origin.parent == site_packages
+assert origin.name.endswith(".dist-info")
+direct_url = json.loads((origin / "direct_url.json").read_text("utf-8"))
+assert expected_artifact_kind in {"sdist", "wheel"}
+assert direct_url.get("dir_info", {}).get("editable") is not True
+assert direct_url.get("url") == expected_artifact_url
+assert isinstance(direct_url.get("archive_info"), dict)
+expected_suffix = ".whl" if expected_artifact_kind == "wheel" else ".tar.gz"
+assert expected_artifact_url.endswith(expected_suffix)
+
+scripts = {
+    entry.name: entry.value
+    for entry in distribution.entry_points
+    if entry.group == "console_scripts"
+}
+print(json.dumps({
+    "artifact_kind": expected_artifact_kind,
+    "artifact_url": expected_artifact_url,
+    "origin": str(origin),
+    "scripts": scripts,
+}, sort_keys=True))
+"""
+
+
+def _frozen_console_scripts() -> dict[str, str]:
     _schema, inventory, _profiles, baseline = _documents()
     cli_row = next(row for row in inventory["rows"] if row["kind"] == "cli_root")
     baseline_entries = _resolve_pointer(baseline, cli_row["source"]["json_pointer"])
-    expected = {row["command"]: row["entry_point"] for row in baseline_entries}
+    return {row["command"]: row["entry_point"] for row in baseline_entries}
 
-    distribution = importlib.metadata.distribution("metriplane")
-    installed = _console_scripts(distribution.entry_points)
+
+@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
+def test_declared_console_scripts_match_frozen_cli_seed(_obligation: str) -> None:
+    expected = _frozen_console_scripts()
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
-    assert installed == expected
     assert pyproject["project"]["scripts"] == expected
+
+
+@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
+def test_installed_console_scripts_match_frozen_cli_seed(_obligation: str, tmp_path: Path) -> None:
+    if os.environ.get("METRIPLANE_TEST_PROFILE") != "installed":
+        pytest.skip("requires the governed non-editable installed test profile")
+
+    expected = _frozen_console_scripts()
+    site_packages, expected_dist_info = _isolated_install_paths()
+    distribution = _discover_isolated_distribution(site_packages, expected_dist_info)
+    expected_artifact_kind = os.environ["METRIPLANE_EXPECT_ARTIFACT_KIND"]
+    expected_artifact_url = os.environ["METRIPLANE_EXPECT_ARTIFACT_URL"]
+    forbidden_checkout = Path(os.environ["METRIPLANE_FORBIDDEN_CHECKOUT"]).resolve(strict=True)
+    assert expected_artifact_kind in {"sdist", "wheel"}
+    direct_url = json.loads((expected_dist_info / "direct_url.json").read_text("utf-8"))
+    _assert_non_editable_provenance(direct_url, expected_artifact_kind, expected_artifact_url)
+    assert _console_scripts(distribution.entry_points) == expected
+
+    probe_environment = {
+        "METRIPLANE_EXPECT_ARTIFACT_KIND": expected_artifact_kind,
+        "METRIPLANE_EXPECT_ARTIFACT_URL": expected_artifact_url,
+        "METRIPLANE_EXPECTED_DIST_INFO": str(expected_dist_info),
+        "METRIPLANE_FORBIDDEN_CHECKOUT": str(forbidden_checkout),
+        "METRIPLANE_ISOLATED_SITE_PACKAGES": str(site_packages),
+        "PYTHONHASHSEED": "0",
+    }
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", INSTALLED_METADATA_PROBE],
+        cwd=tmp_path,
+        env=probe_environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    probe_result = json.loads(completed.stdout)
+    assert probe_result == {
+        "artifact_kind": expected_artifact_kind,
+        "artifact_url": expected_artifact_url,
+        "origin": str(expected_dist_info),
+        "scripts": expected,
+    }
+
+
+@pytest.mark.parametrize(
+    ("direct_url", "kind", "url"),
+    [
+        (
+            {"archive_info": {"hash": "sha256=wheel"}, "url": "file:///tmp/metriplane.whl"},
+            "wheel",
+            "file:///tmp/metriplane.whl",
+        ),
+        (
+            {
+                "archive_info": {"hash": "sha256=sdist"},
+                "url": "file:///tmp/metriplane.tar.gz",
+            },
+            "sdist",
+            "file:///tmp/metriplane.tar.gz",
+        ),
+        (
+            {"dir_info": {"editable": False}, "url": "file:///tmp/metriplane-source"},
+            "local",
+            "file:///tmp/metriplane-source",
+        ),
+    ],
+)
+@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
+def test_non_editable_installed_provenance_is_supported(
+    _obligation: str, direct_url: dict[str, Any], kind: str, url: str
+) -> None:
+    _assert_non_editable_provenance(direct_url, kind, url)
+
+
+@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
+def test_editable_or_wrong_artifact_provenance_fails_closed(_obligation: str) -> None:
+    editable = {
+        "dir_info": {"editable": True},
+        "url": "file:///tmp/metriplane-source",
+    }
+    with pytest.raises(AssertionError):
+        _assert_non_editable_provenance(editable, "local", "file:///tmp/metriplane-source")
+
+    wheel = {
+        "archive_info": {"hash": "sha256=wheel"},
+        "url": "file:///tmp/metriplane.whl",
+    }
+    with pytest.raises(AssertionError):
+        _assert_non_editable_provenance(wheel, "wheel", "file:///tmp/different-metriplane.whl")
+
+
+@obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
+def test_unconstrained_distribution_reproduces_worktree_shadowing(
+    _obligation: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worktree = tmp_path / "checkout"
+    site_packages = tmp_path / "isolated-site-packages"
+    egg_info = worktree / "metriplane.egg-info"
+    dist_info = site_packages / "metriplane-0.3.0.dist-info"
+    egg_info.mkdir(parents=True)
+    dist_info.mkdir(parents=True)
+    metadata = "Metadata-Version: 2.1\nName: metriplane\nVersion: 0.3.0\n"
+    (egg_info / "PKG-INFO").write_text(metadata, encoding="utf-8")
+    (dist_info / "METADATA").write_text(metadata, encoding="utf-8")
+
+    monkeypatch.setattr(sys, "path", [str(worktree), str(site_packages), *sys.path])
+    unconstrained = importlib.metadata.distribution("metriplane")
+    assert _distribution_metadata_path(unconstrained) == egg_info
+    with pytest.raises(AssertionError):
+        _assert_distribution_origin(unconstrained, site_packages, dist_info)
+
+    isolated = _discover_isolated_distribution(site_packages, dist_info)
+    assert _distribution_metadata_path(isolated) == dist_info
 
 
 @obligation("MP2-010.OBL.INSTALLED_ENTRY_POINTS")
