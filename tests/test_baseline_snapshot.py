@@ -1045,6 +1045,19 @@ def _write_synthetic_ready_evidence(repo: Path) -> Path:
         "ordered_pr_outcomes": ordered_outcomes,
         "people_permissions_secrets_services_hardware": typed_resources,
         "manual_and_irreversible_actions": manual_actions,
+        "clean_tree": {
+            "is_clean": True,
+            "status_porcelain_sha256": _sha(b""),
+        },
+        "compatibility_and_non_goals": {
+            "compatibility_and_rollback": {},
+            "out_of_scope": [],
+        },
+        "evidence_and_downstream_handoff": {
+            "downstream_handoff": {},
+            "evidence_output": [],
+        },
+        "stop_conditions": ["synthetic fixture stop condition"],
     }
 
     core_values = {
@@ -1161,12 +1174,20 @@ def _write_synthetic_ready_evidence(repo: Path) -> Path:
         "checks": checks,
         "review": review,
     }
-    _write_canonical(instance / "work-order-validation.json", validation)
+    validation_raw = _write_canonical(instance / "work-order-validation.json", validation)
 
     _write_canonical(
         instance.parent / "synthetic-identity-overrides.json",
         {
             "materialization_id": materialization_id,
+            "work_order_manifest_bytes": len(core_raw["work-order.json"]),
+            "work_order_manifest_sha256": _sha(core_raw["work-order.json"]),
+            "work_order_validation_bytes": len(validation_raw),
+            "work_order_validation_sha256": _sha(validation_raw),
+            "manifest_only_projection_sha256": {
+                field: _sha(tool._canonical_bytes(manifest[field]))
+                for field in tool.EXPECTED_MANIFEST_ONLY_PROJECTION_SHA256
+            },
             "preedit_baseline_sha256": preedit_digest,
             "catalog_sha256": catalog_digest,
             "task_row_sha256": task_row_digest,
@@ -1486,6 +1507,12 @@ identity_path=(repo/'build'/'work-orders'/'MP2-000'/module.AUDITED_BASE_SHA/
                'synthetic-identity-overrides.json')
 identity=json.loads(identity_path.read_bytes())
 module.EXPECTED_MATERIALIZATION_ID=identity['materialization_id']
+module.EXPECTED_WORK_ORDER_MANIFEST_BYTES=identity['work_order_manifest_bytes']
+module.EXPECTED_WORK_ORDER_MANIFEST_SHA256=identity['work_order_manifest_sha256']
+module.EXPECTED_WORK_ORDER_VALIDATION_BYTES=identity['work_order_validation_bytes']
+module.EXPECTED_WORK_ORDER_VALIDATION_SHA256=identity['work_order_validation_sha256']
+module.EXPECTED_MANIFEST_ONLY_PROJECTION_SHA256=dict(
+    identity['manifest_only_projection_sha256'])
 module.EXPECTED_PREEDIT_BASELINE_SHA256=identity['preedit_baseline_sha256']
 module.EXPECTED_CATALOG_SHA256=identity['catalog_sha256']
 module.EXPECTED_TASK_ROW_SHA256=identity['task_row_sha256']
@@ -1527,6 +1554,10 @@ def _patch_synthetic_identity(repo: Path, monkeypatch: pytest.MonkeyPatch) -> di
     )
     constant_fields = {
         "EXPECTED_MATERIALIZATION_ID": "materialization_id",
+        "EXPECTED_WORK_ORDER_MANIFEST_BYTES": "work_order_manifest_bytes",
+        "EXPECTED_WORK_ORDER_MANIFEST_SHA256": "work_order_manifest_sha256",
+        "EXPECTED_WORK_ORDER_VALIDATION_BYTES": "work_order_validation_bytes",
+        "EXPECTED_WORK_ORDER_VALIDATION_SHA256": "work_order_validation_sha256",
         "EXPECTED_PREEDIT_BASELINE_SHA256": "preedit_baseline_sha256",
         "EXPECTED_CATALOG_SHA256": "catalog_sha256",
         "EXPECTED_TASK_ROW_SHA256": "task_row_sha256",
@@ -1540,6 +1571,11 @@ def _patch_synthetic_identity(repo: Path, monkeypatch: pytest.MonkeyPatch) -> di
         tool,
         "EXPECTED_CANONICAL_PROJECTION_SHA256",
         dict(identity["canonical_projection_sha256"]),
+    )
+    monkeypatch.setattr(
+        tool,
+        "EXPECTED_MANIFEST_ONLY_PROJECTION_SHA256",
+        dict(identity["manifest_only_projection_sha256"]),
     )
     return identity
 
@@ -1611,6 +1647,22 @@ def _refresh_validation_bindings(instance: Path, *, materialization_id: str | No
     review["reviewed_manifest_sha256"] = _sha(raw["work-order.json"])
     review["review_evidence_sha256"] = _sha(tool._canonical_bytes(evidence))
     _write_canonical(validation_path, validation)
+
+
+def _refresh_test_only_raw_identity_bindings(instance: Path) -> None:
+    identity_path = instance.parent / "synthetic-identity-overrides.json"
+    identity = _read_canonical_object(identity_path)
+    manifest_raw = (instance / "work-order.json").read_bytes()
+    validation_raw = (instance / "work-order-validation.json").read_bytes()
+    identity.update(
+        {
+            "work_order_manifest_bytes": len(manifest_raw),
+            "work_order_manifest_sha256": _sha(manifest_raw),
+            "work_order_validation_bytes": len(validation_raw),
+            "work_order_validation_sha256": _sha(validation_raw),
+        }
+    )
+    _write_canonical(identity_path, identity)
 
 
 def _rebind_mutated_materialization(repo: Path, instance: Path) -> Path:
@@ -1762,6 +1814,24 @@ def test_production_reviewed_identity_constants_are_not_test_overrides() -> None
     assert tool.EXPECTED_MATERIALIZATION_ID == (
         "f72ad822f4bc4bd8ebd02a8a41e2662161a634b3246832bfb099e1b150e20478"
     )
+    assert tool.EXPECTED_WORK_ORDER_MANIFEST_BYTES == 22_526
+    assert tool.EXPECTED_WORK_ORDER_MANIFEST_SHA256 == (
+        "d94cb3b4cbdc896a95ffab8e40d5268dda1e372fb18ece31476072d525a8eaaa"
+    )
+    assert tool.EXPECTED_WORK_ORDER_VALIDATION_SHA256 == (
+        "2b475791f0d3b4cdec7ea2f1265de5afddc746b21880b295b096d277fd943d55"
+    )
+    assert tool.EXPECTED_WORK_ORDER_VALIDATION_BYTES == 4_698
+    assert tool.EXPECTED_MANIFEST_ONLY_PROJECTION_SHA256 == {
+        "clean_tree": "d71bbec5b3db1754278000bfa0b1acdc2a9303832310e5aebe4e6d18c1c2d3f9",
+        "compatibility_and_non_goals": (
+            "ccd2a84c61c9d7b147ff4c042df87deabee2b82ad6db0d70572df00e6b7d7eb2"
+        ),
+        "evidence_and_downstream_handoff": (
+            "b56eb93adf6948afe503ef06d4de45c73bc0c04e8689926aa986de1f36d79144"
+        ),
+        "stop_conditions": ("a16c0e51af6a5db44a3612a5308ca3ed218238818c3b99859b24cd7b61ab96c7"),
+    }
     assert tool.EXPECTED_PREEDIT_BASELINE_SHA256 == (
         "90d7afa45338d61121c09ad5b3b8fa5b342f14f2988c507147b35ab083403eb6"
     )
@@ -1917,6 +1987,7 @@ def test_capture_rejects_retained_evidence_that_diverges_from_raw_commands(
             tool._canonical_bytes(validation["review"]["review_evidence"])
         )
         _write_canonical(validation_path, validation)
+        _refresh_test_only_raw_identity_bindings(instance)
     else:
         evidence_path = instance / "evidence" / "pre-edit-baseline.json"
         evidence = tool._strict_json(evidence_path.read_bytes(), require_canonical=True)
@@ -1967,6 +2038,116 @@ AUTHORITY_MUTATION_CATEGORIES = (
     "remote-snapshot-receipt-binding",
     "environment-raw-derived-binding",
 )
+
+
+@obligation("MP2-000.OBL.CAPTURE_NEGATIVE_BOUNDARY_PARSER")
+def test_capture_rejects_self_rebound_ready_manifest_and_validation(
+    _obligation: str,
+    tmp_path: Path,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[2]
+    repo = _fresh_ready_repository(tmp_path / "repository")
+    instance = _primary_ready_instance(repo)
+    manifest_path = instance / "work-order.json"
+    manifest = _read_canonical_object(manifest_path)
+    manifest["clean_tree"] = {
+        "is_clean": False,
+        "status_porcelain_sha256": "0" * 64,
+    }
+    manifest["stop_conditions"] = ["forged stop condition"]
+    manifest["unreviewed_extra_field"] = {"accepted": True}
+    _write_canonical(manifest_path, manifest)
+    _refresh_validation_bindings(instance)
+
+    output_parent = tmp_path / "capture"
+    output_parent.mkdir()
+    output = output_parent / tool.SNAPSHOT_LEAF
+    checksum = output_parent / tool.CHECKSUM_LEAF
+    result = _run_bootstrap_cli(
+        repo,
+        "capture",
+        "--repo",
+        str(repo),
+        "--base-sha",
+        AUDITED_BASE_SHA,
+        "--output",
+        str(output),
+        "--checksum-output",
+        str(checksum),
+    )
+
+    _assert_domain_failure(result, "READY_INSTANCE_DIGEST_MISMATCH")
+    assert not os.path.lexists(output)
+    assert not os.path.lexists(checksum)
+    assert not [name for name in os.listdir(output_parent) if ".stage." in name]
+
+
+@obligation("MP2-000.OBL.CAPTURE_NEGATIVE_BOUNDARY_PARSER")
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        pytest.param("manifest-keyset", "READY_INSTANCE_INVALID", id="manifest-keyset"),
+        pytest.param("manifest-projection", "READY_INSTANCE_INVALID", id="manifest-projection"),
+        pytest.param(
+            "validation-record",
+            "READY_INSTANCE_DIGEST_MISMATCH",
+            id="validation-record",
+        ),
+    ],
+)
+def test_capture_defense_layers_reject_independently_rebound_ready_records(
+    _obligation: str,
+    mutation: str,
+    expected_error: str,
+    tmp_path: Path,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[2]
+    repo = _fresh_ready_repository(tmp_path / "repository")
+    instance = _primary_ready_instance(repo)
+    if mutation == "validation-record":
+        validation_path = instance / "work-order-validation.json"
+        validation = _read_canonical_object(validation_path)
+        validation["validated_at"] = "2099-01-01T00:00:00Z"
+        validation["checks"][0]["evidence"] = "forged validation evidence"
+        review = validation["review"]
+        review["reviewer_identity"] = "forged-reviewer"
+        review["review_evidence"]["reviewer_identity"] = "forged-reviewer"
+        review["review_evidence_sha256"] = _sha(tool._canonical_bytes(review["review_evidence"]))
+        _write_canonical(validation_path, validation)
+    else:
+        manifest_path = instance / "work-order.json"
+        manifest = _read_canonical_object(manifest_path)
+        if mutation == "manifest-keyset":
+            manifest["unreviewed_extra_field"] = {"accepted": True}
+        else:
+            manifest["stop_conditions"] = ["forged stop condition"]
+        _write_canonical(manifest_path, manifest)
+        _refresh_validation_bindings(instance)
+        # Test-only overrides bypass the raw pins to exercise the independent
+        # keyset and semantic-projection defenses behind them.
+        _refresh_test_only_raw_identity_bindings(instance)
+
+    output_parent = tmp_path / "capture"
+    output_parent.mkdir()
+    output = output_parent / tool.SNAPSHOT_LEAF
+    checksum = output_parent / tool.CHECKSUM_LEAF
+    result = _run_bootstrap_cli(
+        repo,
+        "capture",
+        "--repo",
+        str(repo),
+        "--base-sha",
+        AUDITED_BASE_SHA,
+        "--output",
+        str(output),
+        "--checksum-output",
+        str(checksum),
+    )
+
+    _assert_domain_failure(result, expected_error)
+    assert not os.path.lexists(output)
+    assert not os.path.lexists(checksum)
+    assert not [name for name in os.listdir(output_parent) if ".stage." in name]
 
 
 @obligation("MP2-000.OBL.CAPTURE_NEGATIVE_BOUNDARY_PARSER")
@@ -2067,6 +2248,171 @@ def test_capture_rejects_self_consistent_authority_relation_mutations(
     assert not os.path.lexists(output)
     assert not os.path.lexists(checksum)
     assert not [name for name in os.listdir(output_parent) if ".stage." in name]
+
+
+@obligation("MP2-000.OBL.CAPTURE_NEGATIVE_BOUNDARY_PARSER")
+def test_git_read_only_environment_is_consistent_for_all_object_reads(
+    _obligation: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _obligation == OBLIGATION_IDS[2]
+    oid = "0" * 40
+    objects = object.__new__(tool.GitObjects)
+    objects.repo = tmp_path
+    objects.git = "/synthetic/git"
+    objects.entries = [{"blob_oid": oid}]
+    observed: list[tuple[list[str], dict[str, str], bytes | None]] = []
+
+    for name in tool.GIT_READ_ONLY_ENVIRONMENT:
+        monkeypatch.setenv(name, "unsafe-inherited-value")
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        observed.append((argv, kwargs["env"], kwargs.get("input")))
+        stdout = (
+            f"{oid} blob 1\nX\n".encode("ascii")
+            if argv[-2:] == ["cat-file", "--batch"]
+            else b"ok\n"
+        )
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr(tool.subprocess, "run", fake_run)
+    assert objects.run("rev-parse", "HEAD") == b"ok\n"
+    assert objects._read_blobs() == {oid: b"X"}
+
+    assert len(observed) == 2
+    assert observed[0][2] is None
+    assert observed[1][2] == f"{oid}\n".encode("ascii")
+    for _, environment, _ in observed:
+        assert {
+            name: environment[name] for name in tool.GIT_READ_ONLY_ENVIRONMENT
+        } == tool.GIT_READ_ONLY_ENVIRONMENT
+
+
+@obligation("MP2-000.OBL.CAPTURE_NEGATIVE_BOUNDARY_PARSER")
+def test_git_batch_parser_preserves_framing_bounds_and_process_failures(
+    _obligation: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _obligation == OBLIGATION_IDS[2]
+    oid = "1" * 40
+    objects = object.__new__(tool.GitObjects)
+    objects.repo = tmp_path
+    objects.git = "/synthetic/git"
+    objects.entries = [{"blob_oid": oid}]
+    valid = f"{oid} blob 1\nX\n".encode("ascii")
+    response = subprocess.CompletedProcess([objects.git], 0, stdout=valid, stderr=b"")
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        del argv, kwargs
+        return response
+
+    monkeypatch.setattr(tool.subprocess, "run", fake_run)
+    cases = (
+        (valid + b"trailing", b"", 0, "MALFORMED_CAT_FILE"),
+        (
+            f"{oid} blob {tool.MAX_GIT_BLOB_BYTES + 1}\n".encode("ascii"),
+            b"",
+            0,
+            "INVALID_CAT_FILE",
+        ),
+        (valid, b"unexpected stderr", 0, "CAT_FILE_FAILED"),
+        (b"", b"", 1, "CAT_FILE_FAILED"),
+    )
+    for stdout, stderr, returncode, expected_code in cases:
+        response = subprocess.CompletedProcess(
+            [objects.git], returncode, stdout=stdout, stderr=stderr
+        )
+        with pytest.raises(tool.SnapshotError) as raised:
+            objects._read_blobs()
+        assert raised.value.code == expected_code
+
+
+BLOCKED_GIT_BATCH_RUNNER = """
+import importlib.util,pathlib,sys
+tool_path=pathlib.Path(sys.argv[1])
+repo=pathlib.Path(sys.argv[2])
+git=sys.argv[3]
+count=int(sys.argv[4])
+spec=importlib.util.spec_from_file_location('blocked_git_batch_tool',tool_path)
+assert spec is not None and spec.loader is not None
+module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+objects=object.__new__(module.GitObjects)
+objects.repo=repo
+objects.git=git
+oids=[f'{index:040x}' for index in range(1,count+1)]
+objects.entries=[{'blob_oid':oid} for oid in oids]
+blobs=objects._read_blobs()
+assert len(blobs)==count
+assert blobs[oids[0]].startswith(b'GIT_NO_LAZY_FETCH=1;GIT_NO_REPLACE_OBJECTS=1;')
+assert b'GIT_OPTIONAL_LOCKS=0;GIT_TERMINAL_PROMPT=0;LC_ALL=C.UTF-8' in blobs[oids[0]]
+assert blobs[oids[-1]]==b'Z'
+"""
+
+
+@obligation("MP2-000.OBL.CAPTURE_NEGATIVE_BOUNDARY_PARSER")
+def test_git_batch_drains_large_output_while_supplying_large_input(
+    _obligation: str, tmp_path: Path
+) -> None:
+    assert _obligation == OBLIGATION_IDS[2]
+    count = 4096
+    git = tmp_path / "blocking-git"
+    git_program = tmp_path / "blocking_git.py"
+    git_program.write_text(
+        "import os,sys\n"
+        "count=int(os.environ['MP2_TEST_OID_COUNT'])\n"
+        "oids=[f'{index:040x}' for index in range(1,count+1)]\n"
+        "names=('GIT_NO_LAZY_FETCH','GIT_NO_REPLACE_OBJECTS','GIT_OPTIONAL_LOCKS',"
+        "'GIT_TERMINAL_PROMPT','LC_ALL')\n"
+        "marker=';'.join(f'{name}={os.environ.get(name)}' for name in names).encode()\n"
+        "payload=marker+b'\\0'+b'X'*(256*1024-len(marker)-1)\n"
+        "stream=sys.stdout.buffer\n"
+        "stream.write(f'{oids[0]} blob {len(payload)}\\n'.encode()+payload+b'\\n')\n"
+        "stream.flush()\n"
+        "requests=sys.stdin.buffer.read().splitlines()\n"
+        "if requests != [oid.encode() for oid in oids]:\n"
+        "    sys.stderr.write('unexpected batch request')\n"
+        "    raise SystemExit(91)\n"
+        "for oid in oids[1:]:\n"
+        "    stream.write(f'{oid} blob 1\\nZ\\n'.encode())\n"
+        "stream.flush()\n",
+        encoding="utf-8",
+    )
+    git.write_text(
+        '#!/bin/sh\nexec "$MP2_TEST_PYTHON" "$MP2_TEST_GIT_SCRIPT" "$@"\n',
+        encoding="utf-8",
+    )
+    git.chmod(0o755)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "MP2_TEST_OID_COUNT": str(count),
+            "MP2_TEST_PYTHON": sys.executable,
+            "MP2_TEST_GIT_SCRIPT": str(git_program),
+            "GIT_NO_LAZY_FETCH": "unsafe",
+            "GIT_NO_REPLACE_OBJECTS": "unsafe",
+            "GIT_OPTIONAL_LOCKS": "unsafe",
+            "GIT_TERMINAL_PROMPT": "unsafe",
+            "LC_ALL": "C",
+        }
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            BLOCKED_GIT_BATCH_RUNNER,
+            str(TOOL_PATH),
+            str(tmp_path),
+            str(git),
+            str(count),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert result.stdout == b""
+    assert result.stderr == b""
 
 
 @obligation("MP2-000.OBL.CAPTURE_VALID")
@@ -2729,6 +3075,85 @@ def test_digest_token_n_minus_one_n_n_plus_one(
         assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
 
 
+TOKEN_SCHEMA_CASES = (
+    pytest.param("sha1", "a" * 40, id="sha1"),
+    pytest.param("sha256", "a" * 64, id="sha256"),
+    pytest.param("filesystem-sha256", "sha256:" + "a" * 64, id="filesystem-sha256"),
+    pytest.param("python-cache-tag", "cpython-312", id="python-cache-tag"),
+    pytest.param("normalized-name", "pytest", id="normalized-name"),
+    pytest.param("package-name", "metriplane.demo", id="package-name"),
+    pytest.param("workflow-job-id", "tests.linux-3", id="workflow-job-id"),
+    pytest.param("normalized-route", "/health", id="normalized-route"),
+    pytest.param("workflow-path", ".github/workflows/ci.yml", id="workflow-path"),
+)
+
+
+def _token_schema(schema: dict[str, Any], token_kind: str) -> dict[str, Any]:
+    definitions = schema["$defs"]
+    paths = {
+        "sha1": ("sha1",),
+        "sha256": ("sha256",),
+        "filesystem-sha256": ("filesystem", "properties", "sha256"),
+        "python-cache-tag": ("environment", "properties", "python_cache_tag"),
+        "normalized-name": ("installed_distribution", "properties", "normalized_name"),
+        "package-name": ("package_data_declaration", "properties", "package"),
+        "workflow-job-id": ("workflow_entry", "properties", "job_ids", "items"),
+        "normalized-route": ("http_route", "properties", "normalized_path"),
+        "workflow-path": ("workflow_entry", "properties", "path"),
+    }
+    value: Any = definitions
+    for component in paths[token_kind]:
+        value = value[component]
+    assert isinstance(value, dict)
+    return cast(dict[str, Any], value)
+
+
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+@pytest.mark.parametrize(("token_kind", "valid_token"), TOKEN_SCHEMA_CASES)
+@pytest.mark.parametrize("suffix", ["\n", "\r"], ids=["terminal-lf", "terminal-cr"])
+def test_token_schemas_reject_terminal_controls_with_internal_and_pinned_engines(
+    _obligation: str,
+    token_kind: str,
+    valid_token: str,
+    suffix: str,
+    schema_value: dict[str, Any],
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    token_schema = _token_schema(schema_value, token_kind)
+    assert _internal_schema_accepts(valid_token, token_schema)
+    external_valid = _pinned_external_schema_accepts(valid_token, token_schema)
+    if external_valid is not None:
+        assert external_valid is True
+
+    invalid_token = valid_token + suffix
+    assert not _internal_schema_accepts(invalid_token, token_schema)
+    external_invalid = _pinned_external_schema_accepts(invalid_token, token_schema)
+    if external_invalid is not None:
+        assert external_invalid is False
+
+
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+@pytest.mark.parametrize("field", ["execution-sha256", "python-cache-tag"])
+@pytest.mark.parametrize("suffix", ["\n", "\r"], ids=["terminal-lf", "terminal-cr"])
+def test_validate_rejects_terminal_controls_in_schema_tokens(
+    _obligation: str,
+    field: str,
+    suffix: str,
+    captured_value: dict[str, Any],
+    schema_path: Path,
+    tmp_path: Path,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    candidate = copy.deepcopy(captured_value)
+    if field == "execution-sha256":
+        candidate["tests"]["execution"]["stdout_sha256"] += suffix
+    else:
+        candidate["environment"]["python_cache_tag"] += suffix
+    with pytest.raises(tool.SnapshotError) as raised:
+        _validate_value(tmp_path, candidate, schema_path)
+    assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
+
+
 INTERNAL_INVARIANT_MUTATIONS = (
     pytest.param("tracked_tree", id="tracked-tree-order-and-digest"),
     pytest.param("commands_and_help", id="installed-help-order"),
@@ -3061,6 +3486,89 @@ def test_internal_schema_engine_preflights_unselected_conditional_branches(
     with pytest.raises(tool.SnapshotError) as raised:
         tool._internal_validate("selected", schema)
     assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
+
+
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+@pytest.mark.parametrize("suffix", ["\n", "\r"], ids=["terminal-lf", "terminal-cr"])
+def test_internal_schema_engine_treats_anchored_patterns_as_full_tokens(
+    _obligation: str,
+    suffix: str,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    anchored = {"type": "string", "pattern": "^[a-z]+$"}
+    assert _internal_schema_accepts("valid", anchored)
+    assert not _internal_schema_accepts("valid" + suffix, anchored)
+    assert _internal_schema_accepts("prefix valid suffix", {"pattern": "valid"})
+
+
+@obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")
+def test_pinned_external_engine_is_an_additional_fail_closed_check(
+    _obligation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert _obligation == OBLIGATION_IDS[5]
+    original_version = tool.importlib.metadata.version
+    original_import = tool.importlib.import_module
+    events: list[str] = []
+
+    class SyntheticSchemaError(Exception):
+        pass
+
+    class SyntheticValidationError(Exception):
+        pass
+
+    class SyntheticFormatChecker:
+        def __init__(self) -> None:
+            events.append("format-checker")
+            self.checkers = {"date-time": object()}
+
+    class SyntheticValidator:
+        @classmethod
+        def check_schema(cls, _schema: dict[str, Any]) -> None:
+            events.append("check-schema")
+
+        def __init__(self, _schema: dict[str, Any], *, format_checker: Any) -> None:
+            assert isinstance(format_checker, SyntheticFormatChecker)
+            events.append("validator")
+
+        def validate(self, instance: Any) -> None:
+            assert instance == "valid"
+            events.append("validate")
+
+    synthetic_jsonschema = SimpleNamespace(
+        Draft202012Validator=SyntheticValidator,
+        FormatChecker=SyntheticFormatChecker,
+        exceptions=SimpleNamespace(
+            SchemaError=SyntheticSchemaError,
+            ValidationError=SyntheticValidationError,
+        ),
+    )
+
+    def pinned_version(distribution: str) -> str:
+        if distribution == "jsonschema":
+            return "4.25.1"
+        if distribution == "rfc3339-validator":
+            return "0.1.4"
+        return cast(str, original_version(distribution))
+
+    def pinned_import(module: str, package: str | None = None) -> Any:
+        if module == "jsonschema":
+            events.append("import")
+            return synthetic_jsonschema
+        return original_import(module, package)
+
+    monkeypatch.setattr(tool.importlib.metadata, "version", pinned_version)
+    monkeypatch.setattr(tool.importlib, "import_module", pinned_import)
+    assert tool._validate_with_available_engine("valid", {"type": "string"}) == (
+        "jsonschema-4.25.1"
+    )
+    assert events == ["import", "format-checker", "check-schema", "validator", "validate"]
+
+    events.clear()
+    with pytest.raises(tool.SnapshotError) as raised:
+        tool._validate_with_available_engine(1, {"type": "string"})
+    assert raised.value.code == "SCHEMA_VALIDATION_FAILED"
+    assert events == []
 
 
 @obligation("MP2-000.OBL.SCHEMA_AND_CHECKSUM")

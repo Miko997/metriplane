@@ -35,8 +35,8 @@ from urllib.parse import urlsplit
 SCHEMA_VERSION = "metriplane.baseline-snapshot.v1"
 SCHEMA_DRAFT_URI = "https://json-schema.org/draft/2020-12/schema"
 SCHEMA_ID = "https://metriplane.com/schemas/metriplane.baseline-snapshot.v1.schema.json"
-EXPECTED_SCHEMA_BYTES = 17_544
-EXPECTED_SCHEMA_SHA256 = "bb3004ef72d5d8530aabadc003cb1c9a1aa74ead62ee0e8e13d4c97eb4150e68"
+EXPECTED_SCHEMA_BYTES = 17_897
+EXPECTED_SCHEMA_SHA256 = "97dede4dfad68bca21a46458fa1dadc7b51d1834184d5763b6a76866e3d633b2"
 BASELINE_EVIDENCE_VERSION = "metriplane.mp2-000.pre-edit-baseline.v1"
 TASK_ID = "MP2-000"
 OBLIGATION_IDS = (
@@ -54,6 +54,14 @@ AUDITED_BASE_SHA = "14c1befff886215d928f1c3f6b412b843b902671"
 AUDITED_BASE_TREE = "38dcd26db9a467c850c75d4af0e6c932c3d0ecd7"
 AUDITED_VERSION = "0.3.0"
 EXPECTED_MATERIALIZATION_ID = "f72ad822f4bc4bd8ebd02a8a41e2662161a634b3246832bfb099e1b150e20478"
+EXPECTED_WORK_ORDER_MANIFEST_BYTES = 22_526
+EXPECTED_WORK_ORDER_MANIFEST_SHA256 = (
+    "d94cb3b4cbdc896a95ffab8e40d5268dda1e372fb18ece31476072d525a8eaaa"
+)
+EXPECTED_WORK_ORDER_VALIDATION_BYTES = 4_698
+EXPECTED_WORK_ORDER_VALIDATION_SHA256 = (
+    "2b475791f0d3b4cdec7ea2f1265de5afddc746b21880b295b096d277fd943d55"
+)
 EXPECTED_PREEDIT_BASELINE_SHA256 = (
     "90d7afa45338d61121c09ad5b3b8fa5b342f14f2988c507147b35ab083403eb6"
 )
@@ -74,6 +82,45 @@ EXPECTED_VALIDATION_CHECK_IDS = (
     "PREEDIT_REDISCOVERY_NO_DRIFT",
     "INSTANCE_NO_OVERWRITE",
 )
+EXPECTED_WORK_ORDER_MANIFEST_FIELDS = frozenset(
+    {
+        "assignment_actor_and_authority",
+        "base_sha",
+        "canonical_materialization_input_digest",
+        "clean_tree",
+        "compatibility_and_non_goals",
+        "consumed_contract_digests",
+        "criterion_to_test_obligation_mapping",
+        "environment_profile_rows",
+        "evidence_and_downstream_handoff",
+        "exact_command_ids_argv_expected_exits_outputs",
+        "exact_dependency_ids_and_merged_artifact_proof",
+        "exact_existing_and_CREATE_paths",
+        "exact_symbols_routes_workflows_schemas",
+        "linear_issue",
+        "linear_issue_snapshot_digest_and_event_cursor",
+        "manual_and_irreversible_actions",
+        "materialization_id",
+        "ordered_pr_outcomes",
+        "people_permissions_secrets_services_hardware",
+        "produced_contract_paths_schemas_producers_validators_consumers",
+        "repository_instruction_state_and_pr_contract_phase",
+        "schema_version",
+        "signed_assignment_or_delegation_record_digest",
+        "stop_conditions",
+        "task_id",
+    }
+)
+EXPECTED_MANIFEST_ONLY_PROJECTION_SHA256 = {
+    "clean_tree": "d71bbec5b3db1754278000bfa0b1acdc2a9303832310e5aebe4e6d18c1c2d3f9",
+    "compatibility_and_non_goals": (
+        "ccd2a84c61c9d7b147ff4c042df87deabee2b82ad6db0d70572df00e6b7d7eb2"
+    ),
+    "evidence_and_downstream_handoff": (
+        "b56eb93adf6948afe503ef06d4de45c73bc0c04e8689926aa986de1f36d79144"
+    ),
+    "stop_conditions": "a16c0e51af6a5db44a3612a5308ca3ed218238818c3b99859b24cd7b61ab96c7",
+}
 CANONICAL_INPUT_SCHEMA_SHA256 = "b3a6b640384a449f6e250b6e630b05f2e287df3779e752ddf9f8f6992a2717c8"
 EXPECTED_CATALOG_SHA256 = "f04a69658ae8c0c11c1ad96cb666b03d92cdf2d0a59a7520580487a61a43c161"
 EXPECTED_TASK_ROW_SHA256 = "7637789f9430f3d99fa2dba4aff7c15cde68f694fbadaaac31b6f14921e90501"
@@ -206,6 +253,14 @@ MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
 MAX_SCHEMA_BYTES = 1024 * 1024
 MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 MAX_GIT_BLOB_BYTES = 16 * 1024 * 1024
+
+GIT_READ_ONLY_ENVIRONMENT = {
+    "GIT_NO_LAZY_FETCH": "1",
+    "GIT_NO_REPLACE_OBJECTS": "1",
+    "GIT_OPTIONAL_LOCKS": "0",
+    "GIT_TERMINAL_PROMPT": "0",
+    "LC_ALL": "C.UTF-8",
+}
 
 EXPECTED_TRACKED_COUNT = 1469
 EXPECTED_TEST_COUNT = 1194
@@ -619,6 +674,12 @@ def _safe_git_path(raw: bytes) -> str:
     return _require_safe_relative_posix(path, code="UNSAFE_GIT_PATH", label="Git path")
 
 
+def _git_read_only_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.update(GIT_READ_ONLY_ENVIRONMENT)
+    return environment
+
+
 class GitObjects:
     def __init__(self, repo: Path, base_sha: str) -> None:
         self.repo = repo
@@ -643,20 +704,12 @@ class GitObjects:
         self.blobs = self._read_blobs()
 
     def run(self, *args: str, input_bytes: bytes | None = None) -> bytes:
-        env = os.environ.copy()
-        env.update(
-            {
-                "GIT_NO_REPLACE_OBJECTS": "1",
-                "GIT_TERMINAL_PROMPT": "0",
-                "LC_ALL": "C.UTF-8",
-            }
-        )
         result = subprocess.run(
             [self.git or "git", "-C", str(self.repo), *args],
             input=input_bytes,
             capture_output=True,
             check=False,
-            env=env,
+            env=_git_read_only_environment(),
         )
         if result.returncode != 0:
             detail = result.stderr.decode("utf-8", "replace").strip()
@@ -694,36 +747,31 @@ class GitObjects:
 
     def _read_blobs(self) -> dict[str, bytes]:
         oids = sorted({row["blob_oid"] for row in self.entries})
-        env = os.environ.copy()
-        env.update(
-            {
-                "GIT_NO_REPLACE_OBJECTS": "1",
-                "GIT_TERMINAL_PROMPT": "0",
-                "LC_ALL": "C.UTF-8",
-            }
-        )
-        process = subprocess.Popen(
+        result = subprocess.run(
             [self.git or "git", "-C", str(self.repo), "cat-file", "--batch"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
+            input=b"".join(oid.encode("ascii") + b"\n" for oid in oids),
+            capture_output=True,
+            check=False,
+            env=_git_read_only_environment(),
         )
-        assert (
-            process.stdin is not None and process.stdout is not None and process.stderr is not None
-        )
-        process.stdin.write(b"".join(oid.encode("ascii") + b"\n" for oid in oids))
-        process.stdin.close()
+        if result.returncode != 0 or result.stderr:
+            _fail("CAT_FILE_FAILED", "git cat-file batch did not complete cleanly")
+
+        output = result.stdout
+        offset = 0
         blobs: dict[str, bytes] = {}
         for expected_oid in oids:
-            header = process.stdout.readline()
+            header_end = output.find(b"\n", offset)
+            if header_end < 0:
+                _fail("MALFORMED_CAT_FILE", "git cat-file returned a malformed header")
+            header = output[offset:header_end]
+            offset = header_end + 1
             try:
-                oid_b, type_b, size_b = header.rstrip(b"\n").split(b" ")
+                oid_b, type_b, size_b = header.split(b" ")
                 oid = oid_b.decode("ascii")
                 object_type = type_b.decode("ascii")
                 size = int(size_b)
             except (ValueError, UnicodeDecodeError):
-                process.kill()
                 _fail("MALFORMED_CAT_FILE", "git cat-file returned a malformed header")
             if (
                 oid != expected_oid
@@ -731,21 +779,18 @@ class GitObjects:
                 or size < 0
                 or size > MAX_GIT_BLOB_BYTES
             ):
-                process.kill()
                 _fail(
                     "INVALID_CAT_FILE",
                     f"invalid Git blob identity or size: {expected_oid}",
                 )
-            data = process.stdout.read(size)
-            terminator = process.stdout.read(1)
-            if len(data) != size or terminator != b"\n":
-                process.kill()
+            data_end = offset + size
+            if data_end >= len(output) or output[data_end : data_end + 1] != b"\n":
                 _fail("TRUNCATED_CAT_FILE", f"truncated Git blob: {expected_oid}")
+            data = output[offset:data_end]
+            offset = data_end + 1
             blobs[oid] = data
-        stderr = process.stderr.read()
-        returncode = process.wait()
-        if returncode != 0 or stderr:
-            _fail("CAT_FILE_FAILED", "git cat-file batch did not complete cleanly")
+        if offset != len(output):
+            _fail("MALFORMED_CAT_FILE", "git cat-file returned unexpected trailing output")
         return blobs
 
     def blob(self, path: str) -> bytes:
@@ -2123,6 +2168,14 @@ def _instance_core(
     ready: list[tuple[Path, dict[str, Any], dict[str, Any], dict[str, Any]]] = []
     for instance in candidates:
         validation_raw = _read_regular(instance / "work-order-validation.json", MAX_EVIDENCE_BYTES)
+        if (
+            len(validation_raw) != EXPECTED_WORK_ORDER_VALIDATION_BYTES
+            or _sha(validation_raw) != EXPECTED_WORK_ORDER_VALIDATION_SHA256
+        ):
+            _fail(
+                "READY_INSTANCE_DIGEST_MISMATCH",
+                "READY work-order validation differs from the reviewed immutable record",
+            )
         validation = _strict_json(validation_raw, require_canonical=True)
         if not isinstance(validation, dict):
             _fail("READY_INSTANCE_INVALID", "work-order validation root must be an object")
@@ -2171,6 +2224,14 @@ def _instance_core(
         for digest_field, filename in core_names.items():
             raw = _read_regular(instance / filename, MAX_EVIDENCE_BYTES)
             digest = _sha(raw)
+            if filename == "work-order.json" and (
+                len(raw) != EXPECTED_WORK_ORDER_MANIFEST_BYTES
+                or digest != EXPECTED_WORK_ORDER_MANIFEST_SHA256
+            ):
+                _fail(
+                    "READY_INSTANCE_DIGEST_MISMATCH",
+                    "READY work-order manifest differs from the reviewed immutable record",
+                )
             if validation.get(digest_field) != digest:
                 _fail(
                     "READY_INSTANCE_DIGEST_MISMATCH",
@@ -2220,12 +2281,21 @@ def _instance_core(
         parsed_core["resolved-anchors.json"] = _strict_json(anchors_raw, require_canonical=True)
         manifest = parsed_core["work-order.json"]
         if not isinstance(manifest, dict) or (
-            manifest.get("task_id") != TASK_ID
+            set(manifest) != EXPECTED_WORK_ORDER_MANIFEST_FIELDS
+            or manifest.get("task_id") != TASK_ID
             or manifest.get("base_sha") != base_sha
             or manifest.get("materialization_id") != instance.name
             or manifest.get("canonical_materialization_input_digest") != instance.name
         ):
             _fail("READY_INSTANCE_INVALID", "READY work-order manifest identity mismatch")
+        if any(
+            _sha(_canonical_bytes(manifest[field])) != digest
+            for field, digest in EXPECTED_MANIFEST_ONLY_PROJECTION_SHA256.items()
+        ):
+            _fail(
+                "READY_INSTANCE_INVALID",
+                "READY work-order manifest-only authority projection differs",
+            )
         environment = parsed_core["environment-observation.json"]
         if not isinstance(environment, dict) or (
             environment.get("task_id") != TASK_ID
@@ -4239,6 +4309,13 @@ def _date_time_format_valid(value: str) -> bool:
     return True
 
 
+def _schema_pattern_matches(pattern: str, value: str) -> bool:
+    """Apply JSON Schema search semantics without Python's terminal-LF `$` exception."""
+    if pattern.startswith("^") and pattern.endswith("$"):
+        return re.fullmatch(pattern, value) is not None
+    return re.search(pattern, value) is not None
+
+
 def _validate_schema_node(instance: Any, schema: Any, root: dict[str, Any], path: str) -> None:
     if isinstance(schema, bool):
         if not schema:
@@ -4367,7 +4444,7 @@ def _validate_schema_node(instance: Any, schema: Any, root: dict[str, Any], path
             raise _SchemaViolation(path, f"string is longer than {maximum_length} characters")
         pattern = schema.get("pattern")
         if pattern is not None and (
-            not isinstance(pattern, str) or re.search(pattern, instance) is None
+            not isinstance(pattern, str) or not _schema_pattern_matches(pattern, instance)
         ):
             raise _SchemaViolation(path, f"string does not match pattern {pattern!r}")
         format_name = schema.get("format")
@@ -4400,6 +4477,7 @@ def _internal_validate(instance: Any, schema: dict[str, Any]) -> None:
 
 
 def _validate_with_available_engine(instance: Any, schema: dict[str, Any]) -> str:
+    _internal_validate(instance, schema)
     try:
         jsonschema_version = importlib.metadata.version("jsonschema")
         rfc3339_version = importlib.metadata.version("rfc3339-validator")
@@ -4426,7 +4504,6 @@ def _validate_with_available_engine(instance: Any, schema: dict[str, Any]) -> st
                         f"Draft 2020-12 schema validation failed: {exc}",
                     )
                 return "jsonschema-4.25.1"
-    _internal_validate(instance, schema)
     return "internal-exact-schema-v1"
 
 
