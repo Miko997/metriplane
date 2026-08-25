@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from metriplane.paths import PlatformPaths, resolve_platform_paths
+
+_SAFE_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 def main_sentinel(
@@ -59,8 +62,24 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         return 1
 
     run_id = args.run_id or "sentinel_run"
+    if _SAFE_RUN_ID.fullmatch(run_id) is None:
+        print(
+            "run_id must be a portable 1-128 character name using "
+            "letters, numbers, dot, dash, or underscore"
+        )
+        return 2
+
     runs_dir = Path(args.runs_dir) if args.runs_dir else (paths or resolve_platform_paths()).runs_dir
     run_dir = runs_dir / run_id
+    try:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        run_dir.mkdir()
+    except FileExistsError:
+        print(f"sentinel run directory already exists: {run_dir}")
+        return 2
+    except OSError as exc:
+        print(f"cannot create sentinel run directory {run_dir}: {exc}")
+        return 2
 
     try:
         runtime = SentinelRuntime(sentinel_cfg, run_dir=run_dir, run_id=run_id)

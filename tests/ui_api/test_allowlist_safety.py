@@ -54,12 +54,15 @@ def test_platform_run_path_is_resolved_only_for_returned_commands(tmp_path: Path
         state_dir=tmp_path / "state",
     )
 
-    static = next(command for command in ALLOWLIST if command.id == "sentinel-demo")
-    resolved = next(command for command in get_commands(paths=paths) if command.id == "sentinel-demo")
+    resolved_commands = get_commands(paths=paths)
 
-    assert str(paths.runs_dir) not in static.command
-    assert str(paths.runs_dir) in resolved.command
-    assert get_command("sentinel-demo", paths=paths) == resolved
+    for command_id in ("run-demo-replay", "sentinel-demo"):
+        static = next(command for command in ALLOWLIST if command.id == command_id)
+        resolved = next(command for command in resolved_commands if command.id == command_id)
+        assert str(paths.runs_dir) not in static.command
+        assert str(paths.runs_dir) in resolved.command
+        assert resolved.command[resolved.command.index("--runs-dir") + 1] == str(paths.runs_dir)
+        assert get_command(command_id, paths=paths) == resolved
 
 
 def test_only_path_dependent_command_is_disabled_without_home(monkeypatch):
@@ -76,10 +79,12 @@ def test_only_path_dependent_command_is_disabled_without_home(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
     commands = get_commands()
+    replay = next(command for command in commands if command.id == "run-demo-replay")
     sentinel = next(command for command in commands if command.id == "sentinel-demo")
     doctor = next(command for command in commands if command.id == "doctor")
 
-    assert sentinel.enabled is False
-    assert sentinel.disabled_reason is not None
-    assert "Platform paths unavailable" in sentinel.disabled_reason
+    for command in (replay, sentinel):
+        assert command.enabled is False
+        assert command.disabled_reason is not None
+        assert "Platform paths unavailable" in command.disabled_reason
     assert doctor.enabled is True

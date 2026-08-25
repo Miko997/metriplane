@@ -78,6 +78,7 @@ def test_commands_shape_exposes_allowlist_metadata():
 
 def test_runner_uses_one_injected_runs_root_for_status_commands_and_operator(
     tmp_path: Path,
+    monkeypatch,
 ):
     paths = PlatformPaths(
         config_dir=tmp_path / "config",
@@ -85,8 +86,10 @@ def test_runner_uses_one_injected_runs_root_for_status_commands_and_operator(
         cache_dir=tmp_path / "cache",
         state_dir=tmp_path / "state",
     ).with_runs_dir(tmp_path / "recordings")
+    monkeypatch.setenv("RUNS", str(tmp_path / "ambient-recordings"))
 
     with runner_server(paths) as base:
+        assert service.executor.platform_paths is paths
         _, status_payload = request_json(f"{base}/status")
         _, commands_payload = request_json(f"{base}/commands")
         _, latest_payload = request_json(f"{base}/operator/latest-run")
@@ -94,9 +97,31 @@ def test_runner_uses_one_injected_runs_root_for_status_commands_and_operator(
     sentinel = next(
         command for command in commands_payload["commands"] if command["id"] == "sentinel-demo"
     )
+    replay = next(
+        command for command in commands_payload["commands"] if command["id"] == "run-demo-replay"
+    )
     assert status_payload["runs_dir"] == str(paths.runs_dir)
     assert str(paths.runs_dir) in sentinel["command"]
+    assert str(paths.runs_dir) in replay["command"]
     assert latest_payload["runs_dir"] == str(paths.runs_dir)
+
+
+def test_direct_runner_preserves_explicit_runs_environment(
+    tmp_path: Path,
+    monkeypatch,
+):
+    explicit = tmp_path / "explicit-recordings"
+    monkeypatch.setenv("RUNS", str(explicit))
+
+    with runner_server() as base:
+        _, status_payload = request_json(f"{base}/status")
+        _, commands_payload = request_json(f"{base}/commands")
+
+    replay = next(
+        command for command in commands_payload["commands"] if command["id"] == "run-demo-replay"
+    )
+    assert status_payload["runs_dir"] == str(explicit)
+    assert str(explicit) in replay["command"]
 
 
 @pytest.mark.parametrize(

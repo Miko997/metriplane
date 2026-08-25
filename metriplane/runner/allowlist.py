@@ -43,7 +43,12 @@ ALLOWLIST: List[AllowedCommand] = [
         id="run-demo-replay",
         title="Run Demo Replay",
         description="Build the camera-free demo replay, Command Center sample, evidence workspace, and USD export",
-        command=[_PYTHON, "tools/run_ui_demo_replay.py"],
+        command=[
+            _PYTHON,
+            "tools/run_ui_demo_replay.py",
+            "--runs-dir",
+            _RUNS_DIR_TOKEN,
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=120,

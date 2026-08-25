@@ -94,7 +94,13 @@ module import.
 
 The application directory `metriplane/` is appended to each base. Runs therefore default to the
 `runs/` child of the platform data directory. `--runs-dir PATH` remains an explicit override and
-existing configs with an explicit `runs_dir` or `record_jsonl` continue to use that value.
+existing configs with an explicit `runs_dir` or `record_jsonl` continue to use that value. A
+launcher override is propagated to the runner, its allowlisted replay command, and the `RUNS`
+environment used by allowlisted `tools/mp.sh` jobs.
+
+Sentinel `--run-id` values are portable single-component names containing letters, numbers, dots,
+dashes, or underscores. Sentinel reserves a new run directory and refuses an existing one rather
+than overwriting its artifacts.
 
 On Windows, configuration is roaming but machine-local data and run recordings are not. When
 `APPDATA` or `LOCALAPPDATA` is unset, Metriplane derives the corresponding

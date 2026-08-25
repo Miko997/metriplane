@@ -152,6 +152,35 @@ class TestCLIHelp:
         out = capsys.readouterr().out
         assert "--operator" in out
 
+    @pytest.mark.parametrize(
+        ("command", "launcher_function"),
+        [
+            ("start", "cmd_start"),
+            ("stop", "cmd_stop"),
+            ("restart", "cmd_restart"),
+            ("status", "cmd_status"),
+            ("cleanup", "cmd_cleanup"),
+        ],
+    )
+    def test_launcher_commands_forward_injected_platform_paths(
+        self,
+        command,
+        launcher_function,
+        monkeypatch,
+        tmp_path,
+    ):
+        paths = _test_platform_paths(tmp_path)
+        captured = {}
+
+        def fake_command(**kwargs):
+            captured.update(kwargs)
+            return 37
+
+        monkeypatch.setattr(f"metriplane.launcher.{launcher_function}", fake_command)
+
+        assert cli_main([command], paths=paths) == 37
+        assert captured["paths"] is paths
+
 
 # ---------------------------------------------------------------------------
 # stop / status / cleanup with no state

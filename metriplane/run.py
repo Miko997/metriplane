@@ -1585,7 +1585,7 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     ap.add_argument(
         "--runs-dir",
         default=None,
-        help="Override runs base dir (default: /data/runs in docker, ./runs on host).",
+        help="Override runs base directory (default: platform data directory).",
     )
 
     # M9.3: reproducible fault injection

@@ -209,15 +209,22 @@ async function runnerPost(path, body = {}) {
 
 async function checkRunner() {
   const wasConnected = state.runnerConnected;
+  const previousRunnerSessionToken = runnerSessionToken;
   try {
     const d = await opApi('GET', '/status');
     if (d && d.service) {
+      const runnerRestarted = Boolean(
+        wasConnected &&
+        previousRunnerSessionToken &&
+        d.session_token &&
+        d.session_token !== previousRunnerSessionToken
+      );
       state.runnerConnected = true;
       const pill = document.getElementById('runner-pill');
       const lbl = document.getElementById('runner-label');
       if (pill) { pill.classList.add('connected'); }
       if (lbl) lbl.textContent = 'runner :9000 ✓';
-      if (!wasConnected) await refreshLatestRun();
+      if (!wasConnected || runnerRestarted) await refreshLatestRun();
     } else {
       setRunnerDisconnected();
     }

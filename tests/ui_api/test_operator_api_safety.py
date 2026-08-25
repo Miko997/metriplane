@@ -6,6 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from metriplane.paths import PlatformPaths
 from metriplane.runner.operator_api import OperatorAPI
 
@@ -146,3 +148,45 @@ def test_latest_run_fails_cleanly_without_home_or_platform_bases(tmp_path: Path,
 
     assert status == 503
     assert "Platform paths unavailable" in payload["error"]
+
+
+def _symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=target_is_directory)
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable on this platform: {exc}")
+
+
+def test_command_center_auto_discovery_rejects_symlinked_run_outside_root(
+    tmp_path: Path,
+):
+    api = make_api(tmp_path)
+    runs_root = api._runs_root()
+    runs_root.mkdir(parents=True)
+    outside = tmp_path / "outside-run"
+    outside.mkdir()
+    (outside / "sentinel_summary.json").write_text("{}\n", encoding="utf-8")
+    _symlink_or_skip(
+        runs_root / "linked-run",
+        outside,
+        target_is_directory=True,
+    )
+
+    assert api._cc_resolve_run_dir({}) is None
+
+
+def test_command_center_auto_discovery_rejects_symlinked_marker_outside_root(
+    tmp_path: Path,
+):
+    api = make_api(tmp_path)
+    run_dir = api._runs_root() / "candidate"
+    run_dir.mkdir(parents=True)
+    outside_marker = tmp_path / "outside-summary.json"
+    outside_marker.write_text("{}\n", encoding="utf-8")
+    _symlink_or_skip(
+        run_dir / "sentinel_summary.json",
+        outside_marker,
+        target_is_directory=False,
+    )
+
+    assert api._cc_resolve_run_dir({}) is None

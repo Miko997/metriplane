@@ -109,6 +109,64 @@ def test_cli_run_uses_injected_platform_runs_dir_by_default(tmp_path, capsys):
     assert (paths.runs_dir / "sentinel_injected" / "sentinel_summary.json").is_file()
 
 
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        "../escape",
+        "nested/run",
+        r"..\escape",
+        r"C:\escape",
+        r"\\server\share",
+        "/absolute",
+        "..",
+        ".",
+        "bad id",
+    ],
+)
+def test_cli_run_rejects_unsafe_run_ids_without_writing(tmp_path, capsys, run_id):
+    runs_dir = tmp_path / "runs"
+
+    rc = main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            run_id,
+            "--runs-dir",
+            str(runs_dir),
+        ]
+    )
+
+    assert rc == 2
+    assert "run_id" in capsys.readouterr().out
+    assert not runs_dir.exists()
+
+
+def test_cli_run_refuses_to_overwrite_existing_run_directory(tmp_path, capsys):
+    run_dir = tmp_path / "sentinel_existing"
+    run_dir.mkdir()
+    retained = run_dir / "sentinel_summary.json"
+    retained.write_text('{"retained": true}\n', encoding="utf-8")
+
+    rc = main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            "sentinel_existing",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert rc == 2
+    assert "already exists" in capsys.readouterr().out
+    assert retained.read_text(encoding="utf-8") == '{"retained": true}\n'
+    assert list(run_dir.iterdir()) == [retained]
+
+
 def test_cli_status_prints_summary(tmp_path, capsys):
     main_sentinel([
         "run", "--config", "configs/sentinel_demo.yaml",

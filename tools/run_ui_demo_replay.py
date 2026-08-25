@@ -5,6 +5,7 @@
 """Build the camera-free MetriPlane demo path used by the localhost UI."""
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -22,9 +23,21 @@ def run_step(label: str, command: list[str]) -> None:
     subprocess.run(command, cwd=ROOT, check=True)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--runs-dir",
+        default=None,
+        help="Run-recording base directory (default: platform data directory)",
+    )
+    args = parser.parse_args(argv)
+
     py = sys.executable
-    runs_dir = resolve_platform_paths().runs_dir
+    runs_dir = (
+        Path(args.runs_dir).expanduser().resolve()
+        if args.runs_dir
+        else resolve_platform_paths().runs_dir
+    )
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     run_step(

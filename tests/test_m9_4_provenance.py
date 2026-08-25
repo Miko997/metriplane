@@ -106,6 +106,46 @@ def test_metriplane_run_cli_propagates_injected_platform_paths(
     assert captured["paths"] is paths
 
 
+def test_ui_demo_replay_preserves_explicit_runs_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    runs_dir = tmp_path / "explicit-recordings"
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "resolve_platform_paths",
+        lambda: pytest.fail("explicit --runs-dir must not resolve ambient paths"),
+    )
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda _label, command: commands.append(command),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir)]) == 0
+    sentinel_command = commands[0]
+    assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(
+        runs_dir.resolve()
+    )
+
+
+def test_metriplane_run_help_describes_platform_runs_default(capsys) -> None:
+    from metriplane.run import main as run_main
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(["--help"])
+
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    normalized = " ".join(output.split())
+    assert "default: platform data directory" in normalized
+    assert "/data/runs" not in output
+    assert "./runs on host" not in output
+
+
 def test_shell_run_writers_use_canonical_defaults_and_preserve_overrides() -> None:
     root = Path(__file__).resolve().parents[1]
     mp_script = (root / "tools" / "mp.sh").read_text(encoding="utf-8")

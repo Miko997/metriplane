@@ -58,6 +58,9 @@ def _configure_platform_paths(paths: PlatformPaths | None = None) -> PlatformPat
     """Resolve once and share one path set across all runner consumers."""
     global operator_api, runner_paths
     runner_paths = paths if paths is not None else resolve_platform_paths()
+    if paths is None and os.getenv("RUNS"):
+        runner_paths = runner_paths.with_runs_dir(os.environ["RUNS"])
+    executor.configure_platform_paths(runner_paths)
     operator_api = OperatorAPI(
         executor=executor,
         repo_root=find_repo_root(),

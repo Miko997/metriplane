@@ -1178,16 +1178,26 @@ class OperatorAPI:
         generic_runtime_markers = ("session_excerpt.jsonl", "session.jsonl")
 
         def with_markers(markers: tuple[str, ...]) -> list[Path]:
-            return [
-                d for d in runs_root.iterdir()
-                if d.is_dir() and any((d / marker).exists() for marker in markers)
-            ]
+            candidates: list[Path] = []
+            for candidate in runs_root.iterdir():
+                if candidate.is_symlink():
+                    continue
+                try:
+                    resolved = candidate.resolve(strict=True)
+                except OSError:
+                    continue
+                if runs_root not in resolved.parents or not resolved.is_dir():
+                    continue
+                marker_paths = (resolved / marker for marker in markers)
+                if any(path.is_file() and not path.is_symlink() for path in marker_paths):
+                    candidates.append(resolved)
+            return candidates
 
         dirs = with_markers(command_center_markers) or with_markers(generic_runtime_markers)
         if not dirs:
             return None
         dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
-        return dirs[0].resolve()
+        return dirs[0]
 
     def _cc_live_summary(self, body: Dict) -> Tuple[int, Dict]:
         run = self._cc_resolve_run_dir(body)

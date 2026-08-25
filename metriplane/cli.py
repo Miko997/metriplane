@@ -468,7 +468,11 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
     return p
 
 
-def _main_start(argv: list[str]) -> int:
+def _main_start(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_start
     p = _build_launcher_parser("start")
     args = p.parse_args(argv)
@@ -483,29 +487,42 @@ def _main_start(argv: list[str]) -> int:
         runs_dir=str(args.runs_dir) if args.runs_dir else None,
         open_browser=bool(args.open_browser),
         operator=bool(args.operator),
+        paths=paths,
     )
 
 
-def _main_stop(argv: list[str]) -> int:
+def _main_stop(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_stop
     p = argparse.ArgumentParser("metriplane stop",
                                 description="Stop all launcher-started Metriplane processes.")
     p.add_argument("--force", action="store_true", default=False,
                    help="Force-stop even without state file; runs cleanup for orphaned VT processes")
     args = p.parse_args(argv)
-    return cmd_stop(force=bool(args.force))
+    return cmd_stop(force=bool(args.force), paths=paths)
 
 
-def _main_cleanup(argv: list[str]) -> int:
+def _main_cleanup(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_cleanup
     p = argparse.ArgumentParser("metriplane cleanup",
                                 description="Remove orphaned Metriplane processes on known ports. "
                                             "Only kills processes matching known Metriplane patterns.")
     p.parse_args(argv)
-    return cmd_cleanup()
+    return cmd_cleanup(paths=paths)
 
 
-def _main_restart(argv: list[str]) -> int:
+def _main_restart(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_restart
     p = _build_launcher_parser("restart")
     args = p.parse_args(argv)
@@ -520,15 +537,20 @@ def _main_restart(argv: list[str]) -> int:
         runs_dir=str(args.runs_dir) if args.runs_dir else None,
         open_browser=bool(args.open_browser),
         operator=bool(args.operator),
+        paths=paths,
     )
 
 
-def _main_status(argv: list[str]) -> int:
+def _main_status(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_status
     p = argparse.ArgumentParser("metriplane status",
                                 description="Show status of launcher-started Metriplane services.")
     p.parse_args(argv)
-    return cmd_status()
+    return cmd_status(paths=paths)
 
 
 def main(
@@ -596,15 +618,15 @@ def main(
         from metriplane.external_sources.cli import main as external_main
         return external_main(argv[1:])
     if argv and argv[0] == "start":
-        return _main_start(argv[1:])
+        return _main_start(argv[1:], paths=paths)
     if argv and argv[0] == "stop":
-        return _main_stop(argv[1:])
+        return _main_stop(argv[1:], paths=paths)
     if argv and argv[0] == "restart":
-        return _main_restart(argv[1:])
+        return _main_restart(argv[1:], paths=paths)
     if argv and argv[0] == "status":
-        return _main_status(argv[1:])
+        return _main_status(argv[1:], paths=paths)
     if argv and argv[0] == "cleanup":
-        return _main_cleanup(argv[1:])
+        return _main_cleanup(argv[1:], paths=paths)
     # Setup logging for run and replay commands
     from metriplane.logging import setup_logging
     setup_logging()
