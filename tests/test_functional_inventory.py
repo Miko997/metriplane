@@ -26,10 +26,12 @@ PROFILES_PATH = ROOT / "docs" / "status" / "support-profiles.json"
 BASELINE_PATH = ROOT / "docs" / "status" / "baseline-snapshot.v1.json"
 BASELINE_TOOL_PATH = ROOT / "tools" / "baseline_snapshot.py"
 
-MATERIALIZATION_SHA256 = "f5f8ad40229d5e77f40c6de6c7176b303264dfc8754192f631389d687e181192"
+MATERIALIZATION_SHA256 = "a7520b5c0fdad2f61d28762da21f33f9fbc8db5ec100221042435a0cabe7f166"
 BASELINE_SHA256 = "0753e370d8f61df201de98ac838cec9cb9e279f616bd10eab547a6f9511575b3"
 BASE_COMMIT = "2969636357140598d742bd0befed034a25463251"
 BASE_TREE = "09c4ccd6c418ba9a1b99f0f91c39d0162a544bfa"
+EVIDENCE_BASE_COMMIT = "ada55cf2521cca32e061d1bf54736830f7050efb"
+EVIDENCE_BASE_TREE = "f91dff68beedecb863ec4f61768739f182c2abee"
 RETAINED_EVIDENCE_ROOT_ENV = "METRIPLANE_MP2_010_MATERIALIZATION_ROOT"
 
 CRITERION_EVIDENCE_PATHS = {
@@ -300,6 +302,7 @@ def _assert_final_criterion_evidence(
     *,
     artifact_root: Path,
     expected_base_commit: str,
+    expected_base_tree: str,
     expected_commit: str,
     expected_tree: str,
     expected_materialization: str,
@@ -316,6 +319,7 @@ def _assert_final_criterion_evidence(
     assert canonical_input["task"] == "MP2-010"
     assert canonical_input["issue"]["identifier"] == "MET-71"
     assert canonical_input["base"]["commit"] == expected_base_commit
+    assert canonical_input["base"]["tree"] == expected_base_tree
 
     mappings = {mapping["criterion"]: mapping for mapping in canonical_input["criterion_mappings"]}
     assert set(mappings) == set(CRITERION_EVIDENCE_PATHS)
@@ -366,7 +370,7 @@ def _synthetic_evidence_materialization(
         artifact_path.write_bytes(f"artifact-{index}\n".encode())
 
     canonical_input = {
-        "base": {"commit": BASE_COMMIT},
+        "base": {"commit": EVIDENCE_BASE_COMMIT, "tree": EVIDENCE_BASE_TREE},
         "criterion_mappings": [
             {
                 "criterion": criterion,
@@ -381,7 +385,7 @@ def _synthetic_evidence_materialization(
     }
     canonical_input_bytes = _canonical_bytes(canonical_input)
     materialization = hashlib.sha256(canonical_input_bytes).hexdigest()
-    materialization_root = tmp_path / BASE_COMMIT / materialization
+    materialization_root = tmp_path / EVIDENCE_BASE_COMMIT / materialization
     evidence_root = materialization_root / "evidence"
     evidence_root.mkdir(parents=True)
     (materialization_root / "canonical-input.json").write_bytes(canonical_input_bytes)
@@ -395,7 +399,7 @@ def _synthetic_evidence_materialization(
     for criterion, relative_path in CRITERION_EVIDENCE_PATHS.items():
         record = {
             "artifacts": artifacts,
-            "base_commit": BASE_COMMIT,
+            "base_commit": EVIDENCE_BASE_COMMIT,
             "commit": commit,
             "criterion": criterion,
             "exit_code": 0,
@@ -1143,7 +1147,8 @@ def test_final_criterion_evidence_bindings(_obligation: str) -> None:
     _assert_final_criterion_evidence(
         Path(raw_root),
         artifact_root=ROOT,
-        expected_base_commit=BASE_COMMIT,
+        expected_base_commit=EVIDENCE_BASE_COMMIT,
+        expected_base_tree=EVIDENCE_BASE_TREE,
         expected_commit=_git_object("rev-parse", "HEAD"),
         expected_tree=_git_object("rev-parse", "HEAD^{tree}"),
         expected_materialization=MATERIALIZATION_SHA256,
@@ -1157,7 +1162,8 @@ def test_criterion_evidence_resolver_accepts_complete_bindings(tmp_path: Path) -
     _assert_final_criterion_evidence(
         materialization_root,
         artifact_root=artifact_root,
-        expected_base_commit=BASE_COMMIT,
+        expected_base_commit=EVIDENCE_BASE_COMMIT,
+        expected_base_tree=EVIDENCE_BASE_TREE,
         expected_commit=commit,
         expected_tree=tree,
         expected_materialization=materialization,
@@ -1173,7 +1179,8 @@ def test_criterion_evidence_resolver_requires_both_records(tmp_path: Path) -> No
         _assert_final_criterion_evidence(
             materialization_root,
             artifact_root=artifact_root,
-            expected_base_commit=BASE_COMMIT,
+            expected_base_commit=EVIDENCE_BASE_COMMIT,
+            expected_base_tree=EVIDENCE_BASE_TREE,
             expected_commit=commit,
             expected_tree=tree,
             expected_materialization=materialization,
@@ -1201,7 +1208,8 @@ def test_criterion_evidence_resolver_rejects_changed_bindings(tmp_path: Path, bi
         _assert_final_criterion_evidence(
             materialization_root,
             artifact_root=artifact_root,
-            expected_base_commit=BASE_COMMIT,
+            expected_base_commit=EVIDENCE_BASE_COMMIT,
+            expected_base_tree=EVIDENCE_BASE_TREE,
             expected_commit=expected_commit,
             expected_tree=expected_tree,
             expected_materialization=expected_materialization,
