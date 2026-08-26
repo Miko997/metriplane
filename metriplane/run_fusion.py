@@ -32,6 +32,7 @@ from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
     create_run_context,
+    normalize_runs_dir,
     open_jsonl_writer,
 )
 from metriplane.schema import CameraFrameModel, FrameStateModel, ObjectStateModel
@@ -366,8 +367,11 @@ def run_loop_fusion(
     duration_s: float = 0.0,
     paths: PlatformPaths | None = None,
 ) -> int:
-    effective_runs_dir = runs_dir
-    if not effective_runs_dir and not cfg.runs_dir:
+    effective_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if effective_runs_dir is None:
+        effective_runs_dir = configured_runs_dir
+    if effective_runs_dir is None:
         if paths is not None:
             effective_runs_dir = str(paths.runs_dir)
         elif not os.getenv("METRIPLANE_DATA_DIR"):
@@ -1098,7 +1102,7 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
         config_path=Path(args.config),
         argv=["metriplane-fusion", *argv_in],
         run_id=args.run_id,
-        runs_dir=args.runs_dir,
+        runs_dir=normalize_runs_dir(args.runs_dir),
         duration_s=args.duration_s,
         paths=paths,
     )

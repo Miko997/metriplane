@@ -92,11 +92,16 @@ module import.
 | macOS | XDG override or `~/Library/Application Support` | XDG override or `~/Library/Application Support` | XDG override or `~/Library/Caches` | XDG override or `~/Library/Application Support` |
 | Windows | `%APPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` | `%LOCALAPPDATA%` |
 
-The application directory `metriplane/` is appended to each base. Runs therefore default to the
-`runs/` child of the platform data directory. `--runs-dir PATH` remains an explicit override and
-existing configs with an explicit `runs_dir` or `record_jsonl` continue to use that value. A
-launcher override is propagated to the runner, its allowlisted replay command, and the `RUNS`
-environment used by allowlisted `tools/mp.sh` jobs.
+The application directory `metriplane/` is appended to each base. Platform-aware surfaces,
+including `metriplane run`, Sentinel, launchers, and embedding applications with injected
+`PlatformPaths`, default recordings to the `runs/` child of the platform data directory.
+`--runs-dir PATH` remains an explicit override, and existing configs with an explicit `runs_dir` or
+`record_jsonl` continue to use that value. A launcher override is propagated to the runner, its
+allowlisted replay command, and the `RUNS` environment used by allowlisted `tools/mp.sh` jobs.
+
+The legacy `metriplane-run` console script and direct `python -m metriplane.run` entry point retain
+their established default: `/data/runs` when the Docker data directory is active and `./runs` on a
+host. Supplying `--runs-dir`, config `runs_dir`, or injected `PlatformPaths` still takes precedence.
 
 Runtime provenance resolves its run root in this order: direct `--runs-dir`, config `runs_dir`, an
 injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the XDG/platform default above. This
@@ -104,9 +109,10 @@ keeps the Docker `/data` mount contract while allowing tests and embedding appli
 one isolated root explicitly.
 
 Sentinel `--run-id` values are portable single-component names containing letters, numbers, dots,
-dashes, or underscores. When omitted, Sentinel and the UI demo replay generate a unique portable
-identifier. Sentinel reserves a new run directory and refuses an existing one rather than
-overwriting its artifacts.
+dashes, or underscores. Windows device basenames such as `CON`, `NUL.txt`, `COM1`, and `LPT9.log`,
+plus names ending in a dot or space, are rejected. When omitted, Sentinel and the UI demo replay
+generate a unique portable identifier. Sentinel reserves a new run directory and refuses an
+existing one rather than overwriting its artifacts.
 
 On Windows, configuration is roaming but machine-local data and run recordings are not. When
 `APPDATA` or `LOCALAPPDATA` is unset, Metriplane derives the corresponding

@@ -12,6 +12,21 @@ from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_
 from metriplane.provenance.run_provenance import generate_run_id
 
 _SAFE_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+_WINDOWS_RESERVED_BASENAMES = {
+    "aux",
+    "con",
+    "nul",
+    "prn",
+    *(f"com{number}" for number in range(1, 10)),
+    *(f"lpt{number}" for number in range(1, 10)),
+}
+
+
+def _is_portable_run_id(run_id: str) -> bool:
+    if _SAFE_RUN_ID.fullmatch(run_id) is None or run_id.endswith((".", " ")):
+        return False
+    windows_basename = run_id.split(".", maxsplit=1)[0].rstrip(" .").casefold()
+    return windows_basename not in _WINDOWS_RESERVED_BASENAMES
 
 
 def main_sentinel(
@@ -63,10 +78,11 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         return 1
 
     run_id = args.run_id or generate_run_id("sentinel")
-    if _SAFE_RUN_ID.fullmatch(run_id) is None:
+    if not _is_portable_run_id(run_id):
         print(
             "run_id must be a portable 1-128 character name using "
-            "letters, numbers, dot, dash, or underscore"
+            "letters, numbers, dot, dash, or underscore; Windows device "
+            "basenames and trailing dots or spaces are not allowed"
         )
         return 2
 

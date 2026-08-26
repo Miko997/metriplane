@@ -87,6 +87,14 @@ def data_dir() -> Path:
     return Path("/data") if in_docker() else Path(".")
 
 
+def normalize_runs_dir(value: str | os.PathLike[str] | None) -> str | None:
+    """Normalize an optional run root before applying path precedence."""
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
 def resolve_under_data_dir(p: str | Path) -> Path:
     pp = Path(p)
     if pp.is_absolute():
@@ -366,10 +374,12 @@ def create_run_context(
 
     # Where runs live
     base: Path
-    if runs_dir and str(runs_dir).strip():
-        base = resolve_under_data_dir(str(runs_dir).strip())
-    elif cfg.runs_dir and str(cfg.runs_dir).strip():
-        base = resolve_under_data_dir(str(cfg.runs_dir).strip())
+    explicit_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if explicit_runs_dir is not None:
+        base = resolve_under_data_dir(explicit_runs_dir)
+    elif configured_runs_dir is not None:
+        base = resolve_under_data_dir(configured_runs_dir)
     else:
         base = data_dir() / "runs"
 

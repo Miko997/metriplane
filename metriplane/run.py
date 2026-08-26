@@ -29,6 +29,7 @@ from metriplane.provenance.run_provenance import (
     create_run_context,
     data_dir,
     is_header_record,
+    normalize_runs_dir,
     open_jsonl_writer,
 )
 from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
@@ -671,8 +672,11 @@ def run_loop(
     runs_dir: str | None = None,
     paths: PlatformPaths | None = None,
 ) -> int:
-    effective_runs_dir = runs_dir
-    if not effective_runs_dir and not cfg.runs_dir:
+    effective_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if effective_runs_dir is None:
+        effective_runs_dir = configured_runs_dir
+    if effective_runs_dir is None:
         if paths is not None:
             effective_runs_dir = str(paths.runs_dir)
         elif not os.getenv("METRIPLANE_DATA_DIR"):
@@ -1612,8 +1616,8 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
-    runs_dir = args.runs_dir
-    if paths is None and runs_dir is None and not cfg.runs_dir:
+    runs_dir = normalize_runs_dir(args.runs_dir)
+    if paths is None and runs_dir is None and normalize_runs_dir(cfg.runs_dir) is None:
         runs_dir = str(data_dir() / "runs")
 
     return run_loop(

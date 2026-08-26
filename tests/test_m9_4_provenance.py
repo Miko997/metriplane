@@ -190,6 +190,85 @@ def test_runtime_provenance_preserves_explicit_runs_dir_override(
     assert captured["runs_dir"] == str(explicit)
 
 
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+@pytest.mark.parametrize("override_source", ["cli", "config"])
+def test_runtime_whitespace_runs_dir_uses_injected_root_without_writing_ambient(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    override_source: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+    ambient = tmp_path / "ambient"
+    injected = _platform_paths(tmp_path / "injected")
+    cfg = Config(runs_dir=" \t ") if override_source == "config" else Config()
+    direct_runs_dir = " \t " if override_source == "cli" else None
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 25
+
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", str(ambient))
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+
+    assert (
+        getattr(module, entrypoint_name)(
+            cfg,
+            runs_dir=direct_runs_dir,
+            paths=injected,
+        )
+        == 25
+    )
+    assert captured["runs_dir"] == str(injected.runs_dir)
+    assert not ambient.exists()
+    assert not injected.data_dir.exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_whitespace_direct_override_reveals_config_precedence(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+    configured = tmp_path / "configured"
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 27
+
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+
+    assert (
+        getattr(module, entrypoint_name)(
+            Config(runs_dir=f"  {configured}  "),
+            runs_dir=" \t ",
+            paths=_platform_paths(tmp_path / "injected"),
+        )
+        == 27
+    )
+    assert captured["runs_dir"] == str(configured)
+    assert not configured.exists()
+
+
 def test_metriplane_run_cli_propagates_injected_platform_paths(
     tmp_path: Path,
     monkeypatch,
@@ -284,14 +363,27 @@ def test_primary_run_help_names_platform_runs_directory(capsys) -> None:
     assert "default: platform data directory" not in normalized
 
 
-def test_metriplane_run_console_retains_legacy_default(
+@pytest.mark.parametrize(
+    ("argv", "configured_runs_dir"),
+    [
+        ([], None),
+        (["--runs-dir", " \t "], None),
+        ([], " \t "),
+    ],
+)
+def test_metriplane_run_console_retains_legacy_default_for_blank_overrides(
+    argv: list[str],
+    configured_runs_dir: str | None,
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     from metriplane import run
 
     captured: dict[str, object] = {}
-    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(
+        "metriplane.config.load_config",
+        lambda _path: Config(runs_dir=configured_runs_dir),
+    )
     monkeypatch.setattr(run, "data_dir", lambda: tmp_path)
 
     def fake_run_loop(_cfg, **kwargs):
@@ -300,7 +392,7 @@ def test_metriplane_run_console_retains_legacy_default(
 
     monkeypatch.setattr(run, "run_loop", fake_run_loop)
 
-    assert run.main([]) == 31
+    assert run.main(argv) == 31
     assert captured["runs_dir"] == str(tmp_path / "runs")
     assert captured["paths"] is None
 

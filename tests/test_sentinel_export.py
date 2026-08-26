@@ -158,6 +158,18 @@ def test_cli_run_reports_platform_path_failure_without_traceback(capsys, monkeyp
         "..",
         ".",
         "bad id",
+        "CON",
+        "con.txt",
+        "CON..alias",
+        "NUL.tar.gz",
+        "PrN.log",
+        "AUX.data",
+        "COM1",
+        "com9.capture",
+        "LPT1",
+        "lPt9.log",
+        "run.",
+        "run ",
     ],
 )
 def test_cli_run_rejects_unsafe_run_ids_without_writing(tmp_path, capsys, run_id):
