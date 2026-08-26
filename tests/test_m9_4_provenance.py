@@ -239,6 +239,32 @@ def test_runtime_run_storage_permission_failure_is_clean(
         ("metriplane.run_fusion", "run_loop_fusion"),
     ],
 )
+def test_runtime_rejects_explicit_whitespace_run_id(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+
+    result = getattr(module, entrypoint_name)(
+        Config(source_mode="dummy"),
+        run_id=" \t ",
+        paths=_platform_paths(tmp_path),
+    )
+
+    assert result == 2
+    assert "run storage unavailable:" in caplog.text
+    assert not (tmp_path / "data" / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
 def test_runtime_symlink_loop_runs_dir_fails_cleanly(
     module_name: str,
     entrypoint_name: str,
@@ -855,6 +881,8 @@ def test_run_context_redacts_credentials_from_persisted_config(
 @pytest.mark.parametrize(
     "run_id",
     [
+        "",
+        " \t ",
         "../escape",
         "nested/run",
         "..",

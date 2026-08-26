@@ -671,10 +671,10 @@ def run_loop(
     runs_dir: str | None = None,
     paths: PlatformPaths | None = None,
 ) -> int:
-    candidate_run_id = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "")
-    if candidate_run_id.strip():
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is not None:
         try:
-            validate_portable_run_id(candidate_run_id)
+            validate_portable_run_id(str(configured_run_id))
         except ValueError as exc:
             log.error("run storage unavailable: %s", exc)
             return 2

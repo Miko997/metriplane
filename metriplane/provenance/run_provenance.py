@@ -355,10 +355,11 @@ def create_run_context(
 ) -> RunContext:
     created = _utc_now_iso()
 
-    rid = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "")
-    if not rid.strip():
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is None:
         rid = generate_run_id()
-    rid = validate_portable_run_id(rid)
+    else:
+        rid = validate_portable_run_id(str(configured_run_id))
 
     # Where runs live
     unresolved_base: Path

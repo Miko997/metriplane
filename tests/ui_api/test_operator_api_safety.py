@@ -144,6 +144,51 @@ def test_generate_report_rejects_runs_sibling_prefix(tmp_path: Path):
     assert "under the platform runs directory" in payload["error"]
 
 
+@pytest.mark.parametrize("endpoint", ["start-fusion", "generate-report", "save-config"])
+def test_operator_path_loops_are_deterministic_client_errors(
+    tmp_path: Path,
+    endpoint: str,
+) -> None:
+    api = make_api(tmp_path)
+    if endpoint == "start-fusion":
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        configs.joinpath("loop").symlink_to("loop")
+        body = {
+            "config": "configs/loop/config.yaml",
+            "duration_s": 30,
+            "run_id": "safe_run",
+        }
+    elif endpoint == "generate-report":
+        runs_root = api._runs_root()
+        runs_root.mkdir(parents=True)
+        loop = runs_root / "loop"
+        loop.symlink_to(loop.name)
+        body = {"type": "zones", "session": str(loop), "prefix": "safe"}
+    else:
+        calib = tmp_path / "calib"
+        calib.mkdir()
+        calib.joinpath("loop").symlink_to("loop")
+        body = {
+            "filename": "safe.yaml",
+            "config": {
+                "cameras": [
+                    {
+                        "device": "/dev/video0",
+                        "mapping_file": "calib/loop/mapping.yaml",
+                        "name": "cam0",
+                    }
+                ]
+            },
+        }
+
+    status, payload = api.route("POST", f"/operator/{endpoint}", body)
+
+    assert status == 400
+    assert "Internal error" not in str(payload)
+    api.executor.execute.assert_not_called()
+
+
 def test_calibrate_rejects_unsafe_camera_path_before_job(tmp_path: Path):
     api = make_api(tmp_path)
     status, payload = api._calibrate(

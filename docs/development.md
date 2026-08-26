@@ -120,9 +120,10 @@ embedding applications to inject one isolated root explicitly.
 Run IDs accepted by the runtime, launcher, operator API, Sentinel, benchmark helpers, and external
 fixture writer are portable single-component names containing letters, numbers, dots, dashes, or
 underscores. Windows device basenames such as `CON`, `NUL.txt`, `COM1`, and `LPT9.log`, plus names
-ending in a dot or space, are rejected. When omitted, Sentinel and the UI demo replay generate a
-unique portable identifier. Sentinel reserves a new run directory and refuses an existing one
-rather than overwriting its artifacts.
+ending in a dot or space, are rejected. An explicitly supplied empty or whitespace-only ID is also
+invalid; only omitting the ID requests automatic generation. When omitted, Sentinel and the UI demo
+replay generate a unique portable identifier. Sentinel reserves a new run directory and refuses an
+existing one rather than overwriting its artifacts.
 
 On Windows, configuration is roaming but machine-local data and run recordings are not. When
 `APPDATA` or `LOCALAPPDATA` is unset, Metriplane derives the corresponding

@@ -44,11 +44,16 @@ def _valid_name(name: str) -> bool:
     return bool(SAFE_NAME_RE.match(name))
 
 
+def _body_text(body: Dict[str, Any], key: str, default: str = "") -> str:
+    value = body.get(key, default)
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _is_relative_to(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
         return True
-    except ValueError:
+    except (OSError, RuntimeError, ValueError):
         return False
 
 
@@ -58,6 +63,23 @@ def _safe_camera(cam: str) -> bool:
 
 def _no_traversal(path: str) -> bool:
     return ".." not in path and not path.startswith("/") or path.startswith("/dev/")
+
+
+def _has_symlink_component(path: Path, root: Path) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return True
+    current = root
+    if current.is_symlink():
+        return True
+    for part in relative.parts:
+        if part in {".", ".."}:
+            return True
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
 
 
 def _profile_dir(repo_root: Path, profile: str) -> Path:
@@ -141,7 +163,10 @@ def _validate_camera_config(config_data: dict, repo_root: Path) -> Optional[str]
                 "Expected format: calib/profiles/<profile>/<cam>/mapping_raw.yaml. "
                 "The 'mapping' key is not recognised — use 'mapping_file'."
             )
-        mf_path = (repo_root / str(mf)).resolve()
+        try:
+            mf_path = (repo_root / str(mf)).resolve()
+        except (OSError, RuntimeError):
+            return f"cameras[{i}] ({name!r}): mapping_file cannot be resolved: {mf}"
         if not mf_path.exists():
             return (
                 f"cameras[{i}] ({name!r}): mapping_file not found on disk: {mf}. "
@@ -159,8 +184,15 @@ def _validate_config_relative(repo_root: Path, config: str) -> Optional[Path]:
         return None
     # Strip leading ./
     config = config.lstrip("./")
-    path = (repo_root / config).resolve()
-    configs_root = (repo_root / "configs").resolve()
+    unresolved_root = repo_root / "configs"
+    unresolved_path = repo_root / config
+    if _has_symlink_component(unresolved_path, unresolved_root):
+        return None
+    try:
+        path = unresolved_path.resolve()
+        configs_root = unresolved_root.resolve()
+    except (OSError, RuntimeError):
+        return None
     if not _is_relative_to(path, configs_root):
         return None
     return path
@@ -474,7 +506,7 @@ class OperatorAPI:
             try:
                 resolved = d.resolve(strict=True)
                 resolved.relative_to(runs_root)
-            except (OSError, ValueError):
+            except (OSError, RuntimeError, ValueError):
                 continue
             if not resolved.is_dir():
                 continue
@@ -532,7 +564,7 @@ class OperatorAPI:
     # ── POST /operator/create-profile ─────────────────────────────────────────
 
     def _create_profile(self, body: Dict) -> Tuple[int, Dict]:
-        name: str = body.get("name", "").strip()
+        name = _body_text(body, "name")
         width_m: float = body.get("width_m", 0.55)
         height_m: float = body.get("height_m", 0.40)
         anchors: list = body.get("anchors", [])
@@ -624,7 +656,7 @@ class OperatorAPI:
     # ── POST /operator/write-zones ─────────────────────────────────────────────
 
     def _write_zones(self, body: Dict) -> Tuple[int, Dict]:
-        profile: str = body.get("profile", "").strip()
+        profile = _body_text(body, "profile")
         zones: list = body.get("zones", [])
         overwrite: bool = bool(body.get("overwrite", False))
 
@@ -677,8 +709,8 @@ class OperatorAPI:
     # ── POST /operator/save-config ─────────────────────────────────────────────
 
     def _save_config(self, body: Dict) -> Tuple[int, Dict]:
-        filename: str = body.get("filename", "").strip()
-        config_data: dict = body.get("config", {})
+        filename = _body_text(body, "filename")
+        config_data = body.get("config", {})
         overwrite: bool = bool(body.get("overwrite", False))
 
         if not filename:
@@ -699,7 +731,7 @@ class OperatorAPI:
                 "path": str(out_path.relative_to(self.repo_root)),
             }
 
-        if not config_data:
+        if not isinstance(config_data, dict) or not config_data:
             return 400, {"error": "config data required"}
 
         # Validate camera schema before writing — prevents silent failures at run time.
@@ -729,11 +761,14 @@ class OperatorAPI:
     # ── POST /operator/calibrate ───────────────────────────────────────────────
 
     def _calibrate(self, body: Dict) -> Tuple[int, Dict]:
-        profile: str = body.get("profile", "").strip()
-        cam_name: str = body.get("cam", "cam0").strip()  # "cam0" or "cam1"
+        profile = _body_text(body, "profile")
+        cam_name = _body_text(body, "cam", "cam0")  # "cam0" or "cam1"
         camera_path: str = str(body.get("camera", "0")).strip()
-        timeout_s: int = int(body.get("timeout_s", 30))
-        max_frames: int = int(body.get("max_frames", 600))
+        try:
+            timeout_s = int(body.get("timeout_s", 30))
+            max_frames = int(body.get("max_frames", 600))
+        except (TypeError, ValueError):
+            return 400, {"error": "timeout_s and max_frames must be integers"}
         no_preview: bool = bool(body.get("no_preview", True))
 
         if not _valid_name(profile):
@@ -821,7 +856,7 @@ class OperatorAPI:
     # improved per-ID delta reporting.  Intrinsics are never required.
 
     def _validate_alignment(self, body: Dict) -> Tuple[int, Dict]:
-        profile: str = body.get("profile", "").strip()
+        profile = _body_text(body, "profile")
         cam0_path: str = str(body.get("cam0", "0")).strip()
         cam1_path: str = str(body.get("cam1", "2")).strip()
 
@@ -899,7 +934,7 @@ class OperatorAPI:
     # they are missing — listing exact paths and the command to generate them.
 
     def _full_alignment_check(self, body: Dict) -> Tuple[int, Dict]:
-        profile: str = body.get("profile", "").strip()
+        profile = _body_text(body, "profile")
         cam0_path: str = str(body.get("cam0", "0")).strip()
         cam1_path: str = str(body.get("cam1", "2")).strip()
 
@@ -987,10 +1022,13 @@ class OperatorAPI:
     # ── POST /operator/start-fusion ───────────────────────────────────────────
 
     def _start_fusion(self, body: Dict) -> Tuple[int, Dict]:
-        config: str = body.get("config", "").strip()
-        duration_s: int = int(body.get("duration_s", 60))
+        config = _body_text(body, "config")
+        try:
+            duration_s = int(body.get("duration_s", 60))
+        except (TypeError, ValueError):
+            return 400, {"error": "duration_s must be an integer"}
         run_id: str = str(body.get("run_id") or "")
-        backend: str = body.get("backend", "cpu").strip()
+        backend = _body_text(body, "backend", "cpu")
 
         # Validate config
         config_path = _validate_config_relative(self.repo_root, config)
@@ -1050,28 +1088,33 @@ class OperatorAPI:
     # ── POST /operator/generate-report ────────────────────────────────────────
 
     def _generate_report(self, body: Dict) -> Tuple[int, Dict]:
-        report_type: str = body.get("type", "").strip()  # "zones" or "id-stability"
-        session_path: str = body.get("session", "").strip()
-        out_prefix: str = body.get("prefix", "operator").strip()
-        profile: str = body.get("profile", "").strip()
+        report_type = _body_text(body, "type")  # "zones" or "id-stability"
+        session_path = _body_text(body, "session")
+        out_prefix = _body_text(body, "prefix", "operator")
+        profile = _body_text(body, "profile")
 
         if report_type not in ("zones", "id-stability"):
             return 400, {"error": "type must be 'zones' or 'id-stability'"}
 
         # Validate the session path against the active platform run root.
-        session = Path(session_path).expanduser().resolve()
+        try:
+            session = Path(session_path).expanduser().resolve(strict=True)
+        except FileNotFoundError:
+            return 404, {"error": f"Session file not found: {session_path}"}
+        except (OSError, RuntimeError):
+            return 400, {"error": "session path cannot be resolved"}
         runs_root = self._runs_root()
         if not _is_relative_to(session, runs_root):
             return 400, {"error": "session must be under the platform runs directory"}
-        if not session.exists():
-            return 404, {"error": f"Session file not found: {session}"}
-
         # Validate prefix
         if not _valid_name(out_prefix):
             return 400, {"error": "prefix must be safe name"}
 
         evidence_dir = self.repo_root / "evidence" / "experiments"
-        evidence_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, RuntimeError):
+            return 503, {"error": "Evidence output directory is unavailable"}
 
         if report_type == "zones":
             # Validate profile for zones report
@@ -1220,7 +1263,7 @@ class OperatorAPI:
                     continue
                 try:
                     resolved = candidate.resolve(strict=True)
-                except OSError:
+                except (OSError, RuntimeError):
                     continue
                 if runs_root not in resolved.parents or not resolved.is_dir():
                     continue
