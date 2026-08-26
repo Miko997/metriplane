@@ -158,7 +158,7 @@
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
-    "signature.subject_digest == payload_digest",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
     "all referenced digests resolve to the exact retained subject bytes"
   ]
 }

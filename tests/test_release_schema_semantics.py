@@ -15,7 +15,11 @@ from urllib.parse import urlparse
 
 import pytest
 
-from metriplane.release_control import canonical_json, validate_record
+from metriplane.release_control import (
+    canonical_json,
+    signature_subject_digest,
+    validate_record,
+)
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
@@ -72,7 +76,7 @@ WORKFLOW_STATES = {
 BASE_SEMANTIC_CHECKS = {
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
-    "signature.subject_digest == payload_digest",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
     "all referenced digests resolve to the exact retained subject bytes",
 }
 
@@ -269,27 +273,27 @@ def _sample(schema: Mapping[str, Any], root: Mapping[str, Any], seed: int = 0) -
     raise AssertionError(f"cannot synthesize schema node: {schema}")
 
 
-def _set_synthetic_signature(signature: dict[str, Any], payload_digest: str) -> None:
+def _set_synthetic_signature(signature: dict[str, Any], subject_digest: str) -> None:
     signature.update(
         {
             "actor_id": "fixture-actor",
             "algorithm": "test-sha256-v1",
             "provider": "test-fixture",
             "signature": "f" * 64,
-            "subject_digest": payload_digest,
+            "subject_digest": subject_digest,
             "synthetic": True,
         }
     )
 
 
-def _set_live_signature(signature: dict[str, Any], payload_digest: str) -> None:
+def _set_live_signature(signature: dict[str, Any], subject_digest: str) -> None:
     signature.update(
         {
             "actor_id": "provider-actor",
             "algorithm": "provider-attestation-v1",
             "provider": "linear",
             "signature": "f" * 64,
-            "subject_digest": payload_digest,
+            "subject_digest": subject_digest,
             "synthetic": False,
         }
     )
@@ -298,11 +302,12 @@ def _set_live_signature(signature: dict[str, Any], payload_digest: str) -> None:
 def _rebind_record(record: dict[str, Any], *, synthetic: bool) -> None:
     record["synthetic"] = synthetic
     record["payload_digest"] = hashlib.sha256(canonical_json(record["data"])).hexdigest()
+    subject_digest = signature_subject_digest(record)
     for signature in record["signatures"]:
         if synthetic:
-            _set_synthetic_signature(signature, record["payload_digest"])
+            _set_synthetic_signature(signature, subject_digest)
         else:
-            _set_live_signature(signature, record["payload_digest"])
+            _set_live_signature(signature, subject_digest)
     unsigned = dict(record)
     unsigned.pop("record_id", None)
     record["record_id"] = hashlib.sha256(canonical_json(unsigned)).hexdigest()

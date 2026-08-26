@@ -28,6 +28,7 @@ from metriplane.release_control import (
     resolve_burn_with_patch,
     retain_two_store_evidence,
     sha256_json,
+    signature_subject_digest,
     tool_main,
     validate_approval,
     validate_cumulative_milestones,
@@ -98,7 +99,14 @@ def test_mp2_007_a02_signed_roles_and_task_state() -> None:
         "state": "In Progress",
         "task_id": "MP2-007",
     }
-    task_digest = sha256_json(task_data)
+    unsigned_task_state = make_record(
+        "release-task-state-observation",
+        task_data,
+        invocation_id="fixture-task-state-001",
+        sequence=1,
+        synthetic=True,
+    )
+    task_digest = signature_subject_digest(unsigned_task_state)
     task_state = make_record(
         "release-task-state-observation",
         task_data,
@@ -330,7 +338,15 @@ def test_mp2_007_a11_retention_chain_lkg_and_invalidation(tmp_path: Path) -> Non
         "reason": "product contradiction",
         "reviewer_id": roles["non_author_reviewer_id"],
     }
-    invalidation_digest = sha256_json(invalidation_data)
+    unsigned_invalidation = make_record(
+        "release-approval-decision",
+        invalidation_data,
+        invocation_id="fixture-invalidation-001",
+        sequence=1,
+        synthetic=True,
+        status="INVALIDATED",
+    )
+    invalidation_digest = signature_subject_digest(unsigned_invalidation)
     invalidation_record = make_record(
         "release-approval-decision",
         invalidation_data,

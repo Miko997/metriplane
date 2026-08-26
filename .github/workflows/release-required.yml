@@ -222,6 +222,101 @@ jobs:
           echo "manifest_sha256=$EVIDENCE_MANIFEST_SHA256" >> "$GITHUB_OUTPUT"
           echo "run_id=$AUTHORITY_RUN_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Require exact authority source provenance
+        if: steps.context.outputs.mode != 'pr-merge-control'
+        env:
+          AUTHORITY_ARTIFACT: ${{ steps.authority-inputs.outputs.artifact }}
+          AUTHORITY_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}
+          EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${AUTHORITY_RUN_ID}" \
+            > "${RUNNER_TEMP}/authority-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${AUTHORITY_RUN_ID}/artifacts?name=${AUTHORITY_ARTIFACT}&per_page=100" \
+            > "${RUNNER_TEMP}/authority-artifacts.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run_id = int(os.environ["AUTHORITY_RUN_ID"])
+          source_sha = os.environ["EXPECTED_SOURCE_SHA"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run = json.loads(
+              Path(os.environ["RUNNER_TEMP"], "authority-run.json").read_text(encoding="utf-8")
+          )
+          expected_run = {
+              "conclusion": "success",
+              "event": "workflow_dispatch",
+              "head_branch": "main",
+              "head_sha": source_sha,
+              "id": run_id,
+              "path": ".github/workflows/release-required.yml",
+              "status": "completed",
+          }
+          mismatches = {
+              key: (run.get(key), expected)
+              for key, expected in expected_run.items()
+              if run.get(key) != expected
+          }
+          if run.get("repository", {}).get("full_name") != repository:
+              mismatches["repository.full_name"] = (
+                  run.get("repository", {}).get("full_name"),
+                  repository,
+              )
+          if mismatches:
+              raise SystemExit(f"authority source run mismatch: {mismatches}")
+
+          payload = json.loads(
+              Path(os.environ["RUNNER_TEMP"], "authority-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifacts = payload.get("artifacts")
+          if payload.get("total_count") != 1 or not isinstance(artifacts, list) or len(artifacts) != 1:
+              raise SystemExit("authority source run must contain exactly one named artifact")
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("authority artifact has no workflow identity")
+          expected_artifact = {
+              "expired": False,
+              "name": os.environ["AUTHORITY_ARTIFACT"],
+          }
+          artifact_mismatches = {
+              key: (artifact.get(key), expected)
+              for key, expected in expected_artifact.items()
+              if artifact.get(key) != expected
+          }
+          expected_artifact_run = {
+              "head_branch": "main",
+              "head_sha": source_sha,
+              "id": run_id,
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), expected)
+                  for key, expected in expected_artifact_run.items()
+                  if workflow_run.get(key) != expected
+              }
+          )
+          if type(artifact.get("id")) is not int or artifact["id"] <= 0:
+              artifact_mismatches["id"] = (artifact.get("id"), "positive integer")
+          if artifact_mismatches:
+              raise SystemExit(f"authority artifact mismatch: {artifact_mismatches}")
+          PY
+
       - name: Download authority transport without treating it as durable evidence
         if: steps.context.outputs.mode != 'pr-merge-control'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
@@ -234,7 +329,9 @@ jobs:
       - name: Reject missing, synthetic, mutable, or digest-mismatched authority
         if: steps.context.outputs.mode != 'pr-merge-control'
         env:
+          AUTHORITY_SOURCE_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}
           EVIDENCE_MANIFEST_SHA256: ${{ steps.authority-inputs.outputs.manifest_sha256 }}
+          EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}
           RELEASE_MODE: ${{ steps.context.outputs.mode }}
         shell: bash
         run: |
@@ -252,7 +349,9 @@ jobs:
               "delta-test-map.json",
               "delta.json",
               "evidence-manifest.json",
+              "gate-input.json",
               "gate-instance.json",
+              "impact-manifest.json",
               "linear-snapshot.json",
               "predecessor.json",
               "prepublication/approval.json",
@@ -261,6 +360,7 @@ jobs:
               "qualification.json",
               "readiness.json",
               "role-assignments.json",
+              "source-freeze.json",
           }
           postpublication = {
               "final-retention-receipts.json",
@@ -276,6 +376,20 @@ jobs:
               value = json.loads(path.read_text(encoding="utf-8"))
               if not isinstance(value, dict) or value.get("synthetic") is not False:
                   raise SystemExit(f"authority record is not provider-backed live evidence: {relative}")
+          bound = {
+              "delta.json": ("candidate_sha", os.environ["EXPECTED_SOURCE_SHA"]),
+              "gate-instance.json": ("frozen_source_sha", os.environ["EXPECTED_SOURCE_SHA"]),
+              "impact-manifest.json": ("head_sha", os.environ["EXPECTED_SOURCE_SHA"]),
+              "source-freeze.json": ("source_sha", os.environ["EXPECTED_SOURCE_SHA"]),
+          }
+          for relative, (field, expected) in bound.items():
+              value = json.loads((root / relative).read_text(encoding="utf-8"))
+              if value.get("data", {}).get(field) != expected:
+                  raise SystemExit(f"authority {relative} is not bound to the exact candidate")
+          for relative in ("gate-instance.json", "role-assignments.json"):
+              value = json.loads((root / relative).read_text(encoding="utf-8"))
+              if value.get("data", {}).get("run_id") != os.environ["AUTHORITY_SOURCE_RUN_ID"]:
+                  raise SystemExit(f"authority {relative} is not bound to its source run")
           manifest = root / "evidence-manifest.json"
           observed = hashlib.sha256(manifest.read_bytes()).hexdigest()
           if observed != os.environ["EVIDENCE_MANIFEST_SHA256"]:
@@ -324,20 +438,7 @@ jobs:
         with:
           name: release-qualification-evidence
           path: |
-            .release-authority/artifact-manifest.json
-            .release-authority/candidate-identity.json
-            .release-authority/delta-test-map.json
-            .release-authority/delta.json
-            .release-authority/evidence-manifest.json
-            .release-authority/gate-instance.json
-            .release-authority/linear-snapshot.json
-            .release-authority/predecessor.json
-            .release-authority/prepublication/approval.json
-            .release-authority/prepublication/retention-receipts.json
-            .release-authority/qualification-plan.json
-            .release-authority/qualification.json
-            .release-authority/readiness.json
-            .release-authority/role-assignments.json
+            .release-authority/**/*.json
           if-no-files-found: error
           include-hidden-files: true
           overwrite: false

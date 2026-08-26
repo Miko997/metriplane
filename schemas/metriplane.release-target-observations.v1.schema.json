@@ -1,5 +1,5 @@
 {
-  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal payload_digest, and verify all referenced records by digest.",
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
   "$defs": {
     "digest": {
       "pattern": "^[0-9a-f]{64}$",
@@ -358,7 +358,7 @@
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
-    "signature.subject_digest == payload_digest",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
     "all referenced digests resolve to the exact retained subject bytes"
   ]
 }

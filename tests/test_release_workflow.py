@@ -82,22 +82,7 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
     assert validation_index < upload_index
     assert upload["if"] == "steps.context.outputs.mode == 'release-qualification'"
     assert upload["uses"].startswith("actions/upload-artifact@")
-    assert upload["with"]["path"].splitlines() == [
-        ".release-authority/artifact-manifest.json",
-        ".release-authority/candidate-identity.json",
-        ".release-authority/delta-test-map.json",
-        ".release-authority/delta.json",
-        ".release-authority/evidence-manifest.json",
-        ".release-authority/gate-instance.json",
-        ".release-authority/linear-snapshot.json",
-        ".release-authority/predecessor.json",
-        ".release-authority/prepublication/approval.json",
-        ".release-authority/prepublication/retention-receipts.json",
-        ".release-authority/qualification-plan.json",
-        ".release-authority/qualification.json",
-        ".release-authority/readiness.json",
-        ".release-authority/role-assignments.json",
-    ]
+    assert upload["with"]["path"].splitlines() == [".release-authority/**/*.json"]
     assert {key: value for key, value in upload["with"].items() if key != "path"} == {
         "name": "release-qualification-evidence",
         "if-no-files-found": "error",
@@ -105,6 +90,26 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
         "overwrite": False,
         "retention-days": 90,
     }
+    required_text = REQUIRED.read_text(encoding="utf-8")
+    for fragment in (
+        "Require exact authority source provenance",
+        '"${api_root}/actions/runs/${AUTHORITY_RUN_ID}"',
+        '"${api_root}/actions/runs/${AUTHORITY_RUN_ID}/artifacts?name=${AUTHORITY_ARTIFACT}&per_page=100"',
+        '"head_sha": source_sha',
+        '"path": ".github/workflows/release-required.yml"',
+        '"status": "completed"',
+        '"conclusion": "success"',
+        '"repository.full_name"',
+        "EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}",
+        "AUTHORITY_SOURCE_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}",
+        '"delta.json": ("candidate_sha", os.environ["EXPECTED_SOURCE_SHA"])',
+        '"gate-instance.json": ("frozen_source_sha", os.environ["EXPECTED_SOURCE_SHA"])',
+        '"impact-manifest.json": ("head_sha", os.environ["EXPECTED_SOURCE_SHA"])',
+        '"source-freeze.json": ("source_sha", os.environ["EXPECTED_SOURCE_SHA"])',
+        '("gate-instance.json", "role-assignments.json")',
+        'value.get("data", {}).get("run_id") != os.environ["AUTHORITY_SOURCE_RUN_ID"]',
+    ):
+        assert fragment in required_text
 
     publish = _workflow(PUBLISH)
     download = next(
@@ -148,7 +153,9 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         'MILESTONE="v${RELEASE_VERSION%.*}"',
         "v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0",
         '--milestone "$MILESTONE"',
-        '--run-id "$QUALIFICATION_RUN_ID"',
+        'AUTHORITY_SOURCE_RUN_ID="$(python -c',
+        '["data"]["run_id"]',
+        '--run-id "$AUTHORITY_SOURCE_RUN_ID"',
         "--check-conflicts",
         "--check-freshness",
         "--gate-instance release-authority/gate-instance.json",

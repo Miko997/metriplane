@@ -20,6 +20,7 @@ from metriplane.release_control import (
     build_release_readiness_record,
     make_record,
     sha256_json,
+    signature_subject_digest,
     tool_main,
     validate_record,
     validate_release_retention_receipts,
@@ -265,7 +266,14 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
         "publisher_id": "publisher",
         "task_id": "MP2-007",
     }
-    payload_digest = sha256_json(data)
+    live_unsigned = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="live-signature-shape-fixture",
+        sequence=1,
+        synthetic=False,
+    )
+    live_subject = signature_subject_digest(live_unsigned)
     live = make_record(
         "release-role-assignments",
         data,
@@ -278,7 +286,7 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
                 "algorithm": "provider-attestation-v1",
                 "provider": "github",
                 "signature": "fabricated-provider-value",
-                "subject_digest": payload_digest,
+                "subject_digest": live_subject,
                 "synthetic": False,
             }
         ],
@@ -286,6 +294,14 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
     with pytest.raises(ReleaseControlError, match="verification is not implemented"):
         validate_role_assignments(live, live=True)
 
+    forged_unsigned = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="forged-test-signature-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    forged_subject = signature_subject_digest(forged_unsigned)
     forged = make_record(
         "release-role-assignments",
         data,
@@ -298,13 +314,170 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
                 "algorithm": "test-sha256-v1",
                 "provider": "test-fixture",
                 "signature": "0" * 64,
-                "subject_digest": payload_digest,
+                "subject_digest": forged_subject,
                 "synthetic": True,
             }
         ],
     )
     with pytest.raises(ReleaseControlError, match="authentication failed"):
         validate_role_assignments(forged, live=False)
+
+
+def test_signature_cannot_be_reused_after_decision_status_changes() -> None:
+    data = {
+        "author_id": "author",
+        "authorized_executor_id": "executor",
+        "non_author_reviewer_id": "reviewer",
+        "publisher_id": "publisher",
+        "task_id": "MP2-007",
+    }
+    blocked = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="blocked-role-decision-fixture",
+        sequence=1,
+        synthetic=True,
+        status="BLOCKED",
+    )
+    subject = signature_subject_digest(blocked)
+    signed_blocked = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="blocked-role-decision-fixture",
+        sequence=1,
+        synthetic=True,
+        status="BLOCKED",
+        signatures=[
+            {
+                "actor_id": "executor",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": sha256_json({"actor_id": "executor", "subject_digest": subject}),
+                "subject_digest": subject,
+                "synthetic": True,
+            }
+        ],
+    )
+    mutated = json.loads(json.dumps(signed_blocked))
+    mutated["status"] = "PASS"
+    unsigned = dict(mutated)
+    unsigned.pop("record_id")
+    mutated["record_id"] = sha256_json(unsigned)
+    with pytest.raises(ReleaseControlError, match="decision envelope"):
+        validate_role_assignments(mutated, live=False)
+
+
+def test_role_assignment_cli_enforces_run_milestone_conflicts_and_freshness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = {
+        "author_id": "author",
+        "authorized_executor_id": "executor",
+        "milestone": "v0.4",
+        "non_author_reviewer_id": "reviewer",
+        "publisher_id": "publisher",
+        "run_id": "111",
+        "task_id": "MP2-007",
+        "valid_from": "2020-01-01T00:00:00Z",
+        "valid_until": "2099-01-01T00:00:00Z",
+    }
+    unsigned = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="bound-role-assignment-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    subject = signature_subject_digest(unsigned)
+    record = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="bound-role-assignment-fixture",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "executor",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": sha256_json({"actor_id": "executor", "subject_digest": subject}),
+                "subject_digest": subject,
+                "synthetic": True,
+            }
+        ],
+    )
+    path = tmp_path / "role-assignments.json"
+    write_immutable_json(path, record)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+
+    def argv(*, milestone: str = "v0.4", run_id: str = "111") -> list[str]:
+        return [
+            "--record",
+            str(path),
+            "--milestone",
+            milestone,
+            "--run-id",
+            run_id,
+            "--check-conflicts",
+            "--check-freshness",
+        ]
+
+    assert tool_main("validate_release_role_assignments.py", argv()) == 0
+    assert tool_main("validate_release_role_assignments.py", argv(milestone="v1.0")) == 3
+    assert tool_main("validate_release_role_assignments.py", argv(run_id="999999")) == 3
+
+    for label, changed_data, expected_error in (
+        (
+            "conflict",
+            {**data, "non_author_reviewer_id": "executor"},
+            "actor conflict",
+        ),
+        (
+            "stale",
+            {
+                **data,
+                "valid_from": "2020-01-01T00:00:00Z",
+                "valid_until": "2021-01-01T00:00:00Z",
+            },
+            "validity window",
+        ),
+    ):
+        unsigned_changed = make_record(
+            "release-role-assignments",
+            changed_data,
+            invocation_id=f"bound-role-assignment-{label}",
+            sequence=1,
+            synthetic=True,
+        )
+        changed_subject = signature_subject_digest(unsigned_changed)
+        changed = make_record(
+            "release-role-assignments",
+            changed_data,
+            invocation_id=f"bound-role-assignment-{label}",
+            sequence=1,
+            synthetic=True,
+            signatures=[
+                {
+                    "actor_id": "executor",
+                    "algorithm": "test-sha256-v1",
+                    "provider": "test-fixture",
+                    "signature": sha256_json(
+                        {"actor_id": "executor", "subject_digest": changed_subject}
+                    ),
+                    "subject_digest": changed_subject,
+                    "synthetic": True,
+                }
+            ],
+        )
+        with pytest.raises(ReleaseControlError, match=expected_error):
+            validate_role_assignments(
+                changed,
+                live=False,
+                expected_milestone="v0.4",
+                expected_run_id="111",
+                check_conflicts=True,
+                check_freshness=True,
+            )
 
 
 def test_live_retention_claims_block_without_real_store_readback(tmp_path: Path) -> None:
@@ -720,6 +893,75 @@ def test_qualification_validator_resolves_the_retained_bundle(
     monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
     argv = ["--record", str(qualification_path)]
     assert tool_main("validate_release_qualification.py", argv) == 0
+
+    dirty_warning = make_record(
+        "release-warning-summary",
+        {**warning["data"], "skip_count": 9},
+        invocation_id="resolved-qualification-dirty-attempt-warning",
+        sequence=1,
+        synthetic=True,
+    )
+    dirty_warning_digest = write_immutable_json(
+        tmp_path / "dirty-attempt-warning-summary.json", dirty_warning
+    )
+    dirty_attempt = make_record(
+        "release-attempt",
+        {**attempt["data"], "warning_summary_digest": dirty_warning_digest},
+        invocation_id="resolved-qualification-dirty-attempt",
+        sequence=1,
+        synthetic=True,
+    )
+    dirty_attempt_digest = write_immutable_json(
+        tmp_path / "dirty-attempt-summary.json", dirty_attempt
+    )
+    laundering_qualification = make_record(
+        "release-qualification",
+        {**qualification["data"], "attempt_digests": [dirty_attempt_digest]},
+        invocation_id="resolved-qualification-dirty-attempt-laundering",
+        sequence=1,
+        synthetic=True,
+    )
+    laundering_path = tmp_path / "dirty-attempt-qualification.json"
+    write_immutable_json(laundering_path, laundering_qualification)
+    assert tool_main("validate_release_qualification.py", ["--record", str(laundering_path)]) == 3
+
+    hidden_warning = make_record(
+        "release-warning-summary",
+        {**warning["data"], "warnings": [{"message": "unaccounted warning"}]},
+        invocation_id="resolved-qualification-hidden-attempt-warning",
+        sequence=1,
+        synthetic=True,
+    )
+    hidden_warning_digest = write_immutable_json(
+        tmp_path / "hidden-attempt-warning-summary.json", hidden_warning
+    )
+    hidden_warning_attempt = make_record(
+        "release-attempt",
+        {**attempt["data"], "warning_summary_digest": hidden_warning_digest},
+        invocation_id="resolved-qualification-hidden-warning-attempt",
+        sequence=1,
+        synthetic=True,
+    )
+    hidden_warning_attempt_digest = write_immutable_json(
+        tmp_path / "hidden-warning-attempt-summary.json", hidden_warning_attempt
+    )
+    hidden_warning_qualification = make_record(
+        "release-qualification",
+        {**qualification["data"], "attempt_digests": [hidden_warning_attempt_digest]},
+        invocation_id="resolved-qualification-hidden-warning-laundering",
+        sequence=1,
+        synthetic=True,
+    )
+    hidden_warning_path = tmp_path / "hidden-warning-qualification.json"
+    write_immutable_json(hidden_warning_path, hidden_warning_qualification)
+    assert (
+        tool_main(
+            "validate_release_qualification.py",
+            ["--record", str(hidden_warning_path)],
+        )
+        == 3
+    )
+
     cell_path.unlink()
     assert tool_main("validate_release_qualification.py", argv) == 3
 
@@ -757,31 +999,69 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
     _qualification_path, qualification_digest = retain(
         "qualification",
         "release-qualification",
-        {"candidate_digest": candidate_digest},
+        {**_passing_qualification()["data"], "candidate_digest": candidate_digest},
     )
     _approval_path, approval_digest = retain(
         "approval",
         "release-approval",
-        {"candidate_digest": candidate_digest},
+        {
+            "author_id": "fixture-author",
+            "candidate_digest": candidate_digest,
+            "conflicts": [],
+            "decision": "APPROVED",
+            "reviewer_id": "fixture-reviewer",
+        },
     )
     _lock_path, lock_digest = retain(
         "promotion-lock-receipt",
         "release-promotion-lock",
         {
+            "acquired_index_head": "1" * 64,
             "approval_digest": approval_digest,
+            "attempt_index_checkpoint_digest": "2" * 64,
+            "backend_id": "attempt-index",
             "candidate_digest": candidate_digest,
+            "controls_digest": "3" * 64,
+            "dead_owner_proof_digest": None,
+            "epoch": 1,
+            "expected_index_head": "1" * 64,
+            "lease_expires_at": "2026-08-25T12:10:00Z",
+            "lease_started_at": "2026-08-25T12:00:00Z",
+            "lock_token": "fixture-lock-token",
             "mutation_started": True,
+            "operation_id": "fixture-promotion-operation",
+            "owner": "fixture-publisher",
+            "promotion_plan_digest": "4" * 64,
+            "recovery_authorization_digest": None,
             "state": "COMMITTED",
+            "target_state_digest": "5" * 64,
         },
     )
     promotion_path, promotion_digest = retain(
         "promotion",
         "release-promotion",
         {
+            "actions": [
+                {
+                    "action": "publish",
+                    "observed_digest": "6" * 64,
+                    "result": "PASS",
+                    "target_id": target_id,
+                }
+                for target_id in ["github-release", "pypi", "testpypi"]
+            ],
             "candidate_digest": candidate_digest,
+            "completed_at": "2026-08-25T12:02:00Z",
             "lock_receipt_digest": lock_digest,
+            "mode": "execute",
             "mutation_started": True,
+            "operation_id": "fixture-promotion-operation",
+            "promotion_plan_digest": "4" * 64,
+            "publisher_id": "fixture-publisher",
+            "record_kind": "promotion_execution",
             "result": "PUBLISHED",
+            "started_at": "2026-08-25T12:01:00Z",
+            "target_state_digest": "5" * 64,
         },
     )
     observed_artifacts = [
@@ -793,6 +1073,7 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
         }
         for artifact in artifacts
     ]
+    required_target_ids = ["github-release", "pypi", "testpypi"]
     _observations_path, observations_digest = retain(
         "publication-observations",
         "release-publication-observations",
@@ -806,20 +1087,66 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
                     "artifacts": observed_artifacts,
                     "availability": "present",
                     "immutability": "immutable",
-                    "target_id": "pypi",
+                    "provider_receipt_digest": "7" * 64,
+                    "raw_result_digest": "8" * 64,
+                    "target_id": target_id,
+                    "uri": f"https://example.invalid/{target_id}",
                 }
+                for target_id in required_target_ids
             ],
+            "artifact_manifest_digest": "9" * 64,
+            "observation_digest": "a" * 64,
+            "observed_at": "2026-08-25T12:03:00Z",
         },
     )
     _manifest_path, manifest_digest = retain(
         "evidence-manifest",
         "release-evidence-manifest",
-        {"candidate_digest": candidate_digest, "phase": "qualified-publication"},
+        {
+            "candidate_digest": candidate_digest,
+            "entries": [
+                {
+                    "media_type": artifact["media_type"],
+                    "path": artifact["path"],
+                    "role": "release-artifact",
+                    "sha256": artifact["sha256"],
+                    "size": artifact["size"],
+                }
+                for artifact in artifacts
+            ],
+            "invocation_journal_digests": ["b" * 64],
+            "manifest_digest": "c" * 64,
+            "phase": "qualified-publication",
+            "scope_id": "v0.4.0",
+            "scope_kind": "release-candidate",
+        },
     )
     _retention_path, retention_digest = retain(
         "retention-receipts",
         "release-retention-receipts",
-        {},
+        {
+            "all_content_equal": True,
+            "input_digest": manifest_digest,
+            "phase": "qualified-publication",
+            "receipt_set_digest": "e" * 64,
+            "retained_at": "2026-08-25T12:04:00Z",
+            "stores": [
+                {
+                    "content_digest": manifest_digest,
+                    "hold_receipt_digest": hold,
+                    "independence_group": group,
+                    "namespace": "release-fixture",
+                    "object_key": f"candidate/{store_id}",
+                    "put_receipt_digest": put,
+                    "read_back_digest": manifest_digest,
+                    "store_id": store_id,
+                }
+                for store_id, group, hold, put in (
+                    ("payload-store-a", "group-a", "1" * 64, "2" * 64),
+                    ("payload-store-b", "group-b", "3" * 64, "4" * 64),
+                )
+            ],
+        },
     )
     reconciliation = make_record(
         "release-publication-reconciliation",
@@ -838,7 +1165,10 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
             "reconciliation_digest": "d" * 64,
             "result": "RECONCILED",
             "staged_retention_receipts_digest": retention_digest,
-            "targets": [{"conflict_digest": None, "exact_match": True, "target_id": "pypi"}],
+            "targets": [
+                {"conflict_digest": None, "exact_match": True, "target_id": target_id}
+                for target_id in required_target_ids
+            ],
         },
         invocation_id="resolved-reconciliation",
         sequence=1,
@@ -849,6 +1179,72 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
     monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
     argv = ["--record", str(reconciliation_path)]
     assert tool_main("validate_publication_reconciliation.py", argv) == 0
+
+    _subset_path, subset_observations_digest = retain(
+        "publication-observations-subset",
+        "release-publication-observations",
+        {
+            **json.loads((tmp_path / "publication-observations.json").read_text())["data"],
+            "targets": [
+                {
+                    "artifacts": observed_artifacts,
+                    "availability": "present",
+                    "immutability": "immutable",
+                    "provider_receipt_digest": "7" * 64,
+                    "raw_result_digest": "8" * 64,
+                    "target_id": "pypi",
+                    "uri": "https://example.invalid/pypi",
+                }
+            ],
+        },
+    )
+    subset_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {
+            **reconciliation["data"],
+            "observations_digest": subset_observations_digest,
+            "targets": [{"conflict_digest": None, "exact_match": True, "target_id": "pypi"}],
+        },
+        invocation_id="resolved-reconciliation-subset",
+        sequence=1,
+        synthetic=True,
+    )
+    subset_reconciliation_path = tmp_path / "publication-reconciliation-subset.json"
+    write_immutable_json(subset_reconciliation_path, subset_reconciliation)
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(subset_reconciliation_path)],
+        )
+        == 3
+    )
+
+    _malformed_qualification_path, malformed_qualification_digest = retain(
+        "qualification-malformed-cell-id",
+        "release-qualification",
+        {
+            **json.loads((tmp_path / "qualification.json").read_text())["data"],
+            "executed_cell_ids": [{"not": "a cell id"}],
+            "expected_cell_ids": [{"not": "a cell id"}],
+        },
+    )
+    malformed_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {**reconciliation["data"], "qualification_digest": malformed_qualification_digest},
+        invocation_id="resolved-reconciliation-malformed-qualification",
+        sequence=1,
+        synthetic=True,
+    )
+    malformed_reconciliation_path = tmp_path / "malformed-qualification-reconciliation.json"
+    write_immutable_json(malformed_reconciliation_path, malformed_reconciliation)
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(malformed_reconciliation_path)],
+        )
+        == 3
+    )
+
     promotion_path.unlink()
     assert tool_main("validate_publication_reconciliation.py", argv) == 3
 
@@ -1355,7 +1751,13 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         {
             "added": [],
             "candidate_sha": "1" * 40,
-            "changed": [],
+            "changed": [
+                {
+                    "after_digest": "7" * 64,
+                    "before_digest": "6" * 64,
+                    "capability_id": "release-framework",
+                }
+            ],
             "delta_digest": "5" * 64,
             "impact_manifest_digest": sha256_json(impact_manifest),
             "milestone": "v0.4",
@@ -1491,6 +1893,19 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         mutation_cases.append((label, changed_gate, changed_candidate, delta_map))
     for label, field, value in (
         ("impact-manifest", "impact_manifest_digest", "7" * 64),
+        ("malformed-mappings", "mappings", None),
+        (
+            "mismatched-mappings",
+            "mappings",
+            [
+                {
+                    "capability_id": "different-capability",
+                    "environment_ids": ["ubuntu-24.04-py312"],
+                    "obligation_ids": ["MP2-007.A01"],
+                    "scenario_ids": ["hard-runner-loss"],
+                }
+            ],
+        ),
         ("unmapped", "unmapped_capabilities", ["unmapped-capability"]),
     ):
         changed_map = make_record(
