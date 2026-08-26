@@ -33,6 +33,12 @@ class _EntryIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class _CleanupResult:
+    removed: bool
+    retained_path: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class _DirectoryLink:
     parent_fd: int
     name: str
@@ -211,16 +217,101 @@ def _use_portable_overwrite() -> bool:
     return getattr(ctypes.CDLL(None), "renameatx_np", None) is None
 
 
-def _unlink_if_identity(
+def _remove_quarantine_directory(
+    directory_fd: int,
+    quarantine_name: str,
+    quarantine_fd: int,
+    display_path: Path,
+) -> None:
+    opened_identity = _identity(os.fstat(quarantine_fd))
+    if _entry_identity(directory_fd, quarantine_name, display_path) != opened_identity:
+        raise UnsafeWritePathError(
+            f"Unsafe operator output path '{display_path}': quarantine directory changed"
+        )
+    os.rmdir(quarantine_name, dir_fd=directory_fd)
+
+
+def _quarantine_owned_entry(
     directory_fd: int,
     name: str,
     display_path: Path,
     expected: _EntryIdentity,
-) -> bool:
-    if _entry_identity(directory_fd, name, display_path) != expected:
-        return False
-    os.unlink(name, dir_fd=directory_fd)
-    return True
+) -> _CleanupResult:
+    quarantine_name: str | None = None
+    quarantine_fd: int | None = None
+    for _attempt in range(10):
+        candidate = f".{name}.quarantine-{secrets.token_hex(8)}"
+        try:
+            os.mkdir(candidate, mode=0o700, dir_fd=directory_fd)
+        except FileExistsError:
+            continue
+        quarantine_name = candidate
+        created_identity = _entry_identity(directory_fd, candidate, display_path)
+        quarantine_fd = os.open(candidate, _directory_flags(), dir_fd=directory_fd)
+        if created_identity is None or _identity(os.fstat(quarantine_fd)) != created_identity:
+            os.close(quarantine_fd)
+            raise UnsafeWritePathError(
+                f"Unsafe operator output path '{display_path}': quarantine directory changed"
+            )
+        break
+    if quarantine_name is None or quarantine_fd is None:
+        raise OSError(errno.EEXIST, f"could not allocate cleanup quarantine for {display_path}")
+
+    retained_path = display_path.parent / quarantine_name / "entry"
+    remove_quarantine = False
+    try:
+        opened_identity = _identity(os.fstat(quarantine_fd))
+        if _entry_identity(directory_fd, quarantine_name, display_path) != opened_identity:
+            raise UnsafeWritePathError(
+                f"Unsafe operator output path '{display_path}': quarantine directory changed"
+            )
+        try:
+            os.rename(
+                name,
+                "entry",
+                src_dir_fd=directory_fd,
+                dst_dir_fd=quarantine_fd,
+            )
+        except FileNotFoundError:
+            remove_quarantine = True
+            return _CleanupResult(removed=False)
+
+        os.fsync(directory_fd)
+        moved_identity = _entry_identity(quarantine_fd, "entry", retained_path)
+        if moved_identity != expected:
+            return _CleanupResult(removed=False, retained_path=retained_path)
+        try:
+            os.unlink("entry", dir_fd=quarantine_fd)
+            os.fsync(quarantine_fd)
+        except OSError:
+            return _CleanupResult(removed=False, retained_path=retained_path)
+        remove_quarantine = True
+        return _CleanupResult(removed=True)
+    finally:
+        try:
+            if remove_quarantine:
+                _remove_quarantine_directory(
+                    directory_fd,
+                    quarantine_name,
+                    quarantine_fd,
+                    display_path,
+                )
+                os.fsync(directory_fd)
+        finally:
+            os.close(quarantine_fd)
+
+
+def _require_owned_cleanup(result: _CleanupResult, display_path: Path) -> None:
+    if result.removed:
+        return
+    if result.retained_path is not None:
+        raise UnsafeWritePathError(
+            f"Unsafe operator output path '{display_path}': "
+            f"cleanup identity was ambiguous; entry retained as {result.retained_path}"
+        )
+    raise UnsafeWritePathError(
+        f"Unsafe operator output path '{display_path}': entry disappeared before cleanup"
+    )
 
 
 def _write_all(file_fd: int, content: bytes) -> None:
@@ -344,24 +435,23 @@ class SecureDirectory:
                         f"destination appeared during write: {display_path}"
                     ) from exc
                 except BaseException:
-                    if installed and _unlink_if_identity(
-                        self.fd,
-                        destination,
-                        display_path,
-                        staged_identity,
-                    ):
-                        os.fsync(self.fd)
+                    if installed:
+                        cleanup = _quarantine_owned_entry(
+                            self.fd,
+                            destination,
+                            display_path,
+                            staged_identity,
+                        )
+                        _require_owned_cleanup(cleanup, display_path)
                     raise
-                if not _unlink_if_identity(
+                cleanup = _quarantine_owned_entry(
                     self.fd,
                     staged_name,
                     display_path,
                     staged_identity,
-                ):
-                    raise UnsafeWritePathError(
-                        f"Unsafe operator output path '{display_path}': "
-                        "staged path changed before cleanup"
-                    )
+                )
+                staged_name = None
+                _require_owned_cleanup(cleanup, display_path)
             else:
                 if _use_portable_overwrite():
                     raise OSError(
@@ -383,16 +473,6 @@ class SecureDirectory:
                                 "exchange entries changed during atomic replacement"
                             )
                         self.verify()
-                        if not _unlink_if_identity(
-                            self.fd,
-                            staged_name,
-                            display_path,
-                            expected,
-                        ):
-                            raise UnsafeWritePathError(
-                                f"Unsafe operator output path '{display_path}': "
-                                "displaced destination changed before cleanup"
-                            )
                     except BaseException:
                         if exchanged:
                             try:
@@ -438,21 +518,34 @@ class SecureDirectory:
                                     f"could not roll back atomic write for {display_path}",
                                 ) from rollback_error
                         raise
+                    cleanup = _quarantine_owned_entry(
+                        self.fd,
+                        staged_name,
+                        display_path,
+                        expected,
+                    )
+                    staged_name = None
+                    _require_owned_cleanup(cleanup, display_path)
             staged_name = None
             os.fsync(self.fd)
         finally:
             if staged_fd is not None:
                 os.close(staged_fd)
             if staged_name is not None and staged_identity is not None:
+                active_error = sys.exception()
                 try:
-                    _unlink_if_identity(
+                    cleanup = _quarantine_owned_entry(
                         self.fd,
                         staged_name,
                         display_path,
                         staged_identity,
                     )
-                except OSError:
-                    pass
+                    staged_name = None
+                    _require_owned_cleanup(cleanup, display_path)
+                except BaseException as cleanup_error:
+                    if active_error is None:
+                        raise
+                    active_error.add_note(f"staged cleanup failed: {cleanup_error}")
 
     def close(self) -> None:
         while self._fds:

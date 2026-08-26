@@ -647,9 +647,83 @@ def test_atomic_exchange_rejects_staged_name_substitution(
 
     assert destination.read_bytes() == original
     assert parked_staged.read_bytes() == replacement
-    retained = list(local_dir.glob(".safe.yaml.tmp-*"))
-    assert len(retained) == 1
-    assert retained[0].read_bytes() == attacker
+    quarantines = [path for path in local_dir.iterdir() if ".quarantine-" in path.name]
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "entry").read_bytes() == attacker
+
+
+def test_atomic_exchange_quarantines_cleanup_substitution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    parked_original = local_dir / "parked-original.yaml"
+    victim = local_dir / "victim.yaml"
+    original = b"original\n"
+    replacement = b"replacement\n"
+    victim_content = b"victim must be retained\n"
+    destination.write_bytes(original)
+    victim.write_bytes(victim_content)
+    original_rename = safe_writes.os.rename
+    original_unlink = safe_writes.os.unlink
+    shared_unlinks: list[str] = []
+    substituted = False
+
+    def substitute_before_quarantine(
+        source,
+        target,
+        *,
+        src_dir_fd=None,
+        dst_dir_fd=None,
+    ) -> None:
+        nonlocal substituted
+        if (
+            not substituted
+            and isinstance(source, str)
+            and source.startswith(".safe.yaml.tmp-")
+            and target == "entry"
+            and src_dir_fd != dst_dir_fd
+        ):
+            substituted = True
+            original_rename(local_dir / source, parked_original)
+            original_rename(victim, local_dir / source)
+        original_rename(
+            source,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    def record_unlink(path, *, dir_fd=None) -> None:
+        if dir_fd is not None and isinstance(path, str) and path.startswith(".safe.yaml.tmp-"):
+            shared_unlinks.append(path)
+        original_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(safe_writes.os, "rename", substitute_before_quarantine)
+    monkeypatch.setattr(safe_writes.os, "unlink", record_unlink)
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(safe_writes.UnsafeWritePathError, match="entry retained as"),
+    ):
+        directory.atomic_write("safe.yaml", replacement, overwrite=True)
+
+    assert substituted is True
+    assert shared_unlinks == []
+    assert destination.read_bytes() == replacement
+    assert parked_original.read_bytes() == original
+    assert not victim.exists()
+    quarantines = [path for path in local_dir.iterdir() if ".quarantine-" in path.name]
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "entry").read_bytes() == victim_content
 
 
 def test_atomic_exchange_recovers_trusted_destination_after_rollback_interference(
@@ -699,9 +773,9 @@ def test_atomic_exchange_recovers_trusted_destination_after_rollback_interferenc
     assert destination.read_bytes() == replacement
     assert parked_destination.read_bytes() == original
     assert outside.read_bytes() == outside_content
-    retained = list(local_dir.glob(".safe.yaml.tmp-*"))
-    assert len(retained) == 1
-    assert retained[0].read_bytes() == late_substitute
+    quarantines = [path for path in local_dir.iterdir() if ".quarantine-" in path.name]
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "entry").read_bytes() == late_substitute
 
 
 def test_save_config_mid_write_failure_preserves_original_file(
