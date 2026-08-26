@@ -485,17 +485,33 @@ class RunDirectoryReservation:
 
     def cancel_if_pending(self) -> bool:
         """Remove an unclaimed reservation without touching a claimed run."""
-        marker = self.marker_path
+        authority = _ReservationAuthority(
+            run_dir=self.run_dir,
+            token=self.token,
+            device=self.device,
+            inode=self.inode,
+        )
         try:
-            if marker.is_symlink() or not secrets.compare_digest(
-                marker.read_text(encoding="utf-8"),
-                self.token,
-            ):
-                return False
-            marker.unlink()
-            self.run_dir.rmdir()
-        except OSError:
+            claimed = _open_authorized_run_directory(authority)
+        except (OSError, PlatformPathError):
             return False
+
+        try:
+            if os.listdir(claimed.fd) != [_RUN_RESERVATION_MARKER]:
+                return False
+            marker_token = _read_reservation_marker(claimed.fd, self.run_dir)
+            claimed.verify_visible_path()
+            if not secrets.compare_digest(marker_token, self.token):
+                return False
+
+            os.unlink(_RUN_RESERVATION_MARKER, dir_fd=claimed.fd)
+            os.fsync(claimed.fd)
+            claimed.verify_visible_path()
+            self.run_dir.rmdir()
+        except (OSError, PlatformPathError):
+            return False
+        finally:
+            claimed.close()
         return True
 
     def claimed_run_dir(self) -> Path:

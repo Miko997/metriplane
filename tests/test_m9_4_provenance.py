@@ -1362,6 +1362,70 @@ def test_reserve_run_directory_marker_cannot_follow_swapped_path(
     assert not (parked_run_dir / ".metriplane-run-reservation").exists()
 
 
+def test_cancel_pending_reservation_rejects_replaced_directory(tmp_path: Path) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_marker = outside / ".metriplane-run-reservation"
+    outside_marker.write_text(reservation.token, encoding="utf-8")
+    reservation.run_dir.rename(parked_run_dir)
+    reservation.run_dir.symlink_to(outside, target_is_directory=True)
+
+    assert reservation.cancel_if_pending() is False
+    assert outside_marker.read_text(encoding="utf-8") == reservation.token
+    assert (parked_run_dir / ".metriplane-run-reservation").read_text(
+        encoding="utf-8"
+    ) == reservation.token
+
+
+def test_cancel_pending_reservation_rejects_swap_after_open(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_marker = outside / ".metriplane-run-reservation"
+    outside_marker.write_text(reservation.token, encoding="utf-8")
+    original_reader = run_provenance._read_reservation_marker
+
+    def swap_after_marker_read(directory_fd: int, path: Path) -> str:
+        marker_token = original_reader(directory_fd, path)
+        reservation.run_dir.rename(parked_run_dir)
+        reservation.run_dir.symlink_to(outside, target_is_directory=True)
+        return marker_token
+
+    monkeypatch.setattr(
+        run_provenance,
+        "_read_reservation_marker",
+        swap_after_marker_read,
+    )
+
+    assert reservation.cancel_if_pending() is False
+    assert outside_marker.read_text(encoding="utf-8") == reservation.token
+    assert (parked_run_dir / ".metriplane-run-reservation").read_text(
+        encoding="utf-8"
+    ) == reservation.token
+
+
+def test_cancel_pending_reservation_removes_exact_reserved_directory(tmp_path: Path) -> None:
+    from metriplane.provenance import run_provenance
+
+    reservation = run_provenance.reserve_run_directory(tmp_path / "runs", "reserved_run")
+
+    assert reservation.cancel_if_pending() is True
+    assert not reservation.run_dir.exists()
+    assert reservation.cancel_if_pending() is False
+
+
 @pytest.mark.parametrize(
     ("run_id", "expected_collision_run_id"),
     [
