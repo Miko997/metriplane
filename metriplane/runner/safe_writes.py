@@ -203,13 +203,6 @@ def _open_pinned_entry(
     flags = access | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
         file_fd = os.open(name, flags, dir_fd=directory_fd)
-    except PermissionError as exc:
-        if access == _DARWIN_O_EVTONLY:
-            raise UnsafeWritePathError(
-                f"Unsafe operator output path '{display_path}': "
-                "destination cannot be safely pinned without read access"
-            ) from exc
-        raise
     except OSError as exc:
         _translate_component_error(display_path, exc)
     try:
