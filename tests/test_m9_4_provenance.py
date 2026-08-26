@@ -638,10 +638,12 @@ def test_latency_benchmark_whitespace_runs_dir_uses_platform_root(
     captured: dict[str, object] = {}
 
     class FakeProcess:
-        def __init__(self, command: list[str]) -> None:
+        def __init__(self, command: list[str], *, env: dict[str, str]) -> None:
             captured["command"] = command
-            run_dir = paths.runs_dir / run_id
-            run_dir.mkdir(parents=True)
+            run_dir = Path(env["METRIPLANE_RESERVED_RUN_DIR"])
+            marker = run_dir / ".metriplane-run-reservation"
+            assert marker.read_text(encoding="utf-8") == env["METRIPLANE_RUN_RESERVATION_TOKEN"]
+            marker.unlink()
             (run_dir / "latency.csv").write_text("stage,ms\nall,1\n", encoding="utf-8")
 
         def send_signal(self, _signal: int) -> None:
@@ -678,6 +680,67 @@ def test_latency_benchmark_whitespace_runs_dir_uses_platform_root(
     assert isinstance(command, list)
     assert command[command.index("--runs-dir") + 1] == str(paths.runs_dir)
     assert not (tmp_path / " \t ").exists()
+
+
+def test_latency_benchmark_reserves_exact_collision_and_ignores_prefix_sibling(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    runs_dir = tmp_path / "runs"
+    stale = runs_dir / "sample"
+    unrelated = runs_dir / "sample_unrelated"
+    stale.mkdir(parents=True)
+    unrelated.mkdir()
+    (stale / "latency.csv").write_text("stale\n", encoding="utf-8")
+    (unrelated / "latency.csv").write_text("unrelated\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self, command: list[str], *, env: dict[str, str]) -> None:
+            selected_run_id = command[command.index("--run-id") + 1]
+            captured["run_id"] = selected_run_id
+            run_dir = Path(env["METRIPLANE_RESERVED_RUN_DIR"])
+            assert run_dir == runs_dir / selected_run_id
+            marker = run_dir / ".metriplane-run-reservation"
+            assert marker.read_text(encoding="utf-8") == env["METRIPLANE_RUN_RESERVATION_TOKEN"]
+            marker.unlink()
+            (run_dir / "latency.csv").write_text("fresh sample-1\n", encoding="utf-8")
+
+        def send_signal(self, _signal: int) -> None:
+            return None
+
+        def wait(self, *, timeout: int) -> int:
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return None
+
+    output = tmp_path / "latency.csv"
+    monkeypatch.setattr(run_latency_breakdown.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(run_latency_breakdown.time, "sleep", lambda _seconds: None)
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(output),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                "sample",
+            ]
+        )
+        == 0
+    )
+    assert captured["run_id"] == "sample-1"
+    assert output.read_text(encoding="utf-8") == "fresh sample-1\n"
+    assert (stale / "latency.csv").read_text(encoding="utf-8") == "stale\n"
+    assert (unrelated / "latency.csv").read_text(encoding="utf-8") == "unrelated\n"
 
 
 @pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
@@ -1038,6 +1101,31 @@ def test_run_context_generates_run_id_only_when_omitted(
 
     assert context.run_id == "generated_run"
     assert context.run_dir == tmp_path / "runs" / "generated_run"
+
+
+def test_run_context_claims_exact_reserved_run_directory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance.run_provenance import reserve_run_directory
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    reservation = reserve_run_directory(tmp_path / "runs", "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(tmp_path / "runs"),
+    )
+
+    assert context.run_id == "reserved_run"
+    assert context.run_dir == reservation.run_dir
+    assert reservation.claimed_run_dir() == context.run_dir
+    assert not reservation.marker_path.exists()
 
 
 @pytest.mark.parametrize(

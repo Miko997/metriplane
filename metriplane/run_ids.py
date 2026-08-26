@@ -39,3 +39,18 @@ def validate_portable_run_id(value: str) -> str:
             "and Windows device basenames are not allowed"
         )
     return run_id
+
+
+def portable_run_id_for_collision(value: str, collision_index: int) -> str:
+    """Return the canonical bounded run ID for a zero-based collision index."""
+    run_id = validate_portable_run_id(value)
+    if collision_index < 0:
+        raise ValueError("collision_index must be non-negative")
+    if collision_index == 0:
+        return run_id
+
+    suffix = f"-{collision_index}"
+    if len(suffix) >= MAX_PORTABLE_RUN_ID_LENGTH:
+        raise ValueError("collision_index is too large for a portable run ID")
+    stem = run_id[: MAX_PORTABLE_RUN_ID_LENGTH - len(suffix)].rstrip(".")
+    return validate_portable_run_id(f"{stem}{suffix}")

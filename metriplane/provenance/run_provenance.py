@@ -13,8 +13,10 @@ import platform
 import re
 import secrets
 import socket
+import stat
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence, TextIO
@@ -24,7 +26,7 @@ import yaml
 
 from metriplane.config import Config, resolve_profile
 from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_runs_dir
-from metriplane.run_ids import MAX_PORTABLE_RUN_ID_LENGTH, validate_portable_run_id
+from metriplane.run_ids import portable_run_id_for_collision, validate_portable_run_id
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
 _REDACTED = "<redacted>"
@@ -251,16 +253,143 @@ def dump_config_yaml(cfg: Config) -> str:
 
 def _ensure_unique_run_dir(path: Path) -> Path:
     run_id = validate_portable_run_id(path.name)
-    if not path.exists():
-        return path
-    for i in range(1, 1000):
-        suffix = f"-{i}"
-        stem = run_id[: MAX_PORTABLE_RUN_ID_LENGTH - len(suffix)].rstrip(".")
-        collision_run_id = validate_portable_run_id(f"{stem}{suffix}")
-        cand = path.with_name(collision_run_id)
+    for collision_index in range(1000):
+        candidate_run_id = portable_run_id_for_collision(run_id, collision_index)
+        cand = path.with_name(candidate_run_id)
         if not cand.exists():
             return cand
     raise RuntimeError(f"could not find unique run dir name for {path}")
+
+
+_RUN_RESERVATION_MARKER = ".metriplane-run-reservation"
+_RUN_RESERVATION_DIR_ENV = "METRIPLANE_RESERVED_RUN_DIR"
+_RUN_RESERVATION_TOKEN_ENV = "METRIPLANE_RUN_RESERVATION_TOKEN"
+
+
+@dataclass(frozen=True, slots=True)
+class RunDirectoryReservation:
+    """An exact run directory reserved for one child runtime."""
+
+    run_id: str
+    run_dir: Path
+    token: str
+    device: int
+    inode: int
+
+    @property
+    def marker_path(self) -> Path:
+        return self.run_dir / _RUN_RESERVATION_MARKER
+
+    def child_environment(self, environment: Mapping[str, str]) -> dict[str, str]:
+        child = dict(environment)
+        child[_RUN_RESERVATION_DIR_ENV] = str(self.run_dir)
+        child[_RUN_RESERVATION_TOKEN_ENV] = self.token
+        return child
+
+    def cancel_if_pending(self) -> bool:
+        """Remove an unclaimed reservation without touching a claimed run."""
+        marker = self.marker_path
+        try:
+            if marker.is_symlink() or not secrets.compare_digest(
+                marker.read_text(encoding="utf-8"),
+                self.token,
+            ):
+                return False
+            marker.unlink()
+            self.run_dir.rmdir()
+        except OSError:
+            return False
+        return True
+
+    def claimed_run_dir(self) -> Path:
+        """Return the exact claimed directory or fail on stale/replaced identity."""
+        if self.marker_path.exists() or self.marker_path.is_symlink():
+            raise PlatformPathError(f"run directory reservation was not claimed: {self.run_dir}")
+        try:
+            result = self.run_dir.lstat()
+        except OSError as exc:
+            raise PlatformPathError(
+                f"reserved run directory is unavailable: {self.run_dir}"
+            ) from exc
+        if (
+            not stat.S_ISDIR(result.st_mode)
+            or result.st_dev != self.device
+            or result.st_ino != self.inode
+        ):
+            raise PlatformPathError(f"reserved run directory identity changed: {self.run_dir}")
+        return self.run_dir
+
+
+def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
+    """Atomically reserve one canonical collision-safe run directory."""
+    requested_run_id = validate_portable_run_id(run_id)
+    base.mkdir(parents=True, exist_ok=True)
+    for collision_index in range(1000):
+        reserved_run_id = portable_run_id_for_collision(
+            requested_run_id,
+            collision_index,
+        )
+        run_dir = base / reserved_run_id
+        try:
+            run_dir.mkdir(exist_ok=False)
+        except FileExistsError:
+            continue
+
+        token = secrets.token_hex(32)
+        marker = run_dir / _RUN_RESERVATION_MARKER
+        try:
+            with marker.open("x", encoding="utf-8") as handle:
+                handle.write(token)
+                handle.flush()
+                os.fsync(handle.fileno())
+            result = run_dir.lstat()
+        except BaseException:
+            try:
+                marker.unlink(missing_ok=True)
+                run_dir.rmdir()
+            except OSError:
+                pass
+            raise
+        return RunDirectoryReservation(
+            run_id=reserved_run_id,
+            run_dir=run_dir,
+            token=token,
+            device=result.st_dev,
+            inode=result.st_ino,
+        )
+    raise RuntimeError(f"could not reserve a unique run directory under {base}")
+
+
+def _claim_run_directory_reservation(candidate: Path) -> bool:
+    configured_dir = os.getenv(_RUN_RESERVATION_DIR_ENV)
+    configured_token = os.getenv(_RUN_RESERVATION_TOKEN_ENV)
+    if configured_dir is None and configured_token is None:
+        return False
+    if configured_dir is None or configured_token is None:
+        raise PlatformPathError("run directory reservation environment is incomplete")
+    if candidate.is_symlink():
+        raise PlatformPathError(f"reserved run directory cannot be a symbolic link: {candidate}")
+    try:
+        reserved_dir = Path(configured_dir).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError("reserved run directory cannot be resolved") from exc
+    if reserved_dir != candidate:
+        raise PlatformPathError(
+            f"run directory reservation does not match requested run_id: {candidate}"
+        )
+
+    marker = candidate / _RUN_RESERVATION_MARKER
+    try:
+        entries = list(candidate.iterdir())
+        if marker.is_symlink() or entries != [marker]:
+            raise PlatformPathError(f"reserved run directory is not empty: {candidate}")
+        marker_token = marker.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise PlatformPathError(f"run directory reservation cannot be read: {candidate}") from exc
+    if not secrets.compare_digest(marker_token, configured_token):
+        raise PlatformPathError("run directory reservation token does not match")
+    marker.unlink()
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,10 +526,13 @@ def create_run_context(
         candidate.relative_to(base)
     except ValueError as exc:  # defense in depth; the run-id syntax already rejects separators
         raise ValueError("run_id resolves outside runs_dir") from exc
-    run_dir = _ensure_unique_run_dir(candidate)
+    if _claim_run_directory_reservation(candidate):
+        run_dir = candidate
+    else:
+        run_dir = _ensure_unique_run_dir(candidate)
+        run_dir.mkdir(parents=True, exist_ok=False)
     # If collision suffixing changed the directory, keep the persisted ID in sync.
     rid = validate_portable_run_id(run_dir.name)
-    run_dir.mkdir(parents=True, exist_ok=False)
 
     # Git + config hash
     git = get_git_info(start=Path.cwd())

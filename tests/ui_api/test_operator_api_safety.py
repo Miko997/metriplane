@@ -408,6 +408,149 @@ def test_save_config_rejects_local_directory_symlink_loop_deterministically(
     assert "Internal error" not in str(payload)
 
 
+def test_write_zones_parent_swap_cannot_redirect_staged_write(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    api = make_api(tmp_path)
+    profiles = tmp_path / "calib" / "profiles"
+    profile_dir = profiles / "local_swap"
+    parked_profile = profiles / "local_swap-original"
+    outside = tmp_path / "outside-profile"
+    profile_dir.mkdir(parents=True)
+    outside.mkdir()
+    original_content = "zones:\n- name: original\n"
+    outside_content = "outside must remain unchanged\n"
+    (profile_dir / "zones.yaml").write_text(original_content, encoding="utf-8")
+    (outside / "zones.yaml").write_text(outside_content, encoding="utf-8")
+
+    original_assert = safe_writes._assert_directory_chain
+    calls = 0
+
+    def swap_before_commit(links):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            profile_dir.rename(parked_profile)
+            profile_dir.symlink_to(outside, target_is_directory=True)
+        return original_assert(links)
+
+    monkeypatch.setattr(safe_writes, "_assert_directory_chain", swap_before_commit)
+
+    status, payload = api.route(
+        "POST",
+        "/operator/write-zones",
+        {
+            "profile": "local_swap",
+            "overwrite": True,
+            "zones": [{"name": "replacement", "polygon": [[0, 0], [1, 0], [0, 1]]}],
+        },
+    )
+
+    assert status == 400
+    assert "changed during write" in payload["error"]
+    assert (outside / "zones.yaml").read_text(encoding="utf-8") == outside_content
+    assert (parked_profile / "zones.yaml").read_text(encoding="utf-8") == original_content
+    assert not list(parked_profile.glob(".zones.yaml.tmp-*"))
+
+    profile_dir.unlink()
+    parked_profile.rename(profile_dir)
+    assert (profile_dir / "zones.yaml").read_text(encoding="utf-8") == original_content
+
+
+def test_create_profile_final_swap_cannot_redirect_atomic_overwrite(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    api = make_api(tmp_path)
+    profile_dir = tmp_path / "calib" / "profiles" / "local_swap"
+    profile_dir.joinpath("cam0").mkdir(parents=True)
+    anchors_path = profile_dir / "anchors.yaml"
+    parked_anchors = profile_dir / "anchors-original.yaml"
+    outside_anchors = tmp_path / "outside-anchors.yaml"
+    original_content = "profile: original\n"
+    outside_content = "outside must remain unchanged\n"
+    anchors_path.write_text(original_content, encoding="utf-8")
+    outside_anchors.write_text(outside_content, encoding="utf-8")
+
+    original_exchange = safe_writes._exchange_entries
+    injected = False
+
+    def swap_at_atomic_install(directory_fd, staged_name, destination):
+        nonlocal injected
+        if not injected:
+            injected = True
+            anchors_path.rename(parked_anchors)
+            anchors_path.symlink_to(outside_anchors)
+        return original_exchange(directory_fd, staged_name, destination)
+
+    monkeypatch.setattr(
+        safe_writes,
+        "_exchange_entries",
+        swap_at_atomic_install,
+    )
+
+    status, payload = api.route(
+        "POST",
+        "/operator/create-profile",
+        {
+            "name": "swap",
+            "overwrite": True,
+            "width_m": 1.0,
+            "height_m": 1.0,
+        },
+    )
+
+    assert status == 400
+    assert "changed during atomic replacement" in payload["error"]
+    assert outside_anchors.read_text(encoding="utf-8") == outside_content
+    assert parked_anchors.read_text(encoding="utf-8") == original_content
+    assert not list(profile_dir.glob(".anchors.yaml.tmp-*"))
+
+    anchors_path.unlink()
+    parked_anchors.rename(anchors_path)
+    assert anchors_path.read_text(encoding="utf-8") == original_content
+
+
+def test_save_config_mid_write_failure_preserves_original_file(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    api = make_api(tmp_path)
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    config_path = local_dir / "safe.yaml"
+    original_content = "profile: original\n"
+    config_path.write_text(original_content, encoding="utf-8")
+
+    def fail_after_partial_write(file_fd: int, content: bytes) -> None:
+        safe_writes.os.write(file_fd, content[:7])
+        raise OSError("injected staged write failure")
+
+    monkeypatch.setattr(safe_writes, "_write_all", fail_after_partial_write)
+
+    status, payload = api.route(
+        "POST",
+        "/operator/save-config",
+        {
+            "filename": "safe.yaml",
+            "overwrite": True,
+            "config": {"profile": "replacement"},
+        },
+    )
+
+    assert status == 503
+    assert payload["error"] == "Unable to write config 'safe.yaml'"
+    assert config_path.read_text(encoding="utf-8") == original_content
+    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
+
+
 def test_command_center_auto_discovery_rejects_symlinked_run_outside_root(
     tmp_path: Path,
 ):

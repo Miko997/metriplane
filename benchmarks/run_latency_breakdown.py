@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import signal
 import subprocess
@@ -18,7 +19,10 @@ from metriplane.paths import (
     resolve_platform_paths,
     resolve_runs_dir,
 )
-from metriplane.provenance.run_provenance import generate_run_id
+from metriplane.provenance.run_provenance import (
+    generate_run_id,
+    reserve_run_directory,
+)
 from metriplane.run_ids import validate_portable_run_id
 
 
@@ -34,20 +38,6 @@ def _resolve_output_path(value: str) -> Path:
         raise PlatformPathError(
             f"cannot resolve latency output path {unresolved}"
         ) from exc
-
-
-def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
-    # Prefer exact match
-    direct = runs_dir / run_id
-    if direct.is_dir():
-        return direct
-
-    # Otherwise look for suffixed dirs (run_id-1, run_id-2, ...)
-    cands = sorted(runs_dir.glob(f"{run_id}*"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
-    for p in cands:
-        if p.is_dir():
-            return p
-    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -100,6 +90,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"platform path error: {exc}", file=sys.stderr)
         return 2
 
+    try:
+        reservation = reserve_run_directory(runs_dir, run_id)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"run reservation error: {exc}", file=sys.stderr)
+        return 2
+    run_id = reservation.run_id
+
     if args.runner == "fusion":
         cmd = [sys.executable, "-m", "metriplane.run_fusion", "--config", args.config, "--runs-dir", str(runs_dir), "--run-id", run_id]
     else:
@@ -114,7 +111,15 @@ def main(argv: list[str] | None = None) -> int:
     print("cmd       :", " ".join(cmd))
     print()
 
-    proc = subprocess.Popen(cmd)
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            env=reservation.child_environment(os.environ),
+        )
+    except OSError as exc:
+        reservation.cancel_if_pending()
+        print(f"ERROR: could not start benchmark runtime: {exc}", file=sys.stderr)
+        return 2
     try:
         time.sleep(float(max(0.1, args.duration_s)))
         proc.send_signal(signal.SIGINT)
@@ -128,9 +133,11 @@ def main(argv: list[str] | None = None) -> int:
             proc.kill()
             proc.wait(timeout=10)
 
-    rd = _best_run_dir(runs_dir, run_id)
-    if rd is None:
-        print(f"ERROR: could not find run dir for run_id={run_id} under {runs_dir}", file=sys.stderr)
+    try:
+        rd = reservation.claimed_run_dir()
+    except PlatformPathError as exc:
+        reservation.cancel_if_pending()
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
     src = rd / "latency.csv"
