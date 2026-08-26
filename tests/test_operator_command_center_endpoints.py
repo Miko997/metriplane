@@ -114,6 +114,31 @@ def test_command_center_endpoints_never_500_for_looped_run_dir(
     assert "Internal error" not in str(data)
 
 
+@pytest.mark.parametrize("legacy_root", ["evidence", "runs"])
+def test_looped_legacy_root_does_not_break_valid_platform_run(
+    legacy_root: str,
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    repo_root.joinpath(legacy_root).symlink_to(legacy_root)
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    run_dir = paths.runs_dir / "valid"
+    run_dir.mkdir(parents=True)
+    api = OperatorAPI(executor=None, repo_root=repo_root, paths=paths)
+
+    status, data = api.route("POST", "/operator/incidents", {"run_dir": str(run_dir)})
+
+    assert status == 200
+    assert data["incidents"] == []
+    assert data["run_dir"] == str(run_dir.resolve())
+
+
 def test_frames_endpoint(api):
     st, data = api.route("POST", "/operator/frames", {"run_dir": BUNDLE})
     assert st == 200

@@ -1168,11 +1168,14 @@ class OperatorAPI:
     # tree); otherwise the latest platform run is used.
 
     def _cc_allowed_roots(self) -> list[Path]:
-        return [
-            self._runs_root(),
-            (self.repo_root / "evidence").resolve(),
-            (self.repo_root / "runs").resolve(),
-        ]
+        roots = [self._runs_root()]
+        for candidate in (self.repo_root / "evidence", self.repo_root / "runs"):
+            try:
+                roots.append(candidate.resolve())
+            except (OSError, RuntimeError):
+                # A malformed legacy root must not break valid platform run paths.
+                continue
+        return roots
 
     def _cc_resolve_run_dir(self, body: Dict) -> Optional[Path]:
         requested = (body or {}).get("run_dir")
