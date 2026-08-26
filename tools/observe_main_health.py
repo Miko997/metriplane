@@ -55,7 +55,7 @@ REQUIRED_WORKFLOWS = {
 
 
 def provider_run_order(run: dict[str, Any], *, workflow: str) -> tuple[datetime, int, int]:
-    """Order attempts by provider chronology, with stable identity tie-breakers."""
+    """Return validated provider chronology and exact attempt identity."""
     run_id = run.get("id")
     attempt = run.get("run_attempt")
     updated_at = run.get("updated_at")
@@ -72,6 +72,24 @@ def provider_run_order(run: dict[str, Any], *, workflow: str) -> tuple[datetime,
     if parsed.tzinfo is None:
         raise ObservationError(f"{workflow}: provider run update time has no timezone")
     return parsed.astimezone(UTC), run_id, attempt
+
+
+def select_latest_provider_run(runs: list[dict[str, Any]], *, workflow: str) -> dict[str, Any]:
+    """Select one unambiguous latest attempt and reject repeated identities."""
+    ordered: list[tuple[datetime, dict[str, Any]]] = []
+    identities: set[tuple[int, int]] = set()
+    for run in runs:
+        updated_at, run_id, attempt = provider_run_order(run, workflow=workflow)
+        identity = (run_id, attempt)
+        if identity in identities:
+            raise ObservationError(f"{workflow}: provider repeated a run attempt identity")
+        identities.add(identity)
+        ordered.append((updated_at, run))
+    latest_at = max(updated_at for updated_at, _run in ordered)
+    latest = [run for updated_at, run in ordered if updated_at == latest_at]
+    if len(latest) != 1:
+        raise ObservationError(f"{workflow}: latest provider run chronology is ambiguous")
+    return latest[0]
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -186,10 +204,7 @@ def select_runs(
         if not candidates:
             ready = False
             continue
-        latest = max(
-            candidates,
-            key=lambda item: provider_run_order(item, workflow=workflow),
-        )
+        latest = select_latest_provider_run(candidates, workflow=workflow)
         run = _selected_run(
             key=key,
             terminal=terminal,

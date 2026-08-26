@@ -102,7 +102,13 @@ def test_missing_workflow_run_remains_pending_and_fail_closed(missing: str) -> N
 def test_latest_provider_attempt_must_complete() -> None:
     runs = [
         _provider_run("documentation", attempt=1),
-        _provider_run("documentation", attempt=2, status="in_progress", conclusion=None),
+        _provider_run(
+            "documentation",
+            attempt=2,
+            status="in_progress",
+            conclusion=None,
+            updated_at="2026-08-26T12:01:00Z",
+        ),
         _provider_run("security"),
     ]
     result = _selection(runs)
@@ -135,6 +141,32 @@ def test_later_rerun_of_older_workflow_id_cannot_hide_behind_newer_id() -> None:
     assert (documentation["id"], documentation["run_attempt"]) == (102, 2)
     assert result["ready"] is False
     assert result["conclusion"] == "failure"
+
+
+def test_distinct_workflow_attempts_with_tied_chronology_fail_closed() -> None:
+    runs = [
+        _provider_run("documentation", id=202),
+        _provider_run(
+            "documentation",
+            attempt=2,
+            conclusion=None,
+            id=102,
+            status="in_progress",
+        ),
+        _provider_run("security"),
+    ]
+    with pytest.raises(ObservationError, match="chronology is ambiguous"):
+        _selection(runs)
+
+
+def test_repeated_workflow_attempt_identity_fails_closed() -> None:
+    runs = [
+        _provider_run("documentation"),
+        _provider_run("documentation", conclusion="failure"),
+        _provider_run("security"),
+    ]
+    with pytest.raises(ObservationError, match="repeated a run attempt identity"):
+        _selection(runs)
 
 
 def test_matching_workflow_with_malformed_provider_chronology_fails_closed() -> None:

@@ -2130,10 +2130,7 @@ class HealthReconciler:
         if not exact:
             return None
         try:
-            return max(
-                exact,
-                key=lambda run: observe_main_health.provider_run_order(run, workflow="CI"),
-            )
+            return observe_main_health.select_latest_provider_run(exact, workflow="CI")
         except observe_main_health.ObservationError as exc:
             raise BrokerError(f"current CI run chronology is malformed: {exc}") from exc
 
