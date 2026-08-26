@@ -74,6 +74,7 @@ class ApprovalContext(TypedDict):
     validated_sha: str | None
     require_merged_approval: bool
     github_token: str | None
+    base_blockers: dict[str, Blocker]
     changed_action_keys: set[tuple[str, str]]
     history_errors: list[str]
 
@@ -399,6 +400,14 @@ def _history_errors(registry: Registry, base: Registry | None) -> list[str]:
                     f"{blocker_id}: retained {action} record was removed or rewritten; "
                     "action history is append-only"
                 )
+        if retained_fields["downgrade"] is not None and (
+            current_fields["severity"] != retained_fields["severity"]
+            or current_fields["security"] != retained_fields["security"]
+        ):
+            errors.append(
+                f"{blocker_id}: classification after a governed downgrade was rewritten; "
+                "action history is append-only"
+            )
     return errors
 
 
@@ -655,15 +664,12 @@ def _github_registry_change_actors(
         if len(changed) != len(set(cast(list[str], changed))):
             errors.append(f"provider commit {sha} file inventory contains duplicates")
             continue
-        if REGISTRY_PATH not in changed:
-            continue
-        registry_commit_found = True
+        changes_registry = REGISTRY_PATH in changed
+        registry_commit_found = registry_commit_found or changes_registry
         for role in ("author", "committer"):
             actor = _provider_actor_id(detail.get(role))
             if actor is None:
-                errors.append(
-                    f"provider commit {sha} registry-change {role} has no linked human identity"
-                )
+                errors.append(f"provider commit {sha} {role} has no linked human identity")
             else:
                 actors.add(actor)
     if not registry_commit_found:
@@ -984,36 +990,56 @@ def _check_downgrade(
     approval_context: ApprovalContext,
 ) -> None:
     initial_error_count = len(errors)
-    initial_rank = SEVERITY_RANK[blocker["initial_severity"]]
-    current_rank = SEVERITY_RANK[blocker["severity"]]
-    needed = current_rank > initial_rank or (
-        blocker["initial_security"] and not blocker["security"]
+    retained = approval_context["base_blockers"].get(blocker["id"])
+    retained_downgrade = retained["downgrade"] if retained is not None else None
+    accepted_severity = (
+        retained["severity"] if retained is not None else blocker["initial_severity"]
     )
+    accepted_security = (
+        retained["security"] if retained is not None else blocker["initial_security"]
+    )
+    accepted_rank = SEVERITY_RANK[accepted_severity]
+    current_rank = SEVERITY_RANK[blocker["severity"]]
+    needed = current_rank > accepted_rank or (accepted_security and not blocker["security"])
     downgrade = blocker["downgrade"]
     if downgrade is None:
         if needed:
             errors.append(f"{blocker['id']}: downgrade requires a governed downgrade record")
         return
-    if not needed:
+    if retained_downgrade is None and not needed:
         errors.append(
             f"{blocker['id']}: downgrade record exists without a classification downgrade"
         )
-    expected = (
-        blocker["initial_severity"],
-        blocker["severity"],
-        blocker["initial_security"],
-        blocker["security"],
-    )
     actual = (
         downgrade["from_severity"],
         downgrade["to_severity"],
         downgrade["from_security"],
         downgrade["to_security"],
     )
-    if actual != expected:
+    current_transition = (
+        downgrade["to_severity"],
+        downgrade["to_security"],
+    )
+    if current_transition != (blocker["severity"], blocker["security"]):
         errors.append(
             f"{blocker['id']}: downgrade transition does not match blocker classifications"
         )
+    if not (
+        SEVERITY_RANK[downgrade["to_severity"]] > SEVERITY_RANK[downgrade["from_severity"]]
+        or (downgrade["from_security"] and not downgrade["to_security"])
+    ):
+        errors.append(f"{blocker['id']}: downgrade record does not lower a classification")
+    if retained_downgrade is None:
+        expected = (
+            accepted_severity,
+            blocker["severity"],
+            accepted_security,
+            blocker["security"],
+        )
+        if actual != expected:
+            errors.append(
+                f"{blocker['id']}: downgrade transition does not match accepted classifications"
+            )
     if _parse_timestamp(downgrade["changed_at"]) < _parse_timestamp(blocker["opened_at"]):
         errors.append(f"{blocker['id']}: downgrade predates blocker creation")
     _check_evidence(
@@ -1205,6 +1231,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "validated_sha": validated_sha,
             "require_merged_approval": require_merged_approval,
             "github_token": os.environ.get(token_env),
+            "base_blockers": {},
             "changed_action_keys": set(),
             "history_errors": [],
         }
@@ -1221,6 +1248,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if base_registry is not None:
             _schema_validate(base_registry, schema)
+            approval_context["base_blockers"] = {
+                blocker["id"]: blocker for blocker in base_registry["blockers"]
+            }
         approval_context["history_errors"] = _history_errors(registry, base_registry)
         approval_context["changed_action_keys"] = _changed_action_keys(
             registry,

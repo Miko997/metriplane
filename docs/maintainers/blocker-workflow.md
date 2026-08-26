@@ -22,15 +22,18 @@ Its `--json` output is deterministic and contains no wall-clock field.
 
 ## Classification changes
 
-`initial_severity` and `initial_security` are immutable. Escalation is allowed without a downgrade
-record. Lowering severity from P0 to P1/P2 or P1 to P2, or changing `security` from `true` to
-`false`, requires exactly one `downgrade` record that matches the immutable and current
-classifications.
+`initial_severity` and `initial_security` are immutable. Before the first governed downgrade,
+escalation is allowed without a downgrade record. Every candidate is compared with the accepted
+classification at the exact validation base. Lowering severity from P0 to P1/P2 or P1 to P2, or
+changing `security` from `true` to `false`, requires exactly one `downgrade` record that matches
+the accepted and current classifications. After that action is accepted, schema v1 freezes both
+the downgrade record and its resulting classification.
 
 The registry is append-only relative to the exact validation base. A retained blocker ID cannot
 be deleted; its reporter, opening time, source, and initial classifications cannot be rewritten;
-and a retained downgrade or closure record cannot be removed or changed. New records and
-Git-tracked commits provide the audit trail instead of mutating accepted action history.
+and a retained downgrade or closure record cannot be removed or changed. A retained downgrade
+also freezes the resulting severity and security classification. New records and Git-tracked
+commits provide the audit trail instead of mutating accepted action history.
 
 A downgrade is valid only when all of the following are present and verified:
 
@@ -46,8 +49,9 @@ A downgrade is valid only when all of the following are present and verified:
    later `APPROVED` state or a provider-visible dismissal does.
 5. A provider-authenticated reviewer whose live repository permission is `write`, `maintain`, or
    `admin` and who differs from the pull-request author, every linked
-   author and committer of a pull-request commit that changes `docs/status/blockers.json`, the
-   original reporter, and the downgrade actor. Reporter and action identities must use comparable
+   author and committer of every commit in the approval pull request, the original reporter, and
+   the downgrade actor. The all-commit rule conservatively covers rename chains into
+   `docs/status/blockers.json`. Reporter and action identities must use comparable
    `github:<numeric-id>` provider IDs; missing or unlinked identities fail closed.
 
 Evidence paths reject absolute paths and `..`. The checker reads the exact path from the validated
@@ -99,8 +103,10 @@ protected branch and release runs, the checker compares the validated commit to 
 base, requires every approval pull request to be provider-confirmed as merged, and requires that
 provider merge commit to be an ancestor of the exact validated release SHA.
 
-The production workflow reruns this live provider check at manual dispatch and again immediately
-before the trusted publish action, after the protected environment approval. A dismissed or edited
+The production workflow requires the annotated release tag to remain the exact current `main`
+commit, reruns live provider validation at manual dispatch, then fetches and rechecks exact current
+`main` immediately before the trusted publish action after protected-environment approval. Any
+intervening `main` change burns that candidate and requires a new tag. A dismissed or edited
 approval therefore invalidates production even if the earlier tag workflow passed.
 
 `linear` remains a reserved schema value so existing planned integrations have an explicit

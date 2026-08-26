@@ -18,6 +18,7 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_PATH = ROOT / "tools" / "check_blockers.py"
@@ -577,6 +578,86 @@ def test_initial_classification_and_retained_actions_cannot_be_rewritten(
     assert any("action history is append-only" in error for error in report["errors"])
 
 
+def test_escalation_rollback_requires_downgrade_from_accepted_base(tmp_path: Path) -> None:
+    opened = _base_blocker()
+    opened["initial_severity"] = opened["severity"] = "P2"
+    escalated = copy.deepcopy(opened)
+    escalated["severity"] = "P0"
+    escalated["security"] = True
+    base_sha = _commit_base_registry(tmp_path, _registry([escalated]))
+
+    reverted = copy.deepcopy(opened)
+    result, report = _run(
+        tmp_path,
+        _registry([reverted]),
+        context_repository=REPOSITORY,
+        context_base_sha=base_sha,
+    )
+
+    assert result == 2
+    assert any(
+        "downgrade requires a governed downgrade record" in error for error in report["errors"]
+    )
+
+
+def test_escalated_base_can_be_downgraded_with_exact_transition_proof(tmp_path: Path) -> None:
+    blocker = _base_blocker()
+    blocker["initial_severity"] = blocker["severity"] = "P2"
+    escalated = copy.deepcopy(blocker)
+    escalated["severity"] = "P0"
+    escalated["security"] = True
+    base_sha = _commit_base_registry(tmp_path, _registry([escalated]))
+
+    blocker["downgrade"] = {
+        "from_severity": "P0",
+        "to_severity": "P2",
+        "from_security": True,
+        "to_security": False,
+        "changed_by_actor_id": ACTION_ACTOR,
+        "changed_at": "2026-08-25T11:00:00Z",
+        "reproduction_evidence": [_evidence(tmp_path, "reproduction.txt", "reproduction")],
+        "control_evidence": [_evidence(tmp_path, "control.txt", "control")],
+        "approval": {
+            "provider": "github",
+            "repository": REPOSITORY,
+            "pull_request": PULL_REQUEST,
+            "subject_sha256": "0" * 64,
+        },
+    }
+    _bind_action(blocker, "downgrade")
+    provider = _synthetic_provider_payload(blocker, "downgrade")
+
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        provider=provider,
+        context_base_sha=base_sha,
+    )
+
+    assert result == 0
+    assert report["valid"] is True
+
+
+def test_retained_downgrade_freezes_resulting_classification(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    base_sha = _commit_base_registry(tmp_path, _registry([blocker]))
+    rewritten = copy.deepcopy(blocker)
+    rewritten["severity"] = "P1"
+
+    result, report = _run(
+        tmp_path,
+        _registry([rewritten]),
+        context_repository=REPOSITORY,
+        context_base_sha=base_sha,
+    )
+
+    assert result == 2
+    assert any(
+        "classification after a governed downgrade was rewritten" in error
+        for error in report["errors"]
+    )
+
+
 def test_stale_wrong_subject_and_nonapproved_reviews_fail_closed(tmp_path: Path) -> None:
     blocker = _valid_downgrade(tmp_path)
 
@@ -854,6 +935,64 @@ def test_later_commit_file_page_cannot_hide_a_registry_change_actor(
     assert any("not independent" in error for error in report["errors"])
 
 
+def test_rename_chain_cannot_hide_an_earlier_change_actor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_sha = "1" * 40
+    rename_sha = "2" * 40
+
+    def pages(path: str, _token: str) -> list[dict[str, Any]]:
+        if path.endswith("/files"):
+            return [
+                {
+                    "filename": "docs/status/blockers.json",
+                    "previous_filename": "staging/blockers.json",
+                    "status": "renamed",
+                }
+            ]
+        if path.endswith("/commits"):
+            return [{"sha": first_sha}, {"sha": rename_sha}]
+        raise AssertionError(path)
+
+    details = {
+        first_sha: {
+            "sha": first_sha,
+            "files": [{"filename": "staging/blockers.json"}],
+            "author": {"id": 200, "type": "User"},
+            "committer": {"id": 201, "type": "User"},
+        },
+        rename_sha: {
+            "sha": rename_sha,
+            "files": [
+                {
+                    "filename": "docs/status/blockers.json",
+                    "previous_filename": "staging/blockers.json",
+                    "status": "renamed",
+                }
+            ],
+            "author": {"id": 100, "type": "User"},
+            "committer": {"id": 101, "type": "User"},
+        },
+    }
+
+    def get(path: str, _token: str) -> dict[str, Any]:
+        sha = path.split("/commits/", 1)[1].split("?", 1)[0]
+        return copy.deepcopy(details[sha])
+
+    monkeypatch.setattr(tool, "_github_pages", pages)
+    monkeypatch.setattr(tool, "_github_get", get)
+
+    actors, errors = tool._github_registry_change_actors(
+        repository=REPOSITORY,
+        pull_request=PULL_REQUEST,
+        expected_commit_count=2,
+        token="synthetic-token",
+    )
+
+    assert errors == []
+    assert REVIEWER_ACTOR in actors
+
+
 def test_provider_commit_cap_cannot_hide_registry_change_actors(tmp_path: Path) -> None:
     blocker = _valid_downgrade(tmp_path)
     payload = _synthetic_provider_payload(blocker, "downgrade")
@@ -1116,6 +1255,16 @@ def test_schema_checker_docs_trace_and_workflow_are_connected() -> None:
         "--require-merged-approval",
     ):
         assert provider_binding in workflow
+
+
+def test_release_gate_checks_out_the_exact_validated_snapshot() -> None:
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    checkout = workflow["jobs"]["fixture-integrity"]["steps"][0]
+    assert checkout["with"]["ref"] == (
+        "${{ (github.event_name == 'pull_request' || "
+        "github.event_name == 'pull_request_review') && "
+        "github.event.pull_request.head.sha || github.sha }}"
+    )
 
 
 def test_production_registry_has_no_live_downgrade_or_closure() -> None:

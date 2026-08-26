@@ -380,7 +380,7 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
           test "$(git cat-file -t "$tag_ref")" = "tag"
           tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
-          git merge-base --is-ancestor "$tag_commit" origin/main
+          test "$tag_commit" = "$(git rev-parse origin/main)"
           test "$(git show "${tag_ref}:metriplane/__init__.py" | \
             sed -n 's/^__version__ = "\([^"]*\)"$/\1/p')" = \
             "$RELEASE_VERSION"
@@ -581,6 +581,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ needs.validate-production-request.outputs.commit }}
         run: |
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          test "$RELEASE_COMMIT" = "$(git rev-parse origin/main)"
           test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
           history_base="$(git rev-parse "${RELEASE_COMMIT}^")"
           uv sync --locked --group dev

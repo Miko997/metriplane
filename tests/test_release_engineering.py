@@ -129,7 +129,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
-        'git merge-base --is-ancestor "$tag_commit" origin/main',
+        'test "$tag_commit" = "$(git rev-parse origin/main)"',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",
@@ -138,6 +138,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
         "--repository https://test.pypi.org",
     )
     assert all(fragment in text for fragment in required)
+    assert text.count('test "$RELEASE_COMMIT" = "$(git rev-parse origin/main)"') == 1
     assert text.count("verify-registry") == 4
     assert text.count("sha256sum --check ../SHA256SUMS") == 1
 
