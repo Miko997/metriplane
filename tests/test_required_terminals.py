@@ -277,10 +277,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     for job_name in publisher_jobs:
         job = health["jobs"][job_name]
         assert job["environment"] == "main-health-publisher"
-        assert job["concurrency"] == {
-            "group": "main-health-check-writer",
-            "queue": "max",
-        }
+        assert "concurrency" not in job
         publisher = job["steps"][0]
         assert publisher["id"] == "publisher"
         assert publisher["uses"] == (
@@ -349,10 +346,6 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "cleanup_successes" in reconcile
     assert reconcile.count("while true; do") >= 1
     assert "provider_epoch >= deadline_epoch" in reconcile
-    assert health["jobs"]["reconcile-candidate-statuses"]["concurrency"] == {
-        "group": "main-health-check-writer",
-        "queue": "max",
-    }
     dispatch_index = reconcile.index("main-health-expire")
     marker_index = reconcile.index("! lease_marker_binding")
     active_index = reconcile.index('verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"')
@@ -412,10 +405,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "github.actor == format" in arm["if"]
     assert "github.event.sender.login == format" in arm["if"]
     assert expiry["needs"] == "arm-and-wait"
-    assert expiry["concurrency"] == {
-        "group": "main-health-check-writer",
-        "queue": "max",
-    }
+    assert "concurrency" not in expiry
     for job in (arm, expiry):
         publisher = job["steps"][0]
         assert publisher["with"] == {
@@ -439,6 +429,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     ).read_text(encoding="utf-8")
     assert "/statuses" not in all_health_workflows
     assert "permission-statuses" not in all_health_workflows
+    assert "main-health-check-writer" not in all_health_workflows
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
     ci_trigger = ci.get("on", ci.get(True))
@@ -542,6 +533,16 @@ def test_main_health_closers_require_one_shared_provider_deadline(tmp_path: Path
     )
     assert rejected.returncode != 0
     assert "deadline is inconsistent" in rejected.stderr
+
+
+def test_main_health_closers_do_not_wait_on_publisher_concurrency() -> None:
+    health = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
+    lease = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
+
+    assert health["concurrency"] == {"group": "main-health-serialized", "queue": "max"}
+    assert "concurrency" not in health["jobs"]["reconcile-candidate-statuses"]
+    assert all("concurrency" not in job for job in lease["jobs"].values())
+    assert "github-check-expire" in lease["jobs"]["expire-successes"]["steps"][-1]["run"]
 
 
 def test_main_health_lease_marker_binds_exact_shared_generation(tmp_path: Path) -> None:

@@ -35,7 +35,7 @@ one `Main health admission / required` check run on each exact open pull request
 head during its five-minute reconciliation and immediately after every durable
 transition. A separate name avoids GitHub's rule that a same-named check and
 legacy commit status must both pass. Pull request events do not run privileged
-admission or occupy the serialized writer queue, and candidate-controlled code is
+admission or occupy the serialized publisher queue, and candidate-controlled code is
 never executed with the App token. The token is a repository-scoped installation
 token from the dedicated Main Health GitHub App. Its private key is available only
 through the `main-health-publisher` environment, whose deployment branch policy
@@ -61,12 +61,13 @@ time. Reconciliation verifies both distinct Actions runs, jobs, and wait steps a
 still in progress and requires at least 60 seconds to remain before it can publish
 green. The publisher then remains alive as a third closer until the same deadline.
 At the deadline the publisher and both independent expiry writers can change only
-the exact generation to failure. Failure and success mutations from every workflow
-share the repository-wide `main-health-check-writer` concurrency group with
-`queue: max`; the identity check and PATCH therefore execute as one serialized
-critical section. An older attempt that observes a newer `external_id` is a no-op,
-and expiry omits `external_id` from its PATCH so it cannot restore an older
-generation even if transport behavior changes.
+the exact generation to failure. Publisher workflows are serialized with
+`queue: max`, but expiry writers deliberately hold no publisher concurrency lock;
+a lost publisher therefore cannot block either closer. An older attempt that
+observes a newer `external_id` is a no-op. If a newer mutation lands between an
+expiry writer's identity read and PATCH, the expiry can only write failure and
+omits `external_id`, so the race can conservatively reject a newer generation but
+cannot create success, extend green, or restore an older identity.
 
 If dispatch, arming, active-run verification, or success verification fails,
 reconciliation retains or restores failure. An EXIT/INT/TERM cleanup covers every
@@ -169,8 +170,10 @@ two-line owner-emergency marker. Automated reconciliation never grants a red-hea
 owner emergency; it continues to publish failure. Caller-supplied provider JSON is
 not accepted as operational admission evidence. `capture-owner-admission` fetches
 the live pull request, complete file list, a stable invitation/collaborator
-snapshot, and both active default-branch rulesets itself with an
-owner-authenticated token. `Protect main` must retain the pull-request, deletion,
+snapshot, the live state-branch ref, and both active default-branch rulesets itself
+with an owner-authenticated token. The validated local state checkout must equal
+that ref before and after candidate validation; the immutable admission records its
+exact commit and generation. `Protect main` must retain the pull-request, deletion,
 non-fast-forward, and three non-health required-check protections without a
 bypass. `Protect main health admission` must contain only
 `Main health admission / required`, pin it to the dedicated Main Health App integration,
@@ -189,13 +192,15 @@ requires that neither contains an eligible non-author reviewer. Admission requir
 their combined canonical digest to match the manifest. The provider comment starts
 a five-minute lease; editing it invalidates the admission. `merge-owner-emergency`
 re-fetches the comment, pull request, complete paths, manifest, owner permission,
-both rulesets, and a stable collaboration snapshot twice at the merge boundary.
+both rulesets, live state ref, and a stable collaboration snapshot twice at the
+merge boundary, then checks the same state ref once more immediately before merge.
 It then submits a GraphQL merge with `expectedHeadOid` through the governed
 pull-request-only bypass. No status is fabricated and no ruleset changes during
-the merge. The command is idempotent: if GitHub completed the merge but the client
-lost the response, a rerun accepts only the provider-recorded exact head, owner
-merge actor, merge timestamp, unchanged admission, and unchanged policy, then
-reconstructs the same `owner-merge-gate.json`. Post-merge capture re-fetches the
+the merge. The command is idempotent while the admitted state ref remains current:
+if GitHub completed the merge but the client lost the response, a prompt rerun
+accepts only the provider-recorded exact head, owner merge actor, merge timestamp,
+unchanged admission, state binding, and policy, then reconstructs the same
+`owner-merge-gate.json`. Post-merge capture re-fetches the
 admission comment, stable collaboration snapshot, both rulesets, pull request,
 permission, and both commits. Provider timestamps must bracket the merge, and
 the merge must precede manifest expiry. Post-merge `captured_at` is the actual provider

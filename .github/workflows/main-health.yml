@@ -76,9 +76,6 @@ jobs:
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: main-health-publisher
-    concurrency:
-      group: main-health-check-writer
-      queue: max
     permissions:
       contents: read
     outputs:
@@ -146,9 +143,6 @@ jobs:
       - invalidate-writer
     runs-on: ubuntu-latest
     environment: main-health-publisher
-    concurrency:
-      group: main-health-check-writer
-      queue: max
     permissions:
       actions: read
       contents: read
@@ -422,9 +416,6 @@ jobs:
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: main-health-publisher
-    concurrency:
-      group: main-health-check-writer
-      queue: max
     permissions:
       contents: read
       pull-requests: read
@@ -502,9 +493,6 @@ jobs:
       - persist-health
     runs-on: ubuntu-latest
     environment: main-health-publisher
-    concurrency:
-      group: main-health-check-writer
-      queue: max
     permissions:
       actions: read
       contents: read

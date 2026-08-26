@@ -37,6 +37,7 @@ BAD_SHA = "b" * 40
 REVIEWED_SHA = "c" * 40
 REPAIR_SHA = "d" * 40
 TREE_SHA = "e" * 40
+STATE_SHA = "f" * 40
 POLICY = json.loads((STATUS / "main-health-policy.json").read_text(encoding="utf-8"))
 
 
@@ -446,6 +447,8 @@ def _owner_admission(
         "pull_request": str(manifest["pull_request"]),
         "repository": manifest["repository"],
         "schema_version": 1,
+        "state_commit": STATE_SHA,
+        "state_generation": 7,
         "status": "repair-candidate",
     }
     return {
@@ -485,6 +488,8 @@ def _owner_merge_gate(admission: dict[str, object]) -> dict[str, object]:
         "pull_request": "123",
         "repository": "Miko997/metriplane",
         "schema_version": 1,
+        "state_commit": artifact["state_commit"],
+        "state_generation": artifact["state_generation"],
     }
 
 
@@ -1419,6 +1424,11 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
             return pull
         if path.endswith("/collaborators/Miko997/permission"):
             return {"permission": "admin"}
+        if path.endswith("/git/ref/heads/metriplane-main-health-state"):
+            return {
+                "object": {"sha": STATE_SHA, "type": "commit"},
+                "ref": "refs/heads/metriplane-main-health-state",
+            }
         if path.endswith("/rulesets/1000"):
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
@@ -1440,6 +1450,8 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
             "protection_ruleset": _core_ruleset(),
             "protection_ruleset_digest": digest(_core_ruleset()),
             "protection_ruleset_id": "1000",
+            "state_commit": STATE_SHA,
+            "state_generation": 7,
         }
         return {
             "artifact": artifact,
@@ -1461,7 +1473,11 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
         assert kwargs["checked_at"] == "2026-08-25T21:44:00Z"
         return candidate
 
-    monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
+    monkeypatch.setattr(
+        stop_the_line,
+        "validate_git_history",
+        lambda _root: {"generation": 7, "state_commit": STATE_SHA},
+    )
     monkeypatch.setattr(stop_the_line, "_github_get", get)
     monkeypatch.setattr(stop_the_line, "_github_list", list_provider)
     monkeypatch.setattr(
@@ -1487,6 +1503,44 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
     assert result["comment_id"] == "2000"
     assert provider_calls == ["token"]
     assert any(path.endswith("/pulls/123/files") for path in calls)
+    assert calls.count("repos/Miko997/metriplane/git/ref/heads/metriplane-main-health-state") == 2
+
+
+def test_live_state_binding_rejects_stale_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        stop_the_line,
+        "validate_git_history",
+        lambda _root: {"generation": 7, "state_commit": STATE_SHA},
+    )
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_get",
+        lambda _path, _token: {
+            "object": {"sha": GOOD_SHA, "type": "commit"},
+            "ref": "refs/heads/metriplane-main-health-state",
+        },
+    )
+
+    with pytest.raises(HealthError, match="does not match the live provider ref"):
+        stop_the_line._github_live_state_binding(
+            Path("state"), repository="Miko997/metriplane", token="token"
+        )
+
+
+@pytest.mark.parametrize(
+    "current",
+    [
+        {"state_commit": GOOD_SHA, "state_generation": 7},
+        {"state_commit": STATE_SHA, "state_generation": 8},
+    ],
+)
+def test_owner_state_binding_rejects_movement_between_admission_and_merge(
+    current: dict[str, object],
+) -> None:
+    with pytest.raises(HealthError, match="changed before merge"):
+        stop_the_line._require_owner_state_binding(
+            {"state_commit": STATE_SHA, "state_generation": 7}, current
+        )
 
 
 def test_post_merge_owner_capture_uses_provider_time_with_backward_local_clock(
@@ -1576,8 +1630,15 @@ def test_collaboration_snapshot_rejects_invitation_acceptance_during_capture(
         stop_the_line._github_stable_collaboration_snapshot("Miko997/metriplane", "token")
 
 
+@pytest.mark.parametrize(
+    ("final_state_commit", "should_merge"),
+    [(STATE_SHA, True), (GOOD_SHA, False)],
+    ids=["state-stable", "state-moves-before-graphql"],
+)
 def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
     monkeypatch: pytest.MonkeyPatch,
+    final_state_commit: str,
+    should_merge: bool,
 ) -> None:
     admission = _owner_admission(
         {
@@ -1627,6 +1688,7 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
 
     graphql: list[dict[str, object]] = []
     provider_times: list[str] = []
+    state_checks: list[str] = []
 
     def merge_graphql(_query: str, variables: dict[str, object], _token: str) -> dict[str, object]:
         graphql.append(variables)
@@ -1644,7 +1706,12 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
         provider_times.append("checked")
         return stop_the_line._timestamp("2026-08-25T21:44:59Z")
 
-    monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
+    def live_state(*_args: object, **_kwargs: object) -> dict[str, object]:
+        state_checks.append("checked")
+        state_commit = final_state_commit if len(state_checks) == 3 else STATE_SHA
+        return {"state_commit": state_commit, "state_generation": 7}
+
+    monkeypatch.setattr(stop_the_line, "_github_live_state_binding", live_state)
     monkeypatch.setattr(stop_the_line, "_github_provider_now", provider_now)
     monkeypatch.setattr(stop_the_line, "_refetch_github_artifact", lambda **_kwargs: admission)
     monkeypatch.setattr(stop_the_line, "_github_get", get)
@@ -1664,26 +1731,34 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
         lambda *_args, **_kwargs: {**artifact, "checked_at": "2026-08-25T21:44:59Z"},
     )
 
-    result = stop_the_line.merge_github_owner_emergency(
-        root=Path("state"),
-        repository="Miko997/metriplane",
-        pull_request="123",
-        issue="MET-999",
-        incident_digest="f" * 64,
-        admission_attestation=admission,
-        token="token",
-    )
-    assert result == _owner_merge_gate(admission)
-    assert graphql == [
-        {
-            "input": {
-                "expectedHeadOid": REVIEWED_SHA,
-                "mergeMethod": "MERGE",
-                "pullRequestId": "PR_node",
+    def call() -> dict[str, object]:
+        return stop_the_line.merge_github_owner_emergency(
+            root=Path("state"),
+            repository="Miko997/metriplane",
+            pull_request="123",
+            issue="MET-999",
+            incident_digest="f" * 64,
+            admission_attestation=admission,
+            token="token",
+        )
+
+    if should_merge:
+        assert call() == _owner_merge_gate(admission)
+        assert graphql == [
+            {
+                "input": {
+                    "expectedHeadOid": REVIEWED_SHA,
+                    "mergeMethod": "MERGE",
+                    "pullRequestId": "PR_node",
+                }
             }
-        }
-    ]
+        ]
+    else:
+        with pytest.raises(HealthError, match="changed before merge"):
+            call()
+        assert graphql == []
     assert provider_times == ["checked", "checked", "checked"]
+    assert state_checks == ["checked", "checked", "checked"]
 
 
 def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed_out(
@@ -1732,7 +1807,11 @@ def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed
             }
         raise AssertionError(path)
 
-    monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_live_state_binding",
+        lambda *_args, **_kwargs: {"state_commit": STATE_SHA, "state_generation": 7},
+    )
     monkeypatch.setattr(
         stop_the_line,
         "_github_provider_now",

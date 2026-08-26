@@ -176,9 +176,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: main-health-publisher
-    concurrency:
-      group: main-health-check-writer
-      queue: max
     steps:
       - name: Mint isolated publisher token
         id: publisher
