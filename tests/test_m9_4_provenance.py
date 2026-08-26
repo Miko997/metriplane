@@ -10,7 +10,11 @@ import pytest
 
 from metriplane.config import Config
 from metriplane.paths import PlatformPathError, PlatformPaths
-from metriplane.provenance.run_provenance import create_run_context, open_jsonl_writer
+from metriplane.provenance.run_provenance import (
+    create_run_context,
+    open_jsonl_writer,
+)
+from metriplane.run_ids import validate_portable_run_id
 
 
 def _platform_paths(root: Path) -> PlatformPaths:
@@ -240,6 +244,73 @@ def test_runtime_whitespace_runs_dir_uses_injected_root_without_writing_ambient(
         ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
     ],
 )
+def test_runtime_whitespace_data_environment_uses_platform_root(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    paths = _platform_paths(tmp_path / "injected")
+    captured: dict[str, object] = {}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", " \t ")
+    monkeypatch.setattr(module, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(
+        module,
+        implementation_name,
+        lambda _cfg, **kwargs: (captured.update(kwargs), 33)[1],
+    )
+
+    assert getattr(module, entrypoint_name)(Config()) == 33
+    assert captured["runs_dir"] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+@pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+def test_runtime_public_entrypoints_reject_windows_device_run_ids_before_writing(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        module,
+        implementation_name,
+        lambda *_args, **_kwargs: pytest.fail("invalid run ID reached the runtime writer"),
+    )
+
+    assert (
+        getattr(module, entrypoint_name)(
+            Config(record_jsonl=str(tmp_path / "mirror" / "session.jsonl")),
+            run_id=run_id,
+            runs_dir=str(runs_dir),
+        )
+        == 2
+    )
+    assert not runs_dir.exists()
+    assert not (tmp_path / "mirror").exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
 def test_runtime_whitespace_direct_override_reveals_config_precedence(
     module_name: str,
     entrypoint_name: str,
@@ -339,6 +410,131 @@ def test_ui_demo_replay_generates_a_unique_safe_run_id_each_time(
     assert len(set(run_ids)) == 2
 
 
+def test_ui_demo_replay_whitespace_runs_dir_uses_platform_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    paths = _platform_paths(tmp_path / "injected")
+    commands: list[list[str]] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_ui_demo_replay, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda _label, command: commands.append(command),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", " \t "]) == 0
+    sentinel_command = commands[0]
+    assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+@pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+def test_ui_demo_replay_rejects_windows_device_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda *_args: pytest.fail("invalid run ID reached a demo writer"),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir), "--run-id", run_id]) == 2
+    assert not runs_dir.exists()
+
+
+def test_latency_benchmark_whitespace_runs_dir_uses_platform_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    paths = _platform_paths(tmp_path / "injected")
+    run_id = "latency.valid-01"
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self, command: list[str]) -> None:
+            captured["command"] = command
+            run_dir = paths.runs_dir / run_id
+            run_dir.mkdir(parents=True)
+            (run_dir / "latency.csv").write_text("stage,ms\nall,1\n", encoding="utf-8")
+
+        def send_signal(self, _signal: int) -> None:
+            return None
+
+        def wait(self, *, timeout: int) -> int:
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return None
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_latency_breakdown, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(run_latency_breakdown.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(run_latency_breakdown.time, "sleep", lambda _seconds: None)
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(tmp_path / "latency.csv"),
+                "--runs-dir",
+                " \t ",
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 0
+    )
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[command.index("--runs-dir") + 1] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+@pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+def test_latency_benchmark_rejects_windows_device_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_latency_breakdown.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("invalid run ID reached benchmark process"),
+    )
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(tmp_path / "latency.csv"),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 2
+    )
+    assert not runs_dir.exists()
+
+
 def test_metriplane_run_help_retains_frozen_legacy_default(capsys) -> None:
     from metriplane.run import main as run_main
 
@@ -401,13 +597,17 @@ def test_shell_run_writers_use_canonical_defaults_and_preserve_overrides() -> No
     root = Path(__file__).resolve().parents[1]
     mp_script = (root / "tools" / "mp.sh").read_text(encoding="utf-8")
     demo_script = (root / "scripts" / "DEMO_ALL.sh").read_text(encoding="utf-8")
+    vt_script = (root / "scripts" / "_vt_env.sh").read_text(encoding="utf-8")
+    sd4_script = (root / "scripts" / "sd4_demo.sh").read_text(encoding="utf-8")
 
     assert 'RUNS="${RUNS:-$ROOT/runs}"' not in mp_script
     assert "resolve_platform_paths().runs_dir" in mp_script
-    assert 'if [[ -z "${RUNS:-}" ]]' in mp_script
+    assert 'if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]' in mp_script
     assert 'LOG_DIR="$ROOT/runs/$RUN_ID"' not in demo_script
-    assert 'if [[ -n "${RUNS:-}" ]]' in demo_script
+    assert 'if [[ "${RUNS:-}" =~ [^[:space:]] ]]' in demo_script
     assert 'LOG_DIR="$RUNS_DIR/$RUN_ID"' in demo_script
+    assert 'if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]' in vt_script
+    assert 'if [[ ! "${RUNS_DIR:-}" =~ [^[:space:]] ]]' in sd4_script
 
 
 def test_run_context_creates_expected_files(tmp_path: Path, monkeypatch) -> None:
@@ -514,7 +714,19 @@ def test_run_context_redacts_credentials_from_persisted_config(
     assert "<redacted>" in persisted
 
 
-@pytest.mark.parametrize("run_id", ["../escape", "nested/run", "..", "bad id"])
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        "../escape",
+        "nested/run",
+        "..",
+        "bad id",
+        "CON",
+        "nul.txt",
+        "COM1.capture",
+        "LPT9.log",
+    ],
+)
 def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: str) -> None:
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
     cfg = Config(source_mode="dummy", target_fps=5, runs_dir=str(tmp_path / "runs"))
@@ -529,3 +741,11 @@ def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: 
         )
 
     assert not (tmp_path / "escape").exists()
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    ["run", "CONSOLE", "nulled.txt", "COM10.capture", "LPT10.log", "a.b-c_d"],
+)
+def test_portable_run_id_validator_preserves_valid_names(run_id: str) -> None:
+    assert validate_portable_run_id(run_id) == run_id

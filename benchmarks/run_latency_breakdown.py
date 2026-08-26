@@ -12,8 +12,9 @@ import sys
 import time
 from pathlib import Path
 
-from metriplane.paths import PlatformPathError, resolve_platform_paths
+from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_platform_paths
 from metriplane.provenance.run_provenance import generate_run_id
+from metriplane.run_ids import validate_portable_run_id
 
 
 def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
@@ -30,7 +31,7 @@ def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
     return None
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="M9.5 latency breakdown runner")
     ap.add_argument("--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)")
     ap.add_argument("--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)")
@@ -48,12 +49,19 @@ def main() -> int:
         help="Which runner to benchmark: 'run' (metriplane.run) or 'fusion' (metriplane.run_fusion)",
     )
     ap.add_argument("--run-id", type=str, default=None, help="Optional run id override (otherwise auto)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     try:
+        run_id = validate_portable_run_id(args.run_id or generate_run_id("m95_latency"))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    try:
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
         runs_dir = (
-            Path(args.runs_dir).expanduser().resolve()
-            if args.runs_dir
+            Path(explicit_runs_dir).expanduser().resolve()
+            if explicit_runs_dir is not None
             else resolve_platform_paths().runs_dir
         )
         runs_dir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +69,6 @@ def main() -> int:
         print(f"platform path error: {exc}", file=sys.stderr)
         return 2
 
-    run_id = args.run_id or generate_run_id("m95_latency")
     out_path = Path(args.out).expanduser().resolve()
 
     if args.runner == "fusion":

@@ -28,7 +28,7 @@ METRIPLANE_VENV="${METRIPLANE_VENV:-$ROOT/.venv}"
 CONFIG="${CONFIG:-configs/fusion_health_300fps.yaml}"
 CUDA_ENV_SH="${CUDA_ENV_SH:-$ROOT/tools/env/vt_cuda13_env.sh}"
 
-if [[ -z "${RUNS:-}" ]]; then
+if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]; then
   PATHS_PYTHON="python3"
   if [[ -x "$METRIPLANE_VENV/bin/python" ]]; then
     PATHS_PYTHON="$METRIPLANE_VENV/bin/python"

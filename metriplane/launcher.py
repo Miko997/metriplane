@@ -21,6 +21,7 @@ Key design decisions (v2):
 """
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -35,8 +36,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
-
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
+from metriplane.run_ids import validate_portable_run_id
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -113,12 +119,42 @@ def _is_windows() -> bool:
     return os.name == "nt"
 
 
+def _windows_process_is_running(pid: int) -> bool:
+    """Inspect a Windows PID without invoking ``os.kill``/``TerminateProcess``."""
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
+        return False
+    if result.returncode != 0:
+        return False
+    for row in csv.reader(result.stdout.splitlines()):
+        if len(row) < 2:
+            continue
+        try:
+            if int(row[1]) == int(pid):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _is_running(pid: int | None) -> bool:
     """Return True if the process exists (any state)."""
     if pid is None:
         return False
     try:
-        os.kill(int(pid), 0)
+        pid_value = int(pid)
+        if pid_value <= 0:
+            return False
+        if _is_windows():
+            return _windows_process_is_running(pid_value)
+        os.kill(pid_value, 0)
         return True
     except (ProcessLookupError, PermissionError):
         return False
@@ -408,6 +444,7 @@ def _runtime_module_for_config(config: str, repo_root: Path) -> str:
 
 def _start_fusion(*, config: str, run_id: str, runs_dir: str, duration_s: float,
                    backend: str, log_file: Path, repo_root: Path) -> subprocess.Popen:
+    run_id = validate_portable_run_id(run_id)
     env = dict(os.environ)
     env["METRIPLANE_COMPUTE_BACKEND"] = "gpu" if backend == "gpu" else "cpu"
     module = _runtime_module_for_config(config, repo_root)
@@ -538,10 +575,20 @@ def cmd_start(
     paths: PlatformPaths | None = None,
 ) -> int:
     """Start the local Metriplane stack. Returns exit code."""
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    effective_run_id = run_id or f"live_{timestamp}"
+    if live:
+        try:
+            effective_run_id = validate_portable_run_id(effective_run_id)
+        except ValueError as exc:
+            print(exc)
+            return 2
+
     try:
         resolved_paths = _effective_paths(paths)
-        if runs_dir:
-            resolved_paths = resolved_paths.with_runs_dir(runs_dir)
+        explicit_runs_dir = normalize_runs_dir(runs_dir)
+        if explicit_runs_dir is not None:
+            resolved_paths = resolved_paths.with_runs_dir(explicit_runs_dir)
         effective_runs_dir = str(resolved_paths.runs_dir)
         state = _load_state(resolved_paths)
         _state_dir(resolved_paths)
@@ -564,7 +611,6 @@ def cmd_start(
             return 2
 
     repo_root = _find_repo_root()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
         log_d = _log_dir_path(effective_runs_dir, timestamp)
     except OSError as exc:
@@ -632,7 +678,6 @@ def cmd_start(
 
     # --- Start runtime stream ---
     fusion_entry: dict[str, Any] | None = None
-    effective_run_id = run_id or f"live_{timestamp}"
     if live:
         print(f"▶  Starting runtime stream  (config={config}, run_id={effective_run_id})")
         fp = _start_fusion(config=config, run_id=effective_run_id,

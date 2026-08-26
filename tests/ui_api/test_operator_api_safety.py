@@ -68,6 +68,48 @@ def test_start_fusion_rejects_configs_sibling_prefix(tmp_path: Path):
     assert "relative path under configs" in payload["error"]
 
 
+@pytest.mark.parametrize(
+    "run_id",
+    ["CON", "nul.txt", "PrN.log", "COM1", "com9.capture", "LPT9.log"],
+)
+def test_start_fusion_rejects_windows_device_run_ids_before_execution(
+    tmp_path: Path,
+    run_id: str,
+) -> None:
+    api = make_api(tmp_path)
+    config = tmp_path / "configs" / "safe.yaml"
+    config.parent.mkdir()
+    config.write_text("source_mode: dummy\n", encoding="utf-8")
+
+    status, payload = api._start_fusion(
+        {"config": "configs/safe.yaml", "duration_s": 30, "run_id": run_id}
+    )
+
+    assert status == 400
+    assert "Windows device basenames" in payload["error"]
+    api.executor.execute.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    ["safe_run", "run.with-dots_1", "CONSOLE", "COM10.capture", "LPT10.log"],
+)
+def test_start_fusion_preserves_portable_run_ids(tmp_path: Path, run_id: str) -> None:
+    api = make_api(tmp_path)
+    config = tmp_path / "configs" / "safe.yaml"
+    config.parent.mkdir()
+    config.write_text("source_mode: dummy\n", encoding="utf-8")
+
+    status, payload = api._start_fusion(
+        {"config": "configs/safe.yaml", "duration_s": 30, "run_id": run_id}
+    )
+
+    assert status == 200
+    assert payload["run_id"] == run_id
+    command = api.executor.execute.call_args.kwargs["command"]
+    assert command[command.index("--run-id") + 1] == run_id
+
+
 def test_checksum_rejects_paths_outside_runs_or_evidence(tmp_path: Path):
     api = make_api(tmp_path)
     outside = tmp_path / "not_allowed.txt"

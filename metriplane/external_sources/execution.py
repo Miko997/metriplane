@@ -36,6 +36,7 @@ from metriplane.external_sources.contract import (
     validate_external_fixture_bundle,
 )
 from metriplane.provenance.run_provenance import get_git_info, sha256_file
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import frame_time_s
 
 VALIDATION_SUMMARY_SCHEMA_VERSION: Final = "metriplane.external_validation_summary.v1"
@@ -43,7 +44,6 @@ RUN_SUMMARY_SCHEMA_VERSION: Final = "metriplane.external_run_summary.v1"
 EXTERNAL_PROVENANCE_SCHEMA_VERSION: Final = "metriplane.external_source_provenance.v1"
 
 _EXPECTED_INPUT_ERRORS = (ValueError, OSError, UnicodeError)
-_SAFE_OPERATIONAL_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 class _ExecutionModel(BaseModel):
@@ -449,23 +449,23 @@ def _resolve_output_path(path: str | Path) -> Path:
 
 def _select_operational_run_id(fixture_id: str, explicit_run_id: str | None) -> str:
     if explicit_run_id is not None:
-        if _SAFE_OPERATIONAL_RUN_ID.fullmatch(explicit_run_id) is None:
-            raise ValueError(
-                "external run --run-id must be 1-128 ASCII letters, digits, dots, "
-                "underscores, or hyphens, and must start with a letter or digit"
-            )
-        return explicit_run_id
+        try:
+            return validate_portable_run_id(explicit_run_id)
+        except ValueError as exc:
+            raise ValueError(f"external run --run-id is invalid: {exc}") from exc
 
     candidate = f"external_{fixture_id}"
-    if _SAFE_OPERATIONAL_RUN_ID.fullmatch(candidate) is not None:
-        return candidate
+    try:
+        return validate_portable_run_id(candidate)
+    except ValueError:
+        pass
 
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", fixture_id).strip("._-")
     slug = slug[:72].rstrip("._-") or "fixture"
     digest = hashlib.sha256(
         fixture_id.encode("utf-8", errors="surrogatepass")
     ).hexdigest()[:12]
-    return f"external_{slug}_{digest}"
+    return validate_portable_run_id(f"external_{slug}_{digest}")
 
 
 def _external_provenance(

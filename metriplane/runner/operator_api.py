@@ -26,12 +26,12 @@ from typing import Any, Dict, Optional, Tuple
 import yaml  # type: ignore
 
 from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.runner.command_center_api import find_run_artifact
 
 # ── Safety patterns ────────────────────────────────────────────────────────────
 
 SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
-SAFE_RUNID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 SAFE_CAMERA_RE = re.compile(r"^(/dev/video\d+|/dev/v4l/by-id/[a-zA-Z0-9_.:-]+|\d{1,2})$")
 
 
@@ -981,7 +981,7 @@ class OperatorAPI:
     def _start_fusion(self, body: Dict) -> Tuple[int, Dict]:
         config: str = body.get("config", "").strip()
         duration_s: int = int(body.get("duration_s", 60))
-        run_id: str = body.get("run_id", "").strip()
+        run_id: str = str(body.get("run_id") or "")
         backend: str = body.get("backend", "cpu").strip()
 
         # Validate config
@@ -995,10 +995,6 @@ class OperatorAPI:
         if not (5 <= duration_s <= 7200):
             return 400, {"error": "duration_s must be 5-7200"}
 
-        # Validate run_id
-        if run_id and not SAFE_RUNID_RE.match(run_id):
-            return 400, {"error": "run_id must be letters/numbers/dash/underscore"}
-
         # Validate backend
         if backend not in ("cpu", "gpu"):
             return 400, {"error": "backend must be cpu or gpu"}
@@ -1007,6 +1003,10 @@ class OperatorAPI:
         if not run_id:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             run_id = f"operator_run_{ts}"
+        try:
+            run_id = validate_portable_run_id(run_id)
+        except ValueError as exc:
+            return 400, {"error": str(exc)}
 
         runs_dir = str(self._runs_root())
 

@@ -10,8 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from metriplane.paths import PlatformPathError, resolve_platform_paths
+from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_platform_paths
 from metriplane.provenance.run_provenance import generate_run_id
+from metriplane.run_ids import validate_portable_run_id
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_RUN = ROOT / "web/dashboard/atlas_run"
@@ -40,17 +41,21 @@ def main(argv: list[str] | None = None) -> int:
 
     py = sys.executable
     try:
+        run_id = validate_portable_run_id(args.run_id or generate_run_id("metriplane_demo"))
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    try:
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
         runs_dir = (
-            Path(args.runs_dir).expanduser().resolve()
-            if args.runs_dir
+            Path(explicit_runs_dir).expanduser().resolve()
+            if explicit_runs_dir is not None
             else resolve_platform_paths().runs_dir
         )
         runs_dir.mkdir(parents=True, exist_ok=True)
     except (OSError, PlatformPathError, RuntimeError) as exc:
         print(f"platform path error: {exc}", file=sys.stderr)
         return 2
-    run_id = args.run_id or generate_run_id("metriplane_demo")
-
     run_step(
         "Build incident replay for Command Center",
         [

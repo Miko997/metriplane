@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 _PLATFORM_ENV = (
@@ -111,6 +116,23 @@ def test_explicit_runs_dir_is_canonical_and_does_not_change_other_paths(
     assert overridden.config_dir == paths.config_dir
     assert overridden.data_dir == paths.data_dir
     assert paths.runs_dir == tmp_path / "data" / "runs"
+
+
+@pytest.mark.parametrize("value", [None, "", " ", " \t\r\n "])
+def test_blank_runs_dir_override_is_absent(value: str | None) -> None:
+    assert normalize_runs_dir(value) is None
+
+
+def test_whitespace_runs_dir_override_keeps_injected_default(tmp_path: Path) -> None:
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+
+    assert paths.with_runs_dir(" \t ") is paths
+    assert paths.with_runs_dir(" \t ").runs_dir == tmp_path / "data" / "runs"
 
 
 def test_no_home_works_with_complete_xdg_environment(tmp_path: Path):

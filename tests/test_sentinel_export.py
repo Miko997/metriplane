@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -107,6 +108,33 @@ def test_cli_run_uses_injected_platform_runs_dir_by_default(tmp_path, capsys):
     assert rc == 0
     capsys.readouterr()
     assert (paths.runs_dir / "sentinel_injected" / "sentinel_summary.json").is_file()
+
+
+def test_cli_run_whitespace_runs_dir_uses_injected_platform_default(
+    tmp_path,
+    capsys,
+):
+    paths = _platform_paths(tmp_path / "injected")
+    dangerous_cwd_path = Path.cwd() / " \t "
+    assert not dangerous_cwd_path.exists()
+
+    rc = main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            "sentinel_whitespace_root",
+            "--runs-dir",
+            " \t ",
+        ],
+        paths=paths,
+    )
+
+    assert rc == 0
+    capsys.readouterr()
+    assert (paths.runs_dir / "sentinel_whitespace_root" / "sentinel_summary.json").is_file()
+    assert not dangerous_cwd_path.exists()
 
 
 def test_cli_run_generates_unique_default_run_ids(tmp_path, capsys, monkeypatch):

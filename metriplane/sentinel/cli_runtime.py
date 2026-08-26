@@ -5,28 +5,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
 from metriplane.provenance.run_provenance import generate_run_id
-
-_SAFE_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
-_WINDOWS_RESERVED_BASENAMES = {
-    "aux",
-    "con",
-    "nul",
-    "prn",
-    *(f"com{number}" for number in range(1, 10)),
-    *(f"lpt{number}" for number in range(1, 10)),
-}
-
-
-def _is_portable_run_id(run_id: str) -> bool:
-    if _SAFE_RUN_ID.fullmatch(run_id) is None or run_id.endswith((".", " ")):
-        return False
-    windows_basename = run_id.split(".", maxsplit=1)[0].rstrip(" .").casefold()
-    return windows_basename not in _WINDOWS_RESERVED_BASENAMES
+from metriplane.run_ids import validate_portable_run_id
 
 
 def main_sentinel(
@@ -77,19 +65,17 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         print("config must set replay_input (path to a session JSONL)")
         return 1
 
-    run_id = args.run_id or generate_run_id("sentinel")
-    if not _is_portable_run_id(run_id):
-        print(
-            "run_id must be a portable 1-128 character name using "
-            "letters, numbers, dot, dash, or underscore; Windows device "
-            "basenames and trailing dots or spaces are not allowed"
-        )
+    try:
+        run_id = validate_portable_run_id(args.run_id or generate_run_id("sentinel"))
+    except ValueError as exc:
+        print(exc)
         return 2
 
     try:
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
         runs_dir = (
-            Path(args.runs_dir)
-            if args.runs_dir
+            Path(explicit_runs_dir).expanduser().resolve()
+            if explicit_runs_dir is not None
             else (paths or resolve_platform_paths()).runs_dir
         )
     except PlatformPathError as exc:
@@ -112,8 +98,8 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         print(f"sentinel failed to start: {e}")
         return 1
 
-    from metriplane.sentinel.engine import iter_frames
     from metriplane.schema import frame_time_s
+    from metriplane.sentinel.engine import iter_frames
 
     for frame in iter_frames(session_path):
         observed = frame.fused if frame.fused is not None else frame.objects

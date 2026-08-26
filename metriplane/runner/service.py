@@ -17,19 +17,23 @@ import secrets
 import socket
 import sys
 import time
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from metriplane._local_http import LocalHTTPServer
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
 
 from .allowlist import ALLOWLIST, get_command, get_commands, validate_command_id
 from .executor import CommandExecutor, find_repo_root
 from .operator_api import OperatorAPI
-
 
 # Global state
 executor = CommandExecutor()
@@ -58,8 +62,9 @@ def _configure_platform_paths(paths: PlatformPaths | None = None) -> PlatformPat
     """Resolve once and share one path set across all runner consumers."""
     global operator_api, runner_paths
     runner_paths = paths if paths is not None else resolve_platform_paths()
-    if paths is None and os.getenv("RUNS"):
-        runner_paths = runner_paths.with_runs_dir(os.environ["RUNS"])
+    environment_runs_dir = normalize_runs_dir(os.getenv("RUNS"))
+    if paths is None and environment_runs_dir is not None:
+        runner_paths = runner_paths.with_runs_dir(environment_runs_dir)
     executor.configure_platform_paths(runner_paths)
     operator_api = OperatorAPI(
         executor=executor,
@@ -118,7 +123,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", f"Content-Type, {TOKEN_HEADER}")
     
-    def send_json(self, status_code: int, data: Dict[str, Any]):
+    def send_json(self, status_code: int, data: dict[str, Any]):
         """Send JSON response with CORS headers"""
         payload = json.dumps(data, default=str).encode("utf-8")
         self.send_response(status_code)
@@ -493,9 +498,10 @@ def start_runner(
     return 0
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """Run the dashboard service command-line entry point."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Metriplane Dashboard Runner Service"
     )
@@ -522,7 +528,7 @@ if __name__ == "__main__":
     parser.add_argument("--state-dir", default=None)
     parser.add_argument("--runs-dir", default=None)
     
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     base_values = (args.config_dir, args.data_dir, args.cache_dir, args.state_dir)
     if any(base_values) and not all(base_values):
         parser.error("--config-dir, --data-dir, --cache-dir, and --state-dir must be provided together")
@@ -537,11 +543,12 @@ if __name__ == "__main__":
             if all(base_values)
             else None
         )
-        if args.runs_dir:
-            cli_paths = (cli_paths or resolve_platform_paths()).with_runs_dir(args.runs_dir)
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
+        if explicit_runs_dir is not None:
+            cli_paths = (cli_paths or resolve_platform_paths()).with_runs_dir(explicit_runs_dir)
     except PlatformPathError as exc:
         parser.error(str(exc))
-    raise SystemExit(
+    return int(
         start_runner(
             host=args.host,
             port=args.port,
@@ -549,3 +556,7 @@ if __name__ == "__main__":
             paths=cli_paths,
         )
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

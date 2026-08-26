@@ -54,17 +54,16 @@ from metriplane.launcher import (
     _read_cmdline,
     _runtime_module_for_config,
     _save_state,
-    _state_file,
     _start_fusion,
     _start_runner,
+    _state_file,
     _wait_for_port_free,
-    cmd_start,
     cmd_cleanup,
+    cmd_start,
     cmd_status,
     cmd_stop,
 )
 from metriplane.paths import PlatformPaths
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -308,6 +307,96 @@ class TestLauncherDefaults:
         assert captured["paths"].runs_dir == expected
         assert lm._load_state(paths)["runs_dir"] == str(expected)
 
+    def test_start_whitespace_runs_dir_keeps_injected_platform_default(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path / "platform")
+        captured = {}
+        processes = iter((SimpleNamespace(pid=101), SimpleNamespace(pid=102)))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(lm, "_find_repo_root", lambda: Path.cwd())
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
+        monkeypatch.setattr(lm, "_wait_for_port", lambda *_args, **_kwargs: True)
+        monkeypatch.setattr(lm, "_get_pgid", lambda pid: pid)
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **kwargs: (captured.update(kwargs), next(processes))[1],
+        )
+        monkeypatch.setattr(lm, "_start_dashboard", lambda **_kwargs: next(processes))
+
+        assert (
+            lm.cmd_start(
+                runs_dir=" \t ",
+                paths=paths,
+                open_browser=False,
+            )
+            == 0
+        )
+
+        assert captured["paths"].runs_dir == paths.runs_dir
+        assert lm._load_state(paths)["runs_dir"] == str(paths.runs_dir)
+        assert not (tmp_path / " \t ").exists()
+
+    @pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+    def test_live_start_rejects_windows_device_run_id_before_writing(
+        self,
+        run_id,
+        monkeypatch,
+        tmp_path,
+    ):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path / "platform")
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **_kwargs: pytest.fail("invalid run ID reached launcher process start"),
+        )
+
+        assert (
+            lm.cmd_start(
+                live=True,
+                run_id=run_id,
+                runs_dir=str(tmp_path / "runs"),
+                paths=paths,
+                open_browser=False,
+            )
+            == 2
+        )
+        assert not paths.state_dir.exists()
+        assert not (tmp_path / "runs").exists()
+
+    @pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+    def test_fusion_launcher_rejects_windows_device_run_id(
+        self,
+        run_id,
+        monkeypatch,
+        tmp_path,
+    ):
+        import metriplane.launcher as lm
+
+        monkeypatch.setattr(
+            lm,
+            "_launch",
+            lambda *_args, **_kwargs: pytest.fail("invalid run ID reached process launch"),
+        )
+
+        with pytest.raises(ValueError, match="Windows device basenames"):
+            lm._start_fusion(
+                config="configs/local_demo_replay.yaml",
+                run_id=run_id,
+                runs_dir=str(tmp_path),
+                duration_s=1.0,
+                backend="cpu",
+                log_file=tmp_path / "fusion.log",
+                repo_root=Path.cwd(),
+            )
+
 class TestNoState:
     def setup_method(self):
         _clear_state()
@@ -457,6 +546,123 @@ class TestGetPgid:
 
 
 class TestWindowsProcessLifecycle:
+    @staticmethod
+    def _tasklist_result(command, alive: set[int]):
+        if command[0] != "tasklist":
+            raise AssertionError(f"unexpected command: {command}")
+        pid = int(command[command.index("/FI") + 1].split()[-1])
+        stdout = (
+            f'"python.exe","{pid}","Console","1","10,000 K"\n'
+            if pid in alive
+            else "INFO: No tasks are running which match the specified criteria.\n"
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    def test_windows_liveness_uses_non_terminating_tasklist(self, monkeypatch):
+        import metriplane.launcher as lm
+
+        calls: list[list[str]] = []
+
+        def fake_run(command, **_kwargs):
+            calls.append(command)
+            return self._tasklist_result(command, {41})
+
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm.subprocess, "run", fake_run)
+        monkeypatch.setattr(
+            lm.os,
+            "kill",
+            lambda *_args: pytest.fail("Windows liveness must never call terminating os.kill"),
+        )
+
+        assert lm._is_running(41) is True
+        assert lm._is_running(42) is False
+        assert calls == [
+            ["tasklist", "/FI", "PID eq 41", "/FO", "CSV", "/NH"],
+            ["tasklist", "/FI", "PID eq 42", "/FO", "CSV", "/NH"],
+        ]
+
+    def test_windows_status_polling_never_calls_os_kill(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path)
+        lm._save_state(
+            {
+                "runner": {"pid": 51, "port": 9000},
+                "dashboard": {"pid": 52, "port": 8088},
+            },
+            paths,
+        )
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(
+            lm.subprocess,
+            "run",
+            lambda command, **_kwargs: self._tasklist_result(command, {51, 52}),
+        )
+        monkeypatch.setattr(
+            lm.os,
+            "kill",
+            lambda *_args: pytest.fail("Windows status must never call terminating os.kill"),
+        )
+        monkeypatch.setattr(lm, "_probe_http", lambda _url: False)
+        monkeypatch.setattr(lm, "_find_port_owner", lambda _port: None)
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
+
+        assert lm.cmd_status(paths=paths) == 0
+
+    def test_windows_start_polling_never_calls_os_kill(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path)
+        lm._save_state({"runner": {"pid": 61}}, paths)
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(
+            lm.subprocess,
+            "run",
+            lambda command, **_kwargs: self._tasklist_result(command, {61}),
+        )
+        monkeypatch.setattr(
+            lm.os,
+            "kill",
+            lambda *_args: pytest.fail("Windows start must never call terminating os.kill"),
+        )
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **_kwargs: pytest.fail("already-running launcher must not start"),
+        )
+
+        assert lm.cmd_start(paths=paths, open_browser=False) == 1
+
+    def test_windows_stop_polling_never_calls_os_kill(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path)
+        alive = {71}
+        calls: list[list[str]] = []
+        lm._save_state({"runner": {"pid": 71, "pgid": 71, "port": 9000}}, paths)
+
+        def fake_run(command, **_kwargs):
+            calls.append(command)
+            if command[0] == "taskkill":
+                alive.discard(int(command[command.index("/PID") + 1]))
+                return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+            return self._tasklist_result(command, alive)
+
+        monkeypatch.setattr(lm, "_is_windows", lambda: True)
+        monkeypatch.setattr(lm.subprocess, "run", fake_run)
+        monkeypatch.setattr(
+            lm.os,
+            "kill",
+            lambda *_args: pytest.fail("Windows stop must never call terminating os.kill"),
+        )
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda _host, _port: False)
+
+        assert lm.cmd_stop(paths=paths) == 0
+        assert [command for command in calls if command[0] == "taskkill"] == [
+            ["taskkill", "/PID", "71", "/T"]
+        ]
+
     def test_get_pgid_uses_pid_without_posix_api(self, monkeypatch):
         import metriplane.launcher as lm
 
@@ -744,6 +950,7 @@ class TestStartStatusStop:
         self, monkeypatch, tmp_path, capsys
     ):
         import types
+
         import metriplane.launcher as lm
 
         processes = iter(

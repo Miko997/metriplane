@@ -15,18 +15,18 @@ import secrets
 import socket
 import subprocess
 import sys
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence, TextIO
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yaml
 
 from metriplane.config import Config, resolve_profile
-
+from metriplane.paths import normalize_runs_dir
+from metriplane.run_ids import validate_portable_run_id
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
-_SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _REDACTED = "<redacted>"
 _SENSITIVE_CONFIG_KEYS = {
     "access_token",
@@ -81,18 +81,10 @@ def in_docker() -> bool:
 
 
 def data_dir() -> Path:
-    env = os.getenv("METRIPLANE_DATA_DIR")
-    if env:
+    env = normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR"))
+    if env is not None:
         return Path(env)
     return Path("/data") if in_docker() else Path(".")
-
-
-def normalize_runs_dir(value: str | os.PathLike[str] | None) -> str | None:
-    """Normalize an optional run root before applying path precedence."""
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    return normalized or None
 
 
 def resolve_under_data_dir(p: str | Path) -> Path:
@@ -363,14 +355,10 @@ def create_run_context(
 ) -> RunContext:
     created = _utc_now_iso()
 
-    rid = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "").strip()
-    if not rid:
+    rid = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "")
+    if not rid.strip():
         rid = generate_run_id()
-    if not _SAFE_RUN_ID.fullmatch(rid) or rid in {".", ".."}:
-        raise ValueError(
-            "run_id must be 1-128 letters, numbers, dots, dashes, or underscores "
-            "and cannot contain a path"
-        )
+    rid = validate_portable_run_id(rid)
 
     # Where runs live
     base: Path

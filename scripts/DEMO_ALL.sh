@@ -88,7 +88,7 @@ VENV_DIR="$ROOT/.venv"
 PYTHON="$VENV_DIR/bin/python"
 RUN_ID="demo_all_$(date +%Y%m%d_%H%M%S)"
 
-if [[ -n "${RUNS:-}" ]]; then
+if [[ "${RUNS:-}" =~ [^[:space:]] ]]; then
   RUNS_DIR="$RUNS"
 else
   PATHS_PYTHON="python3"

@@ -586,16 +586,18 @@ def test_untrusted_fixture_id_is_preserved_but_never_used_as_raw_run_id_or_termi
     assert "\\u001b" in report
 
 
+@pytest.mark.parametrize("run_id", ["unsafe\nrun", "CON", "nul.txt", "COM1.capture"])
 def test_external_run_rejects_unsafe_explicit_run_id_before_execution(
     tmp_path: Path,
+    run_id: str,
 ) -> None:
     fixture = _copy_fixture(tmp_path)
     output = tmp_path / "must-not-exist"
 
-    summary = run_external_fixture(fixture, output, run_id="unsafe\nrun")
+    summary = run_external_fixture(fixture, output, run_id=run_id)
 
     assert summary.passed is False
-    assert any("--run-id must be 1-128 ASCII" in error for error in summary.errors)
+    assert any("external run --run-id is invalid" in error for error in summary.errors)
     assert not output.exists()
 
 

@@ -124,6 +124,59 @@ def test_direct_runner_preserves_explicit_runs_environment(
     assert str(explicit) in replay["command"]
 
 
+def test_direct_runner_ignores_whitespace_runs_environment(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RUNS", " \t ")
+    monkeypatch.setattr(service, "resolve_platform_paths", lambda: paths)
+
+    with runner_server() as base:
+        _, status_payload = request_json(f"{base}/status")
+
+    assert status_payload["runs_dir"] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+def test_runner_cli_whitespace_runs_dir_keeps_injected_platform_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    argv = [
+        "--config-dir",
+        str(tmp_path / "config"),
+        "--data-dir",
+        str(tmp_path / "data"),
+        "--cache-dir",
+        str(tmp_path / "cache"),
+        "--state-dir",
+        str(tmp_path / "state"),
+        "--runs-dir",
+        " \t ",
+    ]
+
+    def fake_start_runner(**kwargs) -> int:
+        captured.update(kwargs)
+        return 41
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(service, "start_runner", fake_start_runner)
+
+    assert service.main(argv) == 41
+    paths = captured["paths"]
+    assert isinstance(paths, PlatformPaths)
+    assert paths.runs_dir == tmp_path / "data" / "runs"
+    assert not (tmp_path / " \t ").exists()
+
+
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [

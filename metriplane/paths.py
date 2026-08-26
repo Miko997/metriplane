@@ -50,12 +50,23 @@ class PlatformPaths:
 
     def with_runs_dir(self, runs_dir: str | Path) -> PlatformPaths:
         """Return a copy with one canonical explicit run-recording root."""
-        resolved = Path(runs_dir).expanduser().resolve()
+        normalized = normalize_runs_dir(runs_dir)
+        if normalized is None:
+            return self
+        resolved = Path(normalized).expanduser().resolve()
         return replace(self, run_records_dir=resolved)
 
     @property
     def launcher_state_file(self) -> Path:
         return self.state_dir / "launcher-state.json"
+
+
+def normalize_runs_dir(value: str | os.PathLike[str] | None) -> str | None:
+    """Normalize an optional run root, treating blank overrides as absent."""
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def _absolute_env_path(environment: Mapping[str, str], name: str) -> Path | None:

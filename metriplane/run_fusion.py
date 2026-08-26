@@ -9,7 +9,6 @@ import os
 import sys
 import threading
 import time
-from metriplane.time.clock import RealTimeClock, Clock
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from enum import Enum
@@ -17,27 +16,33 @@ from pathlib import Path
 from typing import Any
 
 import cv2  # type: ignore
-from metriplane.observability.timing import StageTiming
 
 from metriplane.backends.aruco_backend import ArUcoBackend
 from metriplane.camera.usb_multi import USBMultiCamera
+from metriplane.compute.select import select_fusion_backend
 from metriplane.config import Config, apply_profile_defaults, load_config
 from metriplane.fusion.fuse_xy import XYObs, fuse_average, fuse_weighted
-from metriplane.compute.select import select_fusion_backend
 from metriplane.fusion.kalman_cv import MultiObjectKalman
 from metriplane.mapping.planar_multi import MultiPlanarMapper, load_multi_planar_mapper
 from metriplane.metrics import MetricsRegistry, start_metrics_server
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.observability.timing import StageTiming
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
     create_run_context,
-    normalize_runs_dir,
     open_jsonl_writer,
 )
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import CameraFrameModel, FrameStateModel, ObjectStateModel
 from metriplane.streaming.ws_server import client_count
 from metriplane.streaming.ws_thread import WsServerThread
+from metriplane.time.clock import Clock, RealTimeClock
 from metriplane.tracking import ObjectRegistry
 from metriplane.zone_analytics import ZoneAnalytics
 from metriplane.zones import load_zones
@@ -367,6 +372,14 @@ def run_loop_fusion(
     duration_s: float = 0.0,
     paths: PlatformPaths | None = None,
 ) -> int:
+    candidate_run_id = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "")
+    if candidate_run_id.strip():
+        try:
+            validate_portable_run_id(candidate_run_id)
+        except ValueError as exc:
+            log.error("run storage unavailable: %s", exc)
+            return 2
+
     effective_runs_dir = normalize_runs_dir(runs_dir)
     configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
     if effective_runs_dir is None:
@@ -374,7 +387,7 @@ def run_loop_fusion(
     if effective_runs_dir is None:
         if paths is not None:
             effective_runs_dir = str(paths.runs_dir)
-        elif not os.getenv("METRIPLANE_DATA_DIR"):
+        elif normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR")) is None:
             try:
                 effective_runs_dir = str(resolve_platform_paths().runs_dir)
             except PlatformPathError as exc:

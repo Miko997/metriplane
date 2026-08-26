@@ -9,7 +9,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
 # Match your transcript defaults.
-if [[ -z "${RUNS:-}" ]]; then
+if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]; then
   RUNS="$(python -c '
 import sys
 from metriplane.paths import PlatformPathError, resolve_platform_paths

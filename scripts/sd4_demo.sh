@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-if [[ -z "${RUNS_DIR:-}" ]]; then
+if [[ ! "${RUNS_DIR:-}" =~ [^[:space:]] ]]; then
   RUNS_DIR="$(python -c '
 import sys
 from metriplane.paths import PlatformPathError, resolve_platform_paths
