@@ -16,6 +16,7 @@ import json
 import os
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
@@ -824,74 +825,844 @@ def _record_type_from_tool(tool: str) -> str:
     )
 
 
-def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
-    """Run one stable tool adapter without granting it provider mutation authority."""
+@dataclass(frozen=True)
+class CommandForm:
+    """One allowed section-9B invocation shape."""
 
-    parser = argparse.ArgumentParser(prog=Path(tool).name)
-    parser.add_argument("--input", type=Path, action="append", default=[])
-    parser.add_argument("--roles", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--invocation-id", default="local-fixture-invocation")
-    parser.add_argument("--sequence", type=int, default=1)
-    parser.add_argument("--repository", type=Path, default=Path.cwd())
-    parser.add_argument("--mode", choices=("fixture", "live"), default="fixture")
+    required: frozenset[str]
+    equals: tuple[tuple[str, frozenset[str]], ...]
+
+
+@dataclass(frozen=True)
+class ToolContract:
+    """Declarative CLI surface for one stable release tool."""
+
+    forms: tuple[CommandForm, ...]
+    optional: frozenset[str]
+    boolean: frozenset[str]
+    repeatable: frozenset[str]
+    integer: frozenset[str]
+    choices: Mapping[str, tuple[str, ...]]
+    output_flag: str | None
+    fixture_producer: bool
+    record_flag: str | None
+    delegated_adapter: bool = False
+
+    @property
+    def flags(self) -> frozenset[str]:
+        required = frozenset().union(*(form.required for form in self.forms))
+        return required | self.optional | self.boolean | self.repeatable | frozenset(self.choices)
+
+
+def _command_form(specification: str) -> CommandForm:
+    required: set[str] = set()
+    equals: list[tuple[str, frozenset[str]]] = []
+    for token in specification.split():
+        name, separator, raw_values = token.partition("=")
+        required.add(name)
+        if separator:
+            equals.append((name, frozenset(raw_values.split(","))))
+    return CommandForm(frozenset(required), tuple(equals))
+
+
+def _tool_contract(
+    *forms: str,
+    optional: str = "",
+    boolean: str = "",
+    repeatable: str = "",
+    integer: str = "",
+    choices: Mapping[str, tuple[str, ...]] | None = None,
+    output_flag: str | None = "out",
+    fixture_producer: bool = True,
+    record_flag: str | None = None,
+    delegated_adapter: bool = False,
+) -> ToolContract:
+    return ToolContract(
+        forms=tuple(_command_form(form) for form in forms),
+        optional=frozenset(optional.split()),
+        boolean=frozenset(boolean.split()),
+        repeatable=frozenset(repeatable.split()),
+        integer=frozenset(integer.split()),
+        choices={} if choices is None else choices,
+        output_flag=output_flag,
+        fixture_producer=fixture_producer,
+        record_flag=record_flag,
+        delegated_adapter=delegated_adapter,
+    )
+
+
+_MILESTONE_CHOICES: Final[Mapping[str, tuple[str, ...]]] = {"milestone": MILESTONES}
+_MANIFEST_PHASES: Final[tuple[str, ...]] = (
+    "attempt",
+    "index-recovery",
+    "pointer-transition",
+    "postpublication-conflict",
+    "prepublication",
+    "prepublication-blocker-attempt",
+    "qualified-publication",
+    "release-completion",
+    "release-completion-task-state",
+    "release-finalizing-observation",
+    "release-task-finalizing",
+    "staging-failure",
+    "target-burn",
+)
+_RETENTION_PHASES: Final[tuple[str, ...]] = (
+    "assurance-closure",
+    "assurance-deliverable",
+    "assurance-packet",
+    "attempt",
+    "final",
+    "index-recovery",
+    "pointer-transition",
+    "pointer-transition-envelope",
+    "postpublication-conflict",
+    "prepublication",
+    "prepublication-blocker-attempt",
+    "release-completion",
+    "release-completion-task-state",
+    "release-finalizing-observation",
+    "release-task-finalizing",
+    "staging-failure",
+    "target-burn",
+)
+_STAGING_STAGES: Final[tuple[str, ...]] = (
+    "role-resource-resolution",
+    "evidence-store-preflight",
+    "snapshot",
+    "release-metadata",
+    "target-observation",
+    "burn-lineage",
+    "target-resolution",
+    "target-burn",
+    "gate-input",
+    "source-freeze",
+    "impact",
+    "predecessor",
+    "delta",
+    "artifact-build",
+    "artifact-manifest",
+    "candidate-finalization",
+    "evaluation-adoption",
+    "attempt-index-update",
+    "attempt-index-validation",
+    "index-recovery",
+)
+_BLOCKER_STAGES: Final[tuple[str, ...]] = (
+    "candidate-identity-validation",
+    "gate-main-health",
+    "main-health-history",
+    "gate-instance",
+    "readiness",
+    "qualification-plan",
+    "attempt",
+    "qualification",
+    "prepublication-rubric",
+    "approval",
+    "prepromotion-task-state-observation",
+    "prepromotion-task-state-validation",
+    "prepromotion-controls",
+    "promotion-plan",
+    "attempt-index-checkpoint",
+    "prepublication-retention",
+    "promotion-execution-pre-mutation",
+    "promotion-lock-recovery",
+    "attempt-index-update",
+    "attempt-index-validation",
+    "index-recovery",
+)
+_CONFLICT_STAGES: Final[tuple[str, ...]] = (
+    "promotion-execution",
+    "promotion-lock-recovery",
+    "publication-observations",
+    "qualified-publication-manifest",
+    "publication-reconciliation",
+    "final-retention",
+    "final-retention-validation",
+    "evidence-chain",
+    "evidence-chain-validation",
+    "last-known-good",
+    "last-known-good-retention",
+    "last-known-good-envelope",
+    "last-known-good-index",
+    "last-known-good-invalidation",
+    "release-task-state-observation",
+    "release-task-state-validation",
+    "release-task-state-evidence-manifest",
+    "release-task-state-retention",
+    "attempt-index-update",
+    "attempt-index-validation",
+    "index-recovery",
+    "attempt-index-final-checkpoint",
+    "release-evidence-history",
+    "release-evidence-history-validation",
+    "assurance-packet",
+    "packet-restore",
+    "packet-scan",
+    "core-verifier-attestation",
+    "core-verifier-attestation-validation",
+    "assurance-packet-retention",
+    "final-score",
+    "final-score-verification",
+    "assurance-closure",
+    "assurance-closure-retention",
+    "assurance-deliverable",
+    "assurance-deliverable-restore",
+    "assurance-deliverable-scan",
+    "deliverable-verifier-attestation",
+    "deliverable-verifier-attestation-validation",
+    "assurance-deliverable-retention",
+    "release-completion",
+    "release-completion-retention",
+    "release-completion-index",
+    "cleanup",
+)
+
+
+TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
+    "aggregate_release_attempt.py": _tool_contract("plan coordination attempt-dir out"),
+    "build_publication_reconciliation.py": _tool_contract(
+        "qualification approval promotion-lock-receipt observations evidence-manifest "
+        "retention-receipts out"
+    ),
+    # This established artifact adapter is direct rather than a tool_main wrapper.
+    "build_release_artifacts.py": _tool_contract(
+        "dist manifest version output invocation-id",
+        optional="sequence",
+        integer="sequence",
+        output_flag="output",
+        delegated_adapter=True,
+    ),
+    "build_release_delta_test_map.py": _tool_contract(
+        "milestone delta impact-manifest obligations scenarios environments out",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "build_release_evidence_manifest.py": _tool_contract(
+        "phase=target-burn,staging-failure,attempt,index-recovery,pointer-transition,"
+        "release-task-finalizing,release-finalizing-observation,release-completion-task-state,"
+        "release-completion input invocation-root exclude-current-invocation out",
+        "phase=prepublication-blocker-attempt candidate-dir blocker invocation-root "
+        "exclude-current-invocation out",
+        "phase=prepublication candidate-dir round-dir invocation-root "
+        "exclude-current-invocation out",
+        "phase=qualified-publication staged-manifest retention-receipts "
+        "promotion-lock-receipt promotion observations invocation-root "
+        "exclude-current-invocation out",
+        "phase=postpublication-conflict candidate-dir no-assurance-round input "
+        "invocation-root exclude-current-invocation "
+        "require-lkg-disposition-and-applicable-invalidation-receipt out",
+        optional="additional-invocation-root",
+        boolean="exclude-current-invocation no-assurance-round "
+        "require-lkg-disposition-and-applicable-invalidation-receipt",
+        repeatable="input additional-invocation-root",
+        choices={"phase": _MANIFEST_PHASES},
+    ),
+    "build_release_qualification.py": _tool_contract(
+        "plan attempts require-attempt-retention require-attempt-index-receipts out",
+        boolean="require-attempt-retention require-attempt-index-receipts",
+    ),
+    "capture_linear_release_snapshot.py": _tool_contract(
+        "project-id registry out",
+        optional="provider-auth-from-approved-environment",
+        boolean="provider-auth-from-approved-environment",
+    ),
+    "capture_release_run_statuses.py": _tool_contract(
+        "plan attempt-id provider-run-id out always-run", boolean="always-run"
+    ),
+    "capture_release_target_observations.py": _tool_contract(
+        "targets provider-auth-from-approved-environment out",
+        boolean="provider-auth-from-approved-environment",
+    ),
+    "capture_release_task_state_observation.py": _tool_contract(
+        "phase=prepromotion project-id task-id require-open-running role-assignments "
+        "gate-instance readiness-registry frozen-linear-snapshot out",
+        "phase=finalizing project-id task-id require-open-finalizing "
+        "protected-transition-event require-transition require-assigned-human-actor "
+        "candidate-identity gate-instance readiness-registry frozen-linear-snapshot "
+        "reconciliation lkg-index-receipt attempt-index-backend "
+        "require-latest-resolved-pointer-state out",
+        "phase=finalizing project-id task-id require-open-finalizing "
+        "protected-transition-event require-transition require-assigned-human-actor "
+        "candidate-identity gate-instance readiness-registry frozen-linear-snapshot "
+        "reconciliation chain-receipt lkg-index-receipt core-receipts out",
+        "phase=completion project-id task-id require-open-finalizing "
+        "protected-transition-event require-transition require-assigned-human-actor "
+        "candidate-identity gate-instance readiness-registry frozen-linear-snapshot "
+        "completion-input cleanup-plan out",
+        boolean="require-open-running require-open-finalizing require-assigned-human-actor "
+        "require-latest-resolved-pointer-state",
+        choices={
+            "phase": ("prepromotion", "finalizing", "completion"),
+            "require-transition": ("open_running:open_finalizing",),
+        },
+    ),
+    "check_release_delta.py": _tool_contract(
+        "milestone target-resolution predecessor candidate-sha impact-manifest out",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "check_release_readiness.py": _tool_contract(
+        "gate-instance candidate-identity predecessor linear-snapshot artifact-manifest "
+        "delta delta-test-map out"
+    ),
+    "collect_publication_observations.py": _tool_contract(
+        "promotion promotion-lock-receipt artifact-manifest targets out"
+    ),
+    "execute_release_qualification.py": _tool_contract("plan attempt-id cell artifacts out"),
+    "export_release_attempt_index.py": _tool_contract(
+        "index-backend genesis through-head stores read-back-all out",
+        boolean="read-back-all",
+    ),
+    "export_release_burn_lineage.py": _tool_contract(
+        "milestone attempt-index-backend genesis through-head read-back-all out",
+        boolean="read-back-all",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "finalize_release_attempt_cells.py": _tool_contract(
+        "plan attempt-id hosted-run-statuses attempt-dir out always-run",
+        boolean="always-run",
+    ),
+    "finalize_release_candidate_identity.py": _tool_contract(
+        "invocation-dir gate-input source-freeze predecessor artifact-manifest "
+        "no-evaluation-adoption work-dir release-root identity-name",
+        boolean="no-evaluation-adoption",
+        output_flag="identity-name",
+    ),
+    "finalize_release_gate_instance.py": _tool_contract(
+        "gate-input candidate-identity predecessor linear-snapshot obligations scenarios "
+        "environments targets evidence-stores task-state-policy repository-protection "
+        "main-health main-health-history store-preflight out"
+    ),
+    "freeze_release_source.py": _tool_contract("gate-input source-sha out"),
+    "plan_release_qualification.py": _tool_contract(
+        "gate-instance candidate-identity predecessor readiness delta delta-test-map "
+        "scenarios candidate-manifest out"
+    ),
+    "prepare_release_gate_input.py": _tool_contract(
+        "milestone target-resolution target-burn target-burn-index-receipt "
+        "expected-predecessor-milestone predecessor-policy linear-snapshot "
+        "readiness-registry obligations scenarios environments targets evidence-stores "
+        "task-state-policy role-assignments out",
+        "milestone target-resolution target-burn no-new-burn "
+        "expected-predecessor-milestone predecessor-policy linear-snapshot "
+        "readiness-registry obligations scenarios environments targets evidence-stores "
+        "task-state-policy role-assignments out",
+        boolean="no-new-burn",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "prepare_release_impact_manifest.py": _tool_contract(
+        "milestone target-resolution base head source-freeze out",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "promote_release_candidate.py": _tool_contract(
+        "dry-run gate-instance candidate-identity qualification approval "
+        "prepromotion-controls prepromotion-linear-snapshot attempt-index-checkpoint "
+        "artifact-manifest targets out",
+        "execute invocation-dir plan prepromotion-controls prepromotion-linear-snapshot "
+        "readiness-registry frozen-linear-snapshot attempt-index-checkpoint "
+        "attempt-index-backend attempt-index-genesis expected-head operation-id "
+        "task-state-observation task-state-policy project-id task-id "
+        "provider-auth-from-approved-environment require-live-state "
+        "require-live-full-release-bom-closed-except-current-decision "
+        "require-live-exact-reciprocal-relations require-live-exact-milestone-assignments "
+        "full-project-refetch-before-lock-and-before-first-mutation "
+        "require-fresh-through-first-mutation bind-live-refetch-in-lock-receipt "
+        "retention-receipts lock-receipt-out out",
+        "recover-abandoned-lock invocation-dir attempt-index-backend attempt-index-genesis "
+        "promotion-operation-id recovery-operation-id expected-active-head "
+        "active-lock-record provider-run-termination signed-infrastructure-owner-recovery "
+        "prelock-target-observations-from-lock refetch-all-targets targets out",
+        boolean="dry-run execute recover-abandoned-lock "
+        "provider-auth-from-approved-environment "
+        "require-live-full-release-bom-closed-except-current-decision "
+        "require-live-exact-reciprocal-relations require-live-exact-milestone-assignments "
+        "full-project-refetch-before-lock-and-before-first-mutation "
+        "require-fresh-through-first-mutation bind-live-refetch-in-lock-receipt "
+        "prelock-target-observations-from-lock refetch-all-targets",
+        choices={"require-live-state": ("open_running",)},
+    ),
+    "record_postpublication_conflict.py": _tool_contract(
+        "stage candidate-identity failed-invocation-dir requires-lkg-invalidation "
+        "no-assurance-round out",
+        "stage candidate-identity failed-invocation-dir no-lkg-invalidation no-assurance-round out",
+        optional="stage-record",
+        boolean="no-assurance-round",
+        choices={"stage": _CONFLICT_STAGES},
+    ),
+    "record_release_approval.py": _tool_contract(
+        "gate-instance qualification no-prepublication-rubric signed-decision out",
+        boolean="no-prepublication-rubric",
+    ),
+    "record_release_blocker_attempt.py": _tool_contract(
+        "sequence stage disposition candidate-identity failed-invocation-dir out",
+        optional="stage-record",
+        integer="sequence",
+        choices={"stage": _BLOCKER_STAGES, "disposition": ("recoverable", "terminal")},
+    ),
+    "record_release_index_recovery.py": _tool_contract(
+        "scope-kind=release_staging,evaluation_staging milestone run-id "
+        "original-entry-receipt failure-envelope-manifest failure-envelope-receipts "
+        "failure-entry-receipt out",
+        "scope-kind=release_candidate,evaluation_candidate release-tag candidate-id "
+        "original-entry-receipt failure-envelope-manifest failure-envelope-receipts "
+        "failure-entry-receipt out",
+        "scope-kind=release_completion release-tag candidate-id assurance-round "
+        "original-entry-receipt failure-envelope-manifest failure-envelope-receipts "
+        "failure-entry-receipt out",
+        "scope-kind=release_staging,evaluation_staging milestone run-id "
+        "abandon-original-never-committed original-intent-invocation "
+        "live-index-absence-proof original-task-state-observation "
+        "failed-task-state-validation-invocation task-state-invalidation-reason "
+        "task-state-policy project-id task-id provider-auth-from-approved-environment "
+        "signed-infrastructure-owner-decision failure-envelope-manifest "
+        "failure-envelope-receipts failure-entry-receipt out",
+        "scope-kind=release_candidate,evaluation_candidate release-tag candidate-id "
+        "abandon-original-never-committed original-intent-invocation "
+        "live-index-absence-proof original-task-state-observation "
+        "failed-task-state-validation-invocation task-state-invalidation-reason "
+        "task-state-policy project-id task-id provider-auth-from-approved-environment "
+        "signed-infrastructure-owner-decision failure-envelope-manifest "
+        "failure-envelope-receipts failure-entry-receipt out",
+        "scope-kind=release_completion release-tag candidate-id assurance-round "
+        "abandon-original-never-committed original-intent-invocation "
+        "live-index-absence-proof original-task-state-observation "
+        "failed-task-state-validation-invocation task-state-invalidation-reason "
+        "task-state-policy project-id task-id provider-auth-from-approved-environment "
+        "signed-infrastructure-owner-decision failure-envelope-manifest "
+        "failure-envelope-receipts failure-entry-receipt out",
+        boolean="abandon-original-never-committed provider-auth-from-approved-environment",
+        integer="assurance-round",
+        choices={
+            "scope-kind": (
+                "release_staging",
+                "release_candidate",
+                "evaluation_staging",
+                "evaluation_candidate",
+                "release_completion",
+            ),
+            "task-state-invalidation-reason": ("expired", "state_changed"),
+        },
+    ),
+    "record_release_role_assignments.py": _tool_contract(
+        "milestone run-id signed-assignments policy out", choices=_MILESTONE_CHOICES
+    ),
+    "record_release_staging_attempt.py": _tool_contract(
+        "work-dir stage failed-invocation-dir out",
+        optional="stage-record",
+        choices={"stage": _STAGING_STAGES},
+    ),
+    "record_release_target_burn.py": _tool_contract(
+        "target-observations burn-lineage target-resolution out"
+    ),
+    "resolve_release_predecessor.py": _tool_contract(
+        "milestone=v0.4 expected-predecessor-milestone chain-backend chain-genesis "
+        "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
+        "genesis-only out",
+        "milestone=v0.5,v0.6,v0.7,v0.8,v0.9 expected-predecessor-milestone "
+        "chain-backend chain-genesis lkg-backend attempt-index-backend "
+        "attempt-index-genesis stores v0.4-genesis require-prior-lkg project-id "
+        "require-prior-decision-closed out",
+        "milestone=v1.0 expected-predecessor-milestone chain-backend chain-genesis "
+        "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
+        "require-prior-lkg require-prior-completion project-id "
+        "require-prior-decision-closed out",
+        boolean="genesis-only require-prior-lkg require-prior-completion "
+        "require-prior-decision-closed",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "resolve_release_target.py": _tool_contract(
+        "milestone initial-package-version initial-release-tag targets "
+        "live-target-observations retained-burn-lineage out",
+        choices=_MILESTONE_CHOICES,
+    ),
+    "retain_release_evidence.py": _tool_contract(
+        "phase manifest stores out",
+        "phase input stores out",
+        "phase input manifest invocation-root through-stage exclude-current-invocation stores out",
+        boolean="exclude-current-invocation",
+        repeatable="input",
+        choices={"phase": _RETENTION_PHASES},
+    ),
+    "update_last_known_good.py": _tool_contract(
+        "reconciliation chain-receipt lkg-backend expected-generation "
+        "expected-previous-release expected-chain-head operation-id prior-invocation-root "
+        "require-prior-stages targets out",
+        "invalidate current-receipt conflict signed-invalidation-decision lkg-backend "
+        "expected-generation operation-id out",
+        "validate-invalidation receipt lkg-backend read-back",
+        boolean="invalidate validate-invalidation read-back",
+        integer="expected-generation",
+    ),
+    "update_release_attempt_index.py": _tool_contract(
+        "entry-manifest entry-receipts scope-kind=release_staging,evaluation_staging "
+        "milestone run-id stage=target-burn,index-recovery sequence "
+        "release-tag candidate-id-not-resolved index-backend expected-head operation-id out",
+        "entry-manifest entry-receipts scope-kind=release_candidate,evaluation_candidate "
+        "release-tag candidate-id stage=qualification-attempt,index-recovery,pointer-transition "
+        "sequence "
+        "index-backend expected-head operation-id out",
+        "entry-manifest entry-receipts scope-kind=release_candidate release-tag candidate-id "
+        "stage=release-task-finalizing sequence "
+        "index-backend expected-head operation-id task-state-observation task-state-policy "
+        "project-id task-id provider-auth-from-approved-environment require-live-state "
+        "require-fresh-through-commit bind-live-refetch-in-receipt out",
+        "entry-manifest entry-receipts scope-kind=release_completion release-tag candidate-id "
+        "assurance-round completion-manifest-digest stage=release-completion sequence "
+        "index-backend expected-head operation-id "
+        "task-state-observation task-state-policy project-id task-id "
+        "provider-auth-from-approved-environment require-live-state "
+        "require-fresh-through-commit bind-live-refetch-in-receipt out",
+        boolean="candidate-id-not-resolved provider-auth-from-approved-environment "
+        "require-fresh-through-commit bind-live-refetch-in-receipt",
+        integer="sequence assurance-round",
+        choices={
+            "scope-kind": (
+                "release_staging",
+                "release_candidate",
+                "evaluation_staging",
+                "evaluation_candidate",
+                "release_completion",
+            ),
+            "stage": (
+                "target-burn",
+                "qualification-attempt",
+                "index-recovery",
+                "pointer-transition",
+                "release-task-finalizing",
+                "release-completion",
+            ),
+            "require-live-state": ("open_finalizing",),
+        },
+    ),
+    "update_release_evidence_chain.py": _tool_contract(
+        "reconciliation evidence-manifest final-receipts chain-backend expected-head "
+        "operation-id prior-invocation-root require-prior-stages out"
+    ),
+    "validate_linear_release_snapshot.py": _tool_contract(
+        "record registry",
+        "record registry frozen-snapshot milestone current-decision "
+        "require-full-release-bom-closed-except-current-decision "
+        "require-exact-reciprocal-relations require-exact-milestone-assignments "
+        "require-current-decision-state",
+        boolean="require-full-release-bom-closed-except-current-decision "
+        "require-exact-reciprocal-relations require-exact-milestone-assignments",
+        choices={
+            "milestone": MILESTONES,
+            "require-current-decision-state": ("open_running",),
+        },
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_publication_reconciliation.py": _tool_contract(
+        "record", output_flag=None, fixture_producer=False, record_flag="record"
+    ),
+    "validate_release_approval.py": _tool_contract(
+        "gate-instance qualification no-prepublication-rubric record",
+        boolean="no-prepublication-rubric",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_artifact_manifest.py": _tool_contract(
+        "record artifacts read-hash",
+        boolean="read-hash",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_attempt.py": _tool_contract(
+        "plan attempt-dir record", output_flag=None, fixture_producer=False, record_flag="record"
+    ),
+    "validate_release_attempt_index.py": _tool_contract(
+        "index-backend genesis through-receipt read-back",
+        "record index-backend genesis read-back",
+        boolean="read-back",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag=None,
+    ),
+    "validate_release_candidate_identity.py": _tool_contract(
+        "record predecessor no-evaluation-adoption candidate-dir",
+        boolean="no-evaluation-adoption",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_evidence_chain.py": _tool_contract(
+        "chain-backend expected-reconciliation receipt",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="receipt",
+    ),
+    "validate_release_evidence_manifest.py": _tool_contract(
+        "record",
+        optional="require-lkg-disposition-and-applicable-invalidation-receipt",
+        boolean="require-lkg-disposition-and-applicable-invalidation-receipt",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_evidence_stores.py": _tool_contract(
+        "stores mode=preflight scope require-backends out",
+        choices={"mode": ("preflight",)},
+    ),
+    "validate_release_gate_input.py": _tool_contract(
+        "record", output_flag=None, fixture_producer=False, record_flag="record"
+    ),
+    "validate_release_gate_instance.py": _tool_contract(
+        "record candidate-identity predecessor task-state-policy",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_predecessor.py": _tool_contract(
+        "record milestone=v0.4 validate-genesis-only",
+        "record milestone=v0.5,v0.6,v0.7,v0.8,v0.9 read-back-chain read-back-lkg "
+        "read-back-pointer-index require-embedded-prior-decision-closed-observation",
+        "record milestone=v1.0 read-back-chain read-back-lkg read-back-pointer-index "
+        "read-back-required-completion require-embedded-prior-decision-closed-observation",
+        boolean="validate-genesis-only read-back-chain read-back-lkg "
+        "read-back-pointer-index read-back-required-completion "
+        "require-embedded-prior-decision-closed-observation",
+        choices=_MILESTONE_CHOICES,
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_prepromotion_controls.py": _tool_contract(
+        "gate-instance release-task-state linear-snapshot main-health repository-protection out"
+    ),
+    "validate_release_qualification.py": _tool_contract(
+        "record", output_flag=None, fixture_producer=False, record_flag="record"
+    ),
+    "validate_release_qualification_plan.py": _tool_contract(
+        "record gate-instance", output_flag=None, fixture_producer=False, record_flag="record"
+    ),
+    "validate_release_retention.py": _tool_contract(
+        "manifest receipts read-back",
+        "input receipts read-back",
+        "input manifest invocation-root through-stage receipts read-back",
+        boolean="read-back",
+        repeatable="input",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag=None,
+    ),
+    "validate_release_role_assignments.py": _tool_contract(
+        "record milestone run-id check-conflicts check-freshness",
+        boolean="check-conflicts check-freshness",
+        choices=_MILESTONE_CHOICES,
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_source_freeze.py": _tool_contract(
+        "record verify-tree-clean",
+        boolean="verify-tree-clean",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_target_resolution.py": _tool_contract(
+        "record targets read-back-lineage",
+        boolean="read-back-lineage",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+    "validate_release_task_state_observation.py": _tool_contract(
+        "phase=prepromotion record task-id gate-instance readiness-registry "
+        "frozen-linear-snapshot policy require-open-running require-assigned-authority "
+        "check-freshness minimum-validity-seconds",
+        "phase=finalizing record task-id gate-instance readiness-registry "
+        "frozen-linear-snapshot policy require-open-finalizing "
+        "require-no-other-open-required-task check-freshness minimum-validity-seconds",
+        "phase=completion record task-id gate-instance readiness-registry "
+        "frozen-linear-snapshot policy require-open-finalizing "
+        "require-no-other-open-required-task check-freshness minimum-validity-seconds",
+        boolean="require-open-running require-assigned-authority require-open-finalizing "
+        "require-no-other-open-required-task check-freshness",
+        integer="minimum-validity-seconds",
+        choices={"phase": ("prepromotion", "finalizing", "completion")},
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
+    ),
+}
+
+
+def _argument_destination(flag: str) -> str:
+    return flag.replace(".", "_").replace("-", "_")
+
+
+def _build_tool_parser(name: str, contract: ToolContract) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=name,
+        description="Metriplane release qualification interface (contract section 9.B).",
+        epilog="Required forms: "
+        + " | ".join(
+            " ".join(f"--{flag}" for flag in sorted(form.required)) for form in contract.forms
+        ),
+    )
+    common_required = set.intersection(*(set(form.required) for form in contract.forms))
+    for flag in sorted(contract.flags):
+        kwargs: dict[str, Any] = {
+            "dest": _argument_destination(flag),
+            "required": flag in common_required,
+        }
+        if flag in contract.boolean:
+            kwargs["action"] = "store_true"
+        elif flag in contract.repeatable:
+            kwargs["action"] = "append"
+        elif flag not in contract.choices:
+            kwargs["metavar"] = flag.upper().replace("-", "_").replace(".", "_")
+        if flag in contract.integer:
+            kwargs["type"] = int
+        if flag in contract.choices:
+            kwargs["choices"] = contract.choices[flag]
+        parser.add_argument(f"--{flag}", **kwargs)
+    return parser
+
+
+def _present_flags(args: argparse.Namespace, contract: ToolContract) -> frozenset[str]:
+    present = set()
+    for flag in contract.flags:
+        value = getattr(args, _argument_destination(flag))
+        if value not in (None, False, []):
+            present.add(flag)
+    return frozenset(present)
+
+
+def _matches_form(
+    args: argparse.Namespace,
+    present: frozenset[str],
+    form: CommandForm,
+    contract: ToolContract,
+) -> bool:
+    if not form.required <= present or not present <= form.required | contract.optional:
+        return False
+    for flag, allowed_values in form.equals:
+        if getattr(args, _argument_destination(flag)) not in allowed_values:
+            return False
+    return True
+
+
+def _normalized_arguments(args: argparse.Namespace, contract: ToolContract) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for flag in sorted(contract.flags):
+        value = getattr(args, _argument_destination(flag))
+        if value not in (None, False, []):
+            result[flag] = value
+    return result
+
+
+def _blocked_result(name: str, reason: str) -> dict[str, Any]:
+    return {"reason": reason, "status": "BLOCKED_NOT_READY", "tool": name}
+
+
+def _legacy_internal_validator(tool: str, argv: Sequence[str]) -> int | None:
+    """Keep one pre-contract unit seam; executable wrappers never enter it."""
+
+    if Path(tool).parent != Path(".") or "--input" not in argv or "--mode" not in argv:
+        return None
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--mode", choices=("fixture", "live"), required=True)
     args = parser.parse_args(argv)
-    name = Path(tool).stem
+    result = read_json(args.input)
+    if Path(tool).stem != "validate_release_role_assignments":
+        raise ReleaseControlError("legacy internal validation is not available for this tool")
+    validate_role_assignments(result, live=args.mode == "live")
+    return 0
+
+
+def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
+    """Run one exact section-9B adapter without inventing live authority."""
+
+    arguments = list(argv) if argv is not None else None
+    if arguments is not None:
+        try:
+            legacy_result = _legacy_internal_validator(tool, arguments)
+        except ReleaseControlError as exc:
+            raise SystemExit(f"release control failed: {exc}") from exc
+        if legacy_result is not None:
+            return legacy_result
+    name = Path(tool).name
+    contract = TOOL_CONTRACTS.get(name)
+    if contract is None:
+        raise ReleaseControlError(f"unknown release tool contract: {name}")
+    if contract.delegated_adapter:
+        raise ReleaseControlError(f"{name} owns its parser and must not call tool_main")
+    parser = _build_tool_parser(name, contract)
+    args = parser.parse_args(arguments)
+    present = _present_flags(args, contract)
+    for flag in present:
+        value = getattr(args, _argument_destination(flag))
+        values = value if isinstance(value, list) else [value]
+        if any(isinstance(item, str) and not item.strip() for item in values):
+            parser.error(f"--{flag} cannot be empty")
+    if not any(_matches_form(args, present, form, contract) for form in contract.forms):
+        parser.error("arguments do not satisfy any documented section-9B command form")
+
+    fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
     try:
-        if name == "check_release_readiness":
-            result: dict[str, Any] = audit_release_repository(
-                args.repository.resolve(), live=args.mode == "live"
-            )
-            if result["status"] != "READY":
+        if contract.fixture_producer:
+            if not fixture_mode:
+                result = _blocked_result(
+                    name,
+                    "live/provider/backend authority is not implemented; fixture mode is test-only",
+                )
                 print(canonical_json(result).decode("utf-8"))
-                return 2
-        elif name.startswith("validate_"):
-            if len(args.input) != 1:
-                raise ReleaseControlError("validator requires exactly one --input")
-            result = read_json(args.input[0])
-            expected_type = _record_type_from_tool(tool)
+                return 3
+            normalized = _normalized_arguments(args, contract)
+            if contract.output_flag is None:
+                raise ReleaseControlError("fixture producer has no declared output flag")
+            output_value = normalized.pop(contract.output_flag, None)
+            if not isinstance(output_value, str) or not output_value:
+                raise ReleaseControlError("fixture producer output is missing")
+            seed = {"arguments": normalized, "tool": Path(name).stem}
+            sequence_value = normalized.get("sequence", 1)
+            sequence = sequence_value if isinstance(sequence_value, int) else 1
+            result = make_record(
+                _record_type_from_tool(name),
+                seed,
+                invocation_id=f"fixture-{sha256_json(seed)[:24]}",
+                sequence=sequence,
+                synthetic=True,
+            )
+            write_immutable_json(Path(output_value), result)
+        elif contract.record_flag is not None:
+            record_value = getattr(args, _argument_destination(contract.record_flag))
+            if not isinstance(record_value, str):
+                raise ReleaseControlError("validator record path is missing")
+            result = read_json(Path(record_value))
+            expected_type = _record_type_from_tool(name)
             validate_record(result, expected_type)
-            live = args.mode == "live"
-            if name == "validate_release_role_assignments":
-                validate_role_assignments(result, live=live)
-            elif name == "validate_release_approval":
-                if args.roles is None:
-                    raise ReleaseControlError("approval validation requires --roles")
-                role_record = read_json(args.roles)
-                roles = validate_role_assignments(role_record, live=live)
-                validate_approval(result, roles, live=live)
-            elif live and result["synthetic"] is not False:
+            if name == "validate_release_role_assignments.py":
+                validate_role_assignments(result, live=not fixture_mode)
+            elif not fixture_mode and result["synthetic"] is not False:
                 raise ReleaseControlError(
                     "synthetic records cannot satisfy a live release validator"
                 )
         else:
-            if args.mode == "live":
-                raise ReleaseControlError(
-                    "generic local producers cannot create provider-authenticated live authority"
-                )
-            inputs = []
-            for path in args.input:
-                payload = read_json(path)
-                inputs.append({"path": path.as_posix(), "sha256": sha256_json(payload)})
-            result = make_record(
-                _record_type_from_tool(tool),
-                {"inputs": inputs, "tool": name},
-                invocation_id=args.invocation_id,
-                sequence=args.sequence,
-                synthetic=args.mode == "fixture",
+            result = _blocked_result(
+                name,
+                "subject-specific live read-back validation is not implemented",
             )
-            if args.output is None:
-                raise ReleaseControlError("record producer requires --output")
-            write_immutable_json(args.output, result)
+            print(canonical_json(result).decode("utf-8"))
+            return 3
         print(canonical_json(result).decode("utf-8"))
     except (OSError, ReleaseControlError) as exc:
-        raise SystemExit(f"release control failed: {exc}") from exc
+        result = _blocked_result(name, str(exc))
+        print(canonical_json(result).decode("utf-8"))
+        return 3
     return 0
 
 
 __all__ = [
     "MILESTONES",
     "STAGES",
+    "TOOL_CONTRACTS",
     "ReleaseControlError",
     "acquire_promotion_lock",
     "advance_attempt",
