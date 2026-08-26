@@ -24,6 +24,21 @@ report, verify its bundle, and rerun its generated regression check.
 | WSL2 Ubuntu 24.04 | Manually validated, camera-free path | An owner-run Python 3.12.3 installed-wheel check completed in 7 seconds and passed doctor, the six-event/one-incident demo, bundle verification, regression, and a second headless demo. Automatic browser opening is not claimed because that environment had no default HTML handler; omit `--open` or open the printed report path manually. This is not full-suite coverage. |
 | Native Windows | Demo-only owner report | The owner reports that the bundled camera-free demo completed from Command Prompt. No complete environment record, full suite, or wheel matrix was captured, so broader support is not advertised. |
 
+## Potential multi-vendor replay use case
+
+Discussing offline replay of multi-vendor AMR status data, Zachary Dydek offered
+the following personal perspective:
+
+> “I expect that people will want to build dashboards for live (and replay)
+> views of deployed AMR fleets from multiple vendors.”
+
+— Zachary Dydek, Ph.D., speaking in a personal capacity (August 2026; quoted
+with permission).
+
+This observation identifies a potential use case. It does not change the
+support statuses above and does not constitute Metriplane adoption, technical
+validation, conformance, or endorsement by any organization.
+
 The authoritative platform matrix is
 [Supported Environments](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md).
 The larger
