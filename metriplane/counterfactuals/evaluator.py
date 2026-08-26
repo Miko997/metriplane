@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from metriplane.counterfactuals.models import (
     CounterfactualCaseResult,
@@ -15,10 +16,11 @@ from metriplane.counterfactuals.transforms import (
     remove_object,
     scale_object_speed,
 )
+from metriplane.schema import FrameStateModel
 from metriplane.sentinel.engine import RuleEngine, iter_frames
-from metriplane.sentinel.events import read_incidents_json
+from metriplane.sentinel.events import IncidentRecord, read_incidents_json
 from metriplane.sentinel.incidents import build_incidents
-from metriplane.sentinel.registry import load_registry
+from metriplane.sentinel.registry import ObjectRegistryConfig, load_registry
 from metriplane.sentinel.rules import RuleSet, load_rules
 
 MAX_CASES_DEFAULT = 50
@@ -28,7 +30,11 @@ class CounterfactualError(RuntimeError):
     pass
 
 
-def _eval(frames, ruleset: RuleSet, registry) -> list:
+def _eval(
+    frames: list[FrameStateModel],
+    ruleset: RuleSet,
+    registry: ObjectRegistryConfig | None,
+) -> list[IncidentRecord]:
     engine = RuleEngine(ruleset, registry)
     alerts = []
     for f in frames:
@@ -36,7 +42,7 @@ def _eval(frames, ruleset: RuleSet, registry) -> list:
     return build_incidents(alerts)
 
 
-def _present(incidents, rule_id: str, objects: set[str]) -> bool:
+def _present(incidents: list[IncidentRecord], rule_id: str, objects: set[str]) -> bool:
     for inc in incidents:
         if inc.rule_id == rule_id and (not objects or objects.issubset(set(inc.object_ids))):
             return True
@@ -47,8 +53,9 @@ class CounterfactualEvaluator:
     def __init__(self, max_cases: int = MAX_CASES_DEFAULT):
         self.max_cases = max_cases
 
-    def evaluate(self, bundle_path: str | Path,
-                 transforms: list[CounterfactualTransform]) -> CounterfactualReport:
+    def evaluate(
+        self, bundle_path: str | Path, transforms: list[CounterfactualTransform]
+    ) -> CounterfactualReport:
         bundle = Path(bundle_path)
         incidents_meta = read_incidents_json(bundle / "incident.json")
         if not incidents_meta:
@@ -66,7 +73,8 @@ class CounterfactualEvaluator:
         baseline = _eval(frames, ruleset, registry)
         if not _present(baseline, target_rule, target_objs):
             raise CounterfactualError(
-                "baseline does not reproduce the original incident; refusing to run")
+                "baseline does not reproduce the original incident; refusing to run"
+            )
 
         def _marker(obj_or_marker: str) -> str:
             if registry is not None:
@@ -81,20 +89,39 @@ class CounterfactualEvaluator:
             try:
                 incidents = self._apply(tr, frames, ruleset, registry, _marker)
             except Exception as e:
-                cases.append(CounterfactualCaseResult(
-                    case_id=case_id, transform=tr, **{"pass": False},
-                    original_incident_present=False,
-                    summary=f"error: {e}"))
+                cases.append(
+                    CounterfactualCaseResult.model_validate(
+                        {
+                            "case_id": case_id,
+                            "transform": tr,
+                            "pass": False,
+                            "original_incident_present": False,
+                            "summary": f"error: {e}",
+                        }
+                    )
+                )
                 continue
             present = _present(incidents, target_rule, target_objs)
-            cases.append(CounterfactualCaseResult(
-                case_id=case_id, transform=tr, **{"pass": True},
-                original_incident_present=present,
-                observed_incidents=[
-                    {"rule_id": inc.rule_id, "severity": inc.severity,
-                     "objects": inc.object_ids} for inc in incidents],
-                summary=self._summary(tr, present),
-                metrics={"incident_count": len(incidents)}))
+            cases.append(
+                CounterfactualCaseResult.model_validate(
+                    {
+                        "case_id": case_id,
+                        "transform": tr,
+                        "pass": True,
+                        "original_incident_present": present,
+                        "observed_incidents": [
+                            {
+                                "rule_id": inc.rule_id,
+                                "severity": inc.severity,
+                                "objects": inc.object_ids,
+                            }
+                            for inc in incidents
+                        ],
+                        "summary": self._summary(tr, present),
+                        "metrics": {"incident_count": len(incidents)},
+                    }
+                )
+            )
 
         return CounterfactualReport(
             bundle_path=str(bundle),
@@ -112,14 +139,19 @@ class CounterfactualEvaluator:
             ],
         )
 
-    def _apply(self, tr, frames, ruleset, registry, marker_fn):
+    def _apply(
+        self,
+        tr: CounterfactualTransform,
+        frames: list[FrameStateModel],
+        ruleset: RuleSet,
+        registry: ObjectRegistryConfig | None,
+        marker_fn: Callable[[str], str],
+    ) -> list[IncidentRecord]:
         if tr.type == "rule_threshold_sweep":
-            rs = apply_rule_threshold(ruleset, tr.target,
-                                      tr.params["field"], tr.params["value"])
+            rs = apply_rule_threshold(ruleset, tr.target, tr.params["field"], tr.params["value"])
             return _eval(frames, rs, registry)
         if tr.type == "object_speed_scale":
-            nf = scale_object_speed(frames, marker_fn(tr.target),
-                                    float(tr.params["factor"]))
+            nf = scale_object_speed(frames, marker_fn(tr.target), float(tr.params["factor"]))
             return _eval(nf, ruleset, registry)
         if tr.type == "object_remove":
             nf = remove_object(frames, marker_fn(tr.target))
@@ -127,11 +159,12 @@ class CounterfactualEvaluator:
         raise CounterfactualError(f"unsupported transform: {tr.type}")
 
     @staticmethod
-    def _summary(tr, present) -> str:
+    def _summary(tr: CounterfactualTransform, present: bool) -> str:
         verb = "still detected" if present else "not detected"
         if tr.type == "rule_threshold_sweep":
-            return (f"{tr.target}.{tr.params['field']}={tr.params['value']}: "
-                    f"original incident {verb}")
+            return (
+                f"{tr.target}.{tr.params['field']}={tr.params['value']}: original incident {verb}"
+            )
         if tr.type == "object_speed_scale":
             return f"{tr.target} speed x{tr.params['factor']}: original incident {verb}"
         if tr.type == "object_remove":

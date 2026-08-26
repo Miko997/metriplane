@@ -15,8 +15,9 @@ def main_sentinel(argv: list[str]) -> int:
     run = sub.add_parser("run", help="Run Sentinel shadow auditor over a replay session")
     run.add_argument("--config", required=True, help="Sentinel YAML config")
     run.add_argument("--run-id", default=None)
-    run.add_argument("--runs-dir", default=None,
-                     help="Base directory for run artifacts (default: ./runs)")
+    run.add_argument(
+        "--runs-dir", default=None, help="Base directory for run artifacts (default: ./runs)"
+    )
 
     status = sub.add_parser("status", help="Print a sentinel_summary.json")
     status.add_argument("run_dir")
@@ -30,7 +31,7 @@ def main_sentinel(argv: list[str]) -> int:
     return 1
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     import yaml
 
     from metriplane.sentinel.config import SentinelConfig
@@ -72,6 +73,7 @@ def _run(args) -> int:
     # assistant can read this run directly (objects, traces, names).
     try:
         import shutil
+
         run_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(session_path, run_dir / "session.jsonl")
         if sentinel_cfg.objects_file and Path(sentinel_cfg.objects_file).exists():
@@ -85,17 +87,18 @@ def _run(args) -> int:
 
     status = runtime.status()
 
-    print(f"mode={status.mode} control_enabled={status.control_enabled} "
-          f"run_id={status.run_id}")
-    print(f"objects_tracked={status.objects_tracked} "
-          f"active_alerts={status.active_alerts} "
-          f"open_incidents={status.open_incidents} health={status.health}")
+    print(f"mode={status.mode} control_enabled={status.control_enabled} run_id={status.run_id}")
+    print(
+        f"objects_tracked={status.objects_tracked} "
+        f"active_alerts={status.active_alerts} "
+        f"open_incidents={status.open_incidents} health={status.health}"
+    )
     if summary_path:
         print(f"summary: {summary_path}")
     return 0
 
 
-def _status(args) -> int:
+def _status(args: argparse.Namespace) -> int:
     summary_file = Path(args.run_dir)
     if summary_file.is_dir():
         summary_file = summary_file / "sentinel_summary.json"

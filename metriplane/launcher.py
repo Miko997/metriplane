@@ -20,6 +20,7 @@ Key design decisions (v2):
 - status: shows port owners via ss -tlnp even when state file is absent
 - cleanup: kills only identifiable Metriplane orphans on known ports
 """
+
 from __future__ import annotations
 
 import json
@@ -63,13 +64,14 @@ _METRIPLANE_SAFE_PATTERNS = [
     "metriplane.run_fusion",
     "run_fusion",
     "metriplane.cli",
-    "http.server",           # dashboard static server (scoped to known port 8088)
+    "http.server",  # dashboard static server (scoped to known port 8088)
 ]
 
 
 # ---------------------------------------------------------------------------
 # State helpers
 # ---------------------------------------------------------------------------
+
 
 def _state_dir() -> Path:
     d = _STATE_FILE.parent
@@ -80,7 +82,8 @@ def _state_dir() -> Path:
 def _load_state() -> dict[str, Any]:
     if _STATE_FILE.exists():
         try:
-            return json.loads(_STATE_FILE.read_text())
+            state = json.loads(_STATE_FILE.read_text())
+            return state if isinstance(state, dict) else {}
         except Exception:
             pass
     return {}
@@ -99,6 +102,7 @@ def _clear_state() -> None:
 # ---------------------------------------------------------------------------
 # Process helpers
 # ---------------------------------------------------------------------------
+
 
 def _is_running(pid: int | None) -> bool:
     """Return True if the process exists (any state)."""
@@ -161,6 +165,7 @@ def _is_vt_safe_to_kill(cmdline: str) -> bool:
 # ---------------------------------------------------------------------------
 # Port / network helpers
 # ---------------------------------------------------------------------------
+
 
 def _has_listener(port: int) -> bool:
     """Return True if ss -tlnp shows an active LISTEN socket on this port.
@@ -271,6 +276,7 @@ def _find_port_owner(port: int) -> dict[str, Any] | None:
 # Process launch helpers
 # ---------------------------------------------------------------------------
 
+
 def _find_repo_root() -> Path:
     """Walk up from cwd looking for pyproject.toml."""
     p = Path.cwd()
@@ -289,7 +295,9 @@ def _log_dir_path(runs_dir: str, timestamp: str) -> Path:
     return d
 
 
-def _launch(cmd: list[str], log_file: Path, cwd: Path, env: dict | None = None) -> subprocess.Popen:
+def _launch(
+    cmd: list[str], log_file: Path, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.Popen[bytes]:
     """Launch a subprocess in a new session and process group. Returns Popen."""
     with open(log_file, "w") as fh:
         return subprocess.Popen(
@@ -313,7 +321,7 @@ def _print_log_tail(log_file: Path, *, lines: int = 20) -> None:
         print("     Log is empty.")
         return
     print("     Last log lines:")
-    for line in content[-max(1, int(lines)):]:
+    for line in content[-max(1, int(lines)) :]:
         print(f"       {line}")
 
 
@@ -325,7 +333,7 @@ def _start_runner(
     dashboard_port: int,
     log_file: Path,
     repo_root: Path,
-) -> subprocess.Popen:
+) -> subprocess.Popen[bytes]:
     cmd = [
         sys.executable,
         "-m",
@@ -344,7 +352,9 @@ def _start_runner(
     return _launch(cmd, log_file, repo_root)
 
 
-def _start_dashboard(*, host: str, port: int, log_file: Path, repo_root: Path) -> subprocess.Popen:
+def _start_dashboard(
+    *, host: str, port: int, log_file: Path, repo_root: Path
+) -> subprocess.Popen[bytes]:
     cmd = [
         sys.executable,
         "-m",
@@ -375,16 +385,29 @@ def _runtime_module_for_config(config: str, repo_root: Path) -> str:
     return "metriplane.run_fusion"
 
 
-def _start_fusion(*, config: str, run_id: str, runs_dir: str, duration_s: float,
-                   backend: str, log_file: Path, repo_root: Path) -> subprocess.Popen:
+def _start_fusion(
+    *,
+    config: str,
+    run_id: str,
+    runs_dir: str,
+    duration_s: float,
+    backend: str,
+    log_file: Path,
+    repo_root: Path,
+) -> subprocess.Popen[bytes]:
     env = dict(os.environ)
     env["METRIPLANE_COMPUTE_BACKEND"] = "gpu" if backend == "gpu" else "cpu"
     module = _runtime_module_for_config(config, repo_root)
     cmd = [
-        sys.executable, "-m", module,
-        "--config", config,
-        "--run-id", run_id,
-        "--runs-dir", runs_dir,
+        sys.executable,
+        "-m",
+        module,
+        "--config",
+        config,
+        "--run-id",
+        run_id,
+        "--runs-dir",
+        runs_dir,
     ]
     if module == "metriplane.run_fusion":
         cmd.extend(["--duration-s", str(duration_s)])
@@ -395,9 +418,12 @@ def _start_fusion(*, config: str, run_id: str, runs_dir: str, duration_s: float,
 # Stop helpers — PGID-based
 # ---------------------------------------------------------------------------
 
-def _stop_pg(pgid: int | None, pid: int | None, *,
-              use_sigint: bool = False, name: str = "process") -> None:
+
+def _stop_pg(
+    pgid: int | None, pid: int | None, *, use_sigint: bool = False, name: str = "process"
+) -> None:
     """Stop a process group. Sends SIGINT/SIGTERM, waits 5s, then SIGKILL."""
+
     # Build a list of targets: try by pgid first, fall back to pid
     def _send(sig: signal.Signals) -> bool:
         if pgid is not None:
@@ -450,7 +476,7 @@ def _stop_pg(pgid: int | None, pid: int | None, *,
     print(f"  [{name}] SIGKILL sent (did not exit cleanly after 5s)")
 
 
-def _make_proc_entry(proc: subprocess.Popen) -> dict[str, Any]:
+def _make_proc_entry(proc: subprocess.Popen[bytes]) -> dict[str, Any]:
     """Build the state entry for a started process (with pgid)."""
     pgid = _get_pgid(proc.pid) or proc.pid
     return {"pid": proc.pid, "pgid": pgid}
@@ -459,6 +485,7 @@ def _make_proc_entry(proc: subprocess.Popen) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Public commands
 # ---------------------------------------------------------------------------
+
 
 def cmd_start(
     *,
@@ -499,8 +526,10 @@ def cmd_start(
         if _is_port_in_use("127.0.0.1", port):
             owner = _find_port_owner(port)
             if owner and owner["safe_to_kill"]:
-                print(f"\n⚠️  Port {port} ({pname}) held by orphaned Metriplane process "
-                      f"(pid={owner['pid']}). Run `metriplane cleanup` to remove it.")
+                print(
+                    f"\n⚠️  Port {port} ({pname}) held by orphaned Metriplane process "
+                    f"(pid={owner['pid']}). Run `metriplane cleanup` to remove it."
+                )
             else:
                 print(f"\n❌ Port {port} ({pname}) is in use by an unknown process.")
                 if owner:
@@ -512,8 +541,10 @@ def cmd_start(
             if _is_port_in_use("127.0.0.1", port):
                 owner = _find_port_owner(port)
                 if owner and owner["safe_to_kill"]:
-                    print(f"\n⚠️  Port {port} ({pname}) held by orphaned Metriplane process "
-                          f"(pid={owner['pid']}). Run `metriplane cleanup` to remove it.")
+                    print(
+                        f"\n⚠️  Port {port} ({pname}) held by orphaned Metriplane process "
+                        f"(pid={owner['pid']}). Run `metriplane cleanup` to remove it."
+                    )
                 else:
                     print(f"\n❌ Port {port} ({pname}) is in use by an unknown process.")
                     if owner:
@@ -523,9 +554,14 @@ def cmd_start(
 
     # --- Start runner ---
     print(f"\n▶  Starting runner on http://{runner_host}:{runner_port}/")
-    rp = _start_runner(host=runner_host, port=runner_port,
-                       dashboard_host=dashboard_host, dashboard_port=dashboard_port,
-                       log_file=log_d / "runner.log", repo_root=repo_root)
+    rp = _start_runner(
+        host=runner_host,
+        port=runner_port,
+        dashboard_host=dashboard_host,
+        dashboard_port=dashboard_port,
+        log_file=log_d / "runner.log",
+        repo_root=repo_root,
+    )
     if not _wait_for_port(runner_host, runner_port, timeout=8.0):
         print(f"  ❌ Runner did not start within 8s (pid={rp.pid})")
         runner_log = log_d / "runner.log"
@@ -540,8 +576,12 @@ def cmd_start(
 
     # --- Start dashboard ---
     print(f"▶  Starting dashboard on http://{dashboard_host}:{dashboard_port}/")
-    dp = _start_dashboard(host=dashboard_host, port=dashboard_port,
-                          log_file=log_d / "dashboard.log", repo_root=repo_root)
+    dp = _start_dashboard(
+        host=dashboard_host,
+        port=dashboard_port,
+        log_file=log_d / "dashboard.log",
+        repo_root=repo_root,
+    )
     if not _wait_for_port(dashboard_host, dashboard_port, timeout=8.0):
         print(f"  ❌ Dashboard server did not start within 8s (pid={dp.pid})")
         _stop_pg(dp.pid, dp.pid, name="dashboard")
@@ -554,13 +594,24 @@ def cmd_start(
     effective_run_id = run_id or f"live_{timestamp}"
     if live:
         print(f"▶  Starting runtime stream  (config={config}, run_id={effective_run_id})")
-        fp = _start_fusion(config=config, run_id=effective_run_id,
-                           runs_dir=runs_dir, duration_s=duration_s,
-                           backend=backend, log_file=log_d / "fusion.log",
-                           repo_root=repo_root)
+        fp = _start_fusion(
+            config=config,
+            run_id=effective_run_id,
+            runs_dir=runs_dir,
+            duration_s=duration_s,
+            backend=backend,
+            log_file=log_d / "fusion.log",
+            repo_root=repo_root,
+        )
         fusion_entry = _make_proc_entry(fp)
-        fusion_entry.update({"run_id": effective_run_id, "config": config,
-                              "backend": backend, "duration_s": duration_s})
+        fusion_entry.update(
+            {
+                "run_id": effective_run_id,
+                "config": config,
+                "backend": backend,
+                "duration_s": duration_s,
+            }
+        )
         metrics_ready = _wait_for_port("127.0.0.1", 8000, timeout=8.0)
         ws_ready = _wait_for_port("127.0.0.1", 8765, timeout=4.0)
         if metrics_ready and ws_ready:
@@ -599,22 +650,22 @@ def cmd_start(
     op_url = f"http://{dashboard_host}:{dashboard_port}/web/dashboard/operator.html"
     open_url = op_url if operator else dash_url
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("✅  Metriplane stack is running")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"  Console      : {dash_url}")
     print(f"  Operator UI  : {op_url}")
     print(f"  Runner API   : http://{runner_host}:{runner_port}/status")
     if live and fusion_entry:
-        print(f"  Health       : http://127.0.0.1:8000/health")
-        print(f"  Metrics      : http://127.0.0.1:8000/metrics")
-        print(f"  WebSocket    : ws://127.0.0.1:8765")
+        print("  Health       : http://127.0.0.1:8000/health")
+        print("  Metrics      : http://127.0.0.1:8000/metrics")
+        print("  WebSocket    : ws://127.0.0.1:8765")
     elif not live:
         print("  Runtime      : idle until Setup or Run starts a session")
     print(f"\n  Logs         : {log_d}/")
     print(f"  State        : {_STATE_FILE}")
-    print(f"\n  Stop with    : metriplane stop")
-    print(f"{'='*60}")
+    print("\n  Stop with    : metriplane stop")
+    print(f"{'=' * 60}")
 
     if open_browser:
         _open_browser(open_url)
@@ -638,15 +689,15 @@ def cmd_stop(force: bool = False) -> int:
     dash_info = state.get("dashboard") or {}
     fusion_info = state.get("fusion") or {}
 
-    runner_pid  = runner_info.get("pid")
+    runner_pid = runner_info.get("pid")
     runner_pgid = runner_info.get("pgid") or runner_pid
     runner_port = runner_info.get("port", _DEFAULT_RUNNER_PORT)
 
-    dash_pid  = dash_info.get("pid")
+    dash_pid = dash_info.get("pid")
     dash_pgid = dash_info.get("pgid") or dash_pid
     dash_port = dash_info.get("port", _DEFAULT_DASHBOARD_PORT)
 
-    fusion_pid  = fusion_info.get("pid")
+    fusion_pid = fusion_info.get("pid")
     fusion_pgid = fusion_info.get("pgid") or fusion_pid
 
     stopped_any = False
@@ -656,7 +707,7 @@ def cmd_stop(force: bool = False) -> int:
         if _is_running(fusion_pid):
             print(f"  Stopping fusion    (pid={fusion_pid} pgid={fusion_pgid}) …")
             _stop_pg(fusion_pgid, fusion_pid, use_sigint=True, name="fusion")
-            print(f"  ✅ Fusion stopped")
+            print("  ✅ Fusion stopped")
             stopped_any = True
         else:
             print(f"  ℹ️   Fusion pid={fusion_pid} already gone")
@@ -666,7 +717,7 @@ def cmd_stop(force: bool = False) -> int:
         if _is_running(runner_pid):
             print(f"  Stopping runner    (pid={runner_pid} pgid={runner_pgid}) …")
             _stop_pg(runner_pgid, runner_pid, name="runner")
-            print(f"  ✅ Runner stopped")
+            print("  ✅ Runner stopped")
             stopped_any = True
         else:
             print(f"  ℹ️   Runner pid={runner_pid} already gone")
@@ -676,7 +727,7 @@ def cmd_stop(force: bool = False) -> int:
         if _is_running(dash_pid):
             print(f"  Stopping dashboard (pid={dash_pid} pgid={dash_pgid}) …")
             _stop_pg(dash_pgid, dash_pid, name="dashboard")
-            print(f"  ✅ Dashboard stopped")
+            print("  ✅ Dashboard stopped")
             stopped_any = True
         else:
             print(f"  ℹ️   Dashboard pid={dash_pid} already gone")
@@ -704,7 +755,11 @@ def cmd_stop(force: bool = False) -> int:
     _clear_state()
 
     if all_free:
-        msg = "✅ All launcher services stopped." if stopped_any else "ℹ️   No live processes found (state cleared)."
+        msg = (
+            "✅ All launcher services stopped."
+            if stopped_any
+            else "ℹ️   No live processes found (state cleared)."
+        )
         print(f"\n{msg}")
     else:
         print("\n⚠️  Some ports may still be in use. Run `metriplane cleanup` if needed.")
@@ -728,7 +783,7 @@ def cmd_cleanup() -> int:
         if not owner["safe_to_kill"]:
             print(f"  Port {port}: occupied by non-Metriplane process (pid={pid})")
             print(f"    cmd: {cmdline[:100]}")
-            print(f"    → SKIPPED (not a known Metriplane pattern)")
+            print("    → SKIPPED (not a known Metriplane pattern)")
             continue
         print(f"  Port {port}: Metriplane orphan detected")
         print(f"    pid={pid}  cmd={cmdline[:80]}")
@@ -788,10 +843,18 @@ def cmd_restart(
 
     print("\n⟳  Starting new stack …")
     return cmd_start(
-        live=live, backend=backend, config=config, duration_s=duration_s,
-        run_id=run_id, dashboard_host=dashboard_host, dashboard_port=dashboard_port,
-        runner_host=runner_host, runner_port=runner_port, runs_dir=runs_dir,
-        open_browser=open_browser, operator=operator,
+        live=live,
+        backend=backend,
+        config=config,
+        duration_s=duration_s,
+        run_id=run_id,
+        dashboard_host=dashboard_host,
+        dashboard_port=dashboard_port,
+        runner_host=runner_host,
+        runner_port=runner_port,
+        runs_dir=runs_dir,
+        open_browser=open_browser,
+        operator=operator,
     )
 
 
@@ -810,10 +873,10 @@ def cmd_status() -> int:
         print()
 
     runner_info = state.get("runner") or {}
-    dash_info   = state.get("dashboard") or {}
+    dash_info = state.get("dashboard") or {}
     fusion_info = state.get("fusion") or {}
 
-    def _pid_badge(pid, pgid=None):
+    def _pid_badge(pid: int | None, pgid: int | None = None) -> str:
         if pid and _is_running(pid):
             g = f" pgid={pgid}" if pgid and pgid != pid else ""
             return f"✅ running (pid={pid}{g})"
@@ -821,11 +884,11 @@ def cmd_status() -> int:
             return f"❌ dead    (pid={pid})"
         return "— not in state"
 
-    def _http_badge(url):
+    def _http_badge(url: str) -> str:
         return "🟢 online" if _probe_http(url) else "🔴 offline"
 
     # --- Runner ---
-    rpid  = runner_info.get("pid")
+    rpid = runner_info.get("pid")
     rpgid = runner_info.get("pgid")
     rport = runner_info.get("port", _DEFAULT_RUNNER_PORT)
     rhost = runner_info.get("host", _DEFAULT_RUNNER_HOST)
@@ -836,7 +899,7 @@ def cmd_status() -> int:
         _show_port_owner(rport, "  ")
 
     # --- Dashboard ---
-    dpid  = dash_info.get("pid")
+    dpid = dash_info.get("pid")
     dpgid = dash_info.get("pgid")
     dport = dash_info.get("port", _DEFAULT_DASHBOARD_PORT)
     dhost = dash_info.get("host", _DEFAULT_DASHBOARD_HOST)
@@ -850,17 +913,21 @@ def cmd_status() -> int:
 
     # --- Fusion ---
     if fusion_info:
-        fpid  = fusion_info.get("pid")
+        fpid = fusion_info.get("pid")
         fpgid = fusion_info.get("pgid")
-        frun  = fusion_info.get("run_id", "unknown")
+        frun = fusion_info.get("run_id", "unknown")
         print(f"  Fusion       : {_pid_badge(fpid, fpgid)}  run_id={frun}")
     else:
         print("  Runtime      : — idle until Setup or Run starts a session")
 
     # Always show health/metrics/WS port status
-    print(f"    Health     : http://127.0.0.1:8000/health  {_http_badge('http://127.0.0.1:8000/health')}")
-    print(f"    Metrics    : http://127.0.0.1:8000/metrics {_http_badge('http://127.0.0.1:8000/metrics')}")
-    print(f"    WebSocket  : ws://127.0.0.1:8765", end="")
+    print(
+        f"    Health     : http://127.0.0.1:8000/health  {_http_badge('http://127.0.0.1:8000/health')}"
+    )
+    print(
+        f"    Metrics    : http://127.0.0.1:8000/metrics {_http_badge('http://127.0.0.1:8000/metrics')}"
+    )
+    print("    WebSocket  : ws://127.0.0.1:8765", end="")
     ws_owner = _find_port_owner(8765)
     if ws_owner:
         print(f"  (pid={ws_owner['pid']})")
@@ -898,8 +965,10 @@ def _show_port_owner(port: int, indent: str = "") -> None:
 # Browser helper
 # ---------------------------------------------------------------------------
 
+
 def _open_browser(url: str) -> None:
     import webbrowser
+
     try:
         webbrowser.open(url)
     except Exception:

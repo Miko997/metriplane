@@ -56,8 +56,11 @@ def test_camera_trust_endpoint(api):
 
 
 def test_ask_endpoint(api):
-    st, data = api.route("POST", "/operator/ask",
-                         {"run_dir": BUNDLE, "question": "which rule triggered this incident?"})
+    st, data = api.route(
+        "POST",
+        "/operator/ask",
+        {"run_dir": BUNDLE, "question": "which rule triggered this incident?"},
+    )
     assert st == 200
     assert data["intent"] == "rule_explanation"
     assert "min_distance" in data["answer"]
@@ -89,15 +92,18 @@ def test_frames_endpoint_includes_workspace_zones(api, tmp_path, monkeypatch):
     run = tmp_path / "run"
     run.mkdir()
     run.joinpath("session.jsonl").write_text(
-        json.dumps({
-            "schema_version": "1.0",
-            "source_backend": "dummy",
-            "run_id": "workspace_test",
-            "ts": 0.0,
-            "frame_id": 1,
-            "objects": [{"id": "1", "pos_world": [0.2, 0.3, 0.0], "zone": "zone_a"}],
-            "events": [],
-        }) + "\n",
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "source_backend": "dummy",
+                "run_id": "workspace_test",
+                "ts": 0.0,
+                "frame_id": 1,
+                "objects": [{"id": "1", "pos_world": [0.2, 0.3, 0.0], "zone": "zone_a"}],
+                "events": [],
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     run.joinpath("zones.yaml").write_text(
@@ -138,14 +144,16 @@ def test_latest_command_center_run_prefers_incident_artifacts(api, monkeypatch, 
     command_center.mkdir(parents=True)
     generic.joinpath("session.jsonl").write_text('{"type":"run_header"}\n', encoding="utf-8")
     command_center.joinpath("incident.json").write_text(
-        json.dumps({
-            "incident_id": "INC-TEST",
-            "run_id": "command_center_run",
-            "status": "open",
-            "severity": "warning",
-            "title": "test incident",
-            "summary": "test incident",
-        }),
+        json.dumps(
+            {
+                "incident_id": "INC-TEST",
+                "run_id": "command_center_run",
+                "status": "open",
+                "severity": "warning",
+                "title": "test incident",
+                "summary": "test incident",
+            }
+        ),
         encoding="utf-8",
     )
     os.utime(command_center, (1000, 1000))

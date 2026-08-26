@@ -41,25 +41,56 @@ def load_anchors(path: Path) -> list[tuple[int, float, float]]:
 def compute_rmse(dst: np.ndarray, pred: np.ndarray) -> float:
     dif = dst - pred
     err = np.sqrt((dif[:, 0] ** 2) + (dif[:, 1] ** 2))
-    return float(np.sqrt(np.mean(err ** 2)))
+    return float(np.sqrt(np.mean(err**2)))
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="M5: Planar homography calibration (pixel -> world XY).")
+    ap = argparse.ArgumentParser(
+        description="M5: Planar homography calibration (pixel -> world XY)."
+    )
 
-    ap.add_argument("--profile", default=None, help="Profile name (defaults to calib/active_profile.yaml)")
-    ap.add_argument("--calib-root", type=Path, default=Path("calib"), help="Calibration root (default: ./calib)")
-    ap.add_argument("--no-undistort", action="store_true", help="force raw pixel points (ignore intrinsics even if profile has camera.yaml)")
+    ap.add_argument(
+        "--profile", default=None, help="Profile name (defaults to calib/active_profile.yaml)"
+    )
+    ap.add_argument(
+        "--calib-root", type=Path, default=Path("calib"), help="Calibration root (default: ./calib)"
+    )
+    ap.add_argument(
+        "--no-undistort",
+        action="store_true",
+        help="force raw pixel points (ignore intrinsics even if profile has camera.yaml)",
+    )
 
-    ap.add_argument("--no-intrinsics", action="store_true", help="Force DISABLE intrinsics even if profile has camera.yaml")
+    ap.add_argument(
+        "--no-intrinsics",
+        action="store_true",
+        help="Force DISABLE intrinsics even if profile has camera.yaml",
+    )
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--anchors", type=Path, default=None, help="anchors.yaml (overrides profile)")
-    ap.add_argument("--out", type=Path, default=None, help="output mapping.yaml (overrides profile)")
+    ap.add_argument(
+        "--out", type=Path, default=None, help="output mapping.yaml (overrides profile)"
+    )
     ap.add_argument("--units", default="meters")
-    ap.add_argument("--intrinsics", type=Path, default=None, help="Optional: camera.yaml to undistort anchor points (overrides profile camera.yaml)")
+    ap.add_argument(
+        "--intrinsics",
+        type=Path,
+        default=None,
+        help="Optional: camera.yaml to undistort anchor points (overrides profile camera.yaml)",
+    )
     ap.add_argument("--no-preview", action="store_true", help="do not open OpenCV preview window")
-    ap.add_argument("--max-frames", type=int, default=600, help="Max frames to capture in headless mode (default: 600)")
-    ap.add_argument("--timeout-s", type=int, default=30, help="Timeout in seconds for headless mode (default: 30)")
+    ap.add_argument(
+        "--max-frames",
+        type=int,
+        default=600,
+        help="Max frames to capture in headless mode (default: 600)",
+    )
+    ap.add_argument(
+        "--timeout-s",
+        type=int,
+        default=30,
+        help="Timeout in seconds for headless mode (default: 30)",
+    )
     args = ap.parse_args()
 
     calib = maybe_get_calib_paths(args.profile, calib_root=args.calib_root)
@@ -68,13 +99,20 @@ def main() -> int:
     out_path = args.out or (calib.mapping if calib is not None else None)
 
     if anchors_path is None or out_path is None:
-        ap.error("You must provide either (--profile or calib/active_profile.yaml) OR both --anchors and --out.")
+        ap.error(
+            "You must provide either (--profile or calib/active_profile.yaml) OR both --anchors and --out."
+        )
 
     # Intrinsics: explicit flag wins; otherwise profile camera.yaml if present; otherwise None.
     intrinsics_path = None if args.no_undistort else args.intrinsics
     if args.no_intrinsics:
         intrinsics_path = None
-    elif (intrinsics_path is None) and (not args.no_undistort) and (calib is not None) and (calib.intrinsics is not None):
+    elif (
+        (intrinsics_path is None)
+        and (not args.no_undistort)
+        and (calib is not None)
+        and (calib.intrinsics is not None)
+    ):
         intrinsics_path = calib.intrinsics
 
     if calib is not None:
@@ -97,24 +135,26 @@ def main() -> int:
     backend = ArUcoBackend()
 
     cam.open()
-    
+
     # Headless mode tracking
     frame_count = 0
     start_time = time.time()
     frames_with_markers = 0
     frames_with_anchors = 0
     all_detected_ids: set[int] = set()
-    
+
     if args.no_preview:
-        print(f"[calib_plane] Headless mode: max_frames={args.max_frames}, timeout={args.timeout_s}s")
+        print(
+            f"[calib_plane] Headless mode: max_frames={args.max_frames}, timeout={args.timeout_s}s"
+        )
         print(f"[calib_plane] Waiting for anchors {anchor_ids}...")
-    
+
     try:
         while True:
             fr = cam.read()
             frame_count += 1
             elapsed = time.time() - start_time
-            
+
             # Timeout/max-frames checks for headless mode
             if args.no_preview:
                 if elapsed > args.timeout_s:
@@ -125,7 +165,7 @@ def main() -> int:
                     print(f"[calib_plane] All detected IDs: {sorted(all_detected_ids)}")
                     print(f"[calib_plane] Required anchor IDs: {anchor_ids}")
                     return 1
-                
+
                 if frame_count > args.max_frames:
                     print(f"\n[calib_plane] ERROR: Max frames ({args.max_frames}) reached")
                     print(f"[calib_plane] Frames with markers: {frames_with_markers}")
@@ -133,10 +173,12 @@ def main() -> int:
                     print(f"[calib_plane] All detected IDs: {sorted(all_detected_ids)}")
                     print(f"[calib_plane] Required anchor IDs: {anchor_ids}")
                     return 1
-            
+
             dets = backend.detect(Frame(ts_cam_read=fr.ts_cam_read, image=fr.image))
-            det_map: dict[int, tuple[float, float]] = {int(d[0]): (float(d[1]), float(d[2])) for d in dets}
-            
+            det_map: dict[int, tuple[float, float]] = {
+                int(d[0]): (float(d[1]), float(d[2])) for d in dets
+            }
+
             if det_map:
                 frames_with_markers += 1
                 all_detected_ids.update(det_map.keys())
@@ -152,14 +194,16 @@ def main() -> int:
                     (cx, cy) = intr.undistort_points_px([(cx, cy)])[0]
                 src_pts.append([cx, cy])
                 dst_pts.append([wx, wy])
-            
+
             if len(src_pts) >= 4:
                 frames_with_anchors += 1
-            
+
             # Progress printing for headless mode (every 30 frames)
             if args.no_preview and frame_count % 30 == 0:
                 detected_ids = sorted(det_map.keys())
-                print(f"[calib_plane] frame={frame_count} elapsed={elapsed:.1f}s detected_ids={detected_ids} anchors_seen={len(src_pts)}/{len(anchors)}")
+                print(
+                    f"[calib_plane] frame={frame_count} elapsed={elapsed:.1f}s detected_ids={detected_ids} anchors_seen={len(src_pts)}/{len(anchors)}"
+                )
 
             if not args.no_preview:
                 vis = fr.image.copy()
@@ -197,7 +241,9 @@ def main() -> int:
             # In GUI mode, wait for 'w' keypress
             if args.no_preview:
                 # Auto-write in headless mode
-                print(f"\n[calib_plane] All {len(src_pts)} anchors detected! Auto-writing calibration...")
+                print(
+                    f"\n[calib_plane] All {len(src_pts)} anchors detected! Auto-writing calibration..."
+                )
             elif key != ord("w"):
                 # GUI mode: wait for 'w' keypress
                 continue

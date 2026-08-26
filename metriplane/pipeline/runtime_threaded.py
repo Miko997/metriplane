@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from metriplane.pipeline.bounded_queue import QueuePolicy
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Optional
 
@@ -146,7 +145,9 @@ class StageWorker:
                     try:
                         self.metrics.set_queue_depth(self.in_queue.name, self.in_queue.qsize())
                         if self.out_queue is not None:
-                            self.metrics.set_queue_depth(self.out_queue.name, self.out_queue.qsize())
+                            self.metrics.set_queue_depth(
+                                self.out_queue.name, self.out_queue.qsize()
+                            )
                     except Exception:
                         pass
 
@@ -165,11 +166,15 @@ class StageWorker:
                     if self.stats.processed <= 0:
                         self.stats.ema_latency_ms = float(dt_ms)
                     else:
-                        self.stats.ema_latency_ms = (1.0 - alpha) * float(self.stats.ema_latency_ms) + alpha * float(dt_ms)
+                        self.stats.ema_latency_ms = (1.0 - alpha) * float(
+                            self.stats.ema_latency_ms
+                        ) + alpha * float(dt_ms)
 
                     if self.metrics is not None:
                         try:
-                            self.metrics.observe_stage_latency_ms(self.name, float(dt_ms), ema=float(self.stats.ema_latency_ms))
+                            self.metrics.observe_stage_latency_ms(
+                                self.name, float(dt_ms), ema=float(self.stats.ema_latency_ms)
+                            )
                         except Exception:
                             pass
 
@@ -182,8 +187,14 @@ class StageWorker:
                             if self.metrics is not None:
                                 try:
                                     # PutResult doesn't carry policy; use the queue's configured policy.
-                                    pol = self.out_queue.policy.value if hasattr(self.out_queue.policy, "value") else str(self.out_queue.policy)
-                                    self.metrics.inc_queue_dropped(self.out_queue.name, policy=str(pol), n=int(res.dropped))
+                                    pol = (
+                                        self.out_queue.policy.value
+                                        if hasattr(self.out_queue.policy, "value")
+                                        else str(self.out_queue.policy)
+                                    )
+                                    self.metrics.inc_queue_dropped(
+                                        self.out_queue.name, policy=str(pol), n=int(res.dropped)
+                                    )
                                 except Exception:
                                     pass
 
@@ -213,7 +224,9 @@ class ThreadedRuntime:
         in_queue: BoundedQueue[Any],
         out_queue: Optional[BoundedQueue[Any]] = None,
     ) -> StageWorker:
-        st = StageWorker(name=name, fn=fn, in_queue=in_queue, out_queue=out_queue, metrics=self.metrics)
+        st = StageWorker(
+            name=name, fn=fn, in_queue=in_queue, out_queue=out_queue, metrics=self.metrics
+        )
         self.stages.append(st)
         return st
 

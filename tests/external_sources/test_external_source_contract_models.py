@@ -50,10 +50,7 @@ def _read_session(path: Path) -> list[dict[str, Any]]:
 
 def _write_session(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text(
-        "".join(
-            json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n"
-            for row in rows
-        ),
+        "".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
     )
 
@@ -65,18 +62,11 @@ def _sha256(path: Path) -> str:
 def _rewrite_checksums(root: Path) -> None:
     checksum_path = root / "CHECKSUMS.sha256"
     paths = sorted(
-        (
-            path
-            for path in root.rglob("*")
-            if path.is_file() and path != checksum_path
-        ),
+        (path for path in root.rglob("*") if path.is_file() and path != checksum_path),
         key=lambda path: path.relative_to(root).as_posix(),
     )
     checksum_path.write_text(
-        "".join(
-            f"{_sha256(path)}  {path.relative_to(root).as_posix()}\n"
-            for path in paths
-        ),
+        "".join(f"{_sha256(path)}  {path.relative_to(root).as_posix()}\n" for path in paths),
         encoding="utf-8",
     )
 
@@ -114,9 +104,7 @@ def _mutate_invalid_case(root: Path, case: str) -> None:
     elif case == "missing_zone_assignment_method":
         del manifest["normalization"]["zone_assignment"]["method"]
     elif case == "unknown_state_as_absence":
-        manifest["normalization"]["completeness"]["unknown_state_policy"] = (
-            "treat_as_absence"
-        )
+        manifest["normalization"]["completeness"]["unknown_state_policy"] = "treat_as_absence"
     elif case == "undeclared_resampling":
         del manifest["normalization"]["temporal_alignment"]["resampling"]
     elif case == "undeclared_interpolation":
@@ -283,9 +271,7 @@ def _mutate_invalid_case(root: Path, case: str) -> None:
         report_changed = True
     elif case == "normalization_report_operation_mismatch":
         report["operations"] = [
-            operation
-            for operation in report["operations"]
-            if operation["kind"] != "carry_forward"
+            operation for operation in report["operations"] if operation["kind"] != "carry_forward"
         ]
         report_changed = True
     elif case == "stage_1_run_includes_expected_outcome":
@@ -371,9 +357,7 @@ def _mutate_invalid_case(root: Path, case: str) -> None:
         manifest["normalized_artifacts"]["session"]["sha256"] = _sha256(session_path)
     if report_changed:
         _write_json(report_path, report)
-        manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(
-            report_path
-        )
+        manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(report_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(root)
 
@@ -406,14 +390,17 @@ def test_contract_and_profile_versions_are_independent() -> None:
     assert manifest.contract_profile == CONTRACT_PROFILE
     assert manifest.normalization.frame_state_model_version == "1.0"
     assert manifest.evaluation.metriplane_version == "0.3.0"
-    assert len(
-        {
-            manifest.schema_version,
-            manifest.contract_profile,
-            manifest.normalization.frame_state_model_version,
-            manifest.evaluation.metriplane_version,
-        }
-    ) == 4
+    assert (
+        len(
+            {
+                manifest.schema_version,
+                manifest.contract_profile,
+                manifest.normalization.frame_state_model_version,
+                manifest.evaluation.metriplane_version,
+            }
+        )
+        == 4
+    )
 
 
 def test_reference_only_source_can_use_immutable_identifier() -> None:
@@ -578,9 +565,7 @@ def test_conversion_and_evaluation_fingerprints_are_separate() -> None:
 
 def test_checked_schema_exposes_safe_path_constraint() -> None:
     schema = _read_json(
-        REPOSITORY_ROOT
-        / "schemas"
-        / "metriplane.external_source_contract.v1.schema.json"
+        REPOSITORY_ROOT / "schemas" / "metriplane.external_source_contract.v1.schema.json"
     )
     pattern = schema["$defs"]["FileReference"]["properties"]["path"]["pattern"]
     assert re.fullmatch(pattern, "domain-pack/assets.yaml") is not None
@@ -617,13 +602,11 @@ def test_private_fixture_can_include_explicitly_authorized_private_source(
 
     parsed = ExternalSourceManifestV1.model_validate(manifest)
     report = _read_json(report_path)
-    report["conversion_reproducibility"]["input_fingerprint_sha256"] = (
-        conversion_inputs_sha256(parsed)
+    report["conversion_reproducibility"]["input_fingerprint_sha256"] = conversion_inputs_sha256(
+        parsed
     )
     _write_json(report_path, report)
-    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(
-        report_path
-    )
+    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(report_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(root)
 

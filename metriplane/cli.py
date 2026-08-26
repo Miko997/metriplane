@@ -12,6 +12,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 log = logging.getLogger("metriplane.cli")
 
@@ -51,7 +52,7 @@ def _main_run(argv: list[str]) -> int:
     # Lazy imports to allow doctor command to run without dependencies
     from metriplane.config import load_config
     from metriplane.run import run_loop
-    
+
     p = argparse.ArgumentParser("metriplane")
     p.add_argument("--config", default="config.example.yaml", help="Path to YAML config")
     p.add_argument(
@@ -91,8 +92,7 @@ def _main_run(argv: list[str]) -> int:
         cfg = replace(cfg, profile=str(args.profile))
 
     log.info(
-        "loaded config: path=%s profile=%s source_mode=%s camera_backend=%s "
-        "vision_backend=%s",
+        "loaded config: path=%s profile=%s source_mode=%s camera_backend=%s vision_backend=%s",
         args.config,
         cfg.profile or "(none)",
         cfg.source_mode,
@@ -113,7 +113,7 @@ def _main_run(argv: list[str]) -> int:
 def _main_replay(argv: list[str]) -> int:
     # Lazy imports to allow doctor command to run without dependencies
     from metriplane.replay.engine import EngineConfig, iter_replay_outputs, write_outputs_jsonl
-    
+
     p = argparse.ArgumentParser("metriplane replay")
     p.add_argument("--input", required=True, help="Input JSONL session file")
     p.add_argument("--clock", choices=["replay", "fixed"], default="replay")
@@ -138,7 +138,9 @@ def _main_replay(argv: list[str]) -> int:
     if not args.output_file:
         # Spec rule you gave: output-file mode is the non-interactive path.
         # Keep it strict for now (we can add WS streaming later).
-        p.error("--output-file is required for replay CLI in M9.1 (non-interactive determinism mode)")
+        p.error(
+            "--output-file is required for replay CLI in M9.1 (non-interactive determinism mode)"
+        )
 
     if args.speed is not None:
         print(
@@ -224,11 +226,7 @@ def _check_demo_resources() -> tuple[str, str]:
         from metriplane.demo import BUNDLED_DEMO_RESOURCES
 
         package = resources.files("metriplane.demo")
-        missing = [
-            path
-            for path in BUNDLED_DEMO_RESOURCES
-            if not package.joinpath(path).is_file()
-        ]
+        missing = [path for path in BUNDLED_DEMO_RESOURCES if not package.joinpath(path).is_file()]
     except Exception as exc:
         return ("FAIL", f"Bundled demo resources could not be inspected: {exc}")
     if missing:
@@ -307,8 +305,7 @@ def _check_ports_available() -> tuple[str, str]:
         return ("PASS", f"Ports {', '.join(map(str, ports))} available")
     return (
         "WARN",
-        f"Ports {', '.join(map(str, unavailable))} in use "
-        "(may be Metriplane already running)",
+        f"Ports {', '.join(map(str, unavailable))} in use (may be Metriplane already running)",
     )
 
 
@@ -438,30 +435,71 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
         epilog=_LAUNCHER_FLAGS_HELP,
     )
     if name in ("start", "restart"):
-        p.add_argument("--live", action="store_true", default=False,
-                       help="Start runtime stream immediately (default: off)")
-        p.add_argument("--no-live", dest="live", action="store_false",
-                       help="Dashboard/runner only — no runtime stream (default)")
-        p.add_argument("--backend", choices=["cpu", "gpu"], default="cpu",
-                       help="Fusion compute backend (default: cpu)")
-        p.add_argument("--config", default="configs/local_demo_replay.yaml",
-                       help="Runtime config YAML")
-        p.add_argument("--duration-s", type=float, default=7200,
-                       dest="duration_s", help="Stop fusion after N seconds (default: 7200)")
-        p.add_argument("--run-id", default=None, dest="run_id",
-                       help="Override fusion run ID")
-        p.add_argument("--dashboard-port", type=int, default=8088,
-                       dest="dashboard_port", help="Dashboard server port (default: 8088)")
-        p.add_argument("--runner-port", type=int, default=9000,
-                       dest="runner_port", help="Runner API port (default: 9000)")
-        p.add_argument("--runs-dir", default=None, dest="runs_dir",
-                       help="Runs base directory (default: ~/metriplane-runs)")
-        p.add_argument("--open", action="store_true", default=True, dest="open_browser",
-                       help="Open browser after start (default: on)")
-        p.add_argument("--no-open", action="store_false", dest="open_browser",
-                       help="Do not open browser")
-        p.add_argument("--operator", action="store_true", default=False,
-                       help="Open operator.html instead of the Metriplane home console")
+        p.add_argument(
+            "--live",
+            action="store_true",
+            default=False,
+            help="Start runtime stream immediately (default: off)",
+        )
+        p.add_argument(
+            "--no-live",
+            dest="live",
+            action="store_false",
+            help="Dashboard/runner only — no runtime stream (default)",
+        )
+        p.add_argument(
+            "--backend",
+            choices=["cpu", "gpu"],
+            default="cpu",
+            help="Fusion compute backend (default: cpu)",
+        )
+        p.add_argument(
+            "--config", default="configs/local_demo_replay.yaml", help="Runtime config YAML"
+        )
+        p.add_argument(
+            "--duration-s",
+            type=float,
+            default=7200,
+            dest="duration_s",
+            help="Stop fusion after N seconds (default: 7200)",
+        )
+        p.add_argument("--run-id", default=None, dest="run_id", help="Override fusion run ID")
+        p.add_argument(
+            "--dashboard-port",
+            type=int,
+            default=8088,
+            dest="dashboard_port",
+            help="Dashboard server port (default: 8088)",
+        )
+        p.add_argument(
+            "--runner-port",
+            type=int,
+            default=9000,
+            dest="runner_port",
+            help="Runner API port (default: 9000)",
+        )
+        p.add_argument(
+            "--runs-dir",
+            default=None,
+            dest="runs_dir",
+            help="Runs base directory (default: ~/metriplane-runs)",
+        )
+        p.add_argument(
+            "--open",
+            action="store_true",
+            default=True,
+            dest="open_browser",
+            help="Open browser after start (default: on)",
+        )
+        p.add_argument(
+            "--no-open", action="store_false", dest="open_browser", help="Do not open browser"
+        )
+        p.add_argument(
+            "--operator",
+            action="store_true",
+            default=False,
+            help="Open operator.html instead of the Metriplane home console",
+        )
     return p
 
 
@@ -470,6 +508,7 @@ def _main_start(argv: list[str]) -> int:
         _DEFAULT_RUNS_DIR,
         cmd_start,
     )
+
     p = _build_launcher_parser("start")
     args = p.parse_args(argv)
     return cmd_start(
@@ -488,19 +527,28 @@ def _main_start(argv: list[str]) -> int:
 
 def _main_stop(argv: list[str]) -> int:
     from metriplane.launcher import cmd_stop
-    p = argparse.ArgumentParser("metriplane stop",
-                                description="Stop all launcher-started Metriplane processes.")
-    p.add_argument("--force", action="store_true", default=False,
-                   help="Force-stop even without state file; runs cleanup for orphaned VT processes")
+
+    p = argparse.ArgumentParser(
+        "metriplane stop", description="Stop all launcher-started Metriplane processes."
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Force-stop even without state file; runs cleanup for orphaned VT processes",
+    )
     args = p.parse_args(argv)
     return cmd_stop(force=bool(args.force))
 
 
 def _main_cleanup(argv: list[str]) -> int:
     from metriplane.launcher import cmd_cleanup
-    p = argparse.ArgumentParser("metriplane cleanup",
-                                description="Remove orphaned Metriplane processes on known ports. "
-                                            "Only kills processes matching known Metriplane patterns.")
+
+    p = argparse.ArgumentParser(
+        "metriplane cleanup",
+        description="Remove orphaned Metriplane processes on known ports. "
+        "Only kills processes matching known Metriplane patterns.",
+    )
     p.parse_args(argv)
     return cmd_cleanup()
 
@@ -510,6 +558,7 @@ def _main_restart(argv: list[str]) -> int:
         _DEFAULT_RUNS_DIR,
         cmd_restart,
     )
+
     p = _build_launcher_parser("restart")
     args = p.parse_args(argv)
     return cmd_restart(
@@ -528,8 +577,10 @@ def _main_restart(argv: list[str]) -> int:
 
 def _main_status(argv: list[str]) -> int:
     from metriplane.launcher import cmd_status
-    p = argparse.ArgumentParser("metriplane status",
-                                description="Show status of launcher-started Metriplane services.")
+
+    p = argparse.ArgumentParser(
+        "metriplane status", description="Show status of launcher-started Metriplane services."
+    )
     p.parse_args(argv)
     return cmd_status()
 
@@ -547,50 +598,65 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if argv and argv[0] == "demo":
         from metriplane.demo import main as demo_main
+
         return demo_main(argv[1:])
     if argv and argv[0] == "doctor":
         return _main_doctor(argv[1:])
     if argv and argv[0] == "objects":
         from metriplane.sentinel.cli_registry import main_objects
+
         return main_objects(argv[1:])
     if argv and argv[0] == "rules":
         from metriplane.sentinel.cli_rules import main_rules
+
         return main_rules(argv[1:])
     if argv and argv[0] == "incidents":
         from metriplane.sentinel.cli_incidents import main_incidents
+
         return main_incidents(argv[1:])
     if argv and argv[0] == "query":
         from metriplane.sentinel.cli_query import main_query
+
         return main_query(argv[1:])
     if argv and argv[0] == "contracts":
         from metriplane.contracts.cli import main as contracts_main
+
         return contracts_main(argv[1:])
     if argv and argv[0] == "sentinel":
         from metriplane.sentinel.cli_runtime import main_sentinel
+
         return main_sentinel(argv[1:])
     if argv and argv[0] == "test":
         from metriplane.testing.cli import main_test
+
         return main_test(argv[1:])
     if argv and argv[0] == "counterfactual":
         from metriplane.counterfactuals.cli import main_counterfactual
+
         return main_counterfactual(argv[1:])
     if argv and argv[0] == "command-center":
         from metriplane.runner.cli_command_center import main_command_center
+
         return main_command_center(argv[1:])
     if argv and argv[0] == "camera-trust":
         from metriplane.camera_trust.cli import main_camera_trust
+
         return main_camera_trust(argv[1:])
     if argv and argv[0] == "ask":
         from metriplane.assistant.cli import main_ask
+
         return main_ask(argv[1:])
     if argv and argv[0] == "traces":
         from metriplane.trace.cli_traces import main_traces
+
         return main_traces(argv[1:])
     if argv and argv[0] == "atlas":
         from metriplane.atlas.cli import main as atlas_main
-        return atlas_main(argv[1:])
+
+        return cast(int, atlas_main(argv[1:]))
     if argv and argv[0] == "external":
         from metriplane.external_sources.cli import main as external_main
+
         return external_main(argv[1:])
     if argv and argv[0] == "start":
         return _main_start(argv[1:])
@@ -604,6 +670,7 @@ def main(argv: list[str] | None = None) -> int:
         return _main_cleanup(argv[1:])
     # Setup logging for run and replay commands
     from metriplane.logging import setup_logging
+
     setup_logging()
 
     if argv and argv[0] == "run":

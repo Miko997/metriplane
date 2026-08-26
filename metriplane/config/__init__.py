@@ -11,6 +11,7 @@ and re-export its public API so that callers can continue to write:
 
     from metriplane.config import Config, load_config, resolve_profile
 """
+
 from __future__ import annotations
 
 import importlib.util as _util

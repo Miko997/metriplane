@@ -7,7 +7,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from metriplane.schema import FrameStateModel, frame_time_s
 from metriplane.sentinel.events import RuleAlert
@@ -17,9 +17,7 @@ from metriplane.sentinel.rules import ObjectFilter, RuleDefinition, RuleSet
 
 def iter_frames(session_path: str | Path) -> Iterator[FrameStateModel]:
     """Yield validated frames, rejecting malformed non-header records."""
-    for line_number, line in enumerate(
-        Path(session_path).read_text().splitlines(), start=1
-    ):
+    for line_number, line in enumerate(Path(session_path).read_text().splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
@@ -87,11 +85,20 @@ class RuleEngine:
         return f.matches(obj_type=st.type, obj_id=st.object_id, obj_tags=st.tags)
 
     def _present_matching(self, f: ObjectFilter | None) -> list[_TrackedObject]:
-        return [st for st in sorted(self._objects.values(), key=lambda s: s.object_id)
-                if st.present and self._matches(f, st)]
+        return [
+            st
+            for st in sorted(self._objects.values(), key=lambda s: s.object_id)
+            if st.present and self._matches(f, st)
+        ]
 
-    def _mk_alert(self, rule: RuleDefinition, ts: float, object_ids: list[str],
-                  zone: str | None, detail: dict) -> RuleAlert:
+    def _mk_alert(
+        self,
+        rule: RuleDefinition,
+        ts: float,
+        object_ids: list[str],
+        zone: str | None,
+        detail: dict[str, Any],
+    ) -> RuleAlert:
         return RuleAlert(
             alert_id=self._next_alert_id(),
             rule_id=rule.id,
@@ -109,16 +116,17 @@ class RuleEngine:
         ts = frame_time_s(frame)
         observed = frame.fused if frame.fused is not None else frame.objects
 
-        for st in self._objects.values():
-            st.present = False
+        for tracked in self._objects.values():
+            tracked.present = False
 
         transitions: list[tuple[_TrackedObject, str | None, str | None]] = []
         for obj in sorted(observed, key=lambda o: str(o.id)):
             object_id, otype, tags = self._resolve(str(obj.id))
             st = self._objects.get(object_id)
             if st is None:
-                st = _TrackedObject(object_id=object_id, marker_id=str(obj.id),
-                                    type=otype, tags=tags)
+                st = _TrackedObject(
+                    object_id=object_id, marker_id=str(obj.id), type=otype, tags=tags
+                )
                 self._objects[object_id] = st
             st.present = True
 
@@ -151,9 +159,12 @@ class RuleEngine:
             alerts.extend(self._eval_rule(rule, ts, transitions))
         return alerts
 
-    def _eval_rule(self, rule: RuleDefinition, ts: float,
-                   transitions: list[tuple[_TrackedObject, str | None, str | None]],
-                   ) -> list[RuleAlert]:
+    def _eval_rule(
+        self,
+        rule: RuleDefinition,
+        ts: float,
+        transitions: list[tuple[_TrackedObject, str | None, str | None]],
+    ) -> list[RuleAlert]:
         out: list[RuleAlert] = []
 
         if rule.type == "forbidden_zone":
@@ -170,8 +181,11 @@ class RuleEngine:
                 if st.zone == rule.zone and st.zone_since is not None:
                     dwell = ts - st.zone_since
                     if dwell >= rule.max_duration_s:
-                        out.append(self._mk_alert(rule, ts, [st.object_id], st.zone,
-                                                  {"dwell_s": round(dwell, 3)}))
+                        out.append(
+                            self._mk_alert(
+                                rule, ts, [st.object_id], st.zone, {"dwell_s": round(dwell, 3)}
+                            )
+                        )
 
         elif rule.type == "min_distance":
             if rule.min_distance_m is None:
@@ -183,7 +197,10 @@ class RuleEngine:
                 for b in b_list:
                     if a.object_id == b.object_id:
                         continue
-                    key = tuple(sorted((a.object_id, b.object_id)))
+                    key = (
+                        min(a.object_id, b.object_id),
+                        max(a.object_id, b.object_id),
+                    )
                     if key in seen_pairs:
                         continue
                     seen_pairs.add(key)
@@ -191,17 +208,22 @@ class RuleEngine:
                         continue
                     d = math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1])
                     if d < rule.min_distance_m:
-                        out.append(self._mk_alert(rule, ts, list(key),
-                                                  a.zone or b.zone,
-                                                  {"distance_m": round(d, 3)}))
+                        out.append(
+                            self._mk_alert(
+                                rule, ts, list(key), a.zone or b.zone, {"distance_m": round(d, 3)}
+                            )
+                        )
 
         elif rule.type == "speed_limit":
             if rule.max_speed_mps is None:
                 return out
             for st in self._present_matching(rule.object_filter):
                 if st.speed is not None and st.speed > rule.max_speed_mps:
-                    out.append(self._mk_alert(rule, ts, [st.object_id], st.zone,
-                                              {"speed_mps": round(st.speed, 3)}))
+                    out.append(
+                        self._mk_alert(
+                            rule, ts, [st.object_id], st.zone, {"speed_mps": round(st.speed, 3)}
+                        )
+                    )
 
         elif rule.type == "missing_object":
             if rule.max_duration_s is None:
@@ -213,16 +235,22 @@ class RuleEngine:
                     continue
                 missing_for = ts - st.last_seen
                 if missing_for > rule.max_duration_s:
-                    out.append(self._mk_alert(rule, ts, [st.object_id], None,
-                                              {"missing_for_s": round(missing_for, 3)}))
+                    out.append(
+                        self._mk_alert(
+                            rule, ts, [st.object_id], None, {"missing_for_s": round(missing_for, 3)}
+                        )
+                    )
 
         elif rule.type == "restricted_transition":
             for st, old, new in transitions:
                 if not self._matches(rule.object_filter, st):
                     continue
                 if old == rule.from_zone and new == rule.to_zone:
-                    out.append(self._mk_alert(rule, ts, [st.object_id], new,
-                                              {"from_zone": old, "to_zone": new}))
+                    out.append(
+                        self._mk_alert(
+                            rule, ts, [st.object_id], new, {"from_zone": old, "to_zone": new}
+                        )
+                    )
 
         return out
 

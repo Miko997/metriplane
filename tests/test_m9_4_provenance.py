@@ -68,8 +68,7 @@ def test_run_context_redacts_credentials_from_persisted_config(
 ) -> None:
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
     secret_url = (
-        "rtsp://camera-user:super-secret@camera.local:8554/stream"
-        "?token=query-secret&quality=high"
+        "rtsp://camera-user:super-secret@camera.local:8554/stream?token=query-secret&quality=high"
     )
     cfg = Config(
         source_mode="camera",
@@ -98,10 +97,9 @@ def test_run_context_redacts_credentials_from_persisted_config(
         run_id="redacted",
         runs_dir=str(tmp_path / "runs"),
     )
-    persisted = (
-        ctx.config_yaml.read_text(encoding="utf-8")
-        + ctx.config_canonical_json_path.read_text(encoding="utf-8")
-    )
+    persisted = ctx.config_yaml.read_text(
+        encoding="utf-8"
+    ) + ctx.config_canonical_json_path.read_text(encoding="utf-8")
 
     assert "super-secret" not in persisted
     assert "query-secret" not in persisted

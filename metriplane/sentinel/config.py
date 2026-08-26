@@ -46,10 +46,8 @@ class SentinelConfig:
             zones_file=data.get("zones_file"),
             export_summary=bool(data.get("export_summary", True)),
             api_enabled=bool(data.get("api_enabled", True)),
-            include_alerts_in_frame_metrics=bool(
-                data.get("include_alerts_in_frame_metrics", True)),
-            fail_fast_on_contract_error=bool(
-                data.get("fail_fast_on_contract_error", True)),
+            include_alerts_in_frame_metrics=bool(data.get("include_alerts_in_frame_metrics", True)),
+            fail_fast_on_contract_error=bool(data.get("fail_fast_on_contract_error", True)),
             forecasting=data.get("forecasting"),
             fleet=data.get("fleet"),
             camera_trust=data.get("camera_trust"),

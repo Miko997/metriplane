@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from metriplane.runner.cli_command_center import main_command_center
 from metriplane.runner.command_center_api import (
@@ -65,7 +64,11 @@ def test_get_frames_for_replay():
 
 
 def test_get_frames_missing_session(tmp_path):
-    assert get_frames(tmp_path) == {"frames": [], "incidents": [], "workspace": {"zones": [], "stations": []}}
+    assert get_frames(tmp_path) == {
+        "frames": [],
+        "incidents": [],
+        "workspace": {"zones": [], "stations": []},
+    }
 
 
 def test_live_summary():

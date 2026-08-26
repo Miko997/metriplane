@@ -26,10 +26,12 @@ class CalibPaths:
 def load_active_profile(calib_root: Path = CALIB_ROOT) -> str:
     p = calib_root / "active_profile.yaml"
     if not p.exists():
-        raise FileNotFoundError(f"Missing {p}. Create calib/active_profile.yaml with: profile: <name>")
+        raise FileNotFoundError(
+            f"Missing {p}. Create calib/active_profile.yaml with: profile: <name>"
+        )
     data: dict[str, Any] = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     prof = data.get("profile")
-    if not prof or not isinstance(prof, str):
+    if not isinstance(prof, str) or not prof:
         raise ValueError(f"{p} must contain: profile: <name>")
     return prof
 

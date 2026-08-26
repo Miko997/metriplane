@@ -25,9 +25,14 @@ def relpath(path: str | Path, root: str | Path) -> str:
         return str(path)
 
 
-def make_citation(path: str | Path, root: str | Path, source_type: str,
-                  record_id: str | None = None, line_number: int | None = None,
-                  field: str | None = None) -> CitationModel:
+def make_citation(
+    path: str | Path,
+    root: str | Path,
+    source_type: str,
+    record_id: str | None = None,
+    line_number: int | None = None,
+    field: str | None = None,
+) -> CitationModel:
     return CitationModel(
         source_path=relpath(path, root),
         source_type=source_type,

@@ -18,8 +18,6 @@ Key invariants verified here:
   - Valid multi-camera config → 200 + written file is loadable
 """
 
-import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from metriplane.runner.operator_api import OperatorAPI, _validate_camera_config
@@ -27,8 +25,8 @@ from metriplane.runner.operator_api import OperatorAPI, _validate_camera_config
 
 # ── Unit tests for _validate_camera_config ────────────────────────────────────
 
-class TestValidateCameraConfig:
 
+class TestValidateCameraConfig:
     def test_no_cameras_key_passes(self, tmp_path):
         """Single-camera configs with no 'cameras' list are valid."""
         assert _validate_camera_config({"profile": "test"}, tmp_path) is None
@@ -56,7 +54,7 @@ class TestValidateCameraConfig:
         err = _validate_camera_config(cfg, tmp_path)
         assert err is not None
         assert "device" in err or "index" in err
-        assert "source" in err   # error must mention the wrong key explicitly
+        assert "source" in err  # error must mention the wrong key explicitly
 
     def test_wrong_id_key_still_allowed(self, tmp_path):
         """'id' instead of 'name' doesn't block validation (silently became 'cam0')."""
@@ -81,11 +79,15 @@ class TestValidateCameraConfig:
 
     def test_missing_mapping_file_on_disk_rejected(self, tmp_path):
         """mapping_file path must exist on disk."""
-        cfg = {"cameras": [{
-            "name": "cam0",
-            "device": "/dev/video0",
-            "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"
-        }]}
+        cfg = {
+            "cameras": [
+                {
+                    "name": "cam0",
+                    "device": "/dev/video0",
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                }
+            ]
+        }
         err = _validate_camera_config(cfg, tmp_path)
         assert err is not None
         assert "not found" in err or "Step 5" in err
@@ -95,19 +97,27 @@ class TestValidateCameraConfig:
             mf = tmp_path / "calib" / "profiles" / "test" / cam / "mapping_raw.yaml"
             mf.parent.mkdir(parents=True)
             mf.write_text("h: 1\n")
-        cfg = {"cameras": [
-            {"name": "cam0", "device": "/dev/video0",
-             "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"},
-            {"name": "cam1", "device": "/dev/video2",
-             "mapping_file": "calib/profiles/test/cam1/mapping_raw.yaml"},
-        ]}
+        cfg = {
+            "cameras": [
+                {
+                    "name": "cam0",
+                    "device": "/dev/video0",
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                },
+                {
+                    "name": "cam1",
+                    "device": "/dev/video2",
+                    "mapping_file": "calib/profiles/test/cam1/mapping_raw.yaml",
+                },
+            ]
+        }
         assert _validate_camera_config(cfg, tmp_path) is None
 
 
 # ── Integration: _save_config rejects broken schema ──────────────────────────
 
-class TestSaveConfigValidation:
 
+class TestSaveConfigValidation:
     def _make_api(self, tmp_path):
         executor = MagicMock()
         executor.execute.return_value = "job-1"
@@ -123,10 +133,15 @@ class TestSaveConfigValidation:
 
     def test_save_config_rejects_missing_mapping_file_on_disk(self, tmp_path):
         api = self._make_api(tmp_path)
-        cfg = {"cameras": [
-            {"name": "cam0", "device": "/dev/video0",
-             "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"},
-        ]}
+        cfg = {
+            "cameras": [
+                {
+                    "name": "cam0",
+                    "device": "/dev/video0",
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                },
+            ]
+        }
         status, resp = api._save_config({"filename": "test_local.yaml", "config": cfg})
         assert status == 400
         assert "mapping_file" in resp["error"] or "not found" in resp["error"]
@@ -138,10 +153,15 @@ class TestSaveConfigValidation:
         mf.parent.mkdir(parents=True)
         mf.write_text("homography: [[1,0,0],[0,1,0],[0,0,1]]\n")
 
-        cfg = {"cameras": [
-            {"name": "cam0", "device": "/dev/video0",
-             "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"},
-        ]}
+        cfg = {
+            "cameras": [
+                {
+                    "name": "cam0",
+                    "device": "/dev/video0",
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                },
+            ]
+        }
         status, resp = api._save_config({"filename": "test_local.yaml", "config": cfg})
         assert status == 200
         saved = tmp_path / "configs" / "local" / "test_local.yaml"
@@ -158,13 +178,21 @@ class TestSaveConfigValidation:
         cfg = {
             "profile": "test",
             "target_fps": 30,
-            "ws_host": "127.0.0.1", "ws_port": 8765,
-            "metrics_host": "127.0.0.1", "metrics_port": 8000,
+            "ws_host": "127.0.0.1",
+            "ws_port": 8765,
+            "metrics_host": "127.0.0.1",
+            "metrics_port": 8000,
             "cameras": [
-                {"name": "cam0", "device": "/dev/video0",
-                 "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"},
-                {"name": "cam1", "device": "/dev/video2",
-                 "mapping_file": "calib/profiles/test/cam1/mapping_raw.yaml"},
+                {
+                    "name": "cam0",
+                    "device": "/dev/video0",
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                },
+                {
+                    "name": "cam1",
+                    "device": "/dev/video2",
+                    "mapping_file": "calib/profiles/test/cam1/mapping_raw.yaml",
+                },
             ],
             "fusion_enable": True,
             "fusion": {"method": "kalman"},
@@ -177,6 +205,7 @@ class TestSaveConfigValidation:
 
         # The saved file must be loadable by the real config loader
         import yaml as _yaml
+
         raw = _yaml.safe_load(saved.read_text())
         assert raw["cameras"][0]["name"] == "cam0"
         assert raw["cameras"][0].get("device") == "/dev/video0"
@@ -192,18 +221,23 @@ class TestSaveConfigValidation:
         mf.parent.mkdir(parents=True)
         mf.write_text("h: 1\n")
 
-        cfg = {"cameras": [
-            {"name": "cam0", "index": 0,
-             "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"},
-        ]}
+        cfg = {
+            "cameras": [
+                {
+                    "name": "cam0",
+                    "index": 0,
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                },
+            ]
+        }
         status, resp = api._save_config({"filename": "test_idx_local.yaml", "config": cfg})
         assert status == 200
 
 
 # ── metriplane.config.load_config parses saved YAML correctly ─────────────────
 
-class TestLoadConfigRoundtrip:
 
+class TestLoadConfigRoundtrip:
     def test_load_multi_camera_config(self, tmp_path):
         """
         Config written by the operator (correct field names) must be loadable
@@ -219,10 +253,16 @@ class TestLoadConfigRoundtrip:
             "ws_host": "127.0.0.1",
             "ws_port": 8765,
             "cameras": [
-                {"name": "cam0", "index": 0,
-                 "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml"},
-                {"name": "cam1", "index": 2,
-                 "mapping_file": "calib/profiles/test/cam1/mapping_raw.yaml"},
+                {
+                    "name": "cam0",
+                    "index": 0,
+                    "mapping_file": "calib/profiles/test/cam0/mapping_raw.yaml",
+                },
+                {
+                    "name": "cam1",
+                    "index": 2,
+                    "mapping_file": "calib/profiles/test/cam1/mapping_raw.yaml",
+                },
             ],
             "fusion_enable": True,
         }

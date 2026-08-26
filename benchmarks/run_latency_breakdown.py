@@ -22,7 +22,11 @@ def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
         return direct
 
     # Otherwise look for suffixed dirs (run_id-1, run_id-2, ...)
-    cands = sorted(runs_dir.glob(f"{run_id}*"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    cands = sorted(
+        runs_dir.glob(f"{run_id}*"),
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True,
+    )
     for p in cands:
         if p.is_dir():
             return p
@@ -31,17 +35,27 @@ def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="M9.5 latency breakdown runner")
-    ap.add_argument("--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)")
-    ap.add_argument("--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)")
-    ap.add_argument("--runs-dir", type=str, default=str(Path.home() / "metriplane-runs"), help="Runs base dir")
-    ap.add_argument("--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path")
+    ap.add_argument(
+        "--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)"
+    )
+    ap.add_argument(
+        "--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)"
+    )
+    ap.add_argument(
+        "--runs-dir", type=str, default=str(Path.home() / "metriplane-runs"), help="Runs base dir"
+    )
+    ap.add_argument(
+        "--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path"
+    )
     ap.add_argument(
         "--runner",
         choices=["run", "fusion"],
         default="run",
         help="Which runner to benchmark: 'run' (metriplane.run) or 'fusion' (metriplane.run_fusion)",
     )
-    ap.add_argument("--run-id", type=str, default=None, help="Optional run id override (otherwise auto)")
+    ap.add_argument(
+        "--run-id", type=str, default=None, help="Optional run id override (otherwise auto)"
+    )
     args = ap.parse_args()
 
     runs_dir = Path(args.runs_dir).expanduser().resolve()
@@ -51,9 +65,29 @@ def main() -> int:
     out_path = Path(args.out).expanduser().resolve()
 
     if args.runner == "fusion":
-        cmd = [sys.executable, "-m", "metriplane.run_fusion", "--config", args.config, "--runs-dir", str(runs_dir), "--run-id", run_id]
+        cmd = [
+            sys.executable,
+            "-m",
+            "metriplane.run_fusion",
+            "--config",
+            args.config,
+            "--runs-dir",
+            str(runs_dir),
+            "--run-id",
+            run_id,
+        ]
     else:
-        cmd = [sys.executable, "-m", "metriplane.run", "--config", args.config, "--runs-dir", str(runs_dir), "--run-id", run_id]
+        cmd = [
+            sys.executable,
+            "-m",
+            "metriplane.run",
+            "--config",
+            args.config,
+            "--runs-dir",
+            str(runs_dir),
+            "--run-id",
+            run_id,
+        ]
 
     print("=== M9.5 latency breakdown ===")
     print("runner    :", args.runner)
@@ -80,12 +114,17 @@ def main() -> int:
 
     rd = _best_run_dir(runs_dir, run_id)
     if rd is None:
-        print(f"ERROR: could not find run dir for run_id={run_id} under {runs_dir}", file=sys.stderr)
+        print(
+            f"ERROR: could not find run dir for run_id={run_id} under {runs_dir}", file=sys.stderr
+        )
         return 2
 
     src = rd / "latency.csv"
     if not src.is_file():
-        print(f"ERROR: {src} not found. Did you patch run.py/run_fusion.py to write latency.csv?", file=sys.stderr)
+        print(
+            f"ERROR: {src} not found. Did you patch run.py/run_fusion.py to write latency.csv?",
+            file=sys.stderr,
+        )
         return 3
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

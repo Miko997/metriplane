@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Union
 
-import cv2  # type: ignore
+import cv2
 
 from metriplane.models import Frame
 from metriplane.camera.v4l_resolve import resolve_v4l_to_index
@@ -82,7 +82,7 @@ class _USBCamWorker:
         # Optional tuning
         if self.fourcc is not None:
             try:
-                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*self.fourcc))
+                cap.set(cv2.CAP_PROP_FOURCC, getattr(cv2, "VideoWriter_fourcc")(*self.fourcc))
             except Exception:
                 pass
         if self.width is not None:
@@ -142,7 +142,9 @@ class _USBCamWorker:
                 return None
             return self._state.sequence, self._state.latest
 
-    def capture_status(self, *, now_monotonic: float | None = None) -> dict[str, float | int | bool]:
+    def capture_status(
+        self, *, now_monotonic: float | None = None
+    ) -> dict[str, float | int | bool]:
         """Return capture age from the monotonic clock, safe from wall-clock jumps."""
         now = time.monotonic() if now_monotonic is None else float(now_monotonic)
         with self._lock:
@@ -254,7 +256,9 @@ class USBMultiCamera:
         # Caller can choose to skip fusion for this tick.
         return frames
 
-    def capture_status(self, *, now_monotonic: float | None = None) -> dict[str, dict[str, float | int | bool]]:
+    def capture_status(
+        self, *, now_monotonic: float | None = None
+    ) -> dict[str, dict[str, float | int | bool]]:
         return {
             cid: worker.capture_status(now_monotonic=now_monotonic)
             for cid, worker in self._workers.items()

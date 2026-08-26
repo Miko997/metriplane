@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 """Build the camera-free MetriPlane demo path used by the localhost UI."""
+
 from __future__ import annotations
 
 import subprocess

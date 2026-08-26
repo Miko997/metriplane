@@ -18,6 +18,7 @@ class KafkaExporter:
         self._producer = None
         try:
             from confluent_kafka import Producer  # type: ignore
+
             self._producer = Producer({"bootstrap.servers": bootstrap_servers})
         except Exception as e:
             log.warning("Kafka exporter unavailable (%s); records will be skipped", e)

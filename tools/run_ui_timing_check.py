@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 """Camera-free timing check used by the localhost Benchmarks page."""
+
 from __future__ import annotations
 
 import csv
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from benchmarks.edge_latency import run_edge_latency
+from benchmarks.edge_latency import run_edge_latency  # noqa: E402
 
 OUT_DIR = ROOT / "runs/demo-evidence"
 OUT_CSV = OUT_DIR / "ui_latency_check.csv"

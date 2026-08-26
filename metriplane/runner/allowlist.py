@@ -24,6 +24,7 @@ _PYTHON = sys.executable
 @dataclass
 class AllowedCommand:
     """Definition of an allowlisted command"""
+
     id: str
     title: str
     description: str
@@ -55,7 +56,7 @@ ALLOWLIST: List[AllowedCommand] = [
         command=[_PYTHON, "-m", "metriplane.cli", "doctor"],
         enabled=True,
         disabled_reason=None,
-        timeout_s=30
+        timeout_s=30,
     ),
     AllowedCommand(
         id="preflight",
@@ -64,7 +65,7 @@ ALLOWLIST: List[AllowedCommand] = [
         command=["./tools/mp.sh", "preflight"],
         enabled=True,
         disabled_reason=None,
-        timeout_s=30
+        timeout_s=30,
     ),
     AllowedCommand(
         id="deterministic-replay",
@@ -73,7 +74,7 @@ ALLOWLIST: List[AllowedCommand] = [
         command=["./tools/mp.sh", "deterministic-replay"],
         enabled=True,
         disabled_reason=None,
-        timeout_s=120
+        timeout_s=120,
     ),
     AllowedCommand(
         id="backpressure",
@@ -82,7 +83,7 @@ ALLOWLIST: List[AllowedCommand] = [
         command=["./tools/mp.sh", "backpressure"],
         enabled=True,
         disabled_reason=None,
-        timeout_s=60
+        timeout_s=60,
     ),
     AllowedCommand(
         id="gpu-smoke",
@@ -92,7 +93,7 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
-        requires_gpu=True
+        requires_gpu=True,
     ),
     AllowedCommand(
         id="gpu-benchmark",
@@ -102,9 +103,8 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=True,
         disabled_reason=None,
         timeout_s=60,
-        requires_gpu=True
+        requires_gpu=True,
     ),
-    
     # Disabled commands (not runnable yet)
     AllowedCommand(
         id="health-degrade-cam1",
@@ -114,7 +114,7 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=False,
         disabled_reason="Requires second capture-capable camera",
         timeout_s=60,
-        requires_cameras=True
+        requires_cameras=True,
     ),
     AllowedCommand(
         id="gpu-equivalence",
@@ -124,7 +124,7 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=False,
         disabled_reason="Requires visible ArUco markers in test session",
         timeout_s=60,
-        requires_gpu=True
+        requires_gpu=True,
     ),
     AllowedCommand(
         id="run-fusion",
@@ -134,7 +134,7 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=False,
         disabled_reason="Hardware/configuration dependent - use CLI directly",
         timeout_s=300,
-        requires_cameras=True
+        requires_cameras=True,
     ),
     # Operator workflow commands
     AllowedCommand(
@@ -145,7 +145,7 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
-        requires_cameras=False
+        requires_cameras=False,
     ),
     AllowedCommand(
         id="timing-breakdown",
@@ -155,7 +155,7 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
-        requires_cameras=False
+        requires_cameras=False,
     ),
     AllowedCommand(
         id="list-cameras",
@@ -165,20 +165,30 @@ ALLOWLIST: List[AllowedCommand] = [
         enabled=True,
         disabled_reason=None,
         timeout_s=20,
-        requires_cameras=False
+        requires_cameras=False,
     ),
     # Command Center sample: one-click replay that populates the incident view.
     AllowedCommand(
         id="sentinel-demo",
         title="Build Command Center Sample",
         description="Run the camera-free incident sample and write a run the Command Center can display",
-        command=[_PYTHON, "-m", "metriplane.cli", "sentinel", "run",
-                 "--config", "configs/sentinel_operator_demo.yaml",
-                 "--run-id", "metriplane_demo", "--runs-dir", _RUNS_DIR],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "sentinel",
+            "run",
+            "--config",
+            "configs/sentinel_operator_demo.yaml",
+            "--run-id",
+            "metriplane_demo",
+            "--runs-dir",
+            _RUNS_DIR,
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=60,
-        requires_cameras=False
+        requires_cameras=False,
     ),
     # Metriplane evidence actions. These write only generated,
     # gitignored dashboard artifacts under web/dashboard/atlas_run.
@@ -186,8 +196,14 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-validate-pack",
         title="Validate Evidence Rules",
         description="Validate the checked-in assembly-cell evidence rules",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "validate-pack",
-                 "configs/domain_packs/assembly_cell"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "validate-pack",
+            "configs/domain_packs/assembly_cell",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
@@ -197,11 +213,21 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-demo",
         title="Build Evidence Sample",
         description="Run the Metriplane evidence workflow over the assembly-cell sample and publish local dashboard artifacts",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "run",
-                 "--session-jsonl", "datasets/demo/atlas/assembly_cell_missing_tool.jsonl",
-                 "--pack", "configs/domain_packs/assembly_cell",
-                 "--out", _ATLAS_UI_RUN,
-                 "--run-id", "metriplane_sample"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "run",
+            "--session-jsonl",
+            "datasets/demo/atlas/assembly_cell_missing_tool.jsonl",
+            "--pack",
+            "configs/domain_packs/assembly_cell",
+            "--out",
+            _ATLAS_UI_RUN,
+            "--run-id",
+            "metriplane_sample",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=90,
@@ -211,8 +237,7 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-verify-demo",
         title="Verify Incident Archive",
         description="Verify checksums and required contents for the generated incident evidence archive",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "bundle", "verify",
-                 _ATLAS_UI_BUNDLE],
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "bundle", "verify", _ATLAS_UI_BUNDLE],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -222,8 +247,7 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-regression-demo",
         title="Replay Evidence Regression",
         description="Replay the generated physical regression spec for the incident",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "test",
-                 _ATLAS_UI_REGRESSION, "--json"],
+        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "test", _ATLAS_UI_REGRESSION, "--json"],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -233,8 +257,17 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-query-demo-events",
         title="Query Event Ledger",
         description="Return the run's physical event ledger as JSON",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "query", "events",
-                 "--run-dir", _ATLAS_UI_RUN, "--json"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "query",
+            "events",
+            "--run-dir",
+            _ATLAS_UI_RUN,
+            "--json",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
@@ -244,9 +277,18 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-lake-build",
         title="Build Evidence Index",
         description="Index generated manifests, incidents, and events into a local SQLite evidence index",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "lake", "build",
-                 "--root", _ATLAS_UI_RUN,
-                 "--db", f"{_ATLAS_UI_RUN}/evidence_lake.sqlite"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "lake",
+            "build",
+            "--root",
+            _ATLAS_UI_RUN,
+            "--db",
+            f"{_ATLAS_UI_RUN}/evidence_lake.sqlite",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -256,8 +298,16 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-protocol-export",
         title="Export Protocol Files",
         description="Write local protocol schema/index artifacts for external interchange",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "protocol", "export",
-                 "--out", f"{_ATLAS_UI_RUN}/protocol"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "protocol",
+            "export",
+            "--out",
+            f"{_ATLAS_UI_RUN}/protocol",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -267,8 +317,16 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-pilot-kit",
         title="Create Field Review Kit",
         description="Create external review checklist, script, and review templates",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "pilot", "kit",
-                 "--out", f"{_ATLAS_UI_RUN}/pilot_kit"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "pilot",
+            "kit",
+            "--out",
+            f"{_ATLAS_UI_RUN}/pilot_kit",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
@@ -278,9 +336,18 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-freeze-build",
         title="Build Audit Snapshot",
         description="Build a local evidence audit and review-note snapshot",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "freeze", "build",
-                 "--root", ".",
-                 "--out", f"{_ATLAS_UI_RUN}/evidence_freeze"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "freeze",
+            "build",
+            "--root",
+            ".",
+            "--out",
+            f"{_ATLAS_UI_RUN}/evidence_freeze",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -290,9 +357,18 @@ ALLOWLIST: List[AllowedCommand] = [
         id="atlas-edge-doctor",
         title="Run Edge Readiness",
         description="Check generated evidence storage and edge-appliance readiness signals",
-        command=[_PYTHON, "-m", "metriplane.cli", "atlas", "edge", "doctor",
-                 "--runs-root", _ATLAS_UI_RUN,
-                 "--min-free-mb", "64"],
+        command=[
+            _PYTHON,
+            "-m",
+            "metriplane.cli",
+            "atlas",
+            "edge",
+            "doctor",
+            "--runs-root",
+            _ATLAS_UI_RUN,
+            "--min-free-mb",
+            "64",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=30,
@@ -302,9 +378,15 @@ ALLOWLIST: List[AllowedCommand] = [
         id="integration-omniverse-export",
         title="Export Omniverse USD Replay",
         description="Write a USD replay scene from the current Metriplane evidence run",
-        command=[_PYTHON, "-m", "integrations.omniverse.metriplane_usd_replay",
-                 "--run-dir", _ATLAS_UI_BUNDLE_DIR,
-                 "--out", f"{_ATLAS_UI_RUN}/omniverse/metriplane_replay.usda"],
+        command=[
+            _PYTHON,
+            "-m",
+            "integrations.omniverse.metriplane_usd_replay",
+            "--run-dir",
+            _ATLAS_UI_BUNDLE_DIR,
+            "--out",
+            f"{_ATLAS_UI_RUN}/omniverse/metriplane_replay.usda",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -314,9 +396,15 @@ ALLOWLIST: List[AllowedCommand] = [
         id="integration-isaac-export",
         title="Export Isaac USD Replay",
         description="Write a USD replay scene compatible with Isaac Sim",
-        command=[_PYTHON, "-m", "integrations.isaac.metriplane_to_usd",
-                 "--run-dir", _ATLAS_UI_BUNDLE_DIR,
-                 "--out", f"{_ATLAS_UI_RUN}/isaac/metriplane_replay.usda"],
+        command=[
+            _PYTHON,
+            "-m",
+            "integrations.isaac.metriplane_to_usd",
+            "--run-dir",
+            _ATLAS_UI_BUNDLE_DIR,
+            "--out",
+            f"{_ATLAS_UI_RUN}/isaac/metriplane_replay.usda",
+        ],
         enabled=True,
         disabled_reason=None,
         timeout_s=45,
@@ -386,8 +474,8 @@ def get_command(command_id: str) -> Optional[AllowedCommand]:
 def validate_command_id(command_id: str) -> bool:
     """Check if command_id exists in allowlist (security check)"""
     # Reject suspicious patterns
-    if not command_id.replace('-', '').replace('_', '').isalnum():
+    if not command_id.replace("-", "").replace("_", "").isalnum():
         return False
-    if '..' in command_id or '/' in command_id:
+    if ".." in command_id or "/" in command_id:
         return False
     return get_command(command_id) is not None

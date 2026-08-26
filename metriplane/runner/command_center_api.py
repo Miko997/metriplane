@@ -11,13 +11,17 @@ A "run dir" may be:
   - an incident evidence bundle (session_excerpt.jsonl, incident.json, objects.yaml, ...)
   - any run dir containing session.jsonl (+ optional incident/alerts artifacts)
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from metriplane.sentinel.registry import ObjectRegistryConfig
 
 
 def _find(run_dir: Path, names: list[str]) -> Path | None:
@@ -29,8 +33,7 @@ def _find(run_dir: Path, names: list[str]) -> Path | None:
 
 
 def _session(run_dir: Path) -> Path | None:
-    return _find(run_dir, ["session_excerpt.jsonl", "session.jsonl",
-                           "traces/object_traces.jsonl"])
+    return _find(run_dir, ["session_excerpt.jsonl", "session.jsonl", "traces/object_traces.jsonl"])
 
 
 def _objects_yaml(run_dir: Path) -> Path | None:
@@ -38,15 +41,18 @@ def _objects_yaml(run_dir: Path) -> Path | None:
 
 
 def _workspace_yaml(run_dir: Path) -> Path | None:
-    return _find(run_dir, ["workspace.yaml", "zones.yaml", "configs/workspace.yaml", "configs/zones.yaml"])
+    return _find(
+        run_dir, ["workspace.yaml", "zones.yaml", "configs/workspace.yaml", "configs/zones.yaml"]
+    )
 
 
-def _registry(run_dir: Path):
+def _registry(run_dir: Path) -> ObjectRegistryConfig | None:
     p = _objects_yaml(run_dir)
     if p is None:
         return None
     try:
         from metriplane.sentinel.registry import load_registry
+
         return load_registry(p)
     except Exception:
         return None
@@ -68,23 +74,27 @@ def get_workspace(run_dir: str | Path) -> dict[str, Any]:
         polygon = item.get("polygon") or []
         if not zone_id or not polygon:
             continue
-        zones.append({
-            "zone_id": zone_id,
-            "label": item.get("label") or zone_id,
-            "zone_type": item.get("zone_type") or item.get("type") or "zone",
-            "polygon": polygon,
-        })
+        zones.append(
+            {
+                "zone_id": zone_id,
+                "label": item.get("label") or zone_id,
+                "zone_type": item.get("zone_type") or item.get("type") or "zone",
+                "polygon": polygon,
+            }
+        )
 
     stations = []
     for item in data.get("stations", []) or []:
         station_id = item.get("station_id") or item.get("id")
         if not station_id:
             continue
-        stations.append({
-            "station_id": station_id,
-            "zone_id": item.get("zone_id"),
-            "label": item.get("label") or station_id,
-        })
+        stations.append(
+            {
+                "station_id": station_id,
+                "zone_id": item.get("zone_id"),
+                "label": item.get("label") or station_id,
+            }
+        )
 
     return {
         "zones": zones,
@@ -103,6 +113,7 @@ def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
         return []
     try:
         from metriplane.sentinel.engine import iter_frames
+
         frames = list(iter_frames(session))
     except Exception:
         return []
@@ -124,16 +135,18 @@ def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
         speed = None
         if o.vel_world:
             speed = round((o.vel_world[0] ** 2 + o.vel_world[1] ** 2) ** 0.5, 3)
-        out.append({
-            "object_id": oid,
-            "marker_id": str(o.id),
-            "type": otype,
-            "zone": o.zone,
-            "x_m": o.pos_world[0] if o.pos_world else None,
-            "y_m": o.pos_world[1] if o.pos_world else None,
-            "speed_mps": speed,
-            "last_ts": last.ts,
-        })
+        out.append(
+            {
+                "object_id": oid,
+                "marker_id": str(o.id),
+                "type": otype,
+                "zone": o.zone,
+                "x_m": o.pos_world[0] if o.pos_world else None,
+                "y_m": o.pos_world[1] if o.pos_world else None,
+                "speed_mps": speed,
+                "last_ts": last.ts,
+            }
+        )
     return out
 
 
@@ -172,6 +185,7 @@ def get_traces(run_dir: str | Path, object_id: str | None = None) -> list[dict[s
         return []
     try:
         from metriplane.trace.store import TraceStore
+
         store = TraceStore(registry_path=_objects_yaml(run))
         store.load_session(session)
         summaries = store.summarize()
@@ -181,17 +195,19 @@ def get_traces(run_dir: str | Path, object_id: str | None = None) -> list[dict[s
     for s in summaries:
         if object_id is not None and s.object_id != object_id:
             continue
-        rows.append({
-            "object_id": s.object_id,
-            "marker_id": s.marker_id,
-            "duration_s": s.duration_s,
-            "total_distance_m": s.total_distance_m,
-            "max_speed_mps": s.max_speed_mps,
-            "zones_visited": s.zones_visited,
-            "dwell_by_zone": s.dwell_by_zone,
-            "point_count": s.point_count,
-            "gap_count": s.gap_count,
-        })
+        rows.append(
+            {
+                "object_id": s.object_id,
+                "marker_id": s.marker_id,
+                "duration_s": s.duration_s,
+                "total_distance_m": s.total_distance_m,
+                "max_speed_mps": s.max_speed_mps,
+                "zones_visited": s.zones_visited,
+                "dwell_by_zone": s.dwell_by_zone,
+                "point_count": s.point_count,
+                "gap_count": s.gap_count,
+            }
+        )
     return rows
 
 
@@ -208,6 +224,7 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
         return {"frames": [], "incidents": [], "workspace": workspace}
     try:
         from metriplane.sentinel.engine import iter_frames
+
         registry = _registry(run)
         frames_out: list[dict[str, Any]] = []
         for frame in iter_frames(session):
@@ -222,13 +239,16 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
                             oid, otype = entry.object_id, entry.type
                     except (TypeError, ValueError):
                         pass
-                objs.append({
-                    "object_id": oid, "type": otype, "zone": o.zone,
-                    "x_m": o.pos_world[0] if o.pos_world else None,
-                    "y_m": o.pos_world[1] if o.pos_world else None,
-                })
-            frames_out.append({"ts": frame.ts, "frame_id": frame.frame_id,
-                               "objects": objs})
+                objs.append(
+                    {
+                        "object_id": oid,
+                        "type": otype,
+                        "zone": o.zone,
+                        "x_m": o.pos_world[0] if o.pos_world else None,
+                        "y_m": o.pos_world[1] if o.pos_world else None,
+                    }
+                )
+            frames_out.append({"ts": frame.ts, "frame_id": frame.frame_id, "objects": objs})
             if len(frames_out) >= max_frames:
                 break
     except Exception:
@@ -236,14 +256,16 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
 
     incidents = []
     for inc in get_incidents(run):
-        incidents.append({
-            "incident_id": inc.get("incident_id"),
-            "rule_id": inc.get("rule_id"),
-            "severity": inc.get("severity"),
-            "object_ids": inc.get("object_ids", []),
-            "opened_ts": inc.get("opened_ts"),
-            "closed_ts": inc.get("closed_ts"),
-        })
+        incidents.append(
+            {
+                "incident_id": inc.get("incident_id"),
+                "rule_id": inc.get("rule_id"),
+                "severity": inc.get("severity"),
+                "object_ids": inc.get("object_ids", []),
+                "opened_ts": inc.get("opened_ts"),
+                "closed_ts": inc.get("closed_ts"),
+            }
+        )
     return {"frames": frames_out, "incidents": incidents, "workspace": workspace}
 
 

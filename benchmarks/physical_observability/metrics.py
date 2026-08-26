@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 
 def precision_recall_f1(expected: list[str], observed: list[str]) -> dict:
     """Set-based precision/recall/F1 over rule-id labels."""
@@ -15,13 +13,14 @@ def precision_recall_f1(expected: list[str], observed: list[str]) -> dict:
     fn = len(exp - obs)
     precision = tp / (tp + fp) if (tp + fp) else 1.0
     recall = tp / (tp + fn) if (tp + fn) else 1.0
-    f1 = (2 * precision * recall / (precision + recall)
-          if (precision + recall) else 0.0)
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
     return {
         "precision": round(precision, 6),
         "recall": round(recall, 6),
         "f1": round(f1, 6),
-        "tp": tp, "fp": fp, "fn": fn,
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
     }
 
 

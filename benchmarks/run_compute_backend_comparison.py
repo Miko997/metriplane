@@ -7,14 +7,12 @@ import argparse
 import csv
 import json
 import math
-import os
 import random
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, List, Sequence
 
 from metriplane.compute.cpu_numpy import CpuNumpyBackend
 from metriplane.compute.gpu_cupy import GpuCupyBackend, GpuUnavailable
@@ -100,7 +98,9 @@ def _synchronize(backend: FusionComputeBackend) -> None:
         pass
 
 
-def _make_synth_observations(*, n_objects: int, n_cams: int, seed: int) -> Dict[str, List[Dict[str, Any]]]:
+def _make_synth_observations(
+    *, n_objects: int, n_cams: int, seed: int
+) -> Dict[str, List[Dict[str, Any]]]:
     rnd = random.Random(int(seed))
 
     obs_by_id: Dict[str, List[Dict[str, Any]]] = {}
@@ -114,7 +114,15 @@ def _make_synth_observations(*, n_objects: int, n_cams: int, seed: int) -> Dict[
             nx = rnd.gauss(0.0, 0.005)
             ny = rnd.gauss(0.0, 0.005)
             rmse = max(0.005, abs(rnd.gauss(0.02, 0.01)))
-            items.append({"x": x0 + nx, "y": y0 + ny, "rmse": rmse, "confidence": 1.0, "camera_id": f"cam{c}"})
+            items.append(
+                {
+                    "x": x0 + nx,
+                    "y": y0 + ny,
+                    "rmse": rmse,
+                    "confidence": 1.0,
+                    "camera_id": f"cam{c}",
+                }
+            )
         obs_by_id[oid] = items
 
     return obs_by_id
@@ -175,7 +183,9 @@ def main(argv: List[str] | None = None) -> int:
     rows: List[Dict[str, Any]] = []
 
     for n_obj in obj_counts:
-        obs = _make_synth_observations(n_objects=int(n_obj), n_cams=int(args.cams), seed=int(args.seed))
+        obs = _make_synth_observations(
+            n_objects=int(n_obj), n_cams=int(args.cams), seed=int(args.seed)
+        )
 
         for b in backends:
             backend = _make_backend(b, device=int(args.device))

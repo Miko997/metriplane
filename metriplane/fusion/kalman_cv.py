@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-import numpy as np  # type: ignore
+import numpy as np
 
 
 @dataclass
@@ -15,6 +15,7 @@ class KalmanCV2D:
     State: [x, y, vx, vy]
     Measurement: [x, y]
     """
+
     x: np.ndarray  # (4,)
     P: np.ndarray  # (4,4)
 
@@ -64,8 +65,8 @@ class KalmanCV2D:
 
         K = self.P @ H.T @ np.linalg.inv(S)
         self.x = (self.x + (K @ y)).astype(np.float64)
-        I = np.eye(4, dtype=np.float64)
-        self.P = ((I - (K @ H)) @ self.P).astype(np.float64)
+        identity = np.eye(4, dtype=np.float64)
+        self.P = ((identity - (K @ H)) @ self.P).astype(np.float64)
 
 
 @dataclass
@@ -121,7 +122,7 @@ class MultiObjectKalman:
                 kf.predict(dt, process_sigma=float(self.process_sigma))
 
             # Multi-sensor updates
-            for (x, y, sigma) in meas_list:
+            for x, y, sigma in meas_list:
                 sig = float(sigma) if sigma > 0 else float(self.base_meas_sigma)
                 kf.update_xy((float(x), float(y)), meas_sigma=sig)
 

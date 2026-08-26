@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = ROOT / "pyproject.toml"
 LOCK_PATH = ROOT / "uv.lock"
 POLICY_DOC_PATH = ROOT / "docs" / "maintainers" / "testing-policy.md"
+CI_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def _load_warning_policy_module() -> Any:
@@ -100,6 +101,38 @@ def test_dev_toolchain_is_exact() -> None:
 
 def test_uv_requirement_is_exact() -> None:
     assert _pyproject()["tool"]["uv"]["required-version"] == "==0.12.0"
+
+
+def test_root_quality_scope_is_explicit() -> None:
+    config = _pyproject()["tool"]
+    assert config["ruff"] == {
+        "line-length": 100,
+        "target-version": "py312",
+        "exclude": ["adapters", "evidence", "metriplane/atlas", "proofs"],
+        "lint": {"select": ["E4", "E7", "E9", "F"]},
+    }
+    assert config["mypy"] == {
+        "python_version": "3.12",
+        "strict": True,
+        "files": ["metriplane"],
+        "exclude": "^metriplane/atlas/",
+        "overrides": [
+            {
+                "module": ["metriplane.atlas", "metriplane.atlas.*"],
+                "follow_imports": "skip",
+            }
+        ],
+    }
+
+
+def test_ci_runs_the_canonical_quality_commands() -> None:
+    workflow = CI_PATH.read_text(encoding="utf-8")
+    commands = (
+        "uv run --frozen ruff check .",
+        "uv run --frozen ruff format --check .",
+        "uv run --frozen mypy",
+    )
+    assert all(workflow.count(command) == 1 for command in commands)
 
 
 def test_lock_metadata_requires_exact_toolchain() -> None:
@@ -303,6 +336,15 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
         "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q",
         "METRIPLANE_TEST_PROFILE=installed",
         "PYTHONPATH",
+        "uv run --frozen ruff check .",
+        "uv run --frozen ruff format --check .",
+        "uv run --frozen mypy",
+        "adapters/",
+        "evidence/",
+        "metriplane/atlas/",
+        "proofs/",
+        "maintained `metriplane` package",
+        'follow_imports = "skip"',
     ]
     required.extend(f"{name}=={version}" for name, version in TOOLCHAIN.items())
     assert all(fragment in text for fragment in required)

@@ -11,19 +11,17 @@ Only writes to: calib/profiles/local_*/  configs/local/  configs/generated/
 
 from __future__ import annotations
 
-import glob
 import hashlib
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
-import yaml  # type: ignore
+import yaml
 
 # ── Safety patterns ────────────────────────────────────────────────────────────
 
@@ -89,17 +87,23 @@ def _resolve_cv2_index(camera_path: str) -> Tuple[Optional[str], Optional[str]]:
         return (m.group(1), None)
     # /dev/v4l/by-id/... — stable symlink but not directly usable as cv2 index
     if camera_path.startswith("/dev/v4l/by-id/"):
-        return (None, (
-            f"Camera path '{camera_path}' cannot be used with "
-            "calibrate_planar_homography.py — it requires an integer index "
-            "(e.g. 0 or 2) not a /dev/v4l/by-id/ path. "
-            "Use the /dev/videoN path shown in 'Scan Cameras' (Step 2)."
-        ))
-    return (None, f"Unsupported camera format for calibration: '{camera_path}'. "
-                  "Use /dev/videoN or an integer index (e.g. 0, 2).")
+        return (
+            None,
+            (
+                f"Camera path '{camera_path}' cannot be used with "
+                "calibrate_planar_homography.py — it requires an integer index "
+                "(e.g. 0 or 2) not a /dev/v4l/by-id/ path. "
+                "Use the /dev/videoN path shown in 'Scan Cameras' (Step 2)."
+            ),
+        )
+    return (
+        None,
+        f"Unsupported camera format for calibration: '{camera_path}'. "
+        "Use /dev/videoN or an integer index (e.g. 0, 2).",
+    )
 
 
-def _validate_camera_config(config_data: dict, repo_root: Path) -> Optional[str]:
+def _validate_camera_config(config_data: dict[str, Any], repo_root: Path) -> Optional[str]:
     """
     Validate CameraSpec fields in a config dict before saving.
 
@@ -160,6 +164,7 @@ def _validate_config_relative(repo_root: Path, config: str) -> Optional[Path]:
 
 # ── Python interpreter resolution ──────────────────────────────────────────────
 
+
 def _resolve_python_executable(repo_root: Path) -> str:
     """
     Resolve the Python interpreter to use for all Operator subprocess calls.
@@ -171,6 +176,7 @@ def _resolve_python_executable(repo_root: Path) -> str:
       4. <repo_root>/.venv/bin/python    — project standard venv (preferred default)
       5. sys.executable           — current interpreter (CI / Docker fallback)
     """
+
     def _is_exec(p: str) -> bool:
         return bool(p) and os.path.isfile(p) and os.access(p, os.X_OK)
 
@@ -209,14 +215,18 @@ def _check_cv2_available(python_exe: str) -> Tuple[bool, Optional[str], bool]:
     try:
         r = subprocess.run(
             [python_exe, "-c", "import cv2; print(cv2.__version__)"],
-            capture_output=True, text=True, timeout=8,
+            capture_output=True,
+            text=True,
+            timeout=8,
         )
         if r.returncode != 0:
             return False, None, False
         version = r.stdout.strip()
         r2 = subprocess.run(
             [python_exe, "-c", "from cv2 import aruco; print('ok')"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return True, version, r2.returncode == 0
     except Exception:
@@ -238,7 +248,7 @@ class OperatorAPI:
         # Resolved once at startup — uses .venv/bin/python when present
         self._python: str = _resolve_python_executable(repo_root)
 
-    def route(self, method: str, path: str, body: Dict[str, Any]) -> Tuple[int, Dict]:
+    def route(self, method: str, path: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """
         Route /operator/* requests.
         Returns (status_code, response_dict).
@@ -311,7 +321,7 @@ class OperatorAPI:
 
     # ── GET /operator/env ──────────────────────────────────────────────────────
 
-    def _get_env(self) -> Tuple[int, Dict]:
+    def _get_env(self) -> tuple[int, dict[str, Any]]:
         import platform
 
         # Git hash
@@ -370,7 +380,7 @@ class OperatorAPI:
 
     # ── GET /operator/cameras ──────────────────────────────────────────────────
 
-    def _get_cameras(self) -> Tuple[int, Dict]:
+    def _get_cameras(self) -> tuple[int, dict[str, Any]]:
         script = self.repo_root / "tools" / "list_cameras.py"
         if not script.exists():
             return 500, {"error": "tools/list_cameras.py not found"}
@@ -384,7 +394,9 @@ class OperatorAPI:
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                return 200, data
+                if isinstance(data, dict):
+                    return 200, data
+                return 500, {"error": "list_cameras.py returned a non-object JSON response"}
             return 500, {"error": result.stderr or "list_cameras.py failed"}
         except subprocess.TimeoutExpired:
             return 500, {"error": "Camera scan timed out (20s)"}
@@ -393,7 +405,7 @@ class OperatorAPI:
 
     # ── GET /operator/profiles ─────────────────────────────────────────────────
 
-    def _get_profiles(self) -> Tuple[int, Dict]:
+    def _get_profiles(self) -> tuple[int, dict[str, Any]]:
         profiles_root = self.repo_root / "calib" / "profiles"
         profiles = []
         if profiles_root.exists():
@@ -418,7 +430,7 @@ class OperatorAPI:
 
     # ── GET /operator/configs ──────────────────────────────────────────────────
 
-    def _get_configs(self) -> Tuple[int, Dict]:
+    def _get_configs(self) -> tuple[int, dict[str, Any]]:
         configs_root = self.repo_root / "configs"
         configs = []
         if configs_root.exists():
@@ -436,12 +448,12 @@ class OperatorAPI:
 
     # ── GET /operator/latest-run ───────────────────────────────────────────────
 
-    def _get_latest_run(self) -> Tuple[int, Dict]:
+    def _get_latest_run(self) -> tuple[int, dict[str, Any]]:
         runs_root = Path.home() / "metriplane-runs"
         if not runs_root.exists():
             return 200, {"latest_run": None, "runs_dir": str(runs_root)}
 
-        candidates = []
+        candidates: list[dict[str, Any]] = []
         for d in sorted(runs_root.iterdir()):
             if d.is_dir():
                 session = d / "session.jsonl"
@@ -451,19 +463,21 @@ class OperatorAPI:
                         "dir": str(d),
                         "name": d.name,
                         "session_exists": session.exists(),
-                        "session_size_mb": round(session.stat().st_size / 1e6, 1) if session.exists() else None,
+                        "session_size_mb": round(session.stat().st_size / 1e6, 1)
+                        if session.exists()
+                        else None,
                         "meta_exists": meta.exists(),
                         "mtime": d.stat().st_mtime,
                     }
                 )
 
-        candidates.sort(key=lambda x: x["mtime"], reverse=True)
+        candidates.sort(key=lambda x: float(x["mtime"]), reverse=True)
 
         run_info = None
         if candidates:
             latest = candidates[0]
             # Try to read meta.json for run_id, git_commit
-            meta_path = Path(latest["dir"]) / "meta.json"
+            meta_path = Path(str(latest["dir"])) / "meta.json"
             if meta_path.exists():
                 try:
                     meta_data = json.loads(meta_path.read_text())
@@ -480,7 +494,7 @@ class OperatorAPI:
 
     # ── GET /operator/runner-status ────────────────────────────────────────────
 
-    def _get_runner_status(self) -> Tuple[int, Dict]:
+    def _get_runner_status(self) -> tuple[int, dict[str, Any]]:
         running = self.executor.is_running()
         job = None
         if running and self.executor.current_job:
@@ -495,23 +509,27 @@ class OperatorAPI:
 
     # ── POST /operator/create-profile ─────────────────────────────────────────
 
-    def _create_profile(self, body: Dict) -> Tuple[int, Dict]:
+    def _create_profile(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         name: str = body.get("name", "").strip()
         width_m: float = body.get("width_m", 0.55)
         height_m: float = body.get("height_m", 0.40)
-        anchors: list = body.get("anchors", [])
-        cameras: list = body.get("cameras", ["cam0"])  # ["cam0"] or ["cam0","cam1"]
+        anchors: list[Any] = body.get("anchors", [])
+        cameras: list[str] = body.get("cameras", ["cam0"])  # ["cam0"] or ["cam0","cam1"]
         overwrite: bool = bool(body.get("overwrite", False))
 
         if not _valid_name(name):
-            return 400, {"error": "Profile name must be letters/numbers/dash/underscore, 1-64 chars"}
+            return 400, {
+                "error": "Profile name must be letters/numbers/dash/underscore, 1-64 chars"
+            }
 
         # Enforce local_ prefix for safety (won't overwrite shipped profiles)
         if not name.startswith("local_"):
             name = f"local_{name}"
 
         if not isinstance(cameras, list) or not cameras:
-            return 400, {"error": "cameras must be a non-empty list containing cam0 and optionally cam1"}
+            return 400, {
+                "error": "cameras must be a non-empty list containing cam0 and optionally cam1"
+            }
         for cam in cameras:
             if cam not in ("cam0", "cam1"):
                 return 400, {
@@ -587,9 +605,9 @@ class OperatorAPI:
 
     # ── POST /operator/write-zones ─────────────────────────────────────────────
 
-    def _write_zones(self, body: Dict) -> Tuple[int, Dict]:
+    def _write_zones(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         profile: str = body.get("profile", "").strip()
-        zones: list = body.get("zones", [])
+        zones: list[Any] = body.get("zones", [])
         overwrite: bool = bool(body.get("overwrite", False))
 
         if not _valid_name(profile):
@@ -623,10 +641,12 @@ class OperatorAPI:
             for pt in polygon:
                 if len(pt) != 2:
                     return 400, {"error": f"Zone '{zname}' vertex must be [x, y]"}
-            zone_list.append({
-                "name": zname,
-                "polygon": [[float(p[0]), float(p[1])] for p in polygon],
-            })
+            zone_list.append(
+                {
+                    "name": zname,
+                    "polygon": [[float(p[0]), float(p[1])] for p in polygon],
+                }
+            )
 
         zones_data = {"zones": zone_list}
         zones_path.write_text(yaml.dump(zones_data, default_flow_style=False), encoding="utf-8")
@@ -640,9 +660,9 @@ class OperatorAPI:
 
     # ── POST /operator/save-config ─────────────────────────────────────────────
 
-    def _save_config(self, body: Dict) -> Tuple[int, Dict]:
+    def _save_config(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         filename: str = body.get("filename", "").strip()
-        config_data: dict = body.get("config", {})
+        config_data: dict[str, Any] = body.get("config", {})
         overwrite: bool = bool(body.get("overwrite", False))
 
         if not filename:
@@ -692,7 +712,7 @@ class OperatorAPI:
 
     # ── POST /operator/calibrate ───────────────────────────────────────────────
 
-    def _calibrate(self, body: Dict) -> Tuple[int, Dict]:
+    def _calibrate(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         profile: str = body.get("profile", "").strip()
         cam_name: str = body.get("cam", "cam0").strip()  # "cam0" or "cam1"
         camera_path: str = str(body.get("camera", "0")).strip()
@@ -705,7 +725,9 @@ class OperatorAPI:
         if cam_name not in ("cam0", "cam1"):
             return 400, {"error": "cam must be cam0 or cam1"}
         if not _safe_camera(camera_path):
-            return 400, {"error": "Invalid camera path. Must be /dev/video*, /dev/v4l/by-id/* or integer 0-99"}
+            return 400, {
+                "error": "Invalid camera path. Must be /dev/video*, /dev/v4l/by-id/* or integer 0-99"
+            }
         if not (5 <= timeout_s <= 300):
             return 400, {"error": "timeout_s must be 5-300"}
         if not (10 <= max_frames <= 3000):
@@ -716,7 +738,9 @@ class OperatorAPI:
         if not profile_dir.exists():
             return 404, {"error": f"Profile not found: {profile}"}
         if not anchors_path.exists():
-            return 400, {"error": f"anchors.yaml not found in profile '{profile}'. Create the profile first."}
+            return 400, {
+                "error": f"anchors.yaml not found in profile '{profile}'. Create the profile first."
+            }
 
         # ── cv2 preflight — fail fast before submitting a doomed calibration job ──
         py_exe = self._python
@@ -726,8 +750,7 @@ class OperatorAPI:
                 "error": "OpenCV missing from runner Python",
                 "python_executable": py_exe,
                 "fix_command": (
-                    "source .venv/bin/activate && "
-                    "python -m pip install opencv-contrib-python"
+                    "source .venv/bin/activate && python -m pip install opencv-contrib-python"
                 ),
                 "hint": "Restart ./tools/dashboard_runner.sh after installing.",
             }
@@ -745,12 +768,18 @@ class OperatorAPI:
         # Build safe command (no shell=True, no user data in shell-sensitive positions)
         script = self.repo_root / "tools" / "calibrate_planar_homography.py"
         command = [
-            py_exe, str(script),
-            "--cam", cv2_cam,
-            "--anchors", str(anchors_path),
-            "--out", str(out_path),
-            "--timeout-s", str(timeout_s),
-            "--max-frames", str(max_frames),
+            py_exe,
+            str(script),
+            "--cam",
+            cv2_cam,
+            "--anchors",
+            str(anchors_path),
+            "--out",
+            str(out_path),
+            "--timeout-s",
+            str(timeout_s),
+            "--max-frames",
+            str(max_frames),
         ]
         if no_preview:
             command.append("--no-preview")
@@ -784,7 +813,7 @@ class OperatorAPI:
     # If intrinsics files ARE present in the profile, they are passed for
     # improved per-ID delta reporting.  Intrinsics are never required.
 
-    def _validate_alignment(self, body: Dict) -> Tuple[int, Dict]:
+    def _validate_alignment(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         profile: str = body.get("profile", "").strip()
         cam0_path: str = str(body.get("cam0", "0")).strip()
         cam1_path: str = str(body.get("cam1", "2")).strip()
@@ -798,12 +827,16 @@ class OperatorAPI:
         profile_dir = _profile_dir(self.repo_root, profile)
         mapping0 = profile_dir / "cam0" / "mapping_raw.yaml"
         mapping1 = profile_dir / "cam1" / "mapping_raw.yaml"
-        anchors   = profile_dir / "anchors.yaml"
+        anchors = profile_dir / "anchors.yaml"
 
         if not mapping0.exists():
-            return 400, {"error": "cam0 mapping_raw.yaml not found. Run Calibrate cam0 (Step 5) first."}
+            return 400, {
+                "error": "cam0 mapping_raw.yaml not found. Run Calibrate cam0 (Step 5) first."
+            }
         if not mapping1.exists():
-            return 400, {"error": "cam1 mapping_raw.yaml not found. Run Calibrate cam1 (Step 5) first."}
+            return 400, {
+                "error": "cam1 mapping_raw.yaml not found. Run Calibrate cam1 (Step 5) first."
+            }
         if not anchors.exists():
             return 400, {"error": "anchors.yaml not found in profile. Complete Step 4 first."}
 
@@ -820,13 +853,20 @@ class OperatorAPI:
         if err1:
             return 400, {"error": f"cam1: {err1}"}
 
-        command: list = [
-            self._python, str(script),
-            "--cam0", cv2_cam0,
-            "--cam1", cv2_cam1,
-            "--mapping-cam0", str(mapping0),
-            "--mapping-cam1", str(mapping1),
-            "--anchors", str(anchors),
+        assert cv2_cam0 is not None and cv2_cam1 is not None
+        command: list[str] = [
+            self._python,
+            str(script),
+            "--cam0",
+            cv2_cam0,
+            "--cam1",
+            cv2_cam1,
+            "--mapping-cam0",
+            str(mapping0),
+            "--mapping-cam1",
+            str(mapping1),
+            "--anchors",
+            str(anchors),
         ]
 
         # Attach intrinsics if they already exist (improves undistort accuracy)
@@ -834,8 +874,7 @@ class OperatorAPI:
         intrs_cam1 = profile_dir / "cam1" / "intrinsics.yaml"
         has_intrinsics = intrs_cam0.exists() and intrs_cam1.exists()
         if has_intrinsics:
-            command += ["--intrinsics-cam0", str(intrs_cam0),
-                        "--intrinsics-cam1", str(intrs_cam1)]
+            command += ["--intrinsics-cam0", str(intrs_cam0), "--intrinsics-cam1", str(intrs_cam1)]
 
         command_display = " ".join(str(x) for x in command)
 
@@ -862,7 +901,7 @@ class OperatorAPI:
     # Requires intrinsics.yaml for both cameras.  Returns a structured 400 when
     # they are missing — listing exact paths and the command to generate them.
 
-    def _full_alignment_check(self, body: Dict) -> Tuple[int, Dict]:
+    def _full_alignment_check(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         profile: str = body.get("profile", "").strip()
         cam0_path: str = str(body.get("cam0", "0")).strip()
         cam1_path: str = str(body.get("cam1", "2")).strip()
@@ -876,7 +915,7 @@ class OperatorAPI:
         profile_dir = _profile_dir(self.repo_root, profile)
         mapping0 = profile_dir / "cam0" / "mapping_raw.yaml"
         mapping1 = profile_dir / "cam1" / "mapping_raw.yaml"
-        anchors   = profile_dir / "anchors.yaml"
+        anchors = profile_dir / "anchors.yaml"
         intrs_cam0 = profile_dir / "cam0" / "intrinsics.yaml"
         intrs_cam1 = profile_dir / "cam1" / "intrinsics.yaml"
 
@@ -887,7 +926,7 @@ class OperatorAPI:
         if not anchors.exists():
             return 400, {"error": "anchors.yaml not found in profile."}
 
-        missing_intrs: list = []
+        missing_intrs: list[str] = []
         if not intrs_cam0.exists():
             missing_intrs.append(str(intrs_cam0.relative_to(self.repo_root)))
         if not intrs_cam1.exists():
@@ -921,14 +960,22 @@ class OperatorAPI:
             return 400, {"error": f"cam1: {err1}"}
 
         command = [
-            self._python, str(script),
-            "--cam0", cv2_cam0,
-            "--cam1", cv2_cam1,
-            "--mapping-cam0", str(mapping0),
-            "--mapping-cam1", str(mapping1),
-            "--intrinsics-cam0", str(intrs_cam0),
-            "--intrinsics-cam1", str(intrs_cam1),
-            "--anchors", str(anchors),
+            self._python,
+            str(script),
+            "--cam0",
+            cv2_cam0,
+            "--cam1",
+            cv2_cam1,
+            "--mapping-cam0",
+            str(mapping0),
+            "--mapping-cam1",
+            str(mapping1),
+            "--intrinsics-cam0",
+            str(intrs_cam0),
+            "--intrinsics-cam1",
+            str(intrs_cam1),
+            "--anchors",
+            str(anchors),
         ]
         command_display = " ".join(str(x) for x in command)
 
@@ -950,7 +997,7 @@ class OperatorAPI:
 
     # ── POST /operator/start-fusion ───────────────────────────────────────────
 
-    def _start_fusion(self, body: Dict) -> Tuple[int, Dict]:
+    def _start_fusion(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         config: str = body.get("config", "").strip()
         duration_s: int = int(body.get("duration_s", 60))
         run_id: str = body.get("run_id", "").strip()
@@ -983,11 +1030,17 @@ class OperatorAPI:
         runs_dir = str(Path.home() / "metriplane-runs")
 
         command = [
-            self._python, "-m", "metriplane.run_fusion",
-            "--config", str(config_path),
-            "--runs-dir", runs_dir,
-            "--run-id", run_id,
-            "--duration-s", str(duration_s),
+            self._python,
+            "-m",
+            "metriplane.run_fusion",
+            "--config",
+            str(config_path),
+            "--runs-dir",
+            runs_dir,
+            "--run-id",
+            run_id,
+            "--duration-s",
+            str(duration_s),
         ]
 
         command_display = " ".join(str(x) for x in command)
@@ -1013,7 +1066,7 @@ class OperatorAPI:
 
     # ── POST /operator/generate-report ────────────────────────────────────────
 
-    def _generate_report(self, body: Dict) -> Tuple[int, Dict]:
+    def _generate_report(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         report_type: str = body.get("type", "").strip()  # "zones" or "id-stability"
         session_path: str = body.get("session", "").strip()
         out_prefix: str = body.get("prefix", "operator").strip()
@@ -1047,10 +1100,13 @@ class OperatorAPI:
                 return 500, {"error": "tools/zones_report_jsonl.py not found"}
 
             command = [
-                self._python, str(script),
+                self._python,
+                str(script),
                 str(session),
-                "--out", str(evidence_dir),
-                "--prefix", out_prefix,
+                "--out",
+                str(evidence_dir),
+                "--prefix",
+                out_prefix,
             ]
             if profile:
                 profile_dir = _profile_dir(self.repo_root, profile)
@@ -1065,9 +1121,11 @@ class OperatorAPI:
 
             out_csv = evidence_dir / f"{out_prefix}_id_stability.csv"
             command = [
-                self._python, str(script),
+                self._python,
+                str(script),
                 str(session),
-                "--out", str(out_csv),
+                "--out",
+                str(out_csv),
             ]
 
         command_display = " ".join(str(x) for x in command)
@@ -1091,7 +1149,7 @@ class OperatorAPI:
 
     # ── POST /operator/checksum ────────────────────────────────────────────────
 
-    def _checksum(self, body: Dict) -> Tuple[int, Dict]:
+    def _checksum(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         path: str = body.get("path", "").strip()
 
         file_path = Path(path).expanduser().resolve()
@@ -1138,7 +1196,7 @@ class OperatorAPI:
             (self.repo_root / "runs").resolve(),
         ]
 
-    def _cc_resolve_run_dir(self, body: Dict) -> Optional[Path]:
+    def _cc_resolve_run_dir(self, body: dict[str, Any]) -> Optional[Path]:
         requested = (body or {}).get("run_dir")
         if requested:
             p = Path(requested).expanduser().resolve()
@@ -1162,7 +1220,8 @@ class OperatorAPI:
 
         def with_markers(markers: tuple[str, ...]) -> list[Path]:
             return [
-                d for d in runs_root.iterdir()
+                d
+                for d in runs_root.iterdir()
                 if d.is_dir() and any((d / marker).exists() for marker in markers)
             ]
 
@@ -1172,70 +1231,90 @@ class OperatorAPI:
         dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
         return dirs[0].resolve()
 
-    def _cc_live_summary(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_live_summary(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
         if run is None:
-            return 200, {"run_dir": None, "objects_count": 0, "incidents_count": 0,
-                         "alerts_count": 0, "open_incidents_count": 0,
-                         "health": {"overall": "NO_DATA"}}
+            return 200, {
+                "run_dir": None,
+                "objects_count": 0,
+                "incidents_count": 0,
+                "alerts_count": 0,
+                "open_incidents_count": 0,
+                "health": {"overall": "NO_DATA"},
+            }
         from metriplane.runner.command_center_api import get_live_summary
+
         return 200, get_live_summary(run)
 
-    def _cc_objects(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_objects(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
         if run is None:
             return 200, {"objects": []}
         from metriplane.runner.command_center_api import get_objects
+
         return 200, {"objects": get_objects(run), "run_dir": str(run)}
 
-    def _cc_incidents(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_incidents(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
         if run is None:
             return 200, {"incidents": []}
         from metriplane.runner.command_center_api import get_incidents
+
         return 200, {"incidents": get_incidents(run), "run_dir": str(run)}
 
-    def _cc_traces(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_traces(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
         if run is None:
             return 200, {"traces": []}
         from metriplane.runner.command_center_api import get_traces
+
         object_id = (body or {}).get("object_id")
         return 200, {"traces": get_traces(run, object_id), "run_dir": str(run)}
 
-    def _cc_camera_trust(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_camera_trust(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
         if run is None:
             return 200, {"camera_trust": None}
         from metriplane.camera_trust.export import read_camera_trust_report
+
         ct = run / "camera_trust.json"
         if not ct.exists():
-            return 200, {"camera_trust": None, "run_dir": str(run),
-                         "note": "no camera_trust.json in this run"}
+            return 200, {
+                "camera_trust": None,
+                "run_dir": str(run),
+                "note": "no camera_trust.json in this run",
+            }
         try:
-            return 200, {"camera_trust": read_camera_trust_report(ct).model_dump(),
-                         "run_dir": str(run)}
+            return 200, {
+                "camera_trust": read_camera_trust_report(ct).model_dump(),
+                "run_dir": str(run),
+            }
         except Exception as exc:
             return 200, {"camera_trust": None, "error": str(exc)}
 
-    def _cc_frames(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_frames(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
         if run is None:
             return 200, {"frames": [], "incidents": []}
         from metriplane.runner.command_center_api import get_frames
+
         data = get_frames(run)
         data["run_dir"] = str(run)
         return 200, data
 
-    def _cc_ask(self, body: Dict) -> Tuple[int, Dict]:
+    def _cc_ask(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         question = (body or {}).get("question", "").strip()
         if not question:
             return 400, {"error": "missing 'question'"}
         run = self._cc_resolve_run_dir(body)
         if run is None:
-            return 200, {"answer": "No run data available to answer from.",
-                         "intent": "unknown", "citations": [], "limitations":
-                         ["no run dir resolved"]}
+            return 200, {
+                "answer": "No run data available to answer from.",
+                "intent": "unknown",
+                "citations": [],
+                "limitations": ["no run dir resolved"],
+            }
         from metriplane.assistant.answer import answer_question
+
         ans = answer_question(question, run)
         return 200, ans.model_dump()

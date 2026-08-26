@@ -28,7 +28,6 @@ import glob
 import json
 import re
 import struct
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -38,9 +37,9 @@ from typing import Dict, List, Optional, Tuple
 # Computed as: (2 << 30) | (0x56 << 8) | 0 | (104 << 16) = 0x80685600
 VIDIOC_QUERYCAP = 0x80685600
 
-V4L2_CAP_VIDEO_CAPTURE        = 0x00000001
+V4L2_CAP_VIDEO_CAPTURE = 0x00000001
 V4L2_CAP_VIDEO_CAPTURE_MPLANE = 0x00001000
-V4L2_CAP_META_CAPTURE         = 0x00800000
+V4L2_CAP_META_CAPTURE = 0x00800000
 
 # struct v4l2_capability layout (104 bytes total):
 #   driver[16]      bytes  0–15
@@ -50,13 +49,14 @@ V4L2_CAP_META_CAPTURE         = 0x00800000
 #   capabilities    bytes 84–87  (uint32)  — physical device caps
 #   device_caps     bytes 88–91  (uint32)  — per-device-node caps (kernel ≥ 3.3)
 #   reserved[3]     bytes 92–103 (uint32 × 3)
-_QUERYCAP_FMT      = "<104s"
-_QUERYCAP_SIZE     = 104
-_CAPS_OFFSET       = 84   # capabilities
-_DEVCAPS_OFFSET    = 88   # device_caps
+_QUERYCAP_FMT = "<104s"
+_QUERYCAP_SIZE = 104
+_CAPS_OFFSET = 84  # capabilities
+_DEVCAPS_OFFSET = 88  # device_caps
 
 
 # ── v4l2 helpers ───────────────────────────────────────────────────────────────
+
 
 def _query_v4l2_caps(path: str) -> Optional[int]:
     """
@@ -92,11 +92,12 @@ def _is_metadata_only(caps: Optional[int]) -> bool:
     if caps is None:
         return False
     has_capture = bool(caps & (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))
-    has_meta    = bool(caps & V4L2_CAP_META_CAPTURE)
+    has_meta = bool(caps & V4L2_CAP_META_CAPTURE)
     return has_meta and not has_capture
 
 
 # ── index / by-id helpers ──────────────────────────────────────────────────────
+
 
 def _extract_index(path: str) -> Optional[int]:
     """Extract integer N from /dev/videoN, or None for other paths."""
@@ -122,6 +123,7 @@ def _by_id_map() -> Dict[str, str]:
 
 
 # ── OpenCV probe helpers ───────────────────────────────────────────────────────
+
 
 def _try_cv2_read(
     index: int,
@@ -194,6 +196,7 @@ def _try_cv2_read_path(
 
 # ── Per-device probe ───────────────────────────────────────────────────────────
 
+
 def probe_camera(
     path: str,
     by_id: Dict[str, str],
@@ -212,17 +215,17 @@ def probe_camera(
     Also includes legacy cv2_open / cv2_read aliases for backwards compat.
     """
     index = _extract_index(path)
-    caps  = _query_v4l2_caps(path)
+    caps = _query_v4l2_caps(path)
 
     cap_capable = _is_capture_capable(caps)
-    meta_only   = _is_metadata_only(caps)
+    meta_only = _is_metadata_only(caps)
 
     # OpenCV probe — only attempt on capture-capable or unknown devices
     cv2_open_index: Optional[bool] = None
     cv2_read_index: Optional[bool] = None
-    cv2_open_path:  Optional[bool] = None
-    cv2_read_path:  Optional[bool] = None
-    width:  Optional[int] = None
+    cv2_open_path: Optional[bool] = None
+    cv2_read_path: Optional[bool] = None
+    width: Optional[int] = None
     height: Optional[int] = None
 
     should_probe = not quick and index is not None and (cap_capable or caps is None)
@@ -269,56 +272,58 @@ def probe_camera(
     legacy_read = cv2_read_index if cv2_read_index is not None else cv2_read_path
 
     return {
-        "path":                    path,
-        "index":                   index,
-        "by_id":                   by_id.get(path),
-        "is_capture_capable":      cap_capable,
-        "is_metadata_only":        meta_only,
-        "cv2_open_index":          cv2_open_index,
-        "cv2_read_index":          cv2_read_index,
-        "cv2_open_path":           cv2_open_path,
-        "cv2_read_path":           cv2_read_path,
-        "readable":                readable,
+        "path": path,
+        "index": index,
+        "by_id": by_id.get(path),
+        "is_capture_capable": cap_capable,
+        "is_metadata_only": meta_only,
+        "cv2_open_index": cv2_open_index,
+        "cv2_read_index": cv2_read_index,
+        "cv2_open_path": cv2_open_path,
+        "cv2_read_path": cv2_read_path,
+        "readable": readable,
         "recommended_for_operator": recommended,
-        "width":                   width,
-        "height":                  height,
-        "reason":                  reason,
+        "width": width,
+        "height": height,
+        "reason": reason,
         # Legacy compat
-        "cv2_open":                legacy_open,
-        "cv2_read":                legacy_read,
+        "cv2_open": legacy_open,
+        "cv2_read": legacy_read,
     }
 
 
 def scan_cameras(quick: bool = False) -> List[Dict]:
     """Scan and probe all /dev/video* devices."""
     devices = sorted(glob.glob("/dev/video*"))
-    by_id   = _by_id_map()
+    by_id = _by_id_map()
     return [probe_camera(dev, by_id, quick=quick) for dev in devices]
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Discover v4l2 cameras (JSON output)")
-    parser.add_argument("--json",  action="store_true", help="Output JSON (default)")
-    parser.add_argument("--quick", action="store_true",
-                        help="Skip frame read test (v4l2 cap query only)")
+    parser.add_argument("--json", action="store_true", help="Output JSON (default)")
+    parser.add_argument(
+        "--quick", action="store_true", help="Skip frame read test (v4l2 cap query only)"
+    )
     args = parser.parse_args()
 
     cameras = scan_cameras(quick=args.quick)
 
-    readable_n     = sum(1 for c in cameras if c["readable"])
-    cap_capable_n  = sum(1 for c in cameras if c["is_capture_capable"])
-    meta_only_n    = sum(1 for c in cameras if c["is_metadata_only"])
-    recommended_n  = sum(1 for c in cameras if c["recommended_for_operator"])
+    readable_n = sum(1 for c in cameras if c["readable"])
+    cap_capable_n = sum(1 for c in cameras if c["is_capture_capable"])
+    meta_only_n = sum(1 for c in cameras if c["is_metadata_only"])
+    recommended_n = sum(1 for c in cameras if c["recommended_for_operator"])
 
     output = {
-        "cameras":          cameras,
-        "total":            len(cameras),
-        "readable":         readable_n,
-        "capture_capable":  cap_capable_n,
-        "metadata_only":    meta_only_n,
-        "recommended":      recommended_n,
+        "cameras": cameras,
+        "total": len(cameras),
+        "readable": readable_n,
+        "capture_capable": cap_capable_n,
+        "metadata_only": meta_only_n,
+        "recommended": recommended_n,
     }
     print(json.dumps(output, indent=2))
 

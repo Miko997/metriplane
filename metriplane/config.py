@@ -14,6 +14,7 @@ import yaml
 # Runtime config
 # ======================================================================================
 
+
 @dataclass(frozen=True, slots=True)
 class CameraSpec:
     """
@@ -29,6 +30,7 @@ class CameraSpec:
           calib/profiles/<profile>/<name>/camera.yaml
           calib/profiles/<profile>/<name>/mapping.yaml
     """
+
     name: str = "cam0"
     index: int | None = None
     device: str | None = None
@@ -56,7 +58,7 @@ class Config:
 
     # Fusion knobs (safe defaults; only used if your fusion code reads them)
     fusion_enable: bool = False
-    fusion_method: str = "nearest"       # e.g. nearest | average | best_conf
+    fusion_method: str = "nearest"  # e.g. nearest | average | best_conf
     fusion_max_merge_dist_m: float = 0.15
 
     # --- Fusion config (NEW) ---
@@ -68,7 +70,7 @@ class Config:
 
     # Optional recordings
     record_video: str | None = None
-    record_jsonl: str | None = None      # e.g. evidence/sessions/m6_live_001.jsonl
+    record_jsonl: str | None = None  # e.g. evidence/sessions/m6_live_001.jsonl
 
     # M4: object lifetime
     object_timeout_s: float = 2.0
@@ -89,12 +91,12 @@ class Config:
     profile: str | None = None
 
     # Single-camera calibration files (optional)
-    intrinsics_file: str | None = None      # e.g. calib/camera.yaml
-    mapping_file: str | None = None         # e.g. calib/mapping.yaml
+    intrinsics_file: str | None = None  # e.g. calib/camera.yaml
+    mapping_file: str | None = None  # e.g. calib/mapping.yaml
 
     # Zones + analytics
-    zones_file: str | None = None           # e.g. calib/zones.yaml
-    analytics_out_dir: str | None = None    # e.g. evidence/analytics/m6_live_001
+    zones_file: str | None = None  # e.g. calib/zones.yaml
+    analytics_out_dir: str | None = None  # e.g. evidence/analytics/m6_live_001
 
     # -----------------------------
     # Docker/offline source modes (M9)
@@ -124,9 +126,11 @@ class Config:
     # Optional: fault injection config section (metriplane.run uses this pattern)
     faults: dict[str, Any] | None = None
 
+
 # ======================================================================================
 # Config loading (YAML)
 # ======================================================================================
+
 
 def _parse_camera_specs(v: Any) -> tuple[CameraSpec, ...] | None:
     """
@@ -310,6 +314,7 @@ def load_config(path: Path) -> Config:
 # Profile helpers — kept in THIS module to avoid name conflicts
 # ======================================================================================
 
+
 @dataclass(frozen=True, slots=True)
 class CameraCalibPaths:
     """
@@ -326,6 +331,7 @@ class CameraCalibPaths:
           camera.yaml
           mapping.yaml
     """
+
     name: str
     cam_dir: Path
     intrinsics: Path | None
@@ -355,6 +361,7 @@ class CalibPaths:
         cam1/{camera.yaml,mapping.yaml}
         test_points.yaml (optional)
     """
+
     profile: str
     profile_dir: Path
 
@@ -370,7 +377,9 @@ class CalibPaths:
     cameras: tuple[CameraCalibPaths, ...] | None = None
 
 
-def load_active_profile(active_profile_path: Path = Path("calib/active_profile.yaml")) -> str | None:
+def load_active_profile(
+    active_profile_path: Path = Path("calib/active_profile.yaml"),
+) -> str | None:
     """
     Read calib/active_profile.yaml:
       profile: board_110x40_warehouse_story_v1_fusion
@@ -397,7 +406,9 @@ def load_active_profile(active_profile_path: Path = Path("calib/active_profile.y
     return None
 
 
-def resolve_profile(profile: str | None, *, active_profile_path: Path = Path("calib/active_profile.yaml")) -> str | None:
+def resolve_profile(
+    profile: str | None, *, active_profile_path: Path = Path("calib/active_profile.yaml")
+) -> str | None:
     """
     Resolve profile name:
     - prefer explicit `profile`
@@ -523,6 +534,7 @@ def maybe_get_calib_paths(
 # ======================================================================================
 # Convenience: apply profile defaults to runtime config
 # ======================================================================================
+
 
 def apply_profile_defaults(cfg: Config, *, calib_root: Path = Path("calib")) -> Config:
     """

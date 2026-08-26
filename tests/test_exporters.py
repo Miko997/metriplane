@@ -64,7 +64,8 @@ def test_parquet_export_or_clear_error(tmp_path):
     run = tmp_path / "run"
     run.mkdir()
     (run / "alerts.jsonl").write_text(
-        json.dumps({"rule_id": "r", "severity": "warning", "ts": 1.0}) + "\n")
+        json.dumps({"rule_id": "r", "severity": "warning", "ts": 1.0}) + "\n"
+    )
     ok, _ = parquet_available()
     if ok:
         result = export_run_dir(run)
@@ -76,6 +77,7 @@ def test_parquet_export_or_clear_error(tmp_path):
 
 def test_throughput_benchmark_runs(tmp_path):
     from benchmarks.event_throughput import run
+
     rows = run(2000, tmp_path)
     backends = {r["backend"] for r in rows}
     assert "mock" in backends and "jsonl" in backends

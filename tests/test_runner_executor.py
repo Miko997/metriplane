@@ -39,7 +39,9 @@ def test_cancelled_job_remains_cancelled_after_process_exits(tmp_path: Path) -> 
         [sys.executable, "-c", "import time; time.sleep(30)"],
         timeout_s=60,
     )
-    assert _wait_until(lambda: executor.current_job is not None and executor.current_job.get("process") is not None)
+    assert _wait_until(
+        lambda: executor.current_job is not None and executor.current_job.get("process") is not None
+    )
 
     assert executor.cancel(job_id) is True
     assert _wait_until(lambda: executor.get_job(job_id)["exit_code"] is not None)  # type: ignore[index]

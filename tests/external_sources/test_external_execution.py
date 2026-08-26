@@ -53,18 +53,13 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
 
 def _read_session(path: Path) -> list[dict[str, Any]]:
     return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 
 def _write_session(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text(
-        "".join(
-            json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n"
-            for row in rows
-        ),
+        "".join(json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n" for row in rows),
         encoding="utf-8",
     )
 
@@ -76,18 +71,11 @@ def _sha256(path: Path) -> str:
 def _rewrite_checksums(root: Path) -> None:
     checksum_path = root / "CHECKSUMS.sha256"
     paths = sorted(
-        (
-            path
-            for path in root.rglob("*")
-            if path.is_file() and path != checksum_path
-        ),
+        (path for path in root.rglob("*") if path.is_file() and path != checksum_path),
         key=lambda path: path.relative_to(root).as_posix(),
     )
     checksum_path.write_text(
-        "".join(
-            f"{_sha256(path)}  {path.relative_to(root).as_posix()}\n"
-            for path in paths
-        ),
+        "".join(f"{_sha256(path)}  {path.relative_to(root).as_posix()}\n" for path in paths),
         encoding="utf-8",
     )
 
@@ -131,9 +119,7 @@ def _rewrite_session_contract(root: Path, rows: list[dict[str, Any]]) -> None:
         conversion_run["artifacts"][session_reference["path"]] = session_sha256
 
     _write_json(report_path, report)
-    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = (
-        _sha256(report_path)
-    )
+    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(report_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(root)
 
@@ -157,9 +143,7 @@ def _rewrite_mapping_contract(root: Path, mapping: dict[str, Any]) -> None:
         conversion_run["artifacts"][mapping_reference["path"]] = mapping_sha256
 
     _write_json(report_path, report)
-    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = (
-        _sha256(report_path)
-    )
+    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(report_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(root)
 
@@ -177,21 +161,15 @@ def _rewrite_fixture_id(root: Path, fixture_id: str) -> None:
     expected["fixture_id"] = fixture_id
     _write_json(report_path, report)
     _write_json(expected_path, expected)
-    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(
-        report_path
-    )
-    manifest["normalized_artifacts"]["expected_outcome"]["sha256"] = _sha256(
-        expected_path
-    )
+    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(report_path)
+    manifest["normalized_artifacts"]["expected_outcome"]["sha256"] = _sha256(expected_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(root)
 
 
 def _canonical_jsonl(path: Path) -> list[dict[str, Any]]:
     return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 
@@ -229,9 +207,7 @@ def test_validation_summary_exposes_stable_contract_and_input_identity() -> None
         "contracts",
         "work_orders",
     }
-    assert summary.entity_mapping_sha256 == _sha256(
-        VALID_BUNDLE / "entity-mapping.json"
-    )
+    assert summary.entity_mapping_sha256 == _sha256(VALID_BUNDLE / "entity-mapping.json")
     assert summary.normalization_report_sha256 == _sha256(
         VALID_BUNDLE / "normalization-report.json"
     )
@@ -242,9 +218,7 @@ def test_validation_summary_exposes_stable_contract_and_input_identity() -> None
     assert summary.source_revision is not None
     assert summary.source_revision.kind == "git_commit"
     assert summary.adapter_identity is not None
-    assert summary.adapter_identity.adapter_id == (
-        "org.metriplane.synthetic_fixture_adapter"
-    )
+    assert summary.adapter_identity.adapter_id == ("org.metriplane.synthetic_fixture_adapter")
     assert summary.metriplane_version == __version__
     assert summary.declared_metriplane_version == __version__
     assert summary.frame_state_model_version == "1.0"
@@ -267,9 +241,7 @@ def test_validation_summary_exposes_stable_contract_and_input_identity() -> None
 
 
 def test_root_cli_json_validation_stdout_is_one_clean_document(capsys: Any) -> None:
-    exit_code = metriplane_main(
-        ["external", "validate", str(VALID_BUNDLE), "--json"]
-    )
+    exit_code = metriplane_main(["external", "validate", str(VALID_BUNDLE), "--json"])
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -289,9 +261,7 @@ def test_root_cli_json_validation_failure_is_one_clean_document(
     (fixture / "source-manifest.json").write_text("{\n", encoding="utf-8")
     _rewrite_checksums(fixture)
 
-    exit_code = metriplane_main(
-        ["external", "validate", str(fixture), "--json"]
-    )
+    exit_code = metriplane_main(["external", "validate", str(fixture), "--json"])
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -396,9 +366,7 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     assert "repo_root" not in json.dumps(provenance, sort_keys=True)
 
     atlas_manifest = _read_json(out / "atlas_manifest.json")
-    assert atlas_manifest["external_source_provenance"]["sha256"] == (
-        summary.provenance.sha256
-    )
+    assert atlas_manifest["external_source_provenance"]["sha256"] == (summary.provenance.sha256)
     report = (out / "cell_truth_report.md").read_text(encoding="utf-8")
     assert "## External fixture provenance" in report
     for statement in ATLAS_LIMITATION_STATEMENTS:
@@ -407,18 +375,11 @@ def test_external_run_completes_existing_atlas_workflow_and_preserves_fixture(
     assert "tracked or tagged" not in report
     with zipfile.ZipFile(out / "evidence_bundles" / "INC-0001.zip") as archive:
         assert "provenance/external_source_provenance.json" in archive.namelist()
-        bundled_provenance = json.loads(
-            archive.read("provenance/external_source_provenance.json")
-    )
+        bundled_provenance = json.loads(archive.read("provenance/external_source_provenance.json"))
     assert bundled_provenance["fixture_id"] == "synthetic-inspection-bench-v1"
     assert bundled_provenance == provenance
-    assert bundled_provenance["evaluation"]["command"] == provenance["evaluation"][
-        "command"
-    ]
-    assert (
-        bundled_provenance["evaluation"]["actual_metriplane_git_commit"]
-        == runtime_commit
-    )
+    assert bundled_provenance["evaluation"]["command"] == provenance["evaluation"]["command"]
+    assert bundled_provenance["evaluation"]["actual_metriplane_git_commit"] == runtime_commit
     bundled_provenance_strings = _string_values(bundled_provenance)
     assert str(fixture.resolve()) not in bundled_provenance_strings
     assert str(out.resolve()) not in bundled_provenance_strings
@@ -697,8 +658,7 @@ def test_manifest_and_session_semantics_must_agree(tmp_path: Path) -> None:
 
     assert summary.passed is False
     assert any(
-        "source_backend 'different_normalized_source' does not match manifest value"
-        in error
+        "source_backend 'different_normalized_source' does not match manifest value" in error
         for error in summary.errors
     )
 
@@ -840,7 +800,9 @@ def test_missing_required_local_file_is_actionable(tmp_path: Path) -> None:
     summary = validate_external_fixture(fixture)
 
     assert summary.passed is False
-    assert any("checksum references missing file: session.jsonl" in error for error in summary.errors)
+    assert any(
+        "checksum references missing file: session.jsonl" in error for error in summary.errors
+    )
 
 
 def test_referenced_remote_source_may_remain_absent_locally(tmp_path: Path) -> None:
@@ -855,13 +817,11 @@ def test_referenced_remote_source_may_remain_absent_locally(tmp_path: Path) -> N
     source_path.unlink()
 
     parsed = ExternalSourceManifestV1.model_validate(manifest)
-    report["conversion_reproducibility"]["input_fingerprint_sha256"] = (
-        conversion_inputs_sha256(parsed)
+    report["conversion_reproducibility"]["input_fingerprint_sha256"] = conversion_inputs_sha256(
+        parsed
     )
     _write_json(report_path, report)
-    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = (
-        _sha256(report_path)
-    )
+    manifest["normalized_artifacts"]["normalization_report"]["sha256"] = _sha256(report_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(fixture)
 
@@ -894,9 +854,7 @@ def test_expected_outcome_predictions_never_control_runtime_truth(tmp_path: Path
     )
     _write_json(expected_path, expected)
     manifest = _read_json(manifest_path)
-    manifest["normalized_artifacts"]["expected_outcome"]["sha256"] = _sha256(
-        expected_path
-    )
+    manifest["normalized_artifacts"]["expected_outcome"]["sha256"] = _sha256(expected_path)
     _write_json(manifest_path, manifest)
     _rewrite_checksums(fixture)
 
@@ -959,6 +917,5 @@ def test_declared_metriplane_version_mismatch_fails_preflight(tmp_path: Path) ->
     assert summary.passed is False
     assert summary.declared_metriplane_version == "9.9.9"
     assert any(
-        "does not match the installed Metriplane version" in error
-        for error in summary.errors
+        "does not match the installed Metriplane version" in error for error in summary.errors
     )

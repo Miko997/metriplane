@@ -23,6 +23,29 @@ uv --no-config lock --check
 uv --no-config sync --frozen --all-groups
 ```
 
+## Maintained Python quality
+
+The root quality gate uses the pinned tools and stable, explicitly selected
+Ruff error families. Independently locked adapter packages run their own local
+quality gates. Historical evidence, retained proof trees, and the frozen Atlas
+proof implementation are byte-preserved, so the root gate excludes `adapters/`,
+`evidence/`, `metriplane/atlas/`, and `proofs/`:
+
+```bash
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen mypy
+```
+
+Strict mypy covers the maintained `metriplane` package outside the frozen Atlas
+proof implementation. New package modules join that gate automatically; tests,
+operational scripts, benchmarks, and isolated adapter packages remain exercised
+by their runtime and package-specific gates. Atlas remains covered by its
+functional, evidence-freeze, and release-blocker tests until that proof surface
+is explicitly reopened under its governing policy. Imports from that excluded
+namespace are treated as an external frozen boundary (`follow_imports = "skip"`),
+not silenced with `ignore_errors` or per-diagnostic ignores.
+
 ## Source profile
 
 The canonical source command uses an empty Playwright browser cache so the

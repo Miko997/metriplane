@@ -25,8 +25,10 @@ def main_camera_trust(argv: list[str]) -> int:
             export_camera_trust_report(args.out, report)
             print(f"wrote {args.out}")
         for cid, cs in report.camera_scores.items():
-            print(f"{cid}: {cs.status} score={cs.score} dropout={cs.dropout_rate} "
-                  f"disagreement_m={cs.mean_disagreement_m}")
+            print(
+                f"{cid}: {cs.status} score={cs.score} dropout={cs.dropout_rate} "
+                f"disagreement_m={cs.mean_disagreement_m}"
+            )
         for rec in report.recommendations:
             print(f"  - {rec}")
         return 0

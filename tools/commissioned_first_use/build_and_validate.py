@@ -64,9 +64,7 @@ def compute_summary(
 ) -> dict[str, object]:
     compensation: dict[str, int] = defaultdict(int)
     for row in primary:
-        compensation[row["compensation_currency"]] += int(
-            row["compensation_amount"]
-        )
+        compensation[row["compensation_currency"]] += int(row["compensation_amount"])
     python_counts = Counter(".".join(row["python_version"].split(".")[:2]) for row in primary)
     return {
         "schema_version": "1.0.0",
@@ -118,9 +116,7 @@ def checksum_text() -> str:
     return "\n".join(lines) + "\n"
 
 
-def validate_rows(
-    primary: list[dict[str, str]], auxiliary: list[dict[str, str]]
-) -> list[str]:
+def validate_rows(primary: list[dict[str, str]], auxiliary: list[dict[str, str]]) -> list[str]:
     errors: list[str] = []
     if [row["slot"] for row in primary] != PRIMARY_SLOTS:
         errors.append("primary slots must be T01 through T06 in order")
@@ -194,9 +190,7 @@ def validate_rows(
     return errors
 
 
-def validate_files(
-    primary: list[dict[str, str]], auxiliary: list[dict[str, str]]
-) -> list[str]:
+def validate_files(primary: list[dict[str, str]], auxiliary: list[dict[str, str]]) -> list[str]:
     errors: list[str] = []
     required = [PACKAGE / name for name in CHECKSUM_FILES] + [CHECKSUMS]
     errors.extend(f"missing required file: {path}" for path in required if not path.is_file())
@@ -246,9 +240,7 @@ def validate_files(
         "SOURCE_MANIFEST.json",
         "BUILD.md",
     )
-    public_text = "\n".join(
-        (PACKAGE / name).read_text(encoding="utf-8") for name in text_names
-    )
+    public_text = "\n".join((PACKAGE / name).read_text(encoding="utf-8") for name in text_names)
     if ("linear" + ".app") in public_text.lower():
         errors.append("internal project-management URL found")
     if re.search(r"\bFO[A-Z0-9]{8,}\b", public_text):
@@ -290,9 +282,7 @@ def validate_files(
             errors.append(f"SOURCE_MANIFEST.json incorrect sources for {claim_id}")
 
     manifest_urls = {
-        source["url"]
-        for source in sources
-        if isinstance(source, dict) and source.get("url")
+        source["url"] for source in sources if isinstance(source, dict) and source.get("url")
     }
     errors.extend(
         f"{row['slot']}: public URL missing from source manifest"

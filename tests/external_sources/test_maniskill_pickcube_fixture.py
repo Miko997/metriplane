@@ -23,30 +23,18 @@ from metriplane.external_sources.contract import validate_external_fixture_bundl
 from metriplane.external_sources.execution import run_external_fixture
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE_ROOT = (
-    REPOSITORY_ROOT / "examples" / "external_sources" / "maniskill_pickcube"
-)
+FIXTURE_ROOT = REPOSITORY_ROOT / "examples" / "external_sources" / "maniskill_pickcube"
 INCIDENT_FIXTURE = FIXTURE_ROOT / "incident"
 CONTROL_FIXTURE = FIXTURE_ROOT / "control"
-CONTRACT_SCHEMA = (
-    REPOSITORY_ROOT
-    / "schemas"
-    / "metriplane.external_source_contract.v1.schema.json"
-)
+CONTRACT_SCHEMA = REPOSITORY_ROOT / "schemas" / "metriplane.external_source_contract.v1.schema.json"
 
-CONTRACT_SCHEMA_SHA256 = (
-    "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
-)
+CONTRACT_SCHEMA_SHA256 = "b5544012d7d98f1fdc8aed56192c33ac16f4acebd6694778ad682743482722c4"
 DATASET_REVISION = "d674485bbffdd533914e52d272fdda34c0515608"
 GENERATION_COMMIT = "652ad9353c0223507a938f0e8d990dd6f1c771ad"
 CONVERSION_COMMIT = "a4a4f9272ad64b1564035874b605ceb687b63ed8"
-CONVERSION_WHEEL_SHA256 = (
-    "685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a"
-)
+CONVERSION_WHEEL_SHA256 = "685de2f03c300b1ede49881a1bf6306ad062082d39c8d3be8b8e85603f32e33a"
 ADAPTER_COMMIT = "95d1134d9fb9273318c552c507952f1c5c26877e"
-CONVERSION_INPUT_FINGERPRINT = (
-    "9eb29e2c52b5ab3e59801b12b19b14385fe5b176a90f71a08df566d1f03d6eb1"
-)
+CONVERSION_INPUT_FINGERPRINT = "9eb29e2c52b5ab3e59801b12b19b14385fe5b176a90f71a08df566d1f03d6eb1"
 EXPECTED_FIXTURE_FINGERPRINTS = {
     "incident": "954a0ebbe3b541e12fedd91665484ff9561f0ae19fe63f83227379afe44413c2",
     "control": "8b3d26285f208bec42f8cb54401cda8d04c2c1e23fbeabb186eed6bd4c9dce1e",
@@ -111,9 +99,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     values = [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     assert all(isinstance(value, dict) for value in values)
     return values
@@ -215,9 +201,7 @@ def test_fixture_contract_source_identity_rights_and_provenance(variant: str) ->
 
     assert manifest.adapter.adapter_id == "org.metriplane.maniskill_pickcube"
     assert manifest.adapter.commit == ADAPTER_COMMIT
-    adapter_environment = (root / "source" / "adapter-environment.txt").read_text(
-        encoding="utf-8"
-    )
+    adapter_environment = (root / "source" / "adapter-environment.txt").read_text(encoding="utf-8")
     assert f"adapter_commit={ADAPTER_COMMIT}\n" in adapter_environment
     assert (
         fixture.normalization_report.conversion_reproducibility.input_fingerprint_sha256
@@ -332,19 +316,13 @@ def test_session_is_complete_position_only_and_uses_authoritative_integer_time(
         0.0,
     ]
     assert [
-        row["frame_id"]
-        for row in rows
-        if row["objects"][0]["zone"] == "target_xy_region"
+        row["frame_id"] for row in rows if row["objects"][0]["zone"] == "target_xy_region"
     ] == list(range(66, 75))
     assert [
-        row["frame_id"]
-        for row in rows
-        if row["objects"][1]["zone"] == "target_xy_region"
+        row["frame_id"] for row in rows if row["objects"][1]["zone"] == "target_xy_region"
     ] == list(range(71, 75))
 
-    declared_fields = {
-        item.normalized_field for item in manifest.normalization.field_provenance
-    }
+    declared_fields = {item.normalized_field for item in manifest.normalization.field_provenance}
     assert declared_fields == {
         "schema_version",
         "source_backend",
@@ -455,9 +433,7 @@ def test_three_atlas_runs_have_the_frozen_outcome_and_equivalent_semantics(
             deviations = _read_jsonl(output / "deviations.jsonl")
             incidents = _read_jsonl(output / "incidents.jsonl")
             assert [item["type"] for item in deviations] == ["missing_required_asset"]
-            assert [item["incident_type"] for item in incidents] == [
-                "missing_tool_caused_delay"
-            ]
+            assert [item["incident_type"] for item in incidents] == ["missing_tool_caused_delay"]
             delayed = events[1]
             assert delayed["value"] == 0.2
             assert delayed["threshold"] == 0.2
@@ -637,12 +613,8 @@ def test_run_is_movable_and_contains_no_operational_path(
     )
 
     if variant == "incident":
-        assert verify_bundle(moved_external / "evidence_bundles" / "INC-0001.zip")[
-            "pass"
-        ] is True
-        assert run_regression(moved_external / "regression_tests" / "INC-0001.yaml")[
-            "pass"
-        ] is True
+        assert verify_bundle(moved_external / "evidence_bundles" / "INC-0001.zip")["pass"] is True
+        assert run_regression(moved_external / "regression_tests" / "INC-0001.yaml")["pass"] is True
     else:
         for run in (moved_external, moved_direct):
             assert list((run / "evidence_bundles").glob("*.zip")) == []
@@ -704,7 +676,9 @@ def test_raw_source_and_source_assets_are_absent_from_portable_fixtures() -> Non
         assert all(path.suffix.lower() not in prohibited_suffixes for path in files)
         assert all(path.name not in {"trajectory.json", "trajectory.h5"} for path in files)
         fixture = validate_external_fixture_bundle(root)
-        assert all(artifact.presence == "referenced" for artifact in fixture.manifest.source_artifacts)
+        assert all(
+            artifact.presence == "referenced" for artifact in fixture.manifest.source_artifacts
+        )
 
 
 def test_root_dependency_import_and_wheel_discovery_boundary_is_source_neutral() -> None:

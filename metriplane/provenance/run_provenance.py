@@ -18,7 +18,7 @@ import sys
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, TextIO
+from typing import Any, Sequence, TextIO, cast
 
 import yaml
 
@@ -73,7 +73,9 @@ def sha256_file(path: Path) -> str:
 
 
 def _utc_now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    )
 
 
 def in_docker() -> bool:
@@ -118,7 +120,9 @@ class GitInfo:
 
 def get_git_info(*, start: Path | None = None) -> GitInfo:
     # Explicit override for Docker/no-.git builds
-    env_commit = os.getenv("METRIPLANE_GIT_COMMIT") or os.getenv("GIT_COMMIT") or os.getenv("GITHUB_SHA")
+    env_commit = (
+        os.getenv("METRIPLANE_GIT_COMMIT") or os.getenv("GIT_COMMIT") or os.getenv("GITHUB_SHA")
+    )
     repo_root = _find_repo_root(start)
 
     if env_commit:
@@ -144,7 +148,13 @@ def get_git_info(*, start: Path | None = None) -> GitInfo:
 
     dirty: bool | None
     try:
-        p = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, check=True, capture_output=True, text=True)
+        p = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         dirty = bool(p.stdout.strip())
     except Exception:
         dirty = None
@@ -172,15 +182,19 @@ def _redact_url_secrets(value: str) -> str:
                 for key, item in parse_qsl(parsed.query, keep_blank_values=True)
             ]
         )
-        fragment = urlencode(
-            [
-                (
-                    key,
-                    _REDACTED if _is_sensitive_config_key(key) else item,
-                )
-                for key, item in parse_qsl(parsed.fragment, keep_blank_values=True)
-            ]
-        ) if "=" in parsed.fragment else parsed.fragment
+        fragment = (
+            urlencode(
+                [
+                    (
+                        key,
+                        _REDACTED if _is_sensitive_config_key(key) else item,
+                    )
+                    for key, item in parse_qsl(parsed.fragment, keep_blank_values=True)
+                ]
+            )
+            if "=" in parsed.fragment
+            else parsed.fragment
+        )
         return urlunsplit((parsed.scheme, netloc, parsed.path, query, fragment))
     except (TypeError, ValueError):
         # Invalid URL-like strings are validated elsewhere. Persisting the
@@ -210,9 +224,7 @@ def _is_sensitive_config_key(key: str) -> bool:
                 "token",
             }
         )
-        or normalized.endswith(
-            ("_api_key", "_private_key", "_access_key", "_secret_key")
-        )
+        or normalized.endswith(("_api_key", "_private_key", "_access_key", "_secret_key"))
     )
 
 
@@ -235,7 +247,7 @@ def redact_persisted_config(value: Any, *, key: str | None = None) -> Any:
 def config_to_primitive(cfg: Config) -> dict[str, Any]:
     # asdict recursively converts nested dataclasses; JSON roundtrip ensures only JSON primitives.
     d = dataclasses.asdict(cfg)
-    return json.loads(canonical_json_dumps(redact_persisted_config(d)))
+    return cast(dict[str, Any], json.loads(canonical_json_dumps(redact_persisted_config(d))))
 
 
 def compute_config_hash(cfg: Config) -> tuple[str, str]:
@@ -336,7 +348,9 @@ def capture_env_txt(path: Path) -> None:
         lines.append("(skipped: METRIPLANE_NO_PIP_FREEZE=1)")
     else:
         try:
-            p = subprocess.run([sys.executable, "-m", "pip", "freeze"], check=True, capture_output=True, text=True)
+            p = subprocess.run(
+                [sys.executable, "-m", "pip", "freeze"], check=True, capture_output=True, text=True
+            )
             lines.append(p.stdout.strip())
         except Exception as e:
             lines.append(f"(pip freeze failed: {type(e).__name__}: {e})")
@@ -391,7 +405,9 @@ def create_run_context(
     cfg_hash, cfg_canon = compute_config_hash(cfg)
 
     # Resolved profile (captures calib/active_profile.yaml even if cfg.profile is None)
-    resolved_prof = resolve_profile(cfg.profile, active_profile_path=Path("calib/active_profile.yaml"))
+    resolved_prof = resolve_profile(
+        cfg.profile, active_profile_path=Path("calib/active_profile.yaml")
+    )
 
     # Artifact paths
     meta_json = run_dir / "meta.json"

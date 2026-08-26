@@ -107,9 +107,7 @@ def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     ):
         uses = [step.get("uses", "") for step in jobs[name]["steps"]]
         checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
-        download = next(
-            i for i, value in enumerate(uses) if "actions/download-artifact@" in value
-        )
+        download = next(i for i, value in enumerate(uses) if "actions/download-artifact@" in value)
         assert checkout < download, name
 
 
@@ -119,7 +117,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
-        "git merge-base --is-ancestor \"$tag_commit\" origin/main",
+        'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",
@@ -179,9 +177,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     )
     assert all(topic in migration for topic in required_migration_topics)
 
-    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index(
-        "## Install and run"
-    )
+    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index("## Install and run")
     for result in ("six events", "one incident", "35.0 seconds", "verified", "passed"):
         assert result in notes
     assert "No unfamiliar-user comprehension study was completed before release" in notes
