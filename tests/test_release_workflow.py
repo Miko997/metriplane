@@ -72,10 +72,83 @@ def test_publication_consumes_qualification_and_does_not_create_authority() -> N
     assert "validate_release_approval.py" in commands
     assert "validate_release_retention.py" in commands
     assert "check_release_readiness.py" in commands
-    assert "--mode live" in commands
+    assert "validate_release_artifact_manifest.py" in commands
+    assert "--mode live" not in commands
+    assert "--input release-authority/" not in commands
     assert "qualification_record_digest" in PUBLISH.read_text(encoding="utf-8")
     assert "record_release_approval.py" not in commands
     assert "record_release_role_assignments.py" not in commands
+
+
+def test_production_request_uses_canonical_live_authority_contracts() -> None:
+    workflow = _workflow(PUBLISH)
+    request = workflow["jobs"]["validate-production-request"]
+    commands = "\n".join(step.get("run", "") for step in request["steps"])
+    required = (
+        "sha256sum release-authority/qualification.json",
+        "--record release-authority/qualification.json",
+        "--record release-authority/role-assignments.json",
+        "--milestone v0.4",
+        '--run-id "$QUALIFICATION_RUN_ID"',
+        "--check-conflicts",
+        "--check-freshness",
+        "--gate-instance release-authority/gate-instance.json",
+        "--qualification release-authority/qualification.json",
+        "--no-prepublication-rubric",
+        "--record release-authority/prepublication/approval.json",
+        "--manifest release-authority/evidence-manifest.json",
+        "--receipts release-authority/prepublication/retention-receipts.json",
+        "--read-back",
+        "--candidate-identity release-authority/candidate-identity.json",
+        "--predecessor release-authority/predecessor.json",
+        "--linear-snapshot release-authority/linear-snapshot.json",
+        "--artifact-manifest release-authority/artifact-manifest.json",
+        "--delta release-authority/delta.json",
+        "--delta-test-map release-authority/delta-test-map.json",
+        '--out "$RUNNER_TEMP/readiness.json"',
+        "release-authority/readiness.json",
+        "sha256sum --check ../SHA256SUMS",
+        "--artifacts release-artifacts/dist",
+        "--read-hash",
+    )
+    assert all(fragment in commands for fragment in required)
+
+    artifact_download = next(
+        step
+        for step in request["steps"]
+        if step.get("with", {}).get("name") == "python-package-distributions"
+    )
+    assert artifact_download["with"] == {
+        "name": "python-package-distributions",
+        "path": "release-artifacts/",
+        "run-id": "${{ inputs.release_run_id }}",
+        "github-token": "${{ github.token }}",
+    }
+
+    authority_index = commands.index("validate_release_qualification.py")
+    artifact_index = commands.index("validate_release_artifact_manifest.py")
+    eligibility_index = commands.index('test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"')
+    assert authority_index < artifact_index < eligibility_index
+
+
+def test_production_request_preserves_fail_closed_source_run_identity() -> None:
+    workflow = _workflow(PUBLISH)
+    request = workflow["jobs"]["validate-production-request"]
+    commands = "\n".join(step.get("run", "") for step in request["steps"])
+    required = (
+        'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
+        '"event": "push"',
+        '"head_branch": f"v{os.environ[\'RELEASE_VERSION\']}"',
+        '"head_sha": os.environ["SOURCE_COMMIT"]',
+        '"path": ".github/workflows/publish-pypi.yml"',
+        '"status": "completed"',
+        '"conclusion": "success"',
+        'item.get("name") == "python-package-distributions"',
+        "source run must contain exactly one unexpired",
+        'item.get("name")',
+        '== "Verify TestPyPI artifact identity and installation"',
+    )
+    assert all(fragment in commands for fragment in required)
 
 
 def test_tag_is_observed_but_never_accepted_as_release_authority() -> None:

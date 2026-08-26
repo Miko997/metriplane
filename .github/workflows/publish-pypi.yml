@@ -364,6 +364,13 @@ jobs:
           run-id: ${{ inputs.qualification_run_id }}
           github-token: ${{ github.token }}
 
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
       - name: Require retained cumulative release authority
         env:
           QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
@@ -373,24 +380,48 @@ jobs:
           set -euo pipefail
           [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$QUALIFICATION_RECORD_DIGEST" =~ ^[0-9a-f]{64}$ ]]
-          test "$(sha256sum release-authority/release-qualification.json | awk '{print $1}')" = \
+          test "$(sha256sum release-authority/qualification.json | awk '{print $1}')" = \
             "$QUALIFICATION_RECORD_DIGEST"
           python tools/validate_release_qualification.py \
-            --input release-authority/release-qualification.json \
-            --mode live
+            --record release-authority/qualification.json
           python tools/validate_release_role_assignments.py \
-            --input release-authority/release-role-assignments.json \
-            --mode live
+            --record release-authority/role-assignments.json \
+            --milestone v0.4 \
+            --run-id "$QUALIFICATION_RUN_ID" \
+            --check-conflicts \
+            --check-freshness
           python tools/validate_release_approval.py \
-            --input release-authority/release-approval.json \
-            --roles release-authority/release-role-assignments.json \
-            --mode live
+            --gate-instance release-authority/gate-instance.json \
+            --qualification release-authority/qualification.json \
+            --no-prepublication-rubric \
+            --record release-authority/prepublication/approval.json
           python tools/validate_release_retention.py \
-            --input release-authority/release-retention-receipts.json \
-            --mode live
+            --manifest release-authority/evidence-manifest.json \
+            --receipts release-authority/prepublication/retention-receipts.json \
+            --read-back
           python tools/check_release_readiness.py \
-            --repository . \
-            --mode live
+            --gate-instance release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --linear-snapshot release-authority/linear-snapshot.json \
+            --artifact-manifest release-authority/artifact-manifest.json \
+            --delta release-authority/delta.json \
+            --delta-test-map release-authority/delta-test-map.json \
+            --out "$RUNNER_TEMP/readiness.json"
+          cmp --silent \
+            release-authority/readiness.json \
+            "$RUNNER_TEMP/readiness.json"
+
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
+          cd ../..
+          python tools/validate_release_artifact_manifest.py \
+            --record release-authority/artifact-manifest.json \
+            --artifacts release-artifacts/dist \
+            --read-hash
 
       - name: Require owner confirmation and a successful artifact workflow
         id: request
