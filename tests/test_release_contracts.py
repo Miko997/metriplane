@@ -326,6 +326,47 @@ def test_live_retention_claims_block_without_real_store_readback(tmp_path: Path)
         )
 
 
+def test_live_subject_records_require_authenticated_authority(tmp_path: Path) -> None:
+    live_qualification = make_record(
+        "release-qualification",
+        _passing_qualification()["data"],
+        invocation_id="live-qualification-without-authority",
+        sequence=1,
+        synthetic=False,
+    )
+    live_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {},
+        invocation_id="live-reconciliation-without-authority",
+        sequence=1,
+        synthetic=False,
+    )
+    for name, record in (
+        ("validate_release_qualification.py", live_qualification),
+        ("validate_publication_reconciliation.py", live_reconciliation),
+    ):
+        path = tmp_path / f"{name}.json"
+        write_immutable_json(path, record)
+        assert tool_main(name, ["--record", str(path)]) == 3
+
+
+def test_malformed_record_status_blocks_without_type_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = make_record(
+        "release-gate-input",
+        {},
+        invocation_id="malformed-status-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    record["status"] = []
+    path = tmp_path / "malformed-status.json"
+    write_immutable_json(path, record)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    assert tool_main("validate_release_gate_input.py", ["--record", str(path)]) == 3
+
+
 def test_subject_validators_reject_blocked_records_and_missing_dependencies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -347,6 +388,13 @@ def test_subject_validators_reject_blocked_records_and_missing_dependencies(
     qualification_path = tmp_path / "qualification.json"
     qualification = _passing_qualification()
     write_immutable_json(qualification_path, qualification)
+    assert (
+        tool_main(
+            "validate_release_qualification.py",
+            ["--record", str(qualification_path)],
+        )
+        == 3
+    )
     approval = make_record(
         "release-approval",
         {
@@ -410,6 +458,51 @@ def test_subject_validators_reject_blocked_records_and_missing_dependencies(
         )
         == 3
     )
+    unbacked_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {
+            "approval_digest": "1" * 64,
+            "burn_required": False,
+            "candidate_digest": "2" * 64,
+            "evidence_manifest_digest": "3" * 64,
+            "expected_artifacts": [
+                {
+                    "media_type": "application/vnd.pypa.wheel+zip",
+                    "path": "metriplane-0.4.0-py3-none-any.whl",
+                    "sha256": "a" * 64,
+                    "size": 10,
+                },
+                {
+                    "media_type": "application/gzip",
+                    "path": "metriplane-0.4.0.tar.gz",
+                    "sha256": "b" * 64,
+                    "size": 11,
+                },
+            ],
+            "lock_receipt_digest": "4" * 64,
+            "milestone": "v0.4",
+            "observations_digest": "5" * 64,
+            "partial_targets": [],
+            "promotion_digest": "6" * 64,
+            "qualification_digest": "7" * 64,
+            "reconciliation_digest": "8" * 64,
+            "result": "RECONCILED",
+            "staged_retention_receipts_digest": "9" * 64,
+            "targets": [{"conflict_digest": None, "exact_match": True, "target_id": "pypi"}],
+        },
+        invocation_id="unbacked-reconciliation-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    unbacked_path = tmp_path / "unbacked-reconciliation.json"
+    write_immutable_json(unbacked_path, unbacked_reconciliation)
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(unbacked_path)],
+        )
+        == 3
+    )
 
     predecessor = make_record(
         "release-predecessor",
@@ -462,6 +555,302 @@ def test_subject_validators_reject_blocked_records_and_missing_dependencies(
         )
         == 3
     )
+
+
+def test_qualification_validator_resolves_the_retained_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate_digest = "c" * 64
+    candidate = make_record(
+        "release-candidate-identity",
+        {"candidate_digest": candidate_digest},
+        invocation_id="resolved-qualification-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    write_immutable_json(tmp_path / "candidate-identity.json", candidate)
+    plan = make_record(
+        "release-qualification-plan",
+        {
+            "attempt_count": 1,
+            "candidate_digest": candidate_digest,
+            "candidate_manifest_digest": "1" * 64,
+            "cells": [
+                {
+                    "cell_id": "cell-1",
+                    "environment_id": "ubuntu-py312",
+                    "obligation_ids": ["MP2-007.A07"],
+                    "profile_id": "default",
+                    "scenario_ids": ["qualification-pass"],
+                }
+            ],
+            "delta_digest": "2" * 64,
+            "delta_test_map_digest": "3" * 64,
+            "expected_terminal_result": "PASS",
+            "gate_instance_digest": "4" * 64,
+            "milestone": "v0.4",
+            "plan_digest": "5" * 64,
+            "predecessor_digest": "6" * 64,
+            "readiness_digest": "7" * 64,
+            "scenario_catalog_digest": "8" * 64,
+        },
+        invocation_id="resolved-qualification-plan",
+        sequence=1,
+        synthetic=True,
+    )
+    plan_digest = write_immutable_json(tmp_path / "qualification-plan.json", plan)
+    index_receipt = make_record(
+        "release-attempt-index",
+        {},
+        invocation_id="resolved-qualification-index",
+        sequence=1,
+        synthetic=True,
+    )
+    index_digest = write_immutable_json(tmp_path / "attempt-index-receipt.json", index_receipt)
+    retention_receipt = make_record(
+        "release-retention-receipts",
+        {},
+        invocation_id="resolved-qualification-retention",
+        sequence=1,
+        synthetic=True,
+    )
+    retention_digest = write_immutable_json(
+        tmp_path / "attempt-retention-receipts.json", retention_receipt
+    )
+    cell = make_record(
+        "release-cell-result",
+        {
+            "artifact_digest": "9" * 64,
+            "attempt_id": "001",
+            "candidate_digest": candidate_digest,
+            "cell_id": "cell-1",
+            "completed_at": "2026-08-25T12:01:00Z",
+            "counts": {
+                "deselected": 0,
+                "failed": 0,
+                "passed": 1,
+                "retried": 0,
+                "skipped": 0,
+                "xfailed": 0,
+                "xpassed": 0,
+            },
+            "environment_id": "ubuntu-py312",
+            "junit_digest": "a" * 64,
+            "obligation_ids": ["MP2-007.A07"],
+            "plan_digest": plan_digest,
+            "profile_id": "default",
+            "result": "PASS",
+            "runner_identity": "fixture-runner",
+            "scenario_ids": ["qualification-pass"],
+            "started_at": "2026-08-25T12:00:00Z",
+            "stderr_digest": "b" * 64,
+            "stdout_digest": "d" * 64,
+            "unexpected_outcomes": [],
+        },
+        invocation_id="resolved-qualification-cell",
+        sequence=1,
+        synthetic=True,
+    )
+    cell_path = tmp_path / "cell-result.json"
+    cell_digest = write_immutable_json(cell_path, cell)
+    warning = make_record(
+        "release-warning-summary",
+        {
+            "attempt_digest": "e" * 64,
+            "candidate_digest": candidate_digest,
+            "deselection_count": 0,
+            "policy_digest": "f" * 64,
+            "result": "PASS",
+            "retry_count": 0,
+            "skip_count": 0,
+            "summary_digest": "1" * 64,
+            "unexpected_warning_count": 0,
+            "warnings": [],
+            "xfail_count": 0,
+            "xpass_count": 0,
+        },
+        invocation_id="resolved-qualification-warning",
+        sequence=1,
+        synthetic=True,
+    )
+    warning_digest = write_immutable_json(tmp_path / "warning-summary.json", warning)
+    attempt = make_record(
+        "release-attempt",
+        {
+            "attempt_id": "001",
+            "candidate_digest": candidate_digest,
+            "cells": [{"cell_id": "cell-1", "result": "PASS", "result_digest": cell_digest}],
+            "coordination_digest": "2" * 64,
+            "index_receipt_digest": index_digest,
+            "milestone": "v0.4",
+            "qualification_plan_digest": plan_digest,
+            "result": "PASS",
+            "retention_receipts_digest": retention_digest,
+            "warning_summary_digest": warning_digest,
+        },
+        invocation_id="resolved-qualification-attempt",
+        sequence=1,
+        synthetic=True,
+    )
+    attempt_digest = write_immutable_json(tmp_path / "attempt-summary.json", attempt)
+    qualification = make_record(
+        "release-qualification",
+        {
+            "attempt_digests": [attempt_digest],
+            "attempt_index_receipt_digests": [index_digest],
+            "attempt_retention_receipt_digests": [retention_digest],
+            "candidate_digest": candidate_digest,
+            "executed_cell_ids": ["cell-1"],
+            "expected_cell_ids": ["cell-1"],
+            "plan_digest": plan_digest,
+            "qualification_digest": "3" * 64,
+            "result": "PASS",
+            "terminal_results": [
+                {"cell_id": "cell-1", "result": "PASS", "result_digest": cell_digest}
+            ],
+            "unexpected_outcomes": [],
+            "warning_summary_digest": warning_digest,
+        },
+        invocation_id="resolved-qualification",
+        sequence=1,
+        synthetic=True,
+    )
+    qualification_path = tmp_path / "qualification.json"
+    write_immutable_json(qualification_path, qualification)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    argv = ["--record", str(qualification_path)]
+    assert tool_main("validate_release_qualification.py", argv) == 0
+    cell_path.unlink()
+    assert tool_main("validate_release_qualification.py", argv) == 3
+
+
+def test_reconciliation_validator_resolves_exact_observed_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate_digest = "c" * 64
+    artifacts = [
+        {
+            "media_type": "application/vnd.pypa.wheel+zip",
+            "path": "metriplane-0.4.0-py3-none-any.whl",
+            "sha256": "b" * 64,
+            "size": 10,
+        },
+        {
+            "media_type": "application/gzip",
+            "path": "metriplane-0.4.0.tar.gz",
+            "sha256": "a" * 64,
+            "size": 11,
+        },
+    ]
+
+    def retain(name: str, record_type: str, data: dict[str, Any]) -> tuple[Path, str]:
+        record = make_record(
+            record_type,
+            data,
+            invocation_id=f"resolved-reconciliation-{name}",
+            sequence=1,
+            synthetic=True,
+        )
+        path = tmp_path / f"{name}.json"
+        return path, write_immutable_json(path, record)
+
+    _qualification_path, qualification_digest = retain(
+        "qualification",
+        "release-qualification",
+        {"candidate_digest": candidate_digest},
+    )
+    _approval_path, approval_digest = retain(
+        "approval",
+        "release-approval",
+        {"candidate_digest": candidate_digest},
+    )
+    _lock_path, lock_digest = retain(
+        "promotion-lock-receipt",
+        "release-promotion-lock",
+        {
+            "approval_digest": approval_digest,
+            "candidate_digest": candidate_digest,
+            "mutation_started": True,
+            "state": "COMMITTED",
+        },
+    )
+    promotion_path, promotion_digest = retain(
+        "promotion",
+        "release-promotion",
+        {
+            "candidate_digest": candidate_digest,
+            "lock_receipt_digest": lock_digest,
+            "mutation_started": True,
+            "result": "PUBLISHED",
+        },
+    )
+    observed_artifacts = [
+        {
+            "expected_digest": artifact["sha256"],
+            "name": artifact["path"],
+            "observed_digest": artifact["sha256"],
+            "size": artifact["size"],
+        }
+        for artifact in artifacts
+    ]
+    _observations_path, observations_digest = retain(
+        "publication-observations",
+        "release-publication-observations",
+        {
+            "all_targets_observed": True,
+            "candidate_digest": candidate_digest,
+            "lock_receipt_digest": lock_digest,
+            "promotion_digest": promotion_digest,
+            "targets": [
+                {
+                    "artifacts": observed_artifacts,
+                    "availability": "present",
+                    "immutability": "immutable",
+                    "target_id": "pypi",
+                }
+            ],
+        },
+    )
+    _manifest_path, manifest_digest = retain(
+        "evidence-manifest",
+        "release-evidence-manifest",
+        {"candidate_digest": candidate_digest, "phase": "qualified-publication"},
+    )
+    _retention_path, retention_digest = retain(
+        "retention-receipts",
+        "release-retention-receipts",
+        {},
+    )
+    reconciliation = make_record(
+        "release-publication-reconciliation",
+        {
+            "approval_digest": approval_digest,
+            "burn_required": False,
+            "candidate_digest": candidate_digest,
+            "evidence_manifest_digest": manifest_digest,
+            "expected_artifacts": artifacts,
+            "lock_receipt_digest": lock_digest,
+            "milestone": "v0.4",
+            "observations_digest": observations_digest,
+            "partial_targets": [],
+            "promotion_digest": promotion_digest,
+            "qualification_digest": qualification_digest,
+            "reconciliation_digest": "d" * 64,
+            "result": "RECONCILED",
+            "staged_retention_receipts_digest": retention_digest,
+            "targets": [{"conflict_digest": None, "exact_match": True, "target_id": "pypi"}],
+        },
+        invocation_id="resolved-reconciliation",
+        sequence=1,
+        synthetic=True,
+    )
+    reconciliation_path = tmp_path / "publication-reconciliation.json"
+    write_immutable_json(reconciliation_path, reconciliation)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    argv = ["--record", str(reconciliation_path)]
+    assert tool_main("validate_publication_reconciliation.py", argv) == 0
+    promotion_path.unlink()
+    assert tool_main("validate_publication_reconciliation.py", argv) == 3
 
 
 @pytest.mark.parametrize("name", sorted(TOOL_NAMES))
@@ -805,6 +1194,12 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     digest = "a" * 64
+    registry = {
+        "blockers": [],
+        "evidence_resolution": {"status": "READY"},
+        "framework": "READY",
+        "live_release": "READY",
+    }
     predecessor = make_record(
         "release-predecessor",
         {
@@ -827,6 +1222,80 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
             "tool": "linear",
         },
         invocation_id="readiness-linear-snapshot",
+        sequence=1,
+        synthetic=True,
+    )
+    gate_input = make_record(
+        "release-gate-input",
+        {
+            "environment_registry_digest": "7" * 64,
+            "evidence_store_registry_digest": "c" * 64,
+            "expected_predecessor_milestone": "v0.3",
+            "gate_input_digest": "4" * 64,
+            "linear_snapshot_digest": sha256_json(linear),
+            "milestone": "v0.4",
+            "obligation_registry_digest": "9" * 64,
+            "readiness_registry_digest": sha256_json(registry),
+            "role_assignments_digest": "6" * 64,
+            "run_id": "readiness-run",
+            "scenario_registry_digest": "a" * 64,
+            "target_burn_digest": "b" * 64,
+            "target_burn_index_receipt_digest": None,
+            "target_registry_digest": "1" * 64,
+            "target_resolution_digest": "2" * 64,
+            "task_state_policy_digest": "2" * 64,
+        },
+        invocation_id="readiness-gate-input",
+        sequence=1,
+        synthetic=True,
+    )
+    source_freeze = make_record(
+        "release-source-freeze",
+        {
+            "build_recipe_digest": "e" * 64,
+            "dirty": False,
+            "freeze_digest": "f" * 64,
+            "frozen_at": "2026-08-25T12:00:00Z",
+            "gate_input_digest": sha256_json(gate_input),
+            "milestone": "v0.4",
+            "registry_inputs": [
+                {
+                    "path": "docs/status/release-readiness.json",
+                    "schema_id": "release-readiness",
+                    "sha256": sha256_json(registry),
+                }
+            ],
+            "release_notes_digest": "3" * 64,
+            "source_sha": "1" * 40,
+            "source_tree": "2" * 40,
+            "version_metadata_digest": "4" * 64,
+            "workflow_inputs": [
+                {
+                    "path": ".github/workflows/release-required.yml",
+                    "schema_id": "github-workflow",
+                    "sha256": "5" * 64,
+                }
+            ],
+        },
+        invocation_id="readiness-source-freeze",
+        sequence=1,
+        synthetic=True,
+    )
+    impact_manifest = make_record(
+        "release-impact-manifest",
+        {
+            "author_id": "readiness-author",
+            "base_sha": "0" * 40,
+            "changes": [],
+            "head_sha": "1" * 40,
+            "manifest_digest": "6" * 64,
+            "milestone": "v0.4",
+            "release_tag": "v0.4.0",
+            "source_freeze_digest": sha256_json(source_freeze),
+            "target_resolution_digest": "2" * 64,
+            "unclassified_paths": [],
+        },
+        invocation_id="readiness-impact-manifest",
         sequence=1,
         synthetic=True,
     )
@@ -854,7 +1323,7 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
             "build_recipe_digest": "e" * 64,
             "milestone": "v0.4",
             "source_digest": "f" * 64,
-            "source_freeze_digest": "1" * 64,
+            "source_freeze_digest": sha256_json(source_freeze),
             "target_resolution_digest": "2" * 64,
         },
         invocation_id="readiness-artifact-manifest",
@@ -870,12 +1339,12 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
             "candidate_digest": "3" * 64,
             "evaluation_adoption_digest": None,
             "evaluation_adoption_mode": "none",
-            "gate_input_digest": "4" * 64,
+            "gate_input_digest": sha256_json(gate_input),
             "milestone": "v0.4",
             "package_version": "v0.4.0",
             "predecessor_digest": sha256_json(predecessor),
             "release_tag": "v0.4.0",
-            "source_freeze_digest": "1" * 64,
+            "source_freeze_digest": sha256_json(source_freeze),
         },
         invocation_id="readiness-candidate",
         sequence=1,
@@ -888,7 +1357,7 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
             "candidate_sha": "1" * 40,
             "changed": [],
             "delta_digest": "5" * 64,
-            "impact_manifest_digest": "6" * 64,
+            "impact_manifest_digest": sha256_json(impact_manifest),
             "milestone": "v0.4",
             "predecessor_digest": sha256_json(predecessor),
             "removed": [],
@@ -902,7 +1371,7 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         {
             "delta_digest": "5" * 64,
             "environment_registry_digest": "7" * 64,
-            "impact_manifest_digest": "6" * 64,
+            "impact_manifest_digest": sha256_json(impact_manifest),
             "map_digest": "8" * 64,
             "mappings": [
                 {
@@ -930,7 +1399,7 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
             "evidence_store_preflight_digest": "b" * 64,
             "evidence_store_registry_digest": "c" * 64,
             "frozen_source_sha": "1" * 40,
-            "gate_input_digest": "4" * 64,
+            "gate_input_digest": sha256_json(gate_input),
             "instance_digest": digest,
             "linear_snapshot_digest": sha256_json(linear),
             "main_health_digest": "d" * 64,
@@ -955,9 +1424,12 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         "candidate-identity": candidate,
         "delta-test-map": delta_map,
         "delta": delta,
+        "gate-input": gate_input,
         "gate-instance": gate,
+        "impact-manifest": impact_manifest,
         "linear-snapshot": linear,
         "predecessor": predecessor,
+        "source-freeze": source_freeze,
     }
     paths: dict[str, Path] = {}
     for name, record in records.items():
@@ -966,12 +1438,6 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         paths[name] = path
     status = tmp_path / "docs/status"
     status.mkdir(parents=True)
-    registry = {
-        "blockers": [],
-        "evidence_resolution": {"status": "READY"},
-        "framework": "READY",
-        "live_release": "READY",
-    }
     (status / "release-readiness.json").write_text(json.dumps(registry), encoding="utf-8")
     argv = [
         "--gate-instance",
@@ -1038,13 +1504,102 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
     for _label, changed_gate, changed_candidate, changed_map in mutation_cases:
         with pytest.raises(ReleaseControlError, match="readiness"):
             build_release_readiness_record(
+                gate_input=gate_input,
                 gate_instance=changed_gate,
                 candidate_identity_record=changed_candidate,
                 predecessor=predecessor,
                 linear_snapshot=linear,
+                source_freeze=source_freeze,
+                impact_manifest=impact_manifest,
                 artifact_manifest=artifact,
                 delta=delta,
                 delta_test_map=changed_map,
+                readiness_registry=registry,
+            )
+
+    changed_candidate = make_record(
+        "release-candidate-identity",
+        {
+            **candidate["data"],
+            "package_version": "v0.4.1",
+            "release_tag": "v0.4.1",
+        },
+        invocation_id="readiness-coordinated-version-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    changed_impact = make_record(
+        "release-impact-manifest",
+        {**impact_manifest["data"], "release_tag": "v0.4.1"},
+        invocation_id="readiness-coordinated-version-impact",
+        sequence=1,
+        synthetic=True,
+    )
+    changed_delta = make_record(
+        "release-capability-delta",
+        {**delta["data"], "impact_manifest_digest": sha256_json(changed_impact)},
+        invocation_id="readiness-coordinated-version-delta",
+        sequence=1,
+        synthetic=True,
+    )
+    changed_map = make_record(
+        "release-delta-test-map",
+        {**delta_map["data"], "impact_manifest_digest": sha256_json(changed_impact)},
+        invocation_id="readiness-coordinated-version-map",
+        sequence=1,
+        synthetic=True,
+    )
+    changed_gate = make_record(
+        "release-gate-instance",
+        {
+            **gate["data"],
+            "candidate_identity_digest": sha256_json(changed_candidate),
+            "package_version": "v0.4.1",
+            "release_tag": "v0.4.1",
+        },
+        invocation_id="readiness-coordinated-version-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    with pytest.raises(ReleaseControlError, match="artifact filenames"):
+        build_release_readiness_record(
+            gate_input=gate_input,
+            gate_instance=changed_gate,
+            candidate_identity_record=changed_candidate,
+            predecessor=predecessor,
+            linear_snapshot=linear,
+            source_freeze=source_freeze,
+            impact_manifest=changed_impact,
+            artifact_manifest=artifact,
+            delta=changed_delta,
+            delta_test_map=changed_map,
+            readiness_registry=registry,
+        )
+
+    for field, value in (
+        ("state", "Done"),
+        ("task_id", "MET-999"),
+        ("tool", "fabricated"),
+    ):
+        changed_linear = make_record(
+            "linear-release-snapshot",
+            {**linear["data"], field: value},
+            invocation_id=f"readiness-invalid-linear-{field}",
+            sequence=1,
+            synthetic=True,
+        )
+        with pytest.raises(ReleaseControlError, match="Linear"):
+            build_release_readiness_record(
+                gate_input=gate_input,
+                gate_instance=gate,
+                candidate_identity_record=candidate,
+                predecessor=predecessor,
+                linear_snapshot=changed_linear,
+                source_freeze=source_freeze,
+                impact_manifest=impact_manifest,
+                artifact_manifest=artifact,
+                delta=delta,
+                delta_test_map=delta_map,
                 readiness_registry=registry,
             )
 
@@ -1053,9 +1608,7 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
     (status / "release-readiness.json").write_text(json.dumps(registry), encoding="utf-8")
     argv[-1] = str(tmp_path / "blocked.json")
     assert tool_main("check_release_readiness.py", argv) == 3
-    blocked = json.loads((tmp_path / "blocked.json").read_text())["data"]
-    assert blocked["disposition"] == "BLOCKED_NOT_READY"
-    assert blocked["unresolved_blockers"] == ["MISSING_LIVE_EVIDENCE"]
+    assert not (tmp_path / "blocked.json").exists()
 
 
 def test_release_fixtures_are_exact_and_valid_fixtures_are_digest_bound() -> None:
