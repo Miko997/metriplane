@@ -53,6 +53,35 @@ REQUIRED_WORKFLOWS = {
     "security": ("Security / required", "CodeQL"),
 }
 
+RUN_STATUSES = frozenset({"completed", "in_progress", "pending", "queued", "requested", "waiting"})
+RUN_CONCLUSIONS = frozenset(
+    {
+        "action_required",
+        "cancelled",
+        "failure",
+        "neutral",
+        "skipped",
+        "stale",
+        "startup_failure",
+        "success",
+        "timed_out",
+    }
+)
+
+
+def _validate_run_result(run: dict[str, Any], *, workflow: str) -> tuple[str, str | None]:
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    if not isinstance(status, str) or status not in RUN_STATUSES:
+        raise ObservationError(f"{workflow}: provider run status is invalid")
+    if conclusion is not None and (
+        not isinstance(conclusion, str) or conclusion not in RUN_CONCLUSIONS
+    ):
+        raise ObservationError(f"{workflow}: provider run conclusion is invalid")
+    if (status == "completed") != (conclusion is not None):
+        raise ObservationError(f"{workflow}: provider run status and conclusion disagree")
+    return status, conclusion
+
 
 def provider_run_order(run: dict[str, Any], *, workflow: str) -> tuple[datetime, int, int]:
     """Return validated provider chronology and exact attempt identity."""
@@ -71,6 +100,7 @@ def provider_run_order(run: dict[str, Any], *, workflow: str) -> tuple[datetime,
         raise ObservationError(f"{workflow}: provider run update time is invalid") from exc
     if parsed.tzinfo is None:
         raise ObservationError(f"{workflow}: provider run update time has no timezone")
+    _validate_run_result(run, workflow=workflow)
     return parsed.astimezone(UTC), run_id, attempt
 
 
@@ -140,6 +170,7 @@ def _selected_run(
         value = provider_run.get(field)
         if not isinstance(value, expected_type) or isinstance(value, bool):
             raise ObservationError(f"{workflow}: provider run field {field!r} is invalid")
+    _validate_run_result(provider_run, workflow=workflow)
     if provider_run["head_branch"] != "main" or provider_run["head_sha"] != sha:
         raise ObservationError(f"{workflow}: provider run does not bind exact protected main SHA")
     conclusion = provider_run.get("conclusion")

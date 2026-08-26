@@ -200,6 +200,38 @@ def test_matching_newer_workflow_with_malformed_identity_fails_closed(
         _selection(runs)
 
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"status": None}, "run status is invalid"),
+        ({"status": True}, "run status is invalid"),
+        ({"status": ""}, "run status is invalid"),
+        ({"status": "unknown"}, "run status is invalid"),
+        ({"conclusion": True}, "run conclusion is invalid"),
+        ({"conclusion": ""}, "run conclusion is invalid"),
+        ({"conclusion": "unknown"}, "run conclusion is invalid"),
+        ({"conclusion": None}, "status and conclusion disagree"),
+        ({"status": "in_progress"}, "status and conclusion disagree"),
+    ],
+)
+def test_matching_superseded_workflow_with_malformed_result_fails_closed(
+    changes: dict[str, object], message: str
+) -> None:
+    malformed = _provider_run(
+        "documentation",
+        id=101,
+        updated_at="2026-08-26T11:59:00Z",
+        **changes,
+    )
+    runs = [
+        malformed,
+        _provider_run("documentation", id=102),
+        _provider_run("security"),
+    ]
+    with pytest.raises(ObservationError, match=message):
+        _selection(runs)
+
+
 def test_matching_workflow_with_malformed_provider_chronology_fails_closed() -> None:
     runs = [
         _provider_run("documentation", updated_at="not-a-timestamp"),
