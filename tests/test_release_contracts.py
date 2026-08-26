@@ -453,8 +453,22 @@ def test_cumulative_registry_and_obligation_membership_are_exact() -> None:
 def test_framework_readiness_cannot_claim_live_release_ready() -> None:
     readiness = json.loads((STATUS / "release-readiness.json").read_text(encoding="utf-8"))
     stores = json.loads((STATUS / "release-evidence-stores.json").read_text(encoding="utf-8"))
-    assert readiness["framework"] == "READY"
+    assert readiness["framework"] == "BLOCKED_NOT_READY"
     assert readiness["live_release"] == "BLOCKED_NOT_READY"
+    assert readiness["evidence_resolution"] == {
+        "allow_synthetic": False,
+        "allow_temporary_ci_artifact_as_retention": False,
+        "required_result_count": 13,
+        "resolved_result_count": 0,
+        "status": "BLOCKED_NOT_READY",
+    }
+    assert {blocker["code"] for blocker in readiness["blockers"]} == {
+        "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED",
+        "HOSTED_PROTECTION_AND_REAL_MERGE_PROOF_REQUIRED",
+        "LIVE_NON_AUTHOR_APPROVAL_REQUIRED",
+        "MP2_007_RESULT_EVIDENCE_ABSENT",
+        "MP2_018_POPULATED_INVENTORY_REQUIRED",
+    }
     assert stores["live_status"] == "BLOCKED_NOT_READY"
     assert all(store["live_binding"] is None for store in stores["stores"])
     assert stores["attempt_index"]["backend"] is None

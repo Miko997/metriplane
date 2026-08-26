@@ -1027,10 +1027,8 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     # This established artifact adapter is direct rather than a tool_main wrapper.
     "build_release_artifacts.py": _tool_contract(
-        "dist manifest version output invocation-id",
-        optional="sequence",
-        integer="sequence",
-        output_flag="output",
+        "target-resolution source-freeze out-dir manifest",
+        output_flag="manifest",
         delegated_adapter=True,
     ),
     "build_release_delta_test_map.py": _tool_contract(
