@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import copy
 import hashlib
@@ -187,6 +188,7 @@ def _synthetic_provider_payload(
         "submitted_at": reviewed_at,
         "user": actor(reviewer_id, "synthetic-reviewer"),
     }
+    registry_at_head = _registry([copy.deepcopy(blocker)])
     return {
         "pull": {
             "number": PULL_REQUEST,
@@ -208,6 +210,7 @@ def _synthetic_provider_payload(
             "committer": actor(commit_committer_id, "synthetic-committer"),
         },
         "reviews": [review, *(extra_reviews or [])],
+        "registry_at_head": registry_at_head,
         "permissions": {
             "synthetic-reviewer": {
                 "permission": reviewer_permission,
@@ -221,6 +224,23 @@ def _synthetic_provider_get(payload: dict[str, Any]) -> Any:
     def get(path: str, _token: str) -> Any:
         if path == f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}":
             return copy.deepcopy(payload["pull"])
+        if path.startswith(f"repos/{REPOSITORY}/contents/docs/status/blockers.json?ref="):
+            raw = json.dumps(
+                payload["registry_at_head"],
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            blob = b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+            response = {
+                "content": base64.b64encode(raw).decode("ascii"),
+                "encoding": "base64",
+                "path": "docs/status/blockers.json",
+                "sha": hashlib.sha1(blob, usedforsecurity=False).hexdigest(),
+                "size": len(raw),
+                "type": "file",
+            }
+            response.update(payload.get("registry_blob_overrides", {}))
+            return response
         if path.startswith(f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}/files?"):
             return copy.deepcopy(payload["files"])
         if path.startswith(f"repos/{REPOSITORY}/pulls/{PULL_REQUEST}/commits?"):
@@ -261,6 +281,7 @@ def _run(
     context_base_sha: str | None = None,
     validated_sha: str | None = None,
     require_merged_approval: bool = False,
+    validation_only: bool = False,
     include_pull_context: bool = True,
 ) -> tuple[int, dict[str, Any]]:
     registry = repo / "registry.json"
@@ -321,6 +342,8 @@ def _run(
         argv.extend(["--validated-sha", validated_sha])
     if require_merged_approval:
         argv.append("--require-merged-approval")
+    if validation_only:
+        argv.append("--validation-only")
     stdout = io.StringIO()
     provider_get = (
         _synthetic_provider_get(provider)
@@ -375,14 +398,16 @@ def _commit_base_registry(repo: Path, registry: dict[str, Any]) -> str:
     return _commit_fixture(repo, "fixture base")
 
 
-def test_production_registry_is_valid_nonblocking_and_does_not_invoke_provider(
+def test_production_registry_is_valid_and_does_not_invoke_provider(
     tmp_path: Path,
 ) -> None:
-    result, report = _run(tmp_path, json.loads(REGISTRY_PATH.read_text(encoding="utf-8")))
+    result, report = _run(
+        tmp_path,
+        json.loads(REGISTRY_PATH.read_text(encoding="utf-8")),
+        validation_only=True,
+    )
     assert result == 0
     assert report["valid"] is True
-    assert report["release_blocked"] is False
-    assert report["blocking_ids"] == []
 
 
 def test_open_p0_p1_and_security_block_release(tmp_path: Path) -> None:
@@ -394,6 +419,21 @@ def test_open_p0_p1_and_security_block_release(tmp_path: Path) -> None:
         assert result == 1
         assert report["valid"] is True
         assert report["blocking_ids"] == ["MPBLK-0001"]
+
+
+def test_validation_only_reports_blockers_without_failing_required_ci(tmp_path: Path) -> None:
+    blocker = _base_blocker()
+
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        validation_only=True,
+    )
+
+    assert result == 0
+    assert report["valid"] is True
+    assert report["release_blocked"] is True
+    assert report["blocking_ids"] == ["MPBLK-0001"]
 
 
 def test_open_p2_nonsecurity_does_not_block_release(tmp_path: Path) -> None:
@@ -423,6 +463,43 @@ def test_provider_verified_synthetic_closure_fixture_passes(tmp_path: Path) -> N
     result, report = _run(tmp_path, _registry([blocker]), provider=payload)
     assert result == 0
     assert report["valid"] is True
+
+
+@pytest.mark.parametrize(
+    ("action", "factory"),
+    (("downgrade", _valid_downgrade), ("closure", _valid_closure)),
+)
+def test_approval_requires_exact_action_at_provider_approved_head(
+    tmp_path: Path,
+    action: str,
+    factory: Any,
+) -> None:
+    blocker = factory(tmp_path)
+    payload = _synthetic_provider_payload(blocker, action)
+    approved_head = copy.deepcopy(blocker)
+    approved_head[action] = None
+    payload["registry_at_head"] = _registry([approved_head])
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any(
+        f"approved head does not contain the exact approved {action} action" in error
+        for error in report["errors"]
+    )
+
+
+def test_approval_head_registry_blob_identity_fails_closed(tmp_path: Path) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    payload = _synthetic_provider_payload(blocker, "downgrade")
+    payload["registry_blob_overrides"] = {"sha": "f" * 40}
+
+    result, report = _run(tmp_path, _registry([blocker]), provider=payload)
+
+    assert result == 2
+    assert any(
+        "approved-head blocker registry blob SHA is unbound" in error for error in report["errors"]
+    )
 
 
 def test_downgrade_requires_reproduction_and_control_evidence(tmp_path: Path) -> None:
@@ -1085,6 +1162,22 @@ def test_release_validation_requires_merged_approval_ancestry(tmp_path: Path) ->
     assert result == 0
     assert report["valid"] is True
 
+    payload["registry_at_head"]["blockers"][0]["downgrade"] = None
+    result, report = _run(
+        tmp_path,
+        _registry([blocker]),
+        provider=payload,
+        validated_sha=release_sha,
+        require_merged_approval=True,
+        include_pull_context=False,
+    )
+    assert result == 2
+    assert any(
+        "approved head does not contain the exact approved downgrade" in error
+        for error in report["errors"]
+    )
+    payload["registry_at_head"] = _registry([copy.deepcopy(blocker)])
+
     divergent_merge = _commit_fixture(tmp_path, "divergent copied approval")
     payload["pull"]["merge_commit_sha"] = divergent_merge
     result, report = _run(
@@ -1253,6 +1346,8 @@ def test_schema_checker_docs_trace_and_workflow_are_connected() -> None:
         "github.event.pull_request.base.sha",
         "--validated-sha",
         "--require-merged-approval",
+        "--validation-only",
+        "enforce-release-decision",
     ):
         assert provider_binding in workflow
 
@@ -1267,9 +1362,21 @@ def test_release_gate_checks_out_the_exact_validated_snapshot() -> None:
     )
 
 
-def test_production_registry_has_no_live_downgrade_or_closure() -> None:
-    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-    assert registry["blockers"] == []
+def test_required_ci_and_reusable_release_decision_are_distinct() -> None:
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    trigger = workflow.get("on", workflow.get(True))
+    decision = trigger["workflow_call"]["inputs"]["enforce-release-decision"]
+    policy_step = next(
+        step
+        for step in workflow["jobs"]["fixture-integrity"]["steps"]
+        if step.get("name") == "Enforce release blocker policy"
+    )
+    run = policy_step["run"]
+
+    assert decision["required"] is True
+    assert decision["type"] == "boolean"
+    assert "decision_args+=(--validation-only)" in run
+    assert '"${decision_args[@]}"' in run
 
 
 def test_schema_is_closed_and_checker_rejects_claimed_reviewer_fields(tmp_path: Path) -> None:

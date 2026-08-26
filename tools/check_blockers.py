@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import importlib.util
 import json
@@ -14,7 +16,7 @@ import re
 import subprocess
 import sys
 import urllib.request
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
@@ -677,6 +679,62 @@ def _github_registry_change_actors(
     return actors, errors
 
 
+def _github_action_at_approved_head(
+    *,
+    repository: str,
+    head_sha: str,
+    blocker_id: str,
+    action: str,
+    expected_record: Mapping[str, Any],
+    token: str,
+) -> list[str]:
+    prefix = blocker_id
+    value = _github_get(
+        f"repos/{repository}/contents/{REGISTRY_PATH}?ref={head_sha}",
+        token,
+    )
+    if not isinstance(value, dict):
+        return [f"{prefix}: approved-head blocker registry response is malformed"]
+    if (
+        value.get("type") != "file"
+        or value.get("path") != REGISTRY_PATH
+        or value.get("encoding") != "base64"
+        or not isinstance(value.get("content"), str)
+        or isinstance(value.get("size"), bool)
+        or not isinstance(value.get("size"), int)
+        or value["size"] < 0
+        or not isinstance(value.get("sha"), str)
+        or _GIT_SHA_RE.fullmatch(value["sha"]) is None
+    ):
+        return [f"{prefix}: approved-head blocker registry blob identity is malformed"]
+    encoded = value["content"].replace("\n", "")
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        return [f"{prefix}: approved-head blocker registry content is not canonical base64"]
+    if len(raw) != value["size"]:
+        return [f"{prefix}: approved-head blocker registry size is unbound"]
+    blob = b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+    if hashlib.sha1(blob, usedforsecurity=False).hexdigest() != value["sha"]:
+        return [f"{prefix}: approved-head blocker registry blob SHA is unbound"]
+    try:
+        registry = _strict_json_bytes(raw, "approved-head blocker registry")
+    except PolicyInputError as exc:
+        return [f"{prefix}: {exc}"]
+    if not isinstance(registry, dict) or not isinstance(registry.get("blockers"), list):
+        return [f"{prefix}: approved-head blocker registry has a malformed root"]
+    matching = [
+        candidate
+        for candidate in registry["blockers"]
+        if isinstance(candidate, dict) and candidate.get("id") == blocker_id
+    ]
+    if len(matching) != 1:
+        return [f"{prefix}: approved head does not contain exactly one matching blocker record"]
+    if matching[0].get(action) != expected_record:
+        return [f"{prefix}: approved head does not contain the exact approved {action} action"]
+    return []
+
+
 def _git_is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
     result = subprocess.run(
         ["/usr/bin/git", "merge-base", "--is-ancestor", ancestor, descendant],
@@ -761,6 +819,20 @@ def _verify_github_approval(
         if action_changed and expected_change_sha is not None and head_sha != expected_change_sha:
             errors.append(
                 f"{prefix}: provider pull request head is stale or not the validation SHA"
+            )
+        record = blocker["downgrade"] if action == "downgrade" else blocker["closure"]
+        if not isinstance(record, dict):
+            errors.append(f"{prefix}: current {action} action record is malformed")
+        else:
+            errors.extend(
+                _github_action_at_approved_head(
+                    repository=repository,
+                    head_sha=head_sha,
+                    blocker_id=blocker["id"],
+                    action=action,
+                    expected_record=record,
+                    token=token,
+                )
             )
         validated_sha = context["validated_sha"]
         if context["require_merged_approval"]:
@@ -1180,6 +1252,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--github-base-sha")
     parser.add_argument("--validated-sha")
     parser.add_argument("--require-merged-approval", action="store_true")
+    parser.add_argument(
+        "--validation-only",
+        action="store_true",
+        help="return success for a valid registry while retaining the release decision in output",
+    )
     parser.add_argument("--github-token-env", default="GITHUB_TOKEN")
     parser.add_argument("--json", action="store_true", help="emit deterministic JSON")
     return parser
@@ -1273,7 +1350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Release blocker policy passed.")
     if errors:
         return 2
-    if blocking_ids:
+    if blocking_ids and not args.validation_only:
         return 1
     return 0
 

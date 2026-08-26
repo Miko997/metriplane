@@ -10,7 +10,7 @@ Every unresolved P0, unresolved P1, and unresolved security blocker blocks relea
 unresolved means either `open` or `controlled`; controls do not silently convert a blocker into a
 closure. An open or controlled non-security P2 is valid and does not block release.
 
-The checker has three stable exit states:
+In its default release-decision mode, the checker has three stable exit states:
 
 | Exit | Meaning |
 | ---: | --- |
@@ -19,6 +19,12 @@ The checker has three stable exit states:
 | `2` | Schema, transition, evidence, approval, ordering, or input validation failed closed. |
 
 Its `--json` output is deterministic and contains no wall-clock field.
+
+Required pull-request and protected-branch CI uses `--validation-only`. That mode changes only a
+valid registry's process exit: unresolved release blockers remain visible as
+`"release_blocked": true` and in `blocking_ids`, but they do not make policy-validation CI fail.
+Malformed policy still exits `2`. Every tag gate and both production revalidations omit this option,
+so an unresolved P0, P1, or security blocker still stops every release path.
 
 ## Classification changes
 
@@ -101,13 +107,50 @@ commit, wrong repository or action-owning pull request, stale head or review, ab
 marker, offline verification, malformed provider data, or superseding review fails closed. On
 protected branch and release runs, the checker compares the validated commit to its exact history
 base, requires every approval pull request to be provider-confirmed as merged, and requires that
-provider merge commit to be an ancestor of the exact validated release SHA.
+provider merge commit to be an ancestor of the exact validated release SHA. For every current or
+historical approval, it also fetches `docs/status/blockers.json` from the immutable provider-reported
+approved head and requires that blob to contain exactly the current downgrade or closure action.
+Merely touching the registry in an older pull request is not an approval binding.
+
+## Production serialization
 
 The production workflow requires the annotated release tag to remain the exact current `main`
-commit, reruns live provider validation at manual dispatch, then fetches and rechecks exact current
-`main` immediately before the trusted publish action after protected-environment approval. Any
-intervening `main` change burns that candidate and requires a new tag. A dismissed or edited
-approval therefore invalidates production even if the earlier tag workflow passed.
+commit and reruns live provider validation at manual dispatch. After protected-environment approval
+and artifact revalidation, the publication job waits for GitHub App
+`metriplane-main-health-publisher` (App ID `4722589`) to atomically create
+`refs/heads/release-leases/pypi-<run-id>-<run-attempt>` at that exact commit and create the one
+matching `Release serialization / required` check in `in_progress` state. Its `external_id` is
+`metriplane-publish-lease.v1:<run-id>:<run-attempt>:<commit>`. Every Actions job remains
+`contents: read`; the trusted PyPI action cannot create, alter, or retire the fence.
+
+The MET-77 App-only main-update broker owns that acknowledgment. In its single serialized update
+loop it must first verify the exact workflow path, workflow-dispatch event, run ID, attempt, owner
+actor, release commit, environment-approved publication job, and successful prerequisite jobs. It
+then finishes or rejects any already-started main transaction, proves exact current `main`,
+revalidates the App-only main-update ruleset, creates exactly one lease, and fences every later main
+update while that transaction is active. The `release-leases/**` branch ruleset must restrict
+create, update, and delete to broker App ID `4722589`, with no Actions or human bypass. Production
+publication remains fail closed until those hosted rules and broker behavior are active.
+
+While the acknowledged lease is held, the workflow performs live blocker validation. A separate,
+network-only step then re-fetches the lease, the App acknowledgment, and exact current `main`
+immediately before the trusted PyPI action. The lease remains active through manifest comparison,
+production installation, and smoke verification. Only after those jobs succeed does reconciliation
+wait for the broker. The broker must observe the exact reconciliation step in progress, re-prove the
+successful publication and verification jobs and exact `main`, delete its exact lease ref, and
+complete the same App check ID with `success`. It retains its durable in-progress fence until it has
+published that terminal result. Actions re-fetches the completed check and proves that no matching
+lease ref remains; it never mutates either object.
+
+Any `main` drift before upload begins burns the candidate and requires a new tag. A dismissed or
+edited approval observed by the final live revalidation invalidates production even if the earlier
+tag workflow passed. A failed or ambiguous upload, failed production verification, missing App
+acknowledgment, or observed drift retains the lease ref and the broker-side in-progress fence. A
+missing terminal acknowledgment also retains the broker fence. Either state blocks App-mediated
+main updates pending audited broker reconciliation. If a privileged actor violates the no-bypass
+boundary after bytes reach PyPI, the published bytes cannot truthfully be called burned or
+unpublished; that is a release incident requiring exact-byte reconciliation and a new candidate for
+any corrective release.
 
 `linear` remains a reserved schema value so existing planned integrations have an explicit
 disposition. It cannot authorize a production action until an equivalent live Linear verifier and
@@ -116,9 +159,10 @@ such a record closed.
 
 ## Manual boundary
 
-This implementation does not perform or approve a real downgrade or closure. The production
-registry contains neither. Tests inject clearly named in-process provider fixtures; no CLI flag,
-registry field, workflow input, or production path can select them, so they are not approvals.
+This implementation does not perform or approve a real downgrade or closure. Tests inject clearly
+named in-process provider fixtures; no CLI flag, registry field, workflow input, or production path
+can select them, so they are not approvals. The canonical registry may contain genuine open or
+controlled blockers; required CI validates those records without asserting that the list is empty.
 
 The current repository/workspace has no eligible provider-authenticated non-author reviewer:
 Miko/Miko997 is the author, and the Linear integration account is not an eligible human. Therefore
