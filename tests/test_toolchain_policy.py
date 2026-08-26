@@ -17,12 +17,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT_PATH = ROOT / "pyproject.toml"
 LOCK_PATH = ROOT / "uv.lock"
 POLICY_DOC_PATH = ROOT / "docs" / "maintainers" / "testing-policy.md"
 CI_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+PRE_COMMIT_PATH = ROOT / ".pre-commit-config.yaml"
+CONFIG_PACKAGE_PATH = ROOT / "metriplane" / "config"
 
 
 def _load_warning_policy_module() -> Any:
@@ -54,7 +57,8 @@ TOOLCHAIN = {
     "twine": "6.2.0",
     "types-PyYAML": "6.0.12.20260724",
 }
-EXPECTED_COLLECTION = 1621
+EXPECTED_COLLECTION = 1960
+EXPECTED_MYPY_SOURCES = 141
 POLICY_NOW = dt.datetime(2026, 8, 25, tzinfo=dt.UTC)
 
 
@@ -133,6 +137,42 @@ def test_ci_runs_the_canonical_quality_commands() -> None:
         "uv run --frozen mypy",
     )
     assert all(workflow.count(command) == 1 for command in commands)
+
+
+def test_pre_commit_uses_the_canonical_tool_versions() -> None:
+    repositories = yaml.safe_load(PRE_COMMIT_PATH.read_text(encoding="utf-8"))["repos"]
+    revisions = {repository["repo"]: repository["rev"] for repository in repositories}
+    assert revisions["https://github.com/astral-sh/ruff-pre-commit"] == f"v{TOOLCHAIN['ruff']}"
+    assert revisions["https://github.com/pre-commit/mirrors-mypy"] == f"v{TOOLCHAIN['mypy']}"
+
+
+def test_mypy_source_census_has_one_real_config_owner() -> None:
+    source_files = sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "metriplane").rglob("*.py")
+        if "atlas" not in path.relative_to(ROOT / "metriplane").parts
+    )
+    assert len(source_files) == EXPECTED_MYPY_SOURCES
+    assert "metriplane/config/runtime.py" in source_files
+    assert not (ROOT / "metriplane" / "config.py").exists()
+    assert not (CONFIG_PACKAGE_PATH / "__init__.pyi").exists()
+
+
+def test_canonical_collection_matches_the_checkout() -> None:
+    environment = os.environ.copy()
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    node_ids = [line for line in completed.stdout.splitlines() if line.startswith("tests/")]
+    assert len(node_ids) == EXPECTED_COLLECTION
+    assert f"{EXPECTED_COLLECTION} tests collected" in completed.stdout
 
 
 def test_lock_metadata_requires_exact_toolchain() -> None:
@@ -353,8 +393,9 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
 def test_canonical_collection_contract_is_documented() -> None:
     text = POLICY_DOC_PATH.read_text(encoding="utf-8")
     assert f"{EXPECTED_COLLECTION:,} items" in text
-    assert "1,607 passed" in text
+    assert "1,945 passed" in text
     assert "14 expected skips" in text
+    assert "one tracked frozen-identity failure" in text
     assert "Twelve result-schema cases" in text
     assert "one browser smoke case" in text
     assert "one GPU-equivalence case" in text

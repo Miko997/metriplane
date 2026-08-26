@@ -165,6 +165,11 @@ jobs:
           [[ "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]
           git cat-file -e "${candidate_commit}^{commit}"
           candidate_identity_paths=(
+            metriplane
+            ":(exclude)metriplane/atlas/evidence_lake.py"
+            integrations
+            LICENSE
+            NOTICE
             adapters/maniskill_pickcube
             examples/external_sources/maniskill_pickcube
             schemas/metriplane.external_source_contract.v1.schema.json
@@ -339,6 +344,11 @@ jobs:
           [[ "$candidate_commit" =~ ^[0-9a-f]{40}$ ]]
           git cat-file -e "${candidate_commit}^{commit}"
           candidate_identity_paths=(
+            metriplane
+            ":(exclude)metriplane/atlas/evidence_lake.py"
+            integrations
+            LICENSE
+            NOTICE
             adapters/maniskill_pickcube
             examples/external_sources/maniskill_pickcube
             schemas/metriplane.external_source_contract.v1.schema.json

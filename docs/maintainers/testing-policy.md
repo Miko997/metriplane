@@ -16,6 +16,9 @@ Metriplane supports Python 3.12 and 3.13. Runtime dependency ranges remain in
 | Twine | `twine==6.2.0` |
 | PyYAML stubs | `types-PyYAML==6.0.12.20260724` |
 
+The matching pre-commit hooks use Ruff `v0.16.2` and mypy `v1.20.2`; local
+hooks and CI therefore evaluate the same tool identities.
+
 Use the exact uv executable and ignore user or system uv configuration:
 
 ```bash
@@ -63,16 +66,16 @@ failures, and promotes warnings to errors. Neither pytest configuration nor a
 conftest adds the repository to `PYTHONPATH` or mutates `sys.path`; the synced
 environment must provide the source installation normally.
 
-Canonical collection is checked three times with:
+The policy test enforces canonical collection with:
 
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-Each ordered node-id stream must contain exactly 1,621 items and have the same
-SHA-256 digest. In the exact core environment above, without optional GPU
-extras and with the empty browser cache, a complete source run has 1,607 passed
-and 14 expected skips. Twelve result-schema cases run in the separate locked
+The ordered node-id stream must contain exactly 1,960 items. In the exact core
+environment above, without optional GPU extras and with the empty browser
+cache, the current disjoint cleanup sidecar has 1,945 passed, 14 expected skips,
+and one tracked frozen-identity failure pending the proof-owner repair. Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, and one GPU-equivalence case requires an optional CuPy extra.
 The frozen MP2-000 1,194-item snapshot is a historical artifact and is not

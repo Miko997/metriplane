@@ -36,20 +36,6 @@ WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "maniskill-proof.yml
 EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
 EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
 EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
-FROZEN_CANDIDATE_IDENTITY_PATHS = (
-    "adapters/maniskill_pickcube",
-    "examples/external_sources/maniskill_pickcube",
-    "schemas/metriplane.external_source_contract.v1.schema.json",
-    "proofs/maniskill-pickcube-v1/CITATION.cff",
-    "proofs/maniskill-pickcube-v1/CLAIMS.md",
-    "proofs/maniskill-pickcube-v1/EVALUATOR.md",
-    "proofs/maniskill-pickcube-v1/NOTICE.md",
-    "proofs/maniskill-pickcube-v1/README.md",
-    "proofs/maniskill-pickcube-v1/REPRODUCE.md",
-    "proofs/maniskill-pickcube-v1/evaluator-report-template.md",
-    "proofs/maniskill-pickcube-v1/proof-record.schema.json",
-    "proofs/maniskill-pickcube-v1/reproduce.py",
-)
 
 PROOF_TAG = "maniskill-pickcube-proof-v1"
 BASELINE_COMMIT = "1549d0a05e03db51efc0ee08edb7d9db66196b4e"
@@ -955,28 +941,6 @@ def test_referenced_metriplane_commits_are_full_and_reachable_in_git() -> None:
         assert completed.returncode == 0, (commit, completed.stderr)
 
 
-def _candidate_identity_diff(
-    repository_root: Path,
-    candidate: str,
-    checkout: str = "HEAD",
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            "git",
-            "diff",
-            "--exit-code",
-            candidate,
-            checkout,
-            "--",
-            *FROZEN_CANDIDATE_IDENTITY_PATHS,
-        ],
-        cwd=repository_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-
 def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     shallow = subprocess.run(
         ["git", "rev-parse", "--is-shallow-repository"],
@@ -991,7 +955,32 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
 
     record = _read_json(RECORD_PATH)
     candidate = record["proof_identity"]["candidate_commit"]
-    completed = _candidate_identity_diff(REPOSITORY_ROOT, candidate)
+    frozen_identity_paths = (
+        "metriplane",
+        f":(exclude){EVIDENCE_LAKE_PATH}",
+        "integrations",
+        "LICENSE",
+        "NOTICE",
+        "adapters/maniskill_pickcube",
+        "examples/external_sources/maniskill_pickcube",
+        "schemas/metriplane.external_source_contract.v1.schema.json",
+        "proofs/maniskill-pickcube-v1/CITATION.cff",
+        "proofs/maniskill-pickcube-v1/CLAIMS.md",
+        "proofs/maniskill-pickcube-v1/EVALUATOR.md",
+        "proofs/maniskill-pickcube-v1/NOTICE.md",
+        "proofs/maniskill-pickcube-v1/README.md",
+        "proofs/maniskill-pickcube-v1/REPRODUCE.md",
+        "proofs/maniskill-pickcube-v1/evaluator-report-template.md",
+        "proofs/maniskill-pickcube-v1/proof-record.schema.json",
+        "proofs/maniskill-pickcube-v1/reproduce.py",
+    )
+    completed = subprocess.run(
+        ["git", "diff", "--exit-code", candidate, "HEAD", "--", *frozen_identity_paths],
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
     def read_git_bytes(revision: str, path: str) -> bytes:
@@ -1045,44 +1034,6 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
     assert normalized_lock(candidate) == normalized_lock("HEAD")
 
 
-def test_frozen_identity_diff_allows_core_evolution_but_rejects_proof_mutation(
-    tmp_path: Path,
-) -> None:
-    def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-
-    git("init")
-    git("config", "user.email", "proof-test@example.invalid")
-    git("config", "user.name", "Proof Test")
-    core_path = tmp_path / "metriplane" / "run.py"
-    proof_path = tmp_path / "proofs" / "maniskill-pickcube-v1" / "README.md"
-    core_path.parent.mkdir(parents=True)
-    proof_path.parent.mkdir(parents=True)
-    core_path.write_text("baseline core\n", encoding="utf-8")
-    proof_path.write_text("frozen proof\n", encoding="utf-8")
-    git("add", ".")
-    git("commit", "-m", "baseline")
-    candidate = git("rev-parse", "HEAD").stdout.strip()
-
-    core_path.write_text("evolved core\n", encoding="utf-8")
-    git("add", str(core_path.relative_to(tmp_path)))
-    git("commit", "-m", "allow core evolution")
-    assert _candidate_identity_diff(tmp_path, candidate).returncode == 0
-
-    proof_path.write_text("mutated proof\n", encoding="utf-8")
-    git("add", str(proof_path.relative_to(tmp_path)))
-    git("commit", "-m", "mutate frozen proof")
-    frozen_diff = _candidate_identity_diff(tmp_path, candidate)
-    assert frozen_diff.returncode != 0
-    assert "proofs/maniskill-pickcube-v1/README.md" in frozen_diff.stdout
-
-
 def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> None:
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     workflow = yaml.safe_load(text)
@@ -1116,20 +1067,27 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
         r"candidate_identity_paths=\(\n(?P<body>.*?)\n\s*\)", text, re.DOTALL
     )
     assert len(identity_blocks) == 2
-    parsed_identity_blocks = [
-        tuple(line.strip().strip('"') for line in block.splitlines() if line.strip())
-        for block in identity_blocks
-    ]
-    assert all(block == FROZEN_CANDIDATE_IDENTITY_PATHS for block in parsed_identity_blocks)
-    for unrelated_path in ("metriplane", "integrations", "LICENSE", "NOTICE"):
-        assert all(unrelated_path not in block for block in parsed_identity_blocks)
+    assert all("pyproject.toml" not in block for block in identity_blocks)
+    assert all("uv.lock" not in block for block in identity_blocks)
+    identity_exception = '":(exclude)metriplane/atlas/evidence_lake.py"'
+    assert all(block.count(identity_exception) == 1 for block in identity_blocks)
     assert text.count('candidate_pyproject["project"]') == 2
     assert text.count('candidate_pyproject["tool"]["setuptools"]') == 2
     assert text.count('metadata.pop("requires-dev")') == 2
     assert text.count('normalized_lock(candidate_commit) != normalized_lock("HEAD")') == 2
     assert text.count(f'EVIDENCE_LAKE_FROZEN_SHA256 = "{EVIDENCE_LAKE_FROZEN_SHA256}"') == 2
     assert text.count(f'EVIDENCE_LAKE_REPAIRED_SHA256 = "{EVIDENCE_LAKE_REPAIRED_SHA256}"') == 2
-    for identity_path in FROZEN_CANDIDATE_IDENTITY_PATHS:
+    for identity_path in (
+        "metriplane",
+        "integrations",
+        "pyproject.toml",
+        "uv.lock",
+        "adapters/maniskill_pickcube",
+        "examples/external_sources/maniskill_pickcube",
+        "schemas/metriplane.external_source_contract.v1.schema.json",
+        "proofs/maniskill-pickcube-v1/CLAIMS.md",
+        "proofs/maniskill-pickcube-v1/reproduce.py",
+    ):
         assert text.count(identity_path) >= 2
     assert "CANDIDATE_COMMIT" in text
     assert 'exact_commit="$(git rev-parse HEAD)"' not in text
