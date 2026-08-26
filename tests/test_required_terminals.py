@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -31,6 +32,18 @@ def _results() -> dict[str, dict[str, str]]:
         "linux": {"result": "success", "sha": SHA},
         "macos": {"result": "success", "sha": SHA},
     }
+
+
+def _copy_workflow_producers(policy: dict[str, Any], workflow_root: Path) -> None:
+    for terminal in policy["terminals"]:
+        producers = [terminal.get("producer")]
+        transition = terminal.get("transition")
+        if isinstance(transition, dict):
+            producers.append(transition.get("producer"))
+        for producer in producers:
+            if isinstance(producer, str) and producer.startswith(".github/workflows/"):
+                source = ROOT / producer
+                shutil.copyfile(source, workflow_root / source.name)
 
 
 def test_exact_aggregate_succeeds() -> None:
@@ -122,6 +135,14 @@ def test_terminal_inventory_has_five_sole_producers() -> None:
         "Main health / required",
         "Release / required",
     ]
+    assert active[-2]["producer"] == "github-app:metriplane-main-health-publisher"
+    assert active[-2]["transition"] == {
+        "actions_integration_id": 15368,
+        "approval_variable": "MET77_APPROVED_HEAD_SHA",
+        "base_sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+        "producer": ".github/workflows/main-health.yml",
+        "pull_request": 86,
+    }
     assert active[-1] == {
         "name": "Release / required",
         "owner": "MP2-007",
@@ -130,18 +151,51 @@ def test_terminal_inventory_has_five_sole_producers() -> None:
     }
 
 
+def test_terminal_inventory_rejects_a_substituted_app_producer(tmp_path: Path) -> None:
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    main_health = next(
+        item for item in policy["terminals"] if item["name"] == "Main health / required"
+    )
+    main_health["producer"] = "github-app:substituted-publisher"
+    changed = tmp_path / "required-terminals.json"
+    changed.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(TerminalValidationError, match="governed MP2-004"):
+        validate_policy(changed, WORKFLOWS)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("actions_integration_id", 1),
+        ("approval_variable", "PR_BODY"),
+        ("base_sha", "a" * 40),
+        ("producer", ".github/workflows/substituted.yml"),
+        ("pull_request", 87),
+    ],
+)
+def test_terminal_inventory_rejects_a_substituted_transition(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    main_health = next(
+        item for item in policy["terminals"] if item["name"] == "Main health / required"
+    )
+    main_health["transition"][field] = value
+    changed = tmp_path / "required-terminals.json"
+    changed.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(TerminalValidationError, match="governed transition is invalid"):
+        validate_policy(changed, WORKFLOWS)
+
+
 @pytest.mark.parametrize("suffix", (".yml", ".yaml"))
 def test_duplicate_or_missing_producer_is_rejected(tmp_path: Path, suffix: str) -> None:
     workflow_root = tmp_path / "workflows"
     workflow_root.mkdir()
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
-    for terminal in policy["terminals"]:
-        if terminal["producer"]:
-            source = ROOT / terminal["producer"]
-            shutil.copyfile(source, workflow_root / source.name)
+    _copy_workflow_producers(policy, workflow_root)
     duplicate = workflow_root / f"duplicate{suffix}"
     duplicate.write_text(
-        "name: duplicate\njobs:\n  required:\n    name: Metriplane / required\n",
+        "name: duplicate\njobs:\n  required:\n    name: Main health / required\n",
         encoding="utf-8",
     )
     with pytest.raises(TerminalValidationError, match="sole producer"):
@@ -168,10 +222,7 @@ def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(
     workflow_root = tmp_path / "workflows"
     workflow_root.mkdir()
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
-    for terminal in policy["terminals"]:
-        if terminal["producer"]:
-            source = ROOT / terminal["producer"]
-            shutil.copyfile(source, workflow_root / source.name)
+    _copy_workflow_producers(policy, workflow_root)
     (workflow_root / "dynamic.yaml").write_text(
         "name: dynamic\njobs:\n  required:\n" + job_name,
         encoding="utf-8",
@@ -180,98 +231,128 @@ def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(
         validate_policy(POLICY, workflow_root)
 
 
-def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
+def test_actions_have_four_canonical_aggregates_and_one_legacy_main_health_bridge() -> None:
     expected = {
         "ci.yml": "Metriplane / required",
         "docs.yml": "Documentation / required",
         "codeql.yml": "Security / required",
-        "main-health.yml": "Main health / required",
         "release-required.yml": "Release / required",
     }
     for filename, terminal in expected.items():
         workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))
-        jobs = workflow["jobs"]
-        producers = [job for job in jobs.values() if job.get("name") == terminal]
+        producers = [job for job in workflow["jobs"].values() if job.get("name") == terminal]
         assert len(producers) == 1
-        assert "always()" in str(producers[0].get("if", "")) or filename == "main-health.yml"
-        aggregate = str(producers[0])
-        assert "outputs.source_sha" in aggregate or "outputs.measured_sha" in aggregate
+        assert "always()" in str(producers[0].get("if", ""))
+        assert "outputs.source_sha" in str(producers[0])
+
+    main_health_producers: list[str] = []
+    for workflow_path in WORKFLOWS.glob("*.y*ml"):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        if any(
+            job.get("name") == "Main health / required" for job in workflow.get("jobs", {}).values()
+        ):
+            main_health_producers.append(workflow_path.name)
+    assert main_health_producers == ["main-health.yml"]
 
     docs = yaml.safe_load((WORKFLOWS / "docs.yml").read_text(encoding="utf-8"))
     trigger = docs.get("on", docs.get(True))
     assert trigger["pull_request"] is None
     assert "paths" not in trigger["push"]
-
-    health = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
-    health_trigger = health.get("on", health.get(True))
-    assert "edited" in health_trigger["pull_request"]["types"]
-    assert health_trigger["workflow_run"]["workflows"] == ["CI"]
-    concurrency_group = str(health["concurrency"]["group"])
-    assert "main-health-state-writer" in concurrency_group
-    assert "github.event.workflow_run.head_branch == 'main'" in concurrency_group
-    assert "github.event.workflow_run.event == 'push'" in concurrency_group
-    assert "github.run_id" in concurrency_group
-    assert health["concurrency"]["queue"] == "max"
-    assert health["jobs"]["candidate-health"]["permissions"] == {"contents": "read"}
-    assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
-    assert health["jobs"]["persist-health"]["permissions"] == {
-        "actions": "read",
-        "contents": "write",
-    }
-    assert "stop_the_line.py ingest" not in "\n".join(
-        step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
-    )
-    writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
-    assert "stop_the_line.py ingest" in writer
-    assert "git rev-parse origin/main" in writer
-    assert "actions/runs?head_sha=${RUN_SHA}&per_page=100" in writer
-    assert "actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" in writer
-    assert writer.count("--paginate") == 3
-    assert "cmp -s" in writer
-    assert "observe_main_health.py invalidate" in writer
-    assert "github.event.workflow_run.run_attempt" in str(health["jobs"]["persist-health"]["steps"])
-    assert "tools/observe_main_health.py" in writer
     assert REQUIRED_WORKFLOWS == {
         "metriplane": ("Metriplane / required", "CI"),
         "documentation": ("Documentation / required", "Documentation"),
         "security": ("Security / required", "CodeQL"),
     }
-    assert '"obligations": json.loads(obligations)' in writer
-    assert "stop_the_line.py candidate" in "\n".join(
-        step.get("run", "") for step in health["jobs"]["candidate-health"]["steps"]
-    )
-    assert health["jobs"]["persist-health"]["needs"] == "scheduled-deep"
-
-    ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
-    ci_trigger = ci.get("on", ci.get(True))
-    assert "edited" in ci_trigger["pull_request"]["types"]
-    for job_name in ("test", "macos-regressions", "linux-python313"):
-        assert ci["jobs"][job_name]["outputs"]["source_sha"]
-    assert "metriplane-main-health-state" in (WORKFLOWS / "main-health.yml").read_text(
-        encoding="utf-8"
-    )
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
-def test_main_health_observer_step_is_valid_bash() -> None:
+def test_main_health_workflow_is_read_only_deep_observation_with_transition_bridge() -> None:
+    workflow_path = WORKFLOWS / "main-health.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger = workflow.get("on", workflow.get(True))
+    assert trigger == {
+        "pull_request": {
+            "types": ["opened", "synchronize", "reopened", "ready_for_review", "edited"]
+        },
+        "repository_dispatch": {"types": ["main-health-nightly", "main-health-weekly"]},
+        "schedule": [{"cron": "23 3 * * 1-6"}, {"cron": "23 3 * * 0"}],
+    }
+    assert workflow["permissions"] == {"checks": "read", "contents": "read"}
+    assert workflow["concurrency"] == {
+        "group": "main-health-${{ github.event.pull_request.number || 'deep' }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
+    assert set(workflow["jobs"]) == {"legacy-main-health-required", "nightly", "weekly"}
+    assert {workflow["jobs"][name]["name"] for name in ("nightly", "weekly")} == {
+        "Main health deep / nightly",
+        "Main health deep / weekly",
+    }
+    for name in ("nightly", "weekly"):
+        job = workflow["jobs"][name]
+        checkout = job["steps"][0]
+        assert checkout["with"] == {
+            "fetch-depth": 0,
+            "persist-credentials": False,
+            "ref": "${{ github.sha }}",
+        }
+        assert job["steps"][1] == {
+            "name": "Verify exact provider SHA",
+            "run": 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
+        }
+        assert job["timeout-minutes"] == 60
+    bridge = workflow["jobs"]["legacy-main-health-required"]
+    assert bridge["name"] == "Main health / required"
+    assert bridge["if"] == "github.event_name == 'pull_request'"
+    assert bridge["timeout-minutes"] == 20
+    assert bridge["steps"][0]["with"] == {
+        "persist-credentials": False,
+        "ref": "${{ github.event.pull_request.head.sha }}",
+    }
+    assert bridge["steps"][1] == {
+        "env": {
+            "GITHUB_TOKEN": "${{ github.token }}",
+            "MET77_APPROVED_HEAD_SHA": "${{ vars.MET77_APPROVED_HEAD_SHA }}",
+            "MET77_BASE_REF": "${{ github.event.pull_request.base.ref }}",
+            "MET77_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+            "MET77_HEAD_REPOSITORY": "${{ github.event.pull_request.head.repo.full_name }}",
+            "MET77_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+            "MET77_PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
+            "MET77_PR_NUMBER": "${{ github.event.pull_request.number }}",
+        },
+        "name": "Validate provider-approved exact transition",
+        "run": (
+            "python3 tools/check_met77_transition.py --poll-attempts 90 --poll-interval-seconds 10"
+        ),
+    }
+    text = workflow_path.read_text(encoding="utf-8")
+    assert "PR_BODY" not in text
+    assert "PR_TITLE" not in text
+    assert "Independent exact-SHA review" not in text
+    assert "MAIN_HEALTH_APP_PRIVATE_KEY" not in text
+    assert "create-github-app-token" not in text
+    assert "checks: write" not in text
+    assert not (WORKFLOWS / "main-health-lease.yml").exists()
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on Bash runners")
+def test_main_health_shell_steps_are_valid_bash() -> None:
     workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
-    step = next(
-        item
-        for item in workflow["jobs"]["persist-health"]["steps"]
-        if item.get("name") == "Observe exact protected-main terminals"
-    )
-    completed = subprocess.run(
-        ["bash", "-n"],
-        input=step["run"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert completed.returncode == 0, completed.stderr
+    for job in workflow["jobs"].values():
+        for step in job["steps"]:
+            script = step.get("run")
+            if script is None:
+                continue
+            completed = subprocess.run(
+                ["bash", "-n"],
+                input=script,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            assert completed.returncode == 0, completed.stderr
 
 
 def test_policy_validation_does_not_mutate_input() -> None:
-    before = json.loads(POLICY.read_text(encoding="utf-8"))
-    snapshot = copy.deepcopy(before)
+    policy = json.loads(POLICY.read_text(encoding="utf-8"))
+    original = copy.deepcopy(policy)
     validate_policy(POLICY, WORKFLOWS)
-    assert before == snapshot
+    assert policy == original

@@ -1,91 +1,71 @@
-# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-FileCopyrightText: 2026 Miko Parkkinen
 # SPDX-License-Identifier: MIT
 
-name: Main Health
+name: Main Health Deep
+run-name: Main Health Deep / ${{ github.event.action || github.event.schedule }} / main
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  repository_dispatch:
+    types: [main-health-nightly, main-health-weekly]
   schedule:
     - cron: "23 3 * * 1-6"
     - cron: "23 3 * * 0"
 
 concurrency:
-  group: >-
-    ${{ (github.event_name == 'schedule' ||
-         (github.event_name == 'workflow_run' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.event == 'push')) &&
-        'main-health-state-writer' ||
-        format('main-health-nonwriter-{0}', github.run_id) }}
-  queue: max
+  group: main-health-${{ github.event.pull_request.number || 'deep' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
+  checks: read
   contents: read
 
-env:
-  STATE_BRANCH: metriplane-main-health-state
-
 jobs:
-  candidate-health:
+  legacy-main-health-required:
     if: github.event_name == 'pull_request'
+    name: Main health / required
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
+    timeout-minutes: 20
     steps:
-      - name: Check out candidate
+      - name: Check out exact candidate
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Record checked-out source
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Validate provider-approved exact transition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MET77_APPROVED_HEAD_SHA: ${{ vars.MET77_APPROVED_HEAD_SHA }}
+          MET77_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MET77_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MET77_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          MET77_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MET77_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MET77_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: >-
+          python3 tools/check_met77_transition.py
+          --poll-attempts 90
+          --poll-interval-seconds 10
 
-      - name: Read and validate global health
-        shell: bash
-        run: |
-          set -euo pipefail
-          state_root="$RUNNER_TEMP/main-health-state"
-          if git ls-remote --exit-code --heads origin "$STATE_BRANCH" >/dev/null; then
-            git clone --quiet --single-branch --branch "$STATE_BRANCH" \
-              "https://github.com/${GITHUB_REPOSITORY}.git" "$state_root"
-            python tools/stop_the_line.py candidate \
-              --root "$state_root" \
-              --base-sha "${{ github.event.pull_request.base.sha }}" \
-              --checked-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --max-age-seconds 129600
-          else
-            if git cat-file -e \
-              "${{ github.event.pull_request.base.sha }}:tools/stop_the_line.py" 2>/dev/null; then
-              printf '%s\n' 'Main health state is missing after activation.' >&2
-              exit 1
-            fi
-            printf '%s\n' 'MP2-004 transition has no prior main-health state.'
-          fi
-
-  scheduled-deep:
-    if: github.event_name == 'schedule'
+  nightly:
+    if: >-
+      github.event.action == 'main-health-nightly' ||
+      github.event.schedule == '23 3 * * 1-6'
+    name: Main health deep / nightly
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
+    timeout-minutes: 60
     steps:
-      - name: Check out measured source
+      - name: Check out exact protected main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
 
-      - name: Record checked-out source
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Verify exact provider SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -95,10 +75,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: "0.12.0"
           enable-cache: false
+          version: "0.12.0"
 
-      - name: Run scheduled full product check
+      - name: Run nightly full product check
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: |
@@ -106,278 +86,39 @@ jobs:
           uv run python -m playwright install chromium --with-deps
           uv run python -m pytest -q
 
-  persist-health:
+  weekly:
     if: >-
-      always() &&
-      (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_run' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push'))
-    needs: scheduled-deep
+      github.event.action == 'main-health-weekly' ||
+      github.event.schedule == '23 3 * * 0'
+    name: Main health deep / weekly
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: write
-    outputs:
-      measured_sha: ${{ steps.ingest.outputs.sha }}
+    timeout-minutes: 60
     steps:
-      - name: Check out measured source
+      - name: Check out exact protected main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
 
-      - name: Set up Python 3.12
+      - name: Verify exact provider SHA
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Set up Python 3.13
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
-      - name: Prepare durable state checkout
-        id: backend
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          state_root="$RUNNER_TEMP/main-health-state"
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git ls-remote --exit-code --heads "$remote" "$STATE_BRANCH" >/dev/null; then
-            git clone --quiet --single-branch --branch "$STATE_BRANCH" "$remote" "$state_root"
-            expected_commit="$(git -C "$state_root" rev-parse HEAD)"
-            generation="$(python tools/stop_the_line.py status --root "$state_root" \
-              | python -c 'import json,sys; print(json.load(sys.stdin)["generation"])')"
-          else
-            mkdir -p "$state_root"
-            git -C "$state_root" init --quiet
-            git -C "$state_root" checkout --orphan "$STATE_BRANCH"
-            git -C "$state_root" remote add origin "$remote"
-            expected_commit=""
-            generation=-1
-          fi
-          printf 'root=%s\nexpected_commit=%s\ngeneration=%s\n' \
-            "$state_root" "$expected_commit" "$generation" >> "$GITHUB_OUTPUT"
-
-      - name: Observe exact protected-main terminals
-        if: github.event_name == 'workflow_run'
-        id: observed
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          RUN_IDENTITY: ${{ github.event.workflow_run.id }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          deadline=$((SECONDS + 600))
-          jobs_root="$RUNNER_TEMP/main-health-jobs"
-          runs_file="$RUNNER_TEMP/main-health-workflow-runs.jsonl"
-          verify_runs_file="$RUNNER_TEMP/main-health-verify-workflow-runs.jsonl"
-          selection_file="$RUNNER_TEMP/main-health-selection.json"
-          verify_selection_file="$RUNNER_TEMP/main-health-verify-selection.json"
-          targets_file="$RUNNER_TEMP/main-health-targets.tsv"
-          while true; do
-            if ! gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RUN_SHA}&per_page=100" \
-              --jq '.workflow_runs[]' > "$runs_file"; then
-              : > "$runs_file"
-            fi
-            python tools/observe_main_health.py select \
-              --workflow-runs "$runs_file" \
-              --run-id "$RUN_IDENTITY" \
-              --run-attempt "$RUN_ATTEMPT" \
-              --run-conclusion "$RUN_CONCLUSION" \
-              --sha "$RUN_SHA" > "$selection_file"
-            observation="$(cat "$selection_file")"
-            ready="$(python -c 'import json,sys; print(str(json.load(sys.stdin)["ready"]).lower())' \
-              <<<"$observation")"
-            if [[ "$ready" == true ]]; then
-              rm -rf "$jobs_root"
-              mkdir -p "$jobs_root"
-              python - "$selection_file" > "$targets_file" <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          selection = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          for run in selection["runs"]:
-              print(run["key"], run["id"], run["run_attempt"], sep="\t")
-          PY
-              while IFS=$'\t' read -r key run_id run_attempt; do
-                if ! gh api --paginate \
-                  "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" \
-                  --jq '.jobs[]' > "$jobs_root/${key}.jsonl"; then
-                  : > "$jobs_root/${key}.jsonl"
-                fi
-              done < "$targets_file"
-              observation="$(python tools/observe_main_health.py observe \
-                --selection "$selection_file" \
-                --jobs-root "$jobs_root" \
-                --repository "$GITHUB_REPOSITORY")"
-              ready="$(python -c \
-                'import json,sys; print(str(json.load(sys.stdin)["ready"]).lower())' \
-                <<<"$observation")"
-              if [[ "$ready" == true ]]; then
-                if ! gh api --paginate \
-                  "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${RUN_SHA}&per_page=100" \
-                  --jq '.workflow_runs[]' > "$verify_runs_file"; then
-                  : > "$verify_runs_file"
-                fi
-                python tools/observe_main_health.py select \
-                  --workflow-runs "$verify_runs_file" \
-                  --run-id "$RUN_IDENTITY" \
-                  --run-attempt "$RUN_ATTEMPT" \
-                  --run-conclusion "$RUN_CONCLUSION" \
-                  --sha "$RUN_SHA" > "$verify_selection_file"
-                if ! cmp -s "$selection_file" "$verify_selection_file"; then
-                  observation="$(python tools/observe_main_health.py invalidate \
-                    --selection "$verify_selection_file")"
-                  ready=false
-                fi
-              fi
-            fi
-            if [[ "$ready" == true || $SECONDS -ge $deadline ]]; then
-              break
-            fi
-            sleep 10
-          done
-          echo "conclusion=$(python -c \
-            'import json,sys; print(json.load(sys.stdin)["conclusion"])' \
-            <<<"$observation")" >> "$GITHUB_OUTPUT"
-          echo "obligations=$(python -c \
-            'import json,sys; print(json.dumps(json.load(sys.stdin)["obligations"], separators=(",", ":")))' \
-            <<<"$observation")" >> "$GITHUB_OUTPUT"
-
-      - name: Ingest protected-main or scheduled result
-        id: ingest
-        shell: bash
-        env:
-          DEEP_OUTCOME: ${{ needs.scheduled-deep.result }}
-          EVENT_NAME: ${{ github.event_name }}
-          RUN_IDENTITY: ${{ github.event.workflow_run.id || github.run_id }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          RUN_WORKFLOW: ${{ github.event.workflow_run.name || github.event.schedule }}
-          OBSERVED_CONCLUSION: ${{ steps.observed.outputs.conclusion }}
-          OBSERVED_OBLIGATIONS: ${{ steps.observed.outputs.obligations }}
-          STATE_ROOT: ${{ steps.backend.outputs.root }}
-          EXPECTED_GENERATION: ${{ steps.backend.outputs.generation }}
-        run: |
-          set -euo pipefail
-          git fetch --quiet origin main
-          test "$RUN_SHA" = "$(git rev-parse origin/main)"
-          if [[ "$EVENT_NAME" == workflow_run ]]; then
-            cadence=protected-main
-            conclusion="$OBSERVED_CONCLUSION"
-            obligations="$OBSERVED_OBLIGATIONS"
-          elif [[ "$RUN_WORKFLOW" == "23 3 * * 0" ]]; then
-            cadence=weekly
-            conclusion="$DEEP_OUTCOME"
-          else
-            cadence=nightly
-            conclusion="$DEEP_OUTCOME"
-          fi
-          [[ "$conclusion" == success ]] || conclusion=failure
-          if [[ "$EVENT_NAME" != workflow_run ]]; then
-            obligations="[{\"id\":\"$RUN_WORKFLOW\",\"result\":\"$conclusion\"}]"
-          fi
-          recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          summary="$(python - "$cadence" "$conclusion" "$RUN_IDENTITY" "$RUN_SHA" "$obligations" "$recorded_at" <<'PY'
-          import json
-          import sys
-
-          cadence, conclusion, run_id, sha, obligations, recorded_at = sys.argv[1:]
-          print(json.dumps({
-              "cadence": cadence,
-              "conclusion": conclusion,
-              "obligations": json.loads(obligations),
-              "recorded_at": recorded_at,
-              "run_id": run_id,
-              "schema_version": 1,
-              "sha": sha,
-          }, sort_keys=True, separators=(",", ":")))
-          PY
-          )"
-          python tools/stop_the_line.py ingest \
-            --root "$STATE_ROOT" \
-            --scope "${cadence/protected-main/main}" \
-            --summary-json "$summary" \
-            --activation-policy-json "$(cat docs/status/main-health-policy.json)" \
-            --expected-generation "$EXPECTED_GENERATION"
-          python tools/stop_the_line.py validate --root "$STATE_ROOT"
-          echo "sha=$RUN_SHA" >> "$GITHUB_OUTPUT"
-
-      - name: Compare-and-swap state branch and verify read-back
-        shell: bash
-        env:
-          EXPECTED_COMMIT: ${{ steps.backend.outputs.expected_commit }}
-          STATE_ROOT: ${{ steps.backend.outputs.root }}
-        run: |
-          set -euo pipefail
-          git -C "$STATE_ROOT" config user.name github-actions
-          git -C "$STATE_ROOT" config user.email github-actions@github.com
-          git -C "$STATE_ROOT" add --all
-          git -C "$STATE_ROOT" commit --quiet -m "Record main health for ${GITHUB_SHA}"
-          observed_commit="$(git -C "$STATE_ROOT" ls-remote origin \
-            "refs/heads/$STATE_BRANCH" | cut -f1)"
-          test "$observed_commit" = "$EXPECTED_COMMIT"
-          local_commit="$(git -C "$STATE_ROOT" rev-parse HEAD)"
-          git -C "$STATE_ROOT" push --quiet origin "HEAD:refs/heads/$STATE_BRANCH"
-          remote_commit="$(git -C "$STATE_ROOT" ls-remote origin \
-            "refs/heads/$STATE_BRANCH" | cut -f1)"
-          test "$remote_commit" = "$local_commit"
-          status="$(python tools/stop_the_line.py status --root "$STATE_ROOT" \
-            | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-          test "$status" != red
-
-  main-health-required:
-    name: Main health / required
-    if: >-
-      always() &&
-      (github.event_name == 'pull_request' ||
-       github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_run' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push'))
-    needs:
-      - candidate-health
-      - scheduled-deep
-      - persist-health
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      CANDIDATE_RESULT: ${{ needs.candidate-health.result }}
-      CANDIDATE_SHA: ${{ needs.candidate-health.outputs.source_sha }}
-      PERSIST_RESULT: ${{ needs.persist-health.result }}
-      PERSIST_SHA: ${{ needs.persist-health.outputs.measured_sha }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          persist-credentials: false
-      - name: Validate exact main-health terminal result
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            dependency=candidate-health
-            result="$CANDIDATE_RESULT"
-            measured_sha="$CANDIDATE_SHA"
-          else
-            dependency=persist-health
-            result="$PERSIST_RESULT"
-            measured_sha="$PERSIST_SHA"
-          fi
-          results="$(python - "$dependency" "$result" "$measured_sha" <<'PY'
-          import json
-          import sys
+          enable-cache: false
+          version: "0.12.0"
 
-          name, result, sha = sys.argv[1:]
-          print(json.dumps({name: {"result": result, "sha": sha}}, separators=(",", ":")))
-          PY
-          )"
-          python tools/check_required_terminal.py aggregate \
-            --terminal "Main health / required" \
-            --expected-sha "$GITHUB_SHA" \
-            --expected-dependency "$dependency" \
-            --results-json "$results"
+      - name: Run weekly full product check
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          uv sync --locked --group dev
+          uv run python -m playwright install chromium --with-deps
+          uv run python -m pytest -q

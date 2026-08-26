@@ -73,6 +73,20 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         "Main health / required",
         "Release / required",
     }
+    expected_active_producers = {
+        "Metriplane / required": ".github/workflows/ci.yml",
+        "Documentation / required": ".github/workflows/docs.yml",
+        "Security / required": ".github/workflows/codeql.yml",
+        "Main health / required": "github-app:metriplane-main-health-publisher",
+        "Release / required": ".github/workflows/release-required.yml",
+    }
+    expected_main_health_transition = {
+        "actions_integration_id": 15368,
+        "approval_variable": "MET77_APPROVED_HEAD_SHA",
+        "base_sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+        "producer": ".github/workflows/main-health.yml",
+        "pull_request": 86,
+    }
     if {item["name"] for item in terminals} != expected_names:
         raise TerminalValidationError("terminal inventory is incomplete or contains extras")
 
@@ -116,18 +130,36 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         producers = [
             name for name, job_names in workflow_job_names.items() if terminal["name"] in job_names
         ]
-        if terminal["state"] != "active" or not isinstance(terminal["producer"], str):
-            raise TerminalValidationError(f"{terminal['name']}: terminal is not active")
-        if producers != [Path(terminal["producer"]).name]:
-            raise TerminalValidationError(
-                f"{terminal['name']}: expected sole producer "
-                f"{terminal['producer']!r}, found {producers!r}"
-            )
-    release = next(item for item in terminals if item["name"] == "Release / required")
-    if release["owner"] != "MP2-007" or release["producer"] != (
-        ".github/workflows/release-required.yml"
-    ):
-        raise TerminalValidationError("Release / required has the wrong owner or producer")
+        if terminal["state"] == "active":
+            producer = terminal["producer"]
+            expected_producer = expected_active_producers.get(terminal["name"])
+            if expected_producer is None:
+                raise TerminalValidationError(f"{terminal['name']}: producer is not governed")
+            expected_owner = "MP2-007" if terminal["name"] == "Release / required" else "MP2-004"
+            if terminal["owner"] != expected_owner or producer != expected_producer:
+                raise TerminalValidationError(
+                    f"{terminal['name']}: owner or producer is not the governed {expected_owner} value"
+                )
+            if producer == "github-app:metriplane-main-health-publisher":
+                transition = terminal.get("transition")
+                if transition != expected_main_health_transition:
+                    raise TerminalValidationError(
+                        "Main health / required: governed transition is invalid"
+                    )
+                expected_producers = ["main-health.yml"]
+            else:
+                if "transition" in terminal:
+                    raise TerminalValidationError(
+                        f"{terminal['name']}: transition is not permitted"
+                    )
+                assert isinstance(producer, str)
+                expected_producers = [Path(producer).name]
+            if producers != expected_producers:
+                raise TerminalValidationError(
+                    f"{terminal['name']}: expected sole producer {producer!r}, found {producers!r}"
+                )
+        else:
+            raise TerminalValidationError(f"{terminal['name']}: terminal state is invalid")
     return dict(policy)
 
 
