@@ -726,6 +726,149 @@ def test_atomic_exchange_quarantines_cleanup_substitution(
     assert (quarantines[0] / "entry").read_bytes() == victim_content
 
 
+def test_atomic_exchange_pins_displaced_inode_through_cleanup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    destination.write_bytes(b"original\n")
+    original_cleanup = safe_writes._quarantine_owned_entry
+    observed_unlinked_pin = False
+
+    def replace_displaced_entry(
+        directory_fd,
+        name,
+        display_path,
+        expected,
+        pinned_fd,
+    ):
+        nonlocal observed_unlinked_pin
+        if not observed_unlinked_pin and name.startswith(".safe.yaml.tmp-"):
+            safe_writes.os.unlink(name, dir_fd=directory_fd)
+            substitute_fd = safe_writes.os.open(
+                name,
+                safe_writes.os.O_WRONLY | safe_writes.os.O_CREAT | safe_writes.os.O_EXCL,
+                0o600,
+                dir_fd=directory_fd,
+            )
+            safe_writes.os.write(substitute_fd, b"unrelated substitute\n")
+            safe_writes.os.close(substitute_fd)
+            observed_unlinked_pin = safe_writes.os.fstat(pinned_fd).st_nlink == 0
+        return original_cleanup(
+            directory_fd,
+            name,
+            display_path,
+            expected,
+            pinned_fd,
+        )
+
+    monkeypatch.setattr(safe_writes, "_quarantine_owned_entry", replace_displaced_entry)
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(safe_writes.UnsafeWritePathError, match="entry retained as"),
+    ):
+        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
+
+    assert observed_unlinked_pin is True
+    assert destination.read_bytes() == b"replacement\n"
+    quarantines = [path for path in local_dir.iterdir() if ".quarantine-" in path.name]
+    assert len(quarantines) == 1
+    assert (quarantines[0] / "entry").read_bytes() == b"unrelated substitute\n"
+
+
+def test_installed_cleanup_failure_does_not_replace_primary_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    original_destination_identity = safe_writes._destination_identity
+    calls = 0
+
+    def fail_installed_verification(directory_fd, name, display_path):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise safe_writes.UnsafeWritePathError("PRIMARY-VERIFY")
+        return original_destination_identity(directory_fd, name, display_path)
+
+    def fail_cleanup(*_args, **_kwargs):
+        raise OSError("CLEANUP-FAILURE")
+
+    monkeypatch.setattr(safe_writes, "_destination_identity", fail_installed_verification)
+    monkeypatch.setattr(safe_writes, "_quarantine_owned_entry", fail_cleanup)
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(safe_writes.UnsafeWritePathError, match="PRIMARY-VERIFY") as captured,
+    ):
+        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=False)
+
+    assert any("CLEANUP-FAILURE" in note for note in captured.value.__notes__)
+
+
+def test_staged_close_failure_does_not_replace_write_error(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    original_create = safe_writes._create_staged_file
+    original_close = safe_writes.os.close
+    staged_descriptor: int | None = None
+    close_injected = False
+
+    def capture_staged_descriptor(directory_fd, name, mode):
+        nonlocal staged_descriptor
+        staged_name, staged_descriptor = original_create(directory_fd, name, mode)
+        return staged_name, staged_descriptor
+
+    def fail_write(_file_fd, _content):
+        raise OSError("PRIMARY-WRITE")
+
+    def fail_staged_close(file_fd):
+        nonlocal close_injected
+        if file_fd == staged_descriptor and not close_injected:
+            close_injected = True
+            original_close(file_fd)
+            raise OSError(errno.EIO, "CLOSE-FAILURE")
+        original_close(file_fd)
+
+    monkeypatch.setattr(safe_writes, "_create_staged_file", capture_staged_descriptor)
+    monkeypatch.setattr(safe_writes, "_write_all", fail_write)
+    monkeypatch.setattr(safe_writes.os, "close", fail_staged_close)
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(OSError, match="PRIMARY-WRITE") as captured,
+    ):
+        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=False)
+
+    assert any("CLOSE-FAILURE" in note for note in captured.value.__notes__)
+    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
+
+
 def test_atomic_exchange_recovers_trusted_destination_after_rollback_interference(
     tmp_path: Path,
     monkeypatch,

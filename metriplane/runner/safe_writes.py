@@ -184,6 +184,29 @@ def _assert_destination_unchanged(
         )
 
 
+def _open_pinned_entry(
+    directory_fd: int,
+    name: str,
+    display_path: Path,
+    expected: _EntryIdentity,
+) -> int:
+    access = getattr(os, "O_PATH", os.O_RDONLY)
+    flags = access | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        file_fd = os.open(name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        _translate_component_error(display_path, exc)
+    try:
+        if _identity(os.fstat(file_fd)) != expected:
+            raise UnsafeWritePathError(
+                f"Unsafe operator output path '{display_path}': destination changed while pinning"
+            )
+    except BaseException:
+        os.close(file_fd)
+        raise
+    return file_fd
+
+
 def _exchange_entries(directory_fd: int, left: str, right: str) -> None:
     """Atomically exchange two entries using the native POSIX platform API."""
     libc = ctypes.CDLL(None, use_errno=True)
@@ -236,7 +259,13 @@ def _quarantine_owned_entry(
     name: str,
     display_path: Path,
     expected: _EntryIdentity,
+    pinned_fd: int,
 ) -> _CleanupResult:
+    pinned_identity = _identity(os.fstat(pinned_fd))
+    if pinned_identity != expected:
+        raise UnsafeWritePathError(
+            f"Unsafe operator output path '{display_path}': cleanup descriptor changed"
+        )
     quarantine_name: str | None = None
     quarantine_fd: int | None = None
     for _attempt in range(10):
@@ -248,7 +277,12 @@ def _quarantine_owned_entry(
         quarantine_name = candidate
         created_identity = _entry_identity(directory_fd, candidate, display_path)
         quarantine_fd = os.open(candidate, _directory_flags(), dir_fd=directory_fd)
-        if created_identity is None or _identity(os.fstat(quarantine_fd)) != created_identity:
+        try:
+            opened_identity = _identity(os.fstat(quarantine_fd))
+        except BaseException:
+            os.close(quarantine_fd)
+            raise
+        if created_identity is None or opened_identity != created_identity:
             os.close(quarantine_fd)
             raise UnsafeWritePathError(
                 f"Unsafe operator output path '{display_path}': quarantine directory changed"
@@ -278,7 +312,7 @@ def _quarantine_owned_entry(
 
         os.fsync(directory_fd)
         moved_identity = _entry_identity(quarantine_fd, "entry", retained_path)
-        if moved_identity != expected:
+        if moved_identity != pinned_identity or _identity(os.fstat(pinned_fd)) != pinned_identity:
             return _CleanupResult(removed=False, retained_path=retained_path)
         try:
             os.unlink("entry", dir_fd=quarantine_fd)
@@ -399,6 +433,11 @@ class SecureDirectory:
         expected = _destination_identity(self.fd, destination, display_path)
         if expected is not None and not overwrite:
             raise WriteConflictError(f"destination already exists: {display_path}")
+        expected_fd = (
+            _open_pinned_entry(self.fd, destination, display_path, expected)
+            if expected is not None
+            else None
+        )
 
         mode = stat.S_IMODE(expected.mode) if expected is not None else 0o666
         staged_name: str | None = None
@@ -434,25 +473,32 @@ class SecureDirectory:
                     raise WriteConflictError(
                         f"destination appeared during write: {display_path}"
                     ) from exc
-                except BaseException:
+                except BaseException as primary_error:
                     if installed:
-                        cleanup = _quarantine_owned_entry(
-                            self.fd,
-                            destination,
-                            display_path,
-                            staged_identity,
-                        )
-                        _require_owned_cleanup(cleanup, display_path)
+                        try:
+                            cleanup = _quarantine_owned_entry(
+                                self.fd,
+                                destination,
+                                display_path,
+                                staged_identity,
+                                staged_fd,
+                            )
+                            _require_owned_cleanup(cleanup, display_path)
+                        except (OSError, UnsafeWritePathError) as cleanup_error:
+                            primary_error.add_note(f"installed cleanup failed: {cleanup_error}")
                     raise
                 cleanup = _quarantine_owned_entry(
                     self.fd,
                     staged_name,
                     display_path,
                     staged_identity,
+                    staged_fd,
                 )
                 staged_name = None
                 _require_owned_cleanup(cleanup, display_path)
             else:
+                if expected_fd is None:
+                    raise OSError(errno.EBADF, "destination cleanup descriptor is missing")
                 if _use_portable_overwrite():
                     raise OSError(
                         errno.ENOTSUP,
@@ -523,29 +569,47 @@ class SecureDirectory:
                         staged_name,
                         display_path,
                         expected,
+                        expected_fd,
                     )
                     staged_name = None
                     _require_owned_cleanup(cleanup, display_path)
             staged_name = None
             os.fsync(self.fd)
         finally:
-            if staged_fd is not None:
-                os.close(staged_fd)
+            active_error = sys.exception()
+            deferred_errors: list[BaseException] = []
             if staged_name is not None and staged_identity is not None:
-                active_error = sys.exception()
                 try:
+                    if staged_fd is None:
+                        raise OSError(errno.EBADF, "staged cleanup descriptor is missing")
                     cleanup = _quarantine_owned_entry(
                         self.fd,
                         staged_name,
                         display_path,
                         staged_identity,
+                        staged_fd,
                     )
                     staged_name = None
                     _require_owned_cleanup(cleanup, display_path)
-                except BaseException as cleanup_error:
-                    if active_error is None:
-                        raise
-                    active_error.add_note(f"staged cleanup failed: {cleanup_error}")
+                except (OSError, UnsafeWritePathError) as cleanup_error:
+                    deferred_errors.append(cleanup_error)
+            for label, file_fd in (("staged", staged_fd), ("destination", expected_fd)):
+                if file_fd is None:
+                    continue
+                try:
+                    os.close(file_fd)
+                except OSError as close_error:
+                    deferred_errors.append(
+                        OSError(
+                            close_error.errno, f"{label} descriptor close failed: {close_error}"
+                        )
+                    )
+            if deferred_errors:
+                if active_error is not None:
+                    for deferred_error in deferred_errors:
+                        active_error.add_note(f"cleanup failed: {deferred_error}")
+                else:
+                    raise deferred_errors[0]
 
     def close(self) -> None:
         while self._fds:
