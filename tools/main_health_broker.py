@@ -1377,13 +1377,16 @@ class CheckController:
     def _payload(
         self,
         *,
+        completed_at: datetime | None = None,
         conclusion: str,
         external_id: str,
         head_sha: str,
         summary: str,
         title: str,
     ) -> dict[str, Any]:
-        completed_at = self.api.provider_now(self.token).replace(microsecond=0)
+        if completed_at is None:
+            completed_at = self.api.provider_now(self.token)
+        completed_at = completed_at.replace(microsecond=0)
         return {
             "completed_at": completed_at.isoformat().replace("+00:00", "Z"),
             "conclusion": conclusion,
@@ -1525,10 +1528,24 @@ class CheckController:
         return canonical_id
 
     def succeed(
-        self, *, check_run_id: int, head_sha: str, request_digest: str, summary: str
+        self,
+        *,
+        check_run_id: int,
+        head_sha: str,
+        request: dict[str, Any],
+        request_digest: str,
+        summary: str,
     ) -> dict[str, Any]:
         if DIGEST_RE.fullmatch(request_digest) is None:
             raise BrokerError("App check request digest is invalid")
+        if digest(request) != request_digest:
+            raise BrokerError("App check request does not match its admission digest")
+        expires_at = request.get("expires_at")
+        if not isinstance(expires_at, str):
+            raise BrokerError("App check admission expiry is malformed")
+        publication_now = self.api.provider_now(self.token)
+        if publication_now >= _timestamp(expires_at):
+            raise BrokerError("broker admission lease expired before success publication")
         if self.spool.get_check_id(head_sha) != check_run_id:
             raise BrokerError("App check ID changed before success publication")
         external_id = f"mhb1:merge:{request_digest}"
@@ -1537,6 +1554,7 @@ class CheckController:
             token=self.token,
             method="PATCH",
             payload=self._payload(
+                completed_at=publication_now,
                 conclusion="success",
                 external_id=external_id,
                 head_sha=head_sha,
@@ -2120,17 +2138,43 @@ class HealthReconciler:
             key="workflow_runs",
             token=self.token,
         )
+        expected_scope = {
+            "event": "push",
+            "head_branch": "main",
+            "head_sha": main_sha,
+        }
         exact = [
             run
             for run in runs
-            if run.get("head_sha") == main_sha
-            and run.get("head_branch") == "main"
-            and run.get("event") == "push"
+            if all(run.get(field) == expected for field, expected in expected_scope.items())
         ]
         if not exact:
             return None
+        governed_ids = {
+            run_id
+            for run in exact
+            if isinstance((run_id := run.get("id")), int)
+            and not isinstance(run_id, bool)
+            and run_id > 0
+        }
+        governed = [
+            run
+            for run in runs
+            if run in exact
+            or (
+                isinstance((run_id := run.get("id")), int)
+                and not isinstance(run_id, bool)
+                and run_id in governed_ids
+            )
+        ]
+        for run in governed:
+            for field, expected in expected_scope.items():
+                if run.get(field) != expected:
+                    raise BrokerError(
+                        f"current CI provider run field {field!r} does not bind protected main"
+                    )
         try:
-            return observe_main_health.select_latest_provider_run(exact, workflow="CI")
+            return observe_main_health.select_latest_provider_run(governed, workflow="CI")
         except observe_main_health.ObservationError as exc:
             raise BrokerError(f"current CI run chronology is malformed: {exc}") from exc
 
@@ -2555,6 +2599,16 @@ def _provider_review_permissions(
             raise BrokerError("reviewer permission response is not canonical")
         permissions[login] = permission
     return permissions
+
+
+def _provider_review_snapshot(reviews: list[dict[str, Any]]) -> dict[int, str]:
+    snapshot: dict[int, str] = {}
+    for review in reviews:
+        review_id = _require_positive_int(review.get("id"), "provider review ID")
+        if review_id in snapshot:
+            raise BrokerError("provider review inventory repeats an ID")
+        snapshot[review_id] = digest(review)
+    return snapshot
 
 
 def _validate_state_for_admission(
@@ -3099,17 +3153,70 @@ class Broker:
                 "state_commit"
             ) or verified_state.get("generation") != state.get("generation"):
                 raise BrokerError("main-health state changed during final provider verification")
+        boundary_state = state_branch.read()
+        if boundary_state.get("state_commit") != state.get("state_commit") or boundary_state.get(
+            "generation"
+        ) != state.get("generation"):
+            raise BrokerError("main-health state changed before final admission")
+        final_pull, final_reviews, final_commits = _pull_snapshot(
+            self.api,
+            config=self.config,
+            number=number,
+            token=token,
+        )
+        final_reviewer_permissions = _provider_review_permissions(
+            self.api,
+            config=self.config,
+            reviews=final_reviews,
+            token=token,
+        )
+        final_provider_now = self.api.provider_now(token)
+        stable_reviews = _provider_list(
+            self.api,
+            f"repos/{self.config.repository}/pulls/{number}/reviews",
+            token=token,
+        )
+        if _provider_review_snapshot(stable_reviews) != _provider_review_snapshot(final_reviews):
+            raise BrokerError("provider reviews changed before the final provider review read")
+        if admission["kind"] == "normal":
+            final_admission = select_admission(
+                commits=final_commits,
+                now=final_provider_now,
+                pull=final_pull,
+                repository=self.config.repository,
+                reviewer_permissions=final_reviewer_permissions,
+                reviews=stable_reviews,
+            )
+            _validate_state_for_admission(
+                admission=final_admission,
+                config=self.config,
+                provider_now=final_provider_now,
+                state=boundary_state,
+            )
+        else:
+            final_admission = select_repair_admission(
+                commits=final_commits,
+                now=final_provider_now,
+                pull=final_pull,
+                repository=self.config.repository,
+                reviewer_permissions=final_reviewer_permissions,
+                reviews=stable_reviews,
+                state=boundary_state,
+            )
+        if final_admission != admission:
+            raise BrokerError("provider admission changed immediately before merge")
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],
             pull_request=number,
             request=admission["request"],
             status="merging",
-            updated_at=provider_now.isoformat().replace("+00:00", "Z"),
+            updated_at=final_provider_now.isoformat().replace("+00:00", "Z"),
         )
         check_controller.succeed(
             check_run_id=check_run_id,
             head_sha=admission["head_sha"],
+            request=admission["request"],
             request_digest=admission["request_digest"],
             summary=(
                 f"Exact-head {admission['kind']} merge admission for PR {number}; state "

@@ -23,7 +23,14 @@
       "name": "Main health / required",
       "owner": "MP2-004",
       "producer": "github-app:metriplane-main-health-publisher",
-      "state": "active"
+      "state": "active",
+      "transition": {
+        "actions_integration_id": 15368,
+        "approval_variable": "MET77_APPROVED_HEAD_SHA",
+        "base_sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+        "producer": ".github/workflows/main-health.yml",
+        "pull_request": 86
+      }
     },
     {
       "name": "Release / required",

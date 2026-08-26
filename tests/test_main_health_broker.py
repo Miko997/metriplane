@@ -1178,12 +1178,13 @@ def test_spool_rejects_incompatible_or_future_schema(tmp_path: Path) -> None:
 class FakeCheckApi(broker.GitHubApi):
     def __init__(self, runs: list[dict[str, Any]]) -> None:
         super().__init__()
+        self.current_now = NOW
         self.runs = runs
         self.calls: list[tuple[str, str]] = []
 
     def provider_now(self, token: str) -> datetime:
         assert token == "token"
-        return NOW
+        return self.current_now
 
     def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
         assert key == "check_runs"
@@ -1240,15 +1241,18 @@ def test_check_controller_reuses_one_id_and_quarantines_duplicates(tmp_path: Pat
     duplicate = next(item for item in api.runs if item["id"] == 43)
     assert canonical["conclusion"] == "failure"
     assert duplicate["name"] == f"{broker.MAIN_HEALTH_CHECK} [superseded 43]"
+    request = _request()
+    request_digest = broker.digest(request)
     controller.succeed(
         check_run_id=42,
         head_sha=HEAD_SHA,
-        request_digest="4" * 64,
+        request=request,
+        request_digest=request_digest,
         summary="exact merge",
     )
     assert canonical["conclusion"] == "success"
     assert spool.get_check_id(HEAD_SHA) == 42
-    assert spool.get_check_external_id(HEAD_SHA) == f"mhb1:merge:{'4' * 64}"
+    assert spool.get_check_external_id(HEAD_SHA) == f"mhb1:merge:{request_digest}"
 
     restored_spool = broker.DurableSpool(tmp_path / "restored-spool")
     restored = broker.CheckController(
@@ -1258,7 +1262,42 @@ def test_check_controller_reuses_one_id_and_quarantines_duplicates(tmp_path: Pat
         token="token",
     )
     assert restored.ensure_failed(head_sha=HEAD_SHA, reason="restored startup") == 42
-    assert restored_spool.get_check_external_id(HEAD_SHA) == f"mhb1:consumed:{'4' * 64}"
+    assert restored_spool.get_check_external_id(HEAD_SHA) == f"mhb1:consumed:{request_digest}"
+
+
+@pytest.mark.parametrize("admission_request", [_request(), _repair_request()])
+def test_check_controller_refuses_expired_admission_before_success_publication(
+    tmp_path: Path, admission_request: dict[str, Any]
+) -> None:
+    run = _app_check(42, conclusion="failure")
+    api = FakeCheckApi([run])
+    api.current_now = broker._timestamp(admission_request["expires_at"])
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id="mhb1:closed:test",
+        updated_at="2026-08-26T12:04:59Z",
+    )
+    controller = broker.CheckController(
+        api=api,
+        config=_config(tmp_path),
+        spool=spool,
+        token="token",
+    )
+
+    with pytest.raises(broker.BrokerError, match="lease expired before success publication"):
+        controller.succeed(
+            check_run_id=42,
+            head_sha=HEAD_SHA,
+            request=admission_request,
+            request_digest=broker.digest(admission_request),
+            summary="must remain closed",
+        )
+
+    assert api.calls == []
+    assert run["conclusion"] == "failure"
+    assert spool.get_check_external_id(HEAD_SHA) == "mhb1:closed:test"
 
 
 class FakeProofApi(broker.GitHubApi):
@@ -1346,6 +1385,9 @@ class FakeTransactionApi(broker.GitHubApi):
         self.inventory_source_drift = False
         self.include_deep_runs = True
         self.older_weekly_rerun: dict[str, Any] | None = None
+        self.reviews = _reviews()
+        self.review_change_on_final_permission: str | None = None
+        self.reviewer_permission_calls = 0
         self.merged = False
         self.merge_calls = 0
         self.reported_commits = 1
@@ -1395,7 +1437,17 @@ class FakeTransactionApi(broker.GitHubApi):
                 return broker.ApiResult({}, 200, {"merged": True})
             return broker.ApiResult({}, 200, {"merged": True, "sha": MERGE_SHA})
         if "/pulls/81/reviews?" in path:
-            return broker.ApiResult({}, 200, _reviews())
+            return broker.ApiResult(
+                {},
+                200,
+                [
+                    {
+                        **review,
+                        "user": dict(review["user"]),
+                    }
+                    for review in self.reviews
+                ],
+            )
         if "/pulls/81/commits?" in path:
             return broker.ApiResult({}, 200, _commits())
         if path.endswith("/pulls/81"):
@@ -1410,6 +1462,21 @@ class FakeTransactionApi(broker.GitHubApi):
                 {}, 200, {"object": {"sha": sha, "type": "commit"}, "ref": "refs/heads/main"}
             )
         if "/collaborators/" in path and path.endswith("/permission"):
+            self.reviewer_permission_calls += 1
+            if self.reviewer_permission_calls == 3:
+                if self.review_change_on_final_permission == "DISMISSED":
+                    self.reviews[1]["state"] = "DISMISSED"
+                elif self.review_change_on_final_permission == "CHANGES_REQUESTED":
+                    self.reviews.append(
+                        {
+                            "body": "approval revoked during permission lookup",
+                            "commit_id": HEAD_SHA,
+                            "id": 102,
+                            "state": "CHANGES_REQUESTED",
+                            "submitted_at": "2026-08-26T12:03:00Z",
+                            "user": {"id": 40, "login": "reviewer"},
+                        }
+                    )
             return broker.ApiResult({}, 200, {"permission": "write"})
         if "/rulesets?includes_parents=true" in path:
             self.ruleset_inventory_calls += 1
@@ -1709,9 +1776,16 @@ class FakeAdmissionChecks:
         return 42
 
     def succeed(
-        self, *, check_run_id: int, head_sha: str, request_digest: str, summary: str
+        self,
+        *,
+        check_run_id: int,
+        head_sha: str,
+        request: dict[str, Any],
+        request_digest: str,
+        summary: str,
     ) -> dict[str, Any]:
         assert summary
+        assert broker.digest(request) == request_digest
         self.succeeded.append((check_run_id, head_sha, request_digest))
         return {}
 
@@ -1838,6 +1912,114 @@ def test_old_retained_state_requires_live_health_instead_of_heartbeat_commits(
     assert proof is not None and proof["merge_sha"] == MERGE_SHA
     assert api.merge_calls == 1
     assert len(checks.succeeded) == 1
+
+
+def test_approval_expiry_during_final_health_verification_blocks_merge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, api, checks, spool = _transaction_fixture(tmp_path, "success")
+    verify_current_health = broker.HealthReconciler.verify_current_health
+
+    def expire_approval(
+        reconciler: broker.HealthReconciler, provider_now: datetime
+    ) -> dict[str, Any]:
+        verified_state = verify_current_health(reconciler, provider_now)
+        api.current_now = NOW + timedelta(minutes=6)
+        return verified_state
+
+    monkeypatch.setattr(broker.HealthReconciler, "verify_current_health", expire_approval)
+
+    with pytest.raises(broker.BrokerError, match="merge request is not currently valid"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+    assert spool.request_status(broker.digest(_request())) is None
+
+
+@pytest.mark.parametrize(
+    ("replacement_state", "message"),
+    [
+        ("DISMISSED", "no current independent provider approval"),
+        ("CHANGES_REQUESTED", "current requested changes"),
+    ],
+)
+def test_approval_change_during_final_health_verification_blocks_merge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement_state: str,
+    message: str,
+) -> None:
+    service, api, checks, spool = _transaction_fixture(tmp_path, "success")
+    verify_current_health = broker.HealthReconciler.verify_current_health
+
+    def change_approval(
+        reconciler: broker.HealthReconciler, provider_now: datetime
+    ) -> dict[str, Any]:
+        verified_state = verify_current_health(reconciler, provider_now)
+        if replacement_state == "DISMISSED":
+            api.reviews[1]["state"] = "DISMISSED"
+        else:
+            api.reviews.append(
+                {
+                    "body": "approval revoked",
+                    "commit_id": HEAD_SHA,
+                    "id": 102,
+                    "state": "CHANGES_REQUESTED",
+                    "submitted_at": "2026-08-26T12:03:00Z",
+                    "user": {"id": 40, "login": "reviewer"},
+                }
+            )
+        return verified_state
+
+    monkeypatch.setattr(broker.HealthReconciler, "verify_current_health", change_approval)
+
+    with pytest.raises(broker.BrokerError, match=message):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+    assert spool.request_status(broker.digest(_request())) is None
+
+
+@pytest.mark.parametrize("replacement_state", ["DISMISSED", "CHANGES_REQUESTED"])
+def test_review_change_during_final_permission_lookup_blocks_merge(
+    tmp_path: Path, replacement_state: str
+) -> None:
+    service, api, checks, spool = _transaction_fixture(tmp_path, "success")
+    api.review_change_on_final_permission = replacement_state
+
+    with pytest.raises(
+        broker.BrokerError,
+        match="provider reviews changed before the final provider review read",
+    ):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.reviewer_permission_calls == 3
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+    assert spool.request_status(broker.digest(_request())) is None
 
 
 @pytest.mark.parametrize(
@@ -2523,6 +2705,59 @@ def test_current_ci_rejects_malformed_provider_chronology(tmp_path: Path) -> Non
     )
 
     with pytest.raises(broker.BrokerError, match="run chronology is malformed"):
+        reconciler._current_ci(BASE_SHA)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("event", None),
+        ("head_branch", "release"),
+        ("head_sha", "f" * 40),
+    ],
+)
+def test_current_ci_rejects_malformed_newer_attempt_with_stable_run_id(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    class MalformedNewerAttemptApi(broker.GitHubApi):
+        def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+            assert "actions/workflows/ci.yml/runs" in path
+            assert key == "workflow_runs"
+            assert token == "token"
+            common = {
+                "event": "push",
+                "head_branch": "main",
+                "head_sha": BASE_SHA,
+                "id": 20,
+            }
+            newer = {
+                **common,
+                "conclusion": None,
+                "run_attempt": 2,
+                "status": "in_progress",
+                "updated_at": "2026-08-26T12:01:00Z",
+            }
+            newer[field] = value
+            return [
+                {
+                    **common,
+                    "conclusion": "success",
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "updated_at": "2026-08-26T12:00:00Z",
+                },
+                newer,
+            ]
+
+    reconciler = broker.HealthReconciler(
+        api=MalformedNewerAttemptApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=FakeStateBranch(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    with pytest.raises(broker.BrokerError, match=rf"field '{field}'.*protected main"):
         reconciler._current_ci(BASE_SHA)
 
 

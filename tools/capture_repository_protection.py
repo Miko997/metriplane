@@ -11,7 +11,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from tools import main_health_broker as broker
 
@@ -60,6 +60,13 @@ SENSITIVE_RESPONSE_HEADERS = {
     "www-authenticate",
     "x-github-sso",
 }
+
+
+class _ActivationEnvelope(TypedDict):
+    repository: dict[str, Any]
+    ruleset_summary_inventory: list[dict[str, Any]]
+    ruleset_details: list[dict[str, Any]]
+    merge_queue_graphql: dict[str, Any]
 
 
 def _canonical(value: Any) -> bytes:
@@ -313,6 +320,75 @@ def _capture_ruleset_details(
         _require_matching_ruleset_detail(summary, detail)
         details.append(detail)
     return details
+
+
+def _capture_activation_envelope(
+    *,
+    repository: str,
+    query: str,
+    gh: Path,
+    pass_name: str,
+    evidence_requests: list[dict[str, Any]],
+) -> _ActivationEnvelope:
+    repository_payload = _run_included_json(
+        gh=gh,
+        endpoint=f"repos/{repository}",
+        arguments=[],
+        purpose=f"repository_{pass_name}",
+        evidence_requests=evidence_requests,
+    )
+    if not isinstance(repository_payload, dict):
+        raise TypeError("repository response must be a JSON object")
+    _validate_repository_payload(repository, repository_payload)
+
+    ruleset_summaries = _capture_ruleset_inventory(
+        repository=repository,
+        gh=gh,
+        purpose=f"ruleset_summary_inventory_{pass_name}",
+        evidence_requests=evidence_requests,
+    )
+    ruleset_details = _capture_ruleset_details(
+        repository=repository,
+        summaries=ruleset_summaries,
+        gh=gh,
+        purpose=f"ruleset_detail_{pass_name}",
+        evidence_requests=evidence_requests,
+    )
+
+    merge_queue_payload = _run_included_json(
+        gh=gh,
+        endpoint="graphql",
+        arguments=["-f", query],
+        purpose=f"merge_queue_graphql_{pass_name}",
+        evidence_requests=evidence_requests,
+    )
+    if not isinstance(merge_queue_payload, dict):
+        raise TypeError("merge-queue GraphQL response must be a JSON object")
+    _validate_merge_queue_payload(repository, merge_queue_payload)
+    return {
+        "repository": repository_payload,
+        "ruleset_summary_inventory": ruleset_summaries,
+        "ruleset_details": ruleset_details,
+        "merge_queue_graphql": merge_queue_payload,
+    }
+
+
+def _require_stable_activation_envelopes(
+    initial: _ActivationEnvelope, verification: _ActivationEnvelope
+) -> None:
+    drifted: list[str] = []
+    if initial["repository"] != verification["repository"]:
+        drifted.append("repository")
+    if initial["ruleset_summary_inventory"] != verification["ruleset_summary_inventory"]:
+        drifted.append("ruleset summary inventory")
+    if initial["ruleset_details"] != verification["ruleset_details"]:
+        drifted.append("ruleset detail inventory")
+    if initial["merge_queue_graphql"] != verification["merge_queue_graphql"]:
+        drifted.append("merge-queue GraphQL state")
+    if drifted:
+        raise ValueError(
+            "activation provider envelope changed during capture: " + ", ".join(drifted)
+        )
 
 
 def _sha(value: Any) -> str:
@@ -618,73 +694,34 @@ def _capture_activation(
         "{ nameWithOwner mergeQueue { id url } } }"
     )
     evidence_requests: list[dict[str, Any]] = []
-    repository_payload = _run_included_json(
-        gh=gh,
-        endpoint=f"repos/{repository}",
-        arguments=[],
-        purpose="repository",
-        evidence_requests=evidence_requests,
-    )
-    if not isinstance(repository_payload, dict):
-        raise TypeError("repository response must be a JSON object")
-    _validate_repository_payload(repository, repository_payload)
-    ruleset_summaries = _capture_ruleset_inventory(
+    initial_envelope = _capture_activation_envelope(
         repository=repository,
+        query=query,
         gh=gh,
-        purpose="ruleset_summary_inventory_initial",
+        pass_name="initial",
         evidence_requests=evidence_requests,
     )
-    initial_ruleset_details = _capture_ruleset_details(
+    verified_envelope = _capture_activation_envelope(
         repository=repository,
-        summaries=ruleset_summaries,
+        query=query,
         gh=gh,
-        purpose="ruleset_detail_initial",
+        pass_name="verification",
         evidence_requests=evidence_requests,
     )
-    verification_summaries = _capture_ruleset_inventory(
-        repository=repository,
-        gh=gh,
-        purpose="ruleset_summary_inventory_verification",
-        evidence_requests=evidence_requests,
-    )
-    if ruleset_summaries != verification_summaries:
-        raise ValueError("ruleset summary inventory changed during activation capture")
-    verified_ruleset_details = _capture_ruleset_details(
-        repository=repository,
-        summaries=verification_summaries,
-        gh=gh,
-        purpose="ruleset_detail_verification",
-        evidence_requests=evidence_requests,
-    )
-    if initial_ruleset_details != verified_ruleset_details:
-        raise ValueError("ruleset detail inventory changed during activation capture")
-    merge_queue_payload = _run_included_json(
-        gh=gh,
-        endpoint="graphql",
-        arguments=["-f", query],
-        purpose="merge_queue_graphql",
-        evidence_requests=evidence_requests,
-    )
-    if not isinstance(merge_queue_payload, dict):
-        raise TypeError("merge-queue GraphQL response must be a JSON object")
-    _validate_merge_queue_payload(repository, merge_queue_payload)
+    _require_stable_activation_envelopes(initial_envelope, verified_envelope)
     capability, settings = normalize_capture(
         repository=repository,
         captured_at=captured_at,
-        repository_payload=repository_payload,
-        rulesets_payload=verified_ruleset_details,
-        merge_queue_payload=merge_queue_payload,
+        repository_payload=verified_envelope["repository"],
+        rulesets_payload=verified_envelope["ruleset_details"],
+        merge_queue_payload=verified_envelope["merge_queue_graphql"],
     )
     evidence = {
         "captured_at": captured_at,
         "provider": "github",
         "provider_responses": {
-            "merge_queue_graphql": merge_queue_payload,
-            "repository": repository_payload,
-            "ruleset_details_initial": initial_ruleset_details,
-            "ruleset_details_verification": verified_ruleset_details,
-            "ruleset_summary_inventory_initial": ruleset_summaries,
-            "ruleset_summary_inventory_verification": verification_summaries,
+            "initial": initial_envelope,
+            "verification": verified_envelope,
         },
         "repository": repository,
         "requests": evidence_requests,

@@ -9,6 +9,7 @@ import argparse
 import json
 import re
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -108,18 +109,68 @@ def select_latest_provider_run(runs: list[dict[str, Any]], *, workflow: str) -> 
     """Select one unambiguous latest attempt and reject repeated identities."""
     ordered: list[tuple[datetime, dict[str, Any]]] = []
     identities: set[tuple[int, int]] = set()
+    attempts_by_run_id: dict[int, list[tuple[int, datetime]]] = {}
     for run in runs:
         updated_at, run_id, attempt = provider_run_order(run, workflow=workflow)
         identity = (run_id, attempt)
         if identity in identities:
             raise ObservationError(f"{workflow}: provider repeated a run attempt identity")
         identities.add(identity)
+        attempts_by_run_id.setdefault(run_id, []).append((attempt, updated_at))
         ordered.append((updated_at, run))
+    for attempts in attempts_by_run_id.values():
+        attempts.sort()
+        for (_lower_attempt, lower_updated_at), (_higher_attempt, higher_updated_at) in pairwise(
+            attempts
+        ):
+            if higher_updated_at <= lower_updated_at:
+                raise ObservationError(f"{workflow}: provider run attempt chronology is invalid")
     latest_at = max(updated_at for updated_at, _run in ordered)
     latest = [run for updated_at, run in ordered if updated_at == latest_at]
     if len(latest) != 1:
         raise ObservationError(f"{workflow}: latest provider run chronology is ambiguous")
     return latest[0]
+
+
+def _governed_provider_runs(
+    runs: list[dict[str, Any]], *, workflow: str, sha: str
+) -> list[dict[str, Any]]:
+    """Return exact push runs plus every attempt sharing their stable run IDs."""
+    expected_scope = {
+        "event": "push",
+        "head_branch": "main",
+        "head_sha": sha,
+        "name": workflow,
+    }
+    exact = [
+        run
+        for run in runs
+        if all(run.get(field) == expected for field, expected in expected_scope.items())
+    ]
+    governed_ids = {
+        run_id
+        for run in exact
+        if isinstance((run_id := run.get("id")), int)
+        and not isinstance(run_id, bool)
+        and run_id > 0
+    }
+    governed = [
+        run
+        for run in runs
+        if run in exact
+        or (
+            isinstance((run_id := run.get("id")), int)
+            and not isinstance(run_id, bool)
+            and run_id in governed_ids
+        )
+    ]
+    for run in governed:
+        for field, expected in expected_scope.items():
+            if run.get(field) != expected:
+                raise ObservationError(
+                    f"{workflow}: provider run field {field!r} does not bind protected main"
+                )
+    return governed
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -220,14 +271,7 @@ def select_runs(
 
     for key in ("documentation", "security"):
         terminal, workflow = REQUIRED_WORKFLOWS[key]
-        candidates = [
-            item
-            for item in workflow_runs
-            if item.get("name") == workflow
-            and item.get("event") == "push"
-            and item.get("head_branch") == "main"
-            and item.get("head_sha") == sha
-        ]
+        candidates = _governed_provider_runs(workflow_runs, workflow=workflow, sha=sha)
         if not candidates:
             ready = False
             continue

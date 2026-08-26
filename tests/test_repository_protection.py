@@ -352,22 +352,30 @@ def test_activation_capture_retains_complete_raw_evidence(
     assert capability["selected_mode"] == "serialized_strict_up_to_date"
     assert settings["ruleset_id"] == 41
     assert evidence["provider_responses"] == {
-        "merge_queue_graphql": merge_queue,
-        "repository": repository,
-        "ruleset_details_initial": [detail],
-        "ruleset_details_verification": [detail],
-        "ruleset_summary_inventory_initial": [summary],
-        "ruleset_summary_inventory_verification": [summary],
+        "initial": {
+            "merge_queue_graphql": merge_queue,
+            "repository": repository,
+            "ruleset_details": [detail],
+            "ruleset_summary_inventory": [summary],
+        },
+        "verification": {
+            "merge_queue_graphql": merge_queue,
+            "repository": repository,
+            "ruleset_details": [detail],
+            "ruleset_summary_inventory": [summary],
+        },
     }
     requests = evidence["requests"]
     assert isinstance(requests, list)
     assert [item["purpose"] for item in requests] == [
-        "repository",
+        "repository_initial",
         "ruleset_summary_inventory_initial",
         "ruleset_detail_initial",
+        "merge_queue_graphql_initial",
+        "repository_verification",
         "ruleset_summary_inventory_verification",
         "ruleset_detail_verification",
-        "merge_queue_graphql",
+        "merge_queue_graphql_verification",
     ]
     assert [item["github_request_id"] for item in requests] == [
         "REQ:1",
@@ -376,6 +384,8 @@ def test_activation_capture_retains_complete_raw_evidence(
         "REQ:4",
         "REQ:5",
         "REQ:6",
+        "REQ:7",
+        "REQ:8",
     ]
     assert all(item["status"] == 200 for item in requests)
     assert all(item["headers"]["set-cookie"] == ["<redacted>"] for item in requests)
@@ -419,14 +429,15 @@ def test_activation_capture_rejects_repository_identity_before_ruleset_reads(
             "2026-08-26T20:00:00Z",
             Path("/usr/bin/gh"),
         )
-    assert calls == ["repository"]
+    assert calls == ["repository_initial"]
 
 
 def test_activation_capture_rejects_graphql_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repository, summary, detail, merge_queue = _activation_provider_payloads()
-    merge_queue["errors"] = [{"message": "provider rejected the query"}]
+    error_response = copy.deepcopy(merge_queue)
+    error_response["errors"] = [{"message": "provider rejected the query"}]
 
     def fake_run_included_json(**kwargs: object) -> object:
         endpoint = kwargs["endpoint"]
@@ -441,7 +452,7 @@ def test_activation_capture_rejects_graphql_errors(
         if endpoint == "repos/Miko997/metriplane/rulesets/41":
             return detail
         if endpoint == "graphql":
-            return merge_queue
+            return error_response if purpose == "merge_queue_graphql_verification" else merge_queue
         pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
 
     monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
@@ -487,7 +498,7 @@ def test_activation_capture_rejects_summary_inventory_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repository, summary, detail, _merge_queue = _activation_provider_payloads()
-    drifted_summary = {**summary, "enforcement": "disabled"}
+    drifted_summary = {**summary, "updated_at": "2026-08-26T20:00:01Z"}
 
     def fake_run_included_json(**kwargs: object) -> object:
         endpoint = kwargs["endpoint"]
@@ -498,13 +509,15 @@ def test_activation_capture_rejects_summary_inventory_drift(
             return [summary]
         if endpoint == "repos/Miko997/metriplane/rulesets/41":
             return detail
+        if endpoint == "graphql":
+            return _merge_queue_payload()
         if purpose == "ruleset_summary_inventory_verification":
             return [drifted_summary]
         pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
 
     monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
 
-    with pytest.raises(ValueError, match="inventory changed"):
+    with pytest.raises(ValueError, match="envelope changed.*ruleset summary inventory"):
         capture_tool._capture_activation(
             "Miko997/metriplane",
             "2026-08-26T20:00:00Z",
@@ -542,11 +555,87 @@ def test_activation_capture_rejects_detail_drift_after_stable_summary_inventory(
             return detail
         if purpose == "ruleset_detail_verification":
             return drifted_detail
+        if endpoint == "graphql":
+            return _merge_queue_payload()
         pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
 
     monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
 
-    with pytest.raises(ValueError, match="detail inventory changed"):
+    with pytest.raises(ValueError, match="envelope changed.*ruleset detail inventory"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
+
+
+def test_activation_capture_rejects_repository_only_drift_with_stable_rulesets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, summary, detail, merge_queue = _activation_provider_payloads()
+    drifted_repository = copy.deepcopy(repository)
+    drifted_repository["id"] = 4243
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        endpoint = kwargs["endpoint"]
+        purpose = kwargs["purpose"]
+        if purpose == "repository_initial":
+            return repository
+        if purpose == "repository_verification":
+            return drifted_repository
+        if purpose in {
+            "ruleset_summary_inventory_initial",
+            "ruleset_summary_inventory_verification",
+        }:
+            return [summary]
+        if endpoint == "repos/Miko997/metriplane/rulesets/41":
+            return detail
+        if endpoint == "graphql":
+            return merge_queue
+        pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match="envelope changed.*repository"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
+
+
+def test_activation_capture_rejects_merge_queue_only_drift_with_stable_rulesets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, summary, detail, merge_queue = _activation_provider_payloads()
+    drifted_merge_queue = _merge_queue_payload(
+        queue={
+            "id": "MQ_drifted",
+            "url": "https://github.com/Miko997/metriplane/queue/main",
+        }
+    )
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        endpoint = kwargs["endpoint"]
+        purpose = kwargs["purpose"]
+        if endpoint == "repos/Miko997/metriplane":
+            return repository
+        if purpose in {
+            "ruleset_summary_inventory_initial",
+            "ruleset_summary_inventory_verification",
+        }:
+            return [summary]
+        if endpoint == "repos/Miko997/metriplane/rulesets/41":
+            return detail
+        if purpose == "merge_queue_graphql_initial":
+            return merge_queue
+        if purpose == "merge_queue_graphql_verification":
+            return drifted_merge_queue
+        pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match="envelope changed.*merge-queue GraphQL state"):
         capture_tool._capture_activation(
             "Miko997/metriplane",
             "2026-08-26T20:00:00Z",

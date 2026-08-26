@@ -11,8 +11,10 @@ import pytest
 from tools.observe_main_health import (
     REQUIRED_WORKFLOWS,
     ObservationError,
+    Selection,
     invalidate_selection,
     observe_jobs,
+    select_latest_provider_run,
     select_runs,
 )
 
@@ -40,7 +42,7 @@ def _provider_run(key: str, *, attempt: int = 1, **changes: Any) -> dict[str, An
     return value
 
 
-def _selection(runs: list[dict[str, Any]] | None = None, *, ci: str = "success") -> dict:
+def _selection(runs: list[dict[str, Any]] | None = None, *, ci: str = "success") -> Selection:
     if runs is None:
         runs = [_provider_run("documentation"), _provider_run("security")]
     return select_runs(
@@ -52,7 +54,7 @@ def _selection(runs: list[dict[str, Any]] | None = None, *, ci: str = "success")
     )
 
 
-def _provider_jobs(selection: dict) -> dict[str, list[dict[str, Any]]]:
+def _provider_jobs(selection: Selection) -> dict[str, list[dict[str, Any]]]:
     jobs: dict[str, list[dict[str, Any]]] = {}
     for run in selection["runs"]:
         jobs[run["key"]] = [
@@ -116,6 +118,85 @@ def test_latest_provider_attempt_must_complete() -> None:
     assert documentation["run_attempt"] == 2
     assert result["ready"] is False
     assert result["conclusion"] == "failure"
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("completed", "failure"), ("in_progress", None)],
+)
+def test_same_run_attempt_chronology_inversion_fails_closed(
+    status: str, conclusion: str | None
+) -> None:
+    documentation_runs = [
+        _provider_run(
+            "documentation",
+            attempt=1,
+            updated_at="2026-08-26T12:01:00Z",
+        ),
+        _provider_run(
+            "documentation",
+            attempt=2,
+            conclusion=conclusion,
+            status=status,
+            updated_at="2026-08-26T12:00:00Z",
+        ),
+    ]
+
+    with pytest.raises(ObservationError, match="attempt chronology is invalid"):
+        select_latest_provider_run(documentation_runs, workflow="CI")
+    with pytest.raises(ObservationError, match="attempt chronology is invalid"):
+        _selection([*documentation_runs, _provider_run("security")])
+
+
+def test_same_run_attempt_chronology_accepts_strictly_monotonic_attempts() -> None:
+    documentation_runs = [
+        _provider_run(
+            "documentation",
+            attempt=1,
+            updated_at="2026-08-26T12:00:00Z",
+        ),
+        _provider_run(
+            "documentation",
+            attempt=2,
+            conclusion="failure",
+            updated_at="2026-08-26T12:01:00Z",
+        ),
+    ]
+
+    latest = select_latest_provider_run(documentation_runs, workflow="CI")
+    assert (latest["id"], latest["run_attempt"]) == (RUN_IDS["documentation"], 2)
+
+    result = _selection([*documentation_runs, _provider_run("security")])
+    documentation = next(item for item in result["runs"] if item["key"] == "documentation")
+    assert (documentation["id"], documentation["run_attempt"]) == (
+        RUN_IDS["documentation"],
+        2,
+    )
+    assert result["ready"] is True
+    assert result["conclusion"] == "failure"
+
+
+def test_same_run_attempt_chronology_tie_fails_even_when_another_run_is_later() -> None:
+    runs = [
+        _provider_run(
+            "documentation",
+            attempt=1,
+            updated_at="2026-08-26T11:59:00Z",
+        ),
+        _provider_run(
+            "documentation",
+            attempt=2,
+            updated_at="2026-08-26T11:59:00Z",
+        ),
+        _provider_run(
+            "documentation",
+            id=202,
+            updated_at="2026-08-26T12:01:00Z",
+        ),
+    ]
+
+    with pytest.raises(ObservationError, match="attempt chronology is invalid"):
+        select_latest_provider_run(runs, workflow="CI")
 
 
 def test_later_rerun_of_older_workflow_id_cannot_hide_behind_newer_id() -> None:
@@ -221,8 +302,8 @@ def test_matching_superseded_workflow_with_malformed_result_fails_closed(
         "documentation",
         id=101,
         updated_at="2026-08-26T11:59:00Z",
-        **changes,
     )
+    malformed.update(changes)
     runs = [
         malformed,
         _provider_run("documentation", id=102),
@@ -239,6 +320,90 @@ def test_matching_workflow_with_malformed_provider_chronology_fails_closed() -> 
     ]
     with pytest.raises(ObservationError, match="update time is invalid"):
         _selection(runs)
+
+
+@pytest.mark.parametrize(
+    ("changes", "field"),
+    [
+        ({"event": None}, "event"),
+        ({"event": "pull_request"}, "event"),
+        ({"head_branch": None}, "head_branch"),
+        ({"head_branch": "release"}, "head_branch"),
+        ({"head_sha": None}, "head_sha"),
+        ({"head_sha": "b" * 40}, "head_sha"),
+        ({"name": None}, "name"),
+        ({"name": "Documentation (spoofed)"}, "name"),
+    ],
+)
+def test_later_attempt_cannot_hide_behind_malformed_selection_fields(
+    changes: dict[str, object], field: str
+) -> None:
+    malformed = _provider_run(
+        "documentation",
+        attempt=2,
+        conclusion=None,
+        status="in_progress",
+        updated_at="2026-08-26T12:01:00Z",
+        **changes,
+    )
+    runs = [
+        _provider_run("documentation"),
+        malformed,
+        _provider_run("security"),
+    ]
+
+    with pytest.raises(ObservationError, match=rf"field '{field}'.*protected main"):
+        _selection(runs)
+
+
+def test_unrelated_malformed_workflow_record_does_not_poison_selection() -> None:
+    unrelated = {
+        "conclusion": object(),
+        "event": None,
+        "head_branch": None,
+        "head_sha": None,
+        "id": None,
+        "name": "Dependabot Updates",
+        "run_attempt": None,
+        "status": object(),
+        "updated_at": object(),
+    }
+
+    result = _selection(
+        [
+            _provider_run("documentation"),
+            unrelated,
+            _provider_run("security"),
+        ]
+    )
+
+    assert result["ready"] is True
+    assert result["conclusion"] == "success"
+
+
+def test_distinct_manual_run_of_governed_workflow_is_unrelated() -> None:
+    manual = _provider_run(
+        "documentation",
+        event="workflow_dispatch",
+        id=999,
+        updated_at="2026-08-26T12:01:00Z",
+    )
+
+    result = _selection(
+        [
+            _provider_run("documentation"),
+            manual,
+            _provider_run("security"),
+        ]
+    )
+    documentation = next(item for item in result["runs"] if item["key"] == "documentation")
+
+    assert (documentation["id"], documentation["run_attempt"]) == (
+        RUN_IDS["documentation"],
+        1,
+    )
+    assert result["ready"] is True
+    assert result["conclusion"] == "success"
 
 
 def test_failed_workflow_attempt_cannot_be_masked_by_successful_terminal_job() -> None:

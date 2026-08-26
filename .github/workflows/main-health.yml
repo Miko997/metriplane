@@ -5,6 +5,8 @@ name: Main Health Deep
 run-name: Main Health Deep / ${{ github.event.action || github.event.schedule }} / main
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   repository_dispatch:
     types: [main-health-nightly, main-health-weekly]
   schedule:
@@ -12,13 +14,41 @@ on:
     - cron: "23 3 * * 0"
 
 concurrency:
-  group: main-health-deep
-  cancel-in-progress: false
+  group: main-health-${{ github.event.pull_request.number || 'deep' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
+  checks: read
   contents: read
 
 jobs:
+  legacy-main-health-required:
+    if: github.event_name == 'pull_request'
+    name: Main health / required
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Validate provider-approved exact transition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MET77_APPROVED_HEAD_SHA: ${{ vars.MET77_APPROVED_HEAD_SHA }}
+          MET77_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MET77_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MET77_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          MET77_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MET77_PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MET77_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: >-
+          python3 tools/check_met77_transition.py
+          --poll-attempts 90
+          --poll-interval-seconds 10
+
   nightly:
     if: >-
       github.event.action == 'main-health-nightly' ||
