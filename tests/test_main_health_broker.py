@@ -1500,6 +1500,7 @@ class FakeTransactionApi(broker.GitHubApi):
                     "id": 501,
                     "run_attempt": 1,
                     "status": "completed",
+                    "updated_at": "2026-08-26T11:55:00Z",
                 }
             ]
         if path.endswith(f"/actions/runs?head_sha={BASE_SHA}"):
@@ -1514,6 +1515,7 @@ class FakeTransactionApi(broker.GitHubApi):
                     "name": workflow,
                     "run_attempt": 1,
                     "status": status,
+                    "updated_at": "2026-08-26T11:56:00Z",
                 }
                 for run_id, workflow, status, conclusion in (
                     (
@@ -2447,7 +2449,7 @@ def test_protected_state_rejects_duplicate_aggregate_identity(tmp_path: Path) ->
         broker.StateBranch._result_identities(tmp_path)
 
 
-def test_current_ci_selects_a_newer_active_rerun(tmp_path: Path) -> None:
+def test_current_ci_selects_a_later_active_rerun_of_an_older_id(tmp_path: Path) -> None:
     paths: list[str] = []
 
     class CurrentCiApi(broker.GitHubApi):
@@ -2459,20 +2461,23 @@ def test_current_ci_selects_a_newer_active_rerun(tmp_path: Path) -> None:
                 "event": "push",
                 "head_branch": "main",
                 "head_sha": BASE_SHA,
-                "id": 20,
             }
             return [
                 {
                     **common,
                     "conclusion": "success",
+                    "id": 21,
                     "run_attempt": 1,
                     "status": "completed",
+                    "updated_at": "2026-08-26T12:00:00Z",
                 },
                 {
                     **common,
                     "conclusion": None,
+                    "id": 20,
                     "run_attempt": 2,
                     "status": "in_progress",
+                    "updated_at": "2026-08-26T12:01:00Z",
                 },
             ]
 
@@ -2484,8 +2489,41 @@ def test_current_ci_selects_a_newer_active_rerun(tmp_path: Path) -> None:
         token="token",
     )
 
-    assert reconciler._current_ci(BASE_SHA)["run_attempt"] == 2  # type: ignore[index]
+    selected = reconciler._current_ci(BASE_SHA)
+    assert selected is not None
+    assert (selected["id"], selected["run_attempt"]) == (20, 2)
     assert "status=" not in paths[0]
+
+
+def test_current_ci_rejects_malformed_provider_chronology(tmp_path: Path) -> None:
+    class MalformedChronologyApi(broker.GitHubApi):
+        def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+            assert "actions/workflows/ci.yml/runs" in path
+            assert key == "workflow_runs"
+            assert token == "token"
+            return [
+                {
+                    "conclusion": "success",
+                    "event": "push",
+                    "head_branch": "main",
+                    "head_sha": BASE_SHA,
+                    "id": 20,
+                    "run_attempt": 1,
+                    "status": "completed",
+                    "updated_at": "not-a-timestamp",
+                }
+            ]
+
+    reconciler = broker.HealthReconciler(
+        api=MalformedChronologyApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=FakeStateBranch(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    with pytest.raises(broker.BrokerError, match="run chronology is malformed"):
+        reconciler._current_ci(BASE_SHA)
 
 
 def test_fresh_cached_green_cannot_hide_a_newer_active_ci_attempt(

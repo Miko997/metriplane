@@ -10,6 +10,7 @@ import pytest
 
 from tools.observe_main_health import (
     REQUIRED_WORKFLOWS,
+    ObservationError,
     invalidate_selection,
     observe_jobs,
     select_runs,
@@ -33,6 +34,7 @@ def _provider_run(key: str, *, attempt: int = 1, **changes: Any) -> dict[str, An
         "name": workflow,
         "run_attempt": attempt,
         "status": "completed",
+        "updated_at": "2026-08-26T12:00:00Z",
     }
     value.update(changes)
     return value
@@ -108,6 +110,40 @@ def test_latest_provider_attempt_must_complete() -> None:
     assert documentation["run_attempt"] == 2
     assert result["ready"] is False
     assert result["conclusion"] == "failure"
+
+
+def test_later_rerun_of_older_workflow_id_cannot_hide_behind_newer_id() -> None:
+    runs = [
+        _provider_run(
+            "documentation",
+            id=202,
+            updated_at="2026-08-26T12:00:00Z",
+        ),
+        _provider_run(
+            "documentation",
+            attempt=2,
+            conclusion=None,
+            id=102,
+            status="in_progress",
+            updated_at="2026-08-26T12:01:00Z",
+        ),
+        _provider_run("security"),
+    ]
+
+    result = _selection(runs)
+    documentation = next(item for item in result["runs"] if item["key"] == "documentation")
+    assert (documentation["id"], documentation["run_attempt"]) == (102, 2)
+    assert result["ready"] is False
+    assert result["conclusion"] == "failure"
+
+
+def test_matching_workflow_with_malformed_provider_chronology_fails_closed() -> None:
+    runs = [
+        _provider_run("documentation", updated_at="not-a-timestamp"),
+        _provider_run("security"),
+    ]
+    with pytest.raises(ObservationError, match="update time is invalid"):
+        _selection(runs)
 
 
 def test_failed_workflow_attempt_cannot_be_masked_by_successful_terminal_job() -> None:

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -51,6 +52,26 @@ REQUIRED_WORKFLOWS = {
     "documentation": ("Documentation / required", "Documentation"),
     "security": ("Security / required", "CodeQL"),
 }
+
+
+def provider_run_order(run: dict[str, Any], *, workflow: str) -> tuple[datetime, int, int]:
+    """Order attempts by provider chronology, with stable identity tie-breakers."""
+    run_id = run.get("id")
+    attempt = run.get("run_attempt")
+    updated_at = run.get("updated_at")
+    if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+        raise ObservationError(f"{workflow}: provider run ID is invalid")
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt <= 0:
+        raise ObservationError(f"{workflow}: provider run attempt is invalid")
+    if not isinstance(updated_at, str):
+        raise ObservationError(f"{workflow}: provider run update time is invalid")
+    try:
+        parsed = datetime.fromisoformat(updated_at)
+    except ValueError as exc:
+        raise ObservationError(f"{workflow}: provider run update time is invalid") from exc
+    if parsed.tzinfo is None:
+        raise ObservationError(f"{workflow}: provider run update time has no timezone")
+    return parsed.astimezone(UTC), run_id, attempt
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -165,7 +186,10 @@ def select_runs(
         if not candidates:
             ready = False
             continue
-        latest = max(candidates, key=lambda item: (item["id"], item["run_attempt"]))
+        latest = max(
+            candidates,
+            key=lambda item: provider_run_order(item, workflow=workflow),
+        )
         run = _selected_run(
             key=key,
             terminal=terminal,

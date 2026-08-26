@@ -156,9 +156,11 @@ and all five governed ruleset bodies, current `main`, provider clock, and the
 protected state branch immediately before admission. Inventory summaries and
 detail bodies must agree on ID, name, enforcement, target, source, and source
 type. A protected-main result identity binds the exact CI, Documentation, and
-CodeQL run attempts together. A cached green state never skips a new companion
-rerun and an already retained aggregate never creates a freshness-only state
-commit. Before normal admission, the broker observes that aggregate twice,
+CodeQL run attempts together. Provider update time determines the latest attempt
+across workflow-run IDs; provider ID and attempt are deterministic tie-breakers
+only. A cached green state never skips a new companion rerun and an already
+retained aggregate never creates a freshness-only state commit. Before normal
+admission, the broker observes that aggregate twice,
 requires every governed deep-health attempt in the complete provider inventory
 to be retained, observes every available latest current-main nightly or weekly
 run and exact job twice, and rejects any change between observations. It then
