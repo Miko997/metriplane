@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import hashlib
 import importlib.metadata
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Callable, Iterable
+from functools import cache
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
@@ -68,6 +70,16 @@ INVENTORY_DOWNSTREAM_TASK_IDS = (
     "MP2-018",
 )
 PROFILE_DOWNSTREAM_TASK_IDS = ("MP2-007", *INVENTORY_DOWNSTREAM_TASK_IDS)
+KNOWN_TASK_IDS = ("MP2-007", "MP2-010", *INVENTORY_DOWNSTREAM_TASK_IDS)
+KNOWN_LIMITATION_IDS = (
+    "BOOTSTRAP_ENVIRONMENT_NOT_MEASURED",
+    "CLI_ROOT_ONLY",
+    "GENERATED_MODEL_SCHEMAS_DEFERRED",
+    "RESOURCE_SEED_ONLY",
+    "ROUTE_DECLARATIONS_ONLY",
+    "ROUTE_OVERACCEPTANCE_UNCHARACTERIZED",
+)
+MEASURED_CLAIM_CLASSIFICATIONS = frozenset({"compatibility", "supported"})
 
 OBLIGATION_IDS = (
     "MP2-010.OBL.ACTIVE_FIELDS_REQUIRED",
@@ -284,6 +296,84 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@cache
+def _tracked_repository_paths() -> frozenset[str]:
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return frozenset(path for path in result.stdout.split("\0") if path)
+
+
+def _repository_file(relative_path: str) -> Path:
+    assert relative_path in _tracked_repository_paths()
+    resolved = (ROOT / relative_path).resolve(strict=True)
+    assert resolved.is_relative_to(ROOT)
+    assert resolved.is_file()
+    return resolved
+
+
+@cache
+def _python_symbol_paths(relative_path: str) -> frozenset[str]:
+    tree = ast.parse(_repository_file(relative_path).read_text(encoding="utf-8"))
+    symbols: set[str] = set()
+
+    def collect(nodes: list[ast.stmt], prefix: str = "") -> None:
+        for node in nodes:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                symbols.add(f"{prefix}{node.name}")
+            elif isinstance(node, ast.ClassDef):
+                class_path = f"{prefix}{node.name}"
+                symbols.add(class_path)
+                collect(node.body, f"{class_path}.")
+
+    collect(tree.body)
+    return frozenset(symbols)
+
+
+@cache
+def _pytest_node_resolves(identifier: str) -> bool:
+    environment = dict(os.environ)
+    environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", identifier],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _assert_validator_id_resolves(identifier: str) -> None:
+    relative_path, separator, raw_selector = identifier.partition("::")
+    assert separator
+    _repository_file(relative_path)
+    if relative_path.startswith("tests/"):
+        assert _pytest_node_resolves(identifier)
+        return
+
+    selector = raw_selector.split("[", 1)[0]
+    assert selector in _python_symbol_paths(relative_path)
+
+
+def _assert_source_resolves(source: dict[str, Any], baseline: dict[str, Any]) -> None:
+    if "json_pointer" in source:
+        assert source["path"] == "docs/status/baseline-snapshot.v1.json"
+        source_value = _resolve_pointer(baseline, source["json_pointer"])
+        assert source["digest_sha256"] == _sha(source_value)
+        if "count" in source:
+            assert source["count"] == len(source_value)
+        return
+
+    source_path = _repository_file(source["path"])
+    assert source["digest_sha256"] == _sha256_file(source_path)
 
 
 def _git_object(*args: str) -> str:
@@ -555,6 +645,45 @@ def _extension_profiles(profiles: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _valid_extension_row(inventory: dict[str, Any]) -> dict[str, Any]:
+    extension = cast(dict[str, Any], copy.deepcopy(inventory["rows"][0]))
+    extension.update(
+        {
+            "claim": {
+                "classification": "bounded_seed",
+                "limitation_ids": [],
+                "statement": "Repository-backed downstream command discovery seed.",
+            },
+            "consumer_task_ids": ["MP2-014", "MP2-015", "MP2-016", "MP2-017", "MP2-018"],
+            "id": "MP2-011.CLI.COMMAND.DOCTOR",
+            "name": "metriplane doctor",
+            "owner": "MP2-011",
+            "profile": "baseline.static-source-census",
+            "source": {
+                "digest_sha256": _sha256_file(_repository_file("metriplane/cli.py")),
+                "locator": "metriplane doctor",
+                "path": "metriplane/cli.py",
+                "type": "repository_discovery",
+            },
+            "status": "active",
+            "test": "MP2-011.OBL.COMMAND_DISCOVERY",
+            "trace_criterion_ids": ["MP2-011.A01"],
+            "validator_ids": [
+                "tests/test_cli_doctor.py::test_doctor_enforces_the_declared_python_range"
+            ],
+        }
+    )
+    return extension
+
+
+def _with_extension_row(inventory: dict[str, Any], extension: dict[str, Any]) -> dict[str, Any]:
+    extended = copy.deepcopy(inventory)
+    extended["rows"].append(extension)
+    extended["rows"].sort(key=lambda row: row["id"])
+    extended["rows_sha256"] = _sha(extended["rows"])
+    return extended
+
+
 def _rejects(instance: dict[str, Any], schema: dict[str, Any]) -> None:
     with pytest.raises(baseline_tool.SnapshotError) as captured:
         baseline_tool._internal_validate(instance, schema)
@@ -575,6 +704,13 @@ def _assert_registry_pair(
 ) -> None:
     baseline_tool._internal_validate(inventory, schema)
     baseline_tool._internal_validate(profiles, schema)
+
+    schema_defs = schema["$defs"]
+    assert tuple(schema_defs["task_id"]["enum"]) == KNOWN_TASK_IDS
+    assert tuple(schema_defs["limitation_id"]["enum"]) == KNOWN_LIMITATION_IDS
+    known_tasks = set(KNOWN_TASK_IDS)
+    limitation_ids = {row["limitation_id"] for row in baseline["limitations"]}
+    assert limitation_ids == set(KNOWN_LIMITATION_IDS)
 
     rows = inventory["rows"]
     profile_rows = profiles["profiles"]
@@ -609,20 +745,44 @@ def _assert_registry_pair(
             assert row["status"] == "retired"
 
         task = _task_id(row["id"])
+        assert task in known_tasks
         if row["owner"]:
             assert row["owner"] == task
         if row["test"]:
             assert _task_id(row["test"]) == task
-        assert all(_task_id(criterion) == task for criterion in row["trace_criterion_ids"])
+        criterion_tasks = {_task_id(criterion) for criterion in row["trace_criterion_ids"]}
+        assert criterion_tasks == {task}
+        assert set(row["consumer_task_ids"]) <= known_tasks
+        assert set(row["claim"]["limitation_ids"]) <= limitation_ids
+        _assert_source_resolves(row["source"], baseline)
+        for validator_id in row["validator_ids"]:
+            _assert_validator_id_resolves(validator_id)
+
+        if (
+            row["status"] in {"active", "deprecated"}
+            and row["claim"]["classification"] in MEASURED_CLAIM_CLASSIFICATIONS
+        ):
+            assert profiles_by_id[profile_id]["support_disposition"] == "measured"
 
     for profile in profile_rows:
+        if profile["owner"]:
+            assert profile["owner"] in known_tasks
         if profile["test"]:
             assert _task_id(profile["test"]) == profile["owner"]
+        assert set(profile["claim"]["limitation_ids"]) <= limitation_ids
+        _assert_source_resolves(profile["source"], baseline)
+        if (
+            profile["status"] == "active"
+            and profile["claim"]["classification"] in MEASURED_CLAIM_CLASSIFICATIONS
+        ):
+            assert profile["support_disposition"] == "measured"
 
     for trace in (inventory["trace"], profiles["trace"]):
         task = trace["task"]
+        assert task in known_tasks
         assert all(_task_id(criterion) == task for criterion in trace["criterion_ids"])
         assert all(_task_id(identifier) == task for identifier in trace["obligation_ids"])
+        assert set(trace["downstream_task_ids"]) <= known_tasks
 
 
 @obligation("MP2-010.OBL.SCHEMA_VALIDATION")
@@ -804,6 +964,7 @@ def test_committed_like_downstream_extensions_preserve_registry_invariants(
         "kind": "measured_environment",
         "owner": "MP2-011",
         "source": {
+            "digest_sha256": _sha256_file(_repository_file("uv.lock")),
             "locator": "python:3.12",
             "path": "uv.lock",
             "type": "installed_discovery",
@@ -822,8 +983,11 @@ def test_committed_like_downstream_extensions_preserve_registry_invariants(
         "kind": "measured_browser",
         "owner": "MP2-012",
         "source": {
+            "digest_sha256": _sha256_file(
+                _repository_file("tests/e2e/test_dashboard_playwright_smoke.py")
+            ),
             "locator": "chromium",
-            "path": "tests/ui_coverage",
+            "path": "tests/e2e/test_dashboard_playwright_smoke.py",
             "type": "installed_discovery",
         },
         "status": "active",
@@ -844,14 +1008,17 @@ def test_committed_like_downstream_extensions_preserve_registry_invariants(
             "owner": "MP2-011",
             "profile": measured_profile["id"],
             "source": {
+                "digest_sha256": _sha256_file(_repository_file("metriplane/cli.py")),
                 "locator": "console_scripts:metriplane doctor",
-                "path": "metriplane",
+                "path": "metriplane/cli.py",
                 "type": "installed_discovery",
             },
             "status": "active",
             "test": "MP2-011.OBL.COMMAND_DISCOVERY",
             "trace_criterion_ids": ["MP2-011.A01", "MP2-011.A02"],
-            "validator_ids": ["tests/test_cli_inventory.py::test_leaf_commands_are_complete"],
+            "validator_ids": [
+                "tests/test_cli_doctor.py::test_doctor_enforces_the_declared_python_range"
+            ],
         },
         {
             "claim": {
@@ -860,20 +1027,25 @@ def test_committed_like_downstream_extensions_preserve_registry_invariants(
                 "statement": "Maintained UI action discovered by MP2-012.",
             },
             "consumer_task_ids": ["MP2-014", "MP2-015", "MP2-016", "MP2-017", "MP2-018"],
-            "id": "MP2-012.UI.ACTION.RUN_START",
+            "id": "MP2-012.UI.ACTION.DOCTOR",
             "kind": "ui_action",
-            "name": "Start run",
+            "name": "Run Doctor",
             "owner": "MP2-012",
             "profile": browser_profile["id"],
             "source": {
-                "locator": "button[data-command-id=run-start]",
-                "path": "web/dashboard/command-center.html",
+                "digest_sha256": _sha256_file(
+                    _repository_file("tests/ui_coverage/test_audit_ui_functionality.py")
+                ),
+                "locator": "button[data-command-id=doctor]",
+                "path": "tests/ui_coverage/test_audit_ui_functionality.py",
                 "type": "repository_discovery",
             },
             "status": "active",
             "test": "MP2-012.OBL.UI_ACTION_DISCOVERY",
             "trace_criterion_ids": ["MP2-012.A01", "MP2-012.A02"],
-            "validator_ids": ["tests/ui_coverage/test_inventory.py::test_actions_are_complete"],
+            "validator_ids": [
+                "tests/ui_coverage/test_audit_ui_functionality.py::test_build_actions_marks_exact_button_coverage"
+            ],
         },
         {
             "claim": {
@@ -888,7 +1060,7 @@ def test_committed_like_downstream_extensions_preserve_registry_invariants(
             "owner": "MP2-013",
             "profile": measured_profile["id"],
             "source": {
-                "digest_sha256": _sha("metriplane.schema.ObjectStateModel"),
+                "digest_sha256": _sha256_file(_repository_file("metriplane/schema.py")),
                 "locator": "ObjectStateModel",
                 "path": "metriplane/schema.py",
                 "type": "repository_discovery",
@@ -896,7 +1068,7 @@ def test_committed_like_downstream_extensions_preserve_registry_invariants(
             "status": "active",
             "test": "MP2-013.OBL.PUBLIC_API_DISCOVERY",
             "trace_criterion_ids": ["MP2-013.A01", "MP2-013.A02"],
-            "validator_ids": ["tests/test_public_api_inventory.py::test_exports_are_complete"],
+            "validator_ids": ["tests/test_schema.py::test_schema_validates"],
         },
     ]
 
@@ -981,6 +1153,111 @@ def test_row_model_rejects_unknown_fields(_obligation: str) -> None:
     invalid = copy.deepcopy(inventory)
     invalid["rows"][0]["unreviewed_surface"] = True
     invalid["rows_sha256"] = _sha(invalid["rows"])
+    _rejects(invalid, schema)
+
+
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_discovery_sources_require_a_digest(_obligation: str) -> None:
+    schema, inventory, _profiles, _baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    del extension["source"]["digest_sha256"]
+    _rejects(_with_extension_row(inventory, extension), schema)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("path", "missing/inventory-source.py"),
+        ("digest_sha256", "0" * 64),
+    ],
+)
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_discovery_sources_require_tracked_exact_bytes(
+    _obligation: str, field: str, value: str
+) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    extension["source"][field] = value
+    invalid = _with_extension_row(inventory, extension)
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid, profiles, baseline)
+
+
+@pytest.mark.parametrize(
+    "validator_id",
+    [
+        "tests/test_functional_inventory.py::test_missing_inventory_validator",
+        "tests/test_missing_inventory_validator.py::test_inventory_validator",
+    ],
+)
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_validator_node_ids_must_resolve(_obligation: str, validator_id: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    extension["validator_ids"] = [validator_id]
+    invalid = _with_extension_row(inventory, extension)
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid, profiles, baseline)
+
+
+@obligation("MP2-010.OBL.TRACE_CLOSURE")
+def test_consumer_tasks_are_closed_to_the_release_contract(_obligation: str) -> None:
+    schema, inventory, _profiles, _baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    extension["consumer_task_ids"] = ["MP2-999"]
+    _rejects(_with_extension_row(inventory, extension), schema)
+
+
+@obligation("MP2-010.OBL.TRACE_CLOSURE")
+def test_limitation_ids_are_closed_to_the_frozen_registry(_obligation: str) -> None:
+    schema, inventory, _profiles, _baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    extension["claim"]["limitation_ids"] = ["UNKNOWN_LIMITATION"]
+    _rejects(_with_extension_row(inventory, extension), schema)
+
+
+@pytest.mark.parametrize("classification", sorted(MEASURED_CLAIM_CLASSIFICATIONS))
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_supported_claims_require_a_measured_profile(_obligation: str, classification: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    extension["claim"]["classification"] = classification
+    invalid = _with_extension_row(inventory, extension)
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid, profiles, baseline)
+
+
+@pytest.mark.parametrize("classification", sorted(MEASURED_CLAIM_CLASSIFICATIONS))
+@obligation("MP2-010.OBL.ROW_MODEL_NEGATIVE")
+def test_active_supported_profiles_require_measured_disposition(
+    _obligation: str, classification: str
+) -> None:
+    schema, _inventory, profiles, _baseline = _documents()
+    invalid = copy.deepcopy(profiles)
+    extension = copy.deepcopy(invalid["profiles"][0])
+    extension.update(
+        {
+            "claim": {
+                "classification": classification,
+                "limitation_ids": [],
+                "statement": "Unsupported claim over an unmeasured active profile.",
+            },
+            "id": "linux.python312.unmeasured",
+            "owner": "MP2-011",
+            "source": {
+                "digest_sha256": _sha256_file(_repository_file("uv.lock")),
+                "locator": "python:3.12",
+                "path": "uv.lock",
+                "type": "installed_discovery",
+            },
+            "status": "active",
+            "support_disposition": "not_measured",
+            "test": "MP2-011.OBL.PROFILE",
+        }
+    )
+    invalid["profiles"].append(extension)
+    invalid["profiles"].sort(key=lambda profile: profile["id"])
+    invalid["profiles_sha256"] = _sha(invalid["profiles"])
     _rejects(invalid, schema)
 
 
