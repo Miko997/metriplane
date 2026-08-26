@@ -218,6 +218,8 @@ def validate_record(record: Mapping[str, Any], expected_type: str | None = None)
 
 def _validated_signature(signature: Mapping[str, Any], *, subject_digest: str, live: bool) -> str:
     exact = {"actor_id", "algorithm", "provider", "signature", "subject_digest", "synthetic"}
+    if not isinstance(signature, Mapping):
+        raise ReleaseControlError("signature is not an object")
     if set(signature) != exact:
         raise ReleaseControlError("signature shape is not closed")
     if signature["subject_digest"] != subject_digest:
@@ -237,11 +239,24 @@ def _validated_signature(signature: Mapping[str, Any], *, subject_digest: str, l
             raise ReleaseControlError("live signatures require provider authority")
         if signature["algorithm"] != "provider-attestation-v1":
             raise ReleaseControlError("test signatures cannot authorize live release work")
+        raise ReleaseControlError(
+            "live provider signature verification is not implemented; field shape is not authority"
+        )
+    if (
+        signature["synthetic"] is not True
+        or signature["provider"] != "test-fixture"
+        or signature["algorithm"] != "test-sha256-v1"
+        or signature_value
+        != sha256_json({"actor_id": actor_id, "subject_digest": subject_digest})
+    ):
+        raise ReleaseControlError("synthetic signature authentication failed")
     return actor_id
 
 
 def validate_role_assignments(record: Mapping[str, Any], *, live: bool) -> dict[str, str]:
     validate_record(record, "release-role-assignments")
+    if record["status"] != "PASS":
+        raise ReleaseControlError("release role assignments are not passing authority")
     if live and record["synthetic"] is not False:
         raise ReleaseControlError("synthetic role assignments cannot authorize a live release")
     data = record["data"]
@@ -793,6 +808,369 @@ def _release_data(
     return data
 
 
+def _passing_record(
+    record: Mapping[str, Any], expected_type: str, *, live: bool
+) -> dict[str, Any]:
+    validate_record(record, expected_type)
+    if record["status"] != "PASS":
+        raise ReleaseControlError(f"{expected_type} is not passing authority")
+    if live and record["synthetic"] is not False:
+        raise ReleaseControlError(f"synthetic {expected_type} cannot authorize a live release")
+    data = record["data"]
+    if not isinstance(data, dict):
+        raise ReleaseControlError(f"{expected_type} data is not an object")
+    return data
+
+
+def validate_release_qualification_record(
+    record: Mapping[str, Any], *, live: bool
+) -> None:
+    data = _passing_record(record, "release-qualification", live=live)
+    expected_fields = {
+        "attempt_digests",
+        "attempt_index_receipt_digests",
+        "attempt_retention_receipt_digests",
+        "candidate_digest",
+        "executed_cell_ids",
+        "expected_cell_ids",
+        "plan_digest",
+        "qualification_digest",
+        "result",
+        "terminal_results",
+        "unexpected_outcomes",
+        "warning_summary_digest",
+    }
+    if set(data) != expected_fields:
+        raise ReleaseControlError("release qualification data shape is not closed")
+    if data["result"] != "PASS" or data["unexpected_outcomes"] != []:
+        raise ReleaseControlError("release qualification is not a clean PASS")
+    expected_cells = data["expected_cell_ids"]
+    executed_cells = data["executed_cell_ids"]
+    if (
+        not isinstance(expected_cells, list)
+        or not expected_cells
+        or any(not isinstance(cell, str) or not cell for cell in expected_cells)
+        or expected_cells != sorted(expected_cells)
+        or len(expected_cells) != len(set(expected_cells))
+        or executed_cells != expected_cells
+    ):
+        raise ReleaseControlError("release qualification cell inventory is incomplete")
+    terminals = data["terminal_results"]
+    if not isinstance(terminals, list) or len(terminals) != len(expected_cells):
+        raise ReleaseControlError("release qualification terminal matrix is incomplete")
+    terminal_ids: list[str] = []
+    for row in terminals:
+        if not isinstance(row, dict) or set(row) != {"cell_id", "result", "result_digest"}:
+            raise ReleaseControlError("release qualification terminal row is malformed")
+        terminal_ids.append(str(row["cell_id"]))
+        if row["result"] != "PASS":
+            raise ReleaseControlError("release qualification contains a non-passing terminal")
+        _require_digest(row["result_digest"], "qualification terminal result")
+    if terminal_ids != expected_cells:
+        raise ReleaseControlError("release qualification terminals do not match expected cells")
+    for field in (
+        "attempt_digests",
+        "attempt_index_receipt_digests",
+        "attempt_retention_receipt_digests",
+    ):
+        values = data[field]
+        if (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(value, str) for value in values)
+            or len(values) != len(set(values))
+        ):
+            raise ReleaseControlError(f"release qualification {field} is incomplete")
+        for value in values:
+            _require_digest(value, f"release qualification {field}")
+    for field in (
+        "candidate_digest",
+        "plan_digest",
+        "qualification_digest",
+        "warning_summary_digest",
+    ):
+        _require_digest(data[field], f"release qualification {field}")
+
+
+def validate_publication_reconciliation_record(
+    record: Mapping[str, Any], *, live: bool
+) -> None:
+    data = _passing_record(record, "release-publication-reconciliation", live=live)
+    expected_fields = {
+        "approval_digest",
+        "burn_required",
+        "candidate_digest",
+        "evidence_manifest_digest",
+        "expected_artifacts",
+        "lock_receipt_digest",
+        "milestone",
+        "observations_digest",
+        "partial_targets",
+        "promotion_digest",
+        "qualification_digest",
+        "reconciliation_digest",
+        "result",
+        "staged_retention_receipts_digest",
+        "targets",
+    }
+    if set(data) != expected_fields:
+        raise ReleaseControlError("publication reconciliation data shape is not closed")
+    if data["result"] != "PASS" or data["burn_required"] is not False:
+        raise ReleaseControlError("publication reconciliation is not a clean PASS")
+    if data["partial_targets"] != []:
+        raise ReleaseControlError("publication reconciliation contains partial targets")
+    for field in expected_fields - {
+        "burn_required",
+        "expected_artifacts",
+        "milestone",
+        "partial_targets",
+        "result",
+        "targets",
+    }:
+        _require_digest(data[field], f"publication reconciliation {field}")
+    if data["milestone"] not in MILESTONES:
+        raise ReleaseControlError("publication reconciliation milestone is invalid")
+    if (
+        not isinstance(data["targets"], list)
+        or not data["targets"]
+        or any(not isinstance(target, (str, dict)) for target in data["targets"])
+    ):
+        raise ReleaseControlError("publication reconciliation has no target observations")
+
+
+def validate_release_gate_instance_record(
+    record: Mapping[str, Any],
+    *,
+    candidate_identity_record: Mapping[str, Any],
+    predecessor_record: Mapping[str, Any],
+    task_state_policy: Mapping[str, Any],
+    live: bool,
+) -> None:
+    gate = _passing_record(record, "release-gate-instance", live=live)
+    candidate = _passing_record(
+        candidate_identity_record, "release-candidate-identity", live=live
+    )
+    predecessor = _passing_record(predecessor_record, "release-predecessor", live=live)
+    bindings = {
+        "candidate identity": (
+            gate.get("candidate_identity_digest"),
+            sha256_json(candidate_identity_record),
+        ),
+        "candidate": (gate.get("candidate_digest"), candidate.get("candidate_digest")),
+        "predecessor": (gate.get("predecessor_digest"), sha256_json(predecessor_record)),
+        "candidate predecessor": (
+            candidate.get("predecessor_digest"),
+            sha256_json(predecessor_record),
+        ),
+        "milestone": (gate.get("milestone"), candidate.get("milestone")),
+        "package version": (gate.get("package_version"), candidate.get("package_version")),
+        "release tag": (gate.get("release_tag"), candidate.get("release_tag")),
+        "gate input": (gate.get("gate_input_digest"), candidate.get("gate_input_digest")),
+        "task-state policy": (
+            gate.get("task_state_policy_digest"),
+            sha256_json(task_state_policy),
+        ),
+    }
+    for label, (observed, expected) in bindings.items():
+        if observed != expected:
+            raise ReleaseControlError(f"release gate {label} binding mismatch")
+    if predecessor.get("candidate_milestone") != gate.get("milestone"):
+        raise ReleaseControlError("release gate predecessor milestone mismatch")
+
+
+def validate_release_qualification_plan_record(
+    record: Mapping[str, Any], *, gate_instance: Mapping[str, Any], live: bool
+) -> None:
+    plan = _passing_record(record, "release-qualification-plan", live=live)
+    gate = _passing_record(gate_instance, "release-gate-instance", live=live)
+    expected_fields = {
+        "attempt_count",
+        "candidate_digest",
+        "candidate_manifest_digest",
+        "cells",
+        "delta_digest",
+        "delta_test_map_digest",
+        "expected_terminal_result",
+        "gate_instance_digest",
+        "milestone",
+        "plan_digest",
+        "predecessor_digest",
+        "readiness_digest",
+        "scenario_catalog_digest",
+    }
+    if set(plan) != expected_fields:
+        raise ReleaseControlError("release qualification plan data shape is not closed")
+    bindings = {
+        "gate instance": (plan["gate_instance_digest"], sha256_json(gate_instance)),
+        "candidate": (plan["candidate_digest"], gate.get("candidate_digest")),
+        "predecessor": (plan["predecessor_digest"], gate.get("predecessor_digest")),
+        "milestone": (plan["milestone"], gate.get("milestone")),
+    }
+    for label, (observed, expected) in bindings.items():
+        if observed != expected:
+            raise ReleaseControlError(f"release qualification plan {label} binding mismatch")
+    cells = plan["cells"]
+    cell_identities = (
+        [sha256_json(cell) if isinstance(cell, dict) else cell for cell in cells]
+        if isinstance(cells, list)
+        else []
+    )
+    if (
+        plan["expected_terminal_result"] != "PASS"
+        or not isinstance(cells, list)
+        or not cells
+        or any(not isinstance(cell, (str, dict)) for cell in cells)
+        or len(cell_identities) != len(set(cell_identities))
+        or plan["attempt_count"] != len(cells)
+    ):
+        raise ReleaseControlError("release qualification plan matrix is invalid")
+    for field in expected_fields - {
+        "attempt_count",
+        "cells",
+        "expected_terminal_result",
+        "milestone",
+    }:
+        _require_digest(plan[field], f"release qualification plan {field}")
+
+
+def validate_release_approval_record(
+    record: Mapping[str, Any],
+    *,
+    gate_instance: Mapping[str, Any],
+    qualification: Mapping[str, Any],
+    no_prepublication_rubric: bool,
+    live: bool,
+) -> None:
+    approval = _passing_record(record, "release-approval", live=live)
+    gate = _passing_record(gate_instance, "release-gate-instance", live=live)
+    qualification_data = _passing_record(
+        qualification, "release-qualification", live=live
+    )
+    basic = {"author_id", "candidate_digest", "conflicts", "decision", "reviewer_id"}
+    extended = {
+        "approval_decision_digest",
+        "gate_instance_digest",
+        "qualification_digest",
+        "rubric_result_digest",
+    }
+    if not basic <= set(approval) or not set(approval) <= basic | extended:
+        raise ReleaseControlError("release approval data shape is not closed")
+    if live and set(approval) != basic | extended:
+        raise ReleaseControlError("live release approval lacks required authority bindings")
+    if approval["decision"] != "APPROVED" or approval["conflicts"] != []:
+        raise ReleaseControlError("release approval is not conflict-free and approved")
+    author = approval["author_id"]
+    reviewer = approval["reviewer_id"]
+    if not isinstance(author, str) or not isinstance(reviewer, str) or author == reviewer:
+        raise ReleaseControlError("release approval is not from a distinct non-author")
+    if (
+        approval["candidate_digest"] != gate.get("candidate_digest")
+        or approval["candidate_digest"] != qualification_data.get("candidate_digest")
+    ):
+        raise ReleaseControlError("release approval candidate binding mismatch")
+    if "gate_instance_digest" in approval and approval["gate_instance_digest"] != sha256_json(
+        gate_instance
+    ):
+        raise ReleaseControlError("release approval gate-instance binding mismatch")
+    if "qualification_digest" in approval and approval["qualification_digest"] != sha256_json(
+        qualification
+    ):
+        raise ReleaseControlError("release approval qualification binding mismatch")
+    if no_prepublication_rubric and approval.get("rubric_result_digest") is not None:
+        raise ReleaseControlError("prepublication approval unexpectedly names a rubric result")
+    if "approval_decision_digest" in approval:
+        _require_digest(approval["approval_decision_digest"], "approval decision")
+    signers = {
+        _validated_signature(
+            signature,
+            subject_digest=record["payload_digest"],
+            live=live,
+        )
+        for signature in record["signatures"]
+    }
+    if reviewer not in signers:
+        raise ReleaseControlError("release approval lacks reviewer-authenticated authority")
+
+
+def validate_release_candidate_identity_record(
+    record: Mapping[str, Any],
+    *,
+    predecessor_record: Mapping[str, Any],
+    candidate_dir: Path,
+    no_evaluation_adoption: bool,
+    live: bool,
+) -> None:
+    candidate = _passing_record(record, "release-candidate-identity", live=live)
+    predecessor = _passing_record(predecessor_record, "release-predecessor", live=live)
+    expected_fields = {
+        "artifact_manifest_digest",
+        "artifact_set_digest",
+        "build_invocation_id",
+        "candidate_digest",
+        "evaluation_adoption_digest",
+        "evaluation_adoption_mode",
+        "gate_input_digest",
+        "milestone",
+        "package_version",
+        "predecessor_digest",
+        "release_tag",
+        "source_freeze_digest",
+    }
+    if set(candidate) != expected_fields:
+        raise ReleaseControlError("release candidate identity data shape is not closed")
+    if candidate["predecessor_digest"] != sha256_json(predecessor_record):
+        raise ReleaseControlError("release candidate predecessor binding mismatch")
+    milestone = candidate["milestone"]
+    if (
+        milestone not in MILESTONES
+        or predecessor.get("candidate_milestone") != milestone
+        or not isinstance(candidate["package_version"], str)
+        or not candidate["package_version"].startswith(f"{milestone}.")
+        or candidate["release_tag"] != candidate["package_version"]
+    ):
+        raise ReleaseControlError("release candidate version bindings are invalid")
+    if no_evaluation_adoption and (
+        candidate["evaluation_adoption_mode"] != "none"
+        or candidate["evaluation_adoption_digest"] is not None
+    ):
+        raise ReleaseControlError("release candidate adopts unapproved evaluation authority")
+    if candidate_dir.is_symlink() or not candidate_dir.is_dir():
+        raise ReleaseControlError("release candidate directory is missing or unsafe")
+    entries = list(candidate_dir.iterdir())
+    if len(entries) != 2 or any(path.is_symlink() or not path.is_file() for path in entries):
+        raise ReleaseControlError("release candidate directory has no closed regular-file set")
+    artifact_rows: list[dict[str, Any]] = []
+    expected_media = {
+        ".whl": "application/vnd.pypa.wheel+zip",
+        ".tar.gz": "application/gzip",
+    }
+    observed_suffixes: set[str] = set()
+    for path in sorted(entries, key=lambda item: item.name):
+        suffix = ".tar.gz" if path.name.endswith(".tar.gz") else path.suffix
+        if suffix not in expected_media or suffix in observed_suffixes:
+            raise ReleaseControlError("release candidate directory is not one wheel and one sdist")
+        observed_suffixes.add(suffix)
+        artifact_rows.append(
+            {
+                "media_type": expected_media[suffix],
+                "path": path.name,
+                "sha256": _regular_file_digest(path),
+                "size": path.stat().st_size,
+            }
+        )
+    if candidate["artifact_set_digest"] != sha256_json(artifact_rows):
+        raise ReleaseControlError("release candidate directory differs from its artifact set")
+    for field in expected_fields - {
+        "build_invocation_id",
+        "evaluation_adoption_digest",
+        "evaluation_adoption_mode",
+        "milestone",
+        "package_version",
+        "release_tag",
+    }:
+        _require_digest(candidate[field], f"release candidate {field}")
+
+
 def _regular_file_digest(path: Path) -> str:
     if path.is_symlink() or not path.is_file():
         raise ReleaseControlError(f"artifact is missing or not a regular file: {path}")
@@ -880,6 +1258,10 @@ def validate_release_retention_receipts(
         raise ReleaseControlError("retention receipt set is not passing")
     if live and receipts["synthetic"] is not False:
         raise ReleaseControlError("synthetic retention receipts cannot authorize a live release")
+    if live:
+        raise ReleaseControlError(
+            "live two-store read-back verification is not implemented; receipt claims are not authority"
+        )
     data = _release_data(
         receipts,
         {
@@ -968,17 +1350,6 @@ def validate_release_retention_receipts(
         invocation_root.is_symlink() or not invocation_root.is_dir() or not through_stage
     ):
         raise ReleaseControlError("retention invocation journal is missing or unsafe")
-    if live:
-        signers = {
-            _validated_signature(
-                signature,
-                subject_digest=receipts["payload_digest"],
-                live=True,
-            )
-            for signature in receipts["signatures"]
-        }
-        if not signers:
-            raise ReleaseControlError("live retention receipts lack provider attestation")
 
 
 def build_release_readiness_record(
@@ -1023,6 +1394,156 @@ def build_release_readiness_record(
         for value in (gate, candidate, predecessor_data, linear, artifact, delta_data, mapping)
     ):
         raise ReleaseControlError("readiness subject data must be closed objects")
+    exact_shapes = (
+        (
+            gate,
+            {
+                "candidate_digest",
+                "candidate_identity_digest",
+                "environment_registry_digest",
+                "evidence_store_preflight_digest",
+                "evidence_store_registry_digest",
+                "frozen_source_sha",
+                "gate_input_digest",
+                "instance_digest",
+                "linear_snapshot_digest",
+                "main_health_digest",
+                "main_health_history_digest",
+                "milestone",
+                "obligation_registry_digest",
+                "package_version",
+                "predecessor_digest",
+                "release_tag",
+                "repository_protection_digest",
+                "run_id",
+                "scenario_registry_digest",
+                "target_registry_digest",
+                "task_state_policy_digest",
+            },
+            "gate instance",
+        ),
+        (
+            candidate,
+            {
+                "artifact_manifest_digest",
+                "artifact_set_digest",
+                "build_invocation_id",
+                "candidate_digest",
+                "evaluation_adoption_digest",
+                "evaluation_adoption_mode",
+                "gate_input_digest",
+                "milestone",
+                "package_version",
+                "predecessor_digest",
+                "release_tag",
+                "source_freeze_digest",
+            },
+            "candidate identity",
+        ),
+        (
+            linear,
+            {
+                "required_bom_ids",
+                "required_bom_snapshot_digest",
+                "state",
+                "task_id",
+                "tool",
+            },
+            "Linear snapshot",
+        ),
+        (
+            artifact,
+            {
+                "artifact_set_digest",
+                "artifacts",
+                "build_invocation_id",
+                "build_recipe_digest",
+                "milestone",
+                "source_digest",
+                "source_freeze_digest",
+                "target_resolution_digest",
+            },
+            "artifact manifest",
+        ),
+        (
+            delta_data,
+            {
+                "added",
+                "candidate_sha",
+                "changed",
+                "delta_digest",
+                "impact_manifest_digest",
+                "milestone",
+                "predecessor_digest",
+                "removed",
+            },
+            "capability delta",
+        ),
+        (
+            mapping,
+            {
+                "delta_digest",
+                "environment_registry_digest",
+                "impact_manifest_digest",
+                "map_digest",
+                "mappings",
+                "milestone",
+                "obligation_registry_digest",
+                "scenario_registry_digest",
+                "unmapped_capabilities",
+            },
+            "delta test map",
+        ),
+    )
+    for value, expected_fields, label in exact_shapes:
+        if set(value) != expected_fields:
+            raise ReleaseControlError(f"readiness {label} data shape is not closed")
+    predecessor_required = {
+        "candidate_milestone",
+        "closed_decision_digest",
+        "lkg_digest",
+        "version",
+    }
+    predecessor_allowed = predecessor_required | {
+        "chain_head",
+        "completion_digest",
+        "pointer_envelope_digest",
+        "pointer_index_receipt_digest",
+        "predecessor_milestone",
+        "qualification_digest",
+        "reconciliation_digest",
+    }
+    if not predecessor_required <= set(predecessor_data) <= predecessor_allowed:
+        raise ReleaseControlError("readiness predecessor data shape is not closed")
+    artifact_rows = artifact["artifacts"]
+    if not isinstance(artifact_rows, list) or len(artifact_rows) != 2:
+        raise ReleaseControlError("readiness artifact manifest is not one wheel and one sdist")
+    artifact_names: list[str] = []
+    artifact_suffixes: set[str] = set()
+    artifact_media = {
+        ".whl": "application/vnd.pypa.wheel+zip",
+        ".tar.gz": "application/gzip",
+    }
+    for row in artifact_rows:
+        if not isinstance(row, dict) or set(row) != {"media_type", "path", "sha256", "size"}:
+            raise ReleaseControlError("readiness artifact manifest row is malformed")
+        name = row["path"]
+        if not isinstance(name, str) or Path(name).name != name:
+            raise ReleaseControlError("readiness artifact manifest path is unsafe")
+        suffix = ".tar.gz" if name.endswith(".tar.gz") else Path(name).suffix
+        if suffix not in artifact_media or row["media_type"] != artifact_media[suffix]:
+            raise ReleaseControlError("readiness artifact media type is invalid")
+        artifact_suffixes.add(suffix)
+        artifact_names.append(name)
+        _require_digest(row["sha256"], f"readiness artifact {name}")
+        if isinstance(row["size"], bool) or not isinstance(row["size"], int) or row["size"] < 1:
+            raise ReleaseControlError("readiness artifact manifest size is invalid")
+    if artifact_names != sorted(set(artifact_names)):
+        raise ReleaseControlError("readiness artifact manifest is not canonical")
+    if artifact_suffixes != set(artifact_media):
+        raise ReleaseControlError("readiness artifact manifest lacks a wheel or sdist")
+    if artifact["artifact_set_digest"] != sha256_json(artifact_rows):
+        raise ReleaseControlError("readiness artifact-set digest mismatch")
 
     bindings = {
         "candidate identity": (
@@ -1030,6 +1551,9 @@ def build_release_readiness_record(
             sha256_json(candidate_identity_record),
         ),
         "gate candidate": (gate.get("candidate_digest"), candidate.get("candidate_digest")),
+        "gate input": (gate.get("gate_input_digest"), candidate.get("gate_input_digest")),
+        "package version": (gate.get("package_version"), candidate.get("package_version")),
+        "release tag": (gate.get("release_tag"), candidate.get("release_tag")),
         "gate predecessor": (gate.get("predecessor_digest"), sha256_json(predecessor)),
         "candidate predecessor": (candidate.get("predecessor_digest"), sha256_json(predecessor)),
         "gate Linear snapshot": (gate.get("linear_snapshot_digest"), sha256_json(linear_snapshot)),
@@ -1037,9 +1561,25 @@ def build_release_readiness_record(
             candidate.get("artifact_manifest_digest"),
             sha256_json(artifact_manifest),
         ),
+        "candidate artifact set": (
+            candidate.get("artifact_set_digest"),
+            artifact.get("artifact_set_digest"),
+        ),
+        "candidate build invocation": (
+            candidate.get("build_invocation_id"),
+            artifact.get("build_invocation_id"),
+        ),
+        "candidate source freeze": (
+            candidate.get("source_freeze_digest"),
+            artifact.get("source_freeze_digest"),
+        ),
         "delta predecessor": (delta_data.get("predecessor_digest"), sha256_json(predecessor)),
         "delta source": (delta_data.get("candidate_sha"), gate.get("frozen_source_sha")),
         "delta map": (mapping.get("delta_digest"), delta_data.get("delta_digest")),
+        "impact manifest": (
+            mapping.get("impact_manifest_digest"),
+            delta_data.get("impact_manifest_digest"),
+        ),
         "environment registry": (
             mapping.get("environment_registry_digest"),
             gate.get("environment_registry_digest"),
@@ -1066,6 +1606,16 @@ def build_release_readiness_record(
     }
     if len(milestones) != 1 or next(iter(milestones)) not in MILESTONES:
         raise ReleaseControlError("readiness milestone bindings disagree")
+    milestone = next(iter(milestones))
+    package_version = candidate.get("package_version")
+    if (
+        not isinstance(package_version, str)
+        or not package_version.startswith(f"{milestone}.")
+        or candidate.get("release_tag") != package_version
+    ):
+        raise ReleaseControlError("readiness package version or release tag is invalid")
+    if mapping.get("unmapped_capabilities") != []:
+        raise ReleaseControlError("readiness has unmapped changed capabilities")
     required_bom_ids = linear.get("required_bom_ids")
     if (
         not isinstance(required_bom_ids, list)
@@ -2017,6 +2567,46 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 through_stage=args.through_stage,
                 live=not fixture_mode,
             )
+        elif name == "validate_release_qualification.py":
+            result = read_json(Path(args.record))
+            validate_release_qualification_record(result, live=not fixture_mode)
+        elif name == "validate_publication_reconciliation.py":
+            result = read_json(Path(args.record))
+            validate_publication_reconciliation_record(result, live=not fixture_mode)
+        elif name == "validate_release_gate_instance.py":
+            result = read_json(Path(args.record))
+            validate_release_gate_instance_record(
+                result,
+                candidate_identity_record=read_json(Path(args.candidate_identity)),
+                predecessor_record=read_json(Path(args.predecessor)),
+                task_state_policy=read_json(Path(args.task_state_policy)),
+                live=not fixture_mode,
+            )
+        elif name == "validate_release_qualification_plan.py":
+            result = read_json(Path(args.record))
+            validate_release_qualification_plan_record(
+                result,
+                gate_instance=read_json(Path(args.gate_instance)),
+                live=not fixture_mode,
+            )
+        elif name == "validate_release_approval.py":
+            result = read_json(Path(args.record))
+            validate_release_approval_record(
+                result,
+                gate_instance=read_json(Path(args.gate_instance)),
+                qualification=read_json(Path(args.qualification)),
+                no_prepublication_rubric=bool(args.no_prepublication_rubric),
+                live=not fixture_mode,
+            )
+        elif name == "validate_release_candidate_identity.py":
+            result = read_json(Path(args.record))
+            validate_release_candidate_identity_record(
+                result,
+                predecessor_record=read_json(Path(args.predecessor)),
+                candidate_dir=Path(args.candidate_dir),
+                no_evaluation_adoption=bool(args.no_evaluation_adoption),
+                live=not fixture_mode,
+            )
         elif contract.fixture_producer:
             if not fixture_mode:
                 result = _blocked_result(
@@ -2048,13 +2638,10 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 raise ReleaseControlError("validator record path is missing")
             result = read_json(Path(record_value))
             expected_type = _record_type_from_tool(name)
-            validate_record(result, expected_type)
             if name == "validate_release_role_assignments.py":
                 validate_role_assignments(result, live=not fixture_mode)
-            elif not fixture_mode and result["synthetic"] is not False:
-                raise ReleaseControlError(
-                    "synthetic records cannot satisfy a live release validator"
-                )
+            else:
+                _passing_record(result, expected_type, live=not fixture_mode)
         else:
             result = _blocked_result(
                 name,
@@ -2100,8 +2687,14 @@ __all__ = [
     "validate_lkg_invalidation",
     "validate_predecessor",
     "validate_promotion_plan",
+    "validate_publication_reconciliation_record",
     "validate_record",
+    "validate_release_approval_record",
     "validate_release_artifact_files",
+    "validate_release_candidate_identity_record",
+    "validate_release_gate_instance_record",
+    "validate_release_qualification_plan_record",
+    "validate_release_qualification_record",
     "validate_release_retention_receipts",
     "validate_role_assignments",
     "validate_task_state_observation",

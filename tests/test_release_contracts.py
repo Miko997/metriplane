@@ -16,10 +16,14 @@ import pytest
 from metriplane.release_control import (
     MILESTONES,
     TOOL_CONTRACTS,
+    ReleaseControlError,
+    build_release_readiness_record,
     make_record,
     sha256_json,
     tool_main,
     validate_record,
+    validate_release_retention_receipts,
+    validate_role_assignments,
     write_immutable_json,
 )
 
@@ -226,6 +230,233 @@ def _tool_environment() -> dict[str, str]:
     environment = dict(os.environ)
     environment["PYTHONPATH"] = str(ROOT)
     return environment
+
+
+def _passing_qualification(*, status: str = "PASS") -> dict[str, Any]:
+    data = {
+        "attempt_digests": ["1" * 64],
+        "attempt_index_receipt_digests": ["2" * 64],
+        "attempt_retention_receipt_digests": ["3" * 64],
+        "candidate_digest": "4" * 64,
+        "executed_cell_ids": ["cell-1"],
+        "expected_cell_ids": ["cell-1"],
+        "plan_digest": "5" * 64,
+        "qualification_digest": "6" * 64,
+        "result": "PASS",
+        "terminal_results": [
+            {"cell_id": "cell-1", "result": "PASS", "result_digest": "7" * 64}
+        ],
+        "unexpected_outcomes": [],
+        "warning_summary_digest": "8" * 64,
+    }
+    return make_record(
+        "release-qualification",
+        data,
+        invocation_id=f"qualification-{status.lower()}-fixture",
+        sequence=1,
+        synthetic=True,
+        status=status,
+    )
+
+
+def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> None:
+    data = {
+        "author_id": "author",
+        "authorized_executor_id": "executor",
+        "non_author_reviewer_id": "reviewer",
+        "publisher_id": "publisher",
+        "task_id": "MP2-007",
+    }
+    payload_digest = sha256_json(data)
+    live = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="live-signature-shape-fixture",
+        sequence=1,
+        synthetic=False,
+        signatures=[
+            {
+                "actor_id": "executor",
+                "algorithm": "provider-attestation-v1",
+                "provider": "github",
+                "signature": "fabricated-provider-value",
+                "subject_digest": payload_digest,
+                "synthetic": False,
+            }
+        ],
+    )
+    with pytest.raises(ReleaseControlError, match="verification is not implemented"):
+        validate_role_assignments(live, live=True)
+
+    forged = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="forged-test-signature-fixture",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "executor",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": "0" * 64,
+                "subject_digest": payload_digest,
+                "synthetic": True,
+            }
+        ],
+    )
+    with pytest.raises(ReleaseControlError, match="authentication failed"):
+        validate_role_assignments(forged, live=False)
+
+
+def test_live_retention_claims_block_without_real_store_readback(tmp_path: Path) -> None:
+    receipts = make_record(
+        "release-retention-receipts",
+        {},
+        invocation_id="live-retention-claims-fixture",
+        sequence=1,
+        synthetic=False,
+    )
+    with pytest.raises(ReleaseControlError, match="two-store read-back verification"):
+        validate_release_retention_receipts(
+            receipts,
+            inputs=[],
+            manifest=None,
+            invocation_root=tmp_path,
+            through_stage="fabricated-stage",
+            live=True,
+        )
+
+
+def test_subject_validators_reject_blocked_records_and_missing_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blocked_path = tmp_path / "blocked-qualification.json"
+    write_immutable_json(blocked_path, _passing_qualification(status="BLOCKED"))
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    assert (
+        tool_main("validate_release_qualification.py", ["--record", str(blocked_path)])
+        == 3
+    )
+
+    qualification_path = tmp_path / "qualification.json"
+    qualification = _passing_qualification()
+    write_immutable_json(qualification_path, qualification)
+    approval = make_record(
+        "release-approval",
+        {
+            "author_id": "author",
+            "candidate_digest": qualification["data"]["candidate_digest"],
+            "conflicts": [],
+            "decision": "APPROVED",
+            "reviewer_id": "reviewer",
+        },
+        invocation_id="approval-missing-dependency-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    approval_path = tmp_path / "approval.json"
+    write_immutable_json(approval_path, approval)
+    assert (
+        tool_main(
+            "validate_release_approval.py",
+            [
+                "--gate-instance",
+                str(tmp_path / "missing-gate.json"),
+                "--qualification",
+                str(qualification_path),
+                "--no-prepublication-rubric",
+                "--record",
+                str(approval_path),
+            ],
+        )
+        == 3
+    )
+
+    reconciliation = make_record(
+        "release-publication-reconciliation",
+        {
+            "approval_digest": "1" * 64,
+            "burn_required": True,
+            "candidate_digest": "2" * 64,
+            "evidence_manifest_digest": "3" * 64,
+            "expected_artifacts": ["metriplane.whl"],
+            "lock_receipt_digest": "4" * 64,
+            "milestone": "v0.4",
+            "observations_digest": "5" * 64,
+            "partial_targets": ["pypi"],
+            "promotion_digest": "6" * 64,
+            "qualification_digest": "7" * 64,
+            "reconciliation_digest": "8" * 64,
+            "result": "FAIL",
+            "staged_retention_receipts_digest": "9" * 64,
+            "targets": ["pypi"],
+        },
+        invocation_id="failed-reconciliation-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    reconciliation_path = tmp_path / "failed-reconciliation.json"
+    write_immutable_json(reconciliation_path, reconciliation)
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(reconciliation_path)],
+        )
+        == 3
+    )
+
+    predecessor = make_record(
+        "release-predecessor",
+        {
+            "candidate_milestone": "v0.4",
+            "closed_decision_digest": "a" * 64,
+            "lkg_digest": "b" * 64,
+            "version": "v0.3.0",
+        },
+        invocation_id="candidate-predecessor-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    predecessor_path = tmp_path / "candidate-predecessor.json"
+    write_immutable_json(predecessor_path, predecessor)
+    candidate = make_record(
+        "release-candidate-identity",
+        {
+            "artifact_manifest_digest": "1" * 64,
+            "artifact_set_digest": "2" * 64,
+            "build_invocation_id": "candidate-build-fixture",
+            "candidate_digest": "3" * 64,
+            "evaluation_adoption_digest": None,
+            "evaluation_adoption_mode": "none",
+            "gate_input_digest": "4" * 64,
+            "milestone": "v0.4",
+            "package_version": "v0.4.0",
+            "predecessor_digest": sha256_json(predecessor),
+            "release_tag": "v0.4.0",
+            "source_freeze_digest": "5" * 64,
+        },
+        invocation_id="candidate-missing-directory-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    candidate_path = tmp_path / "candidate.json"
+    write_immutable_json(candidate_path, candidate)
+    assert (
+        tool_main(
+            "validate_release_candidate_identity.py",
+            [
+                "--record",
+                str(candidate_path),
+                "--predecessor",
+                str(predecessor_path),
+                "--no-evaluation-adoption",
+                "--candidate-dir",
+                str(tmp_path / "missing-candidate-dir"),
+            ],
+        )
+        == 3
+    )
 
 
 @pytest.mark.parametrize("name", sorted(TOOL_NAMES))
@@ -594,11 +825,26 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         sequence=1,
         synthetic=True,
     )
+    artifact_rows = [
+        {
+            "media_type": "application/vnd.pypa.wheel+zip",
+            "path": "metriplane-0.4.0-py3-none-any.whl",
+            "sha256": "d" * 64,
+            "size": 10,
+        },
+        {
+            "media_type": "application/gzip",
+            "path": "metriplane-0.4.0.tar.gz",
+            "sha256": "e" * 64,
+            "size": 11,
+        },
+    ]
+    artifact_set_digest = sha256_json(artifact_rows)
     artifact = make_record(
         "release-artifact-manifest",
         {
-            "artifact_set_digest": "d" * 64,
-            "artifacts": [],
+            "artifact_set_digest": artifact_set_digest,
+            "artifacts": artifact_rows,
             "build_invocation_id": "readiness-artifact-build",
             "build_recipe_digest": "e" * 64,
             "milestone": "v0.4",
@@ -614,7 +860,7 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
         "release-candidate-identity",
         {
             "artifact_manifest_digest": sha256_json(artifact),
-            "artifact_set_digest": "d" * 64,
+            "artifact_set_digest": artifact_set_digest,
             "build_invocation_id": "readiness-artifact-build",
             "candidate_digest": "3" * 64,
             "evaluation_adoption_digest": None,
@@ -744,6 +990,58 @@ def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
     monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
     assert tool_main("check_release_readiness.py", argv) == 0
     assert json.loads((tmp_path / "ready.json").read_text())["data"]["disposition"] == "READY"
+
+    mutation_cases: list[tuple[str, dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+    for label, field, value in (
+        ("gate-input", "gate_input_digest", "f" * 64),
+        ("package-version", "package_version", "v0.4.1"),
+        ("release-tag", "release_tag", "v0.4.1"),
+        ("artifact-set", "artifact_set_digest", "e" * 64),
+        ("build-invocation", "build_invocation_id", "different-artifact-build"),
+        ("source-freeze", "source_freeze_digest", "9" * 64),
+    ):
+        changed_candidate = make_record(
+            "release-candidate-identity",
+            {**candidate["data"], field: value},
+            invocation_id=f"readiness-{label}-candidate",
+            sequence=1,
+            synthetic=True,
+        )
+        changed_gate = make_record(
+            "release-gate-instance",
+            {
+                **gate["data"],
+                "candidate_identity_digest": sha256_json(changed_candidate),
+            },
+            invocation_id=f"readiness-{label}-gate",
+            sequence=1,
+            synthetic=True,
+        )
+        mutation_cases.append((label, changed_gate, changed_candidate, delta_map))
+    for label, field, value in (
+        ("impact-manifest", "impact_manifest_digest", "7" * 64),
+        ("unmapped", "unmapped_capabilities", ["unmapped-capability"]),
+    ):
+        changed_map = make_record(
+            "release-delta-test-map",
+            {**delta_map["data"], field: value},
+            invocation_id=f"readiness-{label}-map",
+            sequence=1,
+            synthetic=True,
+        )
+        mutation_cases.append((label, gate, candidate, changed_map))
+    for _label, changed_gate, changed_candidate, changed_map in mutation_cases:
+        with pytest.raises(ReleaseControlError, match="readiness"):
+            build_release_readiness_record(
+                gate_instance=changed_gate,
+                candidate_identity_record=changed_candidate,
+                predecessor=predecessor,
+                linear_snapshot=linear,
+                artifact_manifest=artifact,
+                delta=delta,
+                delta_test_map=changed_map,
+                readiness_registry=registry,
+            )
 
     registry["blockers"] = [{"code": "MISSING_LIVE_EVIDENCE"}]
     registry["framework"] = "BLOCKED_NOT_READY"

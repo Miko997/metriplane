@@ -8,7 +8,7 @@
   },
   "invocation_id": "fixture-roles-001",
   "payload_digest": "2523a3a38937aeb85adc1afe7825c2de1691f631c364b4805abe1bf12fe9e1b5",
-  "record_id": "61ea3eb53a2ae74ce410cff4b6c64bfa390eb9d476f8f6720939e37b8cefc032",
+  "record_id": "291623aa268b1d0014d56f8f9107a20f048e963060a37b5a7530d1814ac5e038",
   "record_type": "release-role-assignments",
   "schema_version": "metriplane.release-record.v1",
   "sequence": 1,
@@ -17,7 +17,7 @@
       "actor_id": "fixture-executor",
       "algorithm": "test-sha256-v1",
       "provider": "test-fixture",
-      "signature": "c06548def340c4d32ea9d8be5d5868abc799155f2ec30ab37836b0bfb5dcd692",
+      "signature": "57204a685e39794dcbcf43e65c5fb70a56a0315a58a87d807338000733aa6ed0",
       "subject_digest": "2523a3a38937aeb85adc1afe7825c2de1691f631c364b4805abe1bf12fe9e1b5",
       "synthetic": true
     }

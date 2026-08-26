@@ -8,7 +8,7 @@
   },
   "invocation_id": "fixture-approval-001",
   "payload_digest": "9f787fadebe9529752359a4146fd5b1efd6c1da4aed20bf4bbcb98964fbf2241",
-  "record_id": "d7d82101b94a1bf5531fe53ac1231dd7d98ebd743bfa027a3efcdb9d15d1ae4f",
+  "record_id": "cb3a51deeec3a123145a66528165c8e8ee81d6f0ba50c088b9e7dcc1f623e507",
   "record_type": "release-approval",
   "schema_version": "metriplane.release-record.v1",
   "sequence": 1,
@@ -17,7 +17,7 @@
       "actor_id": "fixture-reviewer",
       "algorithm": "test-sha256-v1",
       "provider": "test-fixture",
-      "signature": "2924076dc2065c61528972e52f59fbc2ebe6c451b11edbe69ccc1aff89c2b383",
+      "signature": "a3fa8db84c8ae6638364d0cd01304ee318911488b8d0800d4bb5277ae4157be5",
       "subject_digest": "9f787fadebe9529752359a4146fd5b1efd6c1da4aed20bf4bbcb98964fbf2241",
       "synthetic": true
     }
