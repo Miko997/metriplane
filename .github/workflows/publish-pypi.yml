@@ -357,6 +357,118 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Require exact qualification workflow provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}" \
+            > "${RUNNER_TEMP}/qualification-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100" \
+            > "${RUNNER_TEMP}/qualification-artifacts.json"
+
+          QUALIFICATION_CANDIDATE_SHA="$GITHUB_SHA" \
+          QUALIFICATION_RUN_JSON="${RUNNER_TEMP}/qualification-run.json" \
+          QUALIFICATION_ARTIFACTS_JSON="${RUNNER_TEMP}/qualification-artifacts.json" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run_id = int(os.environ["QUALIFICATION_RUN_ID"])
+          candidate_sha = os.environ["QUALIFICATION_CANDIDATE_SHA"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run = json.loads(
+              Path(os.environ["QUALIFICATION_RUN_JSON"]).read_text(encoding="utf-8")
+          )
+          expected_run = {
+              "id": run_id,
+              "event": "workflow_dispatch",
+              "head_branch": "main",
+              "head_sha": candidate_sha,
+              "path": ".github/workflows/release-required.yml",
+              "status": "completed",
+              "conclusion": "success",
+          }
+          mismatches = {
+              key: (run.get(key), value)
+              for key, value in expected_run.items()
+              if run.get(key) != value
+          }
+          if run.get("repository", {}).get("full_name") != repository:
+              mismatches["repository.full_name"] = (
+                  run.get("repository", {}).get("full_name"),
+                  repository,
+              )
+          if mismatches:
+              raise SystemExit(f"qualification workflow mismatch: {mismatches}")
+
+          payload = json.loads(
+              Path(os.environ["QUALIFICATION_ARTIFACTS_JSON"]).read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifacts = payload.get("artifacts")
+          if payload.get("total_count") != 1 or not isinstance(artifacts, list):
+              raise SystemExit(
+                  "qualification run must contain exactly one unexpired "
+                  "release-qualification-evidence artifact"
+              )
+          if len(artifacts) != 1:
+              raise SystemExit(
+                  "qualification run must contain exactly one unexpired "
+                  "release-qualification-evidence artifact"
+              )
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("qualification artifact has no workflow identity")
+          expected_artifact = {
+              "name": "release-qualification-evidence",
+              "expired": False,
+          }
+          artifact_mismatches = {
+              key: (artifact.get(key), value)
+              for key, value in expected_artifact.items()
+              if artifact.get(key) != value
+          }
+          expected_artifact_run = {
+              "id": run_id,
+              "head_branch": "main",
+              "head_sha": candidate_sha,
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), value)
+                  for key, value in expected_artifact_run.items()
+                  if workflow_run.get(key) != value
+              }
+          )
+          if type(artifact.get("id")) is not int or artifact["id"] <= 0:
+              artifact_mismatches["id"] = (artifact.get("id"), "positive integer")
+          if artifact_mismatches:
+              raise SystemExit(
+                  f"qualification artifact mismatch: {artifact_mismatches}"
+              )
+          PY
+
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: release-qualification-evidence

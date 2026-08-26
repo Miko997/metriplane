@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+import copy
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -151,6 +156,145 @@ def test_production_request_preserves_fail_closed_source_run_identity() -> None:
         '== "Verify TestPyPI artifact identity and installation"',
     )
     assert all(fragment in commands for fragment in required)
+
+
+def test_qualification_provenance_precedes_authority_download() -> None:
+    workflow = _workflow(PUBLISH)
+    steps = workflow["jobs"]["validate-production-request"]["steps"]
+    provenance_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Require exact qualification workflow provenance"
+    )
+    download_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("with", {}).get("name") == "release-qualification-evidence"
+    )
+    authority_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Require retained cumulative release authority"
+    )
+    assert provenance_index < download_index < authority_index
+
+    command = steps[provenance_index]["run"]
+    required = (
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
+        "/actions/runs/${QUALIFICATION_RUN_ID}",
+        "/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100",
+        '"event": "workflow_dispatch"',
+        '"head_branch": "main"',
+        '"head_sha": candidate_sha',
+        '"path": ".github/workflows/release-required.yml"',
+        '"status": "completed"',
+        '"conclusion": "success"',
+        'payload.get("total_count") != 1',
+        '"expired": False',
+        '"name": "release-qualification-evidence"',
+        '"id": run_id',
+    )
+    assert all(fragment in command for fragment in required)
+
+
+def _qualification_validator_script() -> str:
+    workflow = _workflow(PUBLISH)
+    steps = workflow["jobs"]["validate-production-request"]["steps"]
+    command = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Require exact qualification workflow provenance"
+    )
+    marker = "python - <<'PY'\n"
+    assert command.count(marker) == 1
+    return command.split(marker, 1)[1].rsplit("\nPY", 1)[0]
+
+
+def _run_qualification_validator(
+    root: Path,
+    run: dict[str, object],
+    artifacts: dict[str, object],
+) -> subprocess.CompletedProcess[str]:
+    root.mkdir()
+    run_path = root / "run.json"
+    artifacts_path = root / "artifacts.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    artifacts_path.write_text(json.dumps(artifacts), encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "GITHUB_REPOSITORY": "Miko997/metriplane",
+            "QUALIFICATION_ARTIFACTS_JSON": str(artifacts_path),
+            "QUALIFICATION_CANDIDATE_SHA": "a" * 40,
+            "QUALIFICATION_RUN_ID": "1234",
+            "QUALIFICATION_RUN_JSON": str(run_path),
+        }
+    )
+    return subprocess.run(
+        [sys.executable, "-c", _qualification_validator_script()],
+        capture_output=True,
+        check=False,
+        env=env,
+        text=True,
+    )
+
+
+def test_qualification_provider_payload_mutations_fail_closed(tmp_path: Path) -> None:
+    run: dict[str, object] = {
+        "id": 1234,
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "head_sha": "a" * 40,
+        "path": ".github/workflows/release-required.yml",
+        "status": "completed",
+        "conclusion": "success",
+        "repository": {"full_name": "Miko997/metriplane"},
+    }
+    artifact: dict[str, object] = {
+        "id": 5678,
+        "name": "release-qualification-evidence",
+        "expired": False,
+        "workflow_run": {
+            "id": 1234,
+            "head_branch": "main",
+            "head_sha": "a" * 40,
+        },
+    }
+    artifacts: dict[str, object] = {"total_count": 1, "artifacts": [artifact]}
+    valid = _run_qualification_validator(tmp_path / "valid", run, artifacts)
+    assert valid.returncode == 0, valid.stderr
+
+    run_mutations: tuple[tuple[str, dict[str, object]], ...] = (
+        ("workflow", {"path": ".github/workflows/publish-pypi.yml"}),
+        ("event", {"event": "push"}),
+        ("status", {"status": "in_progress"}),
+        ("conclusion", {"conclusion": "failure"}),
+        ("candidate", {"head_sha": "b" * 40}),
+        ("branch", {"head_branch": "release"}),
+    )
+    for label, mutation in run_mutations:
+        mutated_run = copy.deepcopy(run)
+        mutated_run.update(mutation)
+        result = _run_qualification_validator(tmp_path / f"run-{label}", mutated_run, artifacts)
+        assert result.returncode != 0, label
+
+    artifact_mutations = (
+        ("expired", {"expired": True}),
+        ("wrong-name", {"name": "other-evidence"}),
+        ("wrong-run", {"workflow_run": {"id": 9999, "head_branch": "main", "head_sha": "a" * 40}}),
+        ("wrong-sha", {"workflow_run": {"id": 1234, "head_branch": "main", "head_sha": "b" * 40}}),
+    )
+    for label, mutation in artifact_mutations:
+        mutated_artifact = copy.deepcopy(artifact)
+        mutated_artifact.update(mutation)
+        payload = {"total_count": 1, "artifacts": [mutated_artifact]}
+        result = _run_qualification_validator(tmp_path / f"artifact-{label}", run, payload)
+        assert result.returncode != 0, label
+
+    duplicate = {"total_count": 2, "artifacts": [artifact, copy.deepcopy(artifact)]}
+    result = _run_qualification_validator(tmp_path / "duplicate", run, duplicate)
+    assert result.returncode != 0
 
 
 def test_tag_is_observed_but_never_accepted_as_release_authority() -> None:
