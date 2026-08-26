@@ -263,6 +263,7 @@ def _ensure_unique_run_dir(path: Path) -> Path:
 
 
 _RUN_RESERVATION_MARKER = ".metriplane-run-reservation"
+_RUN_RESERVATION_CANCELLED_MARKER = ".metriplane-run-reservation-cancelled"
 _RUN_RESERVATION_DIR_ENV = "METRIPLANE_RESERVED_RUN_DIR"
 _RUN_RESERVATION_TOKEN_ENV = "METRIPLANE_RUN_RESERVATION_TOKEN"
 _RUN_RESERVATION_DEVICE_ENV = "METRIPLANE_RUN_RESERVATION_DEVICE"
@@ -444,11 +445,17 @@ def _read_reservation_marker(directory_fd: int, path: Path) -> str:
         os.close(marker_fd)
 
 
-def _write_claimed_text(directory_fd: int, name: str, content: str) -> None:
+def _write_claimed_text(
+    directory_fd: int,
+    name: str,
+    content: str,
+    *,
+    mode: int = 0o666,
+) -> None:
     if Path(name).name != name or name in {"", ".", ".."}:
         raise ValueError(f"invalid run artifact name: {name}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
-    file_fd = os.open(name, flags, 0o666, dir_fd=directory_fd)
+    file_fd = os.open(name, flags, mode, dir_fd=directory_fd)
     try:
         remaining = memoryview(content.encode("utf-8"))
         while remaining:
@@ -484,7 +491,7 @@ class RunDirectoryReservation:
         return child
 
     def cancel_if_pending(self) -> bool:
-        """Remove an unclaimed reservation without touching a claimed run."""
+        """Tombstone an unclaimed reservation without pathname-based deletion."""
         authority = _ReservationAuthority(
             run_dir=self.run_dir,
             token=self.token,
@@ -504,10 +511,16 @@ class RunDirectoryReservation:
             if not secrets.compare_digest(marker_token, self.token):
                 return False
 
+            _write_claimed_text(
+                claimed.fd,
+                _RUN_RESERVATION_CANCELLED_MARKER,
+                self.token,
+                mode=0o600,
+            )
+            claimed.verify_visible_path()
             os.unlink(_RUN_RESERVATION_MARKER, dir_fd=claimed.fd)
             os.fsync(claimed.fd)
             claimed.verify_visible_path()
-            self.run_dir.rmdir()
         except (OSError, PlatformPathError):
             return False
         finally:
@@ -516,21 +529,27 @@ class RunDirectoryReservation:
 
     def claimed_run_dir(self) -> Path:
         """Return the exact claimed directory or fail on stale/replaced identity."""
-        if self.marker_path.exists() or self.marker_path.is_symlink():
-            raise PlatformPathError(f"run directory reservation was not claimed: {self.run_dir}")
+        authority = _ReservationAuthority(
+            run_dir=self.run_dir,
+            token=self.token,
+            device=self.device,
+            inode=self.inode,
+        )
+        claimed = _open_authorized_run_directory(authority)
         try:
-            result = self.run_dir.lstat()
-        except OSError as exc:
-            raise PlatformPathError(
-                f"reserved run directory is unavailable: {self.run_dir}"
-            ) from exc
-        if (
-            not stat.S_ISDIR(result.st_mode)
-            or result.st_dev != self.device
-            or result.st_ino != self.inode
-        ):
-            raise PlatformPathError(f"reserved run directory identity changed: {self.run_dir}")
-        return self.run_dir
+            entries = set(os.listdir(claimed.fd))
+            claimed.verify_visible_path()
+            if _RUN_RESERVATION_MARKER in entries:
+                raise PlatformPathError(
+                    f"run directory reservation was not claimed: {self.run_dir}"
+                )
+            if _RUN_RESERVATION_CANCELLED_MARKER in entries:
+                raise PlatformPathError(
+                    f"run directory reservation was cancelled: {self.run_dir}"
+                )
+            return self.run_dir
+        finally:
+            claimed.close()
 
 
 def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
@@ -610,23 +629,9 @@ def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
                     inode=opened_identity.st_ino,
                 )
             except BaseException:
-                if run_fd is not None:
-                    try:
-                        os.unlink(_RUN_RESERVATION_MARKER, dir_fd=run_fd)
-                    except OSError:
-                        pass
-                cleanup_identity = opened_identity or created_identity
-                if cleanup_identity is not None:
-                    try:
-                        current_identity = os.stat(
-                            reserved_run_id,
-                            dir_fd=base_fd,
-                            follow_symlinks=False,
-                        )
-                        if _same_directory_identity(cleanup_identity, current_identity):
-                            os.rmdir(reserved_run_id, dir_fd=base_fd)
-                    except OSError:
-                        pass
+                # A directory cannot be removed portably through its open
+                # descriptor. Preserve failed reservations instead of risking
+                # deletion of a replacement installed after an identity check.
                 raise
             finally:
                 if run_fd is not None:

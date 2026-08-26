@@ -1359,7 +1359,7 @@ def test_reserve_run_directory_marker_cannot_follow_swapped_path(
     assert run_dir.is_symlink()
     assert sentinel.read_text(encoding="utf-8") == "unchanged\n"
     assert not (outside / ".metriplane-run-reservation").exists()
-    assert not (parked_run_dir / ".metriplane-run-reservation").exists()
+    assert (parked_run_dir / ".metriplane-run-reservation").exists()
 
 
 def test_cancel_pending_reservation_rejects_replaced_directory(tmp_path: Path) -> None:
@@ -1416,14 +1416,54 @@ def test_cancel_pending_reservation_rejects_swap_after_open(
     ) == reservation.token
 
 
-def test_cancel_pending_reservation_removes_exact_reserved_directory(tmp_path: Path) -> None:
+def test_cancel_pending_reservation_tombstones_exact_reserved_directory(tmp_path: Path) -> None:
     from metriplane.provenance import run_provenance
 
     reservation = run_provenance.reserve_run_directory(tmp_path / "runs", "reserved_run")
 
     assert reservation.cancel_if_pending() is True
-    assert not reservation.run_dir.exists()
+    assert reservation.run_dir.is_dir()
+    assert sorted(path.name for path in reservation.run_dir.iterdir()) == [
+        ".metriplane-run-reservation-cancelled"
+    ]
+    with pytest.raises(PlatformPathError, match="was cancelled"):
+        reservation.claimed_run_dir()
     assert reservation.cancel_if_pending() is False
+
+
+def test_cancel_pending_reservation_never_removes_final_path_replacement(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    parked_run_dir = base / "reserved_run-original"
+    replacement = base / "replacement"
+    replacement.mkdir()
+    (replacement / "sentinel.txt").write_text("unchanged\n", encoding="utf-8")
+    original_verify = run_provenance._ClaimedRunDirectory.verify_visible_path
+    verification_count = 0
+
+    def swap_after_final_verification(claimed) -> None:
+        nonlocal verification_count
+        original_verify(claimed)
+        verification_count += 1
+        if verification_count == 4:
+            reservation.run_dir.rename(parked_run_dir)
+            replacement.rename(reservation.run_dir)
+
+    monkeypatch.setattr(
+        run_provenance._ClaimedRunDirectory,
+        "verify_visible_path",
+        swap_after_final_verification,
+    )
+
+    assert reservation.cancel_if_pending() is True
+    assert (reservation.run_dir / "sentinel.txt").read_text(encoding="utf-8") == "unchanged\n"
+    assert (parked_run_dir / ".metriplane-run-reservation-cancelled").is_file()
+    assert not (parked_run_dir / ".metriplane-run-reservation").exists()
 
 
 @pytest.mark.parametrize(
