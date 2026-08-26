@@ -2,30 +2,169 @@
 # SPDX-License-Identifier: MIT
 
 name: Release qualification
+run-name: Release / ${{ inputs.mode || github.event_name }} / ${{ github.ref_name }}
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
+  merge_group:
+    types: [checks_requested]
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Exact release terminal mode
+        required: true
+        type: choice
+        options:
+          - release-qualification
+          - post-publication
+      candidate_sha:
+        description: Exact protected-main candidate commit
+        required: true
+        type: string
+      main_health_sha:
+        description: Exact protected-main SHA required green by persistent health
+        required: true
+        type: string
+      canonical_tag:
+        description: Existing annotated canonical tag; required only post-publication
+        required: false
+        type: string
+      authority_run_id:
+        description: Run containing the immutable authority transport artifact
+        required: true
+        type: string
+      authority_artifact:
+        default: release-qualification-evidence
+        description: Artifact transporting externally retained authority records
+        required: true
+        type: string
+      evidence_manifest_sha256:
+        description: SHA-256 of the transported evidence-manifest.json
+        required: true
+        type: string
+
+concurrency:
+  group: release-required-${{ github.event.pull_request.number || github.event.merge_group.head_sha || inputs.candidate_sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 permissions:
   contents: read
 
 jobs:
   contracts:
-    name: Validate release contracts
-    runs-on: ubuntu-latest
+    name: Validate release contracts and authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
     outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
+      mode: ${{ steps.context.outputs.mode }}
+      source_sha: ${{ steps.context.outputs.source_sha }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: context
+        name: Resolve one fail-closed terminal mode
+        env:
+          DISPATCH_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          DISPATCH_MAIN_HEALTH_SHA: ${{ inputs.main_health_sha }}
+          DISPATCH_MODE: ${{ inputs.mode }}
+          DISPATCH_TAG: ${{ inputs.canonical_tag }}
+          EVENT_SHA_FALLBACK: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+          mode = ""
+          source_sha = ""
+          main_health_sha = ""
+          tag = ""
+          if event_name == "pull_request":
+              mode = "pr-merge-control"
+              source_sha = event["pull_request"]["head"]["sha"]
+              main_health_sha = event["pull_request"]["base"]["sha"]
+          elif event_name == "merge_group":
+              mode = "pr-merge-control"
+              source_sha = event["merge_group"]["head_sha"]
+              main_health_sha = event["merge_group"]["base_sha"]
+          elif event_name == "push":
+              mode = "post-publication"
+              source_sha = os.environ["GITHUB_SHA"]
+              main_health_sha = source_sha
+              tag = os.environ["GITHUB_REF_NAME"]
+          elif event_name == "workflow_dispatch":
+              mode = os.environ["DISPATCH_MODE"]
+              source_sha = os.environ["DISPATCH_CANDIDATE_SHA"]
+              main_health_sha = os.environ["DISPATCH_MAIN_HEALTH_SHA"]
+              tag = os.environ["DISPATCH_TAG"]
+          else:
+              raise SystemExit(f"unsupported release event: {event_name}")
+
+          if mode not in {"pr-merge-control", "release-qualification", "post-publication"}:
+              raise SystemExit(f"unsupported release mode: {mode!r}")
+          for label, value in (("source", source_sha), ("main-health", main_health_sha)):
+              if re.fullmatch(r"[0-9a-f]{40}", value) is None:
+                  raise SystemExit(f"{label} SHA is not an exact commit identity")
+          if event_name in {"pull_request", "push"} and source_sha != os.environ["EVENT_SHA_FALLBACK"]:
+              raise SystemExit("provider event SHA fallback disagrees with the exact source")
+          if mode in {"release-qualification", "post-publication"} and source_sha != main_health_sha:
+              raise SystemExit("release candidate must equal the protected-main health identity")
+          if mode == "post-publication":
+              if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) is None:
+                  raise SystemExit("post-publication mode requires one canonical semantic-version tag")
+          elif tag:
+              raise SystemExit("a canonical tag is forbidden before post-publication mode")
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as stream:
+              stream.write(f"mode={mode}\n")
+              stream.write(f"source_sha={source_sha}\n")
+              stream.write(f"main_health_sha={main_health_sha}\n")
+              stream.write(f"tag={tag}\n")
+          PY
+
+      - name: Check out the exact candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
+          ref: ${{ steps.context.outputs.source_sha }}
 
       - id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        name: Prove the checked-out commit
+        env:
+          EXPECTED_SHA: ${{ steps.context.outputs.source_sha }}
+          RELEASE_MODE: ${{ steps.context.outputs.mode }}
+          RELEASE_TAG: ${{ steps.context.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          if [[ "$RELEASE_MODE" == "post-publication" ]]; then
+            tag_ref="refs/tags/${RELEASE_TAG}"
+            test "$(git cat-file -t "$tag_ref")" = "tag"
+            test "$(git rev-list -n 1 "$tag_ref")" = "$EXPECTED_SHA"
+          fi
+          echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check out immutable main-health history read-only
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          path: .release-main-health-state
+          persist-credentials: false
+          ref: metriplane-main-health-state
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -33,34 +172,246 @@ jobs:
 
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: "0.12.0"
           enable-cache: false
+          version: "0.12.0"
 
-      - run: uv sync --locked --group dev
+      - name: Consume persistent main health and retained repair decisions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAIN_HEALTH_SHA: ${{ steps.context.outputs.main_health_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/stop_the_line.py github-provider-clock > "$RUNNER_TEMP/provider-clock.json"
+          checked_at="$(python -c 'import json, os; print(json.load(open(os.environ["RUNNER_TEMP"] + "/provider-clock.json"))["timestamp"])')"
+          max_age="$(python -c 'import json; print(json.load(open("docs/status/release-readiness.json"))["main_health"]["max_age_seconds"])')"
+          python tools/stop_the_line.py candidate \
+            --root .release-main-health-state \
+            --base-sha "$MAIN_HEALTH_SHA" \
+            --checked-at "$checked_at" \
+            --max-age-seconds "$max_age" > "$RUNNER_TEMP/main-health.json"
 
-      - name: Validate closed schemas, tools, fixtures, and workflow contracts
+      - name: Sync the locked validation environment
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Validate closed workflow, registry, schema, and fake-release contracts
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        # Fixture adapters are exercised with --mode fixture only inside tests.
+        run: >-
+          uv run --python 3.12 python -m pytest -q
+          tests/test_release_contracts.py
+          tests/test_release_workflow.py
+          tests/test_release_workflow_contract.py
+          tests/release/test_local_fake_release.py
+
+      - id: authority-inputs
+        name: Require immutable authority transport identifiers
+        if: steps.context.outputs.mode != 'pr-merge-control'
+        env:
+          AUTHORITY_ARTIFACT: ${{ inputs.authority_artifact || vars.RELEASE_AUTHORITY_ARTIFACT }}
+          AUTHORITY_RUN_ID: ${{ inputs.authority_run_id || vars.RELEASE_AUTHORITY_RUN_ID }}
+          EVIDENCE_MANIFEST_SHA256: ${{ inputs.evidence_manifest_sha256 || vars.RELEASE_EVIDENCE_MANIFEST_SHA256 }}
+        shell: bash
         run: |
-          uv run python -m pytest -q \
-            tests/test_release_contracts.py \
-            tests/test_release_workflow.py
+          set -euo pipefail
+          [[ "$AUTHORITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$AUTHORITY_ARTIFACT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$ ]]
+          [[ "$EVIDENCE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          echo "artifact=$AUTHORITY_ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "manifest_sha256=$EVIDENCE_MANIFEST_SHA256" >> "$GITHUB_OUTPUT"
+          echo "run_id=$AUTHORITY_RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download authority transport without treating it as durable evidence
+        if: steps.context.outputs.mode != 'pr-merge-control'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          github-token: ${{ github.token }}
+          name: ${{ steps.authority-inputs.outputs.artifact }}
+          path: .release-authority
+          run-id: ${{ steps.authority-inputs.outputs.run_id }}
+
+      - name: Reject missing, synthetic, mutable, or digest-mismatched authority
+        if: steps.context.outputs.mode != 'pr-merge-control'
+        env:
+          EVIDENCE_MANIFEST_SHA256: ${{ steps.authority-inputs.outputs.manifest_sha256 }}
+          RELEASE_MODE: ${{ steps.context.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(".release-authority").resolve()
+          common = {
+              "artifact-manifest.json",
+              "candidate-identity.json",
+              "delta-test-map.json",
+              "delta.json",
+              "evidence-manifest.json",
+              "gate-instance.json",
+              "linear-snapshot.json",
+              "predecessor.json",
+              "prepublication/approval.json",
+              "prepublication/retention-receipts.json",
+              "qualification-plan.json",
+              "qualification.json",
+              "readiness.json",
+              "role-assignments.json",
+          }
+          postpublication = {
+              "final-retention-receipts.json",
+              "promotion-lock-receipt.json",
+              "publication-observations.json",
+              "publication-reconciliation.json",
+          }
+          required = common | (postpublication if os.environ["RELEASE_MODE"] == "post-publication" else set())
+          for relative in sorted(required):
+              path = root / relative
+              if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+                  raise SystemExit(f"missing or unsafe authority record: {relative}")
+              value = json.loads(path.read_text(encoding="utf-8"))
+              if not isinstance(value, dict) or value.get("synthetic") is not False:
+                  raise SystemExit(f"authority record is not provider-backed live evidence: {relative}")
+          manifest = root / "evidence-manifest.json"
+          observed = hashlib.sha256(manifest.read_bytes()).hexdigest()
+          if observed != os.environ["EVIDENCE_MANIFEST_SHA256"]:
+              raise SystemExit("evidence manifest transport digest mismatch")
+          PY
+
+      - name: Validate candidate qualification, non-author approval, and staged read-back
+        if: steps.context.outputs.mode != 'pr-merge-control'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=.release-authority
+          uv run python tools/validate_release_gate_instance.py \
+            --record "$root/gate-instance.json" \
+            --candidate-identity "$root/candidate-identity.json" \
+            --predecessor "$root/predecessor.json" \
+            --task-state-policy docs/status/release-task-state-policy.json
           uv run python tools/check_release_readiness.py \
-            --repository . \
-            --mode fixture
+            --gate-instance "$root/gate-instance.json" \
+            --candidate-identity "$root/candidate-identity.json" \
+            --predecessor "$root/predecessor.json" \
+            --linear-snapshot "$root/linear-snapshot.json" \
+            --artifact-manifest "$root/artifact-manifest.json" \
+            --delta "$root/delta.json" \
+            --delta-test-map "$root/delta-test-map.json" \
+            --out "$RUNNER_TEMP/readiness.json"
+          cmp --silent "$root/readiness.json" "$RUNNER_TEMP/readiness.json"
+          uv run python tools/validate_release_qualification_plan.py \
+            --record "$root/qualification-plan.json" \
+            --gate-instance "$root/gate-instance.json"
+          uv run python tools/validate_release_qualification.py \
+            --record "$root/qualification.json"
+          uv run python tools/validate_release_approval.py \
+            --gate-instance "$root/gate-instance.json" \
+            --qualification "$root/qualification.json" \
+            --no-prepublication-rubric \
+            --record "$root/prepublication/approval.json"
+          uv run python tools/validate_release_retention.py \
+            --manifest "$root/evidence-manifest.json" \
+            --receipts "$root/prepublication/retention-receipts.json" \
+            --read-back
+
+      - name: Validate exact-byte publication reconciliation and final read-back
+        if: steps.context.outputs.mode == 'post-publication'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=.release-authority
+          uv run python tools/validate_publication_reconciliation.py \
+            --record "$root/publication-reconciliation.json"
+          uv run python tools/validate_release_retention.py \
+            --input "$root/publication-reconciliation.json" \
+            --manifest "$root/evidence-manifest.json" \
+            --invocation-root "$root/invocations" \
+            --through-stage publication-reconciliation \
+            --receipts "$root/final-retention-receipts.json" \
+            --read-back
+
+  matrix:
+    name: Release matrix / ${{ matrix.environment }}
+    needs: [contracts]
+    if: needs.contracts.result == 'success'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: ubuntu-24.04-py312
+            python: "3.12"
+            runner: ubuntu-24.04
+          - environment: ubuntu-24.04-py313
+            python: "3.13"
+            runner: ubuntu-24.04
+          - environment: macos-15-py312
+            python: "3.12"
+            runner: macos-15
+          - environment: windows-2025-py312
+            python: "3.12"
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.contracts.outputs.source_sha }}
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Prove exact matrix identity
+        env:
+          EXPECTED_SHA: ${{ needs.contracts.outputs.source_sha }}
+          RELEASE_ENVIRONMENT_ID: ${{ matrix.environment }}
+          RELEASE_PYTHON: ${{ matrix.python }}
+        run: >-
+          python -c "import os, subprocess;
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == os.environ['EXPECTED_SHA']"
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          version: "0.12.0"
+
+      - name: Sync exact locked environment
+        run: uv sync --locked --group dev --python ${{ matrix.python }}
+
+      - name: Execute the complete terminalized cell
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          RELEASE_ENVIRONMENT_ID: ${{ matrix.environment }}
+        run: uv run --python ${{ matrix.python }} python -m pytest -q
 
   fake-release:
     name: Execute deterministic fake release and mutations
-    runs-on: ubuntu-latest
+    needs: [contracts, matrix]
+    if: always() && needs.contracts.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ needs.contracts.outputs.source_sha }}
 
       - id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          EXPECTED_SHA: ${{ needs.contracts.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -68,33 +419,40 @@ jobs:
 
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: "0.12.0"
           enable-cache: false
+          version: "0.12.0"
 
-      - run: uv sync --locked --group dev
+      - run: uv sync --locked --group dev --python 3.12
 
-      - name: Exercise every release stage and recovery boundary
+      - name: Exercise every declared stage, terminal result, and recovery edge
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: uv run python -m pytest -q tests/release/test_local_fake_release.py
+        run: uv run --python 3.12 python -m pytest -q tests/release/test_local_fake_release.py
+
+      - name: Refuse to launder an incomplete or failed matrix
+        env:
+          MATRIX_RESULT: ${{ needs.matrix.result }}
+        shell: bash
+        run: test "$MATRIX_RESULT" = success
 
   required:
     name: Release / required
     if: always()
     needs: [contracts, fake-release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || inputs.candidate_sha || github.sha }}
 
       - name: Aggregate exact same-SHA terminal results
         env:
           CONTRACTS_RESULT: ${{ needs.contracts.result }}
           CONTRACTS_SHA: ${{ needs.contracts.outputs.source_sha }}
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || inputs.candidate_sha || github.sha }}
           FAKE_RELEASE_RESULT: ${{ needs.fake-release.result }}
           FAKE_RELEASE_SHA: ${{ needs.fake-release.outputs.source_sha }}
         shell: bash

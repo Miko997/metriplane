@@ -15,7 +15,6 @@ from metriplane.release_control import (
     acquire_promotion_lock,
     advance_attempt,
     append_cas_event,
-    audit_release_repository,
     build_promotion_plan,
     candidate_identity,
     finalize_cells,
@@ -44,6 +43,10 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "release"
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
+SCENARIO_REGISTRY = json.loads(
+    (ROOT / "docs/status/release-scenarios.json").read_text(encoding="utf-8")
+)
+SCENARIOS = SCENARIO_REGISTRY["scenarios"]
 
 
 def _fixture(relative: str) -> dict[str, object]:
@@ -172,12 +175,13 @@ def test_mp2_007_a06_build_once_candidate_identity() -> None:
 
 
 def test_mp2_007_a07_terminal_matrix_two_store_index(tmp_path: Path) -> None:
+    environment_registry = json.loads(
+        (ROOT / "docs/status/supported-environments.json").read_text(encoding="utf-8")
+    )
+    required_cells = [row["id"] for row in environment_registry["environments"] if row["required"]]
     cells = finalize_cells(
-        ["linux/py312", "linux/py313", "macos/py312", "windows/py312"],
-        {
-            cell: {"evidence_digest": DIGEST_A, "result": "PASS"}
-            for cell in ("linux/py312", "linux/py313", "macos/py312", "windows/py312")
-        },
+        required_cells,
+        {cell: {"evidence_digest": DIGEST_A, "result": "PASS"} for cell in required_cells},
     )
     assert cells["ready"] is True
     record = make_record(
@@ -416,24 +420,139 @@ def test_mp2_007_a12_immutable_recovery_and_new_invocations(tmp_path: Path) -> N
 
 
 def test_mp2_007_a13_complete_mutation_suite_and_mp2_018_fence() -> None:
-    fixture = audit_release_repository(ROOT, live=False)
-    assert fixture["status"] == "READY"
-    live = audit_release_repository(ROOT, live=True)
-    assert live["status"] == "BLOCKED_NOT_READY"
-    assert {blocker["code"] for blocker in live["blockers"]} == {
+    readiness = json.loads(
+        (ROOT / "docs/status/release-readiness.json").read_text(encoding="utf-8")
+    )
+    assert readiness["framework"] == "BLOCKED_NOT_READY"
+    assert readiness["live_release"] == "BLOCKED_NOT_READY"
+    assert readiness["evidence_resolution"] == {
+        "allow_synthetic": False,
+        "allow_temporary_ci_artifact_as_retention": False,
+        "required_result_count": 13,
+        "resolved_result_count": 0,
+        "status": "BLOCKED_NOT_READY",
+    }
+    assert {blocker["code"] for blocker in readiness["blockers"]} == {
+        "MP2_007_RESULT_EVIDENCE_ABSENT",
         "LIVE_NON_AUTHOR_APPROVAL_REQUIRED",
         "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED",
         "HOSTED_PROTECTION_AND_REAL_MERGE_PROOF_REQUIRED",
+        "MP2_018_POPULATED_INVENTORY_REQUIRED",
     }
-    scenarios = json.loads(
-        (ROOT / "docs/status/release-scenarios.json").read_text(encoding="utf-8")
+    obligations = json.loads(
+        (ROOT / "docs/status/release-test-obligations.json").read_text(encoding="utf-8")
     )
-    assert {item["expected"] for item in scenarios["scenarios"]} >= {
+    assert obligations["evidence_resolution"]["status"] == "BLOCKED_NOT_READY"
+    assert all(row["result_state"] == "ABSENT" for row in obligations["obligations"])
+    assert all(not (ROOT / row["result"]).exists() for row in obligations["obligations"])
+    assert {item["expected"] for item in SCENARIOS} == {
         "BLOCKED",
         "BURN",
+        "CANCELLED",
+        "FAIL",
         "PASS",
         "RECOVER",
+        "SKIPPED",
     }
+
+
+def test_release_scenario_catalog_is_closed() -> None:
+    assert SCENARIO_REGISTRY["stages"] == list(STAGES)
+    assert SCENARIO_REGISTRY["phases"] == [
+        "qualification",
+        "publication_reconciliation",
+        "postpublication",
+    ]
+    assert set(SCENARIO_REGISTRY["terminal_results"]) == {
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED",
+        "RECOVER",
+        "BURN",
+    }
+    assert len({scenario["id"] for scenario in SCENARIOS}) == len(SCENARIOS)
+    assert {stage for scenario in SCENARIOS for stage in scenario["covers_stages"]} == set(STAGES)
+    assert {scenario["phase"] for scenario in SCENARIOS} == set(SCENARIO_REGISTRY["phases"])
+    assert {
+        "hard-runner-loss",
+        "runner-service-retry",
+        "staging-cancelled",
+        "required-cell-skipped",
+        "kill-after-cas",
+        "capability-limited-tag-burn",
+    } <= {scenario["id"] for scenario in SCENARIOS}
+    for scenario in SCENARIOS:
+        assert scenario["test_node_id"] == (
+            "tests/release/test_local_fake_release.py::"
+            f"test_declared_release_scenario_contract[{scenario['id']}]"
+        )
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario["id"])
+def test_declared_release_scenario_contract(scenario: dict[str, object]) -> None:
+    expected = scenario["expected"]
+    stages = scenario["covers_stages"]
+    assert isinstance(stages, list) and stages
+
+    if expected == "BURN":
+        burn = record_target_burn(
+            target="fixture-target",
+            milestone="v0.4",
+            version="v0.4.0",
+            reason=str(scenario["fault"]),
+            observation_digest=DIGEST_A,
+        )
+        assert resolve_burn_with_patch(burn, "v0.4.1")["resolution"] == "NEW_PATCH_REQUIRED"
+        return
+
+    if expected == "RECOVER":
+        first = recovery_envelope(
+            operation=str(scenario["id"]),
+            invocation_id="scenario-recovery-001",
+            sequence=1,
+            committed_digest=DIGEST_A,
+            failure=str(scenario["fault"]),
+        )
+        retry = recovery_envelope(
+            operation=str(scenario["id"]),
+            invocation_id="scenario-recovery-002",
+            sequence=2,
+            committed_digest=DIGEST_A,
+            failure="receipt reconstruction",
+        )
+        assert first["committed_digest"] == retry["committed_digest"]
+        assert first["recovery_digest"] != retry["recovery_digest"]
+        return
+
+    attempt = new_attempt(
+        milestone="v0.4",
+        version="v0.4.0",
+        candidate_digest=DIGEST_A,
+        predecessor_digest=DIGEST_B,
+    )
+    if scenario["id"] in {"complete-fake-release", "signed-lkg-invalidation"}:
+        for stage in STAGES:
+            attempt = advance_attempt(attempt, stage=stage, result="PASS", evidence_digest=DIGEST_A)
+        assert attempt["events"][-1]["result"] == "PASS"
+        return
+
+    stage = str(stages[0])
+    for prior_stage in STAGES[: STAGES.index(stage)]:
+        attempt = advance_attempt(
+            attempt, stage=prior_stage, result="PASS", evidence_digest=DIGEST_A
+        )
+    attempt = advance_attempt(attempt, stage=stage, result=str(expected), evidence_digest=DIGEST_A)
+    assert attempt["events"][-1] == {
+        "evidence_digest": DIGEST_A,
+        "result": expected,
+        "stage": stage,
+    }
+    with pytest.raises(ReleaseControlError, match="cannot advance"):
+        next_index = len(attempt["events"])
+        next_stage = STAGES[next_index] if next_index < len(STAGES) else STAGES[-1]
+        advance_attempt(attempt, stage=next_stage, result="PASS", evidence_digest=DIGEST_A)
 
 
 def test_failure_terminalizes_attempt() -> None:
