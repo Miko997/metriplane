@@ -752,6 +752,14 @@ def test_stale_wrong_subject_and_nonapproved_reviews_fail_closed(tmp_path: Path)
     assert result == 2
     assert any("exact action subject" in error for error in report["errors"])
 
+    surrounding_whitespace = _synthetic_provider_payload(blocker, "downgrade")
+    surrounding_whitespace["reviews"][0]["body"] = (
+        "\n" + surrounding_whitespace["reviews"][0]["body"] + "\n"
+    )
+    result, report = _run(tmp_path, _registry([blocker]), provider=surrounding_whitespace)
+    assert result == 2
+    assert any("exact action subject" in error for error in report["errors"])
+
     dismissed = _synthetic_provider_payload(blocker, "downgrade", review_state="DISMISSED")
     result, report = _run(tmp_path, _registry([blocker]), provider=dismissed)
     assert result == 2

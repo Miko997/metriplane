@@ -949,7 +949,7 @@ def _verify_github_approval(
         item
         for item in current
         for review in (item[2],)
-        if isinstance(review.get("body"), str) and review["body"].strip() == marker
+        if isinstance(review.get("body"), str) and review["body"] == marker
     ]
     timely: list[tuple[str, str, dict[str, Any]]] = []
     for item in bound:
