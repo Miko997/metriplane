@@ -10,9 +10,12 @@ MP2-004. The state lives outside the product branch on
 `incidents/`, `approval-evidence/`, `policy-amendments/`,
 `repair-authorizations/`, and `resolutions/` are immutable. Only `state.json` is a
 mutable pointer, and its generation advances by one per accepted transition. The
-branch commit is the external CAS generation; concurrent stale pushes fail. A
-dedicated active ruleset for `metriplane-main-health-state` prohibits deletion and
-non-fast-forward updates. `validate-git` walks the complete first-parent branch,
+branch commit is the external CAS generation; concurrent stale pushes fail. Two
+dedicated active rulesets cover `metriplane-main-health-state`. The immutable
+ruleset prohibits deletion and non-fast-forward updates with no bypass actors. A
+separate writer ruleset restricts updates and grants an `always` bypass only to
+the isolated Main Health GitHub App and the repository owner used for governed
+repair. `validate-git` walks the complete first-parent branch,
 requires exactly one validated generation per commit, and proves every earlier
 immutable byte remains present. A fast-forward whole-tree replacement therefore
 fails even if its new tree is internally self-consistent.
@@ -31,14 +34,24 @@ without creating or changing state. The trusted default-branch workflow publishe
 reconciliation and immediately after every durable transition. Pull request events
 do not run privileged admission or occupy the serialized writer queue, and
 candidate-controlled code is never executed with the status-writing token. The
+token is a repository-scoped installation token from the dedicated Main Health
+GitHub App. Its private key is available only through the `main-health-publisher`
+environment, whose deployment branch policy admits `main` only. The App has
+Actions read, contents write, pull requests read, and commit statuses write; it
+does not have workflow write. The required-check ruleset is pinned to this App,
+not to the shared GitHub Actions integration. The
 checkout-free invalidator overwrites earlier success with failure for every open
 head before the reconciler starts. The reconciler keeps failure when health turns red, the base
 becomes stale, or the 36-hour window expires; a persistent commit status is never
-treated as an unbounded lease. All status publishers and durable writers are
+treated as an unbounded lease. Every published success dispatches two independent,
+default-branch-only expiry runs. Each rechecks the exact App-created status ID
+after four minutes and changes it to failure only if no newer reconciliation has
+replaced it. If either expiry dispatch cannot be accepted, reconciliation
+immediately restores failure. All status publishers and durable writers are
 trusted triggers in one serialized concurrency group, so an older green snapshot
 cannot publish success after a newer red transition. Every writer first publishes
 provider-verified failure on its measured main SHA. Only after CAS and read-back
-does the successful `persist-health` job publish a GitHub Actions status binding
+does the successful `persist-health` job publish an isolated-App status binding
 that main SHA to the exact state commit, run ID, and attempt. A five-minute tick
 reads the main ref, state ref, writer status, exact run, and exact attempt jobs
 before and after validation; it requires all snapshots to remain unchanged and
@@ -69,10 +82,12 @@ activation boundary, and records the earlier interval as `not_measured`. A faili
 global result opens an incident and makes the terminal red. Ordinary success never
 clears an open incident.
 
-The scheduled product check is a read-only job. The durable writer has an
+The scheduled product check is a read-only job. It runs only after writer
+invalidation and checks out the invalidator's exact main SHA. The durable writer has an
 `always()` dependency on it, so checkout, setup, install, cancellation, and test
 failures become a retained failure result. Before any write, the writer fetches
-`origin/main` and rejects a delayed result whose measured SHA is no longer current.
+`origin/main` and rejects a delayed result unless the deep checkout, invalidator,
+writer checkout, and current main ref are the same exact SHA.
 
 ## Repair
 
@@ -134,8 +149,10 @@ snapshot, and both active default-branch rulesets itself with an
 owner-authenticated token. `Protect main` must retain the pull-request, deletion,
 non-fast-forward, and three non-health required-check protections without a
 bypass. `Protect main health admission` must contain only
-`Main health / required`, pin it to GitHub Actions integration `15368`, and grant
-repository role `5` only the `pull_request` bypass mode. This permanent split is
+`Main health / required`, pin it to the dedicated Main Health App integration,
+and grant repository role `5` only the `pull_request` bypass mode. The state branch
+uses a non-bypassable deletion/non-fast-forward ruleset plus a separate update
+ruleset that permits writes only from that App or the exact repository owner. This permanent split is
 the truthful single-maintainer capability boundary; it never permits a direct
 push, tag, or bypass of the other required checks. Admission records that
 independent approval did not exist and publishes the canonical admission payload
@@ -233,3 +250,24 @@ Resolution requires the exact reviewed head, ordered merge parents, owner merge
 actor, unchanged split-policy digests, and admitted collaboration digest. The
 bypass admits only the code merge; it does not clear red health or substitute for retained
 protected-main, nightly, weekly, provider, authorization, and resolution evidence.
+
+## Publisher configuration
+
+The Main Health App `metriplane-main-health-publisher` (App and integration ID
+`4722589`) is installed only on `Miko997/metriplane`. Its repository
+permissions are Actions read, contents write, pull requests read, and commit
+statuses write; webhooks are disabled and workflow write is not granted. The
+repository variables `MAIN_HEALTH_APP_ID` and `MAIN_HEALTH_APP_SLUG` identify the
+installation. `MAIN_HEALTH_APP_PRIVATE_KEY` is an environment secret in
+`main-health-publisher`, and that environment's custom deployment branch policy
+contains only `main`.
+
+The main-health admission ruleset pins `Main health / required` to the App's
+integration ID. State ruleset `21487681` contains deletion and non-fast-forward
+restrictions with no bypass actors. Writer ruleset `21533351` contains only the
+update restriction with exactly two `always` bypass actors: App integration
+`4722589` for normal CAS writes and repository owner user `141511110` for governed
+repair.
+Changing any App permission, environment branch policy, required-check source, or
+state-branch bypass inventory is a security-policy change and requires the same
+evidence and review as writer code.

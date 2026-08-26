@@ -69,7 +69,7 @@
                   "parameters": {
                     "do_not_enforce_on_create": false,
                     "required_status_checks": [
-                      {"context": "Main health / required", "integration_id": 15368}
+                      {"context": "Main health / required", "integration_id": 4722589}
                     ],
                     "strict_required_status_checks_policy": true
                   },
@@ -84,7 +84,7 @@
         "bypass_actors": {"items": {"$ref": "#/$defs/bypassActor"}, "type": "array"},
         "conditions": {
           "additionalProperties": false,
-          "properties": {"ref_name": {"additionalProperties": false, "properties": {"exclude": {"items": {"type": "string"}, "type": "array"}, "include": {"const": ["~DEFAULT_BRANCH"]}}, "required": ["exclude", "include"], "type": "object"}},
+          "properties": {"ref_name": {"additionalProperties": false, "properties": {"exclude": {"const": []}, "include": {"const": ["~DEFAULT_BRANCH"]}}, "required": ["exclude", "include"], "type": "object"}},
           "required": ["ref_name"],
           "type": "object"
         },

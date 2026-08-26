@@ -1,6 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "authorization_mode": {"const": "independent-review"},
+        "manifest_digest": {"type": "null"},
+        "policy_amendment_digest": {"type": "null"}
+      }
+    },
+    {
+      "properties": {
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "manifest_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "policy_amendment_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+      }
+    }
+  ],
   "properties": {
     "authorization_mode": {"enum": ["independent-review", "single-maintainer-owner-emergency"]},
     "approval_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},

@@ -223,6 +223,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert concurrency_group == "main-health-serialized"
     assert health["concurrency"]["queue"] == "max"
     assert "github.event.workflow_run.event" in health["run-name"]
+    assert "github.event.workflow_run.head_branch" in health["run-name"]
     assert "github.event.action" in health["run-name"]
     assert "candidate-health" not in health["jobs"]
     assert health["jobs"]["scheduled-deep"]["permissions"] == {"contents": "read"}
@@ -230,28 +231,54 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         job_if = str(health["jobs"][job_name]["if"])
         assert "github.event_name == 'repository_dispatch'" in job_if
     scheduled_checkout = health["jobs"]["scheduled-deep"]["steps"][0]
-    reconcile_checkout = health["jobs"]["reconcile-candidate-statuses"]["steps"][0]
+    reconcile_checkout = next(
+        step
+        for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
     terminal_checkout = health["jobs"]["main-health-required"]["steps"][0]
-    assert scheduled_checkout["with"]["ref"] == "refs/heads/main"
+    assert scheduled_checkout["with"]["ref"] == (
+        "${{ needs.invalidate-writer.outputs.measured_sha }}"
+    )
     assert reconcile_checkout["with"]["ref"] == "refs/heads/main"
     assert terminal_checkout["with"]["ref"] == "refs/heads/main"
     assert health["jobs"]["persist-health"]["permissions"] == {
         "actions": "read",
-        "contents": "write",
-        "statuses": "write",
-    }
-    assert health["jobs"]["invalidate-writer"]["permissions"] == {
         "contents": "read",
-        "statuses": "write",
     }
+    assert health["jobs"]["invalidate-writer"]["permissions"] == {"contents": "read"}
     candidate_permissions = {
         "contents": "read",
         "pull-requests": "read",
-        "statuses": "write",
     }
     assert health["jobs"]["invalidate-candidate-statuses"]["permissions"] == (candidate_permissions)
     assert health["jobs"]["main-health-required"]["permissions"] == {"contents": "read"}
-    assert health["jobs"]["reconcile-candidate-statuses"]["permissions"] == (candidate_permissions)
+    assert health["jobs"]["reconcile-candidate-statuses"]["permissions"] == {
+        "actions": "read",
+        **candidate_permissions,
+    }
+    publisher_jobs = (
+        "invalidate-writer",
+        "persist-health",
+        "invalidate-candidate-statuses",
+        "reconcile-candidate-statuses",
+    )
+    for job_name in publisher_jobs:
+        job = health["jobs"][job_name]
+        assert job["environment"] == "main-health-publisher"
+        publisher = job["steps"][0]
+        assert publisher["id"] == "publisher"
+        assert publisher["uses"] == (
+            "actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349"
+        )
+        assert publisher["with"] == {
+            "app-id": "${{ vars.MAIN_HEALTH_APP_ID }}",
+            "private-key": "${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}",
+            "permission-actions": "read",
+            "permission-contents": "write",
+            "permission-pull-requests": "read",
+            "permission-statuses": "write",
+        }
     reconcile = "\n".join(
         step.get("run", "") for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
     )
@@ -278,16 +305,22 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert 'cmp -s "$writer_snapshot" "$boundary_writer"' in reconcile
     assert "while [[ $page -le 10 ]]" in reconcile
     assert "runs?branch=main&per_page=100&page=${page}" in reconcile
-    assert "Main Health / workflow_run / push" in reconcile
-    assert "Main Health / repository_dispatch / main-health-nightly" in reconcile
-    assert "Main Health / repository_dispatch / main-health-weekly" in reconcile
-    assert "Main Health / schedule / 23 3 * * 0" in reconcile
-    assert "Main Health / schedule / 23 3 * * 1-6" in reconcile
+    assert "Main Health / workflow_run / push / main" in reconcile
+    assert "Main Health / repository_dispatch / main-health-nightly / main" in reconcile
+    assert "Main Health / repository_dispatch / main-health-weekly / main" in reconcile
+    assert "Main Health / schedule / 23 3 * * 0 / main" in reconcile
+    assert "Main Health / schedule / 23 3 * * 1-6 / main" in reconcile
+    assert '"$(jq -er \'.head_sha\' "$latest_snapshot")" == "$expected_main_sha"' in reconcile
     assert 'cmp -s "$latest_snapshot" "$boundary_latest"' in reconcile
     assert reconcile.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}"') >= 2
-    assert 'status.get("creator", {}).get("login") == "github-actions[bot]"' in reconcile
+    assert 'status.get("creator", {}).get("login") == sys.argv[6]' in reconcile
     assert 'status.get("created_at") == status.get("updated_at")' in reconcile
     assert "Main health success could not be provider-verified" in reconcile
+    assert 'leases="$RUNNER_TEMP/main-health-success-leases.jsonl"' in reconcile
+    assert ': > "$leases"' in reconcile
+    assert "main-health-expire" in reconcile
+    assert "for replica in 1 2" in reconcile
+    assert "Main health lease closer did not start" in reconcile
     invalidator = "\n".join(
         step.get("run", "") for step in health["jobs"]["invalidate-candidate-statuses"]["steps"]
     )
@@ -303,6 +336,9 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     ]
     writer = "\n".join(step.get("run", "") for step in health["jobs"]["persist-health"]["steps"])
     assert "stop_the_line.py ingest" in writer
+    assert 'test "$DEEP_SHA" = "$RUN_SHA"' in writer
+    assert 'test -z "$DEEP_SHA" || test "$DEEP_SHA" = "$RUN_SHA"' in writer
+    assert 'test "$RUN_SHA" = "$(git rev-parse HEAD)"' in writer
     assert "git rev-parse origin/main" in writer
     assert "actions/runs?head_sha=${RUN_SHA}&per_page=100" in writer
     assert "actions/runs/${run_id}/attempts/${run_attempt}/jobs?per_page=100" in writer
@@ -325,6 +361,21 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
         "scheduled-deep",
         "invalidate-writer",
     ]
+    assert health["jobs"]["scheduled-deep"]["needs"] == "invalidate-writer"
+
+    lease = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
+    lease_trigger = lease.get("on", lease.get(True))
+    assert lease_trigger == {"repository_dispatch": {"types": ["main-health-expire"]}}
+    expiry = lease["jobs"]["expire-successes"]
+    assert expiry["environment"] == "main-health-publisher"
+    assert "github.actor == format" in expiry["if"]
+    assert "github.event.sender.login == format" in expiry["if"]
+    expiry_script = "\n".join(step.get("run", "") for step in expiry["steps"])
+    assert "sleep 240" in expiry_script
+    assert 'current_id="$(jq -er \'.id\' "$current")" ||' in expiry_script
+    assert '"$current_id" != "$status_id"' in expiry_script
+    assert 'status.get("creator", {}).get("login") == sys.argv[5]' in expiry_script
+    assert "Main health admission lease expired" in expiry_script
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
     ci_trigger = ci.get("on", ci.get(True))
@@ -373,16 +424,36 @@ def test_main_health_candidate_reconciliation_step_is_valid_bash() -> None:
 
 
 def test_main_health_embedded_python_is_valid() -> None:
-    workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
-    snippets: list[str] = []
-    for job in workflow["jobs"].values():
-        for step in job.get("steps", []):
-            snippets.extend(
-                re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", step.get("run", ""), re.DOTALL)
-            )
-    assert len(snippets) == 9
-    for index, snippet in enumerate(snippets):
-        compile(snippet, f"main-health-heredoc-{index}.py", "exec")
+    expected = {"main-health.yml": 9, "main-health-lease.yml": 2}
+    for filename, expected_count in expected.items():
+        workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))
+        snippets: list[str] = []
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                snippets.extend(
+                    re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", step.get("run", ""), re.DOTALL)
+                )
+        assert len(snippets) == expected_count
+        for index, snippet in enumerate(snippets):
+            compile(snippet, f"{filename}-heredoc-{index}.py", "exec")
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
+def test_main_health_lease_step_is_valid_bash() -> None:
+    workflow = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["expire-successes"]["steps"]
+        if item.get("name") == "Expire exact provider leases"
+    )
+    completed = subprocess.run(
+        ["bash", "-n"],
+        input=step["run"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_policy_validation_does_not_mutate_input() -> None:

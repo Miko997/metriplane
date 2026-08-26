@@ -96,7 +96,7 @@ def _main_health_ruleset() -> dict[str, object]:
                 "parameters": {
                     "do_not_enforce_on_create": False,
                     "required_status_checks": [
-                        {"context": "Main health / required", "integration_id": 15368}
+                        {"context": "Main health / required", "integration_id": 4722589}
                     ],
                     "strict_required_status_checks_policy": True,
                 },
@@ -125,6 +125,15 @@ def test_owner_bypass_rulesets_require_exact_core_protection(case: str) -> None:
         )
     with pytest.raises(HealthError, match="governed"):
         stop_the_line._validate_owner_bypass_rulesets(protection, _main_health_ruleset())
+
+
+def test_owner_bypass_ruleset_rejects_shared_actions_main_health_identity() -> None:
+    main_health = _main_health_ruleset()
+    rules = main_health["rules"]
+    assert isinstance(rules, list)
+    rules[0]["parameters"]["required_status_checks"][0]["integration_id"] = 15368
+    with pytest.raises(HealthError, match="main-health bypass"):
+        stop_the_line._validate_owner_bypass_rulesets(_core_ruleset(), main_health)
 
 
 def _summary(
@@ -749,6 +758,12 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
     extra_parent_evidence["merge_parent_shas"].append("9" * 40)
     with pytest.raises(SnapshotError):
         _internal_validate(extra_parent_evidence, provider_schema)
+    excluded_ref_evidence = copy.deepcopy(evidence)
+    excluded_ref_evidence["admission"]["artifact"]["main_health_ruleset"]["conditions"]["ref_name"][
+        "exclude"
+    ] = ["refs/heads/release"]
+    with pytest.raises(SnapshotError):
+        _internal_validate(excluded_ref_evidence, provider_schema)
     authorization = {
         "authorization_mode": evidence["authorization_mode"],
         "approval_digest": digest(evidence),
@@ -2071,3 +2086,23 @@ def test_schema_policy_and_example_families_are_complete_json() -> None:
     assert authorization["approval_digest"] == digest(provider)
     assert authorization["changed_paths_digest"] == digest(provider["changed_paths"])
     assert resolution["authorization_digest"] == digest(authorization)
+    authorization_schema = json.loads(
+        (STATUS / "schemas/main-health-repair-authorization.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    resolution_schema = json.loads(
+        (STATUS / "schemas/main-health-resolution.schema.json").read_text(encoding="utf-8")
+    )
+    mismatched_authorization = {
+        **authorization,
+        "authorization_mode": "single-maintainer-owner-emergency",
+    }
+    with pytest.raises(SnapshotError):
+        _internal_validate(mismatched_authorization, authorization_schema)
+    mismatched_resolution = {
+        **resolution,
+        "authorization_mode": "single-maintainer-owner-emergency",
+    }
+    with pytest.raises(SnapshotError):
+        _internal_validate(mismatched_resolution, resolution_schema)

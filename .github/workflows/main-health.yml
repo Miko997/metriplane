@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 name: Main Health
-run-name: Main Health / ${{ github.event_name }} / ${{ github.event.workflow_run.event || github.event.action || github.event.schedule }}
+run-name: Main Health / ${{ github.event_name }} / ${{ github.event.workflow_run.event || github.event.action || github.event.schedule }} / ${{ github.event.workflow_run.head_branch || 'main' }}
 
 on:
   workflow_run:
@@ -31,6 +31,7 @@ jobs:
       github.event_name == 'repository_dispatch' ||
       (github.event_name == 'schedule' && github.event.schedule != '*/5 * * * *')
     runs-on: ubuntu-latest
+    needs: invalidate-writer
     permissions:
       contents: read
     outputs:
@@ -41,7 +42,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: refs/heads/main
+          ref: ${{ needs.invalidate-writer.outputs.measured_sha }}
 
       - name: Record checked-out source
         id: source
@@ -74,17 +75,29 @@ jobs:
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    environment: main-health-publisher
     permissions:
       contents: read
-      statuses: write
     outputs:
       measured_sha: ${{ steps.invalidate.outputs.sha }}
     steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-contents: write
+          permission-pull-requests: read
+          permission-statuses: write
+
       - name: Fail closed before the writer starts
         id: invalidate
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
@@ -102,7 +115,7 @@ jobs:
             -f context="Main health writer / latest" \
             -f description="Writer ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT} has not committed state" \
             -f target_url="$target_url" > "$response"
-          python - "$response" "$sha" "$target_url" "$checked_at" <<'PY'
+          python - "$response" "$sha" "$target_url" "$checked_at" "$PUBLISHER_LOGIN" <<'PY'
           import datetime
           import json
           import pathlib
@@ -118,7 +131,7 @@ jobs:
               and status.get("state") == "failure"
               and status.get("context") == "Main health writer / latest"
               and status.get("target_url") == sys.argv[3]
-              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and status.get("creator", {}).get("login") == sys.argv[5]
               and isinstance(status.get("id"), int)
               and created_at >= checked_at
           ):
@@ -139,20 +152,31 @@ jobs:
       - scheduled-deep
       - invalidate-writer
     runs-on: ubuntu-latest
+    environment: main-health-publisher
     permissions:
       actions: read
-      contents: write
-      statuses: write
+      contents: read
     outputs:
       measured_sha: ${{ steps.ingest.outputs.sha }}
       state_commit: ${{ steps.publish.outputs.state_commit }}
     steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-contents: write
+          permission-pull-requests: read
+          permission-statuses: write
+
       - name: Check out measured source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event.workflow_run.head_sha || 'refs/heads/main' }}
+          ref: ${{ github.event.workflow_run.head_sha || needs.invalidate-writer.outputs.measured_sha }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -163,7 +187,7 @@ jobs:
         id: backend
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
         run: |
           set -euo pipefail
           state_root="$RUNNER_TEMP/main-health-state"
@@ -281,6 +305,7 @@ jobs:
         shell: bash
         env:
           DEEP_OUTCOME: ${{ needs.scheduled-deep.result }}
+          DEEP_SHA: ${{ needs.scheduled-deep.outputs.source_sha }}
           EVENT_NAME: ${{ github.event_name }}
           RUN_IDENTITY: ${{ github.event.workflow_run.id || github.run_id }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha || needs.invalidate-writer.outputs.measured_sha }}
@@ -292,19 +317,25 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --quiet origin main
+          test "$RUN_SHA" = "$(git rev-parse HEAD)"
           test "$RUN_SHA" = "$(git rev-parse origin/main)"
           if [[ "$EVENT_NAME" == workflow_run ]]; then
             cadence=protected-main
             conclusion="$OBSERVED_CONCLUSION"
             obligations="$OBSERVED_OBLIGATIONS"
-          elif [[ "$EVENT_NAME" == repository_dispatch ]]; then
-            cadence="${RUN_WORKFLOW#main-health-}"
-            conclusion="$DEEP_OUTCOME"
-          elif [[ "$RUN_WORKFLOW" == "23 3 * * 0" ]]; then
-            cadence=weekly
-            conclusion="$DEEP_OUTCOME"
           else
-            cadence=nightly
+            if [[ "$DEEP_OUTCOME" == success ]]; then
+              test "$DEEP_SHA" = "$RUN_SHA"
+            else
+              test -z "$DEEP_SHA" || test "$DEEP_SHA" = "$RUN_SHA"
+            fi
+            if [[ "$EVENT_NAME" == repository_dispatch ]]; then
+              cadence="${RUN_WORKFLOW#main-health-}"
+            elif [[ "$RUN_WORKFLOW" == "23 3 * * 0" ]]; then
+              cadence=weekly
+            else
+              cadence=nightly
+            fi
             conclusion="$DEEP_OUTCOME"
           fi
           [[ "$conclusion" == success ]] || conclusion=failure
@@ -342,8 +373,9 @@ jobs:
         shell: bash
         env:
           EXPECTED_COMMIT: ${{ steps.backend.outputs.expected_commit }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
           MEASURED_SHA: ${{ steps.ingest.outputs.sha }}
+          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
           STATE_ROOT: ${{ steps.backend.outputs.root }}
         run: |
           set -euo pipefail
@@ -380,7 +412,7 @@ jobs:
             -f description="$description" \
             -f target_url="$target_url" > "$writer_status"
           python - "$writer_status" "$MEASURED_SHA" "$description" "$target_url" \
-            "$checked_at" <<'PY'
+            "$checked_at" "$PUBLISHER_LOGIN" <<'PY'
           import datetime
           import json
           import pathlib
@@ -397,7 +429,7 @@ jobs:
               and status.get("context") == "Main health writer / latest"
               and status.get("description") == sys.argv[3]
               and status.get("target_url") == sys.argv[4]
-              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and status.get("creator", {}).get("login") == sys.argv[6]
               and isinstance(status.get("id"), int)
               and created_at >= checked_at
           ):
@@ -412,15 +444,27 @@ jobs:
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    environment: main-health-publisher
     permissions:
       contents: read
       pull-requests: read
-      statuses: write
     steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-contents: write
+          permission-pull-requests: read
+          permission-statuses: write
+
       - name: Fail every open pull request before reconciliation
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
         run: |
           set -uo pipefail
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
@@ -443,7 +487,8 @@ jobs:
               -f context="Main health / required" \
               -f description="Main health reconciliation in progress" \
               -f target_url="$target_url" > "$response" || \
-              ! python - "$response" "$head_sha" "$target_url" "$checked_at" <<'PY'
+              ! python - "$response" "$head_sha" "$target_url" "$checked_at" \
+                "$PUBLISHER_LOGIN" <<'PY'
           import datetime
           import json
           import pathlib
@@ -459,7 +504,7 @@ jobs:
               and status.get("state") == "failure"
               and status.get("context") == "Main health / required"
               and status.get("target_url") == sys.argv[3]
-              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and status.get("creator", {}).get("login") == sys.argv[5]
               and isinstance(status.get("id"), int)
               and created_at >= checked_at
           ):
@@ -483,11 +528,23 @@ jobs:
       - invalidate-candidate-statuses
       - persist-health
     runs-on: ubuntu-latest
+    environment: main-health-publisher
     permissions:
+      actions: read
       contents: read
       pull-requests: read
-      statuses: write
     steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-contents: write
+          permission-pull-requests: read
+          permission-statuses: write
+
       - name: Check out trusted admission code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -495,13 +552,15 @@ jobs:
           ref: refs/heads/main
 
       - name: Reconcile every open pull request head
+        id: reconcile
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
           INVALIDATE_RESULT: ${{ needs.invalidate-candidate-statuses.result }}
           PERSIST_MEASURED_SHA: ${{ needs.persist-health.outputs.measured_sha }}
           PERSIST_RESULT: ${{ needs.persist-health.result }}
           PERSIST_STATE_COMMIT: ${{ needs.persist-health.outputs.state_commit }}
+          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
@@ -518,7 +577,8 @@ jobs:
               -f context="Main health / required" \
               -f description="$description" \
               -f target_url="$target_url" > "$status_file" && \
-              python - "$status_file" "$head_sha" "$state" "$target_url" "$checked_at" <<'PY'
+              python - "$status_file" "$head_sha" "$state" "$target_url" "$checked_at" \
+                "$PUBLISHER_LOGIN" <<'PY'
           import datetime
           import json
           import pathlib
@@ -534,7 +594,7 @@ jobs:
               and status.get("state") == sys.argv[3]
               and status.get("context") == "Main health / required"
               and status.get("target_url") == sys.argv[4]
-              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and status.get("creator", {}).get("login") == sys.argv[6]
               and isinstance(status.get("creator", {}).get("id"), int)
               and isinstance(status.get("id"), int)
               and status.get("created_at") == status.get("updated_at")
@@ -553,10 +613,12 @@ jobs:
             return 1
           }
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
+          leases="$RUNNER_TEMP/main-health-success-leases.jsonl"
+          : > "$leases"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
           writer_binding() {
-            python - "$1" "$2" "$GITHUB_REPOSITORY" <<'PY'
+            python - "$1" "$2" "$GITHUB_REPOSITORY" "$PUBLISHER_LOGIN" <<'PY'
           import json
           import pathlib
           import re
@@ -574,7 +636,7 @@ jobs:
               and status.get("context") == "Main health writer / latest"
               and status.get("target_url")
               == f"https://github.com/{sys.argv[3]}/actions/runs/{match.group(2)}"
-              and status.get("creator", {}).get("login") == "github-actions[bot]"
+              and status.get("creator", {}).get("login") == sys.argv[4]
               and isinstance(status.get("id"), int)
           ):
               raise SystemExit("latest writer status is not an exact provider attestation")
@@ -589,7 +651,7 @@ jobs:
               gh api \
                 "repos/${GITHUB_REPOSITORY}/actions/workflows/main-health.yml/runs?branch=main&per_page=100&page=${page}" \
                 > "$batch" || return 1
-              jq -c '[.workflow_runs[] | select(.display_title == "Main Health / workflow_run / push" or .display_title == "Main Health / repository_dispatch / main-health-nightly" or .display_title == "Main Health / repository_dispatch / main-health-weekly" or .display_title == "Main Health / schedule / 23 3 * * 0" or .display_title == "Main Health / schedule / 23 3 * * 1-6")] | sort_by(.run_number) | reverse | .[0] // empty | {event,head_sha,id,run_attempt,status}' \
+              jq -c '[.workflow_runs[] | select(.display_title == "Main Health / workflow_run / push / main" or .display_title == "Main Health / repository_dispatch / main-health-nightly / main" or .display_title == "Main Health / repository_dispatch / main-health-weekly / main" or .display_title == "Main Health / schedule / 23 3 * * 0 / main" or .display_title == "Main Health / schedule / 23 3 * * 1-6 / main")] | sort_by(.run_number) | reverse | .[0] // empty | {event,head_sha,id,run_attempt,status}' \
                 "$batch" > "$output" || return 1
               if [[ -s "$output" ]]; then
                 return 0
@@ -621,6 +683,7 @@ jobs:
               [[ "$bound_state" == "$expected_state_commit" && \
                  "$run_id" == "$GITHUB_RUN_ID" && \
                  "$run_attempt" == "$GITHUB_RUN_ATTEMPT" && \
+                 "$(jq -er '.head_sha' "$latest_snapshot")" == "$expected_main_sha" && \
                  "$(jq -er '.id' "$latest_snapshot")" == "$run_id" && \
                  "$(jq -er '.run_attempt' "$latest_snapshot")" == "$run_attempt" ]]; then
               admission_ready=true
@@ -779,7 +842,38 @@ jobs:
               fi
             fi
             post_main_health_status "$head_sha" "$state" "$description" "$checked_at"
+            if [[ "$state" == success ]]; then
+              jq -c --arg target_url "$target_url" \
+                '{head_sha:.sha,status_id:.id,target_url:$target_url}' \
+                "$RUNNER_TEMP/main-health-status-${head_sha}.json" >> "$leases"
+            fi
           done < "$pulls"
+          if [[ -s "$leases" ]]; then
+            dispatch_failed=0
+            for replica in 1 2; do
+              dispatch="$RUNNER_TEMP/main-health-expiry-dispatch-${replica}.json"
+              jq -n \
+                --arg event_type main-health-expire \
+                --arg origin_run_attempt "$GITHUB_RUN_ATTEMPT" \
+                --arg origin_run_id "$GITHUB_RUN_ID" \
+                --argjson replica "$replica" \
+                --slurpfile leases "$leases" \
+                '{event_type:$event_type,client_payload:{leases:$leases,origin_run_attempt:$origin_run_attempt,origin_run_id:$origin_run_id,replica:$replica}}' \
+                > "$dispatch"
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" \
+                --input "$dispatch" >/dev/null || dispatch_failed=1
+            done
+            if [[ "$dispatch_failed" != 0 ]]; then
+              failed=0
+              while IFS= read -r lease; do
+                lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { failed=1; continue; }
+                post_main_health_status "$lease_sha" failure \
+                  "Main health lease closer did not start" \
+                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || failed=1
+              done < "$leases"
+              exit 1
+            fi
+          fi
 
   main-health-required:
     name: Main health / required

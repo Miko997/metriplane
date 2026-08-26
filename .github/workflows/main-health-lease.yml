@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Main Health Lease
+run-name: Main Health Lease / ${{ github.event.client_payload.origin_run_id }} / ${{ github.event.client_payload.replica }}
+
+on:
+  repository_dispatch:
+    types: [main-health-expire]
+
+permissions:
+  contents: read
+
+jobs:
+  expire-successes:
+    if: >-
+      github.actor == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG) &&
+      github.event.sender.login == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: main-health-publisher
+    steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-contents: write
+          permission-pull-requests: read
+          permission-statuses: write
+
+      - name: Expire exact provider leases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
+        run: |
+          set -uo pipefail
+          leases="$RUNNER_TEMP/main-health-expiry-leases.tsv"
+          python - "$PAYLOAD" "$GITHUB_REPOSITORY" > "$leases" <<'PY'
+          import json
+          import re
+          import sys
+
+          payload = json.loads(sys.argv[1])
+          if set(payload) != {"leases", "origin_run_attempt", "origin_run_id", "replica"}:
+              raise SystemExit("main-health lease payload has unexpected fields")
+          run_id = str(payload["origin_run_id"])
+          run_attempt = str(payload["origin_run_attempt"])
+          if not re.fullmatch(r"[1-9][0-9]*", run_id):
+              raise SystemExit("main-health lease origin run is invalid")
+          if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
+              raise SystemExit("main-health lease origin attempt is invalid")
+          if payload["replica"] not in {1, 2}:
+              raise SystemExit("main-health lease replica is invalid")
+          leases = payload["leases"]
+          if not isinstance(leases, list) or not leases or len(leases) > 1000:
+              raise SystemExit("main-health lease inventory is invalid")
+          expected_target = f"https://github.com/{sys.argv[2]}/actions/runs/{run_id}"
+          seen: set[str] = set()
+          for lease in leases:
+              if not isinstance(lease, dict) or set(lease) != {
+                  "head_sha",
+                  "status_id",
+                  "target_url",
+              }:
+                  raise SystemExit("main-health lease entry is malformed")
+              sha = lease["head_sha"]
+              status_id = lease["status_id"]
+              if (
+                  not isinstance(sha, str)
+                  or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                  or sha in seen
+                  or not isinstance(status_id, int)
+                  or status_id < 1
+                  or lease["target_url"] != expected_target
+              ):
+                  raise SystemExit("main-health lease entry is not provider-bound")
+              seen.add(sha)
+              print(sha, status_id, expected_target, sep="\t")
+          PY
+          sleep 240
+          failed=0
+          while IFS=$'\t' read -r head_sha status_id admitted_target; do
+            current="$RUNNER_TEMP/main-health-current-${head_sha}.json"
+            if ! gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/statuses?per_page=100&page=1" \
+              --jq '[.[] | select(.context == "Main health / required")][0]' \
+              > "$current"; then
+              failed=1
+              continue
+            fi
+            current_id="$(jq -er '.id' "$current")" || { failed=1; continue; }
+            if [[ "$current_id" != "$status_id" ]]; then
+              continue
+            fi
+            if ! jq -e \
+              --arg login "$PUBLISHER_LOGIN" \
+              --arg sha "$head_sha" \
+              --arg target "$admitted_target" \
+              '.sha == $sha and .state == "success" and .context == "Main health / required" and .target_url == $target and .creator.login == $login' \
+              "$current" >/dev/null; then
+              failed=1
+              continue
+            fi
+            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            response="$RUNNER_TEMP/main-health-expired-${head_sha}.json"
+            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state=failure \
+              -f context="Main health / required" \
+              -f description="Main health admission lease expired" \
+              -f target_url="$target_url" > "$response" || \
+              ! python - "$response" "$head_sha" "$target_url" "$checked_at" \
+                "$PUBLISHER_LOGIN" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import sys
+
+          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          checked_at = datetime.datetime.fromisoformat(sys.argv[4].replace("Z", "+00:00"))
+          created_at = datetime.datetime.fromisoformat(
+              str(status.get("created_at", "")).replace("Z", "+00:00")
+          )
+          if not (
+              status.get("sha") == sys.argv[2]
+              and status.get("state") == "failure"
+              and status.get("context") == "Main health / required"
+              and status.get("target_url") == sys.argv[3]
+              and status.get("creator", {}).get("login") == sys.argv[5]
+              and isinstance(status.get("id"), int)
+              and created_at >= checked_at
+          ):
+              raise SystemExit("provider did not attest exact main-health lease expiry")
+          PY
+            then
+              failed=1
+            fi
+          done < "$leases"
+          exit "$failed"

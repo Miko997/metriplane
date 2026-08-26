@@ -34,6 +34,7 @@ AUTHORIZED_REVIEWER_PERMISSIONS = {"admin", "maintain", "write"}
 OWNER_ADMISSION_MAX_AGE_SECONDS = 300
 MAIN_HEALTH_CONTEXT = "Main health / required"
 GITHUB_ACTIONS_INTEGRATION_ID = 15368
+MAIN_HEALTH_PUBLISHER_INTEGRATION_ID = 4722589
 CORE_REQUIRED_CONTEXTS = {
     "Documentation / required",
     "Metriplane / required",
@@ -960,7 +961,7 @@ def _validate_owner_bypass_rulesets(
         != [
             {
                 "context": MAIN_HEALTH_CONTEXT,
-                "integration_id": GITHUB_ACTIONS_INTEGRATION_ID,
+                "integration_id": MAIN_HEALTH_PUBLISHER_INTEGRATION_ID,
             }
         ]
     ):

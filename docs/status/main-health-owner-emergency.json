@@ -1,6 +1,7 @@
 {
   "authorization_mode": "single-maintainer-owner-emergency",
   "allowed_paths": [
+    ".github/workflows/main-health-lease.yml",
     ".github/workflows/main-health.yml",
     "docs/maintainers/main-health.md",
     "docs/status/examples/main-health-owner-emergency.json",
