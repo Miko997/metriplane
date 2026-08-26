@@ -1111,7 +1111,10 @@ def test_run_context_claims_exact_reserved_run_directory(
 
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
     reservation = reserve_run_directory(tmp_path / "runs", "reserved_run")
-    for name, value in reservation.child_environment({}).items():
+    child_environment = reservation.child_environment({})
+    assert child_environment["METRIPLANE_RUN_RESERVATION_DEVICE"] == str(reservation.device)
+    assert child_environment["METRIPLANE_RUN_RESERVATION_INODE"] == str(reservation.inode)
+    for name, value in child_environment.items():
         monkeypatch.setenv(name, value)
 
     context = create_run_context(
@@ -1126,6 +1129,202 @@ def test_run_context_claims_exact_reserved_run_directory(
     assert context.run_dir == reservation.run_dir
     assert reservation.claimed_run_dir() == context.run_dir
     assert not reservation.marker_path.exists()
+    writer = open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+    writer.write(context.header_record())
+    writer.close()
+    session_header = json.loads(context.session_jsonl.read_text(encoding="utf-8"))
+    assert session_header["run_id"] == reservation.run_id
+
+
+def test_claimed_run_context_rejects_swap_before_directory_iteration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+
+    run_dir = reservation.run_dir
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_marker = outside / ".metriplane-run-reservation"
+    outside_marker.write_text(reservation.token, encoding="utf-8")
+    original_listdir = run_provenance.os.listdir
+    swapped = False
+
+    def swap_before_iteration(path):
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            run_dir.rename(parked_run_dir)
+            run_dir.symlink_to(outside, target_is_directory=True)
+        return original_listdir(path)
+
+    monkeypatch.setattr(run_provenance.os, "listdir", swap_before_iteration)
+
+    with pytest.raises(PlatformPathError, match="identity changed"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id=reservation.run_id,
+            runs_dir=str(base),
+        )
+
+    assert run_dir.is_symlink()
+    assert outside_marker.read_text(encoding="utf-8") == reservation.token
+    assert sorted(path.name for path in outside.iterdir()) == [".metriplane-run-reservation"]
+    assert (parked_run_dir / ".metriplane-run-reservation").exists()
+    assert not (parked_run_dir / "config.yaml").exists()
+    assert not (parked_run_dir / "meta.json").exists()
+
+
+def test_claimed_context_write_stays_on_opened_directory_after_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+
+    run_dir = reservation.run_dir
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("outside must remain unchanged\n", encoding="utf-8")
+    original_writer = run_provenance._write_claimed_text
+    swapped = False
+
+    def swap_before_write(directory_fd: int, name: str, content: str) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            run_dir.rename(parked_run_dir)
+            run_dir.symlink_to(outside, target_is_directory=True)
+        original_writer(directory_fd, name, content)
+
+    monkeypatch.setattr(run_provenance, "_write_claimed_text", swap_before_write)
+
+    with pytest.raises(PlatformPathError, match="identity changed"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id=reservation.run_id,
+            runs_dir=str(base),
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
+    assert (parked_run_dir / "config.yaml").exists()
+    assert not (parked_run_dir / "meta.json").exists()
+
+
+def test_reserved_session_writer_rejects_post_context_directory_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(base),
+    )
+
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_session = outside / "session.jsonl"
+    outside_session.write_text("outside must remain unchanged\n", encoding="utf-8")
+    context.run_dir.rename(parked_run_dir)
+    context.run_dir.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(PlatformPathError, match="cannot be opened safely"):
+        open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+
+    assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert not (parked_run_dir / "session.jsonl").exists()
+
+
+def test_reserved_session_writer_does_not_truncate_existing_hardlink(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(base),
+    )
+
+    outside_session = tmp_path / "outside-session.jsonl"
+    outside_session.write_text("outside must remain unchanged\n", encoding="utf-8")
+    context.session_jsonl.hardlink_to(outside_session)
+
+    with pytest.raises(PlatformPathError, match="cannot be opened safely"):
+        open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+
+    assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+
+
+def test_reserved_session_writer_can_retry_after_mirror_open_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(base),
+    )
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("blocked\n", encoding="utf-8")
+
+    with pytest.raises(OSError):
+        open_jsonl_writer(
+            primary_path=context.session_jsonl,
+            mirror_path=str(blocked_parent / "mirror.jsonl"),
+        )
+    assert not context.session_jsonl.exists()
+
+    writer = open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+    writer.write(context.header_record())
+    writer.close()
+    assert context.session_jsonl.is_file()
 
 
 def test_reserve_run_directory_marker_cannot_follow_swapped_path(
