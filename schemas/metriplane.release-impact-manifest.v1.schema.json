@@ -1,8 +1,49 @@
 {
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal payload_digest, and verify all referenced records by digest.",
   "$defs": {
     "digest": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
+    },
+    "git_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
     },
     "milestone": {
       "enum": [
@@ -15,221 +56,226 @@
         "v1.0"
       ]
     },
-    "stage": {
-      "enum": [
-        "roles",
-        "task-state",
-        "staging",
-        "targets",
-        "predecessor",
-        "source-freeze",
-        "candidate",
-        "qualification",
-        "approval",
-        "prepromotion",
-        "promotion",
-        "reconciliation",
-        "retention",
-        "closed"
-      ]
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
+      "type": "string"
     }
   },
   "$id": "https://metriplane.com/schemas/metriplane.release-impact-manifest.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-impact-manifest. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
   "properties": {
     "data": {
       "additionalProperties": false,
       "properties": {
-        "actor_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "artifacts": {
-          "additionalProperties": {
-            "$ref": "#/$defs/digest"
-          },
-          "type": "object"
-        },
-        "attempt_digest": {
-          "$ref": "#/$defs/digest"
-        },
         "author_id": {
-          "minLength": 1,
-          "type": "string"
+          "$ref": "#/$defs/nonempty"
         },
-        "authorized_executor_id": {
-          "minLength": 1,
-          "type": "string"
+        "base_sha": {
+          "$ref": "#/$defs/git_sha"
         },
-        "blockers": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "candidate_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "candidate_milestone": {
-          "$ref": "#/$defs/milestone"
-        },
-        "cells": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "closed_decision_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "conflicts": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "decision": {
-          "enum": [
-            "APPROVED",
-            "REJECTED",
-            "INVALIDATED"
-          ]
-        },
-        "environment": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "epoch": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "evidence_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "expected_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "inputs": {
+        "changes": {
           "items": {
             "additionalProperties": false,
             "properties": {
-              "path": {
-                "minLength": 1,
-                "type": "string"
+              "capability_ids": {
+                "items": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
               },
-              "sha256": {
-                "$ref": "#/$defs/digest"
+              "change_type": {
+                "enum": [
+                  "added",
+                  "modified",
+                  "deleted",
+                  "renamed"
+                ]
+              },
+              "classification": {
+                "$ref": "#/$defs/nonempty"
+              },
+              "justification": {
+                "$ref": "#/$defs/nonempty"
+              },
+              "path": {
+                "$ref": "#/$defs/nonempty"
               }
             },
             "required": [
-              "path",
-              "sha256"
+              "capability_ids",
+              "change_type",
+              "classification",
+              "justification",
+              "path"
             ],
             "type": "object"
           },
-          "type": "array"
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
         },
-        "lease_until": {
-          "minimum": 0,
-          "type": "integer"
+        "head_sha": {
+          "$ref": "#/$defs/git_sha"
         },
-        "lkg_digest": {
+        "manifest_digest": {
           "$ref": "#/$defs/digest"
         },
         "milestone": {
           "$ref": "#/$defs/milestone"
         },
-        "non_author_reviewer_id": {
-          "minLength": 1,
-          "type": "string"
+        "release_tag": {
+          "$ref": "#/$defs/version"
         },
-        "observations": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "owner": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "predecessor_digest": {
+        "source_freeze_digest": {
           "$ref": "#/$defs/digest"
         },
-        "publisher_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "reason": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "receipts": {
-          "items": {
-            "$ref": "#/$defs/digest"
-          },
-          "minItems": 2,
-          "type": "array"
-        },
-        "required_terminals": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "reviewer_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "source_digest": {
+        "target_resolution_digest": {
           "$ref": "#/$defs/digest"
         },
-        "stage": {
-          "$ref": "#/$defs/stage"
-        },
-        "state": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "stores": {
+        "unclassified_paths": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/nonempty"
           },
-          "minItems": 2,
+          "maxItems": 0,
+          "minItems": 0,
           "type": "array",
           "uniqueItems": true
-        },
-        "target": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "targets": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "task_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "tool": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "version": {
-          "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
-          "type": "string"
         }
       },
-      "required": [],
+      "required": [
+        "author_id",
+        "base_sha",
+        "changes",
+        "head_sha",
+        "manifest_digest",
+        "milestone",
+        "release_tag",
+        "source_freeze_digest",
+        "target_resolution_digest",
+        "unclassified_paths"
+      ],
       "type": "object"
     },
     "invocation_id": {
@@ -254,47 +300,11 @@
     },
     "signatures": {
       "items": {
-        "additionalProperties": false,
-        "properties": {
-          "actor_id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "algorithm": {
-            "enum": [
-              "provider-attestation-v1",
-              "test-sha256-v1"
-            ]
-          },
-          "provider": {
-            "enum": [
-              "github",
-              "linear",
-              "test-fixture"
-            ]
-          },
-          "signature": {
-            "minLength": 16,
-            "type": "string"
-          },
-          "subject_digest": {
-            "$ref": "#/$defs/digest"
-          },
-          "synthetic": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "actor_id",
-          "algorithm",
-          "provider",
-          "signature",
-          "subject_digest",
-          "synthetic"
-        ],
-        "type": "object"
+        "$ref": "#/$defs/signature"
       },
-      "type": "array"
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
     },
     "status": {
       "enum": [
@@ -325,5 +335,11 @@
     "synthetic"
   ],
   "title": "Metriplane release-impact-manifest record",
-  "type": "object"
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == payload_digest",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ]
 }

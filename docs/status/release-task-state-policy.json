@@ -1,17 +1,52 @@
 {
-  "approval": {
-    "decision": "APPROVED",
-    "non_author_required": true,
-    "provider_authenticated": true
+  "allowed_transitions": [
+    {
+      "authorized_role": "release_operator",
+      "from": "open_running",
+      "provider_event_required": true,
+      "required_after": "latest_lkg_pointer_envelope_and_index_read_validated",
+      "to": "open_finalizing"
+    },
+    {
+      "authorized_role": "release_operator",
+      "from": "open_finalizing",
+      "provider_event_required": true,
+      "required_after": "applicable_durable_close_root_validated",
+      "to": "closed"
+    }
+  ],
+  "authority_status": "POLICY_ONLY_NO_LIVE_PROVIDER_RECEIPT",
+  "cross_system_atomicity": "not_claimed",
+  "freshness_windows_seconds": {
+    "prepromotion": 300,
+    "terminal_commit": 120
   },
-  "implementation": {
-    "allowed_states": [
-      "In Progress"
-    ],
-    "assignment_required": true,
-    "provider": "linear",
-    "synthetic_live_authority": false
-  },
+  "no_other_authorized_transition": true,
   "owner": "MP2-007",
-  "schema_version": "metriplane.release-task-state-policy.v1"
+  "provider": {
+    "id": "linear",
+    "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+  },
+  "schema_version": "metriplane.release-task-state-policy.v1",
+  "server_clock_skew_budget_seconds": {
+    "capture": 30,
+    "terminal_commit": 30
+  },
+  "workflow_states": {
+    "closed": {
+      "id": "a37b0586-c805-4225-94c3-c690abb56d5a",
+      "name": "Done",
+      "type": "completed"
+    },
+    "open_finalizing": {
+      "id": "7ba29f42-2854-4d0e-bf55-c04550be46eb",
+      "name": "In Review",
+      "type": "started"
+    },
+    "open_running": {
+      "id": "6326ecac-afa9-4bdd-a9d2-2826db1e03b5",
+      "name": "In Progress",
+      "type": "started"
+    }
+  }
 }

@@ -1,21 +1,237 @@
 {
   "attempt_index": {
     "backend": null,
+    "backend_id": "attempt-index",
     "cas_required": true,
     "read_back_required": true
   },
+  "backends": [
+    {
+      "backend_id": "payload-store-a",
+      "backend_kind": "immutable_payload",
+      "binding_status": "UNRESOLVED",
+      "consistency": "strong_read_after_write",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_RELEASE_PAYLOAD_STORE_A_CREDENTIAL"
+      },
+      "independence_group": "release-evidence-primary",
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/payload-a",
+        "production": "metriplane/releases/{milestone}/{candidate_id}",
+        "test": "metriplane/release-tests/{run_id}/payload-a"
+      },
+      "required_capabilities": [
+        "immutable_put",
+        "read",
+        "sha256_read_back",
+        "hold"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "sha256:<64-lowercase-hex>"
+    },
+    {
+      "backend_id": "payload-store-b",
+      "backend_kind": "immutable_payload",
+      "binding_status": "UNRESOLVED",
+      "consistency": "strong_read_after_write",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_RELEASE_PAYLOAD_STORE_B_CREDENTIAL"
+      },
+      "independence_group": "release-evidence-secondary",
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/payload-b",
+        "production": "metriplane/releases/{milestone}/{candidate_id}",
+        "test": "metriplane/release-tests/{run_id}/payload-b"
+      },
+      "required_capabilities": [
+        "immutable_put",
+        "read",
+        "sha256_read_back",
+        "hold"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "sha256:<64-lowercase-hex>"
+    },
+    {
+      "backend_id": "attempt-index",
+      "backend_kind": "compare_and_swap_log",
+      "binding_status": "UNRESOLVED",
+      "consistency": "linearizable_compare_and_swap",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_RELEASE_ATTEMPT_INDEX_CREDENTIAL"
+      },
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/attempt-index",
+        "production": "metriplane/release-control/attempt-index",
+        "test": "metriplane/release-tests/{run_id}/attempt-index"
+      },
+      "required_capabilities": [
+        "read",
+        "compare_and_swap",
+        "stale_conflict",
+        "idempotent_operation",
+        "read_back"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+    },
+    {
+      "backend_id": "success-chain",
+      "backend_kind": "compare_and_swap_log",
+      "binding_status": "UNRESOLVED",
+      "consistency": "linearizable_compare_and_swap",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_RELEASE_SUCCESS_CHAIN_CREDENTIAL"
+      },
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/success-chain",
+        "production": "metriplane/release-control/success-chain",
+        "test": "metriplane/release-tests/{run_id}/success-chain"
+      },
+      "required_capabilities": [
+        "read",
+        "compare_and_swap",
+        "stale_conflict",
+        "idempotent_operation",
+        "read_back"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+    },
+    {
+      "backend_id": "last-known-good",
+      "backend_kind": "compare_and_swap_register",
+      "binding_status": "UNRESOLVED",
+      "consistency": "linearizable_compare_and_swap",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_RELEASE_LKG_CREDENTIAL"
+      },
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/last-known-good",
+        "production": "metriplane/release-control/last-known-good",
+        "test": "metriplane/release-tests/{run_id}/last-known-good"
+      },
+      "required_capabilities": [
+        "read",
+        "compare_and_swap",
+        "stale_conflict",
+        "monotonic_generation",
+        "read_back"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+    },
+    {
+      "backend_id": "main-health-state",
+      "backend_kind": "compare_and_swap_register",
+      "binding_status": "UNRESOLVED",
+      "consistency": "linearizable_compare_and_swap",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_MAIN_HEALTH_STATE_CREDENTIAL"
+      },
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/main-health-state",
+        "production": "metriplane/release-control/main-health-state",
+        "test": "metriplane/release-tests/{run_id}/main-health-state"
+      },
+      "required_capabilities": [
+        "read",
+        "compare_and_swap",
+        "stale_conflict",
+        "monotonic_generation",
+        "read_back"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+    },
+    {
+      "backend_id": "main-health-summary",
+      "backend_kind": "compare_and_swap_log",
+      "binding_status": "UNRESOLVED",
+      "consistency": "linearizable_compare_and_swap",
+      "credential_reference": {
+        "kind": "approved_environment",
+        "name": "METRIPLANE_MAIN_HEALTH_SUMMARY_CREDENTIAL"
+      },
+      "live_binding": null,
+      "namespaces": {
+        "preflight": "metriplane/release-preflight/{scope}/main-health-summary",
+        "production": "metriplane/release-control/main-health-summary",
+        "test": "metriplane/release-tests/{run_id}/main-health-summary"
+      },
+      "required_capabilities": [
+        "immutable_append",
+        "read",
+        "compare_and_swap",
+        "sha256_read_back",
+        "stale_conflict"
+      ],
+      "retention": {
+        "deletion": "forbidden",
+        "hold": "governance_hold_required",
+        "minimum_days": null,
+        "mode": "retain_indefinitely"
+      },
+      "token_format": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+    }
+  ],
   "live_status": "BLOCKED_NOT_READY",
   "owner": "MP2-007",
   "schema_version": "metriplane.release-evidence-stores.v1",
+  "secrets_embedded": false,
   "stores": [
     {
-      "id": "store-a",
-      "independence_group": "primary",
+      "backend_id": "payload-store-a",
+      "id": "payload-store-a",
+      "independence_group": "release-evidence-primary",
       "live_binding": null
     },
     {
-      "id": "store-b",
-      "independence_group": "secondary",
+      "backend_id": "payload-store-b",
+      "id": "payload-store-b",
+      "independence_group": "release-evidence-secondary",
       "live_binding": null
     }
   ]

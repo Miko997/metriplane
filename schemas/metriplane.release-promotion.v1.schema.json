@@ -1,235 +1,277 @@
 {
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal payload_digest, and verify all referenced records by digest.",
   "$defs": {
     "digest": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
     },
-    "milestone": {
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "terminal_result": {
       "enum": [
-        "v0.4",
-        "v0.5",
-        "v0.6",
-        "v0.7",
-        "v0.8",
-        "v0.9",
-        "v1.0"
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
       ]
     },
-    "stage": {
-      "enum": [
-        "roles",
-        "task-state",
-        "staging",
-        "targets",
-        "predecessor",
-        "source-freeze",
-        "candidate",
-        "qualification",
-        "approval",
-        "prepromotion",
-        "promotion",
-        "reconciliation",
-        "retention",
-        "closed"
-      ]
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
     }
   },
   "$id": "https://metriplane.com/schemas/metriplane.release-promotion.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-promotion. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
   "properties": {
     "data": {
       "additionalProperties": false,
       "properties": {
-        "actor_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "artifacts": {
-          "additionalProperties": {
-            "$ref": "#/$defs/digest"
-          },
-          "type": "object"
-        },
-        "attempt_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "author_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "authorized_executor_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "blockers": {
+        "actions": {
           "items": {
-            "type": "string"
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "$ref": "#/$defs/nonempty"
+              },
+              "observed_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "result": {
+                "$ref": "#/$defs/terminal_result"
+              },
+              "target_id": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "required": [
+              "action",
+              "observed_digest",
+              "result",
+              "target_id"
+            ],
+            "type": "object"
           },
+          "minItems": 1,
           "type": "array",
           "uniqueItems": true
         },
         "candidate_digest": {
           "$ref": "#/$defs/digest"
         },
-        "candidate_milestone": {
-          "$ref": "#/$defs/milestone"
+        "completed_at": {
+          "$ref": "#/$defs/timestamp"
         },
-        "cells": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "closed_decision_digest": {
+        "lock_receipt_digest": {
           "$ref": "#/$defs/digest"
         },
-        "conflicts": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
+        "mode": {
+          "const": "execute"
         },
-        "decision": {
-          "enum": [
-            "APPROVED",
-            "REJECTED",
-            "INVALIDATED"
-          ]
+        "mutation_started": {
+          "const": true
         },
-        "environment": {
-          "minLength": 1,
-          "type": "string"
+        "operation_id": {
+          "$ref": "#/$defs/identifier"
         },
-        "epoch": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "evidence_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "expected_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "inputs": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "path": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "sha256": {
-                "$ref": "#/$defs/digest"
-              }
-            },
-            "required": [
-              "path",
-              "sha256"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "lease_until": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "lkg_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "milestone": {
-          "$ref": "#/$defs/milestone"
-        },
-        "non_author_reviewer_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "observations": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "owner": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "predecessor_digest": {
+        "promotion_plan_digest": {
           "$ref": "#/$defs/digest"
         },
         "publisher_id": {
-          "minLength": 1,
-          "type": "string"
+          "$ref": "#/$defs/nonempty"
         },
-        "reason": {
-          "minLength": 1,
-          "type": "string"
+        "record_kind": {
+          "const": "promotion_execution"
         },
-        "receipts": {
-          "items": {
-            "$ref": "#/$defs/digest"
-          },
-          "minItems": 2,
-          "type": "array"
+        "result": {
+          "enum": [
+            "PUBLISHED",
+            "PARTIAL",
+            "FAILED"
+          ]
         },
-        "required_terminals": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
         },
-        "reviewer_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "source_digest": {
+        "target_state_digest": {
           "$ref": "#/$defs/digest"
-        },
-        "stage": {
-          "$ref": "#/$defs/stage"
-        },
-        "state": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "stores": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 2,
-          "type": "array",
-          "uniqueItems": true
-        },
-        "target": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "targets": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "task_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "tool": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "version": {
-          "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
-          "type": "string"
         }
       },
-      "required": [],
+      "required": [
+        "actions",
+        "candidate_digest",
+        "completed_at",
+        "lock_receipt_digest",
+        "mode",
+        "mutation_started",
+        "operation_id",
+        "promotion_plan_digest",
+        "publisher_id",
+        "record_kind",
+        "result",
+        "started_at",
+        "target_state_digest"
+      ],
       "type": "object"
     },
     "invocation_id": {
@@ -254,47 +296,11 @@
     },
     "signatures": {
       "items": {
-        "additionalProperties": false,
-        "properties": {
-          "actor_id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "algorithm": {
-            "enum": [
-              "provider-attestation-v1",
-              "test-sha256-v1"
-            ]
-          },
-          "provider": {
-            "enum": [
-              "github",
-              "linear",
-              "test-fixture"
-            ]
-          },
-          "signature": {
-            "minLength": 16,
-            "type": "string"
-          },
-          "subject_digest": {
-            "$ref": "#/$defs/digest"
-          },
-          "synthetic": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "actor_id",
-          "algorithm",
-          "provider",
-          "signature",
-          "subject_digest",
-          "synthetic"
-        ],
-        "type": "object"
+        "$ref": "#/$defs/signature"
       },
-      "type": "array"
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
     },
     "status": {
       "enum": [
@@ -325,5 +331,11 @@
     "synthetic"
   ],
   "title": "Metriplane release-promotion record",
-  "type": "object"
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == payload_digest",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ]
 }
