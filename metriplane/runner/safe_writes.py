@@ -195,13 +195,21 @@ def _open_pinned_entry(
     if hasattr(os, "O_PATH"):
         access = os.O_PATH
     elif sys.platform == "darwin":
-        # Darwin's metadata-only descriptor does not require file read permission.
+        # O_EVTONLY is Darwin's narrowest descriptor, but some processes still
+        # undergo read authorization when opening it.
         access = _DARWIN_O_EVTONLY
     else:
         access = os.O_RDONLY
     flags = access | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
         file_fd = os.open(name, flags, dir_fd=directory_fd)
+    except PermissionError as exc:
+        if access == _DARWIN_O_EVTONLY:
+            raise UnsafeWritePathError(
+                f"Unsafe operator output path '{display_path}': "
+                "destination cannot be safely pinned without read access"
+            ) from exc
+        raise
     except OSError as exc:
         _translate_component_error(display_path, exc)
     try:
