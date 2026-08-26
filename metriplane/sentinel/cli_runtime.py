@@ -67,7 +67,10 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         return 1
 
     try:
-        run_id = validate_portable_run_id(args.run_id or generate_run_id("sentinel"))
+        requested_run_id = (
+            generate_run_id("sentinel") if args.run_id is None else args.run_id
+        )
+        run_id = validate_portable_run_id(requested_run_id)
     except ValueError as exc:
         print(exc)
         return 2

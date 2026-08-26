@@ -110,6 +110,41 @@ def test_start_fusion_preserves_portable_run_ids(tmp_path: Path, run_id: str) ->
     assert command[command.index("--run-id") + 1] == run_id
 
 
+@pytest.mark.parametrize("run_id", ["", " \t ", None])
+def test_start_fusion_rejects_explicit_blank_or_null_run_id(
+    tmp_path: Path,
+    run_id: object,
+) -> None:
+    api = make_api(tmp_path)
+    config = tmp_path / "configs" / "safe.yaml"
+    config.parent.mkdir()
+    config.write_text("source_mode: dummy\n", encoding="utf-8")
+
+    status, payload = api._start_fusion(
+        {"config": "configs/safe.yaml", "duration_s": 30, "run_id": run_id}
+    )
+
+    assert status == 400
+    assert "run_id" in payload["error"]
+    api.executor.execute.assert_not_called()
+
+
+def test_start_fusion_generates_run_id_when_field_is_omitted(tmp_path: Path) -> None:
+    api = make_api(tmp_path)
+    config = tmp_path / "configs" / "safe.yaml"
+    config.parent.mkdir()
+    config.write_text("source_mode: dummy\n", encoding="utf-8")
+
+    status, payload = api._start_fusion(
+        {"config": "configs/safe.yaml", "duration_s": 30}
+    )
+
+    assert status == 200
+    assert payload["run_id"].startswith("operator_run_")
+    command = api.executor.execute.call_args.kwargs["command"]
+    assert command[command.index("--run-id") + 1] == payload["run_id"]
+
+
 def test_checksum_rejects_paths_outside_runs_or_evidence(tmp_path: Path):
     api = make_api(tmp_path)
     outside = tmp_path / "not_allowed.txt"
@@ -273,6 +308,104 @@ def _symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool) -> 
         link.symlink_to(target, target_is_directory=target_is_directory)
     except OSError as exc:
         pytest.skip(f"symlinks unavailable on this platform: {exc}")
+
+
+def test_create_profile_rejects_external_profile_symlink(tmp_path: Path) -> None:
+    api = make_api(tmp_path)
+    profiles = tmp_path / "calib" / "profiles"
+    outside = tmp_path / "outside-profile"
+    profiles.mkdir(parents=True)
+    outside.mkdir()
+    _symlink_or_skip(
+        profiles / "local_escape",
+        outside,
+        target_is_directory=True,
+    )
+
+    status, payload = api.route(
+        "POST",
+        "/operator/create-profile",
+        {"name": "escape", "width_m": 1.0, "height_m": 1.0},
+    )
+
+    assert status == 400
+    assert "links are not allowed" in payload["error"]
+    assert not (outside / "anchors.yaml").exists()
+    assert not (outside / "cam0").exists()
+
+
+def test_write_zones_rejects_external_profile_symlink(tmp_path: Path) -> None:
+    api = make_api(tmp_path)
+    profiles = tmp_path / "calib" / "profiles"
+    outside = tmp_path / "outside-profile"
+    profiles.mkdir(parents=True)
+    outside.mkdir()
+    _symlink_or_skip(
+        profiles / "local_escape",
+        outside,
+        target_is_directory=True,
+    )
+
+    status, payload = api.route(
+        "POST",
+        "/operator/write-zones",
+        {
+            "profile": "local_escape",
+            "zones": [
+                {"name": "safe_zone", "polygon": [[0, 0], [1, 0], [0, 1]]}
+            ],
+        },
+    )
+
+    assert status == 400
+    assert "links are not allowed" in payload["error"]
+    assert not (outside / "zones.yaml").exists()
+
+
+def test_save_config_rejects_external_local_directory_symlink(tmp_path: Path) -> None:
+    api = make_api(tmp_path)
+    configs = tmp_path / "configs"
+    outside = tmp_path / "outside-configs"
+    configs.mkdir()
+    outside.mkdir()
+    _symlink_or_skip(
+        configs / "local",
+        outside,
+        target_is_directory=True,
+    )
+
+    status, payload = api.route(
+        "POST",
+        "/operator/save-config",
+        {"filename": "safe.yaml", "config": {"profile": "local_test"}},
+    )
+
+    assert status == 400
+    assert "links are not allowed" in payload["error"]
+    assert not (outside / "safe.yaml").exists()
+
+
+def test_save_config_rejects_local_directory_symlink_loop_deterministically(
+    tmp_path: Path,
+) -> None:
+    api = make_api(tmp_path)
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    _symlink_or_skip(
+        configs / "local",
+        Path("local"),
+        target_is_directory=True,
+    )
+
+    status, payload = api.route(
+        "POST",
+        "/operator/save-config",
+        {"filename": "safe.yaml", "config": {"profile": "local_test"}},
+    )
+
+    assert status == 400
+    assert payload["error"].endswith("links are not allowed")
+    assert "Internal error" not in str(payload)
 
 
 def test_command_center_auto_discovery_rejects_symlinked_run_outside_root(

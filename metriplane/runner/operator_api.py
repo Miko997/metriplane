@@ -82,6 +82,55 @@ def _has_symlink_component(path: Path, root: Path) -> bool:
     return False
 
 
+class _UnsafeOperatorOutputPath(ValueError):
+    """Raised when an Operator write path cannot be trusted."""
+
+
+def _resolve_operator_output_path(repo_root: Path, relative_path: Path) -> Path:
+    """Validate a repository-relative Operator write path without following symlinks."""
+    relative_path = Path(relative_path)
+    if (
+        relative_path.is_absolute()
+        or not relative_path.parts
+        or any(part in {".", ".."} for part in relative_path.parts)
+    ):
+        raise _UnsafeOperatorOutputPath(
+            f"Unsafe operator output path '{relative_path}': expected a repository-relative path"
+        )
+
+    try:
+        resolved_root = repo_root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError("cannot validate the Operator repository root") from exc
+
+    candidate = repo_root
+    for part in relative_path.parts:
+        candidate /= part
+        try:
+            is_link = candidate.is_symlink() or candidate.is_junction()
+        except (OSError, RuntimeError) as exc:
+            raise PlatformPathError(
+                f"cannot validate Operator output path '{relative_path}'"
+            ) from exc
+        if is_link:
+            raise _UnsafeOperatorOutputPath(
+                f"Unsafe operator output path '{relative_path}': links are not allowed"
+            )
+
+    try:
+        resolved_candidate = candidate.resolve(strict=False)
+        resolved_candidate.relative_to(resolved_root)
+    except ValueError as exc:
+        raise _UnsafeOperatorOutputPath(
+            f"Unsafe operator output path '{relative_path}': path escapes the repository"
+        ) from exc
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError(
+            f"cannot validate Operator output path '{relative_path}'"
+        ) from exc
+    return candidate
+
+
 def _profile_dir(repo_root: Path, profile: str) -> Path:
     """
     Return the calib/profiles/<profile> dir.
@@ -590,7 +639,15 @@ class OperatorAPI:
                     )
                 }
 
-        profile_dir = _profile_dir(self.repo_root, name)
+        try:
+            profile_dir = _resolve_operator_output_path(
+                self.repo_root,
+                Path("calib") / "profiles" / name,
+            )
+        except _UnsafeOperatorOutputPath as exc:
+            return 400, {"error": str(exc)}
+        except PlatformPathError as exc:
+            return 503, {"error": f"Operator output path unavailable: {exc}"}
 
         if profile_dir.exists() and not overwrite:
             return 409, {
@@ -622,13 +679,23 @@ class OperatorAPI:
             except (ValueError, TypeError):
                 return 400, {"error": "Anchor id must be int, world_xy must be [float, float]"}
 
-        # ── Create directories ────────────────────────────────────────────────
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        for cam in cameras:
-            (profile_dir / cam).mkdir(exist_ok=True)
+        try:
+            anchors_path = _resolve_operator_output_path(
+                self.repo_root,
+                Path("calib") / "profiles" / name / "anchors.yaml",
+            )
+            camera_dirs = [
+                _resolve_operator_output_path(
+                    self.repo_root,
+                    Path("calib") / "profiles" / name / cam,
+                )
+                for cam in cameras
+            ]
+        except _UnsafeOperatorOutputPath as exc:
+            return 400, {"error": str(exc)}
+        except PlatformPathError as exc:
+            return 503, {"error": f"Operator output path unavailable: {exc}"}
 
-        # ── Write anchors.yaml ────────────────────────────────────────────────
-        anchors_path = profile_dir / "anchors.yaml"
         anchors_data = {
             "profile": name,
             "board_size": {"width_m": float(width_m), "height_m": float(height_m)},
@@ -637,11 +704,20 @@ class OperatorAPI:
                 for a in anchors
             ],
         }
-        anchors_path.write_text(yaml.dump(anchors_data, default_flow_style=False), encoding="utf-8")
+        try:
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            for camera_dir in camera_dirs:
+                camera_dir.mkdir(exist_ok=True)
+            anchors_path.write_text(
+                yaml.dump(anchors_data, default_flow_style=False),
+                encoding="utf-8",
+            )
+        except (OSError, RuntimeError):
+            return 503, {"error": f"Unable to write profile '{name}'"}
 
         created_dirs = [str(profile_dir.relative_to(self.repo_root))]
-        for cam in cameras:
-            created_dirs.append(str((profile_dir / cam).relative_to(self.repo_root)))
+        for camera_dir in camera_dirs:
+            created_dirs.append(str(camera_dir.relative_to(self.repo_root)))
 
         return 200, {
             "profile": name,
@@ -663,11 +739,20 @@ class OperatorAPI:
         if not _valid_name(profile):
             return 400, {"error": "Invalid profile name"}
 
-        profile_dir = _profile_dir(self.repo_root, profile)
+        try:
+            zones_path = _resolve_operator_output_path(
+                self.repo_root,
+                Path("calib") / "profiles" / profile / "zones.yaml",
+            )
+        except _UnsafeOperatorOutputPath as exc:
+            return 400, {"error": str(exc)}
+        except PlatformPathError as exc:
+            return 503, {"error": f"Operator output path unavailable: {exc}"}
+
+        profile_dir = zones_path.parent
         if not profile_dir.exists():
             return 404, {"error": f"Profile not found: {profile}"}
 
-        zones_path = profile_dir / "zones.yaml"
         if zones_path.exists() and not overwrite:
             return 409, {
                 "error": f"zones.yaml already exists in profile '{profile}'. Set overwrite=true to replace.",
@@ -697,7 +782,13 @@ class OperatorAPI:
             })
 
         zones_data = {"zones": zone_list}
-        zones_path.write_text(yaml.dump(zones_data, default_flow_style=False), encoding="utf-8")
+        try:
+            zones_path.write_text(
+                yaml.dump(zones_data, default_flow_style=False),
+                encoding="utf-8",
+            )
+        except (OSError, RuntimeError):
+            return 503, {"error": f"Unable to write zones for profile '{profile}'"}
 
         return 200, {
             "profile": profile,
@@ -720,17 +811,6 @@ class OperatorAPI:
         if not _valid_name(base):
             return 400, {"error": "Filename must be safe name + .yaml"}
 
-        local_dir = self.repo_root / "configs" / "local"
-        local_dir.mkdir(parents=True, exist_ok=True)
-
-        out_path = local_dir / (base + ".yaml")
-        if out_path.exists() and not overwrite:
-            # Return conflict with preview
-            return 409, {
-                "error": f"Config '{filename}' already exists in configs/local/. Set overwrite=true.",
-                "path": str(out_path.relative_to(self.repo_root)),
-            }
-
         if not isinstance(config_data, dict) or not config_data:
             return 400, {"error": "config data required"}
 
@@ -745,10 +825,35 @@ class OperatorAPI:
                 ),
             }
 
-        out_path.write_text(yaml.dump(config_data, default_flow_style=False), encoding="utf-8")
+        try:
+            out_path = _resolve_operator_output_path(
+                self.repo_root,
+                Path("configs") / "local" / (base + ".yaml"),
+            )
+        except _UnsafeOperatorOutputPath as exc:
+            return 400, {"error": str(exc)}
+        except PlatformPathError as exc:
+            return 503, {"error": f"Operator output path unavailable: {exc}"}
 
-        # Compute hash like metriplane does
-        content = out_path.read_bytes()
+        local_dir = out_path.parent
+        if out_path.exists() and not overwrite:
+            # Return conflict with preview
+            return 409, {
+                "error": f"Config '{filename}' already exists in configs/local/. Set overwrite=true.",
+                "path": str(out_path.relative_to(self.repo_root)),
+            }
+
+        try:
+            local_dir.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                yaml.dump(config_data, default_flow_style=False),
+                encoding="utf-8",
+            )
+
+            # Compute hash like metriplane does
+            content = out_path.read_bytes()
+        except (OSError, RuntimeError):
+            return 503, {"error": f"Unable to write config '{filename}'"}
         config_hash = hashlib.sha256(content).hexdigest()
 
         return 200, {
@@ -1027,7 +1132,6 @@ class OperatorAPI:
             duration_s = int(body.get("duration_s", 60))
         except (TypeError, ValueError):
             return 400, {"error": "duration_s must be an integer"}
-        run_id: str = str(body.get("run_id") or "")
         backend = _body_text(body, "backend", "cpu")
 
         # Validate config
@@ -1045,10 +1149,15 @@ class OperatorAPI:
         if backend not in ("cpu", "gpu"):
             return 400, {"error": "backend must be cpu or gpu"}
 
-        # Auto generate run_id if not provided
-        if not run_id:
+        # Auto-generate only when the field is omitted; explicit blanks are invalid.
+        if "run_id" not in body:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             run_id = f"operator_run_{ts}"
+        else:
+            provided_run_id = body["run_id"]
+            if not isinstance(provided_run_id, str):
+                return 400, {"error": "run_id must be a string when provided"}
+            run_id = provided_run_id
         try:
             run_id = validate_portable_run_id(run_id)
         except ValueError as exc:

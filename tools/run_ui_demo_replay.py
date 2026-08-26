@@ -46,7 +46,10 @@ def main(argv: list[str] | None = None) -> int:
 
     py = sys.executable
     try:
-        run_id = validate_portable_run_id(args.run_id or generate_run_id("metriplane_demo"))
+        requested_run_id = (
+            generate_run_id("metriplane_demo") if args.run_id is None else args.run_id
+        )
+        run_id = validate_portable_run_id(requested_run_id)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2

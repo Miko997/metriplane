@@ -22,6 +22,20 @@ from metriplane.provenance.run_provenance import generate_run_id
 from metriplane.run_ids import validate_portable_run_id
 
 
+def _resolve_output_path(value: str) -> Path:
+    unresolved = Path(value)
+    try:
+        expanded = unresolved.expanduser()
+        try:
+            return expanded.resolve(strict=True)
+        except FileNotFoundError:
+            return expanded.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError(
+            f"cannot resolve latency output path {unresolved}"
+        ) from exc
+
+
 def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
     # Prefer exact match
     direct = runs_dir / run_id
@@ -57,9 +71,18 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     try:
-        run_id = validate_portable_run_id(args.run_id or generate_run_id("m95_latency"))
+        requested_run_id = (
+            generate_run_id("m95_latency") if args.run_id is None else args.run_id
+        )
+        run_id = validate_portable_run_id(requested_run_id)
     except ValueError as exc:
         print(exc, file=sys.stderr)
+        return 2
+
+    try:
+        out_path = _resolve_output_path(args.out)
+    except PlatformPathError as exc:
+        print(f"output path error: {exc}", file=sys.stderr)
         return 2
 
     try:
@@ -76,8 +99,6 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, PlatformPathError) as exc:
         print(f"platform path error: {exc}", file=sys.stderr)
         return 2
-
-    out_path = Path(args.out).expanduser().resolve()
 
     if args.runner == "fusion":
         cmd = [sys.executable, "-m", "metriplane.run_fusion", "--config", args.config, "--runs-dir", str(runs_dir), "--run-id", run_id]

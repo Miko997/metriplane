@@ -576,7 +576,7 @@ def cmd_start(
 ) -> int:
     """Start the local Metriplane stack. Returns exit code."""
     timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
-    effective_run_id = run_id or f"live_{timestamp}"
+    effective_run_id = f"live_{timestamp}" if run_id is None else run_id
     if live:
         try:
             effective_run_id = validate_portable_run_id(effective_run_id)

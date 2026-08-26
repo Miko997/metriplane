@@ -371,6 +371,54 @@ class TestLauncherDefaults:
         assert not paths.state_dir.exists()
         assert not (tmp_path / "runs").exists()
 
+    @pytest.mark.parametrize("run_id", ["", " \t "])
+    def test_live_start_rejects_explicit_blank_run_id_before_writing(
+        self,
+        run_id,
+        monkeypatch,
+        tmp_path,
+    ):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path / "platform")
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **_kwargs: pytest.fail("blank run ID reached launcher process start"),
+        )
+
+        assert (
+            lm.cmd_start(
+                live=True,
+                run_id=run_id,
+                runs_dir=str(tmp_path / "runs"),
+                paths=paths,
+                open_browser=False,
+            )
+            == 2
+        )
+        assert not paths.state_dir.exists()
+        assert not (tmp_path / "runs").exists()
+
+    def test_live_start_generates_run_id_when_omitted(self, monkeypatch, tmp_path):
+        import metriplane.launcher as lm
+
+        validated: list[str] = []
+        monkeypatch.setattr(
+            lm,
+            "validate_portable_run_id",
+            lambda value: (validated.append(value), value)[1],
+        )
+        monkeypatch.setattr(
+            lm,
+            "_effective_paths",
+            lambda _paths: (_ for _ in ()).throw(OSError("stop after run-ID validation")),
+        )
+
+        assert lm.cmd_start(live=True, run_id=None, open_browser=False) == 2
+        assert len(validated) == 1
+        assert validated[0].startswith("live_")
+
     @pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
     def test_fusion_launcher_rejects_windows_device_run_id(
         self,

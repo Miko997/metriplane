@@ -1319,7 +1319,9 @@ async function startFusion() {
   const logEl = document.getElementById('step-9-log');
   if (logEl) { logEl.className = 'output-log visible'; logEl.textContent = '● Starting…'; }
 
-  const resp = await runnerPost('/operator/start-fusion', { config, duration_s, run_id });
+  const request = { config, duration_s };
+  if (run_id) { request.run_id = run_id; }
+  const resp = await runnerPost('/operator/start-fusion', request);
   if (resp.error) {
     showLog('step-9-log', '<span class="log-fail">✗ ' + escHtml(resp.error) + '</span>');
     setStepStatus(9, 'error');

@@ -198,6 +198,8 @@ def test_cli_run_reports_platform_path_failure_without_traceback(capsys, monkeyp
 @pytest.mark.parametrize(
     "run_id",
     [
+        "",
+        " \t ",
         "../escape",
         "nested/run",
         r"..\escape",

@@ -239,9 +239,11 @@ def test_runtime_run_storage_permission_failure_is_clean(
         ("metriplane.run_fusion", "run_loop_fusion"),
     ],
 )
-def test_runtime_rejects_explicit_whitespace_run_id(
+@pytest.mark.parametrize("run_id", ["", " \t "])
+def test_runtime_rejects_explicit_blank_run_id(
     module_name: str,
     entrypoint_name: str,
+    run_id: str,
     tmp_path: Path,
     caplog,
 ) -> None:
@@ -249,7 +251,7 @@ def test_runtime_rejects_explicit_whitespace_run_id(
 
     result = getattr(module, entrypoint_name)(
         Config(source_mode="dummy"),
-        run_id=" \t ",
+        run_id=run_id,
         paths=_platform_paths(tmp_path),
     )
 
@@ -606,6 +608,25 @@ def test_ui_demo_replay_rejects_windows_device_run_ids_before_writing(
     assert not runs_dir.exists()
 
 
+@pytest.mark.parametrize("run_id", ["", " \t "])
+def test_ui_demo_replay_rejects_explicit_blank_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda *_args: pytest.fail("blank run ID reached a demo writer"),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir), "--run-id", run_id]) == 2
+    assert not runs_dir.exists()
+
+
 def test_latency_benchmark_whitespace_runs_dir_uses_platform_root(
     tmp_path: Path,
     monkeypatch,
@@ -688,6 +709,94 @@ def test_latency_benchmark_rejects_windows_device_run_ids_before_writing(
         == 2
     )
     assert not runs_dir.exists()
+
+
+@pytest.mark.parametrize("run_id", ["", " \t "])
+def test_latency_benchmark_rejects_explicit_blank_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_latency_breakdown.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("blank run ID reached benchmark process"),
+    )
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(tmp_path / "latency.csv"),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 2
+    )
+    assert not runs_dir.exists()
+
+
+def test_latency_benchmark_rejects_output_symlink_loop_deterministically(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    output = tmp_path / "latency-loop.csv"
+    runs_dir = tmp_path / "runs"
+    output.symlink_to(output.name)
+    monkeypatch.setattr(
+        run_latency_breakdown.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("invalid output path reached benchmark process"),
+    )
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(output),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                "latency_loop",
+            ]
+        )
+        == 2
+    )
+    assert capsys.readouterr().err == (
+        f"output path error: cannot resolve latency output path {output}\n"
+    )
+    assert not runs_dir.exists()
+
+
+def test_latency_benchmark_generates_run_id_when_omitted(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    generated_prefixes: list[str] = []
+    monkeypatch.setattr(
+        run_latency_breakdown,
+        "generate_run_id",
+        lambda prefix: (generated_prefixes.append(prefix), "generated_latency")[1],
+    )
+    monkeypatch.setattr(
+        run_latency_breakdown,
+        "_resolve_output_path",
+        lambda _value: (_ for _ in ()).throw(PlatformPathError("stop after generation")),
+    )
+
+    assert run_latency_breakdown.main(["--out", str(tmp_path / "latency.csv")]) == 2
+    assert generated_prefixes == ["m95_latency"]
 
 
 def test_metriplane_run_help_retains_frozen_legacy_default(capsys) -> None:
@@ -907,6 +1016,69 @@ def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: 
         )
 
     assert not (tmp_path / "escape").exists()
+
+
+def test_run_context_generates_run_id_only_when_omitted(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.delenv("METRIPLANE_RUN_ID", raising=False)
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    monkeypatch.setattr(run_provenance, "generate_run_id", lambda: "generated_run")
+
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=None,
+        runs_dir=str(tmp_path / "runs"),
+    )
+
+    assert context.run_id == "generated_run"
+    assert context.run_dir == tmp_path / "runs" / "generated_run"
+
+
+@pytest.mark.parametrize(
+    ("run_id", "expected_collision_run_id"),
+    [
+        ("a" * 128, "a" * 126 + "-1"),
+        ("a" * 125 + ".bc", "a" * 125 + "-1"),
+    ],
+)
+def test_run_context_collision_suffix_remains_portable_and_matches_metadata(
+    tmp_path: Path,
+    monkeypatch,
+    run_id: str,
+    expected_collision_run_id: str,
+) -> None:
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    runs_dir = tmp_path / "runs"
+    config = Config(source_mode="dummy")
+
+    first = create_run_context(
+        config,
+        config_path=None,
+        argv=[],
+        run_id=run_id,
+        runs_dir=str(runs_dir),
+    )
+    collision = create_run_context(
+        config,
+        config_path=None,
+        argv=[],
+        run_id=run_id,
+        runs_dir=str(runs_dir),
+    )
+    metadata = json.loads(collision.meta_json.read_text(encoding="utf-8"))
+
+    assert first.run_id == run_id
+    assert collision.run_id == expected_collision_run_id
+    assert collision.run_dir.name == expected_collision_run_id
+    assert len(collision.run_id) <= 128
+    assert validate_portable_run_id(collision.run_id) == collision.run_id
+    assert metadata["run_id"] == collision.run_id
 
 
 @pytest.mark.parametrize(

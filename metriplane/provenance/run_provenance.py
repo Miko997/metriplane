@@ -24,7 +24,7 @@ import yaml
 
 from metriplane.config import Config, resolve_profile
 from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_runs_dir
-from metriplane.run_ids import validate_portable_run_id
+from metriplane.run_ids import MAX_PORTABLE_RUN_ID_LENGTH, validate_portable_run_id
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
 _REDACTED = "<redacted>"
@@ -250,10 +250,14 @@ def dump_config_yaml(cfg: Config) -> str:
 
 
 def _ensure_unique_run_dir(path: Path) -> Path:
+    run_id = validate_portable_run_id(path.name)
     if not path.exists():
         return path
     for i in range(1, 1000):
-        cand = Path(f"{path}-{i}")
+        suffix = f"-{i}"
+        stem = run_id[: MAX_PORTABLE_RUN_ID_LENGTH - len(suffix)].rstrip(".")
+        collision_run_id = validate_portable_run_id(f"{stem}{suffix}")
+        cand = path.with_name(collision_run_id)
         if not cand.exists():
             return cand
     raise RuntimeError(f"could not find unique run dir name for {path}")
@@ -394,10 +398,9 @@ def create_run_context(
     except ValueError as exc:  # defense in depth; the run-id syntax already rejects separators
         raise ValueError("run_id resolves outside runs_dir") from exc
     run_dir = _ensure_unique_run_dir(candidate)
+    # If collision suffixing changed the directory, keep the persisted ID in sync.
+    rid = validate_portable_run_id(run_dir.name)
     run_dir.mkdir(parents=True, exist_ok=False)
-
-    # IMPORTANT: if we had to suffix, run_id must match directory name
-    rid = run_dir.name
 
     # Git + config hash
     git = get_git_info(start=Path.cwd())
