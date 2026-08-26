@@ -1086,7 +1086,7 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     ap.add_argument(
         "--runs-dir",
         default=None,
-        help="Override runs base dir (default: platform runs directory).",
+        help="Override runs base dir (default: /data/runs in docker, ./runs on host).",
     )
     ap.add_argument(
         "--fault",

@@ -103,9 +103,10 @@ A launcher override is propagated to the runner, its allowlisted replay command,
 environment used by allowlisted `tools/mp.sh` jobs.
 
 The primary `metriplane run` command injects the platform default. The legacy `metriplane-run`
-console script, direct `python -m metriplane.run`, and runtime APIs without injected paths retain
-their established fallback: `/data/runs` when the Docker data directory is active and `./runs` on a
-host. Supplying `--runs-dir`, config `runs_dir`, or injected `PlatformPaths` still takes precedence.
+console script, direct `python -m metriplane.run`, direct `python -m metriplane.run_fusion`, and
+runtime APIs without injected paths retain their established fallback: `/data/runs` when the Docker
+data directory is active and `./runs` on a host. Supplying `--runs-dir`, config `runs_dir`, or
+injected `PlatformPaths` still takes precedence.
 
 Runtime provenance resolves its run root in this order: direct `--runs-dir`, config `runs_dir`, an
 injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the legacy Docker or host fallback above.

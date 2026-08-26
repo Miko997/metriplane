@@ -85,6 +85,35 @@ def test_path_traversal_rejected(api):
     assert data["incidents"] == []
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "live-summary",
+        "objects",
+        "incidents",
+        "traces",
+        "camera-trust",
+        "frames",
+        "ask",
+    ],
+)
+def test_command_center_endpoints_never_500_for_looped_run_dir(
+    api,
+    endpoint: str,
+    tmp_path: Path,
+) -> None:
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+    body = {"run_dir": str(loop)}
+    if endpoint == "ask":
+        body["question"] = "what happened?"
+
+    status, data = api.route("POST", f"/operator/{endpoint}", body)
+
+    assert status == 200
+    assert "Internal error" not in str(data)
+
+
 def test_frames_endpoint(api):
     st, data = api.route("POST", "/operator/frames", {"run_dir": BUNDLE})
     assert st == 200

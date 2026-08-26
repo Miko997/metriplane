@@ -665,6 +665,18 @@ def test_primary_run_help_names_platform_runs_directory(capsys) -> None:
     assert "default: platform data directory" not in normalized
 
 
+def test_direct_fusion_help_names_legacy_default(capsys) -> None:
+    from metriplane import run_fusion
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_fusion.main(["--help"])
+
+    assert exc_info.value.code == 0
+    normalized = " ".join(capsys.readouterr().out.split())
+    assert "default: /data/runs in docker, ./runs on host" in normalized
+    assert "default: platform runs directory" not in normalized
+
+
 @pytest.mark.parametrize(
     ("argv", "configured_runs_dir"),
     [

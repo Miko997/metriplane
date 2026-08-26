@@ -1177,7 +1177,12 @@ class OperatorAPI:
     def _cc_resolve_run_dir(self, body: Dict) -> Optional[Path]:
         requested = (body or {}).get("run_dir")
         if requested:
-            p = Path(requested).expanduser().resolve()
+            if not isinstance(requested, str):
+                return None
+            try:
+                p = Path(requested).expanduser().resolve(strict=True)
+            except (OSError, RuntimeError):
+                return None
             if any(p == r or r in p.parents for r in self._cc_allowed_roots()) and p.is_dir():
                 return p
             return None
