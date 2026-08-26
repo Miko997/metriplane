@@ -146,6 +146,8 @@ an `APPROVED` review after that request:
 metriplane-merge-approval:v1 <sha256-of-canonical-request>
 ~~~
 
+The approval body may end at the digest or include one terminal newline.
+
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
 earlier approval. It re-reads the pull request, every commit actor, reviews,
@@ -193,13 +195,14 @@ python -m tools.capture_repository_protection \
 ~~~
 
 `repository-protection-activation-evidence.json` retains the unnormalized
-repository response, both stable ruleset summary inventories, every ruleset
-detail, the merge-queue response, and each request's status, safe response
-headers, and GitHub request ID. The raw REST repository identity and GraphQL
-`nameWithOwner` must bind the requested repository; malformed GraphQL data or
-any GraphQL `errors` field fails closed. Missing request IDs, summary/detail
-drift, or inventory drift also makes capture fail closed. Authorization,
-cookie, and related headers are redacted before retention.
+repository response, both stable ruleset summary inventories, both exact detail
+passes for every ruleset, the merge-queue response, and each request's status,
+safe response headers, and GitHub request ID. The raw REST repository identity
+and GraphQL `nameWithOwner` must bind the requested repository; malformed
+GraphQL data or any GraphQL `errors` field fails closed. Missing request IDs,
+summary/detail drift, detail-pass drift, or inventory drift also makes capture
+fail closed. Authorization, cookie, and related headers are redacted before
+retention.
 
 Repository administrators remain a trusted settings boundary because GitHub
 does not offer an atomic ruleset-read-and-merge transaction. Any omitted

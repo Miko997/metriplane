@@ -981,9 +981,10 @@ def parse_approval(body: Any) -> str:
     if not isinstance(body, str):
         raise BrokerError("merge approval review has no body")
     prefix = f"{APPROVAL_MARKER} "
-    if not body.endswith("\n") or not body.startswith(prefix):
+    normalized = body.removesuffix("\n")
+    if not normalized.startswith(prefix):
         raise BrokerError("merge approval review marker is invalid")
-    value = body[len(prefix) : -1]
+    value = normalized[len(prefix) :]
     if DIGEST_RE.fullmatch(value) is None:
         raise BrokerError("merge approval digest is invalid")
     return value
@@ -3029,19 +3030,6 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
-        if admission["kind"] == "normal":
-            verified_state = HealthReconciler(
-                api=self.api,
-                config=self.config,
-                spool=self.spool,
-                state_branch=state_branch,
-                token=token,
-            ).verify_current_health(self.api.provider_now(token))
-            if verified_state.get("state_commit") != state.get(
-                "state_commit"
-            ) or verified_state.get("generation") != state.get("generation"):
-                raise BrokerError("main-health state changed during provider health verification")
-
         pull_again, reviews_again, commits_again = _pull_snapshot(
             self.api,
             config=self.config,
@@ -3102,6 +3090,18 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
+        if admission["kind"] == "normal":
+            verified_state = HealthReconciler(
+                api=self.api,
+                config=self.config,
+                spool=self.spool,
+                state_branch=state_branch,
+                token=token,
+            ).verify_current_health(self.api.provider_now(token))
+            if verified_state.get("state_commit") != state.get(
+                "state_commit"
+            ) or verified_state.get("generation") != state.get("generation"):
+                raise BrokerError("main-health state changed during final provider verification")
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],

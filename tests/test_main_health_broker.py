@@ -13,7 +13,7 @@ import urllib.request
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import pytest
 
@@ -146,7 +146,7 @@ def _reviews(*, approver_id: int = 40, approver_login: str = "reviewer") -> list
             "user": {"id": 20, "login": "requester"},
         },
         {
-            "body": f"{broker.APPROVAL_MARKER} {broker.digest(request)}\n",
+            "body": f"{broker.APPROVAL_MARKER} {broker.digest(request)}",
             "commit_id": HEAD_SHA,
             "id": 101,
             "state": "APPROVED",
@@ -509,13 +509,15 @@ def test_provider_server_error_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_mutating_malformed_json_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
     class MalformedResponse:
-        headers: dict[str, str] = {}
         status = 200
 
-        def __enter__(self) -> MalformedResponse:
+        def __init__(self) -> None:
+            self.headers: dict[str, str] = {}
+
+        def __enter__(self) -> Self:
             return self
 
-        def __exit__(self, *_args: Any) -> None:
+        def __exit__(self, *_args: object) -> None:
             return None
 
         def read(self) -> bytes:
@@ -795,6 +797,22 @@ def test_admission_binds_exact_provider_request_and_independent_approval() -> No
     assert admission["request_digest"] == broker.digest(_request())
     assert admission["approval_review_id"] == 101
     assert admission["health_generation"] == 42
+
+
+@pytest.mark.parametrize("suffix", ["", "\n"])
+def test_approval_parser_accepts_the_visible_documented_form(suffix: str) -> None:
+    request_digest = broker.digest(_request())
+    assert (
+        broker.parse_approval(f"{broker.APPROVAL_MARKER} {request_digest}{suffix}")
+        == request_digest
+    )
+
+
+@pytest.mark.parametrize("suffix", [" ", "\r\n", "\n\n", "\nextra"])
+def test_approval_parser_rejects_noncanonical_trailing_content(suffix: str) -> None:
+    request_digest = broker.digest(_request())
+    with pytest.raises(broker.BrokerError, match="digest is invalid"):
+        broker.parse_approval(f"{broker.APPROVAL_MARKER} {request_digest}{suffix}")
 
 
 def test_admission_rejects_noncomment_request_and_revoked_approval() -> None:
@@ -1323,6 +1341,7 @@ class FakeTransactionApi(broker.GitHubApi):
         self.weekly_run_id = 602
         self.weekly_status = "completed"
         self.drift_on_final_ruleset = False
+        self.inject_older_rerun_on_final_ruleset = False
         self.extra_active_ruleset = False
         self.inventory_source_drift = False
         self.include_deep_runs = True
@@ -1394,6 +1413,16 @@ class FakeTransactionApi(broker.GitHubApi):
             return broker.ApiResult({}, 200, {"permission": "write"})
         if "/rulesets?includes_parents=true" in path:
             self.ruleset_inventory_calls += 1
+            if self.inject_older_rerun_on_final_ruleset and self.ruleset_inventory_calls >= 2:
+                self.older_weekly_rerun = {
+                    "conclusion": None,
+                    "display_title": "Main Health Deep / main-health-weekly / main",
+                    "head_sha": BASE_SHA,
+                    "id": 600,
+                    "run_attempt": 2,
+                    "status": "in_progress",
+                    "updated_at": "2026-08-26T12:01:00Z",
+                }
             inventory = [
                 {
                     field: ruleset[field]
@@ -1904,6 +1933,25 @@ def test_older_deep_health_rerun_cannot_hide_behind_a_later_run(
             token="token",
         )
 
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+def test_deep_rerun_introduced_by_final_ruleset_read_blocks_merge(tmp_path: Path) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.inject_older_rerun_on_final_ruleset = True
+
+    with pytest.raises(broker.BrokerError, match="unreconciled weekly deep-health attempt"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.ruleset_inventory_calls == 2
     assert api.merge_calls == 0
     assert checks.succeeded == []
 

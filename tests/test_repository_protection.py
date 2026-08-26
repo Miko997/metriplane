@@ -354,7 +354,8 @@ def test_activation_capture_retains_complete_raw_evidence(
     assert evidence["provider_responses"] == {
         "merge_queue_graphql": merge_queue,
         "repository": repository,
-        "ruleset_details": [detail],
+        "ruleset_details_initial": [detail],
+        "ruleset_details_verification": [detail],
         "ruleset_summary_inventory_initial": [summary],
         "ruleset_summary_inventory_verification": [summary],
     }
@@ -363,8 +364,9 @@ def test_activation_capture_retains_complete_raw_evidence(
     assert [item["purpose"] for item in requests] == [
         "repository",
         "ruleset_summary_inventory_initial",
-        "ruleset_detail",
+        "ruleset_detail_initial",
         "ruleset_summary_inventory_verification",
+        "ruleset_detail_verification",
         "merge_queue_graphql",
     ]
     assert [item["github_request_id"] for item in requests] == [
@@ -373,6 +375,7 @@ def test_activation_capture_retains_complete_raw_evidence(
         "REQ:3",
         "REQ:4",
         "REQ:5",
+        "REQ:6",
     ]
     assert all(item["status"] == 200 for item in requests)
     assert all(item["headers"]["set-cookie"] == ["<redacted>"] for item in requests)
@@ -502,6 +505,48 @@ def test_activation_capture_rejects_summary_inventory_drift(
     monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
 
     with pytest.raises(ValueError, match="inventory changed"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
+
+
+def test_activation_capture_rejects_detail_drift_after_stable_summary_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, summary, detail, _merge_queue = _activation_provider_payloads()
+    drifted_detail = copy.deepcopy(detail)
+    rules = drifted_detail["rules"]
+    assert isinstance(rules, list)
+    status_rule = next(
+        rule
+        for rule in rules
+        if isinstance(rule, dict) and rule.get("type") == "required_status_checks"
+    )
+    parameters = status_rule["parameters"]
+    assert isinstance(parameters, dict)
+    parameters["strict_required_status_checks_policy"] = False
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        endpoint = kwargs["endpoint"]
+        purpose = kwargs["purpose"]
+        if endpoint == "repos/Miko997/metriplane":
+            return repository
+        if purpose in {
+            "ruleset_summary_inventory_initial",
+            "ruleset_summary_inventory_verification",
+        }:
+            return [summary]
+        if purpose == "ruleset_detail_initial":
+            return detail
+        if purpose == "ruleset_detail_verification":
+            return drifted_detail
+        pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match="detail inventory changed"):
         capture_tool._capture_activation(
             "Miko997/metriplane",
             "2026-08-26T20:00:00Z",

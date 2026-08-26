@@ -146,10 +146,11 @@ same-plan proof that retains provider request IDs and raw responses:
 
 `tools/capture_repository_protection.py` writes
 `repository-protection-activation-evidence.json` with the unnormalized
-repository, initial and verification inventories, ruleset details, merge-queue
-response, safe response headers, and one provider request ID per request. It
-rejects mismatched REST/GraphQL repository identity, malformed GraphQL data or
-errors, missing request IDs, summary/detail disagreement, or inventory changes.
+repository, initial and verification summary inventories, both exact ruleset
+detail passes, merge-queue response, safe response headers, and one provider
+request ID per request. It rejects mismatched REST/GraphQL repository identity,
+malformed GraphQL data or errors, missing request IDs, summary/detail
+disagreement, detail-pass drift, or inventory changes.
 
 Only after that proof and credential rotation may the repository-protection
 example change activation_state from planned to active.

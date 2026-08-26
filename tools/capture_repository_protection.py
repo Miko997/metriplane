@@ -291,6 +291,30 @@ def _require_matching_ruleset_detail(summary: dict[str, Any], detail: dict[str, 
         raise ValueError("ruleset summary/detail governance fields disagree: " + ", ".join(drifted))
 
 
+def _capture_ruleset_details(
+    *,
+    repository: str,
+    summaries: list[dict[str, Any]],
+    gh: Path,
+    purpose: str,
+    evidence_requests: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for summary in summaries:
+        detail = _run_included_json(
+            gh=gh,
+            endpoint=f"repos/{repository}/rulesets/{summary['id']}",
+            arguments=[],
+            purpose=purpose,
+            evidence_requests=evidence_requests,
+        )
+        if not isinstance(detail, dict):
+            raise TypeError("ruleset detail must be a JSON object")
+        _require_matching_ruleset_detail(summary, detail)
+        details.append(detail)
+    return details
+
+
 def _sha(value: Any) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
 
@@ -610,19 +634,13 @@ def _capture_activation(
         purpose="ruleset_summary_inventory_initial",
         evidence_requests=evidence_requests,
     )
-    rulesets_payload: list[dict[str, Any]] = []
-    for item in ruleset_summaries:
-        detail = _run_included_json(
-            gh=gh,
-            endpoint=f"repos/{repository}/rulesets/{item['id']}",
-            arguments=[],
-            purpose="ruleset_detail",
-            evidence_requests=evidence_requests,
-        )
-        if not isinstance(detail, dict):
-            raise TypeError("ruleset detail must be a JSON object")
-        _require_matching_ruleset_detail(item, detail)
-        rulesets_payload.append(detail)
+    initial_ruleset_details = _capture_ruleset_details(
+        repository=repository,
+        summaries=ruleset_summaries,
+        gh=gh,
+        purpose="ruleset_detail_initial",
+        evidence_requests=evidence_requests,
+    )
     verification_summaries = _capture_ruleset_inventory(
         repository=repository,
         gh=gh,
@@ -631,6 +649,15 @@ def _capture_activation(
     )
     if ruleset_summaries != verification_summaries:
         raise ValueError("ruleset summary inventory changed during activation capture")
+    verified_ruleset_details = _capture_ruleset_details(
+        repository=repository,
+        summaries=verification_summaries,
+        gh=gh,
+        purpose="ruleset_detail_verification",
+        evidence_requests=evidence_requests,
+    )
+    if initial_ruleset_details != verified_ruleset_details:
+        raise ValueError("ruleset detail inventory changed during activation capture")
     merge_queue_payload = _run_included_json(
         gh=gh,
         endpoint="graphql",
@@ -645,7 +672,7 @@ def _capture_activation(
         repository=repository,
         captured_at=captured_at,
         repository_payload=repository_payload,
-        rulesets_payload=rulesets_payload,
+        rulesets_payload=verified_ruleset_details,
         merge_queue_payload=merge_queue_payload,
     )
     evidence = {
@@ -654,7 +681,8 @@ def _capture_activation(
         "provider_responses": {
             "merge_queue_graphql": merge_queue_payload,
             "repository": repository_payload,
-            "ruleset_details": rulesets_payload,
+            "ruleset_details_initial": initial_ruleset_details,
+            "ruleset_details_verification": verified_ruleset_details,
             "ruleset_summary_inventory_initial": ruleset_summaries,
             "ruleset_summary_inventory_verification": verification_summaries,
         },
