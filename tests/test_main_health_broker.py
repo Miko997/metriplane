@@ -59,7 +59,7 @@ def _rulesets(config: broker.BrokerConfig) -> dict[int, dict[str, Any]]:
         config.core_ruleset_id: broker._core_ruleset(),
         config.admission_ruleset_id: broker._admission_ruleset(),
         config.main_update_ruleset_id: broker._app_update_ruleset(
-            name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"]
+            name="Restrict main updates to broker", include=[broker.MAIN_REF]
         ),
         config.state_protection_ruleset_id: broker._state_protection_ruleset(config.state_branch),
         config.state_writer_ruleset_id: broker._app_update_ruleset(
@@ -293,6 +293,7 @@ def _installation_response(
 
 def _repository_response(*, repository_id: int = 1234) -> dict[str, Any]:
     return {
+        "default_branch": "main",
         "full_name": REPOSITORY,
         "id": repository_id,
         "name": "metriplane",
@@ -473,6 +474,13 @@ def test_authenticator_binds_inventory_to_canonical_repository(tmp_path: Path) -
             tmp_path,
             FakeTokenApi(repository=_repository_response(repository_id=5678)),
         ).mint()
+
+
+def test_authenticator_rejects_a_non_main_default_branch(tmp_path: Path) -> None:
+    repository = _repository_response()
+    repository["default_branch"] = "develop"
+    with pytest.raises(broker.BrokerError, match="identity is not canonical"):
+        _authenticator(tmp_path, FakeTokenApi(repository=repository)).mint()
 
 
 def test_provider_server_error_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -736,6 +744,15 @@ def test_rulesets_require_app_only_updates_and_no_human_bypass(tmp_path: Path) -
     values = _rulesets(config)
     digests = broker.validate_hosted_rulesets(config=config, rulesets=values)
     assert set(digests) == {str(identifier) for identifier in values}
+    for identifier in (
+        config.core_ruleset_id,
+        config.admission_ruleset_id,
+        config.main_update_ruleset_id,
+    ):
+        assert values[identifier]["conditions"]["ref_name"] == {
+            "exclude": [],
+            "include": [broker.MAIN_REF],
+        }
 
     changed = _rulesets(config)
     changed[config.admission_ruleset_id]["bypass_actors"] = [
@@ -1288,6 +1305,13 @@ class FakeTransactionApi(broker.GitHubApi):
         self.behavior = behavior
         self.config = config
         self.current_now = NOW + timedelta(minutes=2)
+        self.default_branch = "main"
+        self.documentation_conclusion: str | None = "success"
+        self.documentation_run_id = 502
+        self.documentation_status = "completed"
+        self.weekly_conclusion: str | None = "success"
+        self.weekly_run_id = 602
+        self.weekly_status = "completed"
         self.drift_on_final_ruleset = False
         self.extra_active_ruleset = False
         self.inventory_source_drift = False
@@ -1310,6 +1334,12 @@ class FakeTransactionApi(broker.GitHubApi):
         expected: tuple[int, ...] = (200,),
     ) -> broker.ApiResult:
         assert token == "token"
+        if path == f"repos/{REPOSITORY}":
+            return broker.ApiResult(
+                {},
+                200,
+                {**_repository_response(), "default_branch": self.default_branch},
+            )
         if path.endswith("/pulls/81/merge"):
             assert method == "PUT"
             assert payload == {"merge_method": "merge", "sha": HEAD_SHA}
@@ -1397,19 +1427,127 @@ class FakeTransactionApi(broker.GitHubApi):
 
     def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
         assert token == "token"
-        assert key == "check_runs"
-        assert path.endswith(f"/commits/{HEAD_SHA}/check-runs?filter=all")
-        return [
-            {
-                "app": {"id": broker.ACTIONS_INTEGRATION_ID},
-                "conclusion": "success",
-                "head_sha": HEAD_SHA,
-                "id": 100 + offset,
-                "name": name,
-                "status": "completed",
+        if key == "check_runs":
+            assert path.endswith(f"/commits/{HEAD_SHA}/check-runs?filter=all")
+            return [
+                {
+                    "app": {"id": broker.ACTIONS_INTEGRATION_ID},
+                    "conclusion": "success",
+                    "head_sha": HEAD_SHA,
+                    "id": 100 + offset,
+                    "name": name,
+                    "status": "completed",
+                }
+                for offset, name in enumerate(broker.CORE_CHECKS)
+            ]
+        if "actions/workflows/ci.yml/runs" in path:
+            assert key == "workflow_runs"
+            return [
+                {
+                    "conclusion": "success",
+                    "created_at": "2026-08-26T11:50:00Z",
+                    "event": "push",
+                    "head_branch": "main",
+                    "head_sha": BASE_SHA,
+                    "id": 501,
+                    "run_attempt": 1,
+                    "status": "completed",
+                }
+            ]
+        if path.endswith(f"/actions/runs?head_sha={BASE_SHA}"):
+            assert key == "workflow_runs"
+            return [
+                {
+                    "conclusion": conclusion,
+                    "event": "push",
+                    "head_branch": "main",
+                    "head_sha": BASE_SHA,
+                    "id": run_id,
+                    "name": workflow,
+                    "run_attempt": 1,
+                    "status": status,
+                }
+                for run_id, workflow, status, conclusion in (
+                    (
+                        self.documentation_run_id,
+                        "Documentation",
+                        self.documentation_status,
+                        self.documentation_conclusion,
+                    ),
+                    (503, "CodeQL", "completed", "success"),
+                )
+            ]
+        if "actions/workflows/main-health.yml/runs" in path:
+            assert key == "workflow_runs"
+            return [
+                {
+                    "conclusion": conclusion,
+                    "display_title": f"Main Health Deep / main-health-{cadence} / main",
+                    "head_sha": BASE_SHA,
+                    "id": run_id,
+                    "run_attempt": 1,
+                    "status": status,
+                    "updated_at": "2026-08-26T11:55:00Z",
+                }
+                for cadence, run_id, status, conclusion in (
+                    ("nightly", 601, "completed", "success"),
+                    (
+                        "weekly",
+                        self.weekly_run_id,
+                        self.weekly_status,
+                        self.weekly_conclusion,
+                    ),
+                )
+            ]
+        if "/actions/runs/" in path and path.endswith("/jobs"):
+            assert key == "jobs"
+            run_id = int(path.split("/runs/", 1)[1].split("/", 1)[0])
+            attempt = int(path.split("/attempts/", 1)[1].split("/", 1)[0])
+            if run_id in {601, self.weekly_run_id}:
+                cadence = "nightly" if run_id == 601 else "weekly"
+                status = self.weekly_status if cadence == "weekly" else "completed"
+                conclusion = self.weekly_conclusion if cadence == "weekly" else "success"
+                return [
+                    {
+                        "conclusion": conclusion,
+                        "head_sha": BASE_SHA,
+                        "id": 1_000 + run_id,
+                        "name": f"Main health deep / {cadence}",
+                        "run_attempt": attempt,
+                        "run_id": run_id,
+                        "status": status,
+                    }
+                ]
+            key_by_run = {
+                501: "metriplane",
+                self.documentation_run_id: "documentation",
+                503: "security",
             }
-            for offset, name in enumerate(broker.CORE_CHECKS)
-        ]
+            selected_key = key_by_run[run_id]
+            terminal, workflow = broker.observe_main_health.REQUIRED_WORKFLOWS[selected_key]
+            job_id = 1_000 + run_id
+            status = self.documentation_status if selected_key == "documentation" else "completed"
+            conclusion = (
+                self.documentation_conclusion if selected_key == "documentation" else "success"
+            )
+            return [
+                {
+                    "check_run_url": (
+                        f"https://api.github.com/repos/{REPOSITORY}/check-runs/{job_id}"
+                    ),
+                    "conclusion": conclusion,
+                    "head_branch": "main",
+                    "head_sha": BASE_SHA,
+                    "id": job_id,
+                    "name": terminal,
+                    "run_attempt": attempt,
+                    "run_id": run_id,
+                    "run_url": f"https://api.github.com/repos/{REPOSITORY}/actions/runs/{run_id}",
+                    "status": status,
+                    "workflow_name": workflow,
+                }
+            ]
+        raise AssertionError((key, path))
 
 
 def test_pull_snapshot_rejects_an_incomplete_provider_commit_inventory(tmp_path: Path) -> None:
@@ -1432,6 +1570,14 @@ def test_ruleset_fetch_rejects_an_extra_active_ruleset_of_any_target(tmp_path: P
         broker._rulesets(api, config=config, token="token")
 
 
+def test_ruleset_fetch_revalidates_the_main_default_branch(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakeTransactionApi(config, "success")
+    api.default_branch = "develop"
+    with pytest.raises(broker.BrokerError, match="default branch is not canonical"):
+        broker._rulesets(api, config=config, token="token")
+
+
 def test_ruleset_fetch_rejects_inventory_detail_source_disagreement(tmp_path: Path) -> None:
     config = _config(tmp_path)
     api = FakeTransactionApi(config, "success")
@@ -1449,6 +1595,19 @@ class FakeAdmissionState:
             "status": "green",
             "updated_at": "2026-08-26T12:01:00Z",
         }
+
+    def read_with_result_identities(self) -> tuple[dict[str, Any], set[tuple[str, str]]]:
+        return self.read(), {
+            (
+                "protected-main",
+                "github-actions-set:v1:metriplane=501:1;documentation=502:1;security=503:1",
+            )
+        }
+
+    def read_with_deep_identities(
+        self,
+    ) -> tuple[dict[str, Any], dict[str, set[tuple[int, int]]]]:
+        return self.read(), {"nightly": {(601, 1)}, "weekly": {(602, 1)}}
 
 
 class FakeRepairState:
@@ -1602,6 +1761,66 @@ def test_health_freshness_is_rechecked_at_exact_merge_boundary(tmp_path: Path) -
             state_branch=BoundaryState(),  # type: ignore[arg-type]
             token="token",
         )
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion", "message"),
+    [
+        ("in_progress", None, "companion workflows are still pending"),
+        ("completed", "failure", "aggregate is not successful"),
+    ],
+)
+def test_documentation_rerun_blocks_at_the_exact_merge_boundary(
+    tmp_path: Path,
+    status: str,
+    conclusion: str | None,
+    message: str,
+) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.documentation_run_id = 504
+    api.documentation_status = status
+    api.documentation_conclusion = conclusion
+
+    with pytest.raises(broker.BrokerError, match=message):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("in_progress", None), ("completed", "failure")],
+)
+def test_deep_health_rerun_blocks_at_the_exact_merge_boundary(
+    tmp_path: Path,
+    status: str,
+    conclusion: str | None,
+) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.weekly_run_id = 603
+    api.weekly_status = status
+    api.weekly_conclusion = conclusion
+
+    with pytest.raises(broker.BrokerError, match="weekly deep-health attempt is not successful"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
     assert api.merge_calls == 0
     assert checks.succeeded == []
 
@@ -2000,6 +2219,7 @@ class FakeDeepApi(broker.GitHubApi):
             {
                 "conclusion": "success",
                 "head_sha": BASE_SHA,
+                "id": 1_000 + run_id,
                 "name": f"Main health deep / {cadence}",
                 "run_attempt": run_attempt,
                 "run_id": run_id,
@@ -2021,7 +2241,7 @@ class FakeStateBranch:
         source = deep_identities or {"nightly": set(), "weekly": set()}
         self.deep_identities = {cadence: set(values) for cadence, values in source.items()}
         self.result_identities = {
-            (cadence, identity)
+            (cadence, f"github-actions:{identity[0]}:{identity[1]}")
             for cadence, identities in self.deep_identities.items()
             for identity in identities
         }
@@ -2038,7 +2258,7 @@ class FakeStateBranch:
 
     def read_with_result_identities(
         self,
-    ) -> tuple[dict[str, Any], set[tuple[str, tuple[int, int]]]]:
+    ) -> tuple[dict[str, Any], set[tuple[str, str]]]:
         return dict(self.state), set(self.result_identities)
 
     def append(
@@ -2052,9 +2272,13 @@ class FakeStateBranch:
         self.appends.append((scope, summary))
         self.state["generation"] += 1
         self.state["updated_at"] = summary["recorded_at"]
-        identity = broker._deep_result_identity(summary["run_id"])
         cadence = "protected-main" if scope == "main" else scope
-        self.result_identities.add((cadence, identity))
+        if cadence == "protected-main":
+            result_identity = broker._protected_main_result_identity(summary["run_id"])
+            self.result_identities.add((cadence, result_identity))
+        else:
+            identity = broker._deep_result_identity(summary["run_id"])
+            self.result_identities.add((cadence, f"github-actions:{identity[0]}:{identity[1]}"))
         if scope in self.deep_identities:
             self.deep_identities[scope].add(identity)
         return dict(self.state)
@@ -2105,7 +2329,7 @@ def test_fresh_cached_green_cannot_hide_a_newer_active_ci_attempt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = FakeStateBranch()
-    state.result_identities.add(("protected-main", (20, 1)))
+    state.result_identities.add(("protected-main", "github-actions:20:1"))
     reconciler = broker.HealthReconciler(
         api=FakeDeepApi(),
         config=_config(tmp_path),
@@ -2129,6 +2353,37 @@ def test_fresh_cached_green_cannot_hide_a_newer_active_ci_attempt(
     assert state.appends == []
 
 
+def test_fresh_cached_green_records_a_new_documentation_failure(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakeTransactionApi(config, "success")
+    api.documentation_run_id = 504
+    api.documentation_conclusion = "failure"
+    state = FakeStateBranch()
+    state.result_identities.add(
+        (
+            "protected-main",
+            "github-actions-set:v1:metriplane=501:1;documentation=502:1;security=503:1",
+        )
+    )
+    reconciler = broker.HealthReconciler(
+        api=api,
+        config=config,
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=state,  # type: ignore[arg-type]
+        token="token",
+    )
+
+    reconciler.reconcile_main(NOW)
+
+    assert len(state.appends) == 1
+    scope, summary = state.appends[0]
+    assert scope == "main"
+    assert summary["conclusion"] == "failure"
+    assert summary["run_id"] == (
+        "github-actions-set:v1:metriplane=501:1;documentation=504:1;security=503:1"
+    )
+
+
 def test_red_state_records_each_protected_main_attempt_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2149,7 +2404,14 @@ def test_red_state_records_each_protected_main_attempt_once(
         "run_attempt": 1,
         "status": "completed",
     }
-    selection = {"ready": True, "runs": []}
+    selection = {
+        "ready": True,
+        "runs": [
+            {"id": 20, "key": "metriplane", "run_attempt": 1},
+            {"id": 21, "key": "documentation", "run_attempt": 1},
+            {"id": 22, "key": "security", "run_attempt": 1},
+        ],
+    }
     monkeypatch.setattr(reconciler, "_current_ci", lambda _sha: ci_run)
     monkeypatch.setattr(reconciler, "_workflow_runs", lambda _sha: [])
     monkeypatch.setattr(
@@ -2167,7 +2429,10 @@ def test_red_state_records_each_protected_main_attempt_once(
     reconciler.reconcile_main(NOW + timedelta(minutes=1))
 
     assert [(scope, summary["run_id"]) for scope, summary in state.appends] == [
-        ("main", "github-actions:20:1")
+        (
+            "main",
+            "github-actions-set:v1:metriplane=20:1;documentation=21:1;security=22:1",
+        )
     ]
 
 

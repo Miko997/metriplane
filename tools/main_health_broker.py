@@ -21,7 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -37,6 +37,8 @@ SETTINGS_APP_SLUG = "metriplane-ruleset-witness"
 REPOSITORY_OWNER = "Miko997"
 REPOSITORY_NAME = "metriplane"
 REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
+MAIN_BRANCH = "main"
+MAIN_REF = f"refs/heads/{MAIN_BRANCH}"
 MAX_PULL_COMMITS = 250
 MAIN_HEALTH_CHECK = "Main health / required"
 CORE_CHECKS = (
@@ -474,6 +476,7 @@ def _repository_identity(value: Any, *, account_id: int, label: str) -> int:
     if (
         value.get("name") != REPOSITORY_NAME
         or value.get("full_name") != REPOSITORY
+        or value.get("default_branch") != MAIN_BRANCH
         or owner.get("login") != REPOSITORY_OWNER
         or owner.get("type") != "User"
         or owner_id != account_id
@@ -840,7 +843,7 @@ def _provider_ruleset(value: dict[str, Any]) -> dict[str, Any]:
 def _core_ruleset() -> dict[str, Any]:
     return {
         "bypass_actors": [],
-        "conditions": {"ref_name": {"exclude": [], "include": ["~DEFAULT_BRANCH"]}},
+        "conditions": {"ref_name": {"exclude": [], "include": [MAIN_REF]}},
         "enforcement": "active",
         "name": "Protect main",
         "rules": [
@@ -869,7 +872,7 @@ def _core_ruleset() -> dict[str, Any]:
 def _admission_ruleset() -> dict[str, Any]:
     return {
         "bypass_actors": [],
-        "conditions": {"ref_name": {"exclude": [], "include": ["~DEFAULT_BRANCH"]}},
+        "conditions": {"ref_name": {"exclude": [], "include": [MAIN_REF]}},
         "enforcement": "active",
         "name": "Protect main health admission",
         "rules": [
@@ -919,7 +922,7 @@ def validate_hosted_rulesets(
         config.core_ruleset_id: _provider_ruleset(_core_ruleset()),
         config.admission_ruleset_id: _provider_ruleset(_admission_ruleset()),
         config.main_update_ruleset_id: _provider_ruleset(
-            _app_update_ruleset(name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"])
+            _app_update_ruleset(name="Restrict main updates to broker", include=[MAIN_REF])
         ),
         config.state_protection_ruleset_id: _provider_ruleset(
             _state_protection_ruleset(config.state_branch)
@@ -1605,6 +1608,49 @@ def _deep_result_identity(value: Any) -> tuple[int, int]:
     return (int(match.group(1)), int(match.group(2)))
 
 
+def _protected_main_result_identity(value: Any) -> str:
+    if not isinstance(value, str):
+        raise BrokerError("protected-main result run identity is malformed")
+    if value.isdigit():
+        run_id = _require_positive_int(int(value), "legacy protected-main run ID")
+        return f"github-actions:{run_id}:1"
+    if re.fullmatch(r"github-actions:[1-9][0-9]*:[1-9][0-9]*", value):
+        return value
+    if re.fullmatch(
+        r"github-actions-set:v1:"
+        r"metriplane=[1-9][0-9]*:[1-9][0-9]*;"
+        r"documentation=(?:[1-9][0-9]*:[1-9][0-9]*|missing);"
+        r"security=(?:[1-9][0-9]*:[1-9][0-9]*|missing)",
+        value,
+    ):
+        return value
+    raise BrokerError("protected-main result run identity is not canonical")
+
+
+def _protected_main_selection_identity(selection: Mapping[str, Any]) -> str:
+    runs = selection.get("runs")
+    if not isinstance(runs, list):
+        raise BrokerError("protected-main workflow selection is malformed")
+    identities: dict[str, str] = {}
+    for run in runs:
+        if not isinstance(run, dict):
+            raise BrokerError("protected-main selected run is malformed")
+        key = run.get("key")
+        if key not in observe_main_health.REQUIRED_WORKFLOWS or key in identities:
+            raise BrokerError("protected-main selected workflow identity is not exact")
+        run_id = _require_positive_int(run.get("id"), f"{key} run ID")
+        attempt = _require_positive_int(run.get("run_attempt"), f"{key} run attempt")
+        identities[str(key)] = f"{run_id}:{attempt}"
+    if "metriplane" not in identities:
+        raise BrokerError("protected-main selection omits the triggering CI attempt")
+    return (
+        "github-actions-set:v1:"
+        f"metriplane={identities['metriplane']};"
+        f"documentation={identities.get('documentation', 'missing')};"
+        f"security={identities.get('security', 'missing')}"
+    )
+
+
 def _repair_passing_results(root: Path) -> dict[tuple[str, str], dict[str, Any]]:
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for path in sorted((root / "history").glob("*.json")):
@@ -1726,7 +1772,7 @@ class StateBranch:
 
     def read_with_result_identities(
         self,
-    ) -> tuple[dict[str, Any], set[tuple[str, tuple[int, int]]]]:
+    ) -> tuple[dict[str, Any], set[tuple[str, str]]]:
         before = self.provider_ref()
         self.config.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.TemporaryDirectory(
@@ -1735,7 +1781,7 @@ class StateBranch:
             root = Path(temporary)
             self._checkout(root, before)
             state = stop_the_line.validate_git_history(root)
-            identities: set[tuple[str, tuple[int, int]]] = set()
+            identities: set[tuple[str, str]] = set()
             for path in sorted((root / "results").glob("*.json")):
                 try:
                     result = json.loads(path.read_text(encoding="utf-8"))
@@ -1746,7 +1792,12 @@ class StateBranch:
                 cadence = result.get("cadence")
                 if cadence not in {"protected-main", "nightly", "weekly"}:
                     continue
-                identities.add((str(cadence), _deep_result_identity(result.get("run_id"))))
+                if cadence == "protected-main":
+                    identity = _protected_main_result_identity(result.get("run_id"))
+                else:
+                    run_id, attempt = _deep_result_identity(result.get("run_id"))
+                    identity = f"github-actions:{run_id}:{attempt}"
+                identities.add((str(cadence), identity))
         after = self.provider_ref()
         if after != before or state.get("state_commit") != before:
             raise BrokerError("state branch changed during result identity validation")
@@ -1949,7 +2000,29 @@ def _check_runs(
     )
 
 
+def _validate_runtime_repository(api: GitHubApi, *, config: BrokerConfig, token: str) -> None:
+    result = api.request(f"repos/{config.repository}", token=token)
+    value = result.value
+    if not isinstance(value, dict):
+        raise BrokerError("runtime repository response is malformed")
+    owner = value.get("owner")
+    if not isinstance(owner, dict):
+        raise BrokerError("runtime repository owner is malformed")
+    _require_positive_int(value.get("id"), "runtime repository ID")
+    _require_positive_int(owner.get("id"), "runtime repository owner ID")
+    if (
+        config.repository != REPOSITORY
+        or value.get("name") != REPOSITORY_NAME
+        or value.get("full_name") != config.repository
+        or value.get("default_branch") != MAIN_BRANCH
+        or owner.get("login") != REPOSITORY_OWNER
+        or owner.get("type") != "User"
+    ):
+        raise BrokerError("runtime repository identity or default branch is not canonical")
+
+
 def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, dict[str, Any]]:
+    _validate_runtime_repository(api, config=config, token=token)
     identifiers = (
         config.core_ruleset_id,
         config.admission_ruleset_id,
@@ -2056,20 +2129,10 @@ class HealthReconciler:
             ),
         )
 
-    def reconcile_main(self, provider_now: datetime) -> dict[str, Any]:
+    def _observe_main(
+        self, provider_now: datetime
+    ) -> tuple[str, str, int, observe_main_health.Observation]:
         main_sha = _main_ref(self.api, config=self.config, token=self.token)
-        state, result_identities = self.state_branch.read_with_result_identities()
-        updated_at = state.get("updated_at")
-        age = (
-            float("inf")
-            if not isinstance(updated_at, str)
-            else (provider_now - _timestamp(updated_at)).total_seconds()
-        )
-        current_and_fresh = (
-            state.get("status") == "green"
-            and state.get("last_good_sha") == main_sha
-            and 0 <= age <= max(60, self.config.health_max_age_seconds // 2)
-        )
         ci_run = self._current_ci(main_sha)
         if ci_run is None:
             raise BrokerError("current main has no exact CI run")
@@ -2083,9 +2146,6 @@ class HealthReconciler:
         run_conclusion = ci_run.get("conclusion")
         if not isinstance(run_conclusion, str):
             raise BrokerError("current main CI conclusion is malformed")
-        identity = ("protected-main", (run_id, run_attempt))
-        if current_and_fresh and identity in result_identities:
-            return state
         workflow_runs = self._workflow_runs(main_sha)
         selection = observe_main_health.select_runs(
             workflow_runs=workflow_runs,
@@ -2094,6 +2154,7 @@ class HealthReconciler:
             run_conclusion=run_conclusion,
             sha=main_sha,
         )
+        identity = _protected_main_selection_identity(selection)
         if selection["ready"]:
             jobs_by_key = {run["key"]: self._jobs(run) for run in selection["runs"]}
             observation = observe_main_health.observe_jobs(
@@ -2116,20 +2177,45 @@ class HealthReconciler:
             sha=main_sha,
         )
         if verification != selection:
+            identity = _protected_main_selection_identity(verification)
             observation = observe_main_health.invalidate_selection(verification)
         if _main_ref(self.api, config=self.config, token=self.token) != main_sha:
             raise BrokerError("main changed during health observation")
+        return main_sha, identity, run_id, observation
+
+    def reconcile_main(self, provider_now: datetime) -> dict[str, Any]:
+        main_sha, identity, run_id, observation = self._observe_main(provider_now)
+        state, result_identities = self.state_branch.read_with_result_identities()
+        updated_at = state.get("updated_at")
+        age = (
+            float("inf")
+            if not isinstance(updated_at, str)
+            else (provider_now - _timestamp(updated_at)).total_seconds()
+        )
+        recorded = ("protected-main", identity) in result_identities
+        current_and_fresh = (
+            state.get("status") == "green"
+            and state.get("last_good_sha") == main_sha
+            and 0 <= age <= max(60, self.config.health_max_age_seconds // 2)
+        )
+        if (
+            current_and_fresh
+            and recorded
+            and observation["ready"]
+            and observation["conclusion"] == "success"
+        ):
+            return state
         recorded_at = provider_now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
         summary = {
             "cadence": "protected-main",
             "conclusion": observation["conclusion"],
             "obligations": observation["obligations"],
             "recorded_at": recorded_at,
-            "run_id": f"github-actions:{run_id}:{run_attempt}",
+            "run_id": identity,
             "schema_version": 1,
             "sha": main_sha,
         }
-        if state.get("status") == "red" and identity in result_identities:
+        if state.get("status") == "red" and recorded:
             return state
         appended = self.state_branch.append(
             expected_generation=_require_positive_int(state.get("generation"), "state generation"),
@@ -2149,6 +2235,127 @@ class HealthReconciler:
         if " / main-health-weekly / " in title or " / 23 3 * * 0 / " in title:
             return "weekly"
         return None
+
+    def _observe_current_deep(self, main_sha: str) -> dict[str, dict[str, Any]]:
+        runs = self.api.list_items(
+            (f"repos/{self.config.repository}/actions/workflows/main-health.yml/runs?branch=main"),
+            key="workflow_runs",
+            token=self.token,
+        )
+        candidates: dict[str, list[dict[str, Any]]] = {"nightly": [], "weekly": []}
+        identities: set[tuple[str, int, int]] = set()
+        for run in runs:
+            cadence = self._deep_cadence(run)
+            if cadence is None or run.get("head_sha") != main_sha:
+                continue
+            run_id = _require_positive_int(run.get("id"), "current deep-health run ID")
+            attempt = _require_positive_int(
+                run.get("run_attempt"), "current deep-health run attempt"
+            )
+            if attempt > 100:
+                raise BrokerError("current deep-health run attempt exceeds the governed bound")
+            identity = (cadence, run_id, attempt)
+            if identity in identities:
+                raise BrokerError("provider repeated a current deep-health run attempt")
+            identities.add(identity)
+            candidates[cadence].append(run)
+
+        proof: dict[str, dict[str, Any]] = {}
+        for cadence in ("nightly", "weekly"):
+            if not candidates[cadence]:
+                raise BrokerError(f"current main has no {cadence} deep-health run")
+            run = max(
+                candidates[cadence],
+                key=lambda item: (
+                    _require_positive_int(item.get("id"), "current deep-health run ID"),
+                    _require_positive_int(
+                        item.get("run_attempt"), "current deep-health run attempt"
+                    ),
+                ),
+            )
+            run_id = _require_positive_int(run.get("id"), "current deep-health run ID")
+            attempt = _require_positive_int(
+                run.get("run_attempt"), "current deep-health run attempt"
+            )
+            if run.get("status") != "completed" or run.get("conclusion") != "success":
+                raise BrokerError(f"current-main {cadence} deep-health attempt is not successful")
+            jobs = self.api.list_items(
+                (f"repos/{self.config.repository}/actions/runs/{run_id}/attempts/{attempt}/jobs"),
+                key="jobs",
+                token=self.token,
+            )
+            expected_name = f"Main health deep / {cadence}"
+            exact_jobs = [job for job in jobs if job.get("name") == expected_name]
+            if len(exact_jobs) != 1:
+                raise BrokerError(f"current-main {cadence} deep-health job is not unique")
+            job = exact_jobs[0]
+            job_id = _require_positive_int(job.get("id"), f"{cadence} deep-health job ID")
+            if not (
+                job.get("status") == "completed"
+                and job.get("conclusion") == "success"
+                and job.get("run_id") == run_id
+                and job.get("run_attempt") == attempt
+                and job.get("head_sha") == main_sha
+            ):
+                raise BrokerError(f"current-main {cadence} deep-health job is not exact")
+            proof[cadence] = {
+                "job_id": job_id,
+                "run_attempt": attempt,
+                "run_id": run_id,
+            }
+        return proof
+
+    def verify_current_health(self, provider_now: datetime) -> dict[str, Any]:
+        main_sha, identity, _run_id, observation = self._observe_main(provider_now)
+        if not observation["ready"] or observation["conclusion"] != "success":
+            raise BrokerError("current protected-main aggregate is not successful")
+        deep_before = self._observe_current_deep(main_sha)
+        state, result_identities = self.state_branch.read_with_result_identities()
+        deep_state, deep_identities = self.state_branch.read_with_deep_identities()
+        if deep_state.get("state_commit") != state.get("state_commit") or deep_state.get(
+            "generation"
+        ) != state.get("generation"):
+            raise BrokerError("main-health state changed during final provider verification")
+        updated_at = state.get("updated_at")
+        age = (
+            float("inf")
+            if not isinstance(updated_at, str)
+            else (provider_now - _timestamp(updated_at)).total_seconds()
+        )
+        if not (0 <= age <= self.config.health_max_age_seconds):
+            raise BrokerError("protected main state is stale at final provider verification")
+        if (
+            state.get("status") != "green"
+            or state.get("last_good_sha") != main_sha
+            or ("protected-main", identity) not in result_identities
+        ):
+            raise BrokerError("protected main state does not retain the current aggregate evidence")
+        for cadence, value in deep_before.items():
+            deep_identity = (value["run_id"], value["run_attempt"])
+            if deep_identity not in deep_identities[cadence]:
+                raise BrokerError(
+                    f"protected main state does not retain current {cadence} evidence"
+                )
+
+        main_sha_after, identity_after, _run_id_after, observation_after = self._observe_main(
+            provider_now
+        )
+        deep_after = self._observe_current_deep(main_sha)
+        if (
+            main_sha_after != main_sha
+            or identity_after != identity
+            or observation_after != observation
+            or deep_after != deep_before
+        ):
+            raise BrokerError("provider health evidence changed at the final merge boundary")
+        state_after = self.state_branch.read()
+        if (
+            state_after.get("state_commit") != state.get("state_commit")
+            or state_after.get("generation") != state.get("generation")
+            or _main_ref(self.api, config=self.config, token=self.token) != main_sha
+        ):
+            raise BrokerError("main or protected health state changed after final verification")
+        return state
 
     def reconcile_deep(self, provider_now: datetime) -> dict[str, Any]:
         main_sha = _main_ref(self.api, config=self.config, token=self.token)
@@ -2822,6 +3029,18 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
+        if admission["kind"] == "normal":
+            verified_state = HealthReconciler(
+                api=self.api,
+                config=self.config,
+                spool=self.spool,
+                state_branch=state_branch,
+                token=token,
+            ).verify_current_health(self.api.provider_now(token))
+            if verified_state.get("state_commit") != state.get(
+                "state_commit"
+            ) or verified_state.get("generation") != state.get("generation"):
+                raise BrokerError("main-health state changed during provider health verification")
 
         pull_again, reviews_again, commits_again = _pull_snapshot(
             self.api,
@@ -2927,9 +3146,11 @@ class Broker:
             raise
         response_merge_sha: str | None = None
         if not ambiguous_response:
-            if not isinstance(merge_result, ApiResult) or not isinstance(merge_result.value, dict):
-                ambiguous_response = True
-            elif merge_result.value.get("merged") is not True:
+            if (
+                not isinstance(merge_result, ApiResult)
+                or not isinstance(merge_result.value, dict)
+                or merge_result.value.get("merged") is not True
+            ):
                 ambiguous_response = True
             else:
                 try:
