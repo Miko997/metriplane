@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 name: Main Health Lease
-run-name: Main Health Lease / ${{ github.event.client_payload.origin_run_id }}/${{ github.event.client_payload.origin_run_attempt }} / ${{ github.event.client_payload.nonce }} / ${{ github.event.client_payload.replica }}
+run-name: Main Health Lease / ${{ github.event.client_payload.origin_run_id }}/${{ github.event.client_payload.origin_run_attempt }} / ${{ github.event.client_payload.nonce }} / ${{ github.event.client_payload.replica || 'publisher' }}
 
 on:
   repository_dispatch:
-    types: [main-health-expire]
+    types: [main-health-expire, main-health-publish]
 
 permissions:
   contents: read
@@ -15,6 +15,7 @@ jobs:
   arm-and-wait:
     name: Main health lease closer / ${{ github.event.client_payload.replica }}
     if: >-
+      github.event.action == 'main-health-expire' &&
       github.actor == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG) &&
       github.event.sender.login == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG)
     runs-on: ubuntu-latest
@@ -76,7 +77,7 @@ jobs:
               raise SystemExit("main-health lease origin attempt is invalid")
           if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce):
               raise SystemExit("main-health lease nonce is invalid")
-          if replica not in {1, 2}:
+          if replica not in {1, 2, 3}:
               raise SystemExit("main-health lease replica is invalid")
           if not isinstance(deadline_epoch, int) or deadline_epoch <= 0:
               raise SystemExit("main-health lease deadline epoch is invalid")
@@ -229,7 +230,7 @@ jobs:
               or not re.fullmatch(r"[0-9a-f]{32}", nonce)
               or not isinstance(deadline_epoch, int)
               or deadline_epoch <= 0
-              or replica not in {1, 2}
+              or replica not in {1, 2, 3}
               or not isinstance(leases, list)
               or not leases
               or len(leases) > 1000
@@ -274,3 +275,281 @@ jobs:
               --app-id "$PUBLISHER_APP_ID" \
               --app-slug "$PUBLISHER_APP_SLUG"
           done < "$leases"
+
+  publish-successes:
+    name: Main health bounded success publisher
+    if: >-
+      github.event.action == 'main-health-publish' &&
+      github.actor == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG) &&
+      github.event.sender.login == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment: main-health-publisher
+    steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-actions: read
+          permission-checks: write
+
+      - name: Check out trusted publisher code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
+
+      - name: Publish only inside the provider-bounded window
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
+          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
+        run: |
+          set -euo pipefail
+          leases="$RUNNER_TEMP/main-health-publish-leases.tsv"
+          closers="$RUNNER_TEMP/main-health-publish-closers.tsv"
+          metadata="$RUNNER_TEMP/main-health-publish-metadata.tsv"
+          python - "$PAYLOAD" "$closers" "$metadata" > "$leases" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import re
+          import sys
+
+          payload = json.loads(sys.argv[1])
+          if set(payload) != {
+              "closers",
+              "deadline",
+              "deadline_epoch",
+              "leases",
+              "nonce",
+              "origin_run_attempt",
+              "origin_run_id",
+          }:
+              raise SystemExit("main-health publisher payload has unexpected fields")
+          run_id = str(payload["origin_run_id"])
+          run_attempt = str(payload["origin_run_attempt"])
+          nonce = payload["nonce"]
+          deadline = payload["deadline"]
+          deadline_epoch = payload["deadline_epoch"]
+          if (
+              not re.fullmatch(r"[1-9][0-9]*", run_id)
+              or not re.fullmatch(r"[1-9][0-9]*", run_attempt)
+              or not isinstance(nonce, str)
+              or not re.fullmatch(r"[0-9a-f]{32}", nonce)
+              or not isinstance(deadline_epoch, int)
+              or deadline_epoch <= 0
+          ):
+              raise SystemExit("main-health publisher generation is malformed")
+          try:
+              parsed_deadline = datetime.datetime.fromisoformat(
+                  str(deadline).replace("Z", "+00:00")
+              )
+          except ValueError as exc:
+              raise SystemExit("main-health publisher deadline is malformed") from exc
+          if (
+              parsed_deadline.tzinfo is None
+              or int(parsed_deadline.timestamp()) != deadline_epoch
+              or parsed_deadline.microsecond != 0
+          ):
+              raise SystemExit("main-health publisher deadline is inconsistent")
+          pathlib.Path(sys.argv[3]).write_text(
+              f"{run_id}\t{run_attempt}\t{nonce}\t{deadline}\t{deadline_epoch}\n",
+              encoding="utf-8",
+          )
+          closers = payload["closers"]
+          if (
+              not isinstance(closers, list)
+              or len(closers) != 3
+              or {item.get("replica") for item in closers if isinstance(item, dict)}
+              != {1, 2, 3}
+          ):
+              raise SystemExit("main-health publisher closer inventory is malformed")
+          closer_lines: list[str] = []
+          closer_runs: set[str] = set()
+          for closer in sorted(closers, key=lambda item: item["replica"]):
+              if not isinstance(closer, dict) or set(closer) != {
+                  "replica",
+                  "run_attempt",
+                  "run_id",
+              }:
+                  raise SystemExit("main-health publisher closer is malformed")
+              closer_run = str(closer["run_id"])
+              closer_attempt = str(closer["run_attempt"])
+              if (
+                  not re.fullmatch(r"[1-9][0-9]*", closer_run)
+                  or not re.fullmatch(r"[1-9][0-9]*", closer_attempt)
+                  or closer_run in closer_runs
+              ):
+                  raise SystemExit("main-health publisher closer is not unique")
+              closer_runs.add(closer_run)
+              closer_lines.append(
+                  f"{closer['replica']}\t{closer_run}\t{closer_attempt}\n"
+              )
+          pathlib.Path(sys.argv[2]).write_text("".join(closer_lines), encoding="utf-8")
+          leases = payload["leases"]
+          if not isinstance(leases, list) or not leases or len(leases) > 1000:
+              raise SystemExit("main-health publisher lease inventory is invalid")
+          seen: set[str] = set()
+          for lease in leases:
+              if not isinstance(lease, dict) or set(lease) != {
+                  "check_run_id",
+                  "external_id",
+                  "head_sha",
+              }:
+                  raise SystemExit("main-health publisher lease is malformed")
+              sha = lease["head_sha"]
+              check_run_id = lease["check_run_id"]
+              external_id = (
+                  f"mh1:{sha}:{run_id}:{run_attempt}:{nonce}:{deadline_epoch}"
+              )
+              if (
+                  not isinstance(sha, str)
+                  or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                  or sha in seen
+                  or not isinstance(check_run_id, int)
+                  or check_run_id <= 0
+                  or lease["external_id"] != external_id
+              ):
+                  raise SystemExit("main-health publisher lease is not provider-bound")
+              seen.add(sha)
+              print(sha, check_run_id, external_id, sep="\t")
+          PY
+          IFS=$'\t' read -r origin_run_id origin_run_attempt lease_nonce deadline \
+            deadline_epoch < "$metadata"
+          verify_closer_run() {
+            local replica="$1"
+            local closer_run_id="$2"
+            local closer_run_attempt="$3"
+            local run="$RUNNER_TEMP/main-health-publisher-closer-run-${replica}.json"
+            local jobs="$RUNNER_TEMP/main-health-publisher-closer-jobs-${replica}.json"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}" > "$run"
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}/attempts/${closer_run_attempt}/jobs?per_page=100" \
+              > "$jobs"
+            python - "$run" "$jobs" "$replica" "$closer_run_id" \
+              "$closer_run_attempt" "$lease_nonce" "$origin_run_id" \
+              "$origin_run_attempt" "$PUBLISHER_LOGIN" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          run = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          jobs = json.loads(pathlib.Path(sys.argv[2]).read_bytes()).get("jobs", [])
+          replica, run_id, run_attempt, nonce, origin_id, origin_attempt, publisher = (
+              sys.argv[3:10]
+          )
+          matching = [
+              job
+              for job in jobs
+              if job.get("name") == f"Main health lease closer / {replica}"
+          ]
+          waiting = [
+              step
+              for job in matching
+              for step in job.get("steps", [])
+              if step.get("name") == "Arm lease and wait for shared deadline"
+          ]
+          if not (
+              str(run.get("id")) == run_id
+              and str(run.get("run_attempt")) == run_attempt
+              and run.get("event") == "repository_dispatch"
+              and run.get("status") == "in_progress"
+              and run.get("conclusion") is None
+              and run.get("head_branch") == "main"
+              and run.get("path")
+              in {
+                  ".github/workflows/main-health-lease.yml",
+                  ".github/workflows/main-health-lease.yml@main",
+              }
+              and run.get("display_title")
+              == f"Main Health Lease / {origin_id}/{origin_attempt} / {nonce} / {replica}"
+              and run.get("actor", {}).get("login") == publisher
+              and run.get("triggering_actor", {}).get("login") == publisher
+              and len(matching) == 1
+              and matching[0].get("status") == "in_progress"
+              and matching[0].get("conclusion") is None
+              and len(waiting) == 1
+              and waiting[0].get("status") == "in_progress"
+          ):
+              raise SystemExit("main-health success publisher closer is not provider-active")
+          PY
+          }
+          clock="$(python tools/stop_the_line.py github-provider-clock)"
+          provider_epoch="$(jq -er '.epoch' <<<"$clock")"
+          (( deadline_epoch - provider_epoch >= 180 ))
+          while IFS=$'\t' read -r replica closer_run closer_attempt; do
+            verify_closer_run "$replica" "$closer_run" "$closer_attempt"
+          done < "$closers"
+
+          active_successes="$RUNNER_TEMP/main-health-publisher-active.jsonl"
+          : > "$active_successes"
+          cleanup_armed=true
+          cleanup_successes() {
+            local exit_code="$?"
+            trap - EXIT INT TERM
+            if [[ "$cleanup_armed" == true && -s "$active_successes" ]]; then
+              while IFS=$'\t' read -r head_sha check_run_id external_id; do
+                python tools/stop_the_line.py github-check-expire \
+                  --repository "$GITHUB_REPOSITORY" \
+                  --head-sha "$head_sha" \
+                  --check-run-id "$check_run_id" \
+                  --name "Main health admission / required" \
+                  --external-id "$external_id" \
+                  --details-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+                  --output-title "Main health publisher exited" \
+                  --output-summary "The bounded publisher exited before completing its generation." \
+                  --app-id "$PUBLISHER_APP_ID" \
+                  --app-slug "$PUBLISHER_APP_SLUG" || true
+              done < "$active_successes"
+            fi
+            exit "$exit_code"
+          }
+          trap cleanup_successes EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          details_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          while IFS=$'\t' read -r head_sha check_run_id external_id; do
+            clock="$(python tools/stop_the_line.py github-provider-clock)"
+            provider_epoch="$(jq -er '.epoch' <<<"$clock")"
+            (( deadline_epoch - provider_epoch >= 60 ))
+            current="$RUNNER_TEMP/main-health-publisher-current-${head_sha}.json"
+            python tools/stop_the_line.py github-check-get \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "Main health admission / required" \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG" > "$current"
+            jq -e \
+              --arg external_id "$external_id" \
+              --argjson check_run_id "$check_run_id" \
+              '.id == $check_run_id and .external_id == $external_id and
+               .status == "completed" and .conclusion == "failure"' \
+              "$current" >/dev/null
+            printf '%s\t%s\t%s\n' "$head_sha" "$check_run_id" "$external_id" \
+              >> "$active_successes"
+            published="$RUNNER_TEMP/main-health-publisher-success-${head_sha}.json"
+            python tools/stop_the_line.py github-check-set \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "Main health admission / required" \
+              --external-id "$external_id" \
+              --conclusion success \
+              --details-url "$details_url" \
+              --output-title "Main health admission passed" \
+              --output-summary "Admission is valid until ${deadline}." \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG" > "$published"
+            jq -e \
+              --arg external_id "$external_id" \
+              --argjson check_run_id "$check_run_id" \
+              '.id == $check_run_id and .external_id == $external_id and
+               .status == "completed" and .conclusion == "success"' \
+              "$published" >/dev/null
+          done < "$leases"
+          cleanup_armed=false

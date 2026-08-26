@@ -16,7 +16,9 @@ dedicated active rulesets cover `metriplane-main-health-state`. The immutable
 ruleset prohibits deletion and non-fast-forward updates with no bypass actors. A
 separate writer ruleset restricts updates and grants an `always` bypass only to
 the isolated Main Health GitHub App and the repository owner used for governed
-repair. `validate-git` walks the complete first-parent branch,
+repair. During an owner-emergency merge, that writer ruleset is temporarily
+frozen with no bypass actors and remains frozen through post-merge provider
+capture. `validate-git` walks the complete first-parent branch,
 requires exactly one validated generation per commit, and proves every earlier
 immutable byte remains present. A fast-forward whole-tree replacement therefore
 fails even if its new tree is internally self-consistent.
@@ -52,28 +54,32 @@ GitHub's 1,000-entry status or same-name check-run limits. The check's
 `external_id` binds the exact head SHA, origin run ID, origin attempt, random
 nonce, and one provider-derived deadline.
 
-Before publishing success, reconciliation derives one absolute four-minute
-deadline from GitHub's authenticated `Date` response and dispatches two
+Before publishing success, reconciliation derives one absolute six-minute
+deadline from GitHub's authenticated `Date` response and dispatches three
 independent, default-branch-only expiry runs with that exact deadline and check-run
 identity. Each closer updates one fixed-name App marker check, binds its own run
 and attempt into the marker `external_id`, and waits against authenticated provider
-time. Reconciliation verifies both distinct Actions runs, jobs, and wait steps are
-still in progress and requires at least 60 seconds to remain before it can publish
-green. The publisher then remains alive as a third closer until the same deadline.
-At the deadline the publisher and both independent expiry writers can change only
-the exact generation to failure. Publisher workflows are serialized with
-`queue: max`, but expiry writers deliberately hold no publisher concurrency lock;
-a lost publisher therefore cannot block either closer. An older attempt that
-observes a newer `external_id` is a no-op. If a newer mutation lands between an
-expiry writer's identity read and PATCH, the expiry can only write failure and
-omits `external_id`, so the race can conservatively reject a newer generation but
-cannot create success, extend green, or restore an older identity.
+time. Reconciliation verifies all three distinct Actions runs, jobs, and wait steps
+are still in progress. With at least three minutes remaining, it dispatches a
+separate success publisher and never writes success itself. The publisher has a
+two-minute job timeout, revalidates all three closers, requires at least three
+minutes at startup, and rechecks provider time for at least 60 seconds of margin
+before each success write. The timeout and margins ensure no success publisher can
+remain live at the shared deadline. At that deadline, any one of the three expiry
+writers can change only the exact generation to failure. Publisher workflows are
+serialized with `queue: max`, but expiry and bounded-publisher jobs deliberately
+hold no publisher concurrency lock; a lost coordinator or publisher therefore
+cannot block a closer. An older attempt that observes a newer `external_id` is a
+no-op. If a newer mutation lands between an expiry writer's identity read and
+PATCH, the expiry can only write failure and omits `external_id`, so the race can
+conservatively reject a newer generation but cannot create success, extend green,
+or restore an older identity.
 
 If dispatch, arming, active-run verification, or success verification fails,
 reconciliation retains or restores failure. An EXIT/INT/TERM cleanup covers every
-handled post-success publisher exit; the already active closers cover abrupt
-publisher runner loss. Every durable writer first publishes provider-verified
-failure on its measured main SHA. Only after CAS and read-back does the successful
+handled bounded-publisher exit after a success write; the three already active
+closers cover abrupt publisher runner loss. Every durable writer first publishes
+provider-verified failure on its measured main SHA. Only after CAS and read-back does the successful
 `persist-health` job update the one isolated-App `Main health writer / latest`
 check, whose `external_id` binds that main SHA to the exact state commit, run ID,
 and attempt. A five-minute tick reads the main ref, state ref, writer check,
@@ -170,17 +176,21 @@ two-line owner-emergency marker. Automated reconciliation never grants a red-hea
 owner emergency; it continues to publish failure. Caller-supplied provider JSON is
 not accepted as operational admission evidence. `capture-owner-admission` fetches
 the live pull request, complete file list, a stable invitation/collaborator
-snapshot, the live state-branch ref, and both active default-branch rulesets itself
-with an owner-authenticated token. The validated local state checkout must equal
+snapshot, the live state-branch ref, both active default-branch rulesets, and both
+active state-branch rulesets itself with an owner-authenticated token. The
+validated local state checkout must equal
 that ref before and after candidate validation; the immutable admission records its
 exact commit and generation. `Protect main` must retain the pull-request, deletion,
 non-fast-forward, and three non-health required-check protections without a
 bypass. `Protect main health admission` must contain only
 `Main health admission / required`, pin it to the dedicated Main Health App integration,
 and grant repository role `5` only the `pull_request` bypass mode. The state branch
-uses a non-bypassable deletion/non-fast-forward ruleset plus a separate update
-ruleset that permits writes only from that App or the exact repository owner.
-This permanent split is
+normally uses a non-bypassable deletion/non-fast-forward ruleset plus a separate
+update ruleset that permits writes only from that App or the exact repository
+owner. After exact-head qualification and independent approval, the update
+ruleset must be changed to the same active update restriction with an empty bypass
+inventory before owner admission begins. This temporary freeze prevents any state
+writer from changing the admitted ref across the GraphQL merge. This split is
 the truthful single-maintainer capability boundary; it never permits a direct
 push, tag, or bypass of the other required checks. Admission records that
 independent approval did not exist and publishes the canonical admission payload
@@ -192,17 +202,20 @@ requires that neither contains an eligible non-author reviewer. Admission requir
 their combined canonical digest to match the manifest. The provider comment starts
 a five-minute lease; editing it invalidates the admission. `merge-owner-emergency`
 re-fetches the comment, pull request, complete paths, manifest, owner permission,
-both rulesets, live state ref, and a stable collaboration snapshot twice at the
-merge boundary, then checks the same state ref once more immediately before merge.
+all four rulesets, live state ref, and a stable collaboration snapshot twice at
+the merge boundary, then checks the same state ref and all four rulesets once more
+immediately before merge.
 It then submits a GraphQL merge with `expectedHeadOid` through the governed
-pull-request-only bypass. No status is fabricated and no ruleset changes during
-the merge. The command is idempotent while the admitted state ref remains current:
+pull-request-only bypass. No status is fabricated, and the frozen state rulesets
+must remain unchanged during the merge. The command is idempotent while the
+admitted state ref remains current:
 if GitHub completed the merge but the client lost the response, a prompt rerun
 accepts only the provider-recorded exact head, owner merge actor, merge timestamp,
 unchanged admission, state binding, and policy, then reconstructs the same
-`owner-merge-gate.json`. Post-merge capture re-fetches the
-admission comment, stable collaboration snapshot, both rulesets, pull request,
-permission, and both commits. Provider timestamps must bracket the merge, and
+`owner-merge-gate.json`. Post-merge capture re-fetches the admission comment,
+stable collaboration snapshot, all four rulesets, exact live state ref, pull
+request, permission, and both commits while the writer remains frozen. Provider
+timestamps must bracket the merge, and
 the merge must precede manifest expiry. Post-merge `captured_at` is the actual provider
 response time at retrieval, not the caller's local clock or the earlier merge
 timestamp. Its manifest digest and
@@ -210,15 +223,11 @@ policy-amendment digest must match the authorization.
 
 Retain the JSON outputs from `capture-owner-admission` and
 `merge-owner-emergency` as `owner-admission.json` and
-`owner-merge-gate.json`. After that exact PR merges, run the `Main Health`
-deep cadences through trusted default-branch repository dispatches:
-
-```console
-gh api --method POST repos/Miko997/metriplane/dispatches \
-  -f event_type=main-health-nightly
-gh api --method POST repos/Miko997/metriplane/dispatches \
-  -f event_type=main-health-weekly
-```
+`owner-merge-gate.json`. Immediately after that exact PR merges, retain
+`provider-evidence.json` while the state writer remains frozen. Only then restore
+the audited normal writer ruleset with the App and owner bypass actors and verify
+the live response. Run the `Main Health` deep cadences through trusted
+default-branch repository dispatches after that restoration.
 
 Capture the merged owner decision with the provider admission and raw merge gate,
 construct the authorization from the captured evidence, and run `resolve`. The
@@ -231,6 +240,8 @@ remote commit before resolving, commit the generated immutable objects and point
 then reject any concurrent remote change before the non-force push:
 
 ```console
+gh api --method PUT repos/Miko997/metriplane/rulesets/21533351 \
+  --input state-writer-frozen.json > state-writer-frozen-response.json
 git clone --single-branch --branch metriplane-main-health-state \
   https://github.com/Miko997/metriplane.git main-health-state
 GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-admission \
@@ -239,6 +250,8 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-admission \
   --expected-head-sha <reviewed-head> \
   --protection-ruleset-id 20613848 \
   --main-health-ruleset-id 21500579 \
+  --state-protection-ruleset-id 21487681 \
+  --state-writer-ruleset-id 21533351 \
   > owner-admission.json
 GITHUB_TOKEN=<token> python tools/stop_the_line.py merge-owner-emergency \
   --root main-health-state --repository Miko997/metriplane \
@@ -249,6 +262,14 @@ GITHUB_TOKEN=<token> python tools/stop_the_line.py capture-owner-emergency \
   --issue MET-NNN --incident-digest <digest> \
   --admission-json owner-admission.json \
   --merge-gate-json owner-merge-gate.json > provider-evidence.json
+gh api --method PUT repos/Miko997/metriplane/rulesets/21533351 \
+  --input state-writer-normal.json > state-writer-normal-response.json
+gh api repos/Miko997/metriplane/rulesets/21533351 \
+  > state-writer-verified-response.json
+gh api --method POST repos/Miko997/metriplane/dispatches \
+  -f event_type=main-health-nightly
+gh api --method POST repos/Miko997/metriplane/dispatches \
+  -f event_type=main-health-weekly
 expected_commit="$(git -C main-health-state rev-parse HEAD)"
 python tools/stop_the_line.py validate-git --root main-health-state
 GITHUB_TOKEN=<token> python tools/stop_the_line.py resolve \
@@ -301,7 +322,10 @@ integration ID. State ruleset `21487681` contains deletion and non-fast-forward
 restrictions with no bypass actors. Writer ruleset `21533351` contains only the
 update restriction with exactly two `always` bypass actors: App integration
 `4722589` for normal CAS writes and repository owner user `141511110` for governed
-repair.
+repair. An owner-emergency merge temporarily changes only that bypass inventory to
+empty. Admission, merge, and post-merge capture require the frozen configuration;
+the normal two-actor configuration is restored and verified before deep cadence or
+resolution writes resume.
 Changing any App permission, environment branch policy, required-check source, or
 state-branch bypass inventory is a security-policy change and requires the same
 evidence and review as writer code.

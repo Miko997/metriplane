@@ -294,12 +294,16 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     reconcile = "\n".join(
         step.get("run", "") for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
     )
+    assert health["jobs"]["reconcile-candidate-statuses"]["name"] == (
+        "Main health admission coordinator"
+    )
+    assert health["jobs"]["reconcile-candidate-statuses"]["timeout-minutes"] == 20
     assert "validate-git" in reconcile
     assert "state=open" in reconcile
     assert "Main health admission / required" in reconcile
     assert "github-check-set" in reconcile
     assert "github-check-get" in reconcile
-    assert "github-check-expire" in reconcile
+    assert "github-check-expire" not in reconcile
     reconcile_step = next(
         step
         for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
@@ -333,24 +337,24 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert 'leases="$RUNNER_TEMP/main-health-success-leases.jsonl"' in reconcile
     assert ': > "$leases"' in reconcile
     assert "main-health-expire" in reconcile
-    assert "for replica in 1 2" in reconcile
-    assert "deadline_epoch=$((provider_epoch + 240))" in reconcile
+    assert reconcile.count("for replica in 1 2 3") >= 2
+    assert "deadline_epoch=$((provider_epoch + 360))" in reconcile
     assert "mh1:${lease_sha}:${GITHUB_RUN_ID}" in reconcile
     assert "Main health lease closer / ${replica}" in reconcile
     assert "lease_marker_binding" in reconcile
     assert "verify_closer_run" in reconcile
     assert "main-health lease closer is not provider-active" in reconcile
     assert "github-provider-clock" in reconcile
-    assert "deadline_epoch - provider_epoch < 60" in reconcile
-    assert "Main health publisher exited" in reconcile
-    assert "cleanup_successes" in reconcile
-    assert reconcile.count("while true; do") >= 1
-    assert "provider_epoch >= deadline_epoch" in reconcile
+    assert "deadline_epoch - provider_epoch < 180" in reconcile
+    assert "main-health-publish" in reconcile
+    assert '"$lease_sha" success "$external_id"' not in reconcile
+    assert "Main health publisher exited" not in reconcile
+    assert "cleanup_successes" not in reconcile
     dispatch_index = reconcile.index("main-health-expire")
     marker_index = reconcile.index("! lease_marker_binding")
-    active_index = reconcile.index('verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"')
-    success_index = reconcile.index('"$lease_sha" success "$external_id"')
-    assert dispatch_index < marker_index < active_index < success_index
+    active_index = reconcile.index('verify_closer_run 3 "$closer_run_3" "$closer_attempt_3"')
+    publish_index = reconcile.index("main-health-publish")
+    assert dispatch_index < marker_index < active_index < publish_index
     invalidator = "\n".join(
         step.get("run", "") for step in health["jobs"]["invalidate-candidate-statuses"]["steps"]
     )
@@ -397,15 +401,23 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
 
     lease = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
     lease_trigger = lease.get("on", lease.get(True))
-    assert lease_trigger == {"repository_dispatch": {"types": ["main-health-expire"]}}
+    assert lease_trigger == {
+        "repository_dispatch": {"types": ["main-health-expire", "main-health-publish"]}
+    }
     arm = lease["jobs"]["arm-and-wait"]
     expiry = lease["jobs"]["expire-successes"]
+    bounded_publisher = lease["jobs"]["publish-successes"]
     assert arm["environment"] == "main-health-publisher"
     assert expiry["environment"] == "main-health-publisher"
+    assert bounded_publisher["environment"] == "main-health-publisher"
     assert "github.actor == format" in arm["if"]
     assert "github.event.sender.login == format" in arm["if"]
+    assert "github.event.action == 'main-health-expire'" in arm["if"]
+    assert "github.event.action == 'main-health-publish'" in bounded_publisher["if"]
+    assert "github.actor == format" in bounded_publisher["if"]
+    assert "github.event.sender.login == format" in bounded_publisher["if"]
     assert expiry["needs"] == "arm-and-wait"
-    assert "concurrency" not in expiry
+    assert all("concurrency" not in job for job in (arm, expiry, bounded_publisher))
     for job in (arm, expiry):
         publisher = job["steps"][0]
         assert publisher["with"] == {
@@ -413,10 +425,19 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
             "private-key": "${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}",
             "permission-checks": "write",
         }
+    assert bounded_publisher["timeout-minutes"] == 2
+    assert bounded_publisher["steps"][0]["with"] == {
+        "app-id": "${{ vars.MAIN_HEALTH_APP_ID }}",
+        "private-key": "${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}",
+        "permission-actions": "read",
+        "permission-checks": "write",
+    }
     arm_script = "\n".join(step.get("run", "") for step in arm["steps"])
     expiry_script = "\n".join(step.get("run", "") for step in expiry["steps"])
+    publisher_script = "\n".join(step.get("run", "") for step in bounded_publisher["steps"])
     assert "deadline_epoch" in arm_script
     assert "main-health lease deadline is inconsistent" in arm_script
+    assert "replica not in {1, 2, 3}" in arm_script
     assert "mh1-closer:" in arm_script
     assert "github-check-get" in arm_script
     assert "github-check-set" in arm_script
@@ -424,6 +445,18 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "github-provider-clock" in arm_script
     assert "github-check-expire" in expiry_script
     assert "Main health admission expired" in expiry_script
+    assert "len(closers) != 3" in publisher_script
+    assert "{1, 2, 3}" in publisher_script
+    assert "main-health publisher closer is not unique" in publisher_script
+    assert "main-health success publisher closer is not provider-active" in publisher_script
+    assert "deadline_epoch - provider_epoch >= 180" in publisher_script
+    assert "deadline_epoch - provider_epoch >= 60" in publisher_script
+    assert "github-check-get" in publisher_script
+    assert "github-check-set" in publisher_script
+    assert "github-check-expire" in publisher_script
+    assert "cleanup_successes" in publisher_script
+    assert "Main health publisher exited" in publisher_script
+    assert "Main health admission passed" in publisher_script
     all_health_workflows = (WORKFLOWS / "main-health.yml").read_text(encoding="utf-8") + (
         WORKFLOWS / "main-health-lease.yml"
     ).read_text(encoding="utf-8")
@@ -478,7 +511,7 @@ def test_main_health_candidate_reconciliation_step_is_valid_bash() -> None:
 
 
 def test_main_health_embedded_python_is_valid() -> None:
-    expected = {"main-health.yml": 8, "main-health-lease.yml": 2}
+    expected = {"main-health.yml": 8, "main-health-lease.yml": 4}
     for filename, expected_count in expected.items():
         workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))
         snippets: list[str] = []
@@ -652,20 +685,43 @@ def test_main_health_success_requires_active_waiting_closer(tmp_path: Path) -> N
     assert "not provider-active" in rejected.stderr
 
 
-def test_publisher_is_third_closer_for_the_shared_deadline() -> None:
-    workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
-    script = next(
+def test_bounded_publisher_cannot_outlive_three_shared_deadline_closers() -> None:
+    health = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
+    lease = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
+    coordinator = next(
         item["run"]
-        for item in workflow["jobs"]["reconcile-candidate-statuses"]["steps"]
+        for item in health["jobs"]["reconcile-candidate-statuses"]["steps"]
         if item.get("name") == "Reconcile every open pull request head"
     )
-    success_index = script.index('"$lease_sha" success "$external_id"')
-    wait_index = script.index("while true; do", success_index)
-    expiry_index = script.index('"Main health admission expired"', wait_index)
-    assert success_index < wait_index < expiry_index
-    assert script.count('verify_closer_run 1 "$closer_run_1" "$closer_attempt_1"') >= 2
-    assert script.count('verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"') >= 2
-    assert '"$closer_run_1" != "$closer_run_2"' in script
+    publisher = lease["jobs"]["publish-successes"]
+    publisher_script = next(
+        item["run"]
+        for item in publisher["steps"]
+        if item.get("name") == "Publish only inside the provider-bounded window"
+    )
+
+    assert '"$lease_sha" success "$external_id"' not in coordinator
+    assert "deadline_epoch=$((provider_epoch + 360))" in coordinator
+    assert coordinator.count("for replica in 1 2 3") >= 2
+    for replica in (1, 2, 3):
+        assert (
+            f'verify_closer_run {replica} "$closer_run_{replica}" "$closer_attempt_{replica}"'
+        ) in coordinator
+    assert '"$closer_run_1" != "$closer_run_2"' in coordinator
+    assert '"$closer_run_1" != "$closer_run_3"' in coordinator
+    assert '"$closer_run_2" != "$closer_run_3"' in coordinator
+    assert "deadline_epoch - provider_epoch < 180" in coordinator
+    assert "main-health-publish" in coordinator
+    assert publisher["timeout-minutes"] == 2
+    assert "needs" not in publisher
+    assert "concurrency" not in publisher
+    assert "deadline_epoch - provider_epoch >= 180" in publisher_script
+    assert "deadline_epoch - provider_epoch >= 60" in publisher_script
+    assert "github-provider-clock" in publisher_script
+    assert "--conclusion success" in publisher_script
+    assert "github-check-expire" in publisher_script
+    assert "while true" in lease["jobs"]["arm-and-wait"]["steps"][-1]["run"]
+    assert "github-provider-clock" in lease["jobs"]["arm-and-wait"]["steps"][-1]["run"]
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
@@ -674,6 +730,7 @@ def test_publisher_is_third_closer_for_the_shared_deadline() -> None:
     (
         ("arm-and-wait", "Arm lease and wait for shared deadline"),
         ("expire-successes", "Expire exact check-run generations"),
+        ("publish-successes", "Publish only inside the provider-bounded window"),
     ),
 )
 def test_main_health_lease_step_is_valid_bash(job_name: str, step_name: str) -> None:

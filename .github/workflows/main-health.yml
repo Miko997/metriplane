@@ -481,6 +481,7 @@ jobs:
           exit "$failed"
 
   reconcile-candidate-statuses:
+    name: Main health admission coordinator
     if: >-
       always() &&
       (github.event_name == 'schedule' ||
@@ -492,6 +493,7 @@ jobs:
       - invalidate-candidate-statuses
       - persist-health
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: main-health-publisher
     permissions:
       actions: read
@@ -561,24 +563,6 @@ jobs:
               --name "$name" \
               --app-id "$PUBLISHER_APP_ID" \
               --app-slug "$PUBLISHER_APP_SLUG" > "$output"
-          }
-          expire_main_health_check() {
-            local head_sha="$1"
-            local check_run_id="$2"
-            local external_id="$3"
-            local title="$4"
-            local summary="$5"
-            python tools/stop_the_line.py github-check-expire \
-              --repository "$GITHUB_REPOSITORY" \
-              --head-sha "$head_sha" \
-              --check-run-id "$check_run_id" \
-              --name "Main health admission / required" \
-              --external-id "$external_id" \
-              --details-url "$target_url" \
-              --output-title "$title" \
-              --output-summary "$summary" \
-              --app-id "$PUBLISHER_APP_ID" \
-              --app-slug "$PUBLISHER_APP_SLUG"
           }
           lease_marker_binding() {
             python - "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" \
@@ -682,33 +666,11 @@ jobs:
           }
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
           leases="$RUNNER_TEMP/main-health-success-leases.jsonl"
-          active_successes="$RUNNER_TEMP/main-health-active-successes.jsonl"
           lease_nonce="$INVALIDATE_NONCE"
           if [[ ! "$lease_nonce" =~ ^[0-9a-f]{32}$ ]]; then
             lease_nonce="$(openssl rand -hex 16)"
           fi
           : > "$leases"
-          : > "$active_successes"
-          cleanup_armed=true
-          cleanup_successes() {
-            local exit_code="$?"
-            trap - EXIT INT TERM
-            if [[ "$cleanup_armed" == true && -s "$active_successes" ]]; then
-              while IFS= read -r active; do
-                active_sha="$(jq -er '.head_sha' <<<"$active")" || continue
-                active_check_run_id="$(jq -er '.check_run_id' <<<"$active")" || continue
-                active_external_id="$(jq -er '.external_id' <<<"$active")" || continue
-                expire_main_health_check \
-                  "$active_sha" "$active_check_run_id" "$active_external_id" \
-                  "Main health publisher exited" \
-                  "The publisher exited before the shared deadline." || true
-              done < "$active_successes"
-            fi
-            exit "$exit_code"
-          }
-          trap cleanup_successes EXIT
-          trap 'exit 130' INT
-          trap 'exit 143' TERM
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
           writer_binding() {
@@ -944,7 +906,7 @@ jobs:
           if [[ -s "$leases" ]]; then
             clock="$(python tools/stop_the_line.py github-provider-clock)"
             provider_epoch="$(jq -er '.epoch' <<<"$clock")"
-            deadline_epoch=$((provider_epoch + 240))
+            deadline_epoch=$((provider_epoch + 360))
             deadline="$(python - "$deadline_epoch" <<'PY'
           import datetime
           import sys
@@ -965,7 +927,7 @@ jobs:
               set_main_health_check \
                 "$lease_sha" failure "$external_id" \
                 "Main health lease arming" \
-                "Two independent closers are arming for ${deadline}." > "$armed"
+                "Three independent closers are arming for ${deadline}." > "$armed"
               check_run_id="$(jq -er '.id | select(type == "number" and . > 0)' "$armed")"
               jq -cn \
                 --arg external_id "$external_id" \
@@ -977,7 +939,7 @@ jobs:
             mv "$armed_leases" "$leases"
 
             dispatch_failed=0
-            for replica in 1 2; do
+            for replica in 1 2 3; do
               dispatch="$RUNNER_TEMP/main-health-expiry-dispatch-${replica}.json"
               jq -n \
                 --arg deadline "$deadline" \
@@ -1000,7 +962,7 @@ jobs:
             markers="$RUNNER_TEMP/main-health-lease-markers"
             mkdir -p "$markers"
             lease_ready=false
-            for _attempt in $(seq 1 120); do
+            for _attempt in $(seq 1 24); do
               ready=true
               while IFS= read -r lease; do
                 lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { ready=false; break; }
@@ -1008,7 +970,7 @@ jobs:
                   ready=false
                   break
                 }
-                for replica in 1 2; do
+                for replica in 1 2 3; do
                   marker="$markers/${lease_sha}-${replica}.json"
                   binding="$markers/${lease_sha}-${replica}.tsv"
                   if ! get_app_check \
@@ -1034,9 +996,13 @@ jobs:
 
             closer_run_1=""
             closer_run_2=""
+            closer_run_3=""
             closer_attempt_1=""
             closer_attempt_2=""
-            for replica in 1 2; do
+            closer_attempt_3=""
+            closers="$RUNNER_TEMP/main-health-closers.jsonl"
+            : > "$closers"
+            for replica in 1 2 3; do
               closer_run=""
               closer_attempt=""
               while IFS= read -r lease; do
@@ -1054,91 +1020,42 @@ jobs:
               verify_closer_run "$replica" "$closer_run" "$closer_attempt"
               printf -v "closer_run_${replica}" '%s' "$closer_run"
               printf -v "closer_attempt_${replica}" '%s' "$closer_attempt"
+              jq -cn \
+                --arg run_attempt "$closer_attempt" \
+                --arg run_id "$closer_run" \
+                --argjson replica "$replica" \
+                '{replica:$replica,run_attempt:$run_attempt,run_id:$run_id}' \
+                >> "$closers"
             done
-            [[ -n "$closer_run_1" && -n "$closer_run_2" && \
-              "$closer_run_1" != "$closer_run_2" ]]
+            [[ -n "$closer_run_1" && -n "$closer_run_2" && -n "$closer_run_3" && \
+              "$closer_run_1" != "$closer_run_2" && \
+              "$closer_run_1" != "$closer_run_3" && \
+              "$closer_run_2" != "$closer_run_3" ]]
 
             clock="$(python tools/stop_the_line.py github-provider-clock)"
             provider_epoch="$(jq -er '.epoch' <<<"$clock")"
-            if (( deadline_epoch - provider_epoch < 60 )); then
+            if (( deadline_epoch - provider_epoch < 180 )); then
               exit 1
             fi
             verify_closer_run 1 "$closer_run_1" "$closer_attempt_1"
             verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"
+            verify_closer_run 3 "$closer_run_3" "$closer_attempt_3"
 
-            publish_failed=0
-            while IFS= read -r lease; do
-              lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { publish_failed=1; break; }
-              check_run_id="$(jq -er '.check_run_id' <<<"$lease")" || {
-                publish_failed=1
-                break
-              }
-              external_id="$(jq -er '.external_id' <<<"$lease")" || {
-                publish_failed=1
-                break
-              }
-              current="$RUNNER_TEMP/main-health-current-${lease_sha}.json"
-              get_app_check \
-                "$lease_sha" "Main health admission / required" "$current" || {
-                publish_failed=1
-                break
-              }
-              jq -e \
-                --arg external_id "$external_id" \
-                --argjson check_run_id "$check_run_id" \
-                '.id == $check_run_id and .external_id == $external_id and
-                 .status == "completed" and .conclusion == "failure"' \
-                "$current" >/dev/null || { publish_failed=1; break; }
-              jq -cn \
-                --arg external_id "$external_id" \
-                --arg head_sha "$lease_sha" \
-                --argjson check_run_id "$check_run_id" \
-                '{check_run_id:$check_run_id,external_id:$external_id,head_sha:$head_sha}' \
-                >> "$active_successes"
-              published="$RUNNER_TEMP/main-health-success-${lease_sha}.json"
-              if ! set_main_health_check \
-                "$lease_sha" success "$external_id" \
-                "Main health admission passed" \
-                "Admission is valid until ${deadline}." > "$published" || \
-                ! jq -e \
-                  --arg external_id "$external_id" \
-                  --argjson check_run_id "$check_run_id" \
-                  '.id == $check_run_id and .external_id == $external_id and
-                   .status == "completed" and .conclusion == "success"' \
-                  "$published" >/dev/null; then
-                publish_failed=1
-                break
-              fi
-            done < "$leases"
-            if [[ "$publish_failed" != 0 ]]; then
-              exit 1
-            fi
-
-            verify_closer_run 1 "$closer_run_1" "$closer_attempt_1"
-            verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"
-            while true; do
-              clock="$(python tools/stop_the_line.py github-provider-clock)"
-              provider_epoch="$(jq -er '.epoch' <<<"$clock")"
-              if (( provider_epoch >= deadline_epoch )); then
-                break
-              fi
-              remaining=$((deadline_epoch - provider_epoch))
-              if (( remaining > 15 )); then
-                remaining=15
-              fi
-              sleep "$remaining"
-            done
-            while IFS= read -r active; do
-              active_sha="$(jq -er '.head_sha' <<<"$active")"
-              active_check_run_id="$(jq -er '.check_run_id' <<<"$active")"
-              active_external_id="$(jq -er '.external_id' <<<"$active")"
-              expire_main_health_check \
-                "$active_sha" "$active_check_run_id" "$active_external_id" \
-                "Main health admission expired" \
-                "The shared provider deadline elapsed." >/dev/null
-            done < "$active_successes"
+            publish_dispatch="$RUNNER_TEMP/main-health-publish-dispatch.json"
+            jq -n \
+              --arg deadline "$deadline" \
+              --argjson deadline_epoch "$deadline_epoch" \
+              --arg event_type main-health-publish \
+              --arg origin_run_attempt "$GITHUB_RUN_ATTEMPT" \
+              --arg origin_run_id "$GITHUB_RUN_ID" \
+              --arg nonce "$lease_nonce" \
+              --slurpfile closers "$closers" \
+              --slurpfile leases "$leases" \
+              '{event_type:$event_type,client_payload:{closers:$closers,deadline:$deadline,deadline_epoch:$deadline_epoch,leases:$leases,nonce:$nonce,origin_run_attempt:$origin_run_attempt,origin_run_id:$origin_run_id}}' \
+              > "$publish_dispatch"
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" \
+              --input "$publish_dispatch" >/dev/null
           fi
-          cleanup_armed=false
 
   main-health-required:
     name: Main health / required

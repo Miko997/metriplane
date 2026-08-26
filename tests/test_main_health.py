@@ -133,6 +133,38 @@ def _main_health_ruleset() -> dict[str, object]:
     }
 
 
+def _state_protection_ruleset() -> dict[str, object]:
+    return {
+        "bypass_actors": [],
+        "conditions": {
+            "ref_name": {
+                "exclude": [],
+                "include": ["refs/heads/metriplane-main-health-state"],
+            }
+        },
+        "enforcement": "active",
+        "name": "Protect main health state",
+        "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}],
+        "target": "branch",
+    }
+
+
+def _state_writer_ruleset() -> dict[str, object]:
+    return {
+        "bypass_actors": [],
+        "conditions": {
+            "ref_name": {
+                "exclude": [],
+                "include": ["refs/heads/metriplane-main-health-state"],
+            }
+        },
+        "enforcement": "active",
+        "name": "Restrict main health state writers",
+        "rules": [{"type": "update"}],
+        "target": "branch",
+    }
+
+
 @pytest.mark.parametrize(
     "case",
     ["missing-deletion", "changed-review-policy", "duplicate-required-check"],
@@ -160,6 +192,20 @@ def test_owner_bypass_ruleset_rejects_shared_actions_main_health_identity() -> N
     rules[0]["parameters"]["required_status_checks"][0]["integration_id"] = 15368
     with pytest.raises(HealthError, match="main-health bypass"):
         stop_the_line._validate_owner_bypass_rulesets(_core_ruleset(), main_health)
+
+
+def test_owner_state_rulesets_require_provider_freeze() -> None:
+    state_writer = _state_writer_ruleset()
+    state_writer["bypass_actors"] = [
+        {
+            "actor_id": 4722589,
+            "actor_type": "Integration",
+            "bypass_mode": "always",
+        }
+    ]
+
+    with pytest.raises(HealthError, match="not frozen"):
+        stop_the_line._validate_owner_state_rulesets(_state_protection_ruleset(), state_writer)
 
 
 def test_main_health_reuses_one_app_check_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -449,6 +495,12 @@ def _owner_admission(
         "schema_version": 1,
         "state_commit": STATE_SHA,
         "state_generation": 7,
+        "state_protection_ruleset": _state_protection_ruleset(),
+        "state_protection_ruleset_digest": digest(_state_protection_ruleset()),
+        "state_protection_ruleset_id": "3000",
+        "state_writer_ruleset": _state_writer_ruleset(),
+        "state_writer_ruleset_digest": digest(_state_writer_ruleset()),
+        "state_writer_ruleset_id": "4000",
         "status": "repair-candidate",
     }
     return {
@@ -490,6 +542,10 @@ def _owner_merge_gate(admission: dict[str, object]) -> dict[str, object]:
         "schema_version": 1,
         "state_commit": artifact["state_commit"],
         "state_generation": artifact["state_generation"],
+        "state_protection_ruleset_digest": artifact["state_protection_ruleset_digest"],
+        "state_protection_ruleset_id": artifact["state_protection_ruleset_id"],
+        "state_writer_ruleset_digest": artifact["state_writer_ruleset_digest"],
+        "state_writer_ruleset_id": artifact["state_writer_ruleset_id"],
     }
 
 
@@ -1032,6 +1088,23 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
     ] = ["refs/heads/release"]
     with pytest.raises(SnapshotError):
         _internal_validate(excluded_ref_evidence, provider_schema)
+    boolean_state_evidence = copy.deepcopy(evidence)
+    boolean_state_evidence["admission"]["artifact"]["state_generation"] = True
+    boolean_state_evidence["merge_gate"]["state_generation"] = True
+    with pytest.raises(SnapshotError):
+        _internal_validate(boolean_state_evidence, provider_schema)
+    thawed_state_writer_evidence = copy.deepcopy(evidence)
+    thawed_state_writer_evidence["admission"]["artifact"]["state_writer_ruleset"][
+        "bypass_actors"
+    ] = [
+        {
+            "actor_id": 4722589,
+            "actor_type": "Integration",
+            "bypass_mode": "always",
+        }
+    ]
+    with pytest.raises(SnapshotError):
+        _internal_validate(thawed_state_writer_evidence, provider_schema)
     authorization = {
         "authorization_mode": evidence["authorization_mode"],
         "approval_digest": digest(evidence),
@@ -1180,6 +1253,57 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
                 "approval_digest": digest(fail_open_gate_evidence),
             },
             approval_evidence=fail_open_gate_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    malformed_state_evidence = copy.deepcopy(evidence)
+    malformed_admission = malformed_state_evidence["admission"]
+    malformed_artifact = malformed_admission["artifact"]
+    malformed_gate = malformed_state_evidence["merge_gate"]
+    malformed_artifact["state_generation"] = True
+    malformed_gate["state_generation"] = True
+    malformed_admission["artifact_digest"] = digest(malformed_artifact)
+    malformed_state_evidence["admission_digest"] = digest(malformed_admission)
+    malformed_gate["admission_digest"] = malformed_state_evidence["admission_digest"]
+    malformed_state_evidence["merge_gate_digest"] = digest(malformed_gate)
+    with pytest.raises(HealthError, match="owner state binding is malformed"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(malformed_state_evidence),
+            },
+            approval_evidence=malformed_state_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=4,
+        )
+    thawed_writer_evidence = copy.deepcopy(evidence)
+    thawed_admission = thawed_writer_evidence["admission"]
+    thawed_artifact = thawed_admission["artifact"]
+    thawed_gate = thawed_writer_evidence["merge_gate"]
+    thawed_artifact["state_writer_ruleset"]["bypass_actors"] = [
+        {
+            "actor_id": 4722589,
+            "actor_type": "Integration",
+            "bypass_mode": "always",
+        }
+    ]
+    thawed_artifact["state_writer_ruleset_digest"] = digest(thawed_artifact["state_writer_ruleset"])
+    thawed_admission["artifact_digest"] = digest(thawed_artifact)
+    thawed_writer_evidence["admission_digest"] = digest(thawed_admission)
+    thawed_gate["admission_digest"] = thawed_writer_evidence["admission_digest"]
+    thawed_gate["state_writer_ruleset_digest"] = thawed_artifact["state_writer_ruleset_digest"]
+    thawed_writer_evidence["merge_gate_digest"] = digest(thawed_gate)
+    with pytest.raises(HealthError, match="state writer ruleset is not frozen"):
+        resolve(
+            tmp_path,
+            authorization={
+                **authorization,
+                "approval_digest": digest(thawed_writer_evidence),
+            },
+            approval_evidence=thawed_writer_evidence,
             repaired_main=repaired_main,
             resolved_at="2026-08-25T22:00:00Z",
             expected_generation=4,
@@ -1433,6 +1557,10 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
             return _main_health_ruleset()
+        if path.endswith("/rulesets/3000"):
+            return _state_protection_ruleset()
+        if path.endswith("/rulesets/4000"):
+            return _state_writer_ruleset()
         raise AssertionError(path)
 
     def list_provider(path: str, _token: str) -> list[dict[str, object]]:
@@ -1452,6 +1580,12 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
             "protection_ruleset_id": "1000",
             "state_commit": STATE_SHA,
             "state_generation": 7,
+            "state_protection_ruleset": _state_protection_ruleset(),
+            "state_protection_ruleset_digest": digest(_state_protection_ruleset()),
+            "state_protection_ruleset_id": "3000",
+            "state_writer_ruleset": _state_writer_ruleset(),
+            "state_writer_ruleset_digest": digest(_state_writer_ruleset()),
+            "state_writer_ruleset_id": "4000",
         }
         return {
             "artifact": artifact,
@@ -1498,12 +1632,16 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
         expected_head_sha=REVIEWED_SHA,
         protection_ruleset_id="1000",
         main_health_ruleset_id="2000",
+        state_protection_ruleset_id="3000",
+        state_writer_ruleset_id="4000",
         token="token",
     )
     assert result["comment_id"] == "2000"
     assert provider_calls == ["token"]
     assert any(path.endswith("/pulls/123/files") for path in calls)
     assert calls.count("repos/Miko997/metriplane/git/ref/heads/metriplane-main-health-state") == 2
+    for ruleset_id in ("1000", "2000", "3000", "4000"):
+        assert calls.count(f"repos/Miko997/metriplane/rulesets/{ruleset_id}") == 2
 
 
 def test_live_state_binding_rejects_stale_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1574,6 +1712,15 @@ def test_post_merge_owner_capture_uses_provider_time_with_backward_local_clock(
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
             return _main_health_ruleset()
+        if path.endswith("/rulesets/3000"):
+            return _state_protection_ruleset()
+        if path.endswith("/rulesets/4000"):
+            return _state_writer_ruleset()
+        if path.endswith("/git/ref/heads/metriplane-main-health-state"):
+            return {
+                "object": {"sha": STATE_SHA, "type": "commit"},
+                "ref": "refs/heads/metriplane-main-health-state",
+            }
         if "/git/commits/" in path:
             return {}
         if path.endswith("/collaborators/Miko997/permission"):
@@ -1631,14 +1778,19 @@ def test_collaboration_snapshot_rejects_invitation_acceptance_during_capture(
 
 
 @pytest.mark.parametrize(
-    ("final_state_commit", "should_merge"),
-    [(STATE_SHA, True), (GOOD_SHA, False)],
-    ids=["state-stable", "state-moves-before-graphql"],
+    ("final_state_commit", "thaw_writer", "failure"),
+    [
+        (STATE_SHA, False, None),
+        (GOOD_SHA, False, "changed before merge"),
+        (STATE_SHA, True, "not frozen"),
+    ],
+    ids=["state-stable", "state-moves-before-graphql", "state-thaws-before-graphql"],
 )
 def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
     monkeypatch: pytest.MonkeyPatch,
     final_state_commit: str,
-    should_merge: bool,
+    thaw_writer: bool,
+    failure: str | None,
 ) -> None:
     admission = _owner_admission(
         {
@@ -1666,6 +1818,7 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
         "merged_by": {"id": 100, "login": "Miko997"},
     }
     pulls = iter([pull_before, pull_before, pull_after])
+    state_writer_checks: list[str] = []
 
     def get(path: str, _token: str) -> object:
         if path.endswith("/pulls/123"):
@@ -1676,6 +1829,20 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
             return _main_health_ruleset()
+        if path.endswith("/rulesets/3000"):
+            return _state_protection_ruleset()
+        if path.endswith("/rulesets/4000"):
+            state_writer_checks.append("checked")
+            state_writer = _state_writer_ruleset()
+            if thaw_writer and len(state_writer_checks) == 3:
+                state_writer["bypass_actors"] = [
+                    {
+                        "actor_id": 4722589,
+                        "actor_type": "Integration",
+                        "bypass_mode": "always",
+                    }
+                ]
+            return state_writer
         if path.endswith(f"/git/commits/{REVIEWED_SHA}"):
             return {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}}
         if path.endswith(f"/git/commits/{REPAIR_SHA}"):
@@ -1742,7 +1909,7 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
             token="token",
         )
 
-    if should_merge:
+    if failure is None:
         assert call() == _owner_merge_gate(admission)
         assert graphql == [
             {
@@ -1754,11 +1921,13 @@ def test_governed_owner_merge_uses_exact_head_pr_only_bypass(
             }
         ]
     else:
-        with pytest.raises(HealthError, match="changed before merge"):
+        with pytest.raises(HealthError, match=failure):
             call()
         assert graphql == []
     assert provider_times == ["checked", "checked", "checked"]
     assert state_checks == ["checked", "checked", "checked"]
+    expected_writer_checks = 2 if final_state_commit != STATE_SHA else 3
+    assert state_writer_checks == ["checked"] * expected_writer_checks
 
 
 def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed_out(
@@ -1795,6 +1964,10 @@ def test_governed_owner_merge_recovers_after_provider_completed_and_client_timed
             return _core_ruleset()
         if path.endswith("/rulesets/2000"):
             return _main_health_ruleset()
+        if path.endswith("/rulesets/3000"):
+            return _state_protection_ruleset()
+        if path.endswith("/rulesets/4000"):
+            return _state_writer_ruleset()
         if path.endswith(f"/git/commits/{REVIEWED_SHA}"):
             commit_fetches.append(REVIEWED_SHA)
             return {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}}
