@@ -195,7 +195,8 @@ def _open_pinned_entry(
     if hasattr(os, "O_PATH"):
         access = os.O_PATH
     elif sys.platform == "darwin":
-        # Darwin's metadata-only descriptor does not require file read permission.
+        # O_EVTONLY is Darwin's narrowest descriptor, but some processes still
+        # undergo read authorization when opening it.
         access = _DARWIN_O_EVTONLY
     else:
         access = os.O_RDONLY
