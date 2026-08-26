@@ -7,6 +7,7 @@ import argparse
 import glob
 import importlib
 import logging
+import os
 import socket
 import subprocess
 import sys
@@ -97,6 +98,7 @@ def _main_run(argv: list[str], *, paths: PlatformPaths | None = None) -> int:
         paths is None
         and normalize_runs_dir(args.runs_dir) is None
         and normalize_runs_dir(cfg.runs_dir) is None
+        and normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR")) is None
     ):
         try:
             paths = resolve_platform_paths()

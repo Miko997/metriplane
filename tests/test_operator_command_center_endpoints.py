@@ -139,6 +139,28 @@ def test_looped_legacy_root_does_not_break_valid_platform_run(
     assert data["run_dir"] == str(run_dir.resolve())
 
 
+def test_looped_evidence_root_does_not_break_platform_checksum(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    repo_root.joinpath("evidence").symlink_to("evidence")
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    artifact = paths.runs_dir / "valid" / "artifact.txt"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("retained\n", encoding="utf-8")
+    api = OperatorAPI(executor=None, repo_root=repo_root, paths=paths)
+
+    status, data = api.route("POST", "/operator/checksum", {"path": str(artifact)})
+
+    assert status == 200
+    assert data["path"] == str(artifact)
+    assert data["size_bytes"] == len("retained\n")
+
+
 def test_frames_endpoint(api):
     st, data = api.route("POST", "/operator/frames", {"run_dir": BUNDLE})
     assert st == 200

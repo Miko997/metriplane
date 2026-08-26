@@ -102,14 +102,18 @@ path error contract before a service or writer starts.
 A launcher override is propagated to the runner, its allowlisted replay command, and the `RUNS`
 environment used by allowlisted `tools/mp.sh` jobs.
 
-The primary `metriplane run` command injects the platform default. The legacy `metriplane-run`
-console script, direct `python -m metriplane.run`, direct `python -m metriplane.run_fusion`, and
-runtime APIs without injected paths retain their established fallback: `/data/runs` when the Docker
-data directory is active and `./runs` on a host. Supplying `--runs-dir`, config `runs_dir`, or
-injected `PlatformPaths` still takes precedence.
+The primary `metriplane run` command injects the platform default unless the established
+`METRIPLANE_DATA_DIR` deployment root is present. The legacy `metriplane-run` console script,
+direct `python -m metriplane.run`, direct `python -m metriplane.run_fusion`, and runtime APIs without
+injected paths retain their established fallback: `/data/runs` when the Docker data directory is
+active and `./runs` on a host. Supplying `--runs-dir`, config `runs_dir`, or injected
+`PlatformPaths` still takes precedence. The shipped image sets `METRIPLANE_DATA_DIR=/data`, so all
+Compose runtime profiles keep primary recordings inside the persistent `/data/runs` volume.
 
 Runtime provenance resolves its run root in this order: direct `--runs-dir`, config `runs_dir`, an
-injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the legacy Docker or host fallback above.
+explicitly injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the legacy Docker or host
+fallback above. The primary CLI treats `METRIPLANE_DATA_DIR` as an established deployment override
+and therefore does not synthesize a platform-path injection over it.
 This keeps the Docker `/data` mount contract while allowing platform-aware commands, tests, and
 embedding applications to inject one isolated root explicitly.
 

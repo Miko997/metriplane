@@ -1128,18 +1128,27 @@ class OperatorAPI:
     # ── POST /operator/checksum ────────────────────────────────────────────────
 
     def _checksum(self, body: Dict) -> Tuple[int, Dict]:
-        path: str = body.get("path", "").strip()
-
-        file_path = Path(path).expanduser().resolve()
+        requested = body.get("path", "")
+        if not isinstance(requested, str) or not requested.strip():
+            return 400, {"error": "Checksum path must be a non-empty string"}
+        path = requested.strip()
+        try:
+            file_path = Path(path).expanduser().resolve(strict=True)
+        except FileNotFoundError:
+            return 404, {"error": f"File not found: {path}"}
+        except (OSError, RuntimeError):
+            return 400, {"error": "Checksum path cannot be resolved"}
         runs_root = self._runs_root()
-        evidence_root = (self.repo_root / "evidence").resolve()
+        allowed_roots = [runs_root]
+        try:
+            allowed_roots.append((self.repo_root / "evidence").resolve())
+        except (OSError, RuntimeError):
+            pass
 
         # Only checksum files in the platform run root or evidence/.
-        if not (_is_relative_to(file_path, runs_root) or _is_relative_to(file_path, evidence_root)):
+        if not any(_is_relative_to(file_path, root) for root in allowed_roots):
             return 400, {"error": "Can only checksum files under platform runs or evidence/"}
 
-        if not file_path.exists():
-            return 404, {"error": f"File not found: {path}"}
         if not file_path.is_file():
             return 400, {"error": "Path is not a file"}
 

@@ -72,6 +72,29 @@ def test_primary_runtime_injects_platform_default(tmp_path: Path, monkeypatch) -
     assert captured["paths"] is paths
 
 
+def test_primary_runtime_preserves_shipping_docker_data_mount(monkeypatch) -> None:
+    from metriplane import cli, run
+    from metriplane.provenance import run_provenance
+
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", "/data")
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(
+        cli,
+        "resolve_platform_paths",
+        lambda: pytest.fail("the Docker data root must suppress platform-path injection"),
+    )
+    monkeypatch.setattr(
+        run,
+        "_run_loop_impl",
+        lambda _cfg, **kwargs: (captured.update(kwargs), 19)[1],
+    )
+
+    assert cli._main_run([]) == 19
+    assert captured["runs_dir"] is None
+    assert run_provenance.data_dir() / "runs" == Path("/data/runs")
+
+
 @pytest.mark.parametrize("override_source", ["cli", "config"])
 def test_primary_runtime_explicit_runs_dir_skips_platform_resolution(
     override_source: str,
