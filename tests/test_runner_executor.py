@@ -26,9 +26,17 @@ def _process_is_gone_or_zombie(pid: int) -> bool:
     stat_path = Path(f"/proc/{pid}/stat")
     try:
         fields = stat_path.read_text().split()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return True
     return len(fields) > 2 and fields[2] == "Z"
+
+
+def test_process_disappearance_during_proc_read_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    def vanished(_path: Path) -> str:
+        raise ProcessLookupError
+
+    monkeypatch.setattr(Path, "read_text", vanished)
+    assert _process_is_gone_or_zombie(12345) is True
 
 
 def test_cancelled_job_remains_cancelled_after_process_exits(tmp_path: Path) -> None:

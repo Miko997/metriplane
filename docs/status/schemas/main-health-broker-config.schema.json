@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "admission_ruleset_id": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "app_id": {
+      "const": 4722589
+    },
+    "app_slug": {
+      "const": "metriplane-main-health-publisher"
+    },
+    "core_ruleset_id": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "credential_path": {
+      "pattern": "^/",
+      "type": "string"
+    },
+    "main_update_ruleset_id": {
+      "description": "The committed planned example uses 0; deployment must replace it with the positive provider ruleset ID.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "max_clock_skew_seconds": {
+      "maximum": 60,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "poll_seconds": {
+      "maximum": 60,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "repository": {
+      "const": "Miko997/metriplane"
+    },
+    "settings_app_id": {
+      "description": "The committed planned example uses 0; deployment must replace it with the distinct positive ruleset-witness App ID.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "settings_app_slug": {
+      "const": "metriplane-ruleset-witness"
+    },
+    "settings_credential_path": {
+      "pattern": "^/",
+      "type": "string"
+    },
+    "state_branch": {
+      "const": "metriplane-main-health-state"
+    },
+    "state_protection_ruleset_id": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "state_root": {
+      "pattern": "^/",
+      "type": "string"
+    },
+    "state_writer_ruleset_id": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "admission_ruleset_id",
+    "app_id",
+    "app_slug",
+    "core_ruleset_id",
+    "credential_path",
+    "main_update_ruleset_id",
+    "max_clock_skew_seconds",
+    "poll_seconds",
+    "repository",
+    "settings_app_id",
+    "settings_app_slug",
+    "settings_credential_path",
+    "state_branch",
+    "state_protection_ruleset_id",
+    "state_root",
+    "state_writer_ruleset_id"
+  ],
+  "type": "object"
+}
