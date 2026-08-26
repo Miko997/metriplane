@@ -566,18 +566,49 @@ jobs:
           set -euo pipefail
           state_root="$RUNNER_TEMP/main-health-state"
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          github_provider_clock() {
+            python - <<'PY'
+          import datetime
+          import email.utils
+          import json
+          import os
+          import urllib.request
+
+          request = urllib.request.Request(
+              f"{os.environ['GITHUB_API_URL']}/rate_limit",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              json.load(response)
+              provider_date = response.headers.get("Date")
+          provider_now = email.utils.parsedate_to_datetime(provider_date)
+          if provider_now.tzinfo is None:
+              raise SystemExit("GitHub provider time has no timezone")
+          provider_now = provider_now.astimezone(datetime.UTC)
+          print(
+              provider_now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              int(provider_now.timestamp()),
+              sep="\t",
+          )
+          PY
+          }
           post_main_health_status() {
             local head_sha="$1"
             local state="$2"
             local description="$3"
-            local checked_at="$4"
+            local not_after="${4:-}"
             local status_file="$RUNNER_TEMP/main-health-status-${head_sha}.json"
-            if gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+            if timeout 30s gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               -f state="$state" \
               -f context="Main health / required" \
               -f description="$description" \
               -f target_url="$target_url" > "$status_file" && \
-              python - "$status_file" "$head_sha" "$state" "$target_url" "$checked_at" \
+              python - "$status_file" "$head_sha" "$state" "$target_url" "$not_after" \
                 "$PUBLISHER_LOGIN" <<'PY'
           import datetime
           import json
@@ -585,9 +616,13 @@ jobs:
           import sys
 
           status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          checked_at = datetime.datetime.fromisoformat(sys.argv[5].replace("Z", "+00:00"))
           created_at = datetime.datetime.fromisoformat(
               str(status.get("created_at", "")).replace("Z", "+00:00")
+          )
+          not_after = (
+              datetime.datetime.fromisoformat(sys.argv[5].replace("Z", "+00:00"))
+              if sys.argv[5]
+              else None
           )
           if not (
               status.get("sha") == sys.argv[2]
@@ -598,7 +633,7 @@ jobs:
               and isinstance(status.get("creator", {}).get("id"), int)
               and isinstance(status.get("id"), int)
               and status.get("created_at") == status.get("updated_at")
-              and created_at >= checked_at
+              and (not_after is None or created_at <= not_after)
           ):
               raise SystemExit("provider status response does not bind the reconciled head")
           PY
@@ -607,14 +642,172 @@ jobs:
             fi
             if [[ "$state" == success ]]; then
               post_main_health_status "$head_sha" failure \
-                "Main health success could not be provider-verified" \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+                "Main health success could not be provider-verified" || true
             fi
             return 1
           }
+          latest_context_status() {
+            local head_sha="$1"
+            local context="$2"
+            local output="$3"
+            local page=1
+            local batch="$RUNNER_TEMP/main-health-status-page.json"
+            : > "$output"
+            while true; do
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/statuses?per_page=100&page=${page}" \
+                > "$batch" || return 1
+              jq -c --arg context "$context" \
+                '[.[] | select(.context == $context)][0] // empty' \
+                "$batch" > "$output" || return 1
+              [[ -s "$output" ]] && return 0
+              [[ "$(jq -er 'length' "$batch")" == 100 ]] || return 0
+              page=$((page + 1))
+            done
+          }
+          lease_marker_binding() {
+            python - "$1" "$2" "$3" "$4" "$5" "$PUBLISHER_LOGIN" \
+              "$GITHUB_REPOSITORY" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import re
+          import sys
+
+          anchor = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          armed = json.loads(pathlib.Path(sys.argv[2]).read_bytes())
+          head_sha, anchor_context, armed_context = sys.argv[3:6]
+          publisher_login, repository = sys.argv[6:8]
+          target_pattern = re.compile(
+              rf"https://github\.com/{re.escape(repository)}/actions/runs/([1-9][0-9]*)"
+          )
+          anchor_target = str(anchor.get("target_url", ""))
+          armed_target = str(armed.get("target_url", ""))
+          target_match = target_pattern.fullmatch(anchor_target)
+          description_match = re.fullmatch(
+              r"Expires at ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z) "
+              r"anchor ([1-9][0-9]*)",
+              str(armed.get("description", "")),
+          )
+          try:
+              anchor_created = datetime.datetime.fromisoformat(
+                  str(anchor.get("created_at", "")).replace("Z", "+00:00")
+              )
+              armed_created = datetime.datetime.fromisoformat(
+                  str(armed.get("created_at", "")).replace("Z", "+00:00")
+              )
+              deadline = datetime.datetime.fromisoformat(
+                  description_match.group(1).replace("Z", "+00:00")
+              )
+          except (AttributeError, ValueError) as exc:
+              raise SystemExit("main-health lease marker timestamp is malformed") from exc
+          if not (
+              target_match
+              and armed_target == anchor_target
+              and anchor.get("sha") == head_sha
+              and armed.get("sha") == head_sha
+              and anchor.get("state") == "pending"
+              and armed.get("state") == "pending"
+              and anchor.get("context") == anchor_context
+              and armed.get("context") == armed_context
+              and anchor.get("description") == "Provider lease anchor"
+              and anchor.get("creator", {}).get("login") == publisher_login
+              and armed.get("creator", {}).get("login") == publisher_login
+              and isinstance(anchor.get("creator", {}).get("id"), int)
+              and isinstance(armed.get("creator", {}).get("id"), int)
+              and isinstance(anchor.get("id"), int)
+              and isinstance(armed.get("id"), int)
+              and armed.get("id") > anchor.get("id")
+              and description_match.group(2) == str(anchor.get("id"))
+              and anchor.get("created_at") == anchor.get("updated_at")
+              and armed.get("created_at") == armed.get("updated_at")
+              and armed_created >= anchor_created
+              and deadline == anchor_created + datetime.timedelta(seconds=240)
+              and armed_created < deadline
+          ):
+              raise SystemExit("main-health lease marker is not provider-bound")
+          print(
+              target_match.group(1),
+              deadline.isoformat().replace("+00:00", "Z"),
+              int(deadline.timestamp()),
+              sep="\t",
+          )
+          PY
+          }
+          verify_closer_run() {
+            local replica="$1"
+            local closer_run_id="$2"
+            local run="$RUNNER_TEMP/main-health-closer-run-${replica}.json"
+            local jobs="$RUNNER_TEMP/main-health-closer-jobs-${replica}.json"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}" > "$run" && \
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}/attempts/1/jobs?per_page=100" \
+                > "$jobs" && \
+              python - "$run" "$jobs" "$replica" "$closer_run_id" "$lease_nonce" \
+                "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$PUBLISHER_LOGIN" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          run = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          jobs = json.loads(pathlib.Path(sys.argv[2]).read_bytes()).get("jobs", [])
+          replica, run_id, nonce, origin_id, origin_attempt, publisher = sys.argv[3:9]
+          expected_title = (
+              f"Main Health Lease / {origin_id}/{origin_attempt} / {nonce} / {replica}"
+          )
+          expected_job = f"Main health lease closer / {replica}"
+          matching_jobs = [job for job in jobs if job.get("name") == expected_job]
+          active_steps = [
+              step
+              for job in matching_jobs
+              for step in job.get("steps", [])
+              if step.get("name") == "Expire exact provider leases"
+          ]
+          if not (
+              str(run.get("id")) == run_id
+              and run.get("event") == "repository_dispatch"
+              and run.get("run_attempt") == 1
+              and run.get("status") == "in_progress"
+              and run.get("conclusion") is None
+              and run.get("head_branch") == "main"
+              and run.get("path")
+              in {
+                  ".github/workflows/main-health-lease.yml",
+                  ".github/workflows/main-health-lease.yml@main",
+              }
+              and run.get("display_title") == expected_title
+              and run.get("actor", {}).get("login") == publisher
+              and run.get("triggering_actor", {}).get("login") == publisher
+              and len(matching_jobs) == 1
+              and matching_jobs[0].get("status") == "in_progress"
+              and matching_jobs[0].get("conclusion") is None
+              and len(active_steps) == 1
+              and active_steps[0].get("status") == "in_progress"
+          ):
+              raise SystemExit("main-health lease closer is not provider-active")
+          PY
+          }
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
           leases="$RUNNER_TEMP/main-health-success-leases.jsonl"
+          active_successes="$RUNNER_TEMP/main-health-active-successes.jsonl"
           : > "$leases"
+          : > "$active_successes"
+          cleanup_armed=true
+          cleanup_successes() {
+            local exit_code="$?"
+            trap - EXIT INT TERM
+            if [[ "$cleanup_armed" == true && -s "$active_successes" ]]; then
+              while IFS= read -r active; do
+                active_sha="$(jq -er '.head_sha' <<<"$active")" || continue
+                post_main_health_status "$active_sha" failure \
+                  "Main health publisher exited before lease handoff" || true
+              done < "$active_successes"
+            fi
+            exit "$exit_code"
+          }
+          trap cleanup_successes EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
           writer_binding() {
@@ -841,14 +1034,18 @@ jobs:
                 fi
               fi
             fi
-            post_main_health_status "$head_sha" "$state" "$description" "$checked_at"
             if [[ "$state" == success ]]; then
-              jq -c --arg target_url "$target_url" \
-                '{head_sha:.sha,status_id:.id,target_url:$target_url}' \
-                "$RUNNER_TEMP/main-health-status-${head_sha}.json" >> "$leases"
+              if ! jq -e --arg head_sha "$head_sha" \
+                'select(.head_sha == $head_sha)' "$leases" >/dev/null; then
+                jq -cn --arg head_sha "$head_sha" --arg target_url "$target_url" \
+                  '{head_sha:$head_sha,target_url:$target_url}' >> "$leases"
+              fi
+            else
+              post_main_health_status "$head_sha" failure "$description"
             fi
           done < "$pulls"
           if [[ -s "$leases" ]]; then
+            lease_nonce="$(openssl rand -hex 16)"
             dispatch_failed=0
             for replica in 1 2; do
               dispatch="$RUNNER_TEMP/main-health-expiry-dispatch-${replica}.json"
@@ -856,9 +1053,10 @@ jobs:
                 --arg event_type main-health-expire \
                 --arg origin_run_attempt "$GITHUB_RUN_ATTEMPT" \
                 --arg origin_run_id "$GITHUB_RUN_ID" \
+                --arg nonce "$lease_nonce" \
                 --argjson replica "$replica" \
                 --slurpfile leases "$leases" \
-                '{event_type:$event_type,client_payload:{leases:$leases,origin_run_attempt:$origin_run_attempt,origin_run_id:$origin_run_id,replica:$replica}}' \
+                '{event_type:$event_type,client_payload:{leases:$leases,nonce:$nonce,origin_run_attempt:$origin_run_attempt,origin_run_id:$origin_run_id,replica:$replica}}' \
                 > "$dispatch"
               gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" \
                 --input "$dispatch" >/dev/null || dispatch_failed=1
@@ -868,12 +1066,105 @@ jobs:
               while IFS= read -r lease; do
                 lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { failed=1; continue; }
                 post_main_health_status "$lease_sha" failure \
-                  "Main health lease closer did not start" \
-                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || failed=1
+                  "Main health lease closer did not start" || failed=1
               done < "$leases"
               exit 1
             fi
+
+            markers="$RUNNER_TEMP/main-health-lease-markers"
+            mkdir -p "$markers"
+            lease_ready=false
+            for _attempt in $(seq 1 120); do
+              ready=true
+              while IFS= read -r lease; do
+                lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { ready=false; break; }
+                for replica in 1 2; do
+                  prefix="Main health lease / ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${lease_nonce}/${replica}"
+                  anchor="$markers/${lease_sha}-${replica}-anchor.json"
+                  armed="$markers/${lease_sha}-${replica}-armed.json"
+                  binding="$markers/${lease_sha}-${replica}.tsv"
+                  if ! latest_context_status "$lease_sha" "$prefix / anchor" "$anchor" || \
+                    ! latest_context_status "$lease_sha" "$prefix / armed" "$armed" || \
+                    [[ ! -s "$anchor" || ! -s "$armed" ]] || \
+                    ! lease_marker_binding "$anchor" "$armed" "$lease_sha" \
+                      "$prefix / anchor" "$prefix / armed" > "$binding"; then
+                    ready=false
+                    break 2
+                  fi
+                done
+              done < "$leases"
+              if [[ "$ready" == true ]]; then
+                lease_ready=true
+                break
+              fi
+              sleep 5
+            done
+            if [[ "$lease_ready" != true ]]; then
+              while IFS= read -r lease; do
+                lease_sha="$(jq -er '.head_sha' <<<"$lease")" || continue
+                post_main_health_status "$lease_sha" failure \
+                  "Main health lease closers did not arm" || true
+              done < "$leases"
+              exit 1
+            fi
+
+            closer_run_1=""
+            closer_run_2=""
+            for replica in 1 2; do
+              closer_run=""
+              while IFS= read -r lease; do
+                lease_sha="$(jq -er '.head_sha' <<<"$lease")"
+                IFS=$'\t' read -r marker_run _deadline _deadline_epoch \
+                  < "$markers/${lease_sha}-${replica}.tsv"
+                if [[ -z "$closer_run" ]]; then
+                  closer_run="$marker_run"
+                else
+                  [[ "$marker_run" == "$closer_run" ]]
+                fi
+              done < "$leases"
+              verify_closer_run "$replica" "$closer_run"
+              printf -v "closer_run_${replica}" '%s' "$closer_run"
+            done
+            [[ -n "$closer_run_1" && -n "$closer_run_2" && \
+              "$closer_run_1" != "$closer_run_2" ]]
+
+            publish_failed=0
+            while IFS= read -r lease; do
+              lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { publish_failed=1; break; }
+              IFS=$'\t' read -r _run_1 deadline_1 deadline_epoch_1 \
+                < "$markers/${lease_sha}-1.tsv"
+              IFS=$'\t' read -r _run_2 deadline_2 deadline_epoch_2 \
+                < "$markers/${lease_sha}-2.tsv"
+              if (( deadline_epoch_1 <= deadline_epoch_2 )); then
+                deadline="$deadline_1"
+                deadline_epoch="$deadline_epoch_1"
+              else
+                deadline="$deadline_2"
+                deadline_epoch="$deadline_epoch_2"
+              fi
+              clock="$(github_provider_clock)" || { publish_failed=1; break; }
+              IFS=$'\t' read -r _provider_now provider_epoch <<<"$clock"
+              if (( deadline_epoch - provider_epoch < 60 )); then
+                post_main_health_status "$lease_sha" failure \
+                  "Main health lease activation window expired" || true
+                publish_failed=1
+                break
+              fi
+              verify_closer_run 1 "$closer_run_1" || { publish_failed=1; break; }
+              verify_closer_run 2 "$closer_run_2" || { publish_failed=1; break; }
+              jq -cn --arg head_sha "$lease_sha" '{head_sha:$head_sha}' \
+                >> "$active_successes"
+              if ! post_main_health_status "$lease_sha" success \
+                "Main health admission passed until ${deadline}" "$deadline"; then
+                publish_failed=1
+                break
+              fi
+            done < "$leases"
+            if [[ "$publish_failed" != 0 ]]; then
+              exit 1
+            fi
           fi
+          cleanup_armed=false
 
   main-health-required:
     name: Main health / required

@@ -1000,6 +1000,69 @@ def test_provider_evidence_rejects_reviewed_to_merge_tree_drift(tmp_path: Path) 
         )
 
 
+def test_github_approval_capture_uses_provider_time_with_backward_local_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    incident_digest = "f" * 64
+    pull = {
+        "base": {"sha": GOOD_SHA},
+        "changed_files": 1,
+        "head": {"sha": REVIEWED_SHA},
+        "merge_commit_sha": REPAIR_SHA,
+        "merged": True,
+        "merged_at": "2026-08-25T21:00:00Z",
+        "user": {"id": 100, "login": "author"},
+    }
+    review = {
+        "body": f"Main-health repair authorization: MET-999\nIncident: {incident_digest}",
+        "commit_id": REVIEWED_SHA,
+        "id": 10,
+        "state": "APPROVED",
+        "submitted_at": "2026-08-25T20:00:00Z",
+        "user": {"id": 200, "login": "reviewer"},
+    }
+    provider_calls: list[str] = []
+
+    def get(path: str, _token: str) -> object:
+        if path.endswith("/pulls/123"):
+            return pull
+        if "/pulls/123/reviews?" in path:
+            return [review]
+        if "/pulls/123/files?" in path:
+            return [{"filename": "metriplane/fix.py", "status": "modified"}]
+        if path.endswith(f"/git/commits/{REVIEWED_SHA}"):
+            return {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}}
+        if path.endswith(f"/git/commits/{REPAIR_SHA}"):
+            return {
+                "parents": [{"sha": GOOD_SHA}, {"sha": REVIEWED_SHA}],
+                "sha": REPAIR_SHA,
+                "tree": {"sha": TREE_SHA},
+            }
+        if path.endswith("/collaborators/reviewer/permission"):
+            return {"permission": "write"}
+        raise AssertionError(path)
+
+    def provider_now(token: str) -> object:
+        provider_calls.append(token)
+        return stop_the_line._timestamp("2026-08-25T21:01:00Z")
+
+    monkeypatch.setattr(stop_the_line, "_github_get", get)
+    monkeypatch.setattr(stop_the_line, "_github_provider_now", provider_now)
+    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2000-01-01T00:00:00Z")
+
+    evidence = stop_the_line.capture_github_approval(
+        repository="Miko997/metriplane",
+        pull_request="123",
+        review_id="10",
+        issue="MET-999",
+        incident_digest=incident_digest,
+        token="token",
+    )
+
+    assert evidence["captured_at"] == "2026-08-25T21:01:00Z"
+    assert provider_calls == ["token"]
+
+
 def test_provider_refetch_rejects_field_drift_and_backward_time() -> None:
     retained = {"captured_at": "2026-08-25T21:00:00Z", "head_sha": REVIEWED_SHA}
     with pytest.raises(HealthError, match="stale at head_sha"):
@@ -1039,20 +1102,33 @@ def test_owner_resolver_cli_refetches_both_provider_attestations(
         root=Path("state"),
     )
     seen: dict[str, object] = {}
+    provider_calls: list[str] = []
 
     def capture(**kwargs: object) -> dict[str, object]:
         seen.update(kwargs)
         return {"captured_at": "2026-08-25T21:01:00Z", "head_sha": REVIEWED_SHA}
 
+    def provider_now(token: str) -> object:
+        provider_calls.append(token)
+        return stop_the_line._timestamp("2026-08-25T22:00:00Z")
+
+    def resolve_current(*_args: object, **kwargs: object) -> dict[str, object]:
+        seen["resolved_at"] = kwargs["resolved_at"]
+        return {"status": "green"}
+
     monkeypatch.setattr(stop_the_line, "_parser", lambda: SimpleNamespace(parse_args=lambda: args))
     monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
     monkeypatch.setattr(stop_the_line, "capture_github_owner_emergency", capture)
-    monkeypatch.setattr(stop_the_line, "resolve", lambda *_args, **_kwargs: {"status": "green"})
+    monkeypatch.setattr(stop_the_line, "_github_provider_now", provider_now)
+    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2000-01-01T00:00:00Z")
+    monkeypatch.setattr(stop_the_line, "resolve", resolve_current)
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
     assert stop_the_line.main() == 0
     assert seen["admission"] is admission
     assert seen["merge_gate"] is merge_gate
+    assert seen["resolved_at"] == "2026-08-25T22:00:00Z"
+    assert provider_calls == ["test-token"]
     assert json.loads(capsys.readouterr().out) == {"status": "green"}
 
 
@@ -1060,13 +1136,14 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
+    provider_calls: list[str] = []
     pull = {
         "head": {"sha": REVIEWED_SHA},
         "merged": False,
         "user": {"login": "Miko997"},
     }
     manifest = {"expires_at": "2026-08-26T22:00:00Z"}
-    candidate = {
+    candidate: dict[str, object] = {
         "checked_at": "2026-08-25T21:44:00Z",
         "head_sha": REVIEWED_SHA,
         "pull_request": "123",
@@ -1113,6 +1190,14 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
             "schema_version": 1,
         }
 
+    def provider_now(token: str) -> object:
+        provider_calls.append(token)
+        return stop_the_line._timestamp("2026-08-25T21:44:00Z")
+
+    def validate_candidate(*_args: object, **kwargs: object) -> dict[str, object]:
+        assert kwargs["checked_at"] == "2026-08-25T21:44:00Z"
+        return candidate
+
     monkeypatch.setattr(stop_the_line, "validate_git_history", lambda _root: {})
     monkeypatch.setattr(stop_the_line, "_github_get", get)
     monkeypatch.setattr(stop_the_line, "_github_list", list_provider)
@@ -1120,9 +1205,9 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
         stop_the_line, "_github_stable_collaboration_snapshot", lambda *_args: ([], [])
     )
     monkeypatch.setattr(stop_the_line, "_github_manifest", lambda *_args: manifest)
-    monkeypatch.setattr(
-        stop_the_line, "validate_owner_emergency_candidate", lambda *_args, **_kwargs: candidate
-    )
+    monkeypatch.setattr(stop_the_line, "validate_owner_emergency_candidate", validate_candidate)
+    monkeypatch.setattr(stop_the_line, "_github_provider_now", provider_now)
+    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2000-01-01T00:00:00Z")
     monkeypatch.setattr(stop_the_line, "_post_github_artifact", publish)
 
     result = stop_the_line.capture_github_owner_admission(
@@ -1137,7 +1222,78 @@ def test_owner_admission_fetches_provider_state_and_publishes_anchor(
         token="token",
     )
     assert result["comment_id"] == "2000"
+    assert provider_calls == ["token"]
     assert any(path.endswith("/pulls/123/files") for path in calls)
+
+
+def test_post_merge_owner_capture_uses_provider_time_with_backward_local_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest: dict[str, object] = {
+        "base_sha": BAD_SHA,
+        "incident_digest": "f" * 64,
+        "issue": "MET-999",
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+    }
+    admission = _owner_admission(manifest, changed_paths=["tools/stop_the_line.py"])
+    merge_gate = _owner_merge_gate(admission)
+    pull = {
+        "head": {"sha": REVIEWED_SHA},
+        "merge_commit_sha": REPAIR_SHA,
+        "merged_at": "2026-08-25T21:45:00Z",
+        "merged_by": {"id": 100, "login": "Miko997"},
+        "user": {"login": "Miko997"},
+    }
+    seen: dict[str, object] = {}
+    provider_calls: list[str] = []
+
+    def get(path: str, _token: str) -> object:
+        if path.endswith("/pulls/123"):
+            return pull
+        if "/pulls/123/files?" in path:
+            return []
+        if path.endswith("/rulesets/1000"):
+            return _core_ruleset()
+        if path.endswith("/rulesets/2000"):
+            return _main_health_ruleset()
+        if "/git/commits/" in path:
+            return {}
+        if path.endswith("/collaborators/Miko997/permission"):
+            return {"permission": "admin"}
+        raise AssertionError(path)
+
+    def provider_now(token: str) -> object:
+        provider_calls.append(token)
+        return stop_the_line._timestamp("2026-08-25T21:46:00Z")
+
+    def normalize(**kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {"captured_at": kwargs["captured_at"]}
+
+    monkeypatch.setattr(stop_the_line, "_github_get", get)
+    monkeypatch.setattr(stop_the_line, "_github_manifest", lambda *_args: manifest)
+    monkeypatch.setattr(
+        stop_the_line, "_github_stable_collaboration_snapshot", lambda *_args: ([], [])
+    )
+    monkeypatch.setattr(stop_the_line, "_refetch_github_artifact", lambda **_kwargs: admission)
+    monkeypatch.setattr(stop_the_line, "_github_provider_now", provider_now)
+    monkeypatch.setattr(stop_the_line, "_utc_now", lambda: "2000-01-01T00:00:00Z")
+    monkeypatch.setattr(stop_the_line, "github_owner_emergency_evidence", normalize)
+
+    evidence = stop_the_line.capture_github_owner_emergency(
+        repository="Miko997/metriplane",
+        pull_request="123",
+        issue="MET-999",
+        incident_digest="f" * 64,
+        admission=admission,
+        merge_gate=merge_gate,
+        token="token",
+    )
+
+    assert evidence["captured_at"] == "2026-08-25T21:46:00Z"
+    assert seen["captured_at"] == "2026-08-25T21:46:00Z"
+    assert provider_calls == ["token"]
 
 
 def test_collaboration_snapshot_rejects_invitation_acceptance_during_capture(

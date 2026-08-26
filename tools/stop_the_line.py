@@ -842,6 +842,10 @@ def _github_provider_now(token: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _github_provider_timestamp(token: str) -> str:
+    return _github_provider_now(token).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _github_graphql(query: str, variables: dict[str, Any], token: str) -> dict[str, Any]:
     response = _github_request(
         "graphql",
@@ -1192,7 +1196,7 @@ def capture_github_approval(
         head_commit=head_commit,
         merge_commit=merge_commit,
         reviewer_permissions=reviewer_permissions,
-        captured_at=_utc_now(),
+        captured_at=_github_provider_timestamp(token),
         repository=repository,
         pull_request=pull_request,
         issue=issue,
@@ -1253,7 +1257,7 @@ def capture_github_owner_admission(
         collaborators=collaborators,
         invitations=invitations,
         expected_head_sha=expected_head_sha,
-        checked_at=_utc_now(),
+        checked_at=_github_provider_timestamp(token),
     )
     protection_ruleset = _ruleset_configuration(protection_response)
     main_health_ruleset = _ruleset_configuration(main_health_response)
@@ -1565,7 +1569,7 @@ def capture_github_owner_emergency(
         merge_gate=current_gate,
         collaborators=collaborators,
         invitations=invitations,
-        captured_at=_utc_now(),
+        captured_at=_github_provider_timestamp(token),
         owner_permission=permission.get("permission", ""),
         repository=repository,
         pull_request=pull_request,
@@ -2906,7 +2910,7 @@ def main() -> int:
                 authorization=authorization,
                 approval_evidence=approval_evidence,
                 repaired_main=args.repaired_main_json,
-                resolved_at=_utc_now(),
+                resolved_at=_github_provider_timestamp(token),
                 expected_generation=args.expected_generation,
             )
         elif args.command == "capture-approval":

@@ -43,13 +43,21 @@ not to the shared GitHub Actions integration. The
 checkout-free invalidator overwrites earlier success with failure for every open
 head before the reconciler starts. The reconciler keeps failure when health turns red, the base
 becomes stale, or the 36-hour window expires; a persistent commit status is never
-treated as an unbounded lease. Every published success dispatches two independent,
-default-branch-only expiry runs. Each rechecks the exact App-created status ID
-after four minutes and changes it to failure only if no newer reconciliation has
-replaced it. If either expiry dispatch cannot be accepted, reconciliation
-immediately restores failure. All status publishers and durable writers are
-trusted triggers in one serialized concurrency group, so an older green snapshot
-cannot publish success after a newer red transition. Every writer first publishes
+treated as an unbounded lease. Before publishing success, reconciliation dispatches
+two independent, default-branch-only expiry runs with a unique nonce. Each run
+publishes App-authenticated anchor and armed statuses, derives an absolute
+four-minute deadline from the anchor's GitHub `created_at`, and waits against
+GitHub's authenticated provider time. Reconciliation exhaustively finds both
+marker pairs, verifies their distinct Actions runs and closer jobs are still in
+progress, and requires at least 60 seconds to remain before it can publish green.
+Each closer exhaustively searches the status history at its deadline and changes
+the exact origin run's current App-created success to failure only if no newer
+reconciliation has replaced it. If dispatch, arming, active-run verification, or
+success verification fails, reconciliation retains or restores failure. An
+EXIT/INT/TERM cleanup covers every handled post-success publisher exit; the two
+already active closers cover abrupt runner loss. All status publishers and durable
+writers are trusted triggers in one serialized concurrency group, so an older
+green snapshot cannot publish success after a newer red transition. Every writer first publishes
 provider-verified failure on its measured main SHA. Only after CAS and read-back
 does the successful `persist-health` job publish an isolated-App status binding
 that main SHA to the exact state commit, run ID, and attempt. A five-minute tick
@@ -133,7 +141,8 @@ A newer review from the named authorized reviewer supersedes the selected approv
 and any current requested-changes review by an authorized reviewer fails closed.
 Comments and reviews from identities without write, maintain, or admin permission
 do not alter the decisive review state. Resolution time is generated internally
-and must fall between provider capture and authorization expiry.
+from GitHub's authenticated response time and must fall between provider capture
+and authorization expiry. Local machine-clock skew cannot extend that boundary.
 
 For a personal repository with no independent collaborator, the only exception is
 the explicitly named `single-maintainer-owner-emergency` mode. The repair PR must
@@ -174,7 +183,8 @@ reconstructs the same `owner-merge-gate.json`. Post-merge capture re-fetches the
 admission comment, stable collaboration snapshot, both rulesets, pull request,
 permission, and both commits. Provider timestamps must bracket the merge, and
 the merge must precede manifest expiry. Post-merge `captured_at` is the actual provider
-retrieval time, not the earlier merge timestamp. Its manifest digest and
+response time at retrieval, not the caller's local clock or the earlier merge
+timestamp. Its manifest digest and
 policy-amendment digest must match the authorization.
 
 Retain the JSON outputs from `capture-owner-admission` and

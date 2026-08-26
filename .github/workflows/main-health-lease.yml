@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 name: Main Health Lease
-run-name: Main Health Lease / ${{ github.event.client_payload.origin_run_id }} / ${{ github.event.client_payload.replica }}
+run-name: Main Health Lease / ${{ github.event.client_payload.origin_run_id }}/${{ github.event.client_payload.origin_run_attempt }} / ${{ github.event.client_payload.nonce }} / ${{ github.event.client_payload.replica }}
 
 on:
   repository_dispatch:
@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   expire-successes:
+    name: Main health lease closer / ${{ github.event.client_payload.replica }}
     if: >-
       github.actor == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG) &&
       github.event.sender.login == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG)
@@ -38,15 +39,25 @@ jobs:
           PAYLOAD: ${{ toJSON(github.event.client_payload) }}
           PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           leases="$RUNNER_TEMP/main-health-expiry-leases.tsv"
-          python - "$PAYLOAD" "$GITHUB_REPOSITORY" > "$leases" <<'PY'
+          armed_leases="$RUNNER_TEMP/main-health-armed-leases.tsv"
+          metadata="$RUNNER_TEMP/main-health-expiry-metadata.tsv"
+          python - "$PAYLOAD" "$GITHUB_REPOSITORY" "$metadata" > "$leases" <<'PY'
           import json
+          import pathlib
           import re
           import sys
 
           payload = json.loads(sys.argv[1])
-          if set(payload) != {"leases", "origin_run_attempt", "origin_run_id", "replica"}:
+          if set(payload) != {
+              "leases",
+              "nonce",
+              "origin_run_attempt",
+              "origin_run_id",
+              "replica",
+          }:
               raise SystemExit("main-health lease payload has unexpected fields")
           run_id = str(payload["origin_run_id"])
           run_attempt = str(payload["origin_run_attempt"])
@@ -54,8 +65,15 @@ jobs:
               raise SystemExit("main-health lease origin run is invalid")
           if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
               raise SystemExit("main-health lease origin attempt is invalid")
+          nonce = payload["nonce"]
+          if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce):
+              raise SystemExit("main-health lease nonce is invalid")
           if payload["replica"] not in {1, 2}:
               raise SystemExit("main-health lease replica is invalid")
+          pathlib.Path(sys.argv[3]).write_text(
+              f"{run_id}\t{run_attempt}\t{nonce}\t{payload['replica']}\n",
+              encoding="utf-8",
+          )
           leases = payload["leases"]
           if not isinstance(leases, list) or not leases or len(leases) > 1000:
               raise SystemExit("main-health lease inventory is invalid")
@@ -64,81 +82,226 @@ jobs:
           for lease in leases:
               if not isinstance(lease, dict) or set(lease) != {
                   "head_sha",
-                  "status_id",
                   "target_url",
               }:
                   raise SystemExit("main-health lease entry is malformed")
               sha = lease["head_sha"]
-              status_id = lease["status_id"]
               if (
                   not isinstance(sha, str)
                   or not re.fullmatch(r"[0-9a-f]{40}", sha)
                   or sha in seen
-                  or not isinstance(status_id, int)
-                  or status_id < 1
                   or lease["target_url"] != expected_target
               ):
                   raise SystemExit("main-health lease entry is not provider-bound")
               seen.add(sha)
-              print(sha, status_id, expected_target, sep="\t")
+              print(sha, expected_target, sep="\t")
           PY
-          sleep 240
-          failed=0
-          while IFS=$'\t' read -r head_sha status_id admitted_target; do
-            current="$RUNNER_TEMP/main-health-current-${head_sha}.json"
-            if ! gh api \
-              "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/statuses?per_page=100&page=1" \
-              --jq '[.[] | select(.context == "Main health / required")][0]' \
-              > "$current"; then
-              failed=1
-              continue
-            fi
-            current_id="$(jq -er '.id' "$current")" || { failed=1; continue; }
-            if [[ "$current_id" != "$status_id" ]]; then
-              continue
-            fi
-            if ! jq -e \
-              --arg login "$PUBLISHER_LOGIN" \
-              --arg sha "$head_sha" \
-              --arg target "$admitted_target" \
-              '.sha == $sha and .state == "success" and .context == "Main health / required" and .target_url == $target and .creator.login == $login' \
-              "$current" >/dev/null; then
-              failed=1
-              continue
-            fi
-            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            response="$RUNNER_TEMP/main-health-expired-${head_sha}.json"
-            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+          IFS=$'\t' read -r origin_run_id origin_run_attempt lease_nonce replica < "$metadata"
+
+          post_failure() {
+            local head_sha="$1"
+            local description="$2"
+            local response="$RUNNER_TEMP/main-health-expired-${head_sha}.json"
+            if ! timeout 30s gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
               -f state=failure \
               -f context="Main health / required" \
-              -f description="Main health admission lease expired" \
+              -f description="$description" \
               -f target_url="$target_url" > "$response" || \
-              ! python - "$response" "$head_sha" "$target_url" "$checked_at" \
-                "$PUBLISHER_LOGIN" <<'PY'
+              ! python - "$response" "$head_sha" "$target_url" "$PUBLISHER_LOGIN" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          if not (
+              status.get("sha") == sys.argv[2]
+              and status.get("state") == "failure"
+              and status.get("context") == "Main health / required"
+              and status.get("target_url") == sys.argv[3]
+              and status.get("creator", {}).get("login") == sys.argv[4]
+              and isinstance(status.get("id"), int)
+              and status.get("created_at") == status.get("updated_at")
+          ):
+              raise SystemExit("provider did not attest exact main-health lease expiry")
+          PY
+            then
+              return 1
+            fi
+          }
+          cleanup_armed=true
+          fail_closed() {
+            local exit_code="$?"
+            trap - EXIT INT TERM
+            if [[ "$cleanup_armed" == true ]]; then
+              while IFS=$'\t' read -r head_sha _admitted_target; do
+                post_failure "$head_sha" "Main health lease closer exited early" || true
+              done < "$leases"
+            fi
+            exit "$exit_code"
+          }
+          trap fail_closed EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          post_marker() {
+            local head_sha="$1"
+            local context="$2"
+            local description="$3"
+            local output="$4"
+            timeout 30s gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
+              -f state=pending \
+              -f context="$context" \
+              -f description="$description" \
+              -f target_url="$target_url" > "$output"
+          }
+          latest_context_status() {
+            local head_sha="$1"
+            local context="$2"
+            local output="$3"
+            local page=1
+            local batch="$RUNNER_TEMP/main-health-current-page.json"
+            : > "$output"
+            while true; do
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/statuses?per_page=100&page=${page}" \
+                > "$batch" || return 1
+              jq -c --arg context "$context" \
+                '[.[] | select(.context == $context)][0] // empty' \
+                "$batch" > "$output" || return 1
+              [[ -s "$output" ]] && return 0
+              [[ "$(jq -er 'length' "$batch")" == 100 ]] || return 0
+              page=$((page + 1))
+            done
+          }
+          provider_epoch() {
+            python - <<'PY'
+          import email.utils
+          import json
+          import os
+          import urllib.request
+
+          request = urllib.request.Request(
+              f"{os.environ['GITHUB_API_URL']}/rate_limit",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              json.load(response)
+              provider_date = response.headers.get("Date")
+          provider_now = email.utils.parsedate_to_datetime(provider_date)
+          if provider_now.tzinfo is None:
+              raise SystemExit("GitHub provider time has no timezone")
+          print(int(provider_now.timestamp()))
+          PY
+          }
+
+          : > "$armed_leases"
+          while IFS=$'\t' read -r head_sha admitted_target; do
+            prefix="Main health lease / ${origin_run_id}/${origin_run_attempt}/${lease_nonce}/${replica}"
+            anchor_context="$prefix / anchor"
+            armed_context="$prefix / armed"
+            anchor="$RUNNER_TEMP/main-health-anchor-${head_sha}.json"
+            armed="$RUNNER_TEMP/main-health-armed-${head_sha}.json"
+            post_marker "$head_sha" "$anchor_context" "Provider lease anchor" "$anchor"
+            binding="$(python - "$anchor" "$head_sha" "$anchor_context" "$target_url" \
+              "$PUBLISHER_LOGIN" <<'PY'
           import datetime
           import json
           import pathlib
           import sys
 
           status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          checked_at = datetime.datetime.fromisoformat(sys.argv[4].replace("Z", "+00:00"))
-          created_at = datetime.datetime.fromisoformat(
-              str(status.get("created_at", "")).replace("Z", "+00:00")
-          )
+          try:
+              created_at = datetime.datetime.fromisoformat(
+                  str(status.get("created_at", "")).replace("Z", "+00:00")
+              )
+          except ValueError as exc:
+              raise SystemExit("provider lease anchor timestamp is malformed") from exc
           if not (
               status.get("sha") == sys.argv[2]
-              and status.get("state") == "failure"
-              and status.get("context") == "Main health / required"
-              and status.get("target_url") == sys.argv[3]
+              and status.get("state") == "pending"
+              and status.get("context") == sys.argv[3]
+              and status.get("description") == "Provider lease anchor"
+              and status.get("target_url") == sys.argv[4]
               and status.get("creator", {}).get("login") == sys.argv[5]
+              and isinstance(status.get("creator", {}).get("id"), int)
               and isinstance(status.get("id"), int)
-              and created_at >= checked_at
+              and status.get("created_at") == status.get("updated_at")
           ):
-              raise SystemExit("provider did not attest exact main-health lease expiry")
+              raise SystemExit("provider did not attest exact lease anchor")
+          deadline = created_at + datetime.timedelta(seconds=240)
+          print(
+              status["id"],
+              deadline.isoformat().replace("+00:00", "Z"),
+              int(deadline.timestamp()),
+              sep="\t",
+          )
           PY
-            then
-              failed=1
-            fi
+            )"
+            IFS=$'\t' read -r anchor_id deadline deadline_epoch <<<"$binding"
+            post_marker "$head_sha" "$armed_context" \
+              "Expires at ${deadline} anchor ${anchor_id}" "$armed"
+            python - "$anchor" "$armed" "$head_sha" "$anchor_context" "$armed_context" \
+              "$target_url" "$PUBLISHER_LOGIN" "$anchor_id" "$deadline" <<'PY'
+          import datetime
+          import json
+          import pathlib
+          import sys
+
+          anchor = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          armed = json.loads(pathlib.Path(sys.argv[2]).read_bytes())
+          armed_created = datetime.datetime.fromisoformat(
+              str(armed.get("created_at", "")).replace("Z", "+00:00")
+          )
+          deadline = datetime.datetime.fromisoformat(sys.argv[9].replace("Z", "+00:00"))
+          if not (
+              armed.get("sha") == sys.argv[3]
+              and armed.get("state") == "pending"
+              and armed.get("context") == sys.argv[5]
+              and armed.get("description") == f"Expires at {sys.argv[9]} anchor {sys.argv[8]}"
+              and armed.get("target_url") == sys.argv[6]
+              and armed.get("creator", {}).get("login") == sys.argv[7]
+              and isinstance(armed.get("creator", {}).get("id"), int)
+              and isinstance(armed.get("id"), int)
+              and armed.get("id") > anchor.get("id")
+              and armed.get("created_at") == armed.get("updated_at")
+              and armed_created < deadline
+          ):
+              raise SystemExit("provider did not attest exact armed lease")
+          PY
+            printf '%s\t%s\t%s\t%s\n' \
+              "$head_sha" "$admitted_target" "$deadline" "$deadline_epoch" >> "$armed_leases"
           done < "$leases"
-          exit "$failed"
+
+          while IFS=$'\t' read -r head_sha admitted_target _deadline deadline_epoch; do
+            while true; do
+              now_epoch="$(provider_epoch)"
+              if (( now_epoch >= deadline_epoch )); then
+                break
+              fi
+              remaining=$((deadline_epoch - now_epoch))
+              if (( remaining > 15 )); then
+                remaining=15
+              fi
+              sleep "$remaining"
+            done
+            current="$RUNNER_TEMP/main-health-current-${head_sha}.json"
+            if ! latest_context_status "$head_sha" "Main health / required" "$current"; then
+              post_failure "$head_sha" "Main health lease status lookup failed"
+              continue
+            fi
+            if [[ -s "$current" ]] && jq -e \
+              --arg login "$PUBLISHER_LOGIN" \
+              --arg sha "$head_sha" \
+              --arg target "$admitted_target" \
+              '.sha == $sha and .state == "success" and .context == "Main health / required" and .target_url == $target and .creator.login == $login' \
+              "$current" >/dev/null; then
+              post_failure "$head_sha" "Main health admission lease expired"
+            fi
+          done < "$armed_leases"
+          cleanup_armed=false

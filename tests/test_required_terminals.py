@@ -27,6 +27,16 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 SHA = "a" * 40
 
 
+def _workflow_python_snippet(filename: str, marker: str) -> str:
+    workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))
+    for job in workflow["jobs"].values():
+        for step in job.get("steps", []):
+            for snippet in re.findall(r"<<'PY'\n(.*?)\nPY(?:\n|$)", step.get("run", ""), re.DOTALL):
+                if marker in snippet:
+                    return str(snippet)
+    raise AssertionError(f"missing embedded Python marker {marker!r} in {filename}")
+
+
 def _results() -> dict[str, dict[str, str]]:
     return {
         "linux": {"result": "success", "sha": SHA},
@@ -321,6 +331,19 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "main-health-expire" in reconcile
     assert "for replica in 1 2" in reconcile
     assert "Main health lease closer did not start" in reconcile
+    assert "Provider lease anchor" in reconcile
+    assert "lease_marker_binding" in reconcile
+    assert "verify_closer_run" in reconcile
+    assert "main-health lease closer is not provider-active" in reconcile
+    assert "github_provider_clock" in reconcile
+    assert "Main health lease activation window expired" in reconcile
+    assert "Main health publisher exited before lease handoff" in reconcile
+    assert "cleanup_successes" in reconcile
+    dispatch_index = reconcile.index("main-health-expire")
+    marker_index = reconcile.index("! lease_marker_binding")
+    active_index = reconcile.rindex('verify_closer_run 2 "$closer_run_2"')
+    success_index = reconcile.index('post_main_health_status "$lease_sha" success')
+    assert dispatch_index < marker_index < active_index < success_index
     invalidator = "\n".join(
         step.get("run", "") for step in health["jobs"]["invalidate-candidate-statuses"]["steps"]
     )
@@ -371,10 +394,15 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "github.actor == format" in expiry["if"]
     assert "github.event.sender.login == format" in expiry["if"]
     expiry_script = "\n".join(step.get("run", "") for step in expiry["steps"])
-    assert "sleep 240" in expiry_script
-    assert 'current_id="$(jq -er \'.id\' "$current")" ||' in expiry_script
-    assert '"$current_id" != "$status_id"' in expiry_script
-    assert 'status.get("creator", {}).get("login") == sys.argv[5]' in expiry_script
+    assert "Provider lease anchor" in expiry_script
+    assert "datetime.timedelta(seconds=240)" in expiry_script
+    assert "provider_epoch" in expiry_script
+    assert "GITHUB_API_URL" in expiry_script
+    assert "while true" in expiry_script
+    assert "page=$((page + 1))" in expiry_script
+    assert "per_page=100&page=${page}" in expiry_script
+    assert "Main health lease closer exited early" in expiry_script
+    assert 'status.get("creator", {}).get("login") == sys.argv[4]' in expiry_script
     assert "Main health admission lease expired" in expiry_script
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
@@ -424,7 +452,7 @@ def test_main_health_candidate_reconciliation_step_is_valid_bash() -> None:
 
 
 def test_main_health_embedded_python_is_valid() -> None:
-    expected = {"main-health.yml": 9, "main-health-lease.yml": 2}
+    expected = {"main-health.yml": 12, "main-health-lease.yml": 5}
     for filename, expected_count in expected.items():
         workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))
         snippets: list[str] = []
@@ -436,6 +464,115 @@ def test_main_health_embedded_python_is_valid() -> None:
         assert len(snippets) == expected_count
         for index, snippet in enumerate(snippets):
             compile(snippet, f"{filename}-heredoc-{index}.py", "exec")
+
+
+def test_main_health_lease_marker_binds_exact_provider_deadline(tmp_path: Path) -> None:
+    snippet = _workflow_python_snippet(
+        "main-health.yml", "main-health lease marker is not provider-bound"
+    )
+    head_sha = "b" * 40
+    prefix = "Main health lease / 123/1/" + "c" * 32 + "/1"
+    target = "https://github.com/Miko997/metriplane/actions/runs/456"
+    anchor = {
+        "context": f"{prefix} / anchor",
+        "created_at": "2026-08-26T06:00:00Z",
+        "creator": {"id": 10, "login": "publisher[bot]"},
+        "description": "Provider lease anchor",
+        "id": 100,
+        "sha": head_sha,
+        "state": "pending",
+        "target_url": target,
+        "updated_at": "2026-08-26T06:00:00Z",
+    }
+    armed = {
+        "context": f"{prefix} / armed",
+        "created_at": "2026-08-26T06:00:01Z",
+        "creator": {"id": 10, "login": "publisher[bot]"},
+        "description": "Expires at 2026-08-26T06:04:00Z anchor 100",
+        "id": 101,
+        "sha": head_sha,
+        "state": "pending",
+        "target_url": target,
+        "updated_at": "2026-08-26T06:00:01Z",
+    }
+    anchor_path = tmp_path / "anchor.json"
+    armed_path = tmp_path / "armed.json"
+    anchor_path.write_text(json.dumps(anchor), encoding="utf-8")
+    armed_path.write_text(json.dumps(armed), encoding="utf-8")
+    args: list[str] = [
+        sys.executable,
+        "-",
+        str(anchor_path),
+        str(armed_path),
+        head_sha,
+        str(anchor["context"]),
+        str(armed["context"]),
+        "publisher[bot]",
+        "Miko997/metriplane",
+    ]
+    accepted = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
+    assert accepted.returncode == 0, accepted.stderr
+    assert accepted.stdout.startswith("456\t2026-08-26T06:04:00Z\t")
+
+    armed["description"] = "Expires at 2026-08-26T06:04:01Z anchor 100"
+    armed_path.write_text(json.dumps(armed), encoding="utf-8")
+    rejected = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
+    assert rejected.returncode != 0
+    assert "not provider-bound" in rejected.stderr
+
+
+def test_main_health_success_requires_active_waiting_closer(tmp_path: Path) -> None:
+    snippet = _workflow_python_snippet(
+        "main-health.yml", "main-health lease closer is not provider-active"
+    )
+    nonce = "c" * 32
+    run = {
+        "actor": {"login": "publisher[bot]"},
+        "conclusion": None,
+        "display_title": f"Main Health Lease / 123/1 / {nonce} / 1",
+        "event": "repository_dispatch",
+        "head_branch": "main",
+        "id": 456,
+        "path": ".github/workflows/main-health-lease.yml",
+        "run_attempt": 1,
+        "status": "in_progress",
+        "triggering_actor": {"login": "publisher[bot]"},
+    }
+    jobs = {
+        "jobs": [
+            {
+                "conclusion": None,
+                "name": "Main health lease closer / 1",
+                "status": "in_progress",
+                "steps": [{"name": "Expire exact provider leases", "status": "in_progress"}],
+            }
+        ]
+    }
+    run_path = tmp_path / "run.json"
+    jobs_path = tmp_path / "jobs.json"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    jobs_path.write_text(json.dumps(jobs), encoding="utf-8")
+    args = [
+        sys.executable,
+        "-",
+        str(run_path),
+        str(jobs_path),
+        "1",
+        "456",
+        nonce,
+        "123",
+        "1",
+        "publisher[bot]",
+    ]
+    accepted = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
+    assert accepted.returncode == 0, accepted.stderr
+
+    run["status"] = "completed"
+    run["conclusion"] = "success"
+    run_path.write_text(json.dumps(run), encoding="utf-8")
+    rejected = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
+    assert rejected.returncode != 0
+    assert "not provider-active" in rejected.stderr
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
