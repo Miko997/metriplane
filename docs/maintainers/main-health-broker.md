@@ -1,11 +1,13 @@
 # Main-health broker
 
-The `metriplane-main-health-publisher` GitHub App is the only actor permitted by
+The `metriplane-main-health-publisher` merge App is the only actor permitted by
 the dedicated update rulesets to update `main` and
-`metriplane-main-health-state`. The core pull-request, deletion,
-non-fast-forward, and exact required-check rules remain in separate active
-rulesets with no bypass actors. Rulesets layer; the App bypasses only each
-dedicated `update` restriction.
+`metriplane-main-health-state`. A distinct `metriplane-ruleset-witness` App has
+repository-settings authority only, so it can read complete ruleset bodies and
+bypass actors but cannot write contents, checks, or pull requests. The core
+pull-request, deletion, non-fast-forward, and exact required-check rules remain
+in separate active rulesets with no bypass actors. Rulesets layer; the merge App
+bypasses only each dedicated `update` restriction.
 
 The broker is an outbound-polling system service. It never checks out or
 executes pull-request code. GitHub Actions produces the three exact candidate
@@ -17,36 +19,43 @@ merge transaction.
 
 ## Credential boundary
 
-Revoke every App private key that was ever available to GitHub Actions and
-delete `MAIN_HEALTH_APP_PRIVATE_KEY` from the `main-health-publisher`
-environment before activation. Create one replacement key and encrypt it on
-the host:
+Revoke every merge-App private key that was ever available to GitHub Actions
+and delete `MAIN_HEALTH_APP_PRIVATE_KEY` from the `main-health-publisher`
+environment before activation. Create fresh keys for both Apps and encrypt them
+separately on the host:
 
 ~~~bash
 sudo systemd-creds encrypt \
   --name=github-app-private-key.pem \
   /secure/input/metriplane-main-health.pem \
   /etc/credstore.encrypted/metriplane-main-health-app-key
+sudo systemd-creds encrypt \
+  --name=github-ruleset-witness-private-key.pem \
+  /secure/input/metriplane-ruleset-witness.pem \
+  /etc/credstore.encrypted/metriplane-ruleset-witness-app-key
 ~~~
 
-The service reads the decrypted credential only from
-`$CREDENTIALS_DIRECTORY/github-app-private-key.pem`. The committed example
-uses systemd's stable absolute credential path. The App installation grants
-only Actions read, Checks write, Contents write, Pull requests read, and
-Metadata read. It has no Administration, Commit statuses, Workflows, or webhook
-permission. The installation must belong to the unsuspended canonical
-`Miko997` user account, use selected-repository mode, and expose exactly those
-permissions. Each minted installation token is additionally narrowed with
-GitHub's `repositories` request field to `Miko997/metriplane`; the broker caches
-it only after the token response returns exactly that repository and a
-token-authenticated repository read confirms the canonical owner, full name,
-and repository ID.
+The service reads the decrypted credentials only from
+`$CREDENTIALS_DIRECTORY/github-app-private-key.pem` and
+`$CREDENTIALS_DIRECTORY/github-ruleset-witness-private-key.pem`. The committed
+example uses systemd's stable absolute credential paths. The merge App grants
+exactly Actions read, Checks write, Contents write, Pull requests read, and
+Metadata read; it has no Administration, Commit statuses, Workflows, or webhook
+permission. The witness App grants exactly Administration write and Metadata
+read; it has no Contents, Checks, Pull requests, Actions, Commit statuses,
+Workflows, or webhook permission. The Apps and credentials must be distinct.
+Both installations must belong to the unsuspended canonical `Miko997` user
+account and use selected-repository mode. Each minted installation token is
+additionally narrowed with GitHub's `repositories` request field to
+`Miko997/metriplane`; the broker accepts it only after the response returns
+exactly that repository and a token-authenticated repository read confirms the
+canonical owner, full name, and repository ID.
 
 The committed broker-config example is deliberately non-runnable:
-`main_update_ruleset_id` is `0`. Create the App-only main update restriction,
-capture its positive provider ruleset ID, and place that ID in the host's
-`/etc/metriplane/main-health-broker.json`. `validate-config` and `run` reject
-the zero sentinel.
+`main_update_ruleset_id` and `settings_app_id` are `0`. Create the App-only main
+update restriction and the witness App, capture their positive provider IDs,
+and place both IDs in the host's `/etc/metriplane/main-health-broker.json`.
+`validate-config` and `run` reject either zero sentinel.
 
 Run the broker as the repository module, including for manual validation:
 
@@ -90,12 +99,25 @@ sudo install -D -m 0644 \
   /opt/metriplane-main-health-broker/scripts/systemd/metriplane-main-health-broker.service \
   /etc/systemd/system/metriplane-main-health-broker.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now metriplane-main-health-broker.service
+sudo systemctl enable metriplane-main-health-broker.service
+sudo systemctl start metriplane-main-health-broker.service
+sudo systemctl is-active metriplane-main-health-broker.service
+sudo systemctl show metriplane-main-health-broker.service \
+  --property=Type,ActiveState,SubState
+sudo journalctl -u metriplane-main-health-broker.service \
+  --grep='ready after one successful full cycle' --lines=1
 ~~~
 
-Replace only the `main_update_ruleset_id` zero sentinel in the installed host
-configuration before `validate-config`; all other committed identities and
-boundaries remain exact.
+Replace only the `main_update_ruleset_id` and `settings_app_id` zero sentinels
+in the installed host configuration before `validate-config`; all other
+committed identities and boundaries remain exact.
+
+The systemd unit is `Type=notify`. It becomes active only after one complete
+successful broker cycle, including authentication, orphan reconciliation,
+failed-check establishment, exact hosted-ruleset validation, and protected-state
+validation. A first-cycle failure never reports readiness. A later broker
+failure exits the process so `Restart=on-failure` and service monitoring observe
+it; the daemon does not catch and hide a persistent failure.
 
 This is a system service, so user linger is neither required nor accepted as
 availability evidence. The host must have synchronized time, monitored disk
@@ -123,10 +145,12 @@ metriplane-merge-approval:v1 <sha256-of-canonical-request>
 
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
-earlier approval. It re-reads the pull request, every commit actor, reviews, exact
-Actions checks, the complete active branch-ruleset inventory and all five
-governed ruleset bodies, current `main`, provider clock, and the protected state
-branch immediately before admission. Under one singleton lock,
+earlier approval. It re-reads the pull request, every commit actor, reviews,
+exact Actions checks, the complete inventory of all active repository rulesets
+and all five governed ruleset bodies, current `main`, provider clock, and the
+protected state branch immediately before admission. Inventory summaries and
+detail bodies must agree on ID, name, enforcement, target, source, and source
+type. Under one singleton lock,
 it records the request as in-flight, mutates one recorded App check-run ID to
 literal `success`, and immediately calls the synchronous merge endpoint with
 the exact head SHA. It never retries
@@ -142,6 +166,11 @@ commit must also have complete provider-resolved `author` and `committer`
 objects with positive integer IDs and nonempty logins. Null, partial, or
 malformed commit identities fail closed before reviewer independence is
 evaluated.
+
+The witness App performs a final exact ruleset read after orphan and check
+quarantine and after all other admission validation, immediately before the
+merge App can publish success. Any settings drift in that interval fails closed
+without opening the merge gate.
 
 Repository administrators remain a trusted settings boundary because GitHub
 does not offer an atomic ruleset-read-and-merge transaction. Any omitted

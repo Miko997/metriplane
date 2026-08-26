@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +23,17 @@ EXACT_INTEGRATIONS = [
     {"context": "Security / required", "integration_id": 15368},
     {"context": "Main health / required", "integration_id": 4722589},
 ]
+SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
 class ProtectionError(ValueError):
     """Captured protection or merge evidence is incomplete or contradictory."""
+
+
+def _require_sha(value: Any, label: str) -> str:
+    if not isinstance(value, str) or SHA.fullmatch(value) is None:
+        raise ProtectionError(f"{label} is not an exact 40-hex SHA")
+    return value
 
 
 def validate_capture(
@@ -116,9 +124,9 @@ def validate_merge_proof(
     required_checks = policy["required_terminals"]
     if required_checks != EXACT_TERMINALS:
         raise ProtectionError("merge proof policy does not name the exact MP2-004 terminals")
-    merge_sha = pull_request["merge_commit_sha"]
-    base_sha = pull_request["base"]["sha"]
-    head_sha = pull_request["head"]["sha"]
+    merge_sha = _require_sha(pull_request["merge_commit_sha"], "pull request merge SHA")
+    base_sha = _require_sha(pull_request["base"]["sha"], "pull request base SHA")
+    head_sha = _require_sha(pull_request["head"]["sha"], "pull request head SHA")
     if pull_request["merged"] is not True or pull_request["state"] != "closed":
         raise ProtectionError("pull request was not merged")
     if (
@@ -126,22 +134,53 @@ def validate_merge_proof(
         or pull_request["head"].get("repo", {}).get("full_name") != policy["repository"]
     ):
         raise ProtectionError("pull request is not an exact same-repository main merge")
-    if merge_commit["sha"] != merge_sha or main_ref["object"]["sha"] != merge_sha:
+    merge_commit_sha = _require_sha(merge_commit["sha"], "merge commit SHA")
+    main_sha = _require_sha(main_ref["object"]["sha"], "main ref SHA")
+    if merge_commit_sha != merge_sha or main_sha != merge_sha:
         raise ProtectionError("merge proof does not bind current main")
     raw_parents = merge_commit.get("parents", merge_commit["commit"].get("parents"))
-    parents = [parent["sha"] if isinstance(parent, dict) else parent for parent in raw_parents]
+    parents = [
+        _require_sha(
+            parent["sha"] if isinstance(parent, dict) else parent,
+            "merge parent SHA",
+        )
+        for parent in raw_parents
+    ]
     if parents != [base_sha, head_sha]:
         raise ProtectionError("merge commit does not bind the exact base and reviewed head")
-    if head_commit["sha"] != head_sha:
+    if _require_sha(head_commit["sha"], "head commit SHA") != head_sha:
         raise ProtectionError("reviewed head commit identity is wrong")
     merge_tree = merge_commit["commit"]["tree"]
-    merge_tree_sha = merge_tree["sha"] if isinstance(merge_tree, dict) else merge_tree
-    if head_commit["commit"]["tree"]["sha"] != merge_tree_sha:
+    merge_tree_sha = _require_sha(
+        merge_tree["sha"] if isinstance(merge_tree, dict) else merge_tree,
+        "merge tree SHA",
+    )
+    head_tree_sha = _require_sha(head_commit["commit"]["tree"]["sha"], "head tree SHA")
+    if head_tree_sha != merge_tree_sha:
         raise ProtectionError("merge commit tree differs from the reviewed head tree")
     if not required_checks or len(required_checks) != len(set(required_checks)):
         raise ProtectionError("required check inventory is empty or duplicated")
+    runs = check_runs.get("check_runs")
+    total_count = check_runs.get("total_count")
+    if (
+        not isinstance(runs, list)
+        or not isinstance(total_count, int)
+        or isinstance(total_count, bool)
+        or total_count < 0
+        or total_count != len(runs)
+    ):
+        raise ProtectionError("check-run evidence is incomplete or malformed")
     by_name: dict[str, list[dict[str, Any]]] = {}
-    for run in check_runs["check_runs"]:
+    seen_ids: set[int] = set()
+    for run in runs:
+        if not isinstance(run, dict):
+            raise ProtectionError("check-run evidence contains a malformed run")
+        run_id = run.get("id")
+        if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id <= 0:
+            raise ProtectionError("check-run evidence contains a malformed check ID")
+        if run_id in seen_ids:
+            raise ProtectionError("check-run evidence contains a duplicate check ID")
+        seen_ids.add(run_id)
         by_name.setdefault(run["name"], []).append(run)
     expected_integrations = {item["context"]: item["integration_id"] for item in EXACT_INTEGRATIONS}
     for name in required_checks:
@@ -155,7 +194,7 @@ def validate_merge_proof(
         ]
         if not matching:
             raise ProtectionError(f"{name}: missing, stale, or wrong-integration check")
-        run = max(matching, key=lambda item: (item.get("completed_at") or "", item["id"]))
+        run = max(matching, key=lambda item: item["id"])
         if run["status"] != "completed" or run["conclusion"] != "success":
             raise ProtectionError(f"{name}: non-success conclusion {run['conclusion']!r}")
     return {

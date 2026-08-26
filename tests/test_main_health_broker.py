@@ -43,6 +43,9 @@ def _config(tmp_path: Path) -> broker.BrokerConfig:
             "max_clock_skew_seconds": 30,
             "poll_seconds": 60,
             "repository": REPOSITORY,
+            "settings_app_id": 9876543,
+            "settings_app_slug": "metriplane-ruleset-witness",
+            "settings_credential_path": str(tmp_path / "credentials" / "settings.pem"),
             "state_branch": "metriplane-main-health-state",
             "state_protection_ruleset_id": 21487681,
             "state_root": str(tmp_path / "state"),
@@ -64,7 +67,10 @@ def _rulesets(config: broker.BrokerConfig) -> dict[int, dict[str, Any]]:
             include=[f"refs/heads/{config.state_branch}"],
         ),
     }
-    return {identifier: {"id": identifier, **value} for identifier, value in values.items()}
+    return {
+        identifier: {"id": identifier, **broker._provider_ruleset(value)}
+        for identifier, value in values.items()
+    }
 
 
 def _request() -> dict[str, Any]:
@@ -208,6 +214,14 @@ def test_app_token_permissions_are_exact() -> None:
         "metadata": "read",
         "pull_requests": "read",
     }
+    assert broker.SETTINGS_TOKEN_PERMISSIONS == {
+        "administration": "write",
+        "metadata": "read",
+    }
+    assert set(broker.APP_TOKEN_PERMISSIONS).isdisjoint({"administration"})
+    assert set(broker.SETTINGS_TOKEN_PERMISSIONS).isdisjoint(
+        {"actions", "checks", "contents", "pull_requests"}
+    )
 
 
 class FakeTokenApi(broker.GitHubApi):
@@ -217,12 +231,16 @@ class FakeTokenApi(broker.GitHubApi):
         installation: dict[str, Any] | None = None,
         repository: dict[str, Any] | None = None,
         token_response: dict[str, Any] | None = None,
+        expected_permissions: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self.calls = 0
         self.installation = _installation_response() if installation is None else installation
         self.repository = _repository_response() if repository is None else repository
         self.token_response = _token_response() if token_response is None else token_response
+        self.expected_permissions = (
+            broker.APP_TOKEN_PERMISSIONS if expected_permissions is None else expected_permissions
+        )
 
     def request(
         self,
@@ -243,7 +261,7 @@ class FakeTokenApi(broker.GitHubApi):
             assert method == "POST"
             assert expected == (201,)
             assert payload == {
-                "permissions": broker.APP_TOKEN_PERMISSIONS,
+                "permissions": self.expected_permissions,
                 "repositories": ["metriplane"],
             }
             return broker.ApiResult({}, 201, self.token_response)
@@ -253,14 +271,19 @@ class FakeTokenApi(broker.GitHubApi):
         return broker.ApiResult({}, 200, self.repository)
 
 
-def _installation_response() -> dict[str, Any]:
+def _installation_response(
+    *,
+    app_id: int = broker.APP_INTEGRATION_ID,
+    app_slug: str = broker.APP_SLUG,
+    permissions: dict[str, str] | None = None,
+) -> dict[str, Any]:
     return {
         "access_tokens_url": "https://api.github.com/app/installations/7/access_tokens",
         "account": {"id": 997, "login": "Miko997", "type": "User"},
-        "app_id": broker.APP_INTEGRATION_ID,
-        "app_slug": broker.APP_SLUG,
+        "app_id": app_id,
+        "app_slug": app_slug,
         "id": 7,
-        "permissions": dict(broker.APP_TOKEN_PERMISSIONS),
+        "permissions": dict(broker.APP_TOKEN_PERMISSIONS if permissions is None else permissions),
         "repository_selection": "selected",
         "suspended_at": None,
         "target_id": 997,
@@ -277,10 +300,10 @@ def _repository_response(*, repository_id: int = 1234) -> dict[str, Any]:
     }
 
 
-def _token_response() -> dict[str, Any]:
+def _token_response(*, permissions: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "expires_at": "2026-08-26T13:00:00Z",
-        "permissions": dict(broker.APP_TOKEN_PERMISSIONS),
+        "permissions": dict(broker.APP_TOKEN_PERMISSIONS if permissions is None else permissions),
         "repositories": [_repository_response()],
         "repository_selection": "selected",
         "token": "installation-token",
@@ -291,6 +314,32 @@ def _authenticator(tmp_path: Path, api: FakeTokenApi) -> broker.AppAuthenticator
     authenticator = broker.AppAuthenticator(api, _config(tmp_path), clock=lambda: NOW)
     authenticator.signer = lambda _value: b"signature"
     return authenticator
+
+
+def test_ruleset_witness_uses_a_distinct_repository_scoped_authority(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    installation = _installation_response(
+        app_id=config.settings_app_id,
+        app_slug=config.settings_app_slug,
+        permissions=broker.SETTINGS_TOKEN_PERMISSIONS,
+    )
+    token_response = _token_response(permissions=broker.SETTINGS_TOKEN_PERMISSIONS)
+    api = FakeTokenApi(
+        installation=installation,
+        token_response=token_response,
+        expected_permissions=broker.SETTINGS_TOKEN_PERMISSIONS,
+    )
+    authenticator = broker.AppAuthenticator(
+        api,
+        config,
+        clock=lambda: NOW,
+        purpose="settings",
+    )
+    authenticator.signer = lambda _value: b"signature"
+
+    assert authenticator.mint().token == "installation-token"
+    assert authenticator.app_id != config.app_id
+    assert authenticator.permissions == broker.SETTINGS_TOKEN_PERMISSIONS
 
 
 def test_authenticator_rejects_permission_expansion(tmp_path: Path) -> None:
@@ -441,11 +490,34 @@ def test_provider_server_error_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> 
         broker.GitHubApi().request("test", token="token", method="PUT", payload={})
 
 
+def test_mutating_malformed_json_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
+    class MalformedResponse:
+        headers: dict[str, str] = {}
+        status = 200
+
+        def __enter__(self) -> MalformedResponse:
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b"not-json"
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args, **_kwargs: MalformedResponse())
+    with pytest.raises(broker.ProviderTransportError, match="malformed JSON"):
+        broker.GitHubApi().request("merge", token="token", method="PUT", payload={})
+    with pytest.raises(broker.BrokerError, match="malformed JSON") as exc_info:
+        broker.GitHubApi().request("read", token="token")
+    assert not isinstance(exc_info.value, broker.ProviderTransportError)
+
+
 def test_config_rejects_noncanonical_app_and_permissive_clock(tmp_path: Path) -> None:
     config = _config(tmp_path)
     assert config.state_root == tmp_path / "state"
     value = {field: getattr(config, field) for field in broker.CONFIG_FIELDS}
     value["credential_path"] = str(value["credential_path"])
+    value["settings_credential_path"] = str(value["settings_credential_path"])
     value["state_root"] = str(value["state_root"])
     value["app_id"] = 999
     with pytest.raises(broker.BrokerError, match="App ID"):
@@ -459,6 +531,10 @@ def test_config_rejects_noncanonical_app_and_permissive_clock(tmp_path: Path) ->
     with pytest.raises(broker.BrokerError, match="repository is not canonical"):
         broker.BrokerConfig.from_mapping(value)
     value["repository"] = REPOSITORY
+    value["settings_app_id"] = broker.APP_INTEGRATION_ID
+    with pytest.raises(broker.BrokerError, match="must be distinct"):
+        broker.BrokerConfig.from_mapping(value)
+    value["settings_app_id"] = config.settings_app_id
     value["state_root"] = 7
     with pytest.raises(broker.BrokerError, match="paths must be strings"):
         broker.BrokerConfig.from_mapping(value)
@@ -474,17 +550,24 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     )
     _internal_validate(example, schema)
     assert example["main_update_ruleset_id"] == 0
+    assert example["settings_app_id"] == 0
     assert example["poll_seconds"] == 60
     assert Path(example["state_root"]) == Path("/home/metriplane-health/state")
-    with pytest.raises(broker.BrokerError, match="main_update_ruleset_id"):
+    with pytest.raises(broker.BrokerError, match="settings_app_id"):
         broker.BrokerConfig.from_mapping(example)
+    example_with_witness = {**example, "settings_app_id": 9876543}
+    with pytest.raises(broker.BrokerError, match="main_update_ruleset_id"):
+        broker.BrokerConfig.from_mapping(example_with_witness)
     unit = (ROOT / "scripts" / "systemd" / "metriplane-main-health-broker.service").read_text(
         encoding="utf-8"
     )
     for boundary in (
         "User=metriplane-health",
+        "Type=notify",
+        "NotifyAccess=main",
         "python -m tools.main_health_broker run",
         "LoadCredentialEncrypted=github-app-private-key.pem:",
+        "LoadCredentialEncrypted=github-ruleset-witness-private-key.pem:",
         "NoNewPrivileges=true",
         "PYTHONDONTWRITEBYTECODE=1",
         "ProtectProc=invisible",
@@ -504,6 +587,121 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert "validate-config" in completed.stdout
+
+
+def test_run_once_quarantines_before_ruleset_witness_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    now = datetime.now(UTC)
+
+    class Authenticator:
+        def __init__(self, event: str, token: str) -> None:
+            self.event = event
+            self.token = token
+
+        def mint(self) -> broker.InstallationToken:
+            events.append(self.event)
+            return broker.InstallationToken(
+                expires_at=now + timedelta(hours=1),
+                installation_id=1,
+                token=self.token,
+            )
+
+    class Api(broker.GitHubApi):
+        def provider_now(self, token: str) -> datetime:
+            assert token in {"merge-token", "settings-token"}
+            return now
+
+    class FailedChecks:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def ensure_failed(self, *, head_sha: str, reason: str) -> int:
+            assert head_sha == HEAD_SHA and reason
+            events.append("failed-open-check")
+            return 1
+
+    api = Api()
+    service = broker.Broker(
+        api=api,
+        authenticator=Authenticator("merge-mint", "merge-token"),  # type: ignore[arg-type]
+        config=_config(tmp_path),
+        settings_authenticator=Authenticator(  # type: ignore[arg-type]
+            "settings-mint", "settings-token"
+        ),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+    monkeypatch.setattr(
+        service,
+        "_reconcile_orphans",
+        lambda token: events.append("reconcile-orphans") or [],
+    )
+    monkeypatch.setattr(
+        broker,
+        "_provider_list",
+        lambda *_args, **_kwargs: (
+            events.append("list-open-pulls") or [{"head": {"sha": HEAD_SHA}, "number": 81}]
+        ),
+    )
+    monkeypatch.setattr(broker, "CheckController", FailedChecks)
+
+    def fail_settings(*_args: Any, **kwargs: Any) -> dict[int, dict[str, Any]]:
+        assert kwargs["token"] == "settings-token"
+        events.append("validate-rulesets")
+        raise broker.BrokerError("settings unavailable")
+
+    monkeypatch.setattr(broker, "_rulesets", fail_settings)
+
+    with pytest.raises(broker.BrokerError, match="settings unavailable"):
+        service.run_once()
+    assert events == [
+        "merge-mint",
+        "reconcile-orphans",
+        "list-open-pulls",
+        "failed-open-check",
+        "settings-mint",
+        "validate-rulesets",
+    ]
+
+
+def test_service_readiness_requires_success_and_later_failure_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notifications: list[str] = []
+
+    class Service:
+        calls = 0
+
+        def run_once(self) -> list[dict[str, Any]]:
+            self.calls += 1
+            if self.calls == 2:
+                raise broker.BrokerError("persistent provider failure")
+            return []
+
+    service = Service()
+    monkeypatch.setattr(broker, "_sd_notify", notifications.append)
+    monkeypatch.setattr(broker.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(broker.BrokerError, match="persistent provider failure"):
+        broker._serve(service, poll_seconds=1)  # type: ignore[arg-type]
+    assert service.calls == 2
+    assert notifications == ["READY=1\nSTATUS=Last full broker cycle succeeded"]
+
+
+def test_service_never_reports_ready_when_first_cycle_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    notifications: list[str] = []
+
+    class Service:
+        def run_once(self) -> list[dict[str, Any]]:
+            raise broker.BrokerError("first cycle failed")
+
+    monkeypatch.setattr(broker, "_sd_notify", notifications.append)
+    with pytest.raises(broker.BrokerError, match="first cycle failed"):
+        broker._serve(Service(), poll_seconds=1)  # type: ignore[arg-type]
+    assert notifications == []
 
 
 def test_owner_emergency_cli_is_retired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -550,6 +748,11 @@ def test_rulesets_require_app_only_updates_and_no_human_bypass(tmp_path: Path) -
     changed[config.state_writer_ruleset_id]["bypass_actors"].append(
         {"actor_id": 141511110, "actor_type": "User", "bypass_mode": "always"}
     )
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+    changed = _rulesets(config)
+    changed[config.core_ruleset_id]["source"] = "Miko997/other"
     with pytest.raises(broker.BrokerError, match="not the governed"):
         broker.validate_hosted_rulesets(config=config, rulesets=changed)
 
@@ -1085,10 +1288,13 @@ class FakeTransactionApi(broker.GitHubApi):
         self.behavior = behavior
         self.config = config
         self.current_now = NOW + timedelta(minutes=2)
+        self.drift_on_final_ruleset = False
         self.extra_active_ruleset = False
+        self.inventory_source_drift = False
         self.merged = False
         self.merge_calls = 0
         self.reported_commits = 1
+        self.ruleset_inventory_calls = 0
 
     def provider_now(self, token: str) -> datetime:
         assert token == "token"
@@ -1112,9 +1318,13 @@ class FakeTransactionApi(broker.GitHubApi):
                 raise broker.ProviderError("rejected", status=409)
             if self.behavior == "transport-open":
                 raise broker.ProviderTransportError("response lost")
+            if self.behavior == "nonexact-open":
+                return broker.ApiResult({}, 200, {"merged": False})
             self.merged = True
             if self.behavior == "transport-merged":
                 raise broker.ProviderTransportError("response lost")
+            if self.behavior == "nonexact-merged":
+                return broker.ApiResult({}, 200, {"merged": True})
             return broker.ApiResult({}, 200, {"merged": True, "sha": MERGE_SHA})
         if "/pulls/81/reviews?" in path:
             return broker.ApiResult({}, 200, _reviews())
@@ -1134,16 +1344,36 @@ class FakeTransactionApi(broker.GitHubApi):
         if "/collaborators/" in path and path.endswith("/permission"):
             return broker.ApiResult({}, 200, {"permission": "write"})
         if "/rulesets?includes_parents=true" in path:
+            self.ruleset_inventory_calls += 1
             inventory = [
                 {
-                    "enforcement": "active",
-                    "id": ruleset_id,
-                    "target": "branch",
+                    field: ruleset[field]
+                    for field in (
+                        "enforcement",
+                        "id",
+                        "name",
+                        "source",
+                        "source_type",
+                        "target",
+                    )
                 }
-                for ruleset_id in _rulesets(self.config)
+                for ruleset in _rulesets(self.config).values()
             ]
-            if self.extra_active_ruleset:
-                inventory.append({"enforcement": "active", "id": 999, "target": "branch"})
+            if self.inventory_source_drift:
+                inventory[0]["source"] = "Miko997/other"
+            if self.extra_active_ruleset or (
+                self.drift_on_final_ruleset and self.ruleset_inventory_calls >= 2
+            ):
+                inventory.append(
+                    {
+                        "enforcement": "active",
+                        "id": 999,
+                        "name": "Unexpected active tag policy",
+                        "source": REPOSITORY,
+                        "source_type": "Repository",
+                        "target": "tag",
+                    }
+                )
             return broker.ApiResult({}, 200, inventory)
         if "/rulesets/" in path:
             ruleset_id = int(path.rsplit("/", 1)[1])
@@ -1194,11 +1424,19 @@ def test_pull_snapshot_rejects_an_incomplete_provider_commit_inventory(tmp_path:
         broker._pull_snapshot(api, config=config, number=81, token="token")
 
 
-def test_ruleset_fetch_rejects_an_extra_active_branch_ruleset(tmp_path: Path) -> None:
+def test_ruleset_fetch_rejects_an_extra_active_ruleset_of_any_target(tmp_path: Path) -> None:
     config = _config(tmp_path)
     api = FakeTransactionApi(config, "success")
     api.extra_active_ruleset = True
     with pytest.raises(broker.BrokerError, match="inventory is not the exact governed set"):
+        broker._rulesets(api, config=config, token="token")
+
+
+def test_ruleset_fetch_rejects_inventory_detail_source_disagreement(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakeTransactionApi(config, "success")
+    api.inventory_source_drift = True
+    with pytest.raises(broker.BrokerError, match="inventory and detail source differ"):
         broker._rulesets(api, config=config, token="token")
 
 
@@ -1289,13 +1527,14 @@ def _transaction_fixture(
     return service, api, FakeAdmissionChecks(), spool
 
 
-@pytest.mark.parametrize("behavior", ["success", "transport-merged"])
+@pytest.mark.parametrize("behavior", ["success", "transport-merged", "nonexact-merged"])
 def test_exact_merge_transaction_proves_success(tmp_path: Path, behavior: str) -> None:
     service, api, checks, spool = _transaction_fixture(tmp_path, behavior)
     proof = service._process_pull(
         check_controller=checks,  # type: ignore[arg-type]
         number=81,
         provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
         state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
         token="token",
     )
@@ -1312,6 +1551,7 @@ def test_red_incident_uses_same_exact_single_use_merge_transaction(tmp_path: Pat
         check_controller=checks,  # type: ignore[arg-type]
         number=81,
         provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
         state_branch=FakeRepairState(),  # type: ignore[arg-type]
         token="token",
     )
@@ -1335,6 +1575,7 @@ def test_provider_consumed_request_blocks_retry_after_spool_restore(tmp_path: Pa
             check_controller=checks,  # type: ignore[arg-type]
             number=81,
             provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
             state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
             token="token",
         )
@@ -1357,9 +1598,29 @@ def test_health_freshness_is_rechecked_at_exact_merge_boundary(tmp_path: Path) -
             check_controller=checks,  # type: ignore[arg-type]
             number=81,
             provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
             state_branch=BoundaryState(),  # type: ignore[arg-type]
             token="token",
         )
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+def test_rulesets_are_rechecked_immediately_before_success(tmp_path: Path) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.drift_on_final_ruleset = True
+
+    with pytest.raises(broker.BrokerError, match="inventory is not the exact governed set"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.ruleset_inventory_calls == 2
     assert api.merge_calls == 0
     assert checks.succeeded == []
 
@@ -1554,6 +1815,7 @@ def test_repair_resolution_is_rebuilt_from_provider_and_protected_results(
     ("behavior", "status", "message"),
     [
         ("transport-open", "uncertain", "ambiguous"),
+        ("nonexact-open", "uncertain", "ambiguous"),
         ("reject", "rejected", "rejected"),
         ("bad-proof", "uncertain", "tree differs"),
     ],
@@ -1567,6 +1829,7 @@ def test_failed_merge_transaction_closes_check_and_never_retries(
             check_controller=checks,  # type: ignore[arg-type]
             number=81,
             provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
             state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
             token="token",
         )
@@ -1579,6 +1842,7 @@ def test_failed_merge_transaction_closes_check_and_never_retries(
                 check_controller=checks,  # type: ignore[arg-type]
                 number=81,
                 provider_now=NOW + timedelta(minutes=2),
+                settings_token="token",
                 state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
                 token="token",
             )
@@ -1796,6 +2060,75 @@ class FakeStateBranch:
         return dict(self.state)
 
 
+def test_current_ci_selects_a_newer_active_rerun(tmp_path: Path) -> None:
+    paths: list[str] = []
+
+    class CurrentCiApi(broker.GitHubApi):
+        def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+            assert key == "workflow_runs"
+            assert token == "token"
+            paths.append(path)
+            common = {
+                "event": "push",
+                "head_branch": "main",
+                "head_sha": BASE_SHA,
+                "id": 20,
+            }
+            return [
+                {
+                    **common,
+                    "conclusion": "success",
+                    "run_attempt": 1,
+                    "status": "completed",
+                },
+                {
+                    **common,
+                    "conclusion": None,
+                    "run_attempt": 2,
+                    "status": "in_progress",
+                },
+            ]
+
+    reconciler = broker.HealthReconciler(
+        api=CurrentCiApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=FakeStateBranch(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert reconciler._current_ci(BASE_SHA)["run_attempt"] == 2  # type: ignore[index]
+    assert "status=" not in paths[0]
+
+
+def test_fresh_cached_green_cannot_hide_a_newer_active_ci_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = FakeStateBranch()
+    state.result_identities.add(("protected-main", (20, 1)))
+    reconciler = broker.HealthReconciler(
+        api=FakeDeepApi(),
+        config=_config(tmp_path),
+        spool=broker.DurableSpool(tmp_path / "spool"),
+        state_branch=state,  # type: ignore[arg-type]
+        token="token",
+    )
+    monkeypatch.setattr(
+        reconciler,
+        "_current_ci",
+        lambda _sha: {
+            "conclusion": None,
+            "id": 20,
+            "run_attempt": 2,
+            "status": "in_progress",
+        },
+    )
+
+    with pytest.raises(broker.BrokerError, match="latest CI attempt is still active"):
+        reconciler.reconcile_main(NOW)
+    assert state.appends == []
+
+
 def test_red_state_records_each_protected_main_attempt_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1814,6 +2147,7 @@ def test_red_state_records_each_protected_main_attempt_once(
         "created_at": "2026-08-26T11:50:00Z",
         "id": 20,
         "run_attempt": 1,
+        "status": "completed",
     }
     selection = {"ready": True, "runs": []}
     monkeypatch.setattr(reconciler, "_current_ci", lambda _sha: ci_run)

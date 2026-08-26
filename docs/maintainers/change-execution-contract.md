@@ -31,13 +31,34 @@ python tools/check_repository_protection.py capture \
   --settings <capture-directory>/repository-protection-settings.json
 ```
 
+For a disposable live activation merge, capture the exact pull request, head
+and merge commits, every paginated check run, and current `main` in the same
+operation, then validate the retained proof offline:
+
+```console
+python tools/capture_repository_protection.py \
+  --repository Miko997/metriplane \
+  --captured-at <ISO-8601> \
+  --merge-proof-pr <merged-pull-request-number> \
+  --output-dir <capture-directory>
+python tools/check_repository_protection.py merge-proof \
+  --policy docs/status/repository-protection-policy.json \
+  --pull-request <capture-directory>/pull-request.json \
+  --head-commit <capture-directory>/head-commit.json \
+  --merge-commit <capture-directory>/merge-commit.json \
+  --check-runs <capture-directory>/check-runs.json \
+  --main-ref <capture-directory>/main-ref.json
+```
+
 The current repository has no merge queue. Its governed target mode is
 App-brokered strict-up-to-date merging: layered no-bypass core and admission
 rulesets, App-only update restrictions for `main` and the protected state
 branch, and the exact four integration-bound terminals. A partial five-ruleset
-activation fails capture. Hosted setting changes remain an owner operation and
-require a new capture; the committed example remains `planned` until the
-independently approved same-plan live proof is retained.
+activation, any additional active repository ruleset, or disagreement between
+ruleset inventory and detail source, target, name, or enforcement fails
+capture. Hosted setting changes remain an owner operation and require a new
+capture; the committed example remains `planned` until the independently
+approved same-plan live proof is retained.
 
 The hosted required-check set must equal the four MP2-004 terminal names exactly;
 legacy, missing, or extra contexts fail offline validation. Each aggregate consumes
@@ -55,10 +76,12 @@ MP2-004; MP2-007 is its sole reserved owner.
 
 ## Main health
 
-The host-only GitHub App broker reads global health and is the only permitted
-writer for `main` and the protected state branch. GitHub Actions never receives
-the App credential. Completed protected-main CI reconciliation, nightly, and
-weekly results are the only normal health writers. The
+The host-only GitHub App broker reads global health. Its merge App is the only
+permitted writer for `main`, the protected state branch, and the broker check;
+a distinct settings-only witness App reads complete rulesets and bypass actors.
+GitHub Actions never receives either App credential. Completed protected-main
+CI reconciliation, nightly, and weekly results are the only normal health
+writers. The
 protected-main writer observes the triggering CI attempt and the exact commit's
 latest Documentation and CodeQL attempts through paginated provider job APIs. It
 requires one exact aggregate terminal in each selected attempt and ingests them as

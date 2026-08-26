@@ -63,6 +63,12 @@ Main has five layered rulesets:
 The App bypasses only the two update restrictions. It cannot bypass the core,
 admission, or state-protection rules because rulesets aggregate.
 
+The merge App has no Administration permission. A separate ruleset-witness App
+has exactly Administration write and Metadata read so the broker can observe
+complete bypass actors; it has no repository-content, check, pull-request, or
+Actions authority. Both App installations and every token are restricted to
+the one canonical repository.
+
 At startup and every polling boundary, the broker creates or mutates one
 provider-recorded App check-run ID per open pull-request head to failure.
 Duplicate App checks are failed and renamed; exactly one canonical ID remains.
@@ -78,14 +84,18 @@ changes-requested, dismissal, or approval for another request invalidates the
 earlier approval.
 
 Under one singleton host lock, the broker re-reads reviews, commits, all exact
-checks, all governed rulesets including complete bypass actors, provider time,
-current main, and the state branch. It changes the recorded App check ID to
-literal success and immediately calls the synchronous merge endpoint with the
-exact head SHA. A definite rejection closes the check. An ambiguous response
-is never retried: the broker reconciles the pull request, main ref, merge
-parents, and exact tree and otherwise closes the check and records the request
-as terminal uncertain. Provider timeouts, rate limits, and server errors are
-ambiguous, not definite rejections.
+checks, every active repository ruleset, all five governed ruleset bodies
+including complete bypass actors, provider time, current main, and the state
+branch. Summaries and bodies must agree on identity, source, target, and
+enforcement. The witness App performs one final ruleset read after orphan and
+check quarantine and immediately before success can be published. The broker
+then changes the recorded merge-App check ID to literal success and immediately
+calls the synchronous merge endpoint with the exact head SHA. A definite
+rejection closes the check. An ambiguous response is never retried: the broker
+reconciles the pull request, main ref, merge parents, and exact tree and
+otherwise closes the check and records the request as terminal uncertain.
+Provider timeouts, rate limits, malformed success responses, and server errors
+are ambiguous, not definite rejections.
 
 ## Trust and availability
 
@@ -98,7 +108,10 @@ credential remains uncompromised.
 One Ubuntu host is fail-closed, not highly available. The broker is a hardened
 system service under a dedicated non-login account. Its mutable state is under
 /home/metriplane-health/state on the large home filesystem. The App key is a
-systemd encrypted credential and is absent from GitHub Actions. Provider clock
+systemd encrypted credential and is absent from GitHub Actions; the independent
+ruleset-witness key is encrypted separately. The service reports systemd
+readiness only after a complete successful first cycle and exits on any later
+broker failure so restart policy and monitoring can observe it. Provider clock
 skew, service downtime, host restart, disk failure, and restore are monitored
 and tested; downtime leaves main locked.
 

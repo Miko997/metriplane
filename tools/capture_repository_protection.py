@@ -16,6 +16,7 @@ from typing import Any
 from tools import main_health_broker as broker
 
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+SHA = re.compile(r"[0-9a-f]{40}\Z")
 APP_INTEGRATION_ID = 4722589
 APP_BROKER_RULESET_NAMES = {
     "Protect main",
@@ -133,14 +134,20 @@ def _broker_settings(
     state_ref = "refs/heads/metriplane-main-health-state"
     default_ref = {"exclude": [], "include": ["~DEFAULT_BRANCH"]}
     expected_rulesets = {
-        "Protect main": broker._core_ruleset(),
-        "Protect main health admission": broker._admission_ruleset(),
-        "Protect main health state": broker._state_protection_ruleset(state_ref.rsplit("/", 1)[1]),
-        "Restrict main health state writers": broker._app_update_ruleset(
-            name="Restrict main health state writers", include=[state_ref]
+        "Protect main": broker._provider_ruleset(broker._core_ruleset()),
+        "Protect main health admission": broker._provider_ruleset(broker._admission_ruleset()),
+        "Protect main health state": broker._provider_ruleset(
+            broker._state_protection_ruleset(state_ref.rsplit("/", 1)[1])
         ),
-        "Restrict main updates to broker": broker._app_update_ruleset(
-            name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"]
+        "Restrict main health state writers": broker._provider_ruleset(
+            broker._app_update_ruleset(
+                name="Restrict main health state writers", include=[state_ref]
+            )
+        ),
+        "Restrict main updates to broker": broker._provider_ruleset(
+            broker._app_update_ruleset(
+                name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"]
+            )
         ),
     }
     exact_governed_bodies = all(
@@ -218,14 +225,10 @@ def normalize_capture(
     broker_specific_names = APP_BROKER_RULESET_NAMES - {"Protect main"}
     if broker_specific_names & broker_names and broker_names != APP_BROKER_RULESET_NAMES:
         raise ValueError("App-broker ruleset activation is partial")
-    active_branch = [item for item in active if item.get("target") == "branch"]
-    active_branch_names = {
-        str(item["name"]) for item in active_branch if isinstance(item.get("name"), str)
-    }
     if broker_names == APP_BROKER_RULESET_NAMES and (
-        len(active_branch) != len(broker_names) or active_branch_names != broker_names
+        len(active) != len(broker_names) or set(names) != broker_names
     ):
-        raise ValueError("App-broker active branch-ruleset inventory is not exact")
+        raise ValueError("App-broker active ruleset inventory is not exact")
     default_rulesets = [
         item
         for item in active
@@ -301,6 +304,63 @@ def normalize_capture(
     return capability, settings
 
 
+def _capture_check_runs(*, repository: str, head_sha: str, gh: Path) -> dict[str, Any]:
+    endpoint = f"repos/{repository}/commits/{head_sha}/check-runs?filter=all&per_page=100"
+    first_page = _run_json([str(gh), "api", f"{endpoint}&page=1"])
+    if not isinstance(first_page, dict):
+        raise TypeError("provider check-run response must be a JSON object")
+    total_count = first_page.get("total_count")
+    first_runs = first_page.get("check_runs")
+    if (
+        not isinstance(total_count, int)
+        or isinstance(total_count, bool)
+        or total_count < 0
+        or not isinstance(first_runs, list)
+        or not all(isinstance(item, dict) for item in first_runs)
+    ):
+        raise ValueError("provider check-run count or first page is malformed")
+    all_runs = _run_json_objects([str(gh), "api", "--paginate", endpoint, "--jq", ".check_runs[]"])
+    if total_count != len(all_runs) or first_runs != all_runs[: len(first_runs)]:
+        raise ValueError("provider check-run pagination changed or is incomplete")
+    return {"check_runs": all_runs, "total_count": total_count}
+
+
+def capture_merge_proof(*, repository: str, pull_request: int, gh: Path) -> dict[str, Any]:
+    if REPOSITORY.fullmatch(repository) is None:
+        raise ValueError("repository must be owner/name")
+    if type(pull_request) is not int or pull_request <= 0:
+        raise ValueError("merge-proof pull request must be positive")
+    pull = _run_json([str(gh), "api", f"repos/{repository}/pulls/{pull_request}"])
+    if not isinstance(pull, dict):
+        raise TypeError("pull request response must be a JSON object")
+    head = pull.get("head")
+    head_sha = head.get("sha") if isinstance(head, dict) else None
+    merge_sha = pull.get("merge_commit_sha")
+    if (
+        not isinstance(head_sha, str)
+        or SHA.fullmatch(head_sha) is None
+        or not isinstance(merge_sha, str)
+        or SHA.fullmatch(merge_sha) is None
+    ):
+        raise ValueError("merged pull request does not expose exact head and merge SHAs")
+    head_commit = _run_json([str(gh), "api", f"repos/{repository}/commits/{head_sha}"])
+    merge_commit = _run_json([str(gh), "api", f"repos/{repository}/commits/{merge_sha}"])
+    main_ref = _run_json([str(gh), "api", f"repos/{repository}/git/ref/heads/main"])
+    if not all(isinstance(value, dict) for value in (head_commit, merge_commit, main_ref)):
+        raise TypeError("merge-proof commit or ref response must be a JSON object")
+    return {
+        "check-runs.json": _capture_check_runs(
+            repository=repository,
+            head_sha=head_sha,
+            gh=gh,
+        ),
+        "head-commit.json": head_commit,
+        "main-ref.json": main_ref,
+        "merge-commit.json": merge_commit,
+        "pull-request.json": pull,
+    }
+
+
 def capture(repository: str, captured_at: str, gh: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     if not REPOSITORY.fullmatch(repository):
         raise ValueError("repository must be owner/name")
@@ -352,6 +412,7 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--captured-at", required=True)
     parser.add_argument("--gh", type=Path, default=Path("/usr/bin/gh"))
+    parser.add_argument("--merge-proof-pr", type=int)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     capability, settings = capture(args.repository, args.captured_at, args.gh)
@@ -360,6 +421,14 @@ def main() -> int:
         "repository-protection-capability.json": capability,
         "repository-protection-settings.json": settings,
     }
+    if args.merge_proof_pr is not None:
+        outputs.update(
+            capture_merge_proof(
+                repository=args.repository,
+                pull_request=args.merge_proof_pr,
+                gh=args.gh,
+            )
+        )
     for name, value in outputs.items():
         path = args.output_dir / name
         path.write_bytes(_canonical(value))

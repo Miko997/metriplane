@@ -4,17 +4,20 @@ After=network-online.target time-sync.target
 Wants=network-online.target time-sync.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=metriplane-health
 Group=metriplane-health
 WorkingDirectory=/opt/metriplane-main-health-broker
 ExecStart=/opt/metriplane-main-health-broker/.venv/bin/python -m tools.main_health_broker run --config /etc/metriplane/main-health-broker.json
 LoadCredentialEncrypted=github-app-private-key.pem:/etc/credstore.encrypted/metriplane-main-health-app-key
+LoadCredentialEncrypted=github-ruleset-witness-private-key.pem:/etc/credstore.encrypted/metriplane-ruleset-witness-app-key
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
 UMask=0077
 Restart=on-failure
 RestartSec=15s
+TimeoutStartSec=5min
 NoNewPrivileges=true
 PrivateDevices=true
 PrivateTmp=true

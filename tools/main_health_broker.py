@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import socket
 import sqlite3
 import subprocess
 import tempfile
@@ -32,6 +33,7 @@ from tools import observe_main_health, stop_the_line
 APP_INTEGRATION_ID = 4722589
 ACTIONS_INTEGRATION_ID = 15368
 APP_SLUG = "metriplane-main-health-publisher"
+SETTINGS_APP_SLUG = "metriplane-ruleset-witness"
 REPOSITORY_OWNER = "Miko997"
 REPOSITORY_NAME = "metriplane"
 REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
@@ -48,6 +50,10 @@ APP_TOKEN_PERMISSIONS = {
     "contents": "write",
     "metadata": "read",
     "pull_requests": "read",
+}
+SETTINGS_TOKEN_PERMISSIONS = {
+    "administration": "write",
+    "metadata": "read",
 }
 SPOOL_SCHEMA_VERSION = 1
 REQUEST_STATUSES = {"merged", "merging", "rejected", "uncertain"}
@@ -91,6 +97,9 @@ CONFIG_FIELDS = {
     "max_clock_skew_seconds",
     "poll_seconds",
     "repository",
+    "settings_app_id",
+    "settings_app_slug",
+    "settings_credential_path",
     "state_branch",
     "state_protection_ruleset_id",
     "state_root",
@@ -186,6 +195,9 @@ class BrokerConfig:
     max_clock_skew_seconds: int
     poll_seconds: int
     repository: str
+    settings_app_id: int
+    settings_app_slug: str
+    settings_credential_path: Path
     state_branch: str
     state_protection_ruleset_id: int
     state_root: Path
@@ -203,17 +215,32 @@ class BrokerConfig:
         app_slug = value["app_slug"]
         if app_slug != APP_SLUG:
             raise BrokerError("broker App slug is not canonical")
+        settings_app_slug = value["settings_app_slug"]
+        if settings_app_slug != SETTINGS_APP_SLUG:
+            raise BrokerError("ruleset-witness App slug is not canonical")
         state_branch = value["state_branch"]
         if state_branch != "metriplane-main-health-state":
             raise BrokerError("broker state branch is not canonical")
         credential_path_value = value["credential_path"]
+        settings_credential_path_value = value["settings_credential_path"]
         state_root_value = value["state_root"]
-        if not isinstance(credential_path_value, str) or not isinstance(state_root_value, str):
+        if (
+            not isinstance(credential_path_value, str)
+            or not isinstance(settings_credential_path_value, str)
+            or not isinstance(state_root_value, str)
+        ):
             raise BrokerError("broker credential and state paths must be strings")
         credential_path = Path(credential_path_value)
+        settings_credential_path = Path(settings_credential_path_value)
         state_root = Path(state_root_value)
-        if not credential_path.is_absolute() or not state_root.is_absolute():
+        if (
+            not credential_path.is_absolute()
+            or not settings_credential_path.is_absolute()
+            or not state_root.is_absolute()
+        ):
             raise BrokerError("broker credential and state paths must be absolute")
+        if credential_path == settings_credential_path:
+            raise BrokerError("merge and ruleset-witness credentials must be distinct")
         max_clock_skew = _require_positive_int(
             value["max_clock_skew_seconds"], "max_clock_skew_seconds"
         )
@@ -230,6 +257,9 @@ class BrokerConfig:
         app_id = _require_positive_int(value["app_id"], "app_id")
         if app_id != APP_INTEGRATION_ID:
             raise BrokerError("broker App ID is not canonical")
+        settings_app_id = _require_positive_int(value["settings_app_id"], "settings_app_id")
+        if settings_app_id == app_id:
+            raise BrokerError("merge and ruleset-witness App IDs must be distinct")
         return cls(
             admission_ruleset_id=_require_positive_int(
                 value["admission_ruleset_id"], "admission_ruleset_id"
@@ -245,6 +275,9 @@ class BrokerConfig:
             max_clock_skew_seconds=max_clock_skew,
             poll_seconds=poll_seconds,
             repository=repository,
+            settings_app_id=settings_app_id,
+            settings_app_slug=settings_app_slug,
+            settings_credential_path=settings_credential_path,
             state_branch=state_branch,
             state_protection_ruleset_id=_require_positive_int(
                 value["state_protection_ruleset_id"], "state_protection_ruleset_id"
@@ -280,6 +313,7 @@ class GitHubApi:
         payload: dict[str, Any] | None = None,
         expected: tuple[int, ...] = (200,),
     ) -> ApiResult:
+        mutating = method in {"DELETE", "PATCH", "POST", "PUT"}
         data = None if payload is None else canonical_bytes(payload)
         request = urllib.request.Request(
             f"{self.api_url}/{path.lstrip('/')}",
@@ -317,8 +351,13 @@ class GitHubApi:
                 f"GitHub {method} {path} response is ambiguous: {exc}"
             ) from exc
         except (UnicodeError, json.JSONDecodeError) as exc:
-            raise BrokerError(f"GitHub {method} {path} returned malformed JSON") from exc
+            error_type = ProviderTransportError if mutating else BrokerError
+            raise error_type(f"GitHub {method} {path} returned malformed JSON") from exc
         if result.status not in expected:
+            if mutating:
+                raise ProviderTransportError(
+                    f"GitHub {method} {path} returned ambiguous HTTP {result.status}"
+                )
             raise ProviderError(
                 f"GitHub {method} {path} returned unexpected HTTP {result.status}",
                 status=result.status,
@@ -389,12 +428,19 @@ class InstallationToken:
     token: str
 
 
-def _installation_identity(value: Any, *, api_url: str, config: BrokerConfig) -> tuple[int, int]:
+def _installation_identity(
+    value: Any,
+    *,
+    api_url: str,
+    app_id: int,
+    app_slug: str,
+    permissions: dict[str, str],
+) -> tuple[int, int]:
     if not isinstance(value, dict):
         raise BrokerError("GitHub App installation response is malformed")
     installation_id = _require_positive_int(value.get("id"), "installation ID")
-    app_id = _require_positive_int(value.get("app_id"), "installation App ID")
-    if app_id != config.app_id or value.get("app_slug") != config.app_slug:
+    provider_app_id = _require_positive_int(value.get("app_id"), "installation App ID")
+    if provider_app_id != app_id or value.get("app_slug") != app_slug:
         raise BrokerError("GitHub App installation App identity is not exact")
     account = value.get("account")
     if not isinstance(account, dict):
@@ -405,7 +451,7 @@ def _installation_identity(value: Any, *, api_url: str, config: BrokerConfig) ->
     target_id = _require_positive_int(value.get("target_id"), "installation target ID")
     if target_id != account_id or value.get("target_type") != "User":
         raise BrokerError("GitHub App installation target identity is not exact")
-    if value.get("permissions") != APP_TOKEN_PERMISSIONS:
+    if value.get("permissions") != permissions:
         raise BrokerError("GitHub App installation permissions are not exact")
     if value.get("repository_selection") != "selected":
         raise BrokerError("GitHub App installation repository selection is not exact")
@@ -443,11 +489,24 @@ class AppAuthenticator:
         config: BrokerConfig,
         *,
         clock: Callable[[], datetime] | None = None,
+        purpose: str = "merge",
     ) -> None:
         self.api = api
         self.config = config
         self.clock = clock or (lambda: datetime.now(UTC))
-        self.signer = OpenSslSigner(config.credential_path)
+        if purpose == "merge":
+            self.app_id = config.app_id
+            self.app_slug = config.app_slug
+            self.permissions = APP_TOKEN_PERMISSIONS
+            credential_path = config.credential_path
+        elif purpose == "settings":
+            self.app_id = config.settings_app_id
+            self.app_slug = config.settings_app_slug
+            self.permissions = SETTINGS_TOKEN_PERMISSIONS
+            credential_path = config.settings_credential_path
+        else:
+            raise BrokerError("GitHub App authenticator purpose is invalid")
+        self.signer = OpenSslSigner(credential_path)
         self._cached: InstallationToken | None = None
 
     def mint(self) -> InstallationToken:
@@ -458,7 +517,7 @@ class AppAuthenticator:
         if self._cached is not None and self._cached.expires_at - local_now > timedelta(minutes=11):
             return self._cached
         app_jwt = build_app_jwt(
-            app_id=self.config.app_id,
+            app_id=self.app_id,
             now=int(local_now.timestamp()),
             signer=self.signer,
         )
@@ -467,14 +526,18 @@ class AppAuthenticator:
             token=app_jwt,
         )
         installation_id, account_id = _installation_identity(
-            installation.value, api_url=self.api.api_url, config=self.config
+            installation.value,
+            api_url=self.api.api_url,
+            app_id=self.app_id,
+            app_slug=self.app_slug,
+            permissions=self.permissions,
         )
         token_result = self.api.request(
             f"app/installations/{installation_id}/access_tokens",
             token=app_jwt,
             method="POST",
             payload={
-                "permissions": APP_TOKEN_PERMISSIONS,
+                "permissions": self.permissions,
                 "repositories": [REPOSITORY_NAME],
             },
             expected=(201,),
@@ -484,7 +547,7 @@ class AppAuthenticator:
         token = token_result.value.get("token")
         permissions = token_result.value.get("permissions")
         expires_at = token_result.value.get("expires_at")
-        if not isinstance(token, str) or not token or permissions != APP_TOKEN_PERMISSIONS:
+        if not isinstance(token, str) or not token or permissions != self.permissions:
             raise BrokerError("GitHub App token identity or permissions are not exact")
         if token_result.value.get("repository_selection") != "selected":
             raise BrokerError("GitHub App token repository selection is not exact")
@@ -751,10 +814,27 @@ class DurableSpool:
 
 
 def _ruleset_view(value: dict[str, Any]) -> dict[str, Any]:
-    required = {"bypass_actors", "conditions", "enforcement", "name", "rules", "target"}
+    required = {
+        "bypass_actors",
+        "conditions",
+        "enforcement",
+        "name",
+        "rules",
+        "source",
+        "source_type",
+        "target",
+    }
     if not required <= set(value):
         raise BrokerError("GitHub ruleset response omits governed fields")
     return {key: value[key] for key in sorted(required)}
+
+
+def _provider_ruleset(value: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **value,
+        "source": REPOSITORY,
+        "source_type": "Repository",
+    }
 
 
 def _core_ruleset() -> dict[str, Any]:
@@ -836,15 +916,19 @@ def validate_hosted_rulesets(
     *, config: BrokerConfig, rulesets: dict[int, dict[str, Any]]
 ) -> dict[str, str]:
     expected = {
-        config.core_ruleset_id: _core_ruleset(),
-        config.admission_ruleset_id: _admission_ruleset(),
-        config.main_update_ruleset_id: _app_update_ruleset(
-            name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"]
+        config.core_ruleset_id: _provider_ruleset(_core_ruleset()),
+        config.admission_ruleset_id: _provider_ruleset(_admission_ruleset()),
+        config.main_update_ruleset_id: _provider_ruleset(
+            _app_update_ruleset(name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"])
         ),
-        config.state_protection_ruleset_id: _state_protection_ruleset(config.state_branch),
-        config.state_writer_ruleset_id: _app_update_ruleset(
-            name="Restrict main health state writers",
-            include=[f"refs/heads/{config.state_branch}"],
+        config.state_protection_ruleset_id: _provider_ruleset(
+            _state_protection_ruleset(config.state_branch)
+        ),
+        config.state_writer_ruleset_id: _provider_ruleset(
+            _app_update_ruleset(
+                name="Restrict main health state writers",
+                include=[f"refs/heads/{config.state_branch}"],
+            )
         ),
     }
     if set(rulesets) != set(expected):
@@ -1880,15 +1964,11 @@ def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, 
         f"repos/{config.repository}/rulesets?includes_parents=true",
         token=token,
     )
-    active_branch_ids = [
-        _require_positive_int(item.get("id"), "active branch ruleset ID")
-        for item in inventory
-        if item.get("target") == "branch" and item.get("enforcement") == "active"
-    ]
-    if len(active_branch_ids) != len(set(active_branch_ids)) or set(active_branch_ids) != set(
-        identifiers
-    ):
-        raise BrokerError("active branch ruleset inventory is not the exact governed set")
+    active = [item for item in inventory if item.get("enforcement") == "active"]
+    active_ids = [_require_positive_int(item.get("id"), "active ruleset ID") for item in active]
+    if len(active_ids) != len(set(active_ids)) or set(active_ids) != set(identifiers):
+        raise BrokerError("active ruleset inventory is not the exact governed set")
+    active_by_id = {identifier: item for identifier, item in zip(active_ids, active, strict=True)}
     values: dict[int, dict[str, Any]] = {}
     for identifier in identifiers:
         result = api.request(
@@ -1899,6 +1979,10 @@ def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, 
             raise BrokerError(f"ruleset {identifier} response is malformed")
         if result.value.get("id") != identifier:
             raise BrokerError(f"ruleset {identifier} response has the wrong provider ID")
+        summary = active_by_id[identifier]
+        for field in ("enforcement", "name", "source", "source_type", "target"):
+            if result.value.get(field) != summary.get(field):
+                raise BrokerError(f"ruleset {identifier} inventory and detail {field} differ")
         values[identifier] = result.value
     return values
 
@@ -1950,7 +2034,7 @@ class HealthReconciler:
         runs = self.api.list_items(
             (
                 f"repos/{self.config.repository}/actions/workflows/ci.yml/runs"
-                "?branch=main&event=push&status=completed"
+                "?branch=main&event=push"
             ),
             key="workflow_runs",
             token=self.token,
@@ -1961,7 +2045,6 @@ class HealthReconciler:
             if run.get("head_sha") == main_sha
             and run.get("head_branch") == "main"
             and run.get("event") == "push"
-            and run.get("status") == "completed"
         ]
         if not exact:
             return None
@@ -1987,16 +2070,22 @@ class HealthReconciler:
             and state.get("last_good_sha") == main_sha
             and 0 <= age <= max(60, self.config.health_max_age_seconds // 2)
         )
-        if current_and_fresh:
-            return state
         ci_run = self._current_ci(main_sha)
         if ci_run is None:
-            raise BrokerError("current main has no completed exact CI run")
+            raise BrokerError("current main has no exact CI run")
         run_id = _require_positive_int(ci_run.get("id"), "CI run ID")
         run_attempt = _require_positive_int(ci_run.get("run_attempt"), "CI run attempt")
+        run_status = ci_run.get("status")
+        if not isinstance(run_status, str):
+            raise BrokerError("current main CI status is malformed")
+        if run_status != "completed":
+            raise BrokerError("current main latest CI attempt is still active")
         run_conclusion = ci_run.get("conclusion")
         if not isinstance(run_conclusion, str):
             raise BrokerError("current main CI conclusion is malformed")
+        identity = ("protected-main", (run_id, run_attempt))
+        if current_and_fresh and identity in result_identities:
+            return state
         workflow_runs = self._workflow_runs(main_sha)
         selection = observe_main_health.select_runs(
             workflow_runs=workflow_runs,
@@ -2040,7 +2129,6 @@ class HealthReconciler:
             "schema_version": 1,
             "sha": main_sha,
         }
-        identity = ("protected-main", (run_id, run_attempt))
         if state.get("status") == "red" and identity in result_identities:
             return state
         appended = self.state_branch.append(
@@ -2489,11 +2577,15 @@ class Broker:
         api: GitHubApi,
         authenticator: AppAuthenticator,
         config: BrokerConfig,
+        settings_authenticator: AppAuthenticator | None = None,
         spool: DurableSpool,
     ) -> None:
         self.api = api
         self.authenticator = authenticator
         self.config = config
+        self.settings_authenticator = settings_authenticator or AppAuthenticator(
+            api, config, purpose="settings"
+        )
         self.spool = spool
 
     def _reconcile_orphans(self, token: str) -> list[dict[str, Any]]:
@@ -2650,6 +2742,7 @@ class Broker:
         check_controller: CheckController,
         number: int,
         provider_now: datetime,
+        settings_token: str,
         state_branch: StateBranch,
         token: str,
     ) -> dict[str, Any] | None:
@@ -2727,7 +2820,7 @@ class Broker:
         )
         validate_hosted_rulesets(
             config=self.config,
-            rulesets=_rulesets(self.api, config=self.config, token=token),
+            rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
 
         pull_again, reviews_again, commits_again = _pull_snapshot(
@@ -2786,6 +2879,10 @@ class Broker:
             ),
             head_sha=admission["head_sha"],
         )
+        validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=settings_token),
+        )
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],
@@ -2803,6 +2900,8 @@ class Broker:
                 f"generation {state['generation']}."
             ),
         )
+        merge_result: ApiResult | None = None
+        ambiguous_response = False
         try:
             merge_result = self.api.request(
                 f"repos/{self.config.repository}/pulls/{number}/merge",
@@ -2811,29 +2910,7 @@ class Broker:
                 payload={"merge_method": "merge", "sha": admission["head_sha"]},
             )
         except ProviderTransportError:
-            try:
-                proof = verify_merge_proof(
-                    admission=admission,
-                    api=self.api,
-                    config=self.config,
-                    token=token,
-                )
-            except BrokerError:
-                check_controller.ensure_failed(
-                    head_sha=admission["head_sha"],
-                    reason="Ambiguous merge response could not be proved.",
-                )
-                self.spool.record_request(
-                    request_digest=admission["request_digest"],
-                    nonce=admission["nonce"],
-                    pull_request=number,
-                    request=admission["request"],
-                    status="uncertain",
-                    updated_at=provider_now.isoformat().replace("+00:00", "Z"),
-                )
-                raise BrokerError(
-                    "merge response was ambiguous and reconciliation did not prove success"
-                ) from None
+            ambiguous_response = True
         except ProviderError:
             check_controller.ensure_failed(
                 head_sha=admission["head_sha"],
@@ -2848,24 +2925,44 @@ class Broker:
                 updated_at=provider_now.isoformat().replace("+00:00", "Z"),
             )
             raise
-        else:
-            if (
-                not isinstance(merge_result.value, dict)
-                or merge_result.value.get("merged") is not True
-            ):
+        response_merge_sha: str | None = None
+        if not ambiguous_response:
+            if not isinstance(merge_result, ApiResult) or not isinstance(merge_result.value, dict):
+                ambiguous_response = True
+            elif merge_result.value.get("merged") is not True:
+                ambiguous_response = True
+            else:
+                try:
+                    response_merge_sha = _require_sha(
+                        merge_result.value.get("sha"), "merge response SHA"
+                    )
+                except BrokerError:
+                    ambiguous_response = True
+        if ambiguous_response:
+            try:
+                proof = verify_merge_proof(
+                    admission=admission,
+                    api=self.api,
+                    config=self.config,
+                    token=token,
+                )
+            except BrokerError as exc:
                 check_controller.ensure_failed(
                     head_sha=admission["head_sha"],
-                    reason="Provider did not confirm the exact-head merge.",
+                    reason="Ambiguous merge response could not be proved.",
                 )
                 self.spool.record_request(
                     request_digest=admission["request_digest"],
                     nonce=admission["nonce"],
                     pull_request=number,
                     request=admission["request"],
-                    status="rejected",
+                    status="uncertain",
                     updated_at=provider_now.isoformat().replace("+00:00", "Z"),
                 )
-                raise BrokerError("merge endpoint did not confirm a merge")
+                raise BrokerError(
+                    f"merge response was ambiguous and reconciliation did not prove success: {exc}"
+                ) from None
+        else:
             try:
                 proof = verify_merge_proof(
                     admission=admission,
@@ -2887,6 +2984,20 @@ class Broker:
                     updated_at=provider_now.isoformat().replace("+00:00", "Z"),
                 )
                 raise
+            if proof["merge_sha"] != response_merge_sha:
+                check_controller.ensure_failed(
+                    head_sha=admission["head_sha"],
+                    reason="Provider merge response SHA failed exact post-merge proof.",
+                )
+                self.spool.record_request(
+                    request_digest=admission["request_digest"],
+                    nonce=admission["nonce"],
+                    pull_request=number,
+                    request=admission["request"],
+                    status="uncertain",
+                    updated_at=provider_now.isoformat().replace("+00:00", "Z"),
+                )
+                raise BrokerError("merge response SHA differs from exact post-merge proof")
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],
@@ -2908,10 +3019,6 @@ class Broker:
         )
         if installation.expires_at - provider_now < timedelta(minutes=10):
             raise BrokerError("installation token lifetime is unexpectedly short")
-        validate_hosted_rulesets(
-            config=self.config,
-            rulesets=_rulesets(self.api, config=self.config, token=token),
-        )
         proofs = self._reconcile_orphans(token)
         pulls = _provider_list(
             self.api,
@@ -2933,6 +3040,20 @@ class Broker:
                 head_sha=head_sha,
                 reason="Broker startup or polling boundary is fail-closed.",
             )
+        settings_installation = self.settings_authenticator.mint()
+        settings_token = settings_installation.token
+        settings_now = self.api.provider_now(settings_token)
+        validate_clock(
+            local_now=datetime.now(UTC),
+            provider_now=settings_now,
+            max_clock_skew_seconds=self.config.max_clock_skew_seconds,
+        )
+        if settings_installation.expires_at - settings_now < timedelta(minutes=10):
+            raise BrokerError("ruleset-witness token lifetime is unexpectedly short")
+        validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=settings_token),
+        )
         state_branch = StateBranch(api=self.api, config=self.config, token=token)
         reconciler = HealthReconciler(
             api=self.api,
@@ -2950,6 +3071,7 @@ class Broker:
                 check_controller=check_controller,
                 number=number,
                 provider_now=self.api.provider_now(token),
+                settings_token=settings_token,
                 state_branch=state_branch,
                 token=token,
             )
@@ -2982,6 +3104,30 @@ def _fatal(message: str) -> NoReturn:
     raise SystemExit(f"main-health broker failed: {message}")
 
 
+def _sd_notify(message: str) -> None:
+    address = os.getenv("NOTIFY_SOCKET")
+    if not address:
+        return
+    if address.startswith("@"):
+        address = "\0" + address[1:]
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notifier:
+            notifier.connect(address)
+            notifier.send(message.encode("utf-8"))
+    except OSError as exc:
+        raise BrokerError(f"systemd readiness notification failed: {exc}") from exc
+
+
+def _serve(broker: Broker, *, poll_seconds: int) -> NoReturn:
+    broker.run_once()
+    _sd_notify("READY=1\nSTATUS=Last full broker cycle succeeded")
+    print("main-health broker ready after one successful full cycle", flush=True)
+    while True:
+        time.sleep(poll_seconds)
+        broker.run_once()
+        _sd_notify("STATUS=Last full broker cycle succeeded")
+
+
 def main() -> int:
     args = _parser().parse_args()
     try:
@@ -2996,18 +3142,14 @@ def main() -> int:
             api=api,
             authenticator=AppAuthenticator(api, config),
             config=config,
+            settings_authenticator=AppAuthenticator(api, config, purpose="settings"),
             spool=spool,
         )
         try:
             if args.command == "once":
                 print(json.dumps(broker.run_once(), sort_keys=True, separators=(",", ":")))
                 return 0
-            while True:
-                try:
-                    broker.run_once()
-                except BrokerError as exc:
-                    print(f"main-health broker cycle failed closed: {exc}", flush=True)
-                time.sleep(config.poll_seconds)
+            _serve(broker, poll_seconds=config.poll_seconds)
         finally:
             os.close(lock_descriptor)
     except (BrokerError, OSError, sqlite3.Error) as exc:
