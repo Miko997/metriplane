@@ -151,6 +151,17 @@ def test_normalization_is_deterministic_and_selects_available_mode() -> None:
     assert first[1]["actor_exclusivity_enforced"] is False
 
 
+def test_normalization_rejects_a_non_main_default_branch() -> None:
+    with pytest.raises(ValueError, match="default branch is not the governed main branch"):
+        normalize_capture(
+            repository="owner/repo",
+            captured_at="2026-08-25T00:00:00Z",
+            repository_payload={"default_branch": "develop"},
+            rulesets_payload=[],
+            merge_queue_payload={"data": {"repository": {"mergeQueue": None}}},
+        )
+
+
 def test_included_json_parser_retains_evidence_and_redacts_secrets() -> None:
     status, headers, request_id, body = capture_tool._parse_included_json(
         _included_response({"default_branch": "main"}, "REQ:parser-1")
@@ -495,7 +506,7 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
             "id": 3,
             **broker._provider_ruleset(
                 broker._app_update_ruleset(
-                    name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"]
+                    name="Restrict main updates to broker", include=[broker.MAIN_REF]
                 )
             ),
         },

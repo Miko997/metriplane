@@ -49,7 +49,10 @@ account and use selected-repository mode. Each minted installation token is
 additionally narrowed with GitHub's `repositories` request field to
 `Miko997/metriplane`; the broker accepts it only after the response returns
 exactly that repository and a token-authenticated repository read confirms the
-canonical owner, full name, and repository ID.
+canonical owner, full name, repository ID, and literal `main` default branch.
+Every governed ruleset read repeats the repository identity/default-branch
+check. The three rulesets governing main target explicit `refs/heads/main`;
+they do not follow the mutable `~DEFAULT_BRANCH` alias.
 
 The committed broker-config example is deliberately non-runnable:
 `main_update_ruleset_id` and `settings_app_id` are `0`. Create the App-only main
@@ -150,7 +153,13 @@ exact Actions checks, the complete inventory of all active repository rulesets
 and all five governed ruleset bodies, current `main`, provider clock, and the
 protected state branch immediately before admission. Inventory summaries and
 detail bodies must agree on ID, name, enforcement, target, source, and source
-type. Under one singleton lock,
+type. A protected-main result identity binds the exact CI, Documentation, and
+CodeQL run attempts together. A cached green state never skips a new companion
+rerun. Before normal admission, the broker observes that aggregate twice,
+observes the latest current-main nightly and weekly runs and exact jobs twice,
+requires every selected attempt to be retained by the same protected state
+generation, and rejects any change between observations. It then repeats the
+pull request, approval, state, main, core-check, and ruleset reads. Under one singleton lock,
 it records the request as in-flight, mutates one recorded App check-run ID to
 literal `success`, and immediately calls the synchronous merge endpoint with
 the exact head SHA. It never retries
@@ -171,6 +180,22 @@ The witness App performs a final exact ruleset read after orphan and check
 quarantine and after all other admission validation, immediately before the
 merge App can publish success. Any settings drift in that interval fails closed
 without opening the merge gate.
+
+Capture activation evidence with the same independently approved checkout:
+
+~~~bash
+python -m tools.capture_repository_protection \
+  --repository Miko997/metriplane \
+  --captured-at 2026-08-26T00:00:00Z \
+  --output-dir /secure/evidence/repository-protection
+~~~
+
+`repository-protection-activation-evidence.json` retains the unnormalized
+repository response, both stable ruleset summary inventories, every ruleset
+detail, the merge-queue response, and each request's status, safe response
+headers, and GitHub request ID. Missing request IDs, summary/detail drift, or
+inventory drift makes capture fail closed. Authorization, cookie, and related
+headers are redacted before retention.
 
 Repository administrators remain a trusted settings boundary because GitHub
 does not offer an atomic ruleset-read-and-merge transaction. Any omitted

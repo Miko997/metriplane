@@ -293,7 +293,7 @@ def _broker_settings(
         if actor not in APP_BYPASS
     ]
     state_ref = "refs/heads/metriplane-main-health-state"
-    default_ref = {"exclude": [], "include": ["~DEFAULT_BRANCH"]}
+    default_ref = {"exclude": [], "include": [broker.MAIN_REF]}
     expected_rulesets = {
         "Protect main": broker._provider_ruleset(broker._core_ruleset()),
         "Protect main health admission": broker._provider_ruleset(broker._admission_ruleset()),
@@ -307,7 +307,7 @@ def _broker_settings(
         ),
         "Restrict main updates to broker": broker._provider_ruleset(
             broker._app_update_ruleset(
-                name="Restrict main updates to broker", include=["~DEFAULT_BRANCH"]
+                name="Restrict main updates to broker", include=[broker.MAIN_REF]
             )
         ),
     }
@@ -375,6 +375,8 @@ def normalize_capture(
     merge_queue_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     default_branch = repository_payload["default_branch"]
+    if default_branch != broker.MAIN_BRANCH:
+        raise ValueError("repository default branch is not the governed main branch")
     active = [item for item in rulesets_payload if item.get("enforcement") == "active"]
     names = [item.get("name") for item in active]
     if len(names) != len(set(names)):
@@ -393,7 +395,10 @@ def normalize_capture(
     default_rulesets = [
         item
         for item in active
-        if "~DEFAULT_BRANCH" in item.get("conditions", {}).get("ref_name", {}).get("include", [])
+        if any(
+            ref in item.get("conditions", {}).get("ref_name", {}).get("include", [])
+            for ref in (broker.MAIN_REF, "~DEFAULT_BRANCH")
+        )
     ]
     queue = merge_queue_payload.get("data", {}).get("repository", {}).get("mergeQueue")
     supports_queue = queue is not None

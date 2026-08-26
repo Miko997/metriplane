@@ -21,7 +21,9 @@ Protected-main health observes the exact completed CI attempt and the exact
 Documentation and CodeQL attempts for the same main SHA. Missing,
 in-progress, cancelled, skipped, stale, duplicate, wrong-workflow, wrong-job,
 or wrong-SHA evidence fails closed. A stable provider selection is fetched
-again before it is retained.
+again before it is retained. One canonical result identity binds all three run
+attempts, so a fresh cached green state cannot hide a later Documentation or
+CodeQL rerun.
 
 The Main Health Deep workflow has read-only repository permissions and no App
 credential. It checks out the exact provider `github.sha` and produces pinned
@@ -60,6 +62,10 @@ Main has five layered rulesets:
 5. A separate state update restriction allows only integration 4722589 to
    update that branch.
 
+All three main rulesets target literal `refs/heads/main`; the runtime also
+revalidates that the canonical repository's default branch is still `main` at
+authentication and every hosted-ruleset boundary.
+
 The App bypasses only the two update restrictions. It cannot bypass the core,
 admission, or state-protection rules because rulesets aggregate.
 
@@ -88,7 +94,11 @@ checks, every active repository ruleset, all five governed ruleset bodies
 including complete bypass actors, provider time, current main, and the state
 branch. Summaries and bodies must agree on identity, source, target, and
 enforcement. The witness App performs one final ruleset read after orphan and
-check quarantine and immediately before success can be published. The broker
+check quarantine. Normal admission also re-observes the complete protected-main
+aggregate and latest current-main nightly and weekly attempts twice, binds them
+to retained protected-state identities, and rejects active, failed, missing, or
+changing evidence. It then repeats admission, state, main, core-check, and
+ruleset validation immediately before success can be published. The broker
 then changes the recorded merge-App check ID to literal success and immediately
 calls the synchronous merge endpoint with the exact head SHA. A definite
 rejection closes the check. An ambiguous response is never retried: the broker
@@ -133,6 +143,12 @@ same-plan proof that retains provider request IDs and raw responses:
 - the merge commit has base and admitted head as its two parents, its tree
   equals the admitted head tree, and current main equals that merge commit;
 - the state branch remains an externally read-back-verified append-only chain.
+
+`tools/capture_repository_protection.py` writes
+`repository-protection-activation-evidence.json` with the unnormalized
+repository, initial and verification inventories, ruleset details, merge-queue
+response, safe response headers, and one provider request ID per request. It
+rejects missing request IDs, summary/detail disagreement, or inventory changes.
 
 Only after that proof and credential rotation may the repository-protection
 example change activation_state from planned to active.
