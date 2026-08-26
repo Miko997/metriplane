@@ -800,6 +800,31 @@ def _red_with_repair_results(
     return repaired_main, authorization, approval_evidence
 
 
+def test_repair_resolution_rejects_newer_failed_cadence(tmp_path: Path) -> None:
+    repaired_main, authorization, approval_evidence = _red_with_repair_results(tmp_path)
+    ingest(
+        tmp_path,
+        scope="nightly",
+        summary=_summary(
+            REPAIR_SHA,
+            "failure",
+            cadence="nightly",
+            recorded_at="2026-08-25T21:10:00Z",
+            run_id="5",
+        ),
+        expected_generation=4,
+    )
+    with pytest.raises(HealthError, match="latest retained main/deep"):
+        resolve(
+            tmp_path,
+            authorization=authorization,
+            approval_evidence=approval_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T22:00:00Z",
+            expected_generation=5,
+        )
+
+
 def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) -> None:
     red = ingest(
         tmp_path,
@@ -1469,7 +1494,7 @@ def test_provider_refetch_rejects_field_drift_and_backward_time() -> None:
         )
 
 
-def test_owner_resolver_cli_refetches_both_provider_attestations(
+def test_owner_resolver_cli_is_retired_under_app_broker(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     admission = {"comment_id": "10"}
@@ -1516,12 +1541,11 @@ def test_owner_resolver_cli_refetches_both_provider_attestations(
     monkeypatch.setattr(stop_the_line, "resolve", resolve_current)
     monkeypatch.setenv("GITHUB_TOKEN", "test-token")
 
-    assert stop_the_line.main() == 0
-    assert seen["admission"] is admission
-    assert seen["merge_gate"] is merge_gate
-    assert seen["resolved_at"] == "2026-08-25T22:00:00Z"
-    assert provider_calls == ["test-token"]
-    assert json.loads(capsys.readouterr().out) == {"status": "green"}
+    with pytest.raises(SystemExit, match="owner emergency is retired"):
+        stop_the_line.main()
+    assert seen == {}
+    assert provider_calls == []
+    assert capsys.readouterr().out == ""
 
 
 def test_owner_admission_fetches_provider_state_and_publishes_anchor(
@@ -2564,6 +2588,21 @@ def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Pat
             check=True,
         )
     assert validate_git_history(root)["generation"] == 2
+
+    symlinked = tmp_path / "symlinked"
+    shutil.copytree(root, symlinked)
+    result_path = next((symlinked / "results").glob("*.json"))
+    external_result = tmp_path / "external-result.json"
+    external_result.write_bytes(result_path.read_bytes())
+    result_path.unlink()
+    result_path.symlink_to(external_result)
+    subprocess.run(["git", "-C", str(symlinked), "add", "--all"], check=True)
+    subprocess.run(
+        ["git", "-C", str(symlinked), "commit", "-qm", "replace result with symlink"],
+        check=True,
+    )
+    with pytest.raises(HealthError, match="non-regular evidence object"):
+        validate_git_history(symlinked)
 
     ungoverned = tmp_path / "ungoverned"
     shutil.copytree(root, ungoverned)

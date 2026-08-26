@@ -52,6 +52,11 @@ OWNER_RULESET_PREFIXES = (
     "state_protection",
     "state_writer",
 )
+RETIRED_OWNER_EMERGENCY_COMMANDS = {
+    "capture-owner-admission",
+    "capture-owner-emergency",
+    "merge-owner-emergency",
+}
 CORE_PULL_REQUEST_PARAMETERS = {
     "allowed_merge_methods": ["merge", "squash", "rebase"],
     "dismiss_stale_reviews_on_push": False,
@@ -379,14 +384,15 @@ def ingest(
     return updated
 
 
-def _retained_passing_results(root: Path) -> set[tuple[str, str, str]]:
-    """Return only passing results reached through validated retained history."""
-    retained: set[tuple[str, str, str]] = set()
+def _latest_retained_results(root: Path) -> dict[tuple[str, str], tuple[str, dict[str, Any]]]:
+    """Return the latest governed observation for each SHA and cadence."""
+    retained: dict[tuple[str, str], tuple[str, dict[str, Any]]] = {}
     for path in sorted((root / "history").glob("*.json")):
         entry = _read(path)
+        if entry["cadence"] == "repair-resolution":
+            continue
         result = _read(root / "results" / f"{entry['result_digest']}.json")
-        if result["conclusion"] == PASS:
-            retained.add((result["sha"], result["cadence"], entry["result_digest"]))
+        retained[(result["sha"], result["cadence"])] = (entry["result_digest"], result)
     return retained
 
 
@@ -2616,18 +2622,15 @@ def resolve(
         resolved_at=resolved_at,
     )
 
-    retained = _retained_passing_results(root)
-    exact_repaired_main = (
-        repaired_main["sha"],
-        "protected-main",
-        digest(repaired_main),
-    )
-    if exact_repaired_main not in retained:
-        raise HealthError("exact repaired-main result is not retained in validated history")
-    retained_cadences = {cadence for sha, cadence, _ in retained if sha == repaired_main["sha"]}
+    retained = _latest_retained_results(root)
     required_cadences = set(declared_cadences) | {"protected-main"}
-    if not required_cadences <= retained_cadences:
-        raise HealthError("required retained main/deep repair results are incomplete")
+    latest_repaired_main = retained.get((repaired_main["sha"], "protected-main"))
+    if latest_repaired_main is None or latest_repaired_main[0] != digest(repaired_main):
+        raise HealthError("exact repaired-main result is not the latest retained observation")
+    for cadence in required_cadences:
+        latest = retained.get((repaired_main["sha"], cadence))
+        if latest is None or latest[1]["conclusion"] != PASS:
+            raise HealthError("latest retained main/deep repair results are not all passing")
 
     _write_immutable(
         root / "approval-evidence" / f"{digest(approval_evidence)}.json",
@@ -3123,6 +3126,17 @@ def validate_git_history(root: Path) -> dict[str, Any]:
         raise HealthError("retained state Git checkout is not clean")
     head = _git_output(root, "rev-parse", "HEAD").decode().strip()
     _validate_sha(head)
+    tree_records = _git_output(root, "ls-tree", "-r", "-z", head).split(b"\0")
+    for record in tree_records:
+        if not record:
+            continue
+        try:
+            metadata, _path = record.split(b"\t", 1)
+            mode, object_type, _object_sha = metadata.split()
+        except ValueError as exc:
+            raise HealthError("retained state Git tree entry is malformed") from exc
+        if mode != b"100644" or object_type != b"blob":
+            raise HealthError("retained state Git tree contains a non-regular evidence object")
     commits = _git_output(root, "rev-list", "--reverse", "--first-parent", head).decode().split()
     if not commits:
         raise HealthError("retained state Git history is empty")
@@ -3502,6 +3516,10 @@ def main() -> int:
     args = _parser().parse_args()
     result: dict[str, Any]
     try:
+        if args.command in RETIRED_OWNER_EMERGENCY_COMMANDS:
+            raise HealthError(
+                "single-maintainer owner emergency is retired under App-broker admission"
+            )
         if args.command == "ingest":
             result = ingest(
                 args.root,
@@ -3527,16 +3545,8 @@ def main() -> int:
                     token=token,
                 )
             elif authorization.get("authorization_mode") == "single-maintainer-owner-emergency":
-                if args.owner_admission_json is None or args.owner_merge_gate_json is None:
-                    raise HealthError("owner emergency resolution requires provider attestations")
-                current_evidence = capture_github_owner_emergency(
-                    repository=authorization["repository"],
-                    pull_request=authorization["pull_request"],
-                    issue=authorization["issue"],
-                    incident_digest=authorization["incident_digest"],
-                    admission=args.owner_admission_json,
-                    merge_gate=args.owner_merge_gate_json,
-                    token=token,
+                raise HealthError(
+                    "single-maintainer owner emergency is retired under App-broker admission"
                 )
             else:
                 raise HealthError("operational resolver authorization mode is unsupported")

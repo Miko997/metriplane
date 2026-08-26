@@ -22,7 +22,7 @@
     {
       "name": "Main health / required",
       "owner": "MP2-004",
-      "producer": ".github/workflows/main-health.yml",
+      "producer": "github-app:metriplane-main-health-publisher",
       "state": "active"
     },
     {

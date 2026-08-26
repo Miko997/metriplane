@@ -74,6 +74,12 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         "Main health / required",
         "Release / required",
     }
+    expected_active_producers = {
+        "Metriplane / required": ".github/workflows/ci.yml",
+        "Documentation / required": ".github/workflows/docs.yml",
+        "Security / required": ".github/workflows/codeql.yml",
+        "Main health / required": "github-app:metriplane-main-health-publisher",
+    }
     if {item["name"] for item in terminals} != expected_names:
         raise TerminalValidationError("terminal inventory is incomplete or contains extras")
 
@@ -118,18 +124,32 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
             name for name, job_names in workflow_job_names.items() if terminal["name"] in job_names
         ]
         if terminal["state"] == "active":
-            if producers != [Path(terminal["producer"]).name]:
+            producer = terminal["producer"]
+            expected_producer = expected_active_producers.get(terminal["name"])
+            if expected_producer is None:
+                raise TerminalValidationError("Release / required must remain reserved")
+            if terminal["owner"] != "MP2-004" or producer != expected_producer:
                 raise TerminalValidationError(
-                    f"{terminal['name']}: expected sole producer "
-                    f"{terminal['producer']!r}, found {producers!r}"
+                    f"{terminal['name']}: owner or producer is not the governed MP2-004 value"
                 )
-        else:
+            if producer == "github-app:metriplane-main-health-publisher":
+                expected_producers: list[str] = []
+            else:
+                assert isinstance(producer, str)
+                expected_producers = [Path(producer).name]
+            if producers != expected_producers:
+                raise TerminalValidationError(
+                    f"{terminal['name']}: expected sole producer {producer!r}, found {producers!r}"
+                )
+        elif terminal["state"] == "reserved":
             if terminal["name"] != "Release / required":
                 raise TerminalValidationError("only Release / required may be reserved")
             if terminal["owner"] != "MP2-007" or producers:
                 raise TerminalValidationError(
                     "Release / required must be producer-free and reserved for MP2-007"
                 )
+        else:
+            raise TerminalValidationError(f"{terminal['name']}: terminal state is invalid")
     return dict(policy)
 
 
