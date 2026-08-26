@@ -16,6 +16,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+_DARWIN_O_EVTONLY = 0x00008000
+
 
 class UnsafeWritePathError(ValueError):
     """Raised when a write path contains a link or changes during use."""
@@ -190,7 +192,13 @@ def _open_pinned_entry(
     display_path: Path,
     expected: _EntryIdentity,
 ) -> int:
-    access = getattr(os, "O_PATH", os.O_RDONLY)
+    if hasattr(os, "O_PATH"):
+        access = os.O_PATH
+    elif sys.platform == "darwin":
+        # Darwin's metadata-only descriptor does not require file read permission.
+        access = _DARWIN_O_EVTONLY
+    else:
+        access = os.O_RDONLY
     flags = access | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
         file_fd = os.open(name, flags, dir_fd=directory_fd)

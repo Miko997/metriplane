@@ -572,6 +572,51 @@ def test_darwin_atomic_exchange_uses_renameatx_np(monkeypatch) -> None:
     assert calls == [(17, b"staged", 17, b"destination", 2)]
 
 
+def test_darwin_pins_mode_zero_destination_without_read_access(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    destination.write_bytes(b"original\n")
+    destination.chmod(0)
+    directory_fd = safe_writes.os.open(local_dir, safe_writes._directory_flags())
+    expected = safe_writes._destination_identity(directory_fd, destination.name, destination)
+    assert expected is not None
+
+    if safe_writes.sys.platform != "darwin":
+        linux_o_path = safe_writes.os.O_PATH
+        real_open = safe_writes.os.open
+        observed_flags: list[int] = []
+
+        def simulate_darwin_open(path, flags, mode=0o777, *, dir_fd=None):
+            observed_flags.append(flags)
+            translated = (flags & ~safe_writes._DARWIN_O_EVTONLY) | linux_o_path
+            return real_open(path, translated, mode, dir_fd=dir_fd)
+
+        monkeypatch.delattr(safe_writes.os, "O_PATH")
+        monkeypatch.setattr(safe_writes.sys, "platform", "darwin")
+        monkeypatch.setattr(safe_writes.os, "open", simulate_darwin_open)
+
+    pinned_fd = safe_writes._open_pinned_entry(
+        directory_fd,
+        destination.name,
+        destination,
+        expected,
+    )
+    try:
+        assert safe_writes._identity(safe_writes.os.fstat(pinned_fd)) == expected
+        if safe_writes.sys.platform == "darwin" and "observed_flags" in locals():
+            assert observed_flags[-1] & safe_writes._DARWIN_O_EVTONLY
+    finally:
+        safe_writes.os.close(pinned_fd)
+        safe_writes.os.close(directory_fd)
+        destination.chmod(0o600)
+
+
 def test_darwin_unsupported_atomic_exchange_fails_closed(
     tmp_path: Path,
     monkeypatch,
