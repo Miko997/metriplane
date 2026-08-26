@@ -87,26 +87,27 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
         "publish metriplane ${RELEASE_VERSION} to production",
         "release-qualification-evidence",
-        "release-qualification.json",
+        "qualification.json",
         "validate_release_qualification.py",
         "validate_release_role_assignments.py",
         "validate_release_approval.py",
         "validate_release_retention.py",
         "check_release_readiness.py",
-        "--mode live",
         "/actions/runs/${RELEASE_RUN_ID}",
         "/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100",
         '"event": "push"',
         '"path": ".github/workflows/publish-pypi.yml"',
         '"conclusion": "success"',
         "Verify TestPyPI artifact identity and installation",
-        '"name") == "python-package-distributions"',
+        'item.get("name")',
+        '"python-package-distributions"',
         "run-id: ${{ inputs.release_run_id }}",
         "github-token: ${{ github.token }}",
         "--repository https://test.pypi.org",
         "--repository https://pypi.org",
     )
     assert all(fragment in text for fragment in required)
+    assert "--mode live" not in text
 
 
 def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
@@ -140,7 +141,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     )
     assert all(fragment in text for fragment in required)
     assert text.count("verify-registry") == 4
-    assert text.count("sha256sum --check ../SHA256SUMS") == 1
+    assert text.count("sha256sum --check ../SHA256SUMS") == 2
 
 
 def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
