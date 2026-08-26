@@ -17,6 +17,8 @@ from collections import deque
 import os
 import pathlib
 
+from metriplane.paths import PlatformPaths
+
 
 def _popen_group_options() -> dict[str, Any]:
     if os.name == "posix":
@@ -82,13 +84,35 @@ def find_repo_root() -> pathlib.Path:
 class CommandExecutor:
     """Executes allowlisted commands with timeout and output capture"""
 
-    def __init__(self, max_history: int = 20):
+    def __init__(
+        self,
+        max_history: int = 20,
+        *,
+        paths: PlatformPaths | None = None,
+    ):
         self.current_job: Optional[Dict[str, Any]] = None
         self.job_history: deque[dict[str, Any]] = deque(
             maxlen=max_history
         )  # Keep last N completed jobs
         self.lock = threading.Lock()
         self.repo_root = find_repo_root()
+        self._platform_paths = paths
+
+    @property
+    def platform_paths(self) -> PlatformPaths | None:
+        with self.lock:
+            return self._platform_paths
+
+    def configure_platform_paths(self, paths: PlatformPaths) -> None:
+        with self.lock:
+            self._platform_paths = paths
+
+    def _command_environment(self) -> dict[str, str]:
+        environment = os.environ.copy()
+        paths = self.platform_paths
+        if paths is not None:
+            environment["RUNS"] = str(paths.runs_dir)
+        return environment
 
     def is_running(self) -> bool:
         """Check if a command is currently running"""
@@ -198,7 +222,7 @@ class CommandExecutor:
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=str(self.repo_root),
-                env=os.environ.copy(),  # Inherit environment
+                env=self._command_environment(),
                 **_popen_group_options(),
             )
             print(f"[Executor] Subprocess spawned, PID: {process.pid}")

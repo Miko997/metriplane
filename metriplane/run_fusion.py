@@ -6,9 +6,9 @@ from __future__ import annotations
 import inspect
 import logging
 import os
+import sys
 import threading
 import time
-from metriplane.time.clock import RealTimeClock, Clock
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from enum import Enum
@@ -16,25 +16,31 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-from metriplane.observability.timing import StageTiming
 
 from metriplane.backends.aruco_backend import ArUcoBackend
 from metriplane.camera.usb_multi import USBMultiCamera
+from metriplane.compute.select import select_fusion_backend
 from metriplane.config import Config, apply_profile_defaults, load_config
 from metriplane.fusion.fuse_xy import XYObs
-from metriplane.compute.select import select_fusion_backend
 from metriplane.fusion.kalman_cv import MultiObjectKalman
 from metriplane.mapping.planar_multi import MultiPlanarMapper, load_multi_planar_mapper
 from metriplane.metrics import MetricsRegistry, start_metrics_server
+from metriplane.observability.timing import StageTiming
+from metriplane.paths import (
+    PlatformPaths,
+    normalize_runs_dir,
+)
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
     create_run_context,
     open_jsonl_writer,
 )
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import CameraFrameModel, FrameStateModel, ObjectStateModel
 from metriplane.streaming.ws_server import client_count
 from metriplane.streaming.ws_thread import WsServerThread
+from metriplane.time.clock import Clock, RealTimeClock
 from metriplane.tracking import ObjectRegistry
 from metriplane.zone_analytics import ZoneAnalytics
 from metriplane.zones import load_zones
@@ -366,7 +372,23 @@ def run_loop_fusion(
     run_id: str | None = None,
     runs_dir: str | None = None,
     duration_s: float = 0.0,
+    paths: PlatformPaths | None = None,
 ) -> int:
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is not None:
+        try:
+            validate_portable_run_id(str(configured_run_id))
+        except ValueError as exc:
+            log.error("run storage unavailable: %s", exc)
+            return 2
+
+    effective_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if effective_runs_dir is None:
+        effective_runs_dir = configured_runs_dir
+    if effective_runs_dir is None:
+        if paths is not None:
+            effective_runs_dir = str(paths.runs_dir)
     resources = _FusionResources()
     try:
         return _run_loop_fusion_impl(
@@ -376,7 +398,7 @@ def run_loop_fusion(
             config_path=config_path,
             argv=argv,
             run_id=run_id,
-            runs_dir=runs_dir,
+            runs_dir=effective_runs_dir,
             duration_s=duration_s,
             _resources=resources,
         )
@@ -414,13 +436,17 @@ def _run_loop_fusion_impl(
     cfg = apply_profile_defaults(cfg)
 
     # M9.4: run provenance (FAIL FAST if we cannot create it)
-    ctx: RunContext = create_run_context(
-        cfg,
-        config_path=config_path,
-        argv=argv,
-        run_id=run_id,
-        runs_dir=runs_dir,
-    )
+    try:
+        ctx: RunContext = create_run_context(
+            cfg,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+        )
+    except (OSError, ValueError) as exc:
+        log.error("run storage unavailable: %s", exc)
+        return 2
 
     mirror_path = str(cfg.record_jsonl) if cfg.record_jsonl else None
     mirror_enabled = bool(mirror_path)
@@ -1109,9 +1135,8 @@ def _run_loop_fusion_impl(
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
-    import sys
 
     ap = argparse.ArgumentParser(description="Metriplane fusion runner")
     ap.add_argument("--config", "-c", default="config.example.yaml", help="Path to YAML config")
@@ -1142,8 +1167,9 @@ def main(argv: list[str] | None = None) -> int:
         config_path=Path(args.config),
         argv=["metriplane-fusion", *argv_in],
         run_id=args.run_id,
-        runs_dir=args.runs_dir,
+        runs_dir=normalize_runs_dir(args.runs_dir),
         duration_s=args.duration_s,
+        paths=paths,
     )
 
 

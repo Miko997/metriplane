@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -16,12 +17,20 @@ from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Optional, cast
-from metriplane.observability.timing import StageTiming
 
 import cv2
 
-
+from metriplane.backends.aruco_backend import ArUcoBackend
+from metriplane.camera.rtsp import RTSPCamera
+from metriplane.camera.usb import USBCamera
 from metriplane.config import Config, apply_profile_defaults, maybe_get_calib_paths
+from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
+from metriplane.metrics import MetricsRegistry, start_metrics_server
+from metriplane.observability.timing import StageTiming
+from metriplane.paths import (
+    PlatformPaths,
+    normalize_runs_dir,
+)
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
@@ -29,18 +38,12 @@ from metriplane.provenance.run_provenance import (
     is_header_record,
     open_jsonl_writer,
 )
-
-
-from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
-from metriplane.backends.aruco_backend import ArUcoBackend
-from metriplane.camera.rtsp import RTSPCamera
-from metriplane.camera.usb import USBCamera
-from metriplane.metrics import MetricsRegistry, start_metrics_server
-from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import FrameStateModel, ObjectStateModel
 from metriplane.streaming.ws_server import client_count
 from metriplane.streaming.ws_thread import WsServerThread
 from metriplane.tracking import ObjectRegistry
+from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
 from metriplane.zone_analytics import ZoneAnalytics
 from metriplane.zones import ZoneMap, load_zones
 
@@ -389,8 +392,8 @@ def _in_docker() -> bool:
 
 
 def _data_dir() -> Path:
-    env = os.getenv("METRIPLANE_DATA_DIR")
-    if env:
+    env = normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR"))
+    if env is not None:
         return Path(env)
     return Path("/data") if _in_docker() else Path(".")
 
@@ -401,7 +404,7 @@ def _resolve_output_path(p: str | None) -> Path | None:
     pp = Path(p)
     if pp.is_absolute():
         return pp
-    if _in_docker() or os.getenv("METRIPLANE_DATA_DIR"):
+    if _in_docker() or normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR")) is not None:
         return _data_dir() / pp
     return pp
 
@@ -676,7 +679,23 @@ def run_loop(
     argv: list[str] | None = None,
     run_id: str | None = None,
     runs_dir: str | None = None,
+    paths: PlatformPaths | None = None,
 ) -> int:
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is not None:
+        try:
+            validate_portable_run_id(str(configured_run_id))
+        except ValueError as exc:
+            log.error("run storage unavailable: %s", exc)
+            return 2
+
+    effective_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if effective_runs_dir is None:
+        effective_runs_dir = configured_runs_dir
+    if effective_runs_dir is None:
+        if paths is not None:
+            effective_runs_dir = str(paths.runs_dir)
     resources = _RunResources()
     try:
         return _run_loop_impl(
@@ -685,7 +704,7 @@ def run_loop(
             config_path=config_path,
             argv=argv,
             run_id=run_id,
-            runs_dir=runs_dir,
+            runs_dir=effective_runs_dir,
             _resources=resources,
         )
     finally:
@@ -751,13 +770,17 @@ def _run_loop_impl(
         except Exception:
             pass
 
-    ctx: RunContext = create_run_context(
-        cfg,
-        config_path=config_path,
-        argv=argv,
-        run_id=run_id,
-        runs_dir=runs_dir,
-    )
+    try:
+        ctx: RunContext = create_run_context(
+            cfg,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+        )
+    except (OSError, ValueError) as exc:
+        log.error("run storage unavailable: %s", exc)
+        return 2
 
     mirror_enabled = bool(mirror_path)
     try:
@@ -1606,9 +1629,8 @@ def _run_dummy_mode(
         return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
-    import sys
     from pathlib import Path
 
     from metriplane.config import load_config
@@ -1635,6 +1657,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
+    runs_dir = normalize_runs_dir(args.runs_dir)
 
     return run_loop(
         cfg,
@@ -1642,7 +1665,8 @@ def main(argv: list[str] | None = None) -> int:
         config_path=Path(args.config),
         argv=["metriplane", *argv_in],
         run_id=args.run_id,
-        runs_dir=args.runs_dir,
+        runs_dir=runs_dir,
+        paths=paths,
     )
 
 

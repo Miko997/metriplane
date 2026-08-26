@@ -8,17 +8,22 @@ import threading
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
+from metriplane.paths import PlatformPaths
 from metriplane.runner import service
 from metriplane.runner.executor import CommandExecutor
 
 
 @contextmanager
-def runner_server():
+def runner_server(paths: PlatformPaths | None = None):
     original_executor = service.executor
+    original_operator_api = service.operator_api
+    original_runner_paths = service.runner_paths
     service.executor = CommandExecutor()
+    service._configure_platform_paths(paths)
     server = service.LocalHTTPServer(("127.0.0.1", 0), service.RunnerHTTPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -29,6 +34,8 @@ def runner_server():
         server.server_close()
         thread.join(timeout=5)
         service.executor = original_executor
+        service.operator_api = original_operator_api
+        service.runner_paths = original_runner_paths
 
 
 def request_json(
@@ -67,6 +74,130 @@ def test_commands_shape_exposes_allowlist_metadata():
     assert payload["commands"]
     first = payload["commands"][0]
     assert {"id", "title", "enabled", "timeout_s", "requires_gpu", "requires_cameras"} <= set(first)
+
+
+def test_runner_uses_one_injected_runs_root_for_status_commands_and_operator(
+    tmp_path: Path,
+    monkeypatch,
+):
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    ).with_runs_dir(tmp_path / "recordings")
+    monkeypatch.setenv("RUNS", str(tmp_path / "ambient-recordings"))
+
+    with runner_server(paths) as base:
+        assert service.executor.platform_paths is paths
+        _, status_payload = request_json(f"{base}/status")
+        _, commands_payload = request_json(f"{base}/commands")
+        _, latest_payload = request_json(f"{base}/operator/latest-run")
+
+    sentinel = next(
+        command for command in commands_payload["commands"] if command["id"] == "sentinel-demo"
+    )
+    replay = next(
+        command for command in commands_payload["commands"] if command["id"] == "run-demo-replay"
+    )
+    assert status_payload["runs_dir"] == str(paths.runs_dir)
+    assert str(paths.runs_dir) in sentinel["command"]
+    assert str(paths.runs_dir) in replay["command"]
+    assert latest_payload["runs_dir"] == str(paths.runs_dir)
+
+
+def test_direct_runner_preserves_explicit_runs_environment(
+    tmp_path: Path,
+    monkeypatch,
+):
+    explicit = tmp_path / "explicit-recordings"
+    monkeypatch.setenv("RUNS", str(explicit))
+
+    with runner_server() as base:
+        _, status_payload = request_json(f"{base}/status")
+        _, commands_payload = request_json(f"{base}/commands")
+
+    replay = next(
+        command for command in commands_payload["commands"] if command["id"] == "run-demo-replay"
+    )
+    assert status_payload["runs_dir"] == str(explicit)
+    assert str(explicit) in replay["command"]
+
+
+def test_direct_runner_ignores_whitespace_runs_environment(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RUNS", " \t ")
+    monkeypatch.setattr(service, "resolve_platform_paths", lambda: paths)
+
+    with runner_server() as base:
+        _, status_payload = request_json(f"{base}/status")
+
+    assert status_payload["runs_dir"] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+def test_runner_cli_whitespace_runs_dir_keeps_injected_platform_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    argv = [
+        "--config-dir",
+        str(tmp_path / "config"),
+        "--data-dir",
+        str(tmp_path / "data"),
+        "--cache-dir",
+        str(tmp_path / "cache"),
+        "--state-dir",
+        str(tmp_path / "state"),
+        "--runs-dir",
+        " \t ",
+    ]
+
+    def fake_start_runner(**kwargs) -> int:
+        captured.update(kwargs)
+        return 41
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(service, "start_runner", fake_start_runner)
+
+    assert service.main(argv) == 41
+    paths = captured["paths"]
+    assert isinstance(paths, PlatformPaths)
+    assert paths.runs_dir == tmp_path / "data" / "runs"
+    assert not (tmp_path / " \t ").exists()
+
+
+def test_runner_cli_rejects_symlink_loop_runs_dir(tmp_path: Path, capsys) -> None:
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+    argv = [
+        "--config-dir",
+        str(tmp_path / "config"),
+        "--data-dir",
+        str(tmp_path / "data"),
+        "--cache-dir",
+        str(tmp_path / "cache"),
+        "--state-dir",
+        str(tmp_path / "state"),
+        "--runs-dir",
+        str(loop),
+    ]
+
+    with pytest.raises(SystemExit) as exc_info:
+        service.main(argv)
+
+    assert exc_info.value.code == 2
+    assert "cannot resolve run-recording root" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

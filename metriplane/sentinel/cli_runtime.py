@@ -7,8 +7,22 @@ import argparse
 import json
 from pathlib import Path
 
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
+from metriplane.provenance.run_provenance import generate_run_id
+from metriplane.run_ids import validate_portable_run_id
 
-def main_sentinel(argv: list[str]) -> int:
+
+def main_sentinel(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     p = argparse.ArgumentParser("metriplane sentinel")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -16,7 +30,9 @@ def main_sentinel(argv: list[str]) -> int:
     run.add_argument("--config", required=True, help="Sentinel YAML config")
     run.add_argument("--run-id", default=None)
     run.add_argument(
-        "--runs-dir", default=None, help="Base directory for run artifacts (default: ./runs)"
+        "--runs-dir",
+        default=None,
+        help="Base directory for run artifacts (default: platform runs directory)",
     )
 
     status = sub.add_parser("status", help="Print a sentinel_summary.json")
@@ -25,13 +41,13 @@ def main_sentinel(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     if args.cmd == "run":
-        return _run(args)
+        return _run(args, paths=paths)
     if args.cmd == "status":
         return _status(args)
     return 1
 
 
-def _run(args: argparse.Namespace) -> int:
+def _run(args: argparse.Namespace, *, paths: PlatformPaths | None = None) -> int:
     import yaml
 
     from metriplane.sentinel.config import SentinelConfig
@@ -50,9 +66,36 @@ def _run(args: argparse.Namespace) -> int:
         print("config must set replay_input (path to a session JSONL)")
         return 1
 
-    run_id = args.run_id or "sentinel_run"
-    runs_dir = Path(args.runs_dir) if args.runs_dir else Path("runs")
+    try:
+        requested_run_id = generate_run_id("sentinel") if args.run_id is None else args.run_id
+        run_id = validate_portable_run_id(requested_run_id)
+    except ValueError as exc:
+        print(exc)
+        return 2
+
+    try:
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
+        unresolved_runs_dir = (
+            Path(explicit_runs_dir)
+            if explicit_runs_dir is not None
+            else (paths or resolve_platform_paths()).runs_dir
+        )
+        runs_dir = resolve_runs_dir(unresolved_runs_dir)
+        if runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
+    except PlatformPathError as exc:
+        print(f"platform path error: {exc}")
+        return 2
     run_dir = runs_dir / run_id
+    try:
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        run_dir.mkdir()
+    except FileExistsError:
+        print(f"sentinel run directory already exists: {run_dir}")
+        return 2
+    except OSError as exc:
+        print(f"cannot create sentinel run directory {run_dir}: {exc}")
+        return 2
 
     try:
         runtime = SentinelRuntime(sentinel_cfg, run_dir=run_dir, run_id=run_id)
@@ -60,8 +103,8 @@ def _run(args: argparse.Namespace) -> int:
         print(f"sentinel failed to start: {e}")
         return 1
 
-    from metriplane.sentinel.engine import iter_frames
     from metriplane.schema import frame_time_s
+    from metriplane.sentinel.engine import iter_frames
 
     for frame in iter_frames(session_path):
         observed = frame.fused if frame.fused is not None else frame.objects

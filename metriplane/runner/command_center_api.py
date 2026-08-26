@@ -15,6 +15,7 @@ A "run dir" may be:
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -24,25 +25,42 @@ if TYPE_CHECKING:
     from metriplane.sentinel.registry import ObjectRegistryConfig
 
 
-def _find(run_dir: Path, names: list[str]) -> Path | None:
-    for n in names:
-        p = run_dir / n
-        if p.exists():
-            return p
+def find_run_artifact(run_dir: Path, names: list[str] | tuple[str, ...]) -> Path | None:
+    """Return a contained, regular, non-symlink artifact from a selected run."""
+    try:
+        root = run_dir.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not root.is_dir():
+        return None
+    for name in names:
+        candidate = run_dir / name
+        try:
+            info = candidate.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                continue
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, RuntimeError, ValueError):
+            continue
+        return resolved
     return None
 
 
 def _session(run_dir: Path) -> Path | None:
-    return _find(run_dir, ["session_excerpt.jsonl", "session.jsonl", "traces/object_traces.jsonl"])
+    return find_run_artifact(
+        run_dir, ["session_excerpt.jsonl", "session.jsonl", "traces/object_traces.jsonl"]
+    )
 
 
 def _objects_yaml(run_dir: Path) -> Path | None:
-    return _find(run_dir, ["objects.yaml", "object_registry.yaml"])
+    return find_run_artifact(run_dir, ["objects.yaml", "object_registry.yaml"])
 
 
 def _workspace_yaml(run_dir: Path) -> Path | None:
-    return _find(
-        run_dir, ["workspace.yaml", "zones.yaml", "configs/workspace.yaml", "configs/zones.yaml"]
+    return find_run_artifact(
+        run_dir,
+        ["workspace.yaml", "zones.yaml", "configs/workspace.yaml", "configs/zones.yaml"],
     )
 
 
@@ -152,7 +170,7 @@ def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
 
 def get_incidents(run_dir: str | Path) -> list[dict[str, Any]]:
     run = Path(run_dir)
-    p = _find(run, ["incident.json", "incidents/incidents.json", "incidents.json"])
+    p = find_run_artifact(run, ["incident.json", "incidents/incidents.json", "incidents.json"])
     if p is None:
         return []
     try:
@@ -164,7 +182,7 @@ def get_incidents(run_dir: str | Path) -> list[dict[str, Any]]:
 
 def get_events(run_dir: str | Path) -> list[dict[str, Any]]:
     run = Path(run_dir)
-    p = _find(run, ["alerts.jsonl", "events.jsonl"])
+    p = find_run_artifact(run, ["alerts.jsonl", "events.jsonl"])
     if p is None:
         return []
     out = []

@@ -13,20 +13,22 @@ import platform
 import re
 import secrets
 import socket
+import stat
 import subprocess
 import sys
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, TextIO, cast
+from typing import Any, Sequence, TextIO
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import yaml
 
 from metriplane.config import Config, resolve_profile
-
+from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_runs_dir
+from metriplane.run_ids import portable_run_id_for_collision, validate_portable_run_id
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
-_SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _REDACTED = "<redacted>"
 _SENSITIVE_CONFIG_KEYS = {
     "access_token",
@@ -83,8 +85,8 @@ def in_docker() -> bool:
 
 
 def data_dir() -> Path:
-    env = os.getenv("METRIPLANE_DATA_DIR")
-    if env:
+    env = normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR"))
+    if env is not None:
         return Path(env)
     return Path("/data") if in_docker() else Path(".")
 
@@ -247,7 +249,8 @@ def redact_persisted_config(value: Any, *, key: str | None = None) -> Any:
 def config_to_primitive(cfg: Config) -> dict[str, Any]:
     # asdict recursively converts nested dataclasses; JSON roundtrip ensures only JSON primitives.
     d = dataclasses.asdict(cfg)
-    return cast(dict[str, Any], json.loads(canonical_json_dumps(redact_persisted_config(d))))
+    result: dict[str, Any] = json.loads(canonical_json_dumps(redact_persisted_config(d)))
+    return result
 
 
 def compute_config_hash(cfg: Config) -> tuple[str, str]:
@@ -262,13 +265,420 @@ def dump_config_yaml(cfg: Config) -> str:
 
 
 def _ensure_unique_run_dir(path: Path) -> Path:
-    if not path.exists():
-        return path
-    for i in range(1, 1000):
-        cand = Path(f"{path}-{i}")
+    run_id = validate_portable_run_id(path.name)
+    for collision_index in range(1000):
+        candidate_run_id = portable_run_id_for_collision(run_id, collision_index)
+        cand = path.with_name(candidate_run_id)
         if not cand.exists():
             return cand
     raise RuntimeError(f"could not find unique run dir name for {path}")
+
+
+_RUN_RESERVATION_MARKER = ".metriplane-run-reservation"
+_RUN_RESERVATION_CANCELLED_MARKER = ".metriplane-run-reservation-cancelled"
+_RUN_RESERVATION_DIR_ENV = "METRIPLANE_RESERVED_RUN_DIR"
+_RUN_RESERVATION_TOKEN_ENV = "METRIPLANE_RUN_RESERVATION_TOKEN"
+_RUN_RESERVATION_DEVICE_ENV = "METRIPLANE_RUN_RESERVATION_DEVICE"
+_RUN_RESERVATION_INODE_ENV = "METRIPLANE_RUN_RESERVATION_INODE"
+
+
+def _reservation_directory_flags() -> int:
+    required = ("O_DIRECTORY", "O_NOFOLLOW")
+    if os.name != "posix" or any(not hasattr(os, name) for name in required):
+        raise PlatformPathError(
+            "secure run directory reservations require POSIX directory handles and O_NOFOLLOW"
+        )
+    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+
+
+def _same_directory_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        stat.S_ISDIR(left.st_mode)
+        and stat.S_ISDIR(right.st_mode)
+        and left.st_dev == right.st_dev
+        and left.st_ino == right.st_ino
+    )
+
+
+def _assert_directory_identity(
+    expected: os.stat_result,
+    current: os.stat_result,
+    path: Path,
+) -> None:
+    if not _same_directory_identity(expected, current):
+        raise PlatformPathError(f"run directory identity changed during reservation: {path}")
+
+
+def _write_run_reservation_marker(directory_fd: int, token: str) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    marker_fd = os.open(_RUN_RESERVATION_MARKER, flags, 0o600, dir_fd=directory_fd)
+    try:
+        remaining = memoryview(token.encode("utf-8"))
+        while remaining:
+            written = os.write(marker_fd, remaining)
+            if written <= 0:
+                raise OSError("run directory reservation marker write made no progress")
+            remaining = remaining[written:]
+        os.fsync(marker_fd)
+    finally:
+        os.close(marker_fd)
+
+
+@dataclass(frozen=True, slots=True)
+class _ReservationAuthority:
+    run_dir: Path
+    token: str
+    device: int
+    inode: int
+
+
+@dataclass(slots=True)
+class _ClaimedRunDirectory:
+    authority: _ReservationAuthority
+    fd: int
+
+    def verify_visible_path(self) -> None:
+        try:
+            current = self.authority.run_dir.lstat()
+        except OSError as exc:
+            raise PlatformPathError(
+                f"reserved run directory is unavailable: {self.authority.run_dir}"
+            ) from exc
+        if (
+            not stat.S_ISDIR(current.st_mode)
+            or current.st_dev != self.authority.device
+            or current.st_ino != self.authority.inode
+        ):
+            raise PlatformPathError(
+                f"reserved run directory identity changed: {self.authority.run_dir}"
+            )
+
+    def write_text(self, name: str, content: str) -> None:
+        self.verify_visible_path()
+        _write_claimed_text(self.fd, name, content)
+        self.verify_visible_path()
+
+    def close(self) -> None:
+        os.close(self.fd)
+
+
+def _reservation_authority(candidate: Path) -> _ReservationAuthority | None:
+    values = {
+        _RUN_RESERVATION_DIR_ENV: os.getenv(_RUN_RESERVATION_DIR_ENV),
+        _RUN_RESERVATION_TOKEN_ENV: os.getenv(_RUN_RESERVATION_TOKEN_ENV),
+        _RUN_RESERVATION_DEVICE_ENV: os.getenv(_RUN_RESERVATION_DEVICE_ENV),
+        _RUN_RESERVATION_INODE_ENV: os.getenv(_RUN_RESERVATION_INODE_ENV),
+    }
+    if all(value is None for value in values.values()):
+        return None
+    if any(value is None for value in values.values()):
+        raise PlatformPathError("run directory reservation environment is incomplete")
+
+    configured_dir_text = values[_RUN_RESERVATION_DIR_ENV]
+    configured_token = values[_RUN_RESERVATION_TOKEN_ENV]
+    configured_device = values[_RUN_RESERVATION_DEVICE_ENV]
+    configured_inode = values[_RUN_RESERVATION_INODE_ENV]
+    assert configured_dir_text is not None
+    assert configured_token is not None
+    assert configured_device is not None
+    assert configured_inode is not None
+
+    configured_dir = Path(configured_dir_text)
+    if not configured_dir.is_absolute():
+        raise PlatformPathError("reserved run directory must be an absolute path")
+    if os.path.normcase(os.path.abspath(configured_dir)) != os.path.normcase(
+        os.path.abspath(candidate)
+    ):
+        raise PlatformPathError(
+            f"run directory reservation does not match requested run_id: {candidate}"
+        )
+    try:
+        device = int(configured_device, 10)
+        inode = int(configured_inode, 10)
+    except ValueError as exc:
+        raise PlatformPathError("run directory reservation identity is malformed") from exc
+    if device < 0 or inode <= 0:
+        raise PlatformPathError("run directory reservation identity is malformed")
+    return _ReservationAuthority(
+        run_dir=candidate,
+        token=configured_token,
+        device=device,
+        inode=inode,
+    )
+
+
+def _open_authorized_run_directory(
+    authority: _ReservationAuthority,
+) -> _ClaimedRunDirectory:
+    try:
+        directory_fd = os.open(authority.run_dir, _reservation_directory_flags())
+    except OSError as exc:
+        raise PlatformPathError(
+            f"reserved run directory cannot be opened safely: {authority.run_dir}"
+        ) from exc
+    claimed = _ClaimedRunDirectory(authority=authority, fd=directory_fd)
+    try:
+        opened = os.fstat(directory_fd)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or opened.st_dev != authority.device
+            or opened.st_ino != authority.inode
+        ):
+            raise PlatformPathError(f"reserved run directory identity changed: {authority.run_dir}")
+        claimed.verify_visible_path()
+    except BaseException:
+        claimed.close()
+        raise
+    return claimed
+
+
+def _read_reservation_marker(directory_fd: int, path: Path) -> str:
+    flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        marker_fd = os.open(_RUN_RESERVATION_MARKER, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise PlatformPathError(f"run directory reservation cannot be read: {path}") from exc
+    try:
+        marker_identity = os.fstat(marker_fd)
+        if not stat.S_ISREG(marker_identity.st_mode):
+            raise PlatformPathError(
+                f"run directory reservation marker is not a regular file: {path}"
+            )
+        content = os.read(marker_fd, 4097)
+        if len(content) > 4096 or os.read(marker_fd, 1):
+            raise PlatformPathError(f"run directory reservation marker is too large: {path}")
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise PlatformPathError(
+                f"run directory reservation marker is not UTF-8: {path}"
+            ) from exc
+    finally:
+        os.close(marker_fd)
+
+
+def _write_claimed_text(
+    directory_fd: int,
+    name: str,
+    content: str,
+    *,
+    mode: int = 0o666,
+) -> None:
+    if Path(name).name != name or name in {"", ".", ".."}:
+        raise ValueError(f"invalid run artifact name: {name}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    file_fd = os.open(name, flags, mode, dir_fd=directory_fd)
+    try:
+        remaining = memoryview(content.encode("utf-8"))
+        while remaining:
+            written = os.write(file_fd, remaining)
+            if written <= 0:
+                raise OSError("run artifact write made no progress")
+            remaining = remaining[written:]
+        os.fsync(file_fd)
+    finally:
+        os.close(file_fd)
+
+
+@dataclass(frozen=True, slots=True)
+class RunDirectoryReservation:
+    """An exact run directory reserved for one child runtime."""
+
+    run_id: str
+    run_dir: Path
+    token: str
+    device: int
+    inode: int
+
+    @property
+    def marker_path(self) -> Path:
+        return self.run_dir / _RUN_RESERVATION_MARKER
+
+    def child_environment(self, environment: Mapping[str, str]) -> dict[str, str]:
+        child = dict(environment)
+        child[_RUN_RESERVATION_DIR_ENV] = str(self.run_dir)
+        child[_RUN_RESERVATION_TOKEN_ENV] = self.token
+        child[_RUN_RESERVATION_DEVICE_ENV] = str(self.device)
+        child[_RUN_RESERVATION_INODE_ENV] = str(self.inode)
+        return child
+
+    def cancel_if_pending(self) -> bool:
+        """Tombstone an unclaimed reservation without pathname-based deletion."""
+        authority = _ReservationAuthority(
+            run_dir=self.run_dir,
+            token=self.token,
+            device=self.device,
+            inode=self.inode,
+        )
+        try:
+            claimed = _open_authorized_run_directory(authority)
+        except (OSError, PlatformPathError):
+            return False
+
+        try:
+            if os.listdir(claimed.fd) != [_RUN_RESERVATION_MARKER]:
+                return False
+            marker_token = _read_reservation_marker(claimed.fd, self.run_dir)
+            claimed.verify_visible_path()
+            if not secrets.compare_digest(marker_token, self.token):
+                return False
+
+            _write_claimed_text(
+                claimed.fd,
+                _RUN_RESERVATION_CANCELLED_MARKER,
+                self.token,
+                mode=0o600,
+            )
+            claimed.verify_visible_path()
+            os.unlink(_RUN_RESERVATION_MARKER, dir_fd=claimed.fd)
+            os.fsync(claimed.fd)
+            claimed.verify_visible_path()
+        except (OSError, PlatformPathError):
+            return False
+        finally:
+            claimed.close()
+        return True
+
+    def claimed_run_dir(self) -> Path:
+        """Return the exact claimed directory or fail on stale/replaced identity."""
+        authority = _ReservationAuthority(
+            run_dir=self.run_dir,
+            token=self.token,
+            device=self.device,
+            inode=self.inode,
+        )
+        claimed = _open_authorized_run_directory(authority)
+        try:
+            entries = set(os.listdir(claimed.fd))
+            claimed.verify_visible_path()
+            if _RUN_RESERVATION_MARKER in entries:
+                raise PlatformPathError(
+                    f"run directory reservation was not claimed: {self.run_dir}"
+                )
+            if _RUN_RESERVATION_CANCELLED_MARKER in entries:
+                raise PlatformPathError(f"run directory reservation was cancelled: {self.run_dir}")
+            return self.run_dir
+        finally:
+            claimed.close()
+
+
+def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
+    """Atomically reserve one canonical collision-safe run directory."""
+    requested_run_id = validate_portable_run_id(run_id)
+    base.mkdir(parents=True, exist_ok=True)
+    try:
+        base_before_open = base.lstat()
+        base_fd = os.open(base, _reservation_directory_flags())
+    except OSError as exc:
+        raise PlatformPathError(f"run directory base cannot be opened safely: {base}") from exc
+
+    try:
+        base_opened = os.fstat(base_fd)
+        _assert_directory_identity(base_before_open, base_opened, base)
+
+        for collision_index in range(1000):
+            reserved_run_id = portable_run_id_for_collision(
+                requested_run_id,
+                collision_index,
+            )
+            run_dir = base / reserved_run_id
+            try:
+                os.mkdir(reserved_run_id, dir_fd=base_fd)
+            except FileExistsError:
+                continue
+
+            run_fd: int | None = None
+            created_identity: os.stat_result | None = None
+            opened_identity: os.stat_result | None = None
+            try:
+                try:
+                    created_identity = os.stat(
+                        reserved_run_id,
+                        dir_fd=base_fd,
+                        follow_symlinks=False,
+                    )
+                except OSError as exc:
+                    raise PlatformPathError(
+                        f"run directory identity changed during reservation: {run_dir}"
+                    ) from exc
+                try:
+                    run_fd = os.open(
+                        reserved_run_id,
+                        _reservation_directory_flags(),
+                        dir_fd=base_fd,
+                    )
+                except OSError as exc:
+                    raise PlatformPathError(
+                        f"run directory identity changed during reservation: {run_dir}"
+                    ) from exc
+                opened_identity = os.fstat(run_fd)
+                _assert_directory_identity(created_identity, opened_identity, run_dir)
+
+                token = secrets.token_hex(32)
+                _write_run_reservation_marker(run_fd, token)
+                os.fsync(run_fd)
+
+                try:
+                    current_identity = os.stat(
+                        reserved_run_id,
+                        dir_fd=base_fd,
+                        follow_symlinks=False,
+                    )
+                    current_base = base.lstat()
+                except OSError as exc:
+                    raise PlatformPathError(
+                        f"run directory identity changed during reservation: {run_dir}"
+                    ) from exc
+                _assert_directory_identity(opened_identity, current_identity, run_dir)
+                _assert_directory_identity(base_opened, current_base, base)
+                return RunDirectoryReservation(
+                    run_id=reserved_run_id,
+                    run_dir=run_dir,
+                    token=token,
+                    device=opened_identity.st_dev,
+                    inode=opened_identity.st_ino,
+                )
+            except BaseException:
+                # A directory cannot be removed portably through its open
+                # descriptor. Preserve failed reservations instead of risking
+                # deletion of a replacement installed after an identity check.
+                raise
+            finally:
+                if run_fd is not None:
+                    os.close(run_fd)
+    finally:
+        os.close(base_fd)
+    raise RuntimeError(f"could not reserve a unique run directory under {base}")
+
+
+def _claim_run_directory_reservation(candidate: Path) -> _ClaimedRunDirectory | None:
+    authority = _reservation_authority(candidate)
+    if authority is None:
+        return None
+
+    claimed = _open_authorized_run_directory(authority)
+    try:
+        try:
+            entries = os.listdir(claimed.fd)
+        except OSError as exc:
+            raise PlatformPathError(
+                f"run directory reservation cannot be read: {candidate}"
+            ) from exc
+        claimed.verify_visible_path()
+        if entries != [_RUN_RESERVATION_MARKER]:
+            raise PlatformPathError(f"reserved run directory is not empty: {candidate}")
+
+        marker_token = _read_reservation_marker(claimed.fd, candidate)
+        claimed.verify_visible_path()
+        if not secrets.compare_digest(marker_token, authority.token):
+            raise PlatformPathError("run directory reservation token does not match")
+        os.unlink(_RUN_RESERVATION_MARKER, dir_fd=claimed.fd)
+        os.fsync(claimed.fd)
+        claimed.verify_visible_path()
+    except BaseException:
+        claimed.close()
+        raise
+    return claimed
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,7 +742,7 @@ class JsonlWriter:
         self._files = []
 
 
-def capture_env_txt(path: Path) -> None:
+def _capture_env_text() -> str:
     lines: list[str] = []
     lines.append(f"created_utc: {_utc_now_iso()}")
     lines.append(f"python: {sys.version.replace(os.linesep, ' ')}")
@@ -356,7 +766,11 @@ def capture_env_txt(path: Path) -> None:
             lines.append(f"(pip freeze failed: {type(e).__name__}: {e})")
 
     lines.append("")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "\n".join(lines) + "\n"
+
+
+def capture_env_txt(path: Path) -> None:
+    path.write_text(_capture_env_text(), encoding="utf-8")
 
 
 def create_run_context(
@@ -369,113 +783,181 @@ def create_run_context(
 ) -> RunContext:
     created = _utc_now_iso()
 
-    rid = str(run_id or os.getenv("METRIPLANE_RUN_ID") or "").strip()
-    if not rid:
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is None:
         rid = generate_run_id()
-    if not _SAFE_RUN_ID.fullmatch(rid) or rid in {".", ".."}:
-        raise ValueError(
-            "run_id must be 1-128 letters, numbers, dots, dashes, or underscores "
-            "and cannot contain a path"
-        )
+    else:
+        rid = validate_portable_run_id(str(configured_run_id))
 
     # Where runs live
-    base: Path
-    if runs_dir and str(runs_dir).strip():
-        base = resolve_under_data_dir(str(runs_dir).strip())
-    elif cfg.runs_dir and str(cfg.runs_dir).strip():
-        base = resolve_under_data_dir(str(cfg.runs_dir).strip())
+    unresolved_base: Path
+    explicit_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if explicit_runs_dir is not None:
+        unresolved_base = resolve_under_data_dir(explicit_runs_dir)
+    elif configured_runs_dir is not None:
+        unresolved_base = resolve_under_data_dir(configured_runs_dir)
     else:
-        base = data_dir() / "runs"
+        unresolved_base = data_dir() / "runs"
+
+    base = resolve_runs_dir(unresolved_base)
+    if base is None:  # The concrete Path above cannot normalize to an absent override.
+        raise AssertionError("run-recording root unexpectedly resolved as absent")
 
     # Make run dir unique (avoid overwriting) and keep it beneath runs_dir.
-    base = base.expanduser().resolve()
-    candidate = (base / rid).resolve()
+    unresolved_candidate = base / rid
+    if unresolved_candidate.is_symlink():
+        raise PlatformPathError(
+            f"cannot resolve run-recording path {unresolved_candidate}: "
+            "symbolic links are not allowed"
+        )
+    try:
+        candidate = unresolved_candidate.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError(
+            f"cannot resolve run-recording path {unresolved_candidate}: {exc}"
+        ) from exc
     try:
         candidate.relative_to(base)
     except ValueError as exc:  # defense in depth; the run-id syntax already rejects separators
         raise ValueError("run_id resolves outside runs_dir") from exc
-    run_dir = _ensure_unique_run_dir(candidate)
-    run_dir.mkdir(parents=True, exist_ok=False)
+    claimed_directory = _claim_run_directory_reservation(candidate)
+    if claimed_directory is not None:
+        run_dir = candidate
+    else:
+        run_dir = _ensure_unique_run_dir(candidate)
+        run_dir.mkdir(parents=True, exist_ok=False)
+    try:
+        # If collision suffixing changed the directory, keep the persisted ID in sync.
+        rid = validate_portable_run_id(run_dir.name)
 
-    # IMPORTANT: if we had to suffix, run_id must match directory name
-    rid = run_dir.name
+        # Git + config hash
+        git = get_git_info(start=Path.cwd())
+        cfg_hash, cfg_canon = compute_config_hash(cfg)
 
-    # Git + config hash
-    git = get_git_info(start=Path.cwd())
-    cfg_hash, cfg_canon = compute_config_hash(cfg)
+        # Resolved profile (captures calib/active_profile.yaml even if cfg.profile is None)
+        resolved_prof = resolve_profile(
+            cfg.profile,
+            active_profile_path=Path("calib/active_profile.yaml"),
+        )
 
-    # Resolved profile (captures calib/active_profile.yaml even if cfg.profile is None)
-    resolved_prof = resolve_profile(
-        cfg.profile, active_profile_path=Path("calib/active_profile.yaml")
-    )
+        # Artifact paths
+        meta_json = run_dir / "meta.json"
+        env_txt = run_dir / "env.txt"
+        config_yaml = run_dir / "config.yaml"
+        cfg_canon_path = run_dir / "config.canonical.json"
+        session_jsonl = run_dir / "session.jsonl"
 
-    # Artifact paths
-    meta_json = run_dir / "meta.json"
-    env_txt = run_dir / "env.txt"
-    config_yaml = run_dir / "config.yaml"
-    cfg_canon_path = run_dir / "config.canonical.json"
-    session_jsonl = run_dir / "session.jsonl"
+        config_yaml_content = dump_config_yaml(cfg)
+        env_content = _capture_env_text()
+        if claimed_directory is not None:
+            claimed_directory.write_text("config.yaml", config_yaml_content)
+            claimed_directory.write_text("config.canonical.json", cfg_canon)
+            claimed_directory.write_text("env.txt", env_content)
+            config_yaml_checksum = sha256_text(config_yaml_content)
+            config_canonical_checksum = sha256_text(cfg_canon)
+            env_checksum = sha256_text(env_content)
+        else:
+            config_yaml.write_text(config_yaml_content, encoding="utf-8")
+            cfg_canon_path.write_text(cfg_canon, encoding="utf-8")
+            env_txt.write_text(env_content, encoding="utf-8")
+            config_yaml_checksum = sha256_file(config_yaml)
+            config_canonical_checksum = sha256_file(cfg_canon_path)
+            env_checksum = sha256_file(env_txt)
+        assert config_canonical_checksum == cfg_hash
 
-    # Write config snapshot + canonical JSON used for hashing
-    config_yaml.write_text(dump_config_yaml(cfg), encoding="utf-8")
-    cfg_canon_path.write_text(cfg_canon, encoding="utf-8")
-    assert sha256_file(cfg_canon_path) == cfg_hash
-
-    # Capture env
-    capture_env_txt(env_txt)
-
-    # Meta
-    meta: dict[str, Any] = {
-        "schema_version": "1.0",
-        "created_utc": created,
-        "run_id": rid,
-        "run_dir": str(run_dir),
-        "user": getpass.getuser(),
-        "hostname": socket.gethostname(),
-        "cwd": str(Path.cwd()),
-        "argv": list(argv) if argv is not None else [],
-        "source_config_path": str(config_path) if config_path else None,
-        "resolved_profile": resolved_prof,
-        "git": {
-            "commit": git.commit,
-            "dirty": git.dirty,
-            "describe": git.describe,
-            "repo_root": git.repo_root,
-        },
-        "config": {
-            "hash_algo": "sha256",
-            "hash": cfg_hash,
-            "canonical_json_path": str(cfg_canon_path),
-            "snapshot_yaml_path": str(config_yaml),
+        meta: dict[str, Any] = {
+            "schema_version": "1.0",
+            "created_utc": created,
+            "run_id": rid,
+            "run_dir": str(run_dir),
+            "user": getpass.getuser(),
+            "hostname": socket.gethostname(),
+            "cwd": str(Path.cwd()),
+            "argv": list(argv) if argv is not None else [],
             "source_config_path": str(config_path) if config_path else None,
-        },
-        "artifacts": {
-            "session_jsonl": str(session_jsonl),
-            "env_txt": str(env_txt),
-        },
-        "checksums": {
-            "config_yaml_sha256": sha256_file(config_yaml),
-            "config_canonical_json_sha256": sha256_file(cfg_canon_path),
-            "env_txt_sha256": sha256_file(env_txt),
-        },
-    }
-    meta_json.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+            "resolved_profile": resolved_prof,
+            "git": {
+                "commit": git.commit,
+                "dirty": git.dirty,
+                "describe": git.describe,
+                "repo_root": git.repo_root,
+            },
+            "config": {
+                "hash_algo": "sha256",
+                "hash": cfg_hash,
+                "canonical_json_path": str(cfg_canon_path),
+                "snapshot_yaml_path": str(config_yaml),
+                "source_config_path": str(config_path) if config_path else None,
+            },
+            "artifacts": {
+                "session_jsonl": str(session_jsonl),
+                "env_txt": str(env_txt),
+            },
+            "checksums": {
+                "config_yaml_sha256": config_yaml_checksum,
+                "config_canonical_json_sha256": config_canonical_checksum,
+                "env_txt_sha256": env_checksum,
+            },
+        }
+        meta_content = json.dumps(meta, indent=2, sort_keys=True)
+        if claimed_directory is not None:
+            claimed_directory.write_text("meta.json", meta_content)
+            os.fsync(claimed_directory.fd)
+            claimed_directory.verify_visible_path()
+        else:
+            meta_json.write_text(meta_content, encoding="utf-8")
 
-    return RunContext(
-        run_id=rid,
-        run_dir=run_dir,
-        created_utc=created,
-        argv=list(argv) if argv is not None else [],
-        resolved_profile=resolved_prof,
-        config_hash=cfg_hash,
-        git=git,
-        source_config_path=str(config_path) if config_path else None,
-        meta_json=meta_json,
-        env_txt=env_txt,
-        config_yaml=config_yaml,
-        config_canonical_json_path=cfg_canon_path,
-        session_jsonl=session_jsonl,
-    )
+        return RunContext(
+            run_id=rid,
+            run_dir=run_dir,
+            created_utc=created,
+            argv=list(argv) if argv is not None else [],
+            resolved_profile=resolved_prof,
+            config_hash=cfg_hash,
+            git=git,
+            source_config_path=str(config_path) if config_path else None,
+            meta_json=meta_json,
+            env_txt=env_txt,
+            config_yaml=config_yaml,
+            config_canonical_json_path=cfg_canon_path,
+            session_jsonl=session_jsonl,
+        )
+    finally:
+        if claimed_directory is not None:
+            claimed_directory.close()
+
+
+def _open_reserved_text_artifact(path: Path) -> TextIO | None:
+    authority = _reservation_authority(path.parent)
+    if authority is None:
+        return None
+    if Path(path.name).name != path.name or path.name in {"", ".", ".."}:
+        raise PlatformPathError(f"invalid reserved run artifact path: {path}")
+
+    claimed = _open_authorized_run_directory(authority)
+    file_fd: int | None = None
+    try:
+        claimed.verify_visible_path()
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+        try:
+            file_fd = os.open(path.name, flags, 0o666, dir_fd=claimed.fd)
+        except OSError as exc:
+            raise PlatformPathError(
+                f"reserved run artifact cannot be opened safely: {path}"
+            ) from exc
+        opened = os.fstat(file_fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise PlatformPathError(f"reserved run artifact is not a regular file: {path}")
+        os.fsync(claimed.fd)
+        claimed.verify_visible_path()
+        handle = os.fdopen(file_fd, "w", encoding="utf-8", buffering=1)
+        file_fd = None
+        return handle
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        claimed.close()
 
 
 def open_jsonl_writer(*, primary_path: Path, mirror_path: str | None) -> JsonlWriter:
@@ -491,16 +973,24 @@ def open_jsonl_writer(*, primary_path: Path, mirror_path: str | None) -> JsonlWr
             if mp != primary_path:
                 paths.append(mp)
 
-    files: list[TextIO] = []
+    opened_files: dict[int, TextIO] = {}
+    open_order = [*range(1, len(paths)), 0] if len(paths) > 1 else [0]
     try:
-        for p in paths:
+        for index in open_order:
+            p = paths[index]
+            if index == 0:
+                reserved_handle = _open_reserved_text_artifact(p)
+                if reserved_handle is not None:
+                    opened_files[index] = reserved_handle
+                    continue
             p.parent.mkdir(parents=True, exist_ok=True)
-            files.append(p.open("w", encoding="utf-8", buffering=1))
+            opened_files[index] = p.open("w", encoding="utf-8", buffering=1)
     except Exception:
-        for handle in files:
+        for handle in opened_files.values():
             try:
                 handle.close()
             except Exception:
                 pass
         raise
+    files = [opened_files[index] for index in range(len(paths))]
     return JsonlWriter(files, paths)

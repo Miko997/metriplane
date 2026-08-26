@@ -23,10 +23,23 @@ from typing import Any, Optional, Tuple
 
 import yaml
 
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
+from metriplane.run_ids import validate_portable_run_id
+from metriplane.runner.command_center_api import find_run_artifact
+from metriplane.runner.safe_writes import (
+    UnsafeWritePathError,
+    WriteConflictError,
+    open_secure_directory,
+)
+
 # ── Safety patterns ────────────────────────────────────────────────────────────
 
 SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
-SAFE_RUNID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 SAFE_CAMERA_RE = re.compile(r"^(/dev/video\d+|/dev/v4l/by-id/[a-zA-Z0-9_.:-]+|\d{1,2})$")
 
 
@@ -34,11 +47,16 @@ def _valid_name(name: str) -> bool:
     return bool(SAFE_NAME_RE.match(name))
 
 
+def _body_text(body: dict[str, Any], key: str, default: str = "") -> str:
+    value = body.get(key, default)
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _is_relative_to(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
         return True
-    except ValueError:
+    except (OSError, RuntimeError, ValueError):
         return False
 
 
@@ -48,6 +66,23 @@ def _safe_camera(cam: str) -> bool:
 
 def _no_traversal(path: str) -> bool:
     return ".." not in path and not path.startswith("/") or path.startswith("/dev/")
+
+
+def _has_symlink_component(path: Path, root: Path) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return True
+    current = root
+    if current.is_symlink():
+        return True
+    for part in relative.parts:
+        if part in {".", ".."}:
+            return True
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
 
 
 def _profile_dir(repo_root: Path, profile: str) -> Path:
@@ -137,7 +172,10 @@ def _validate_camera_config(config_data: dict[str, Any], repo_root: Path) -> Opt
                 "Expected format: calib/profiles/<profile>/<cam>/mapping_raw.yaml. "
                 "The 'mapping' key is not recognised — use 'mapping_file'."
             )
-        mf_path = (repo_root / str(mf)).resolve()
+        try:
+            mf_path = (repo_root / str(mf)).resolve()
+        except (OSError, RuntimeError):
+            return f"cameras[{i}] ({name!r}): mapping_file cannot be resolved: {mf}"
         if not mf_path.exists():
             return (
                 f"cameras[{i}] ({name!r}): mapping_file not found on disk: {mf}. "
@@ -155,8 +193,15 @@ def _validate_config_relative(repo_root: Path, config: str) -> Optional[Path]:
         return None
     # Strip leading ./
     config = config.lstrip("./")
-    path = (repo_root / config).resolve()
-    configs_root = (repo_root / "configs").resolve()
+    unresolved_root = repo_root / "configs"
+    unresolved_path = repo_root / config
+    if _has_symlink_component(unresolved_path, unresolved_root):
+        return None
+    try:
+        path = unresolved_path.resolve()
+        configs_root = unresolved_root.resolve()
+    except (OSError, RuntimeError):
+        return None
     if not _is_relative_to(path, configs_root):
         return None
     return path
@@ -242,11 +287,27 @@ class OperatorAPI:
     Injected with a reference to the CommandExecutor from service.py.
     """
 
-    def __init__(self, executor: Any, repo_root: Path) -> None:
+    def __init__(
+        self,
+        executor: Any,
+        repo_root: Path,
+        *,
+        paths: PlatformPaths | None = None,
+    ) -> None:
         self.executor = executor
         self.repo_root = repo_root
+        self._injected_paths = paths
         # Resolved once at startup — uses .venv/bin/python when present
         self._python: str = _resolve_python_executable(repo_root)
+
+    def _platform_paths(self) -> PlatformPaths:
+        return self._injected_paths or resolve_platform_paths()
+
+    def _runs_root(self) -> Path:
+        runs_root = resolve_runs_dir(self._platform_paths().runs_dir)
+        if runs_root is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
+        return runs_root
 
     def route(self, method: str, path: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """
@@ -314,6 +375,8 @@ class OperatorAPI:
                     return self._cc_frames(body)
                 if sub == "/ask":
                     return self._cc_ask(body)
+        except PlatformPathError as exc:
+            return 503, {"error": f"Platform paths unavailable: {exc}"}
         except Exception as exc:
             return 500, {"error": f"Internal error: {exc}"}
 
@@ -449,27 +512,35 @@ class OperatorAPI:
     # ── GET /operator/latest-run ───────────────────────────────────────────────
 
     def _get_latest_run(self) -> tuple[int, dict[str, Any]]:
-        runs_root = Path.home() / "metriplane-runs"
+        runs_root = self._runs_root()
         if not runs_root.exists():
             return 200, {"latest_run": None, "runs_dir": str(runs_root)}
 
         candidates: list[dict[str, Any]] = []
         for d in sorted(runs_root.iterdir()):
-            if d.is_dir():
-                session = d / "session.jsonl"
-                meta = d / "meta.json"
-                candidates.append(
-                    {
-                        "dir": str(d),
-                        "name": d.name,
-                        "session_exists": session.exists(),
-                        "session_size_mb": round(session.stat().st_size / 1e6, 1)
-                        if session.exists()
-                        else None,
-                        "meta_exists": meta.exists(),
-                        "mtime": d.stat().st_mtime,
-                    }
-                )
+            if d.is_symlink():
+                continue
+            try:
+                resolved = d.resolve(strict=True)
+                resolved.relative_to(runs_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if not resolved.is_dir():
+                continue
+            session = find_run_artifact(resolved, ["session.jsonl"])
+            meta = find_run_artifact(resolved, ["meta.json"])
+            candidates.append(
+                {
+                    "dir": str(resolved),
+                    "name": resolved.name,
+                    "session_exists": session is not None,
+                    "session_size_mb": (
+                        round(session.stat().st_size / 1e6, 1) if session is not None else None
+                    ),
+                    "meta_exists": meta is not None,
+                    "mtime": resolved.stat().st_mtime,
+                }
+            )
 
         candidates.sort(key=lambda x: float(x["mtime"]), reverse=True)
 
@@ -477,8 +548,8 @@ class OperatorAPI:
         if candidates:
             latest = candidates[0]
             # Try to read meta.json for run_id, git_commit
-            meta_path = Path(str(latest["dir"])) / "meta.json"
-            if meta_path.exists():
+            meta_path = find_run_artifact(Path(latest["dir"]), ["meta.json"])
+            if meta_path is not None:
                 try:
                     meta_data = json.loads(meta_path.read_text())
                     latest["meta"] = meta_data
@@ -510,7 +581,7 @@ class OperatorAPI:
     # ── POST /operator/create-profile ─────────────────────────────────────────
 
     def _create_profile(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        name: str = body.get("name", "").strip()
+        name = _body_text(body, "name")
         width_m: float = body.get("width_m", 0.55)
         height_m: float = body.get("height_m", 0.40)
         anchors: list[Any] = body.get("anchors", [])
@@ -540,15 +611,6 @@ class OperatorAPI:
                     )
                 }
 
-        profile_dir = _profile_dir(self.repo_root, name)
-
-        if profile_dir.exists() and not overwrite:
-            return 409, {
-                "error": f"Profile '{name}' already exists. Set overwrite=true to replace.",
-                "profile": name,
-                "path": str(profile_dir.relative_to(self.repo_root)),
-            }
-
         # ── Default anchors if not provided ──────────────────────────────────
         if not anchors:
             w, h = float(width_m), float(height_m)
@@ -572,13 +634,6 @@ class OperatorAPI:
             except (ValueError, TypeError):
                 return 400, {"error": "Anchor id must be int, world_xy must be [float, float]"}
 
-        # ── Create directories ────────────────────────────────────────────────
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        for cam in cameras:
-            (profile_dir / cam).mkdir(exist_ok=True)
-
-        # ── Write anchors.yaml ────────────────────────────────────────────────
-        anchors_path = profile_dir / "anchors.yaml"
         anchors_data = {
             "profile": name,
             "board_size": {"width_m": float(width_m), "height_m": float(height_m)},
@@ -587,16 +642,48 @@ class OperatorAPI:
                 for a in anchors
             ],
         }
-        anchors_path.write_text(yaml.dump(anchors_data, default_flow_style=False), encoding="utf-8")
+        profile_relative = Path("calib") / "profiles" / name
+        anchors_content = yaml.dump(
+            anchors_data,
+            default_flow_style=False,
+        ).encode("utf-8")
+        try:
+            with open_secure_directory(
+                self.repo_root,
+                profile_relative,
+                create=True,
+            ) as profile_output:
+                if not profile_output.created and not overwrite:
+                    return 409, {
+                        "error": f"Profile '{name}' already exists. Set overwrite=true to replace.",
+                        "profile": name,
+                        "path": str(profile_relative),
+                    }
+                for cam in cameras:
+                    profile_output.ensure_child_directory(cam)
+                profile_output.atomic_write(
+                    "anchors.yaml",
+                    anchors_content,
+                    overwrite=overwrite,
+                )
+        except WriteConflictError:
+            return 409, {
+                "error": f"Profile '{name}' changed while it was being written. Retry the request.",
+                "profile": name,
+                "path": str(profile_relative),
+            }
+        except UnsafeWritePathError as exc:
+            return 400, {"error": str(exc)}
+        except (OSError, RuntimeError):
+            return 503, {"error": f"Unable to write profile '{name}'"}
 
-        created_dirs = [str(profile_dir.relative_to(self.repo_root))]
-        for cam in cameras:
-            created_dirs.append(str((profile_dir / cam).relative_to(self.repo_root)))
+        created_dirs = [str(profile_relative)]
+        created_dirs.extend(str(profile_relative / cam) for cam in cameras)
 
         return 200, {
             "profile": name,
-            "path": str(profile_dir.relative_to(self.repo_root)),
-            "anchors_path": str(anchors_path.relative_to(self.repo_root)),
+            "path": str(profile_relative),
+            "anchors_path": str(profile_relative / "anchors.yaml"),
             "anchors_count": len(anchors),
             "board_size": {"width_m": float(width_m), "height_m": float(height_m)},
             "cameras": cameras,
@@ -606,23 +693,12 @@ class OperatorAPI:
     # ── POST /operator/write-zones ─────────────────────────────────────────────
 
     def _write_zones(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        profile: str = body.get("profile", "").strip()
+        profile = _body_text(body, "profile")
         zones: list[Any] = body.get("zones", [])
         overwrite: bool = bool(body.get("overwrite", False))
 
         if not _valid_name(profile):
             return 400, {"error": "Invalid profile name"}
-
-        profile_dir = _profile_dir(self.repo_root, profile)
-        if not profile_dir.exists():
-            return 404, {"error": f"Profile not found: {profile}"}
-
-        zones_path = profile_dir / "zones.yaml"
-        if zones_path.exists() and not overwrite:
-            return 409, {
-                "error": f"zones.yaml already exists in profile '{profile}'. Set overwrite=true to replace.",
-                "path": str(zones_path.relative_to(self.repo_root)),
-            }
 
         if not zones:
             return 400, {"error": "At least one zone required"}
@@ -649,11 +725,38 @@ class OperatorAPI:
             )
 
         zones_data = {"zones": zone_list}
-        zones_path.write_text(yaml.dump(zones_data, default_flow_style=False), encoding="utf-8")
+        profile_relative = Path("calib") / "profiles" / profile
+        zones_relative = profile_relative / "zones.yaml"
+        zones_content = yaml.dump(
+            zones_data,
+            default_flow_style=False,
+        ).encode("utf-8")
+        try:
+            with open_secure_directory(
+                self.repo_root,
+                profile_relative,
+                create=False,
+            ) as profile_output:
+                profile_output.atomic_write(
+                    "zones.yaml",
+                    zones_content,
+                    overwrite=overwrite,
+                )
+        except FileNotFoundError:
+            return 404, {"error": f"Profile not found: {profile}"}
+        except WriteConflictError:
+            return 409, {
+                "error": f"zones.yaml already exists in profile '{profile}'. Set overwrite=true to replace.",
+                "path": str(zones_relative),
+            }
+        except UnsafeWritePathError as exc:
+            return 400, {"error": str(exc)}
+        except (OSError, RuntimeError):
+            return 503, {"error": f"Unable to write zones for profile '{profile}'"}
 
         return 200, {
             "profile": profile,
-            "zones_path": str(zones_path.relative_to(self.repo_root)),
+            "zones_path": str(zones_relative),
             "zone_count": len(zone_list),
             "zones": [z["name"] for z in zone_list],
         }
@@ -661,8 +764,8 @@ class OperatorAPI:
     # ── POST /operator/save-config ─────────────────────────────────────────────
 
     def _save_config(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        filename: str = body.get("filename", "").strip()
-        config_data: dict[str, Any] = body.get("config", {})
+        filename = _body_text(body, "filename")
+        config_data = body.get("config", {})
         overwrite: bool = bool(body.get("overwrite", False))
 
         if not filename:
@@ -672,18 +775,7 @@ class OperatorAPI:
         if not _valid_name(base):
             return 400, {"error": "Filename must be safe name + .yaml"}
 
-        local_dir = self.repo_root / "configs" / "local"
-        local_dir.mkdir(parents=True, exist_ok=True)
-
-        out_path = local_dir / (base + ".yaml")
-        if out_path.exists() and not overwrite:
-            # Return conflict with preview
-            return 409, {
-                "error": f"Config '{filename}' already exists in configs/local/. Set overwrite=true.",
-                "path": str(out_path.relative_to(self.repo_root)),
-            }
-
-        if not config_data:
+        if not isinstance(config_data, dict) or not config_data:
             return 400, {"error": "config data required"}
 
         # Validate camera schema before writing — prevents silent failures at run time.
@@ -697,15 +789,37 @@ class OperatorAPI:
                 ),
             }
 
-        out_path.write_text(yaml.dump(config_data, default_flow_style=False), encoding="utf-8")
-
-        # Compute hash like metriplane does
-        content = out_path.read_bytes()
+        local_relative = Path("configs") / "local"
+        out_relative = local_relative / (base + ".yaml")
+        content = yaml.dump(
+            config_data,
+            default_flow_style=False,
+        ).encode("utf-8")
+        try:
+            with open_secure_directory(
+                self.repo_root,
+                local_relative,
+                create=True,
+            ) as local_output:
+                local_output.atomic_write(
+                    out_relative.name,
+                    content,
+                    overwrite=overwrite,
+                )
+        except WriteConflictError:
+            return 409, {
+                "error": f"Config '{filename}' already exists in configs/local/. Set overwrite=true.",
+                "path": str(out_relative),
+            }
+        except UnsafeWritePathError as exc:
+            return 400, {"error": str(exc)}
+        except (OSError, RuntimeError):
+            return 503, {"error": f"Unable to write config '{filename}'"}
         config_hash = hashlib.sha256(content).hexdigest()
 
         return 200, {
-            "path": str(out_path.relative_to(self.repo_root)),
-            "filename": out_path.name,
+            "path": str(out_relative),
+            "filename": out_relative.name,
             "size_bytes": len(content),
             "config_hash": config_hash,
         }
@@ -713,11 +827,14 @@ class OperatorAPI:
     # ── POST /operator/calibrate ───────────────────────────────────────────────
 
     def _calibrate(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        profile: str = body.get("profile", "").strip()
-        cam_name: str = body.get("cam", "cam0").strip()  # "cam0" or "cam1"
+        profile = _body_text(body, "profile")
+        cam_name = _body_text(body, "cam", "cam0")  # "cam0" or "cam1"
         camera_path: str = str(body.get("camera", "0")).strip()
-        timeout_s: int = int(body.get("timeout_s", 30))
-        max_frames: int = int(body.get("max_frames", 600))
+        try:
+            timeout_s = int(body.get("timeout_s", 30))
+            max_frames = int(body.get("max_frames", 600))
+        except (TypeError, ValueError):
+            return 400, {"error": "timeout_s and max_frames must be integers"}
         no_preview: bool = bool(body.get("no_preview", True))
 
         if not _valid_name(profile):
@@ -814,7 +931,7 @@ class OperatorAPI:
     # improved per-ID delta reporting.  Intrinsics are never required.
 
     def _validate_alignment(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        profile: str = body.get("profile", "").strip()
+        profile = _body_text(body, "profile")
         cam0_path: str = str(body.get("cam0", "0")).strip()
         cam1_path: str = str(body.get("cam1", "2")).strip()
 
@@ -902,7 +1019,7 @@ class OperatorAPI:
     # they are missing — listing exact paths and the command to generate them.
 
     def _full_alignment_check(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        profile: str = body.get("profile", "").strip()
+        profile = _body_text(body, "profile")
         cam0_path: str = str(body.get("cam0", "0")).strip()
         cam1_path: str = str(body.get("cam1", "2")).strip()
 
@@ -998,10 +1115,12 @@ class OperatorAPI:
     # ── POST /operator/start-fusion ───────────────────────────────────────────
 
     def _start_fusion(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        config: str = body.get("config", "").strip()
-        duration_s: int = int(body.get("duration_s", 60))
-        run_id: str = body.get("run_id", "").strip()
-        backend: str = body.get("backend", "cpu").strip()
+        config = _body_text(body, "config")
+        try:
+            duration_s = int(body.get("duration_s", 60))
+        except (TypeError, ValueError):
+            return 400, {"error": "duration_s must be an integer"}
+        backend = _body_text(body, "backend", "cpu")
 
         # Validate config
         config_path = _validate_config_relative(self.repo_root, config)
@@ -1014,20 +1133,25 @@ class OperatorAPI:
         if not (5 <= duration_s <= 7200):
             return 400, {"error": "duration_s must be 5-7200"}
 
-        # Validate run_id
-        if run_id and not SAFE_RUNID_RE.match(run_id):
-            return 400, {"error": "run_id must be letters/numbers/dash/underscore"}
-
         # Validate backend
         if backend not in ("cpu", "gpu"):
             return 400, {"error": "backend must be cpu or gpu"}
 
-        # Auto generate run_id if not provided
-        if not run_id:
+        # Auto-generate only when the field is omitted; explicit blanks are invalid.
+        if "run_id" not in body:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             run_id = f"operator_run_{ts}"
+        else:
+            provided_run_id = body["run_id"]
+            if not isinstance(provided_run_id, str):
+                return 400, {"error": "run_id must be a string when provided"}
+            run_id = provided_run_id
+        try:
+            run_id = validate_portable_run_id(run_id)
+        except ValueError as exc:
+            return 400, {"error": str(exc)}
 
-        runs_dir = str(Path.home() / "metriplane-runs")
+        runs_dir = str(self._runs_root())
 
         command = [
             self._python,
@@ -1067,28 +1191,33 @@ class OperatorAPI:
     # ── POST /operator/generate-report ────────────────────────────────────────
 
     def _generate_report(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        report_type: str = body.get("type", "").strip()  # "zones" or "id-stability"
-        session_path: str = body.get("session", "").strip()
-        out_prefix: str = body.get("prefix", "operator").strip()
-        profile: str = body.get("profile", "").strip()
+        report_type = _body_text(body, "type")  # "zones" or "id-stability"
+        session_path = _body_text(body, "session")
+        out_prefix = _body_text(body, "prefix", "operator")
+        profile = _body_text(body, "profile")
 
         if report_type not in ("zones", "id-stability"):
             return 400, {"error": "type must be 'zones' or 'id-stability'"}
 
-        # Validate session path: must be in ~/metriplane-runs/ or absolute path resolving there
-        session = Path(session_path).expanduser().resolve()
-        runs_root = (Path.home() / "metriplane-runs").resolve()
+        # Validate the session path against the active platform run root.
+        try:
+            session = Path(session_path).expanduser().resolve(strict=True)
+        except FileNotFoundError:
+            return 404, {"error": f"Session file not found: {session_path}"}
+        except (OSError, RuntimeError):
+            return 400, {"error": "session path cannot be resolved"}
+        runs_root = self._runs_root()
         if not _is_relative_to(session, runs_root):
-            return 400, {"error": "session must be a path under ~/metriplane-runs/"}
-        if not session.exists():
-            return 404, {"error": f"Session file not found: {session}"}
-
+            return 400, {"error": "session must be under the platform runs directory"}
         # Validate prefix
         if not _valid_name(out_prefix):
             return 400, {"error": "prefix must be safe name"}
 
         evidence_dir = self.repo_root / "evidence" / "experiments"
-        evidence_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, RuntimeError):
+            return 503, {"error": "Evidence output directory is unavailable"}
 
         if report_type == "zones":
             # Validate profile for zones report
@@ -1150,18 +1279,27 @@ class OperatorAPI:
     # ── POST /operator/checksum ────────────────────────────────────────────────
 
     def _checksum(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        path: str = body.get("path", "").strip()
-
-        file_path = Path(path).expanduser().resolve()
-        runs_root = (Path.home() / "metriplane-runs").resolve()
-        evidence_root = (self.repo_root / "evidence").resolve()
-
-        # Only checksum files in ~/metriplane-runs/ or evidence/
-        if not (_is_relative_to(file_path, runs_root) or _is_relative_to(file_path, evidence_root)):
-            return 400, {"error": "Can only checksum files under ~/metriplane-runs/ or evidence/"}
-
-        if not file_path.exists():
+        requested = body.get("path", "")
+        if not isinstance(requested, str) or not requested.strip():
+            return 400, {"error": "Checksum path must be a non-empty string"}
+        path = requested.strip()
+        try:
+            file_path = Path(path).expanduser().resolve(strict=True)
+        except FileNotFoundError:
             return 404, {"error": f"File not found: {path}"}
+        except (OSError, RuntimeError):
+            return 400, {"error": "Checksum path cannot be resolved"}
+        runs_root = self._runs_root()
+        allowed_roots = [runs_root]
+        try:
+            allowed_roots.append((self.repo_root / "evidence").resolve())
+        except (OSError, RuntimeError):
+            pass
+
+        # Only checksum files in the platform run root or evidence/.
+        if not any(_is_relative_to(file_path, root) for root in allowed_roots):
+            return 400, {"error": "Can only checksum files under platform runs or evidence/"}
+
         if not file_path.is_file():
             return 400, {"error": "Path is not a file"}
 
@@ -1186,27 +1324,35 @@ class OperatorAPI:
     #
     # These expose the Sentinel artifacts (objects, incidents, traces, camera trust)
     # and the grounded assistant to the operator dashboard. All read-only. A run dir
-    # may be passed explicitly (validated to live under ~/metriplane-runs or the repo
-    # evidence/ tree); otherwise the latest run under ~/metriplane-runs is used.
+    # may be passed explicitly (validated against platform runs or the repo evidence/
+    # tree); otherwise the latest platform run is used.
 
     def _cc_allowed_roots(self) -> list[Path]:
-        return [
-            (Path.home() / "metriplane-runs").resolve(),
-            (self.repo_root / "evidence").resolve(),
-            (self.repo_root / "runs").resolve(),
-        ]
+        roots = [self._runs_root()]
+        for candidate in (self.repo_root / "evidence", self.repo_root / "runs"):
+            try:
+                roots.append(candidate.resolve())
+            except (OSError, RuntimeError):
+                # A malformed legacy root must not break valid platform run paths.
+                continue
+        return roots
 
     def _cc_resolve_run_dir(self, body: dict[str, Any]) -> Optional[Path]:
         requested = (body or {}).get("run_dir")
         if requested:
-            p = Path(requested).expanduser().resolve()
+            if not isinstance(requested, str):
+                return None
+            try:
+                p = Path(requested).expanduser().resolve(strict=True)
+            except (OSError, RuntimeError):
+                return None
             if any(p == r or r in p.parents for r in self._cc_allowed_roots()) and p.is_dir():
                 return p
             return None
-        # Fall back to the latest run under ~/metriplane-runs. Prefer runs with
+        # Fall back to the latest platform run. Prefer runs with
         # Command Center/Sentinel artifacts so a generic runtime session does not
         # hide the incident demo or an operator review run.
-        runs_root = Path.home() / "metriplane-runs"
+        runs_root = self._runs_root()
         if not runs_root.exists():
             return None
         command_center_markers = (
@@ -1219,17 +1365,25 @@ class OperatorAPI:
         generic_runtime_markers = ("session_excerpt.jsonl", "session.jsonl")
 
         def with_markers(markers: tuple[str, ...]) -> list[Path]:
-            return [
-                d
-                for d in runs_root.iterdir()
-                if d.is_dir() and any((d / marker).exists() for marker in markers)
-            ]
+            candidates: list[Path] = []
+            for candidate in runs_root.iterdir():
+                if candidate.is_symlink():
+                    continue
+                try:
+                    resolved = candidate.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    continue
+                if runs_root not in resolved.parents or not resolved.is_dir():
+                    continue
+                if find_run_artifact(resolved, markers) is not None:
+                    candidates.append(resolved)
+            return candidates
 
         dirs = with_markers(command_center_markers) or with_markers(generic_runtime_markers)
         if not dirs:
             return None
         dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
-        return dirs[0].resolve()
+        return dirs[0]
 
     def _cc_live_summary(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         run = self._cc_resolve_run_dir(body)
@@ -1277,8 +1431,8 @@ class OperatorAPI:
             return 200, {"camera_trust": None}
         from metriplane.camera_trust.export import read_camera_trust_report
 
-        ct = run / "camera_trust.json"
-        if not ct.exists():
+        ct = find_run_artifact(run, ["camera_trust.json"])
+        if ct is None:
             return 200, {
                 "camera_trust": None,
                 "run_dir": str(run),

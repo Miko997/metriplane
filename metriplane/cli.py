@@ -7,12 +7,20 @@ import argparse
 import glob
 import importlib
 import logging
+import os
 import socket
 import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
+
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
 
 log = logging.getLogger("metriplane.cli")
 
@@ -48,7 +56,7 @@ Existing `metriplane --config ...` invocations remain supported as runtime short
     return 0
 
 
-def _main_run(argv: list[str]) -> int:
+def _main_run(argv: list[str], *, paths: PlatformPaths | None = None) -> int:
     # Lazy imports to allow doctor command to run without dependencies
     from metriplane.config import load_config
     from metriplane.run import run_loop
@@ -70,8 +78,8 @@ def _main_run(argv: list[str]) -> int:
         "--runs-dir",
         default=None,
         help=(
-            "Override runs base dir (default: /data/runs in docker, ./runs on host). "
-            "Example: --runs-dir ~/metriplane-runs"
+            "Override runs base dir (default: platform runs directory). "
+            "Example: --runs-dir /path/to/runs"
         ),
     )
 
@@ -86,6 +94,18 @@ def _main_run(argv: list[str]) -> int:
     args = p.parse_args(argv)
 
     cfg = load_config(Path(args.config))
+
+    if (
+        paths is None
+        and normalize_runs_dir(args.runs_dir) is None
+        and normalize_runs_dir(cfg.runs_dir) is None
+        and normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR")) is None
+    ):
+        try:
+            paths = resolve_platform_paths()
+        except PlatformPathError as exc:
+            print(f"platform path error: {exc}", file=sys.stderr)
+            return 2
 
     # Allow CLI to override profile without requiring config edits.
     if args.profile:
@@ -105,8 +125,9 @@ def _main_run(argv: list[str]) -> int:
         cli_faults=list(args.fault or []),
         config_path=Path(args.config),
         argv=["metriplane", *argv],
-        run_id=str(args.run_id) if args.run_id else None,
+        run_id=str(args.run_id) if args.run_id is not None else None,
         runs_dir=str(args.runs_dir) if args.runs_dir else None,
+        paths=paths,
     )
 
 
@@ -421,7 +442,7 @@ Launcher flags (shared by start and restart):
   --run-id TEXT       Override run ID (default: live_YYYYMMDD_HHMMSS)
   --dashboard-port N  Dashboard web server port (default: 8088)
   --runner-port N     Dashboard runner API port (default: 9000)
-  --runs-dir PATH     Runs base directory (default: ~/metriplane-runs)
+  --runs-dir PATH     Runs base directory (default: platform runs directory)
   --open / --no-open  Open browser after start (default: --open)
   --operator          Open operator.html instead of runtime dashboard
 """
@@ -482,7 +503,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
             "--runs-dir",
             default=None,
             dest="runs_dir",
-            help="Runs base directory (default: ~/metriplane-runs)",
+            help="Runs base directory (default: platform runs directory)",
         )
         p.add_argument(
             "--open",
@@ -503,11 +524,12 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
     return p
 
 
-def _main_start(argv: list[str]) -> int:
-    from metriplane.launcher import (
-        _DEFAULT_RUNS_DIR,
-        cmd_start,
-    )
+def _main_start(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
+    from metriplane.launcher import cmd_start
 
     p = _build_launcher_parser("start")
     args = p.parse_args(argv)
@@ -516,16 +538,21 @@ def _main_start(argv: list[str]) -> int:
         backend=str(args.backend),
         config=str(args.config),
         duration_s=float(args.duration_s),
-        run_id=str(args.run_id) if args.run_id else None,
+        run_id=str(args.run_id) if args.run_id is not None else None,
         dashboard_port=int(args.dashboard_port),
         runner_port=int(args.runner_port),
-        runs_dir=str(args.runs_dir) if args.runs_dir else _DEFAULT_RUNS_DIR,
+        runs_dir=str(args.runs_dir) if args.runs_dir else None,
         open_browser=bool(args.open_browser),
         operator=bool(args.operator),
+        paths=paths,
     )
 
 
-def _main_stop(argv: list[str]) -> int:
+def _main_stop(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_stop
 
     p = argparse.ArgumentParser(
@@ -538,10 +565,14 @@ def _main_stop(argv: list[str]) -> int:
         help="Force-stop even without state file; runs cleanup for orphaned VT processes",
     )
     args = p.parse_args(argv)
-    return cmd_stop(force=bool(args.force))
+    return cmd_stop(force=bool(args.force), paths=paths)
 
 
-def _main_cleanup(argv: list[str]) -> int:
+def _main_cleanup(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_cleanup
 
     p = argparse.ArgumentParser(
@@ -550,14 +581,15 @@ def _main_cleanup(argv: list[str]) -> int:
         "Only kills processes matching known Metriplane patterns.",
     )
     p.parse_args(argv)
-    return cmd_cleanup()
+    return cmd_cleanup(paths=paths)
 
 
-def _main_restart(argv: list[str]) -> int:
-    from metriplane.launcher import (
-        _DEFAULT_RUNS_DIR,
-        cmd_restart,
-    )
+def _main_restart(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
+    from metriplane.launcher import cmd_restart
 
     p = _build_launcher_parser("restart")
     args = p.parse_args(argv)
@@ -566,26 +598,35 @@ def _main_restart(argv: list[str]) -> int:
         backend=str(args.backend),
         config=str(args.config),
         duration_s=float(args.duration_s),
-        run_id=str(args.run_id) if args.run_id else None,
+        run_id=str(args.run_id) if args.run_id is not None else None,
         dashboard_port=int(args.dashboard_port),
         runner_port=int(args.runner_port),
-        runs_dir=str(args.runs_dir) if args.runs_dir else _DEFAULT_RUNS_DIR,
+        runs_dir=str(args.runs_dir) if args.runs_dir else None,
         open_browser=bool(args.open_browser),
         operator=bool(args.operator),
+        paths=paths,
     )
 
 
-def _main_status(argv: list[str]) -> int:
+def _main_status(
+    argv: list[str],
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     from metriplane.launcher import cmd_status
 
     p = argparse.ArgumentParser(
         "metriplane status", description="Show status of launcher-started Metriplane services."
     )
     p.parse_args(argv)
-    return cmd_status()
+    return cmd_status(paths=paths)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    paths: PlatformPaths | None = None,
+) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     # Fast-path commands that need no logging setup
@@ -625,7 +666,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "sentinel":
         from metriplane.sentinel.cli_runtime import main_sentinel
 
-        return main_sentinel(argv[1:])
+        if paths is None:
+            return main_sentinel(argv[1:])
+        return main_sentinel(argv[1:], paths=paths)
     if argv and argv[0] == "test":
         from metriplane.testing.cli import main_test
 
@@ -659,25 +702,29 @@ def main(argv: list[str] | None = None) -> int:
 
         return external_main(argv[1:])
     if argv and argv[0] == "start":
-        return _main_start(argv[1:])
+        return _main_start(argv[1:], paths=paths)
     if argv and argv[0] == "stop":
-        return _main_stop(argv[1:])
+        return _main_stop(argv[1:], paths=paths)
     if argv and argv[0] == "restart":
-        return _main_restart(argv[1:])
+        return _main_restart(argv[1:], paths=paths)
     if argv and argv[0] == "status":
-        return _main_status(argv[1:])
+        return _main_status(argv[1:], paths=paths)
     if argv and argv[0] == "cleanup":
-        return _main_cleanup(argv[1:])
+        return _main_cleanup(argv[1:], paths=paths)
     # Setup logging for run and replay commands
     from metriplane.logging import setup_logging
 
     setup_logging()
 
     if argv and argv[0] == "run":
-        return _main_run(argv[1:])
+        if paths is None:
+            return _main_run(argv[1:])
+        return _main_run(argv[1:], paths=paths)
     if argv and argv[0] == "replay":
         return _main_replay(argv[1:])
-    return _main_run(argv)
+    if paths is None:
+        return _main_run(argv)
+    return _main_run(argv, paths=paths)
 
 
 if __name__ == "__main__":

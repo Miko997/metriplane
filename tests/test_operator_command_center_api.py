@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+import pytest
 
 from metriplane.runner.cli_command_center import main_command_center
 from metriplane.runner.command_center_api import (
     export_command_center,
+    find_run_artifact,
     get_events,
     get_frames,
     get_incidents,
@@ -87,6 +90,40 @@ def test_missing_artifacts_return_empty_not_error(tmp_path):
     summary = get_live_summary(tmp_path)
     assert summary["objects_count"] == 0
     assert summary["incidents_count"] == 0
+
+
+@pytest.mark.parametrize("artifact", ["session.jsonl", "objects.yaml", "incident.json"])
+def test_consumed_artifact_symlinks_outside_run_are_rejected(tmp_path: Path, artifact: str):
+    run = tmp_path / "run"
+    outside = tmp_path / "outside"
+    run.mkdir()
+    outside.mkdir()
+    target = outside / artifact
+    target.write_text('{"outside": true}\n', encoding="utf-8")
+    (run / artifact).symlink_to(target)
+
+    assert find_run_artifact(run, [artifact]) is None
+
+
+def test_nested_artifact_parent_symlink_outside_run_is_rejected(tmp_path: Path):
+    run = tmp_path / "run"
+    outside = tmp_path / "outside"
+    run.mkdir()
+    outside.mkdir()
+    (outside / "incident.json").write_text('{"incident_id": "outside"}\n', encoding="utf-8")
+    (run / "incidents").symlink_to(outside, target_is_directory=True)
+
+    assert find_run_artifact(run, ["incidents/incident.json"]) is None
+    assert get_incidents(run) == []
+
+
+def test_symlink_loop_run_dir_degrades_without_error(tmp_path: Path):
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+
+    assert find_run_artifact(loop, ["session.jsonl"]) is None
+    assert get_objects(loop) == []
+    assert get_incidents(loop) == []
 
 
 def test_export_writes_bundle_json(tmp_path):

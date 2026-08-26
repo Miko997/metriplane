@@ -96,7 +96,13 @@ curl http://localhost:8000/health | jq
 
 ### 4. JSONL Recording
 
-**Location**: `~/metriplane-runs/<run_id>/session.jsonl`  
+**Location**: `<runs-dir>/<run_id>/session.jsonl`
+
+Platform-aware commands default `<runs-dir>` to the platform data directory's `metriplane/runs`
+child (for example, `$XDG_DATA_HOME/metriplane/runs` on Linux). The legacy `metriplane-run` console
+script, `python -m metriplane.run`, and `python -m metriplane.run_fusion` retain `/data/runs` in
+Docker and `./runs` on a host. An explicit `--runs-dir` or config `runs_dir` overrides either
+default.
 **Format**: Newline-delimited JSON (one `FrameStateModel` per line)  
 **Use Case**: Deterministic replay, offline analysis, dataset creation
 

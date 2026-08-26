@@ -72,10 +72,10 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 1,960 items. In the exact core
+The ordered node-id stream must contain exactly 2,209 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the current disjoint cleanup sidecar has 1,945 passed, 14 expected skips,
-and one tracked frozen-identity failure pending the proof-owner repair. Twelve result-schema cases run in the separate locked
+cache, the integrated source profile has 2,195 passed and 14 expected skips.
+Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, and one GPU-equivalence case requires an optional CuPy extra.
 The frozen MP2-000 1,194-item snapshot is a historical artifact and is not

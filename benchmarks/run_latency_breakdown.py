@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import signal
 import subprocess
@@ -12,28 +13,32 @@ import sys
 import time
 from pathlib import Path
 
-from metriplane.provenance.run_provenance import generate_run_id
+from metriplane.paths import (
+    PlatformPathError,
+    normalize_runs_dir,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
+from metriplane.provenance.run_provenance import (
+    generate_run_id,
+    reserve_run_directory,
+)
+from metriplane.run_ids import validate_portable_run_id
 
 
-def _best_run_dir(runs_dir: Path, run_id: str) -> Path | None:
-    # Prefer exact match
-    direct = runs_dir / run_id
-    if direct.is_dir():
-        return direct
-
-    # Otherwise look for suffixed dirs (run_id-1, run_id-2, ...)
-    cands = sorted(
-        runs_dir.glob(f"{run_id}*"),
-        key=lambda p: p.stat().st_mtime if p.exists() else 0,
-        reverse=True,
-    )
-    for p in cands:
-        if p.is_dir():
-            return p
-    return None
+def _resolve_output_path(value: str) -> Path:
+    unresolved = Path(value)
+    try:
+        expanded = unresolved.expanduser()
+        try:
+            return expanded.resolve(strict=True)
+        except FileNotFoundError:
+            return expanded.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError(f"cannot resolve latency output path {unresolved}") from exc
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="M9.5 latency breakdown runner")
     ap.add_argument(
         "--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)"
@@ -42,7 +47,10 @@ def main() -> int:
         "--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)"
     )
     ap.add_argument(
-        "--runs-dir", type=str, default=str(Path.home() / "metriplane-runs"), help="Runs base dir"
+        "--runs-dir",
+        type=str,
+        default=None,
+        help="Runs base dir (default: platform runs directory)",
     )
     ap.add_argument(
         "--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path"
@@ -56,13 +64,42 @@ def main() -> int:
     ap.add_argument(
         "--run-id", type=str, default=None, help="Optional run id override (otherwise auto)"
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    runs_dir = Path(args.runs_dir).expanduser().resolve()
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        requested_run_id = generate_run_id("m95_latency") if args.run_id is None else args.run_id
+        run_id = validate_portable_run_id(requested_run_id)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
 
-    run_id = args.run_id or generate_run_id("m95_latency")
-    out_path = Path(args.out).expanduser().resolve()
+    try:
+        out_path = _resolve_output_path(args.out)
+    except PlatformPathError as exc:
+        print(f"output path error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
+        unresolved_runs_dir = (
+            Path(explicit_runs_dir)
+            if explicit_runs_dir is not None
+            else resolve_platform_paths().runs_dir
+        )
+        runs_dir = resolve_runs_dir(unresolved_runs_dir)
+        if runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
+        runs_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PlatformPathError) as exc:
+        print(f"platform path error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        reservation = reserve_run_directory(runs_dir, run_id)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"run reservation error: {exc}", file=sys.stderr)
+        return 2
+    run_id = reservation.run_id
 
     if args.runner == "fusion":
         cmd = [
@@ -98,7 +135,15 @@ def main() -> int:
     print("cmd       :", " ".join(cmd))
     print()
 
-    proc = subprocess.Popen(cmd)
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            env=reservation.child_environment(os.environ),
+        )
+    except OSError as exc:
+        reservation.cancel_if_pending()
+        print(f"ERROR: could not start benchmark runtime: {exc}", file=sys.stderr)
+        return 2
     try:
         time.sleep(float(max(0.1, args.duration_s)))
         proc.send_signal(signal.SIGINT)
@@ -112,11 +157,11 @@ def main() -> int:
             proc.kill()
             proc.wait(timeout=10)
 
-    rd = _best_run_dir(runs_dir, run_id)
-    if rd is None:
-        print(
-            f"ERROR: could not find run dir for run_id={run_id} under {runs_dir}", file=sys.stderr
-        )
+    try:
+        rd = reservation.claimed_run_dir()
+    except PlatformPathError as exc:
+        reservation.cancel_if_pending()
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
     src = rd / "latency.csv"

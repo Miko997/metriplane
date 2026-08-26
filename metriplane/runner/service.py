@@ -17,21 +17,29 @@ import secrets
 import socket
 import sys
 import time
-from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from metriplane._local_http import LocalHTTPServer
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
 
-from .allowlist import ALLOWLIST, get_command, validate_command_id
+from .allowlist import ALLOWLIST, get_command, get_commands, validate_command_id
 from .executor import CommandExecutor, find_repo_root
 from .operator_api import OperatorAPI
 
-
 # Global state
 executor = CommandExecutor()
-operator_api = OperatorAPI(executor=executor, repo_root=find_repo_root())
+runner_paths: PlatformPaths | None = None
+operator_api = OperatorAPI(executor=executor, repo_root=find_repo_root(), paths=runner_paths)
 start_time = time.time()
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 TOKEN_HEADER = "X-Metriplane-Token"
@@ -49,6 +57,28 @@ def _default_trusted_origins() -> set[str]:
 
 trusted_origins = _default_trusted_origins()
 runner_session_token = secrets.token_urlsafe(32)
+
+
+def _configure_platform_paths(paths: PlatformPaths | None = None) -> PlatformPaths:
+    """Resolve once and share one path set across all runner consumers."""
+    global operator_api, runner_paths
+    runner_paths = paths if paths is not None else resolve_platform_paths()
+    environment_runs_dir = normalize_runs_dir(os.getenv("RUNS"))
+    if paths is None and environment_runs_dir is not None:
+        runner_paths = runner_paths.with_runs_dir(environment_runs_dir)
+    else:
+        resolved_runs_dir = resolve_runs_dir(runner_paths.runs_dir)
+        if resolved_runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
+        if resolved_runs_dir != runner_paths.runs_dir:
+            runner_paths = runner_paths.with_runs_dir(resolved_runs_dir)
+    executor.configure_platform_paths(runner_paths)
+    operator_api = OperatorAPI(
+        executor=executor,
+        repo_root=find_repo_root(),
+        paths=runner_paths,
+    )
+    return runner_paths
 
 
 class RequestBodyError(ValueError):
@@ -264,6 +294,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
                 "job_history_size": len(executor.job_history),
                 "uptime_s": round(time.time() - start_time, 2),
                 "repo_root": str(executor.repo_root),
+                "runs_dir": str(runner_paths.runs_dir) if runner_paths is not None else None,
                 "session_token": runner_session_token,
             },
         )
@@ -271,7 +302,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
     def handle_get_commands(self) -> None:
         """GET /commands"""
         commands: list[dict[str, Any]] = []
-        for cmd in ALLOWLIST:
+        for cmd in get_commands(paths=runner_paths):
             commands.append(
                 {
                     "id": cmd.id,
@@ -331,7 +362,7 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
                 return
 
             # Get command from allowlist
-            cmd = get_command(command_id)
+            cmd = get_command(command_id, paths=runner_paths)
             if not cmd:
                 print(f"[Runner] Unknown command_id: {command_id}")
                 self.send_error_json(400, f"Unknown command_id: {command_id}")
@@ -412,7 +443,11 @@ class RunnerHTTPHandler(BaseHTTPRequestHandler):
 
 
 def start_runner(
-    host: str = "127.0.0.1", port: int = 9000, *, allowed_origins: list[str] | None = None
+    host: str = "127.0.0.1",
+    port: int = 9000,
+    *,
+    allowed_origins: list[str] | None = None,
+    paths: PlatformPaths | None = None,
 ) -> int:
     """
     Start runner service on localhost only.
@@ -424,6 +459,12 @@ def start_runner(
     if not _is_loopback_bind_host(host, port):
         print("[Runner] Refusing non-loopback bind address. Use 127.0.0.1 or ::1.", file=sys.stderr)
         return 64
+
+    try:
+        resolved_paths = _configure_platform_paths(paths)
+    except PlatformPathError as exc:
+        print(f"[Runner] Cannot resolve platform paths: {exc}", file=sys.stderr)
+        return 2
 
     global runner_session_token, trusted_origins, start_time
     runner_session_token = secrets.token_urlsafe(32)
@@ -450,6 +491,7 @@ def start_runner(
         raise
     print("[Runner] Metriplane Dashboard Runner v2.0")
     print(f"[Runner] Repository root: {executor.repo_root}")
+    print(f"[Runner] Runs directory: {resolved_paths.runs_dir}")
     print(f"[Runner] Serving on http://{host}:{port}")
     print(
         f"[Runner] Allowlisted commands: {len([c for c in ALLOWLIST if c.enabled])} enabled, {len([c for c in ALLOWLIST if not c.enabled])} disabled"
@@ -464,7 +506,8 @@ def start_runner(
     return 0
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """Run the dashboard service command-line entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Metriplane Dashboard Runner Service")
@@ -478,8 +521,43 @@ if __name__ == "__main__":
         default=[],
         help="Dashboard origin allowed to call the local runner (repeatable)",
     )
+    parser.add_argument("--config-dir", default=None)
+    parser.add_argument("--data-dir", default=None)
+    parser.add_argument("--cache-dir", default=None)
+    parser.add_argument("--state-dir", default=None)
+    parser.add_argument("--runs-dir", default=None)
 
-    args = parser.parse_args()
-    raise SystemExit(
-        start_runner(host=args.host, port=args.port, allowed_origins=args.trusted_origin)
+    args = parser.parse_args(argv)
+    base_values = (args.config_dir, args.data_dir, args.cache_dir, args.state_dir)
+    if any(base_values) and not all(base_values):
+        parser.error(
+            "--config-dir, --data-dir, --cache-dir, and --state-dir must be provided together"
+        )
+    try:
+        cli_paths = (
+            PlatformPaths(
+                config_dir=Path(args.config_dir),
+                data_dir=Path(args.data_dir),
+                cache_dir=Path(args.cache_dir),
+                state_dir=Path(args.state_dir),
+            )
+            if all(base_values)
+            else None
+        )
+        explicit_runs_dir = normalize_runs_dir(args.runs_dir)
+        if explicit_runs_dir is not None:
+            cli_paths = (cli_paths or resolve_platform_paths()).with_runs_dir(explicit_runs_dir)
+    except PlatformPathError as exc:
+        parser.error(str(exc))
+    return int(
+        start_runner(
+            host=args.host,
+            port=args.port,
+            allowed_origins=args.trusted_origin,
+            paths=cli_paths,
+        )
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
