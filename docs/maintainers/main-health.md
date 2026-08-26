@@ -95,7 +95,7 @@ including complete bypass actors, provider time, current main, and the state
 branch. Summaries and bodies must agree on identity, source, target, and
 enforcement. The witness App performs one final ruleset read after orphan and
 check quarantine. Normal admission also re-observes the complete protected-main
-aggregate and latest current-main nightly and weekly attempts twice, binds them
+aggregate and every available latest current-main nightly or weekly attempt twice, binds them
 to retained protected-state identities, and rejects active, failed, missing, or
 changing evidence. It then repeats admission, state, main, core-check, and
 ruleset validation immediately before success can be published. The broker

@@ -465,7 +465,13 @@ def _installation_identity(
     return installation_id, account_id
 
 
-def _repository_identity(value: Any, *, account_id: int, label: str) -> int:
+def _repository_identity(
+    value: Any,
+    *,
+    account_id: int,
+    label: str,
+    require_default_branch: bool = False,
+) -> int:
     if not isinstance(value, dict):
         raise BrokerError(f"{label} is malformed")
     repository_id = _require_positive_int(value.get("id"), f"{label} ID")
@@ -476,7 +482,7 @@ def _repository_identity(value: Any, *, account_id: int, label: str) -> int:
     if (
         value.get("name") != REPOSITORY_NAME
         or value.get("full_name") != REPOSITORY
-        or value.get("default_branch") != MAIN_BRANCH
+        or (require_default_branch and value.get("default_branch") != MAIN_BRANCH)
         or owner.get("login") != REPOSITORY_OWNER
         or owner.get("type") != "User"
         or owner_id != account_id
@@ -568,6 +574,7 @@ class AppAuthenticator:
             repository_result.value,
             account_id=account_id,
             label="token-authenticated repository",
+            require_default_branch=True,
         )
         if repository_id != inventory_repository_id:
             raise BrokerError("GitHub App token repository ID is not exact")
@@ -2263,7 +2270,7 @@ class HealthReconciler:
         proof: dict[str, dict[str, Any]] = {}
         for cadence in ("nightly", "weekly"):
             if not candidates[cadence]:
-                raise BrokerError(f"current main has no {cadence} deep-health run")
+                continue
             run = max(
                 candidates[cadence],
                 key=lambda item: (

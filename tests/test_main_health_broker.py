@@ -483,6 +483,16 @@ def test_authenticator_rejects_a_non_main_default_branch(tmp_path: Path) -> None
         _authenticator(tmp_path, FakeTokenApi(repository=repository)).mint()
 
 
+def test_authenticator_accepts_minimal_inventory_when_full_repository_is_main(
+    tmp_path: Path,
+) -> None:
+    response = _token_response()
+    del response["repositories"][0]["default_branch"]
+    assert _authenticator(tmp_path, FakeTokenApi(token_response=response)).mint().token == (
+        "installation-token"
+    )
+
+
 def test_provider_server_error_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail(*_args: Any, **_kwargs: Any) -> None:
         raise urllib.error.HTTPError(
@@ -1309,15 +1319,18 @@ class FakeTransactionApi(broker.GitHubApi):
         self.documentation_conclusion: str | None = "success"
         self.documentation_run_id = 502
         self.documentation_status = "completed"
+        self.drift_default_on_final = False
         self.weekly_conclusion: str | None = "success"
         self.weekly_run_id = 602
         self.weekly_status = "completed"
         self.drift_on_final_ruleset = False
         self.extra_active_ruleset = False
         self.inventory_source_drift = False
+        self.include_deep_runs = True
         self.merged = False
         self.merge_calls = 0
         self.reported_commits = 1
+        self.repository_identity_calls = 0
         self.ruleset_inventory_calls = 0
 
     def provider_now(self, token: str) -> datetime:
@@ -1335,10 +1348,16 @@ class FakeTransactionApi(broker.GitHubApi):
     ) -> broker.ApiResult:
         assert token == "token"
         if path == f"repos/{REPOSITORY}":
+            self.repository_identity_calls += 1
+            default_branch = (
+                "develop"
+                if self.drift_default_on_final and self.repository_identity_calls >= 2
+                else self.default_branch
+            )
             return broker.ApiResult(
                 {},
                 200,
-                {**_repository_response(), "default_branch": self.default_branch},
+                {**_repository_response(), "default_branch": default_branch},
             )
         if path.endswith("/pulls/81/merge"):
             assert method == "PUT"
@@ -1479,6 +1498,8 @@ class FakeTransactionApi(broker.GitHubApi):
             ]
         if "actions/workflows/main-health.yml/runs" in path:
             assert key == "workflow_runs"
+            if not self.include_deep_runs:
+                return []
             return [
                 {
                     "conclusion": conclusion,
@@ -1704,6 +1725,23 @@ def test_exact_merge_transaction_proves_success(tmp_path: Path, behavior: str) -
     assert spool.request_status(broker.digest(_request())) == "merged"
 
 
+def test_normal_merge_does_not_require_an_unscheduled_current_deep_run(tmp_path: Path) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.include_deep_runs = False
+
+    proof = service._process_pull(
+        check_controller=checks,  # type: ignore[arg-type]
+        number=81,
+        provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
+        state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert proof is not None and proof["merge_sha"] == MERGE_SHA
+    assert api.merge_calls == 1
+
+
 def test_red_incident_uses_same_exact_single_use_merge_transaction(tmp_path: Path) -> None:
     service, api, checks, spool = _transaction_fixture(tmp_path, "success", repair=True)
     proof = service._process_pull(
@@ -1770,6 +1808,7 @@ def test_health_freshness_is_rechecked_at_exact_merge_boundary(tmp_path: Path) -
     [
         ("in_progress", None, "companion workflows are still pending"),
         ("completed", "failure", "aggregate is not successful"),
+        ("completed", "success", "does not retain the current aggregate evidence"),
     ],
 )
 def test_documentation_rerun_blocks_at_the_exact_merge_boundary(
@@ -1798,20 +1837,25 @@ def test_documentation_rerun_blocks_at_the_exact_merge_boundary(
 
 
 @pytest.mark.parametrize(
-    ("status", "conclusion"),
-    [("in_progress", None), ("completed", "failure")],
+    ("status", "conclusion", "message"),
+    [
+        ("in_progress", None, "weekly deep-health attempt is not successful"),
+        ("completed", "failure", "weekly deep-health attempt is not successful"),
+        ("completed", "success", "does not retain current weekly evidence"),
+    ],
 )
 def test_deep_health_rerun_blocks_at_the_exact_merge_boundary(
     tmp_path: Path,
     status: str,
     conclusion: str | None,
+    message: str,
 ) -> None:
     service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
     api.weekly_run_id = 603
     api.weekly_status = status
     api.weekly_conclusion = conclusion
 
-    with pytest.raises(broker.BrokerError, match="weekly deep-health attempt is not successful"):
+    with pytest.raises(broker.BrokerError, match=message):
         service._process_pull(
             check_controller=checks,  # type: ignore[arg-type]
             number=81,
@@ -1840,6 +1884,25 @@ def test_rulesets_are_rechecked_immediately_before_success(tmp_path: Path) -> No
         )
 
     assert api.ruleset_inventory_calls == 2
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+def test_default_branch_is_rechecked_immediately_before_success(tmp_path: Path) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.drift_default_on_final = True
+
+    with pytest.raises(broker.BrokerError, match="default branch is not canonical"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.repository_identity_calls == 2
     assert api.merge_calls == 0
     assert checks.succeeded == []
 
