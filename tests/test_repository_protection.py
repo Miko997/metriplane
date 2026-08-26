@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,47 @@ def _capture() -> tuple[dict[str, object], dict[str, object], dict[str, object]]
     capability = _read(STATUS / "examples" / "repository-protection-capability.json")
     settings = _read(STATUS / "examples" / "repository-protection-settings.json")
     return policy, capability, settings
+
+
+def _activation_provider_payloads() -> tuple[dict[str, object], ...]:
+    repository = {"default_branch": "main", "private": True}
+    summary = {
+        "enforcement": "active",
+        "id": 41,
+        "name": "Legacy main protection",
+        "source": "Miko997/metriplane",
+        "source_type": "Repository",
+        "target": "branch",
+    }
+    detail = {
+        **summary,
+        "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"]}},
+        "rules": [
+            {"type": "deletion"},
+            {"type": "non_fast_forward"},
+            {"type": "pull_request"},
+            {
+                "parameters": {
+                    "required_status_checks": [{"context": "required"}],
+                    "strict_required_status_checks_policy": True,
+                },
+                "type": "required_status_checks",
+            },
+        ],
+    }
+    merge_queue = {"data": {"repository": {"mergeQueue": None}}}
+    return repository, summary, detail, merge_queue
+
+
+def _included_response(body: dict[str, object] | list[dict[str, object]], request_id: str) -> str:
+    return (
+        "HTTP/2.0 200 OK\r\n"
+        f"X-GitHub-Request-Id: {request_id}\r\n"
+        'ETag: "provider-etag"\r\n'
+        "Set-Cookie: provider-session-secret\r\n"
+        "\r\n"
+        f"{json.dumps(body)}\n"
+    )
 
 
 def test_app_broker_mode_is_truthfully_planned_until_live_activation() -> None:
@@ -107,6 +149,216 @@ def test_normalization_is_deterministic_and_selects_available_mode() -> None:
     assert first == second
     assert first[0]["selected_mode"] == "serialized_strict_up_to_date"
     assert first[1]["actor_exclusivity_enforced"] is False
+
+
+def test_included_json_parser_retains_evidence_and_redacts_secrets() -> None:
+    status, headers, request_id, body = capture_tool._parse_included_json(
+        _included_response({"default_branch": "main"}, "REQ:parser-1")
+    )
+
+    assert status == 200
+    assert headers == {
+        "etag": ['"provider-etag"'],
+        "set-cookie": ["<redacted>"],
+        "x-github-request-id": ["REQ:parser-1"],
+    }
+    assert request_id == "REQ:parser-1"
+    assert body == {"default_branch": "main"}
+    assert capture_tool._redacted_arguments(
+        ["-H", "Authorization: secret", "--header=Cookie: secret", "-HX-Key: secret"]
+    ) == ["-H", "<redacted>", "--header=<redacted>", "-H<redacted>"]
+
+
+def test_included_json_parser_requires_one_request_id() -> None:
+    response = "HTTP/2 200 OK\nContent-Type: application/json\n\n{}\n"
+
+    with pytest.raises(ValueError, match="one valid GitHub request ID"):
+        capture_tool._parse_included_json(response)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        "not-http\nX-GitHub-Request-Id: REQ:1\n\n{}\n",
+        "HTTP/2 200 OK\nMalformed\nX-GitHub-Request-Id: REQ:1\n\n{}\n",
+        "HTTP/2 200 OK\nX-GitHub-Request-Id: REQ:1\n\nnot-json\n",
+    ],
+)
+def test_included_json_parser_rejects_malformed_responses(response: str) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        capture_tool._parse_included_json(response)
+
+
+def test_activation_capture_retains_complete_raw_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, summary, detail, merge_queue = _activation_provider_payloads()
+    inventory_endpoint = (
+        "repos/Miko997/metriplane/rulesets?includes_parents=true&per_page=100&page=1"
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        endpoint = command[3]
+        if endpoint == "repos/Miko997/metriplane":
+            body: dict[str, object] | list[dict[str, object]] = repository
+        elif endpoint == inventory_endpoint:
+            body = [summary]
+        elif endpoint == "repos/Miko997/metriplane/rulesets/41":
+            body = detail
+        elif endpoint == "graphql":
+            body = merge_queue
+        else:
+            pytest.fail(f"unexpected provider endpoint: {endpoint}")
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=_included_response(body, f"REQ:{len(commands)}"),
+            stderr="",
+        )
+
+    monkeypatch.setattr(capture_tool.subprocess, "run", fake_run)
+    capability, settings, evidence = capture_tool._capture_activation(
+        "Miko997/metriplane",
+        "2026-08-26T20:00:00Z",
+        Path("/usr/bin/gh"),
+    )
+
+    assert capability["selected_mode"] == "serialized_strict_up_to_date"
+    assert settings["ruleset_id"] == 41
+    assert evidence["provider_responses"] == {
+        "merge_queue_graphql": merge_queue,
+        "repository": repository,
+        "ruleset_details": [detail],
+        "ruleset_summary_inventory_initial": [summary],
+        "ruleset_summary_inventory_verification": [summary],
+    }
+    requests = evidence["requests"]
+    assert isinstance(requests, list)
+    assert [item["purpose"] for item in requests] == [
+        "repository",
+        "ruleset_summary_inventory_initial",
+        "ruleset_detail",
+        "ruleset_summary_inventory_verification",
+        "merge_queue_graphql",
+    ]
+    assert [item["github_request_id"] for item in requests] == [
+        "REQ:1",
+        "REQ:2",
+        "REQ:3",
+        "REQ:4",
+        "REQ:5",
+    ]
+    assert all(item["status"] == 200 for item in requests)
+    assert all(item["headers"]["set-cookie"] == ["<redacted>"] for item in requests)
+    assert all(
+        {
+            "arguments",
+            "endpoint",
+            "github_request_id",
+            "headers",
+            "purpose",
+            "response_body",
+            "status",
+        }
+        <= set(item)
+        for item in requests
+    )
+    assert requests[-1]["endpoint"] == "graphql"
+    assert requests[-1]["arguments"][0] == "-f"
+    assert "mergeQueue" in requests[-1]["arguments"][1]
+    assert "provider-session-secret" not in json.dumps(evidence)
+    assert all(command[:3] == ["/usr/bin/gh", "api", "--include"] for command in commands)
+
+
+@pytest.mark.parametrize("field", capture_tool.RULESET_GOVERNANCE_FIELDS)
+def test_activation_capture_rejects_summary_detail_drift(
+    field: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, summary, detail, _merge_queue = _activation_provider_payloads()
+    drifted_detail = copy.deepcopy(detail)
+    drifted_detail[field] = 99 if field == "id" else "drifted"
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        endpoint = kwargs["endpoint"]
+        purpose = kwargs["purpose"]
+        if endpoint == "repos/Miko997/metriplane":
+            return repository
+        if purpose == "ruleset_summary_inventory_initial":
+            return [summary]
+        if endpoint == "repos/Miko997/metriplane/rulesets/41":
+            return drifted_detail
+        pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match=f"disagree: {field}"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
+
+
+def test_activation_capture_rejects_summary_inventory_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, summary, detail, _merge_queue = _activation_provider_payloads()
+    drifted_summary = {**summary, "enforcement": "disabled"}
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        endpoint = kwargs["endpoint"]
+        purpose = kwargs["purpose"]
+        if endpoint == "repos/Miko997/metriplane":
+            return repository
+        if purpose == "ruleset_summary_inventory_initial":
+            return [summary]
+        if endpoint == "repos/Miko997/metriplane/rulesets/41":
+            return detail
+        if purpose == "ruleset_summary_inventory_verification":
+            return [drifted_summary]
+        pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match="inventory changed"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
+
+
+def test_main_writes_activation_evidence_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capability = {"artifact": "capability"}
+    settings = {"artifact": "settings"}
+    evidence = {"artifact": "raw activation evidence"}
+    monkeypatch.setattr(
+        capture_tool,
+        "_capture_activation",
+        lambda *_args: (capability, settings, evidence),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "capture_repository_protection.py",
+            "--repository",
+            "Miko997/metriplane",
+            "--captured-at",
+            "2026-08-26T20:00:00Z",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert capture_tool.main() == 0
+    assert _read(tmp_path / "repository-protection-activation-evidence.json") == evidence
+    assert _read(tmp_path / "repository-protection-capability.json") == capability
+    assert _read(tmp_path / "repository-protection-settings.json") == settings
 
 
 def test_paginated_ruleset_capture_parses_every_provider_object(

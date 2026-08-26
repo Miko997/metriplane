@@ -38,6 +38,28 @@ APP_BYPASS = [
         "bypass_mode": "always",
     }
 ]
+INCLUDED_STATUS = re.compile(r"HTTP/(?:1\.[01]|[23](?:\.0)?) ([1-5][0-9]{2})(?: .*)?\Z")
+HEADER_NAME = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+\Z")
+RULESET_GOVERNANCE_FIELDS = (
+    "id",
+    "name",
+    "enforcement",
+    "source",
+    "source_type",
+    "target",
+)
+RULESET_PAGE_SIZE = 100
+SENSITIVE_RESPONSE_HEADERS = {
+    "authentication-info",
+    "authorization",
+    "cookie",
+    "proxy-authenticate",
+    "proxy-authentication-info",
+    "proxy-authorization",
+    "set-cookie",
+    "www-authenticate",
+    "x-github-sso",
+}
 
 
 def _canonical(value: Any) -> bytes:
@@ -73,6 +95,145 @@ def _run_json_objects(command: list[str]) -> list[dict[str, Any]]:
             raise TypeError("paginated provider item must be a JSON object")
         values.append(value)
     return values
+
+
+def _parse_included_json(
+    stdout: str,
+) -> tuple[int, dict[str, list[str]], str, dict[str, Any] | list[Any]]:
+    normalized = stdout.replace("\r\n", "\n").replace("\r", "\n")
+    header_block, separator, body_text = normalized.partition("\n\n")
+    if not separator:
+        raise ValueError("gh api --include response lacks a header/body boundary")
+    header_lines = header_block.splitlines()
+    if not header_lines:
+        raise ValueError("gh api --include response lacks an HTTP status line")
+    status_match = INCLUDED_STATUS.fullmatch(header_lines[0])
+    if status_match is None:
+        raise ValueError("gh api --include response has a malformed HTTP status line")
+    status = int(status_match.group(1))
+    if not 200 <= status < 300:
+        raise ValueError(f"gh api --include response has unsuccessful status {status}")
+
+    headers: dict[str, list[str]] = {}
+    for line in header_lines[1:]:
+        name, delimiter, value = line.partition(":")
+        if not delimiter or HEADER_NAME.fullmatch(name) is None:
+            raise ValueError("gh api --include response has a malformed HTTP header")
+        key = name.lower()
+        safe_value = value.strip()
+        if key in SENSITIVE_RESPONSE_HEADERS:
+            safe_value = "<redacted>"
+        headers.setdefault(key, []).append(safe_value)
+
+    request_ids = headers.get("x-github-request-id", [])
+    if len(request_ids) != 1 or re.fullmatch(r"[0-9A-Za-z:._-]+", request_ids[0]) is None:
+        raise ValueError("gh api --include response lacks one valid GitHub request ID")
+    try:
+        body = json.loads(body_text)
+    except json.JSONDecodeError as error:
+        raise ValueError("gh api --include response body is malformed JSON") from error
+    if not isinstance(body, (dict, list)):
+        raise TypeError("provider response must be a JSON object or array")
+    return status, headers, request_ids[0], body
+
+
+def _redacted_arguments(arguments: list[str]) -> list[str]:
+    safe: list[str] = []
+    redact_next = False
+    for argument in arguments:
+        if redact_next:
+            safe.append("<redacted>")
+            redact_next = False
+        elif argument in {"-H", "--header"}:
+            safe.append(argument)
+            redact_next = True
+        elif argument.startswith("-H"):
+            safe.append("-H<redacted>")
+        elif argument.startswith("--header="):
+            safe.append("--header=<redacted>")
+        else:
+            safe.append(argument)
+    if redact_next:
+        raise ValueError("gh api header argument lacks a value")
+    return safe
+
+
+def _run_included_json(
+    *,
+    gh: Path,
+    endpoint: str,
+    arguments: list[str],
+    purpose: str,
+    evidence_requests: list[dict[str, Any]],
+) -> dict[str, Any] | list[Any]:
+    completed = subprocess.run(
+        [str(gh), "api", "--include", endpoint, *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    status, headers, request_id, body = _parse_included_json(completed.stdout)
+    evidence_requests.append(
+        {
+            "arguments": _redacted_arguments(arguments),
+            "endpoint": endpoint,
+            "github_request_id": request_id,
+            "headers": headers,
+            "purpose": purpose,
+            "response_body": body,
+            "status": status,
+        }
+    )
+    return body
+
+
+def _capture_ruleset_inventory(
+    *,
+    repository: str,
+    gh: Path,
+    purpose: str,
+    evidence_requests: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    values: list[dict[str, Any]] = []
+    observed_ids: set[int] = set()
+    for page in range(1, 1_001):
+        endpoint = (
+            f"repos/{repository}/rulesets?includes_parents=true"
+            f"&per_page={RULESET_PAGE_SIZE}&page={page}"
+        )
+        response = _run_included_json(
+            gh=gh,
+            endpoint=endpoint,
+            arguments=[],
+            purpose=purpose,
+            evidence_requests=evidence_requests,
+        )
+        if not isinstance(response, list) or not all(isinstance(item, dict) for item in response):
+            raise TypeError("ruleset inventory page must be an array of objects")
+        if len(response) > RULESET_PAGE_SIZE:
+            raise ValueError("ruleset inventory page exceeds the requested page size")
+        for item in response:
+            ruleset_id = item.get("id")
+            if type(ruleset_id) is not int or ruleset_id <= 0 or ruleset_id in observed_ids:
+                raise ValueError("ruleset inventory contains a malformed or duplicate ID")
+            observed_ids.add(ruleset_id)
+            values.append(item)
+        if len(response) < RULESET_PAGE_SIZE:
+            return values
+    raise ValueError("ruleset inventory exceeded the pagination safety limit")
+
+
+def _require_matching_ruleset_detail(summary: dict[str, Any], detail: dict[str, Any]) -> None:
+    missing = [
+        field for field in RULESET_GOVERNANCE_FIELDS if field not in summary or field not in detail
+    ]
+    if missing:
+        raise ValueError(
+            "ruleset summary/detail governance fields are missing: " + ", ".join(missing)
+        )
+    drifted = [field for field in RULESET_GOVERNANCE_FIELDS if summary[field] != detail[field]]
+    if drifted:
+        raise ValueError("ruleset summary/detail governance fields disagree: " + ", ".join(drifted))
 
 
 def _sha(value: Any) -> str:
@@ -361,7 +522,9 @@ def capture_merge_proof(*, repository: str, pull_request: int, gh: Path) -> dict
     }
 
 
-def capture(repository: str, captured_at: str, gh: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def _capture_activation(
+    repository: str, captured_at: str, gh: Path
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if not REPOSITORY.fullmatch(repository):
         raise ValueError("repository must be owner/name")
     owner, name = repository.split("/", 1)
@@ -370,41 +533,79 @@ def capture(repository: str, captured_at: str, gh: Path) -> tuple[dict[str, Any]
         f'query {{ repository(owner:"{owner}", name:"{name}") '
         "{ mergeQueue { id url } } }"
     )
-    repository_payload = _run_json([str(gh), "api", f"repos/{repository}"])
-    ruleset_summaries = _run_json_objects(
-        [
-            str(gh),
-            "api",
-            "--paginate",
-            f"repos/{repository}/rulesets?includes_parents=true&per_page=100",
-            "--jq",
-            ".[]",
-        ]
+    evidence_requests: list[dict[str, Any]] = []
+    repository_payload = _run_included_json(
+        gh=gh,
+        endpoint=f"repos/{repository}",
+        arguments=[],
+        purpose="repository",
+        evidence_requests=evidence_requests,
+    )
+    if not isinstance(repository_payload, dict):
+        raise TypeError("repository response must be a JSON object")
+    ruleset_summaries = _capture_ruleset_inventory(
+        repository=repository,
+        gh=gh,
+        purpose="ruleset_summary_inventory_initial",
+        evidence_requests=evidence_requests,
     )
     rulesets_payload: list[dict[str, Any]] = []
     for item in ruleset_summaries:
-        detail = _run_json([str(gh), "api", f"repos/{repository}/rulesets/{item['id']}"])
+        detail = _run_included_json(
+            gh=gh,
+            endpoint=f"repos/{repository}/rulesets/{item['id']}",
+            arguments=[],
+            purpose="ruleset_detail",
+            evidence_requests=evidence_requests,
+        )
         if not isinstance(detail, dict):
             raise TypeError("ruleset detail must be a JSON object")
+        _require_matching_ruleset_detail(item, detail)
         rulesets_payload.append(detail)
-    merge_queue_payload = _run_json(
-        [
-            str(gh),
-            "api",
-            "graphql",
-            "-f",
-            query,
-        ]
+    verification_summaries = _capture_ruleset_inventory(
+        repository=repository,
+        gh=gh,
+        purpose="ruleset_summary_inventory_verification",
+        evidence_requests=evidence_requests,
     )
-    assert isinstance(repository_payload, dict)
-    assert isinstance(merge_queue_payload, dict)
-    return normalize_capture(
+    if ruleset_summaries != verification_summaries:
+        raise ValueError("ruleset summary inventory changed during activation capture")
+    merge_queue_payload = _run_included_json(
+        gh=gh,
+        endpoint="graphql",
+        arguments=["-f", query],
+        purpose="merge_queue_graphql",
+        evidence_requests=evidence_requests,
+    )
+    if not isinstance(merge_queue_payload, dict):
+        raise TypeError("merge-queue GraphQL response must be a JSON object")
+    capability, settings = normalize_capture(
         repository=repository,
         captured_at=captured_at,
         repository_payload=repository_payload,
         rulesets_payload=rulesets_payload,
         merge_queue_payload=merge_queue_payload,
     )
+    evidence = {
+        "captured_at": captured_at,
+        "provider": "github",
+        "provider_responses": {
+            "merge_queue_graphql": merge_queue_payload,
+            "repository": repository_payload,
+            "ruleset_details": rulesets_payload,
+            "ruleset_summary_inventory_initial": ruleset_summaries,
+            "ruleset_summary_inventory_verification": verification_summaries,
+        },
+        "repository": repository,
+        "requests": evidence_requests,
+        "schema_version": 1,
+    }
+    return capability, settings, evidence
+
+
+def capture(repository: str, captured_at: str, gh: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    capability, settings, _evidence = _capture_activation(repository, captured_at, gh)
+    return capability, settings
 
 
 def main() -> int:
@@ -415,9 +616,10 @@ def main() -> int:
     parser.add_argument("--merge-proof-pr", type=int)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
-    capability, settings = capture(args.repository, args.captured_at, args.gh)
+    capability, settings, evidence = _capture_activation(args.repository, args.captured_at, args.gh)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     outputs = {
+        "repository-protection-activation-evidence.json": evidence,
         "repository-protection-capability.json": capability,
         "repository-protection-settings.json": settings,
     }
