@@ -318,6 +318,31 @@ jobs:
             --receipts "$root/prepublication/retention-receipts.json" \
             --read-back
 
+      - name: Upload exact validated qualification authority
+        if: steps.context.outputs.mode == 'release-qualification'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-qualification-evidence
+          path: |
+            .release-authority/artifact-manifest.json
+            .release-authority/candidate-identity.json
+            .release-authority/delta-test-map.json
+            .release-authority/delta.json
+            .release-authority/evidence-manifest.json
+            .release-authority/gate-instance.json
+            .release-authority/linear-snapshot.json
+            .release-authority/predecessor.json
+            .release-authority/prepublication/approval.json
+            .release-authority/prepublication/retention-receipts.json
+            .release-authority/qualification-plan.json
+            .release-authority/qualification.json
+            .release-authority/readiness.json
+            .release-authority/role-assignments.json
+          if-no-files-found: error
+          include-hidden-files: true
+          overwrite: false
+          retention-days: 90
+
       - name: Validate exact-byte publication reconciliation and final read-back
         if: steps.context.outputs.mode == 'post-publication'
         shell: bash

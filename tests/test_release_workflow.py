@@ -63,6 +63,58 @@ def test_release_required_is_read_only_and_runs_on_ordinary_prs() -> None:
     assert "git push" not in text
 
 
+def test_release_required_produces_exact_validated_qualification_authority() -> None:
+    required = _workflow(REQUIRED)
+    contract_steps = required["jobs"]["contracts"]["steps"]
+    validation_index = next(
+        index
+        for index, step in enumerate(contract_steps)
+        if step.get("name")
+        == "Validate candidate qualification, non-author approval, and staged read-back"
+    )
+    upload_index = next(
+        index
+        for index, step in enumerate(contract_steps)
+        if step.get("name") == "Upload exact validated qualification authority"
+    )
+    upload = contract_steps[upload_index]
+
+    assert validation_index < upload_index
+    assert upload["if"] == "steps.context.outputs.mode == 'release-qualification'"
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert upload["with"]["path"].splitlines() == [
+        ".release-authority/artifact-manifest.json",
+        ".release-authority/candidate-identity.json",
+        ".release-authority/delta-test-map.json",
+        ".release-authority/delta.json",
+        ".release-authority/evidence-manifest.json",
+        ".release-authority/gate-instance.json",
+        ".release-authority/linear-snapshot.json",
+        ".release-authority/predecessor.json",
+        ".release-authority/prepublication/approval.json",
+        ".release-authority/prepublication/retention-receipts.json",
+        ".release-authority/qualification-plan.json",
+        ".release-authority/qualification.json",
+        ".release-authority/readiness.json",
+        ".release-authority/role-assignments.json",
+    ]
+    assert {key: value for key, value in upload["with"].items() if key != "path"} == {
+        "name": "release-qualification-evidence",
+        "if-no-files-found": "error",
+        "include-hidden-files": True,
+        "overwrite": False,
+        "retention-days": 90,
+    }
+
+    publish = _workflow(PUBLISH)
+    download = next(
+        step
+        for step in publish["jobs"]["validate-production-request"]["steps"]
+        if step.get("with", {}).get("name") == "release-qualification-evidence"
+    )
+    assert upload["with"]["name"] == download["with"]["name"]
+
+
 def test_publication_consumes_qualification_and_does_not_create_authority() -> None:
     workflow = _workflow(PUBLISH)
     assert workflow["permissions"] == {"actions": "read", "contents": "read"}
