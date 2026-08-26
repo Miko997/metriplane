@@ -159,6 +159,34 @@ def test_runtime_run_storage_permission_failure_is_clean(
 
 
 @pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+def test_runtime_symlink_loop_runs_dir_fails_cleanly(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+
+    result = getattr(module, entrypoint_name)(
+        Config(source_mode="dummy"),
+        run_id="loop_probe",
+        runs_dir=str(loop),
+        paths=_platform_paths(tmp_path / "injected"),
+    )
+
+    assert result == 2
+    assert "cannot resolve run-recording root" in caplog.text
+
+
+@pytest.mark.parametrize(
     ("module_name", "entrypoint_name", "implementation_name"),
     [
         ("metriplane.run", "run_loop", "_run_loop_impl"),
@@ -567,10 +595,9 @@ def test_primary_run_help_names_platform_runs_directory(capsys) -> None:
         ([], " \t "),
     ],
 )
-def test_metriplane_run_console_retains_legacy_default_for_blank_overrides(
+def test_metriplane_run_console_delegates_blank_overrides_to_platform_default(
     argv: list[str],
     configured_runs_dir: str | None,
-    tmp_path: Path,
     monkeypatch,
 ) -> None:
     from metriplane import run
@@ -580,8 +607,6 @@ def test_metriplane_run_console_retains_legacy_default_for_blank_overrides(
         "metriplane.config.load_config",
         lambda _path: Config(runs_dir=configured_runs_dir),
     )
-    monkeypatch.setattr(run, "data_dir", lambda: tmp_path)
-
     def fake_run_loop(_cfg, **kwargs):
         captured.update(kwargs)
         return 31
@@ -589,7 +614,7 @@ def test_metriplane_run_console_retains_legacy_default_for_blank_overrides(
     monkeypatch.setattr(run, "run_loop", fake_run_loop)
 
     assert run.main(argv) == 31
-    assert captured["runs_dir"] == str(tmp_path / "runs")
+    assert captured["runs_dir"] is None
     assert captured["paths"] is None
 
 

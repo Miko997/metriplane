@@ -23,7 +23,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import yaml
 
 from metriplane.config import Config, resolve_profile
-from metriplane.paths import normalize_runs_dir
+from metriplane.paths import normalize_runs_dir, resolve_runs_dir
 from metriplane.run_ids import validate_portable_run_id
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
@@ -361,18 +361,21 @@ def create_run_context(
     rid = validate_portable_run_id(rid)
 
     # Where runs live
-    base: Path
+    unresolved_base: Path
     explicit_runs_dir = normalize_runs_dir(runs_dir)
     configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
     if explicit_runs_dir is not None:
-        base = resolve_under_data_dir(explicit_runs_dir)
+        unresolved_base = resolve_under_data_dir(explicit_runs_dir)
     elif configured_runs_dir is not None:
-        base = resolve_under_data_dir(configured_runs_dir)
+        unresolved_base = resolve_under_data_dir(configured_runs_dir)
     else:
-        base = data_dir() / "runs"
+        unresolved_base = data_dir() / "runs"
+
+    base = resolve_runs_dir(unresolved_base)
+    if base is None:  # The concrete Path above cannot normalize to an absent override.
+        raise AssertionError("run-recording root unexpectedly resolved as absent")
 
     # Make run dir unique (avoid overwriting) and keep it beneath runs_dir.
-    base = base.expanduser().resolve()
     candidate = (base / rid).resolve()
     try:
         candidate.relative_to(base)

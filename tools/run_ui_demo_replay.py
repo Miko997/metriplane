@@ -10,7 +10,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_platform_paths
+from metriplane.paths import (
+    PlatformPathError,
+    normalize_runs_dir,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
 from metriplane.provenance.run_provenance import generate_run_id
 from metriplane.run_ids import validate_portable_run_id
 
@@ -47,13 +52,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         explicit_runs_dir = normalize_runs_dir(args.runs_dir)
-        runs_dir = (
-            Path(explicit_runs_dir).expanduser().resolve()
+        unresolved_runs_dir = (
+            Path(explicit_runs_dir)
             if explicit_runs_dir is not None
             else resolve_platform_paths().runs_dir
         )
+        runs_dir = resolve_runs_dir(unresolved_runs_dir)
+        if runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
         runs_dir.mkdir(parents=True, exist_ok=True)
-    except (OSError, PlatformPathError, RuntimeError) as exc:
+    except (OSError, PlatformPathError) as exc:
         print(f"platform path error: {exc}", file=sys.stderr)
         return 2
     run_step(

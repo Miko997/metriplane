@@ -463,6 +463,20 @@ class TestNoState:
             read_only.chmod(0o700)
         assert "run directory" in capsys.readouterr().out.lower()
 
+    def test_start_with_symlink_loop_run_root_fails_before_launch(self, tmp_path, capsys):
+        loop = tmp_path / "loop"
+        loop.symlink_to(loop.name)
+
+        assert (
+            cmd_start(
+                paths=_test_platform_paths(tmp_path),
+                runs_dir=str(loop),
+                open_browser=False,
+            )
+            == 2
+        )
+        assert "cannot resolve run-recording root" in capsys.readouterr().out
+
 
 # ---------------------------------------------------------------------------
 # State helpers

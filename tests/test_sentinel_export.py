@@ -137,6 +137,27 @@ def test_cli_run_whitespace_runs_dir_uses_injected_platform_default(
     assert not dangerous_cwd_path.exists()
 
 
+def test_cli_run_rejects_symlink_loop_runs_dir(tmp_path, capsys):
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+
+    rc = main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            "sentinel_loop_root",
+            "--runs-dir",
+            str(loop),
+        ],
+        paths=_platform_paths(tmp_path / "injected"),
+    )
+
+    assert rc == 2
+    assert "cannot resolve run-recording root" in capsys.readouterr().out
+
+
 def test_cli_run_generates_unique_default_run_ids(tmp_path, capsys, monkeypatch):
     generated = iter(("sentinel_001", "sentinel_002"))
     monkeypatch.setattr(

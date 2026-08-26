@@ -37,7 +37,6 @@ from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
     create_run_context,
-    data_dir,
     is_header_record,
     open_jsonl_writer,
 )
@@ -1627,8 +1626,6 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
 
     cfg = load_config(Path(args.config))
     runs_dir = normalize_runs_dir(args.runs_dir)
-    if paths is None and runs_dir is None and normalize_runs_dir(cfg.runs_dir) is None:
-        runs_dir = str(data_dir() / "runs")
 
     return run_loop(
         cfg,

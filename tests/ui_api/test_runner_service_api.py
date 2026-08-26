@@ -177,6 +177,29 @@ def test_runner_cli_whitespace_runs_dir_keeps_injected_platform_default(
     assert not (tmp_path / " \t ").exists()
 
 
+def test_runner_cli_rejects_symlink_loop_runs_dir(tmp_path: Path, capsys) -> None:
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+    argv = [
+        "--config-dir",
+        str(tmp_path / "config"),
+        "--data-dir",
+        str(tmp_path / "data"),
+        "--cache-dir",
+        str(tmp_path / "cache"),
+        "--state-dir",
+        str(tmp_path / "state"),
+        "--runs-dir",
+        str(loop),
+    ]
+
+    with pytest.raises(SystemExit) as exc_info:
+        service.main(argv)
+
+    assert exc_info.value.code == 2
+    assert "cannot resolve run-recording root" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [

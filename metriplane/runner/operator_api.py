@@ -25,7 +25,12 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml  # type: ignore
 
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
 from metriplane.run_ids import validate_portable_run_id
 from metriplane.runner.command_center_api import find_run_artifact
 
@@ -252,7 +257,10 @@ class OperatorAPI:
         return self._injected_paths or resolve_platform_paths()
 
     def _runs_root(self) -> Path:
-        return self._platform_paths().runs_dir.resolve()
+        runs_root = resolve_runs_dir(self._platform_paths().runs_dir)
+        if runs_root is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
+        return runs_root
 
     def route(self, method: str, path: str, body: Dict[str, Any]) -> Tuple[int, Dict]:
         """

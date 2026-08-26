@@ -12,6 +12,7 @@ from metriplane.paths import (
     PlatformPaths,
     normalize_runs_dir,
     resolve_platform_paths,
+    resolve_runs_dir,
 )
 from metriplane.provenance.run_provenance import generate_run_id
 from metriplane.run_ids import validate_portable_run_id
@@ -73,11 +74,14 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
 
     try:
         explicit_runs_dir = normalize_runs_dir(args.runs_dir)
-        runs_dir = (
-            Path(explicit_runs_dir).expanduser().resolve()
+        unresolved_runs_dir = (
+            Path(explicit_runs_dir)
             if explicit_runs_dir is not None
             else (paths or resolve_platform_paths()).runs_dir
         )
+        runs_dir = resolve_runs_dir(unresolved_runs_dir)
+        if runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
     except PlatformPathError as exc:
         print(f"platform path error: {exc}")
         return 2

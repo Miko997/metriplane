@@ -589,6 +589,8 @@ def cmd_start(
         explicit_runs_dir = normalize_runs_dir(runs_dir)
         if explicit_runs_dir is not None:
             resolved_paths = resolved_paths.with_runs_dir(explicit_runs_dir)
+        else:
+            resolved_paths = resolved_paths.with_runs_dir(resolved_paths.runs_dir)
         effective_runs_dir = str(resolved_paths.runs_dir)
         state = _load_state(resolved_paths)
         _state_dir(resolved_paths)

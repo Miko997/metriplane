@@ -15,6 +15,7 @@ from metriplane.paths import (
     PlatformPaths,
     normalize_runs_dir,
     resolve_platform_paths,
+    resolve_runs_dir,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +134,22 @@ def test_whitespace_runs_dir_override_keeps_injected_default(tmp_path: Path) -> 
 
     assert paths.with_runs_dir(" \t ") is paths
     assert paths.with_runs_dir(" \t ").runs_dir == tmp_path / "data" / "runs"
+
+
+def test_explicit_runs_dir_symlink_loop_is_rejected(tmp_path: Path) -> None:
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+
+    with pytest.raises(PlatformPathError, match="cannot resolve run-recording root"):
+        resolve_runs_dir(loop)
+    with pytest.raises(PlatformPathError, match="cannot resolve run-recording root"):
+        paths.with_runs_dir(loop)
 
 
 def test_no_home_works_with_complete_xdg_environment(tmp_path: Path):

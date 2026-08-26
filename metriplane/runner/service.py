@@ -29,6 +29,7 @@ from metriplane.paths import (
     PlatformPaths,
     normalize_runs_dir,
     resolve_platform_paths,
+    resolve_runs_dir,
 )
 
 from .allowlist import ALLOWLIST, get_command, get_commands, validate_command_id
@@ -65,6 +66,12 @@ def _configure_platform_paths(paths: PlatformPaths | None = None) -> PlatformPat
     environment_runs_dir = normalize_runs_dir(os.getenv("RUNS"))
     if paths is None and environment_runs_dir is not None:
         runner_paths = runner_paths.with_runs_dir(environment_runs_dir)
+    else:
+        resolved_runs_dir = resolve_runs_dir(runner_paths.runs_dir)
+        if resolved_runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
+        if resolved_runs_dir != runner_paths.runs_dir:
+            runner_paths = runner_paths.with_runs_dir(resolved_runs_dir)
     executor.configure_platform_paths(runner_paths)
     operator_api = OperatorAPI(
         executor=executor,

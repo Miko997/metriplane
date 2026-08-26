@@ -50,10 +50,9 @@ class PlatformPaths:
 
     def with_runs_dir(self, runs_dir: str | Path) -> PlatformPaths:
         """Return a copy with one canonical explicit run-recording root."""
-        normalized = normalize_runs_dir(runs_dir)
-        if normalized is None:
+        resolved = resolve_runs_dir(runs_dir)
+        if resolved is None:
             return self
-        resolved = Path(normalized).expanduser().resolve()
         return replace(self, run_records_dir=resolved)
 
     @property
@@ -67,6 +66,22 @@ def normalize_runs_dir(value: str | os.PathLike[str] | None) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def resolve_runs_dir(value: str | os.PathLike[str] | None) -> Path | None:
+    """Resolve an optional run root and reject filesystem resolution failures."""
+    normalized = normalize_runs_dir(value)
+    if normalized is None:
+        return None
+    path = Path(normalized)
+    try:
+        expanded = path.expanduser()
+        try:
+            return expanded.resolve(strict=True)
+        except FileNotFoundError:
+            return expanded.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError(f"cannot resolve run-recording root {path}: {exc}") from exc
 
 
 def _absolute_env_path(environment: Mapping[str, str], name: str) -> Path | None:

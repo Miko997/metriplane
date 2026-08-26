@@ -12,7 +12,12 @@ import sys
 from dataclasses import dataclass, replace
 from typing import List, Optional
 
-from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    resolve_platform_paths,
+    resolve_runs_dir,
+)
 
 _RUNS_DIR_TOKEN = "{metriplane_platform_runs_dir}"
 _ATLAS_UI_RUN = "web/dashboard/atlas_run"
@@ -386,13 +391,16 @@ def _resolve_command(command: AllowedCommand, paths: PlatformPaths | None) -> Al
         return command
     try:
         resolved_paths = paths if paths is not None else resolve_platform_paths()
+        runs_dir = resolve_runs_dir(resolved_paths.runs_dir)
+        if runs_dir is None:
+            raise AssertionError("run-recording root unexpectedly resolved as absent")
     except PlatformPathError as exc:
         return replace(
             command,
             enabled=False,
             disabled_reason=f"Platform paths unavailable: {exc}",
         )
-    argv = [str(resolved_paths.runs_dir) if part == _RUNS_DIR_TOKEN else part for part in command.command]
+    argv = [str(runs_dir) if part == _RUNS_DIR_TOKEN else part for part in command.command]
     return replace(command, command=argv)
 
 
