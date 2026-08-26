@@ -45,6 +45,9 @@ _GITHUB_REVIEW_STATES = {
     "PENDING",
 }
 _GITHUB_REVIEWER_PERMISSIONS = {"admin", "maintain", "write"}
+_GIT_OBJECT_ID_BYTES = 20
+_GIT_REGULAR_FILE_MODES = {b"100644", b"100755"}
+_GIT_TREE_MODE = b"40000"
 _IMMUTABLE_BLOCKER_FIELDS = {
     "id",
     "reported_by_actor_id",
@@ -316,16 +319,53 @@ def _action_digests(value: Any) -> dict[tuple[str, str], str]:
     return result
 
 
-def _require_local_commit(repo_root: Path, sha: str, label: str) -> None:
+def _git_read(repo_root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
     root = repo_root.resolve(strict=True)
-    commit = subprocess.run(
-        ["/usr/bin/git", "cat-file", "-e", f"{sha}^{{commit}}"],
+    env = os.environ.copy()
+    env["GIT_NO_REPLACE_OBJECTS"] = "1"
+    return subprocess.run(
+        ["/usr/bin/git", "--no-replace-objects", "-C", str(root), *args],
         cwd=root,
+        env=env,
         capture_output=True,
         check=False,
     )
-    if commit.returncode != 0:
-        _fail(f"{label} is not an available local commit")
+
+
+def _git_object(
+    repo_root: Path,
+    object_id: str,
+    object_type: str,
+    failure: str,
+) -> bytes:
+    captured = _git_read(repo_root, "cat-file", object_type, object_id)
+    if captured.returncode != 0:
+        _fail(failure)
+    return captured.stdout
+
+
+def _commit_tree_id(repo_root: Path, commit_sha: str, label: str) -> str:
+    raw = _git_object(
+        repo_root,
+        commit_sha,
+        "commit",
+        f"{label} is not an available local commit",
+    )
+    first_line, separator, _remainder = raw.partition(b"\n")
+    if not separator or not first_line.startswith(b"tree "):
+        _fail(f"{label} commit object is malformed")
+    encoded_tree = first_line.removeprefix(b"tree ")
+    try:
+        tree_id = encoded_tree.decode("ascii", "strict")
+    except UnicodeDecodeError:
+        _fail(f"{label} commit tree identity is malformed")
+    if _GIT_SHA_RE.fullmatch(tree_id) is None:
+        _fail(f"{label} commit tree identity is malformed")
+    return tree_id
+
+
+def _require_local_commit(repo_root: Path, sha: str, label: str) -> None:
+    _commit_tree_id(repo_root.resolve(strict=True), sha, label)
 
 
 def _strict_json_bytes(raw: bytes, label: str) -> Any:
@@ -350,6 +390,75 @@ def _strict_json_bytes(raw: bytes, label: str) -> Any:
         _fail(f"{label} is not strict UTF-8 JSON: {exc}")
 
 
+def _raw_tree_entries(
+    raw: bytes,
+    label: str,
+) -> list[tuple[bytes, bytes, str]]:
+    entries: list[tuple[bytes, bytes, str]] = []
+    offset = 0
+    while offset < len(raw):
+        mode_end = raw.find(b" ", offset)
+        name_end = raw.find(b"\0", mode_end + 1) if mode_end >= 0 else -1
+        object_end = name_end + 1 + _GIT_OBJECT_ID_BYTES
+        if mode_end <= offset or name_end <= mode_end + 1 or object_end > len(raw):
+            _fail(f"{label} tree object is malformed")
+        mode = raw[offset:mode_end]
+        name = raw[mode_end + 1 : name_end]
+        if any(byte < ord("0") or byte > ord("7") for byte in mode):
+            _fail(f"{label} tree object contains a malformed mode")
+        if b"/" in name or name in {b".", b".."}:
+            _fail(f"{label} tree object contains a malformed name")
+        object_id = raw[name_end + 1 : object_end].hex()
+        entries.append((mode, name, object_id))
+        offset = object_end
+    return entries
+
+
+def _commit_path_entry(
+    repo_root: Path,
+    commit_sha: str,
+    relative: str,
+    label: str,
+) -> tuple[bytes, str] | None:
+    path = PurePosixPath(relative)
+    if (
+        path.is_absolute()
+        or not path.parts
+        or relative != path.as_posix()
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        _fail(f"{label} path identity is malformed at commit {commit_sha}")
+    try:
+        parts = [part.encode("utf-8", "strict") for part in path.parts]
+    except UnicodeEncodeError:
+        _fail(f"{label} path identity is malformed at commit {commit_sha}")
+
+    tree_id = _commit_tree_id(repo_root, commit_sha, label)
+    for index, part in enumerate(parts):
+        raw_tree = _git_object(
+            repo_root,
+            tree_id,
+            "tree",
+            f"cannot inspect {label} at commit {commit_sha}",
+        )
+        matches = [
+            (mode, object_id)
+            for mode, name, object_id in _raw_tree_entries(raw_tree, label)
+            if name == part
+        ]
+        if not matches:
+            return None
+        if len(matches) != 1:
+            _fail(f"{label} path identity is ambiguous at commit {commit_sha}")
+        mode, object_id = matches[0]
+        if index == len(parts) - 1:
+            return mode, object_id
+        if mode != _GIT_TREE_MODE:
+            _fail(f"{label} path traverses a non-tree entry at commit {commit_sha}")
+        tree_id = object_id
+    raise AssertionError("non-empty path traversal did not return")
+
+
 def _commit_regular_file(
     repo_root: Path,
     commit_sha: str,
@@ -359,59 +468,24 @@ def _commit_regular_file(
     allow_absent: bool = False,
 ) -> bytes | None:
     root = repo_root.resolve(strict=True)
-    literal_pathspec = f":(top,literal){relative}"
-    tree = subprocess.run(
-        [
-            "/usr/bin/git",
-            "ls-tree",
-            "-z",
-            "--full-tree",
-            commit_sha,
-            "--",
-            literal_pathspec,
-        ],
-        cwd=root,
-        capture_output=True,
-        check=False,
-    )
-    if tree.returncode != 0:
-        _fail(f"cannot inspect {label} at commit {commit_sha}")
-    records = [record for record in tree.stdout.split(b"\0") if record]
-    if not records:
+    entry = _commit_path_entry(root, commit_sha, relative, label)
+    if entry is None:
         if allow_absent:
             return None
         _fail(f"{label} is absent at commit {commit_sha}")
-    if len(records) != 1:
-        _fail(f"{label} path identity is ambiguous at commit {commit_sha}")
-    try:
-        metadata, tracked_path = records[0].split(b"\t", 1)
-        mode, object_type, object_id = metadata.split(b" ", 2)
-        expected_path = relative.encode("utf-8", "strict")
-    except (UnicodeEncodeError, ValueError):
-        _fail(f"{label} tree identity is malformed at commit {commit_sha}")
-    if tracked_path != expected_path:
-        _fail(f"{label} path identity is ambiguous at commit {commit_sha}")
-    if object_type != b"blob" or mode in {b"040000", b"120000", b"160000"}:
+    mode, object_id = entry
+    if mode in {_GIT_TREE_MODE, b"120000", b"160000"}:
         _fail(f"{label} is not a regular file at commit {commit_sha}")
-    if mode not in {b"100644", b"100755"}:
+    if mode not in _GIT_REGULAR_FILE_MODES:
         _fail(
             f"{label} has unsupported mode {mode.decode('ascii', 'replace')} at commit {commit_sha}"
         )
-    try:
-        object_name = object_id.decode("ascii", "strict")
-    except UnicodeDecodeError:
-        _fail(f"{label} blob identity is malformed at commit {commit_sha}")
-    if _GIT_SHA_RE.fullmatch(object_name) is None:
-        _fail(f"{label} blob identity is malformed at commit {commit_sha}")
-    captured = subprocess.run(
-        ["/usr/bin/git", "cat-file", "blob", object_name],
-        cwd=root,
-        capture_output=True,
-        check=False,
+    return _git_object(
+        root,
+        object_id,
+        "blob",
+        f"cannot read {label} blob at commit {commit_sha}",
     )
-    if captured.returncode != 0:
-        _fail(f"cannot read {label} blob at commit {commit_sha}")
-    return captured.stdout
 
 
 def _policy_documents(
@@ -531,34 +605,18 @@ def _clean_evidence_path(relative: str) -> str:
 def _evidence_blob(repo_root: Path, validated_sha: str, relative: str) -> bytes:
     clean = _clean_evidence_path(relative)
     root = repo_root.resolve(strict=True)
-    tree = subprocess.run(
-        ["/usr/bin/git", "ls-tree", "-z", validated_sha, "--", clean],
-        cwd=root,
-        capture_output=True,
-        check=False,
-    )
-    if tree.returncode != 0:
-        _fail(f"cannot inspect evidence at validated commit: {relative!r}")
-    records = [record for record in tree.stdout.split(b"\0") if record]
-    if len(records) != 1:
+    entry = _commit_path_entry(root, validated_sha, clean, f"evidence {relative!r}")
+    if entry is None:
         _fail(f"evidence is not tracked at the validated commit: {relative!r}")
-    try:
-        metadata, encoded_path = records[0].split(b"\t", 1)
-        mode, object_type, _object_id = metadata.split(b" ", 2)
-        tracked_path = encoded_path.decode("utf-8", "strict")
-    except (UnicodeDecodeError, ValueError):
-        _fail(f"evidence tree entry is malformed at the validated commit: {relative!r}")
-    if tracked_path != clean or object_type != b"blob" or mode not in {b"100644", b"100755"}:
+    mode, object_id = entry
+    if mode not in _GIT_REGULAR_FILE_MODES:
         _fail(f"evidence is not a tracked regular file at the validated commit: {relative!r}")
-    captured = subprocess.run(
-        ["/usr/bin/git", "show", f"{validated_sha}:{clean}"],
-        cwd=root,
-        capture_output=True,
-        check=False,
+    return _git_object(
+        root,
+        object_id,
+        "blob",
+        f"cannot read evidence blob at the validated commit: {relative!r}",
     )
-    if captured.returncode != 0:
-        _fail(f"cannot read evidence blob at the validated commit: {relative!r}")
-    return captured.stdout
 
 
 def _check_evidence(
@@ -827,12 +885,7 @@ def _github_action_at_approved_head(
 
 
 def _git_is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
-    result = subprocess.run(
-        ["/usr/bin/git", "merge-base", "--is-ancestor", ancestor, descendant],
-        cwd=repo_root.resolve(strict=True),
-        capture_output=True,
-        check=False,
-    )
+    result = _git_read(repo_root, "merge-base", "--is-ancestor", ancestor, descendant)
     if result.returncode not in {0, 1}:
         _fail("cannot verify approval merge ancestry in the local checkout")
     return result.returncode == 0

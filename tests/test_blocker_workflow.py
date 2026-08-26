@@ -406,6 +406,79 @@ def _commit_canonical_policy(repo: Path, registry: dict[str, Any]) -> str:
     return _commit_fixture(repo, "canonical policy fixture")
 
 
+def _hash_git_object(
+    repo: Path,
+    object_type: str,
+    payload: bytes,
+    *,
+    literally: bool = False,
+) -> str:
+    command = ["/usr/bin/git", "hash-object", "-w", "--stdin", "-t", object_type]
+    if literally:
+        command.append("--literally")
+    return (
+        subprocess.run(
+            command,
+            cwd=repo,
+            input=payload,
+            capture_output=True,
+            check=True,
+        )
+        .stdout.decode("ascii", "strict")
+        .strip()
+    )
+
+
+def _raw_tree(entries: list[tuple[bytes, bytes, str]]) -> bytes:
+    return b"".join(
+        mode + b" " + name + b"\0" + bytes.fromhex(object_id) for mode, name, object_id in entries
+    )
+
+
+def _raw_policy_commit(
+    repo: Path,
+    *,
+    registry_modes: tuple[bytes, ...],
+) -> str:
+    subprocess.run(["/usr/bin/git", "init", "--quiet"], cwd=repo, check=True)
+    registry_raw = (json.dumps(_registry([]), indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    registry_blob = _hash_git_object(repo, "blob", registry_raw)
+    schema_blob = _hash_git_object(repo, "blob", SCHEMA_PATH.read_bytes())
+    status_tree = _hash_git_object(
+        repo,
+        "tree",
+        _raw_tree([(mode, b"blockers.json", registry_blob) for mode in registry_modes]),
+        literally=True,
+    )
+    docs_tree = _hash_git_object(
+        repo,
+        "tree",
+        _raw_tree([(b"40000", b"status", status_tree)]),
+    )
+    schemas_tree = _hash_git_object(
+        repo,
+        "tree",
+        _raw_tree([(b"100644", SCHEMA_PATH.name.encode("ascii"), schema_blob)]),
+    )
+    root_tree = _hash_git_object(
+        repo,
+        "tree",
+        _raw_tree(
+            [
+                (b"40000", b"docs", docs_tree),
+                (b"40000", b"schemas", schemas_tree),
+            ]
+        ),
+    )
+    commit = (
+        f"tree {root_tree}\n"
+        "author Blocker fixture <blocker-fixture@example.invalid> 0 +0000\n"
+        "committer Blocker fixture <blocker-fixture@example.invalid> 0 +0000\n"
+        "\nraw policy fixture\n"
+    ).encode("ascii")
+    return _hash_git_object(repo, "commit", commit)
+
+
 def _run_canonical_policy(
     repo: Path,
     validated_sha: str,
@@ -525,19 +598,26 @@ def test_validated_policy_rejects_nonregular_canonical_registry(
     assert any("is not a regular file" in error for error in report["errors"])
 
 
-def test_committed_policy_loader_rejects_unsupported_regular_blob_mode(tmp_path: Path) -> None:
-    tree_output = b"100600 blob " + b"a" * 40 + b"\tdocs/status/blockers.json\0"
-    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=tree_output, stderr=b"")
-    with (
-        mock.patch.object(tool.subprocess, "run", return_value=completed),
-        pytest.raises(tool.PolicyInputError, match="has unsupported mode 100600"),
-    ):
-        tool._commit_regular_file(
-            tmp_path,
-            "a" * 40,
-            tool.REGISTRY_PATH,
-            "canonical blocker registry",
-        )
+@pytest.mark.parametrize("raw_mode", [b"100600", b"100664"])
+def test_committed_policy_loader_rejects_raw_unsupported_blob_modes(
+    tmp_path: Path,
+    raw_mode: bytes,
+) -> None:
+    validated_sha = _raw_policy_commit(tmp_path, registry_modes=(raw_mode,))
+    presented = subprocess.run(
+        ["/usr/bin/git", "ls-tree", validated_sha, "--", tool.REGISTRY_PATH],
+        cwd=tmp_path,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert presented.startswith(b"100644 blob ")
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 2
+    assert any(
+        f"has unsupported mode {raw_mode.decode('ascii')}" in error for error in report["errors"]
+    )
 
 
 def test_validated_policy_rejects_noncanonical_argument_path_identity(tmp_path: Path) -> None:
@@ -553,35 +633,41 @@ def test_validated_policy_rejects_noncanonical_argument_path_identity(tmp_path: 
     assert any("requires exact canonical" in error for error in report["errors"])
 
 
-@pytest.mark.parametrize(
-    "tree_output",
-    [
-        (b"100644 blob " + b"a" * 40 + b"\tdocs/status/not-blockers.json\0"),
-        (
-            b"100644 blob "
-            + b"a" * 40
-            + b"\tdocs/status/blockers.json\0"
-            + b"100644 blob "
-            + b"b" * 40
-            + b"\tdocs/status/blockers.json\0"
-        ),
-    ],
-)
-def test_committed_policy_loader_rejects_ambiguous_tree_identity(
+def test_committed_policy_loader_rejects_real_duplicate_raw_tree_entries(
     tmp_path: Path,
-    tree_output: bytes,
 ) -> None:
-    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=tree_output, stderr=b"")
-    with (
-        mock.patch.object(tool.subprocess, "run", return_value=completed),
-        pytest.raises(tool.PolicyInputError, match="path identity is ambiguous"),
-    ):
-        tool._commit_regular_file(
-            tmp_path,
-            "a" * 40,
-            tool.REGISTRY_PATH,
-            "canonical blocker registry",
-        )
+    validated_sha = _raw_policy_commit(
+        tmp_path,
+        registry_modes=(b"100644", b"100644"),
+    )
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 2
+    assert any("path identity is ambiguous" in error for error in report["errors"])
+
+
+def test_validated_policy_ignores_git_replacement_objects(tmp_path: Path) -> None:
+    validated_sha = _commit_canonical_policy(tmp_path, _registry([]))
+    replacement_sha = _commit_canonical_policy(tmp_path, _registry([_base_blocker()]))
+    subprocess.run(
+        ["/usr/bin/git", "replace", validated_sha, replacement_sha],
+        cwd=tmp_path,
+        check=True,
+    )
+    replaced_registry = subprocess.run(
+        ["/usr/bin/git", "show", f"{validated_sha}:{tool.REGISTRY_PATH}"],
+        cwd=tmp_path,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert b"MPBLK-0001" in replaced_registry
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 0
+    assert report["valid"] is True
+    assert report["blocking_ids"] == []
 
 
 def test_open_p0_p1_and_security_block_release(tmp_path: Path) -> None:
