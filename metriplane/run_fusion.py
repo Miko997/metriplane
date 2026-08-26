@@ -1077,7 +1077,7 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     ap.add_argument(
         "--runs-dir",
         default=None,
-        help="Override runs base dir (default: platform data directory).",
+        help="Override runs base dir (default: platform runs directory).",
     )
     ap.add_argument(
         "--fault",

@@ -146,9 +146,9 @@ digest is
 schema validity, and all snapshot-internal count/order/digest invariants.
 `check` first performs the same validation, then resolves the exact Git commit
 and tree and recomputes tracked entries, terminal routes, schemas, resources,
-and workflows. It validates the frozen installed-help identities and exact governed
-superseding identities accepted by bootstrap `capture`; an unregistered byte stream fails.
-The committed historical stream and checksum remain unchanged. `check` does not execute the invoking
+and workflows. It validates the frozen installed-help identities, each against
+its one audited byte stream; any different or additional identity fails. The committed
+historical stream and checksum remain unchanged. `check` does not execute the invoking
 interpreter's currently installed console scripts. When the exact qualifying
 local MP2-000 evidence is present, `check` also regenerates and exact-compares the retained
 test and environment projections. In an ordinary clean checkout where that

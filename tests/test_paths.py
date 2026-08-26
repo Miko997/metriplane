@@ -181,14 +181,15 @@ import importlib
 import pkgutil
 from pathlib import Path
 
-import metriplane
-import metriplane.paths as path_api
-
 def blocked(name):
     raise RuntimeError(f"import-time platform path resolution: {name}")
 
 Path.home = classmethod(lambda cls: blocked("Path.home"))
 Path.expanduser = lambda self: blocked("Path.expanduser")
+
+import metriplane
+import metriplane.paths as path_api
+
 path_api.resolve_platform_paths = lambda **kwargs: blocked("resolve_platform_paths")
 
 modules = sorted(

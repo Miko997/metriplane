@@ -272,6 +272,18 @@ def test_metriplane_run_help_retains_frozen_legacy_default(capsys) -> None:
     assert "default: /data/runs in docker, ./runs on host" in normalized
 
 
+def test_primary_run_help_names_platform_runs_directory(capsys) -> None:
+    from metriplane import cli
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli._main_run(["--help"])
+
+    assert exc_info.value.code == 0
+    normalized = " ".join(capsys.readouterr().out.split())
+    assert "default: platform runs directory" in normalized
+    assert "default: platform data directory" not in normalized
+
+
 def test_metriplane_run_console_retains_legacy_default(
     tmp_path: Path,
     monkeypatch,

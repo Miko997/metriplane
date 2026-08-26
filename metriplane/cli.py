@@ -71,7 +71,7 @@ def _main_run(argv: list[str], *, paths: PlatformPaths | None = None) -> int:
         "--runs-dir",
         default=None,
         help=(
-            "Override runs base dir (default: platform data directory). "
+            "Override runs base dir (default: platform runs directory). "
             "Example: --runs-dir /path/to/runs"
         ),
     )
@@ -427,7 +427,7 @@ Launcher flags (shared by start and restart):
   --run-id TEXT       Override run ID (default: live_YYYYMMDD_HHMMSS)
   --dashboard-port N  Dashboard web server port (default: 8088)
   --runner-port N     Dashboard runner API port (default: 9000)
-  --runs-dir PATH     Runs base directory (default: platform data directory)
+  --runs-dir PATH     Runs base directory (default: platform runs directory)
   --open / --no-open  Open browser after start (default: --open)
   --operator          Open operator.html instead of runtime dashboard
 """
@@ -458,7 +458,7 @@ def _build_launcher_parser(name: str) -> argparse.ArgumentParser:
         p.add_argument("--runner-port", type=int, default=9000,
                        dest="runner_port", help="Runner API port (default: 9000)")
         p.add_argument("--runs-dir", default=None, dest="runs_dir",
-                       help="Runs base directory (default: platform data directory)")
+                       help="Runs base directory (default: platform runs directory)")
         p.add_argument("--open", action="store_true", default=True, dest="open_browser",
                        help="Open browser after start (default: on)")
         p.add_argument("--no-open", action="store_false", dest="open_browser",

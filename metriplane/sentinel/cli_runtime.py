@@ -28,7 +28,7 @@ def main_sentinel(
     run.add_argument(
         "--runs-dir",
         default=None,
-        help="Base directory for run artifacts (default: platform data directory)",
+        help="Base directory for run artifacts (default: platform runs directory)",
     )
 
     status = sub.add_parser("status", help="Print a sentinel_summary.json")
