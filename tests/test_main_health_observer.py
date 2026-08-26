@@ -169,6 +169,37 @@ def test_repeated_workflow_attempt_identity_fails_closed() -> None:
         _selection(runs)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("id", None, "run ID is invalid"),
+        ("id", True, "run ID is invalid"),
+        ("id", 0, "run ID is invalid"),
+        ("run_attempt", None, "run attempt is invalid"),
+        ("run_attempt", True, "run attempt is invalid"),
+        ("run_attempt", 0, "run attempt is invalid"),
+    ],
+)
+def test_matching_newer_workflow_with_malformed_identity_fails_closed(
+    field: str, value: object, message: str
+) -> None:
+    malformed = _provider_run(
+        "documentation",
+        attempt=2,
+        conclusion=None,
+        status="in_progress",
+        updated_at="2026-08-26T12:01:00Z",
+    )
+    malformed[field] = value
+    runs = [
+        _provider_run("documentation"),
+        malformed,
+        _provider_run("security"),
+    ]
+    with pytest.raises(ObservationError, match=message):
+        _selection(runs)
+
+
 def test_matching_workflow_with_malformed_provider_chronology_fails_closed() -> None:
     runs = [
         _provider_run("documentation", updated_at="not-a-timestamp"),

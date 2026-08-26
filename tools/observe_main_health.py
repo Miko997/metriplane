@@ -196,10 +196,6 @@ def select_runs(
             and item.get("event") == "push"
             and item.get("head_branch") == "main"
             and item.get("head_sha") == sha
-            and isinstance(item.get("id"), int)
-            and not isinstance(item.get("id"), bool)
-            and isinstance(item.get("run_attempt"), int)
-            and not isinstance(item.get("run_attempt"), bool)
         ]
         if not candidates:
             ready = False
