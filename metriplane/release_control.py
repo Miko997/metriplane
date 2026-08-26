@@ -246,8 +246,7 @@ def _validated_signature(signature: Mapping[str, Any], *, subject_digest: str, l
         signature["synthetic"] is not True
         or signature["provider"] != "test-fixture"
         or signature["algorithm"] != "test-sha256-v1"
-        or signature_value
-        != sha256_json({"actor_id": actor_id, "subject_digest": subject_digest})
+        or signature_value != sha256_json({"actor_id": actor_id, "subject_digest": subject_digest})
     ):
         raise ReleaseControlError("synthetic signature authentication failed")
     return actor_id
@@ -808,9 +807,7 @@ def _release_data(
     return data
 
 
-def _passing_record(
-    record: Mapping[str, Any], expected_type: str, *, live: bool
-) -> dict[str, Any]:
+def _passing_record(record: Mapping[str, Any], expected_type: str, *, live: bool) -> dict[str, Any]:
     validate_record(record, expected_type)
     if record["status"] != "PASS":
         raise ReleaseControlError(f"{expected_type} is not passing authority")
@@ -822,9 +819,7 @@ def _passing_record(
     return data
 
 
-def validate_release_qualification_record(
-    record: Mapping[str, Any], *, live: bool
-) -> None:
+def validate_release_qualification_record(record: Mapping[str, Any], *, live: bool) -> None:
     data = _passing_record(record, "release-qualification", live=live)
     expected_fields = {
         "attempt_digests",
@@ -892,9 +887,7 @@ def validate_release_qualification_record(
         _require_digest(data[field], f"release qualification {field}")
 
 
-def validate_publication_reconciliation_record(
-    record: Mapping[str, Any], *, live: bool
-) -> None:
+def validate_publication_reconciliation_record(record: Mapping[str, Any], *, live: bool) -> None:
     data = _passing_record(record, "release-publication-reconciliation", live=live)
     expected_fields = {
         "approval_digest",
@@ -947,9 +940,7 @@ def validate_release_gate_instance_record(
     live: bool,
 ) -> None:
     gate = _passing_record(record, "release-gate-instance", live=live)
-    candidate = _passing_record(
-        candidate_identity_record, "release-candidate-identity", live=live
-    )
+    candidate = _passing_record(candidate_identity_record, "release-candidate-identity", live=live)
     predecessor = _passing_record(predecessor_record, "release-predecessor", live=live)
     bindings = {
         "candidate identity": (
@@ -1043,9 +1034,7 @@ def validate_release_approval_record(
 ) -> None:
     approval = _passing_record(record, "release-approval", live=live)
     gate = _passing_record(gate_instance, "release-gate-instance", live=live)
-    qualification_data = _passing_record(
-        qualification, "release-qualification", live=live
-    )
+    qualification_data = _passing_record(qualification, "release-qualification", live=live)
     basic = {"author_id", "candidate_digest", "conflicts", "decision", "reviewer_id"}
     extended = {
         "approval_decision_digest",
@@ -1063,10 +1052,9 @@ def validate_release_approval_record(
     reviewer = approval["reviewer_id"]
     if not isinstance(author, str) or not isinstance(reviewer, str) or author == reviewer:
         raise ReleaseControlError("release approval is not from a distinct non-author")
-    if (
-        approval["candidate_digest"] != gate.get("candidate_digest")
-        or approval["candidate_digest"] != qualification_data.get("candidate_digest")
-    ):
+    if approval["candidate_digest"] != gate.get("candidate_digest") or approval[
+        "candidate_digest"
+    ] != qualification_data.get("candidate_digest"):
         raise ReleaseControlError("release approval candidate binding mismatch")
     if "gate_instance_digest" in approval and approval["gate_instance_digest"] != sha256_json(
         gate_instance
@@ -2642,6 +2630,12 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 validate_role_assignments(result, live=not fixture_mode)
             else:
                 _passing_record(result, expected_type, live=not fixture_mode)
+                result = _blocked_result(
+                    name,
+                    "subject-specific dependency and read-back validation is not implemented",
+                )
+                print(canonical_json(result).decode("utf-8"))
+                return 3
         else:
             result = _blocked_result(
                 name,

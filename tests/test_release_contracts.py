@@ -243,9 +243,7 @@ def _passing_qualification(*, status: str = "PASS") -> dict[str, Any]:
         "plan_digest": "5" * 64,
         "qualification_digest": "6" * 64,
         "result": "PASS",
-        "terminal_results": [
-            {"cell_id": "cell-1", "result": "PASS", "result_digest": "7" * 64}
-        ],
+        "terminal_results": [{"cell_id": "cell-1", "result": "PASS", "result_digest": "7" * 64}],
         "unexpected_outcomes": [],
         "warning_summary_digest": "8" * 64,
     }
@@ -334,10 +332,17 @@ def test_subject_validators_reject_blocked_records_and_missing_dependencies(
     blocked_path = tmp_path / "blocked-qualification.json"
     write_immutable_json(blocked_path, _passing_qualification(status="BLOCKED"))
     monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
-    assert (
-        tool_main("validate_release_qualification.py", ["--record", str(blocked_path)])
-        == 3
+    assert tool_main("validate_release_qualification.py", ["--record", str(blocked_path)]) == 3
+    generic = make_record(
+        "release-gate-input",
+        {},
+        invocation_id="unimplemented-gate-input-validator-fixture",
+        sequence=1,
+        synthetic=True,
     )
+    generic_path = tmp_path / "gate-input.json"
+    write_immutable_json(generic_path, generic)
+    assert tool_main("validate_release_gate_input.py", ["--record", str(generic_path)]) == 3
 
     qualification_path = tmp_path / "qualification.json"
     qualification = _passing_qualification()
