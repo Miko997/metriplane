@@ -355,7 +355,7 @@ def _run(
         mock.patch.dict(os.environ, {"GITHUB_TOKEN": "synthetic-test-token" if token else ""}),
         contextlib.redirect_stdout(stdout),
     ):
-        result = tool.main(argv)
+        result = tool.main(argv, _allow_working_tree_policy_fixtures=True)
     return cast(int, result), cast(dict[str, Any], json.loads(stdout.getvalue()))
 
 
@@ -398,6 +398,48 @@ def _commit_base_registry(repo: Path, registry: dict[str, Any]) -> str:
     return _commit_fixture(repo, "fixture base")
 
 
+def _commit_canonical_policy(repo: Path, registry: dict[str, Any]) -> str:
+    _write_json(repo / tool.REGISTRY_PATH, registry)
+    schema = repo / tool.SCHEMA_PATH
+    schema.parent.mkdir(parents=True, exist_ok=True)
+    schema.write_bytes(SCHEMA_PATH.read_bytes())
+    return _commit_fixture(repo, "canonical policy fixture")
+
+
+def _run_canonical_policy(
+    repo: Path,
+    validated_sha: str,
+    *,
+    registry_path: Path = Path("docs/status/blockers.json"),
+    schema_path: Path = Path("schemas/metriplane.blockers.v1.schema.json"),
+    validation_only: bool = False,
+) -> tuple[int, dict[str, Any]]:
+    argv = [
+        "--registry",
+        registry_path.as_posix(),
+        "--schema",
+        schema_path.as_posix(),
+        "--repo-root",
+        str(repo),
+        "--validated-sha",
+        validated_sha,
+        "--json",
+    ]
+    if validation_only:
+        argv.append("--validation-only")
+    stdout = io.StringIO()
+    with (
+        mock.patch.object(
+            tool,
+            "_github_get",
+            side_effect=AssertionError("provider must not be invoked"),
+        ),
+        contextlib.redirect_stdout(stdout),
+    ):
+        result = tool.main(argv)
+    return cast(int, result), cast(dict[str, Any], json.loads(stdout.getvalue()))
+
+
 def test_production_registry_is_valid_and_does_not_invoke_provider(
     tmp_path: Path,
 ) -> None:
@@ -408,6 +450,138 @@ def test_production_registry_is_valid_and_does_not_invoke_provider(
     )
     assert result == 0
     assert report["valid"] is True
+
+
+@pytest.mark.parametrize(
+    ("committed", "dirty", "expected_exit", "expected_blocking_ids"),
+    [
+        (_registry([_base_blocker()]), _registry([]), 1, ["MPBLK-0001"]),
+        (_registry([]), _registry([_base_blocker()]), 0, []),
+    ],
+)
+def test_validated_policy_ignores_dirty_worktree_registry(
+    tmp_path: Path,
+    committed: dict[str, Any],
+    dirty: dict[str, Any],
+    expected_exit: int,
+    expected_blocking_ids: list[str],
+) -> None:
+    validated_sha = _commit_canonical_policy(tmp_path, committed)
+    _write_json(tmp_path / tool.REGISTRY_PATH, dirty)
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == expected_exit
+    assert report["valid"] is True
+    assert report["blocking_ids"] == expected_blocking_ids
+
+
+def test_validated_policy_ignores_dirty_worktree_schema(tmp_path: Path) -> None:
+    validated_sha = _commit_canonical_policy(tmp_path, _registry([]))
+    _write_json(tmp_path / tool.SCHEMA_PATH, {})
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 0
+    assert report["valid"] is True
+
+
+@pytest.mark.parametrize("missing", [tool.REGISTRY_PATH, tool.SCHEMA_PATH])
+def test_validated_policy_rejects_absent_canonical_blob(tmp_path: Path, missing: str) -> None:
+    if missing != tool.REGISTRY_PATH:
+        _write_json(tmp_path / tool.REGISTRY_PATH, _registry([]))
+    if missing != tool.SCHEMA_PATH:
+        schema = tmp_path / tool.SCHEMA_PATH
+        schema.parent.mkdir(parents=True, exist_ok=True)
+        schema.write_bytes(SCHEMA_PATH.read_bytes())
+    validated_sha = _commit_fixture(tmp_path, "missing canonical policy blob")
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 2
+    assert any("is absent at commit" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize("entry_kind", ["symlink", "tree"])
+def test_validated_policy_rejects_nonregular_canonical_registry(
+    tmp_path: Path,
+    entry_kind: str,
+) -> None:
+    schema = tmp_path / tool.SCHEMA_PATH
+    schema.parent.mkdir(parents=True, exist_ok=True)
+    schema.write_bytes(SCHEMA_PATH.read_bytes())
+    registry = tmp_path / tool.REGISTRY_PATH
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    if entry_kind == "symlink":
+        registry.symlink_to("elsewhere.json")
+    else:
+        registry.mkdir()
+        _write_json(registry / "payload.json", _registry([]))
+    validated_sha = _commit_fixture(tmp_path, f"nonregular registry {entry_kind}")
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 2
+    assert any("is not a regular file" in error for error in report["errors"])
+
+
+def test_committed_policy_loader_rejects_unsupported_regular_blob_mode(tmp_path: Path) -> None:
+    tree_output = b"100600 blob " + b"a" * 40 + b"\tdocs/status/blockers.json\0"
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=tree_output, stderr=b"")
+    with (
+        mock.patch.object(tool.subprocess, "run", return_value=completed),
+        pytest.raises(tool.PolicyInputError, match="has unsupported mode 100600"),
+    ):
+        tool._commit_regular_file(
+            tmp_path,
+            "a" * 40,
+            tool.REGISTRY_PATH,
+            "canonical blocker registry",
+        )
+
+
+def test_validated_policy_rejects_noncanonical_argument_path_identity(tmp_path: Path) -> None:
+    validated_sha = _commit_canonical_policy(tmp_path, _registry([]))
+
+    result, report = _run_canonical_policy(
+        tmp_path,
+        validated_sha,
+        registry_path=Path("docs/status/../status/blockers.json"),
+    )
+
+    assert result == 2
+    assert any("requires exact canonical" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    "tree_output",
+    [
+        (b"100644 blob " + b"a" * 40 + b"\tdocs/status/not-blockers.json\0"),
+        (
+            b"100644 blob "
+            + b"a" * 40
+            + b"\tdocs/status/blockers.json\0"
+            + b"100644 blob "
+            + b"b" * 40
+            + b"\tdocs/status/blockers.json\0"
+        ),
+    ],
+)
+def test_committed_policy_loader_rejects_ambiguous_tree_identity(
+    tmp_path: Path,
+    tree_output: bytes,
+) -> None:
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=tree_output, stderr=b"")
+    with (
+        mock.patch.object(tool.subprocess, "run", return_value=completed),
+        pytest.raises(tool.PolicyInputError, match="path identity is ambiguous"),
+    ):
+        tool._commit_regular_file(
+            tmp_path,
+            "a" * 40,
+            tool.REGISTRY_PATH,
+            "canonical blocker registry",
+        )
 
 
 def test_open_p0_p1_and_security_block_release(tmp_path: Path) -> None:

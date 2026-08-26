@@ -28,6 +28,7 @@ REPORT_VERSION = "metriplane.blocker-check.v1"
 SCHEMA_ID = "https://metriplane.com/schemas/metriplane.blockers.v1.schema.json"
 SEVERITY_RANK = {"P0": 0, "P1": 1, "P2": 2}
 REGISTRY_PATH = "docs/status/blockers.json"
+SCHEMA_PATH = "schemas/metriplane.blockers.v1.schema.json"
 GITHUB_API_VERSION = "2022-11-28"
 GITHUB_COMMIT_FILES_LIMIT = 3000
 GITHUB_PULL_COMMITS_LIMIT = 250
@@ -349,26 +350,116 @@ def _strict_json_bytes(raw: bytes, label: str) -> Any:
         _fail(f"{label} is not strict UTF-8 JSON: {exc}")
 
 
-def _base_registry(repo_root: Path, base_sha: str) -> Registry | None:
+def _commit_regular_file(
+    repo_root: Path,
+    commit_sha: str,
+    relative: str,
+    label: str,
+    *,
+    allow_absent: bool = False,
+) -> bytes | None:
     root = repo_root.resolve(strict=True)
-    _require_local_commit(root, base_sha, "GitHub base SHA")
-    exists = subprocess.run(
-        ["/usr/bin/git", "cat-file", "-e", f"{base_sha}:{REGISTRY_PATH}"],
+    literal_pathspec = f":(top,literal){relative}"
+    tree = subprocess.run(
+        [
+            "/usr/bin/git",
+            "ls-tree",
+            "-z",
+            "--full-tree",
+            commit_sha,
+            "--",
+            literal_pathspec,
+        ],
         cwd=root,
         capture_output=True,
         check=False,
     )
-    if exists.returncode != 0:
-        return None
+    if tree.returncode != 0:
+        _fail(f"cannot inspect {label} at commit {commit_sha}")
+    records = [record for record in tree.stdout.split(b"\0") if record]
+    if not records:
+        if allow_absent:
+            return None
+        _fail(f"{label} is absent at commit {commit_sha}")
+    if len(records) != 1:
+        _fail(f"{label} path identity is ambiguous at commit {commit_sha}")
+    try:
+        metadata, tracked_path = records[0].split(b"\t", 1)
+        mode, object_type, object_id = metadata.split(b" ", 2)
+        expected_path = relative.encode("utf-8", "strict")
+    except (UnicodeEncodeError, ValueError):
+        _fail(f"{label} tree identity is malformed at commit {commit_sha}")
+    if tracked_path != expected_path:
+        _fail(f"{label} path identity is ambiguous at commit {commit_sha}")
+    if object_type != b"blob" or mode in {b"040000", b"120000", b"160000"}:
+        _fail(f"{label} is not a regular file at commit {commit_sha}")
+    if mode not in {b"100644", b"100755"}:
+        _fail(
+            f"{label} has unsupported mode {mode.decode('ascii', 'replace')} at commit {commit_sha}"
+        )
+    try:
+        object_name = object_id.decode("ascii", "strict")
+    except UnicodeDecodeError:
+        _fail(f"{label} blob identity is malformed at commit {commit_sha}")
+    if _GIT_SHA_RE.fullmatch(object_name) is None:
+        _fail(f"{label} blob identity is malformed at commit {commit_sha}")
     captured = subprocess.run(
-        ["/usr/bin/git", "show", f"{base_sha}:{REGISTRY_PATH}"],
+        ["/usr/bin/git", "cat-file", "blob", object_name],
         cwd=root,
         capture_output=True,
         check=False,
     )
     if captured.returncode != 0:
-        _fail("cannot read the blocker registry at the GitHub base SHA")
-    value = _strict_json_bytes(captured.stdout, "base blocker registry")
+        _fail(f"cannot read {label} blob at commit {commit_sha}")
+    return captured.stdout
+
+
+def _policy_documents(
+    *,
+    repo_root: Path,
+    validated_sha: str | None,
+    registry_path: Path,
+    schema_path: Path,
+    allow_working_tree_fixtures: bool,
+) -> tuple[Any, Any]:
+    if validated_sha is None or allow_working_tree_fixtures:
+        return _strict_json(schema_path), _strict_json(registry_path)
+    if registry_path != Path(REGISTRY_PATH) or schema_path != Path(SCHEMA_PATH):
+        _fail(
+            "commit-bound policy validation requires exact canonical --registry and --schema paths"
+        )
+    raw_schema = _commit_regular_file(
+        repo_root,
+        validated_sha,
+        SCHEMA_PATH,
+        "canonical blocker schema",
+    )
+    raw_registry = _commit_regular_file(
+        repo_root,
+        validated_sha,
+        REGISTRY_PATH,
+        "canonical blocker registry",
+    )
+    assert raw_schema is not None and raw_registry is not None
+    return (
+        _strict_json_bytes(raw_schema, "canonical blocker schema at validated commit"),
+        _strict_json_bytes(raw_registry, "canonical blocker registry at validated commit"),
+    )
+
+
+def _base_registry(repo_root: Path, base_sha: str) -> Registry | None:
+    root = repo_root.resolve(strict=True)
+    _require_local_commit(root, base_sha, "GitHub base SHA")
+    raw = _commit_regular_file(
+        root,
+        base_sha,
+        REGISTRY_PATH,
+        "base blocker registry",
+        allow_absent=True,
+    )
+    if raw is None:
+        return None
+    value = _strict_json_bytes(raw, "base blocker registry")
     if not isinstance(value, dict) or not isinstance(value.get("blockers"), list):
         _fail("base blocker registry has a malformed root")
     _action_digests(value)
@@ -1262,7 +1353,11 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    _allow_working_tree_policy_fixtures: bool = False,
+) -> int:
     args = _parser().parse_args(argv)
     registry_path = cast(Path, args.registry)
     schema_path = cast(Path, args.schema)
@@ -1312,12 +1407,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             "changed_action_keys": set(),
             "history_errors": [],
         }
-        raw_schema = _strict_json(schema_path)
+        raw_schema, raw_registry = _policy_documents(
+            repo_root=repo_root,
+            validated_sha=validated_sha,
+            registry_path=registry_path,
+            schema_path=schema_path,
+            allow_working_tree_fixtures=_allow_working_tree_policy_fixtures,
+        )
         if not isinstance(raw_schema, dict):
             _fail("schema root must be an object")
         schema = cast(dict[str, Any], raw_schema)
         _validate_schema_contract(schema)
-        raw_registry = _strict_json(registry_path)
         _schema_validate(raw_registry, schema)
         registry = cast(Registry, raw_registry)
         base_registry = (
