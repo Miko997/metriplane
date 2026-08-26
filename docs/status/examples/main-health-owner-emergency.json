@@ -1,0 +1,29 @@
+{
+  "authorization_mode": "single-maintainer-owner-emergency",
+  "allowed_paths": [
+    "tests/test_example.py"
+  ],
+  "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "collaboration_digest": "94731ad852a347d2b4e65f4f34cf506b6b09ed556eb1a32763e89702d6e683f4",
+  "expires_at": "2026-08-27T03:23:00Z",
+  "failing_obligations": [
+    "Metriplane / required"
+  ],
+  "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+  "issue": "MET-999",
+  "policy_amendment": {
+    "amended_rule": "repair_requires_non_author",
+    "authorization_mode": "single-maintainer-owner-emergency",
+    "incident_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+    "reason": "single-maintainer-no-independent-collaborator",
+    "schema_version": 1,
+    "scope": "incident-only"
+  },
+  "pull_request": "123",
+  "repository": "Miko997/metriplane",
+  "required_cadences": [
+    "nightly",
+    "weekly"
+  ],
+  "schema_version": 1
+}
