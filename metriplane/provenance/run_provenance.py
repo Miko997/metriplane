@@ -237,7 +237,8 @@ def redact_persisted_config(value: Any, *, key: str | None = None) -> Any:
 def config_to_primitive(cfg: Config) -> dict[str, Any]:
     # asdict recursively converts nested dataclasses; JSON roundtrip ensures only JSON primitives.
     d = dataclasses.asdict(cfg)
-    return json.loads(canonical_json_dumps(redact_persisted_config(d)))
+    result: dict[str, Any] = json.loads(canonical_json_dumps(redact_persisted_config(d)))
+    return result
 
 
 def compute_config_hash(cfg: Config) -> tuple[str, str]:
@@ -264,6 +265,48 @@ def _ensure_unique_run_dir(path: Path) -> Path:
 _RUN_RESERVATION_MARKER = ".metriplane-run-reservation"
 _RUN_RESERVATION_DIR_ENV = "METRIPLANE_RESERVED_RUN_DIR"
 _RUN_RESERVATION_TOKEN_ENV = "METRIPLANE_RUN_RESERVATION_TOKEN"
+
+
+def _reservation_directory_flags() -> int:
+    required = ("O_DIRECTORY", "O_NOFOLLOW")
+    if os.name != "posix" or any(not hasattr(os, name) for name in required):
+        raise PlatformPathError(
+            "secure run directory reservations require POSIX directory handles and O_NOFOLLOW"
+        )
+    return os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+
+
+def _same_directory_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    return (
+        stat.S_ISDIR(left.st_mode)
+        and stat.S_ISDIR(right.st_mode)
+        and left.st_dev == right.st_dev
+        and left.st_ino == right.st_ino
+    )
+
+
+def _assert_directory_identity(
+    expected: os.stat_result,
+    current: os.stat_result,
+    path: Path,
+) -> None:
+    if not _same_directory_identity(expected, current):
+        raise PlatformPathError(f"run directory identity changed during reservation: {path}")
+
+
+def _write_run_reservation_marker(directory_fd: int, token: str) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    marker_fd = os.open(_RUN_RESERVATION_MARKER, flags, 0o600, dir_fd=directory_fd)
+    try:
+        remaining = memoryview(token.encode("utf-8"))
+        while remaining:
+            written = os.write(marker_fd, remaining)
+            if written <= 0:
+                raise OSError("run directory reservation marker write made no progress")
+            remaining = remaining[written:]
+        os.fsync(marker_fd)
+    finally:
+        os.close(marker_fd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,39 +367,102 @@ def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
     """Atomically reserve one canonical collision-safe run directory."""
     requested_run_id = validate_portable_run_id(run_id)
     base.mkdir(parents=True, exist_ok=True)
-    for collision_index in range(1000):
-        reserved_run_id = portable_run_id_for_collision(
-            requested_run_id,
-            collision_index,
-        )
-        run_dir = base / reserved_run_id
-        try:
-            run_dir.mkdir(exist_ok=False)
-        except FileExistsError:
-            continue
+    try:
+        base_before_open = base.lstat()
+        base_fd = os.open(base, _reservation_directory_flags())
+    except OSError as exc:
+        raise PlatformPathError(f"run directory base cannot be opened safely: {base}") from exc
 
-        token = secrets.token_hex(32)
-        marker = run_dir / _RUN_RESERVATION_MARKER
-        try:
-            with marker.open("x", encoding="utf-8") as handle:
-                handle.write(token)
-                handle.flush()
-                os.fsync(handle.fileno())
-            result = run_dir.lstat()
-        except BaseException:
+    try:
+        base_opened = os.fstat(base_fd)
+        _assert_directory_identity(base_before_open, base_opened, base)
+
+        for collision_index in range(1000):
+            reserved_run_id = portable_run_id_for_collision(
+                requested_run_id,
+                collision_index,
+            )
+            run_dir = base / reserved_run_id
             try:
-                marker.unlink(missing_ok=True)
-                run_dir.rmdir()
-            except OSError:
-                pass
-            raise
-        return RunDirectoryReservation(
-            run_id=reserved_run_id,
-            run_dir=run_dir,
-            token=token,
-            device=result.st_dev,
-            inode=result.st_ino,
-        )
+                os.mkdir(reserved_run_id, dir_fd=base_fd)
+            except FileExistsError:
+                continue
+
+            run_fd: int | None = None
+            created_identity: os.stat_result | None = None
+            opened_identity: os.stat_result | None = None
+            try:
+                try:
+                    created_identity = os.stat(
+                        reserved_run_id,
+                        dir_fd=base_fd,
+                        follow_symlinks=False,
+                    )
+                except OSError as exc:
+                    raise PlatformPathError(
+                        f"run directory identity changed during reservation: {run_dir}"
+                    ) from exc
+                try:
+                    run_fd = os.open(
+                        reserved_run_id,
+                        _reservation_directory_flags(),
+                        dir_fd=base_fd,
+                    )
+                except OSError as exc:
+                    raise PlatformPathError(
+                        f"run directory identity changed during reservation: {run_dir}"
+                    ) from exc
+                opened_identity = os.fstat(run_fd)
+                _assert_directory_identity(created_identity, opened_identity, run_dir)
+
+                token = secrets.token_hex(32)
+                _write_run_reservation_marker(run_fd, token)
+                os.fsync(run_fd)
+
+                try:
+                    current_identity = os.stat(
+                        reserved_run_id,
+                        dir_fd=base_fd,
+                        follow_symlinks=False,
+                    )
+                    current_base = base.lstat()
+                except OSError as exc:
+                    raise PlatformPathError(
+                        f"run directory identity changed during reservation: {run_dir}"
+                    ) from exc
+                _assert_directory_identity(opened_identity, current_identity, run_dir)
+                _assert_directory_identity(base_opened, current_base, base)
+                return RunDirectoryReservation(
+                    run_id=reserved_run_id,
+                    run_dir=run_dir,
+                    token=token,
+                    device=opened_identity.st_dev,
+                    inode=opened_identity.st_ino,
+                )
+            except BaseException:
+                if run_fd is not None:
+                    try:
+                        os.unlink(_RUN_RESERVATION_MARKER, dir_fd=run_fd)
+                    except OSError:
+                        pass
+                cleanup_identity = opened_identity or created_identity
+                if cleanup_identity is not None:
+                    try:
+                        current_identity = os.stat(
+                            reserved_run_id,
+                            dir_fd=base_fd,
+                            follow_symlinks=False,
+                        )
+                        if _same_directory_identity(cleanup_identity, current_identity):
+                            os.rmdir(reserved_run_id, dir_fd=base_fd)
+                    except OSError:
+                        pass
+                raise
+            finally:
+                if run_fd is not None:
+                    os.close(run_fd)
+    finally:
+        os.close(base_fd)
     raise RuntimeError(f"could not reserve a unique run directory under {base}")
 
 

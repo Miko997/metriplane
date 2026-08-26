@@ -1128,6 +1128,41 @@ def test_run_context_claims_exact_reserved_run_directory(
     assert not reservation.marker_path.exists()
 
 
+def test_reserve_run_directory_marker_cannot_follow_swapped_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    run_dir = base / "reserved_run"
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("unchanged\n", encoding="utf-8")
+    original_writer = run_provenance._write_run_reservation_marker
+
+    def swap_before_marker(directory_fd: int, token: str) -> None:
+        run_dir.rename(parked_run_dir)
+        run_dir.symlink_to(outside, target_is_directory=True)
+        original_writer(directory_fd, token)
+
+    monkeypatch.setattr(
+        run_provenance,
+        "_write_run_reservation_marker",
+        swap_before_marker,
+    )
+
+    with pytest.raises(PlatformPathError, match="identity changed during reservation"):
+        run_provenance.reserve_run_directory(base, "reserved_run")
+
+    assert run_dir.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "unchanged\n"
+    assert not (outside / ".metriplane-run-reservation").exists()
+    assert not (parked_run_dir / ".metriplane-run-reservation").exists()
+
+
 @pytest.mark.parametrize(
     ("run_id", "expected_collision_run_id"),
     [

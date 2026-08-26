@@ -516,6 +516,125 @@ def test_create_profile_final_swap_cannot_redirect_atomic_overwrite(
     assert anchors_path.read_text(encoding="utf-8") == original_content
 
 
+def test_macos_simulation_uses_portable_atomic_overwrite(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    destination.write_bytes(b"original\n")
+    monkeypatch.setattr(safe_writes, "_use_portable_overwrite", lambda: True)
+
+    def fail_exchange(_directory_fd: int, _left: str, _right: str) -> None:
+        raise AssertionError("Linux renameat2 path must not run in the macOS simulation")
+
+    monkeypatch.setattr(safe_writes, "_exchange_entries", fail_exchange)
+
+    with safe_writes.open_secure_directory(
+        tmp_path,
+        Path("configs/local"),
+        create=False,
+    ) as directory:
+        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
+
+    assert destination.read_bytes() == b"replacement\n"
+    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
+    assert not list(local_dir.glob(".safe.yaml.backup-*"))
+
+
+def test_macos_portable_overwrite_rejects_destination_symlink_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    parked_destination = local_dir / "safe-original.yaml"
+    outside = tmp_path / "outside.yaml"
+    original = b"original\n"
+    outside_content = b"outside must remain unchanged\n"
+    destination.write_bytes(original)
+    outside.write_bytes(outside_content)
+    monkeypatch.setattr(safe_writes, "_use_portable_overwrite", lambda: True)
+    original_assert = safe_writes._assert_destination_unchanged
+    calls = 0
+
+    def swap_before_install(directory_fd, name, display_path, expected) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            destination.rename(parked_destination)
+            destination.symlink_to(outside)
+        original_assert(directory_fd, name, display_path, expected)
+
+    monkeypatch.setattr(
+        safe_writes,
+        "_assert_destination_unchanged",
+        swap_before_install,
+    )
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(safe_writes.UnsafeWritePathError, match="links are not allowed"),
+    ):
+        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
+
+    assert outside.read_bytes() == outside_content
+    assert parked_destination.read_bytes() == original
+    assert destination.is_symlink()
+    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
+    assert not list(local_dir.glob(".safe.yaml.backup-*"))
+
+
+def test_macos_portable_atomic_overwrite_rolls_back_after_verification_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    original = b"original\n"
+    replacement = b"replacement\n"
+    destination.write_bytes(original)
+    monkeypatch.setattr(safe_writes, "_use_portable_overwrite", lambda: True)
+    original_assert = safe_writes._assert_directory_chain
+
+    def fail_after_install(links) -> None:
+        original_assert(links)
+        if destination.read_bytes() == replacement:
+            raise safe_writes.UnsafeWritePathError("injected post-install verification failure")
+
+    monkeypatch.setattr(safe_writes, "_assert_directory_chain", fail_after_install)
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(
+            safe_writes.UnsafeWritePathError,
+            match="post-install verification failure",
+        ),
+    ):
+        directory.atomic_write("safe.yaml", replacement, overwrite=True)
+
+    assert destination.read_bytes() == original
+    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
+    assert not list(local_dir.glob(".safe.yaml.backup-*"))
+
+
 def test_save_config_mid_write_failure_preserves_original_file(
     tmp_path: Path,
     monkeypatch,

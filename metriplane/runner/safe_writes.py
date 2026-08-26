@@ -10,6 +10,7 @@ import errno
 import os
 import secrets
 import stat
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -196,6 +197,52 @@ def _exchange_entries(directory_fd: int, left: str, right: str) -> None:
         raise OSError(error_number, os.strerror(error_number))
 
 
+def _use_portable_overwrite() -> bool:
+    return sys.platform == "darwin"
+
+
+def _create_backup_link(
+    directory_fd: int,
+    destination: str,
+    display_path: Path,
+    expected: _EntryIdentity,
+) -> str:
+    for _attempt in range(10):
+        backup_name = f".{destination}.backup-{secrets.token_hex(8)}"
+        try:
+            os.link(
+                destination,
+                backup_name,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileExistsError:
+            continue
+
+        try:
+            backup_identity = _destination_identity(directory_fd, backup_name, display_path)
+            if backup_identity != expected:
+                raise UnsafeWritePathError(
+                    f"Unsafe operator output path '{display_path}': "
+                    "destination changed while preserving the previous value"
+                )
+            _assert_destination_unchanged(
+                directory_fd,
+                destination,
+                display_path,
+                expected,
+            )
+        except BaseException:
+            try:
+                os.unlink(backup_name, dir_fd=directory_fd)
+            except OSError:
+                pass
+            raise
+        return backup_name
+    raise OSError(errno.EEXIST, f"could not preserve existing destination {display_path}")
+
+
 def _write_all(file_fd: int, content: bytes) -> None:
     remaining = memoryview(content)
     while remaining:
@@ -249,6 +296,78 @@ class SecureDirectory:
             os.close(child_fd)
         return created
 
+    def _portable_atomic_overwrite(
+        self,
+        staged_name: str,
+        destination: str,
+        display_path: Path,
+        expected: _EntryIdentity,
+        staged_identity: _EntryIdentity,
+    ) -> None:
+        backup_name: str | None = _create_backup_link(
+            self.fd,
+            destination,
+            display_path,
+            expected,
+        )
+        installed = False
+        try:
+            self.verify()
+            _assert_destination_unchanged(self.fd, destination, display_path, expected)
+            os.replace(
+                staged_name,
+                destination,
+                src_dir_fd=self.fd,
+                dst_dir_fd=self.fd,
+            )
+            installed = True
+            if _destination_identity(self.fd, destination, display_path) != staged_identity:
+                raise UnsafeWritePathError(
+                    f"Unsafe operator output path '{display_path}': "
+                    "staged value was not installed atomically"
+                )
+            self.verify()
+            if backup_name is None:
+                raise OSError(errno.EIO, "portable overwrite lost its rollback entry")
+            os.unlink(backup_name, dir_fd=self.fd)
+            backup_name = None
+        except BaseException:
+            if installed and backup_name is not None:
+                try:
+                    if _destination_identity(self.fd, backup_name, display_path) != expected:
+                        raise UnsafeWritePathError(
+                            f"Unsafe operator output path '{display_path}': "
+                            "rollback value changed during atomic replacement"
+                        )
+                    os.replace(
+                        backup_name,
+                        destination,
+                        src_dir_fd=self.fd,
+                        dst_dir_fd=self.fd,
+                    )
+                    backup_name = None
+                    if _destination_identity(self.fd, destination, display_path) != expected:
+                        raise UnsafeWritePathError(
+                            f"Unsafe operator output path '{display_path}': "
+                            "rollback did not restore the previous value"
+                        )
+                    os.fsync(self.fd)
+                except BaseException as rollback_error:
+                    retained_backup = backup_name
+                    backup_name = None
+                    raise OSError(
+                        errno.EIO,
+                        f"could not roll back atomic write for {display_path}; "
+                        f"previous value retained as {retained_backup}",
+                    ) from rollback_error
+            raise
+        finally:
+            if backup_name is not None:
+                try:
+                    os.unlink(backup_name, dir_fd=self.fd)
+                except FileNotFoundError:
+                    pass
+
     def atomic_write(self, name: str, content: bytes, *, overwrite: bool) -> None:
         destination = _component_name(name)
         display_path = self.relative_path / destination
@@ -264,6 +383,7 @@ class SecureDirectory:
             staged_name, staged_fd = _create_staged_file(self.fd, destination, mode)
             _write_all(staged_fd, content)
             os.fsync(staged_fd)
+            staged_identity = _identity(os.fstat(staged_fd))
             os.close(staged_fd)
             staged_fd = None
 
@@ -292,32 +412,41 @@ class SecureDirectory:
                     raise
                 os.unlink(staged_name, dir_fd=self.fd)
             else:
-                exchanged = False
-                try:
-                    _exchange_entries(self.fd, staged_name, destination)
-                    exchanged = True
-                    displaced = os.stat(
+                if _use_portable_overwrite():
+                    self._portable_atomic_overwrite(
                         staged_name,
-                        dir_fd=self.fd,
-                        follow_symlinks=False,
+                        destination,
+                        display_path,
+                        expected,
+                        staged_identity,
                     )
-                    if _identity(displaced) != expected:
-                        raise UnsafeWritePathError(
-                            f"Unsafe operator output path '{display_path}': "
-                            "destination changed during atomic replacement"
+                else:
+                    exchanged = False
+                    try:
+                        _exchange_entries(self.fd, staged_name, destination)
+                        exchanged = True
+                        displaced = os.stat(
+                            staged_name,
+                            dir_fd=self.fd,
+                            follow_symlinks=False,
                         )
-                    self.verify()
-                except BaseException:
-                    if exchanged:
-                        try:
-                            _exchange_entries(self.fd, staged_name, destination)
-                        except OSError as rollback_error:
-                            raise OSError(
-                                errno.EIO,
-                                f"could not roll back atomic write for {display_path}",
-                            ) from rollback_error
-                    raise
-                os.unlink(staged_name, dir_fd=self.fd)
+                        if _identity(displaced) != expected:
+                            raise UnsafeWritePathError(
+                                f"Unsafe operator output path '{display_path}': "
+                                "destination changed during atomic replacement"
+                            )
+                        self.verify()
+                    except BaseException:
+                        if exchanged:
+                            try:
+                                _exchange_entries(self.fd, staged_name, destination)
+                            except OSError as rollback_error:
+                                raise OSError(
+                                    errno.EIO,
+                                    f"could not roll back atomic write for {display_path}",
+                                ) from rollback_error
+                        raise
+                    os.unlink(staged_name, dir_fd=self.fd)
             staged_name = None
             os.fsync(self.fd)
         finally:
