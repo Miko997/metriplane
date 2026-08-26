@@ -25,7 +25,7 @@ def find_run_artifact(run_dir: Path, names: list[str] | tuple[str, ...]) -> Path
     """Return a contained, regular, non-symlink artifact from a selected run."""
     try:
         root = run_dir.resolve(strict=True)
-    except OSError:
+    except (OSError, RuntimeError):
         return None
     if not root.is_dir():
         return None
@@ -37,7 +37,7 @@ def find_run_artifact(run_dir: Path, names: list[str] | tuple[str, ...]) -> Path
                 continue
             resolved = candidate.resolve(strict=True)
             resolved.relative_to(root)
-        except (OSError, ValueError):
+        except (OSError, RuntimeError, ValueError):
             continue
         return resolved
     return None

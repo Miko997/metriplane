@@ -28,10 +28,8 @@ from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
 from metriplane.metrics import MetricsRegistry, start_metrics_server
 from metriplane.observability.timing import StageTiming
 from metriplane.paths import (
-    PlatformPathError,
     PlatformPaths,
     normalize_runs_dir,
-    resolve_platform_paths,
 )
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
@@ -688,12 +686,6 @@ def run_loop(
     if effective_runs_dir is None:
         if paths is not None:
             effective_runs_dir = str(paths.runs_dir)
-        elif normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR")) is None:
-            try:
-                effective_runs_dir = str(resolve_platform_paths().runs_dir)
-            except PlatformPathError as exc:
-                print(f"platform path error: {exc}", file=sys.stderr)
-                return 2
     resources = _RunResources()
     try:
         return _run_loop_impl(

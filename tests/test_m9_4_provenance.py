@@ -55,6 +55,71 @@ def test_runtime_provenance_uses_injected_platform_runs_dir(
     assert captured["runs_dir"] == str(tmp_path / "data" / "runs")
 
 
+def test_primary_runtime_injects_platform_default(tmp_path: Path, monkeypatch) -> None:
+    from metriplane import cli, run
+
+    paths = _platform_paths(tmp_path / "platform")
+    captured: dict[str, object] = {}
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(cli, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(
+        run,
+        "run_loop",
+        lambda _cfg, **kwargs: (captured.update(kwargs), 18)[1],
+    )
+
+    assert cli._main_run([]) == 18
+    assert captured["paths"] is paths
+
+
+@pytest.mark.parametrize("override_source", ["cli", "config"])
+def test_primary_runtime_explicit_runs_dir_skips_platform_resolution(
+    override_source: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane import cli, run
+
+    explicit = tmp_path / "explicit-runs"
+    configured = str(explicit) if override_source == "config" else None
+    argv = ["--runs-dir", str(explicit)] if override_source == "cli" else []
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "metriplane.config.load_config",
+        lambda _path: Config(runs_dir=configured),
+    )
+    monkeypatch.setattr(
+        cli,
+        "resolve_platform_paths",
+        lambda: pytest.fail("an explicit run root must not require platform resolution"),
+    )
+
+    def fake_run_loop(cfg: Config, **kwargs) -> int:
+        captured["cfg"] = cfg
+        captured.update(kwargs)
+        return 20
+
+    monkeypatch.setattr(run, "run_loop", fake_run_loop)
+
+    assert cli._main_run(argv) == 20
+    assert captured["paths"] is None
+    if override_source == "cli":
+        assert captured["runs_dir"] == str(explicit)
+    else:
+        assert captured["runs_dir"] is None
+        assert isinstance(captured["cfg"], Config)
+        assert captured["cfg"].runs_dir == str(explicit)
+
+
+def test_legacy_runtime_preserves_docker_data_mount(monkeypatch) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.delenv("METRIPLANE_DATA_DIR", raising=False)
+    monkeypatch.setattr(run_provenance, "in_docker", lambda: True)
+
+    assert run_provenance.data_dir() == Path("/data")
+
+
 @pytest.mark.parametrize(
     ("module_name", "entrypoint_name", "implementation_name"),
     [
@@ -78,44 +143,30 @@ def test_runtime_provenance_preserves_data_dir_environment_precedence(
 
     monkeypatch.setenv("METRIPLANE_DATA_DIR", str(tmp_path / "docker-data"))
     monkeypatch.setattr(module, implementation_name, fake_implementation)
-    monkeypatch.setattr(
-        module,
-        "resolve_platform_paths",
-        lambda: pytest.fail("METRIPLANE_DATA_DIR must precede ambient platform paths"),
-    )
 
     assert getattr(module, entrypoint_name)(Config()) == 19
     assert captured["runs_dir"] is None
 
 
-@pytest.mark.parametrize(
-    ("module_name", "entrypoint_name", "implementation_name"),
-    [
-        ("metriplane.run", "run_loop", "_run_loop_impl"),
-        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
-    ],
-)
-def test_runtime_path_resolution_failure_is_user_facing(
-    module_name: str,
-    entrypoint_name: str,
-    implementation_name: str,
+def test_primary_runtime_path_resolution_failure_is_user_facing(
     monkeypatch,
     capsys,
 ) -> None:
-    module = __import__(module_name, fromlist=[entrypoint_name])
-    monkeypatch.delenv("METRIPLANE_DATA_DIR", raising=False)
+    from metriplane import cli, run
+
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
     monkeypatch.setattr(
-        module,
+        cli,
         "resolve_platform_paths",
         lambda: (_ for _ in ()).throw(PlatformPathError("home unavailable")),
     )
     monkeypatch.setattr(
-        module,
-        implementation_name,
+        run,
+        "run_loop",
         lambda *_args, **_kwargs: pytest.fail("runtime must not start"),
     )
 
-    assert getattr(module, entrypoint_name)(Config()) == 2
+    assert cli._main_run([]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "platform path error: home unavailable\n"
@@ -184,6 +235,35 @@ def test_runtime_symlink_loop_runs_dir_fails_cleanly(
 
     assert result == 2
     assert "cannot resolve run-recording root" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+def test_runtime_child_symlink_loop_fails_cleanly(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    child = runs_dir / "loop_probe"
+    child.symlink_to(child.name)
+
+    result = getattr(module, entrypoint_name)(
+        Config(source_mode="dummy"),
+        run_id="loop_probe",
+        runs_dir=str(runs_dir),
+    )
+
+    assert result == 2
+    assert "cannot resolve run-recording path" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -272,7 +352,7 @@ def test_runtime_whitespace_runs_dir_uses_injected_root_without_writing_ambient(
         ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
     ],
 )
-def test_runtime_whitespace_data_environment_uses_platform_root(
+def test_runtime_whitespace_data_environment_preserves_legacy_fallback(
     module_name: str,
     entrypoint_name: str,
     implementation_name: str,
@@ -280,11 +360,9 @@ def test_runtime_whitespace_data_environment_uses_platform_root(
     monkeypatch,
 ) -> None:
     module = __import__(module_name, fromlist=[entrypoint_name])
-    paths = _platform_paths(tmp_path / "injected")
     captured: dict[str, object] = {}
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("METRIPLANE_DATA_DIR", " \t ")
-    monkeypatch.setattr(module, "resolve_platform_paths", lambda: paths)
     monkeypatch.setattr(
         module,
         implementation_name,
@@ -292,7 +370,7 @@ def test_runtime_whitespace_data_environment_uses_platform_root(
     )
 
     assert getattr(module, entrypoint_name)(Config()) == 33
-    assert captured["runs_dir"] == str(paths.runs_dir)
+    assert captured["runs_dir"] is None
     assert not (tmp_path / " \t ").exists()
 
 
@@ -595,7 +673,7 @@ def test_primary_run_help_names_platform_runs_directory(capsys) -> None:
         ([], " \t "),
     ],
 )
-def test_metriplane_run_console_delegates_blank_overrides_to_platform_default(
+def test_legacy_run_console_delegates_blank_overrides_to_legacy_fallback(
     argv: list[str],
     configured_runs_dir: str | None,
     monkeypatch,

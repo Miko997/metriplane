@@ -14,7 +14,7 @@ from metriplane.assistant.models import CitationModel
 def _find(run_dir: Path, names: list[str]) -> Path | None:
     try:
         root = run_dir.resolve(strict=True)
-    except OSError:
+    except (OSError, RuntimeError):
         return None
     if not root.is_dir():
         return None
@@ -26,7 +26,7 @@ def _find(run_dir: Path, names: list[str]) -> Path | None:
                 continue
             resolved = candidate.resolve(strict=True)
             resolved.relative_to(root)
-        except (OSError, ValueError):
+        except (OSError, RuntimeError, ValueError):
             continue
         return resolved
     return None

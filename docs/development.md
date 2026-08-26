@@ -102,14 +102,15 @@ path error contract before a service or writer starts.
 A launcher override is propagated to the runner, its allowlisted replay command, and the `RUNS`
 environment used by allowlisted `tools/mp.sh` jobs.
 
-The `metriplane run`, `metriplane-run`, and direct `python -m metriplane.run` entry points share the
-same platform default. Supplying `--runs-dir`, config `runs_dir`, or injected `PlatformPaths` still
-takes precedence.
+The primary `metriplane run` command injects the platform default. The legacy `metriplane-run`
+console script, direct `python -m metriplane.run`, and runtime APIs without injected paths retain
+their established fallback: `/data/runs` when the Docker data directory is active and `./runs` on a
+host. Supplying `--runs-dir`, config `runs_dir`, or injected `PlatformPaths` still takes precedence.
 
 Runtime provenance resolves its run root in this order: direct `--runs-dir`, config `runs_dir`, an
-injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the XDG/platform default above. This
-keeps the Docker `/data` mount contract while allowing tests and embedding applications to inject
-one isolated root explicitly.
+injected `PlatformPaths`, `$METRIPLANE_DATA_DIR/runs`, then the legacy Docker or host fallback above.
+This keeps the Docker `/data` mount contract while allowing platform-aware commands, tests, and
+embedding applications to inject one isolated root explicitly.
 
 Run IDs accepted by the runtime, launcher, operator API, Sentinel, benchmark helpers, and external
 fixture writer are portable single-component names containing letters, numbers, dots, dashes, or

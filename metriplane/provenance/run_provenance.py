@@ -23,7 +23,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import yaml
 
 from metriplane.config import Config, resolve_profile
-from metriplane.paths import normalize_runs_dir, resolve_runs_dir
+from metriplane.paths import PlatformPathError, normalize_runs_dir, resolve_runs_dir
 from metriplane.run_ids import validate_portable_run_id
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
@@ -376,7 +376,18 @@ def create_run_context(
         raise AssertionError("run-recording root unexpectedly resolved as absent")
 
     # Make run dir unique (avoid overwriting) and keep it beneath runs_dir.
-    candidate = (base / rid).resolve()
+    unresolved_candidate = base / rid
+    if unresolved_candidate.is_symlink():
+        raise PlatformPathError(
+            f"cannot resolve run-recording path {unresolved_candidate}: "
+            "symbolic links are not allowed"
+        )
+    try:
+        candidate = unresolved_candidate.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise PlatformPathError(
+            f"cannot resolve run-recording path {unresolved_candidate}: {exc}"
+        ) from exc
     try:
         candidate.relative_to(base)
     except ValueError as exc:  # defense in depth; the run-id syntax already rejects separators

@@ -13,7 +13,12 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from metriplane.paths import PlatformPaths
+from metriplane.paths import (
+    PlatformPathError,
+    PlatformPaths,
+    normalize_runs_dir,
+    resolve_platform_paths,
+)
 
 log = logging.getLogger("metriplane.cli")
 
@@ -87,6 +92,17 @@ def _main_run(argv: list[str], *, paths: PlatformPaths | None = None) -> int:
     args = p.parse_args(argv)
 
     cfg = load_config(Path(args.config))
+
+    if (
+        paths is None
+        and normalize_runs_dir(args.runs_dir) is None
+        and normalize_runs_dir(cfg.runs_dir) is None
+    ):
+        try:
+            paths = resolve_platform_paths()
+        except PlatformPathError as exc:
+            print(f"platform path error: {exc}", file=sys.stderr)
+            return 2
 
     # Allow CLI to override profile without requiring config edits.
     if args.profile:

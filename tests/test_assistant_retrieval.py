@@ -69,6 +69,17 @@ def test_retrieval_does_not_follow_incident_symlink_outside_run(tmp_path: Path):
     assert limitations == ["no incident artifact found in run dir"]
 
 
+def test_retrieval_symlink_loop_run_dir_degrades_without_error(tmp_path: Path):
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+
+    incidents, citations, limitations = retrieval.retrieve_incidents(loop)
+
+    assert incidents == []
+    assert citations == []
+    assert limitations == ["no incident artifact found in run dir"]
+
+
 def test_known_object_ids():
     ids = retrieval.known_object_ids(BUNDLE)
     assert "cart_01" in ids

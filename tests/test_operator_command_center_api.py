@@ -115,6 +115,15 @@ def test_nested_artifact_parent_symlink_outside_run_is_rejected(tmp_path: Path):
     assert get_incidents(run) == []
 
 
+def test_symlink_loop_run_dir_degrades_without_error(tmp_path: Path):
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+
+    assert find_run_artifact(loop, ["session.jsonl"]) is None
+    assert get_objects(loop) == []
+    assert get_incidents(loop) == []
+
+
 def test_export_writes_bundle_json(tmp_path):
     out = tmp_path / "cc.json"
     payload = export_command_center(BUNDLE, out)
