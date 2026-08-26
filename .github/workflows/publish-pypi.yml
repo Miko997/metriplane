@@ -76,6 +76,9 @@ jobs:
     name: Run required release gates
     if: github.event_name == 'push'
     needs: provenance
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/release-gates.yml
 
   build:

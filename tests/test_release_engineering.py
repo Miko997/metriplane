@@ -28,6 +28,10 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
 
     assert jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
     assert jobs["gates"]["needs"] == "provenance"
+    assert jobs["gates"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+    }
     assert jobs["build"]["needs"] == ["provenance", "gates"]
     assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
