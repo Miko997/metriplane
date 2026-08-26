@@ -517,7 +517,7 @@ def test_create_profile_final_swap_cannot_redirect_atomic_overwrite(
     assert anchors_path.read_text(encoding="utf-8") == original_content
 
 
-def test_macos_simulation_uses_portable_atomic_overwrite(
+def test_macos_without_atomic_exchange_fails_closed(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -534,16 +534,18 @@ def test_macos_simulation_uses_portable_atomic_overwrite(
 
     monkeypatch.setattr(safe_writes, "_exchange_entries", fail_exchange)
 
-    with safe_writes.open_secure_directory(
-        tmp_path,
-        Path("configs/local"),
-        create=False,
-    ) as directory:
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(OSError, match="race-resistant atomic overwrite is unavailable"),
+    ):
         directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
 
-    assert destination.read_bytes() == b"replacement\n"
+    assert destination.read_bytes() == b"original\n"
     assert not list(local_dir.glob(".safe.yaml.tmp-*"))
-    assert not list(local_dir.glob(".safe.yaml.backup-*"))
 
 
 def test_darwin_atomic_exchange_uses_renameatx_np(monkeypatch) -> None:
@@ -570,7 +572,7 @@ def test_darwin_atomic_exchange_uses_renameatx_np(monkeypatch) -> None:
     assert calls == [(17, b"staged", 17, b"destination", 2)]
 
 
-def test_darwin_unsupported_atomic_exchange_uses_portable_fallback(
+def test_darwin_unsupported_atomic_exchange_fails_closed(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -588,19 +590,69 @@ def test_darwin_unsupported_atomic_exchange_uses_portable_fallback(
 
     monkeypatch.setattr(safe_writes, "_exchange_entries", unsupported_exchange)
 
-    with safe_writes.open_secure_directory(
-        tmp_path,
-        Path("configs/local"),
-        create=False,
-    ) as directory:
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(OSError, match="injected unsupported exchange"),
+    ):
         directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
 
-    assert destination.read_bytes() == b"replacement\n"
+    assert destination.read_bytes() == b"original\n"
     assert not list(local_dir.glob(".safe.yaml.tmp-*"))
-    assert not list(local_dir.glob(".safe.yaml.backup-*"))
 
 
-def test_macos_portable_overwrite_rejects_destination_symlink_swap(
+def test_atomic_exchange_rejects_staged_name_substitution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    parked_staged = local_dir / "parked-staged.yaml"
+    original = b"original\n"
+    replacement = b"replacement\n"
+    attacker = b"attacker\n"
+    destination.write_bytes(original)
+    original_exchange = safe_writes._exchange_entries
+    calls = 0
+
+    def substitute_staged(directory_fd, staged_name, destination_name) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            staged_path = local_dir / staged_name
+            staged_path.rename(parked_staged)
+            staged_path.write_bytes(attacker)
+        original_exchange(directory_fd, staged_name, destination_name)
+
+    monkeypatch.setattr(safe_writes, "_exchange_entries", substitute_staged)
+
+    with (
+        safe_writes.open_secure_directory(
+            tmp_path,
+            Path("configs/local"),
+            create=False,
+        ) as directory,
+        pytest.raises(
+            safe_writes.UnsafeWritePathError,
+            match="exchange entries changed during atomic replacement",
+        ),
+    ):
+        directory.atomic_write("safe.yaml", replacement, overwrite=True)
+
+    assert destination.read_bytes() == original
+    assert parked_staged.read_bytes() == replacement
+    retained = list(local_dir.glob(".safe.yaml.tmp-*"))
+    assert len(retained) == 1
+    assert retained[0].read_bytes() == attacker
+
+
+def test_atomic_exchange_recovers_trusted_destination_after_rollback_interference(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -612,65 +664,27 @@ def test_macos_portable_overwrite_rejects_destination_symlink_swap(
     parked_destination = local_dir / "safe-original.yaml"
     outside = tmp_path / "outside.yaml"
     original = b"original\n"
+    replacement = b"replacement\n"
     outside_content = b"outside must remain unchanged\n"
+    late_substitute = b"late substitute\n"
     destination.write_bytes(original)
     outside.write_bytes(outside_content)
-    monkeypatch.setattr(safe_writes, "_use_portable_overwrite", lambda: True)
-    original_assert = safe_writes._assert_destination_unchanged
+    original_exchange = safe_writes._exchange_entries
     calls = 0
 
-    def swap_before_install(directory_fd, name, display_path, expected) -> None:
+    def interfere_with_rollback(directory_fd, staged_name, destination_name) -> None:
         nonlocal calls
         calls += 1
-        if calls == 2:
+        staged_path = local_dir / staged_name
+        if calls == 1:
             destination.rename(parked_destination)
             destination.symlink_to(outside)
-        original_assert(directory_fd, name, display_path, expected)
+        elif calls == 2:
+            staged_path.unlink()
+            staged_path.write_bytes(late_substitute)
+        original_exchange(directory_fd, staged_name, destination_name)
 
-    monkeypatch.setattr(
-        safe_writes,
-        "_assert_destination_unchanged",
-        swap_before_install,
-    )
-
-    with (
-        safe_writes.open_secure_directory(
-            tmp_path,
-            Path("configs/local"),
-            create=False,
-        ) as directory,
-        pytest.raises(safe_writes.UnsafeWritePathError, match="links are not allowed"),
-    ):
-        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
-
-    assert outside.read_bytes() == outside_content
-    assert parked_destination.read_bytes() == original
-    assert destination.is_symlink()
-    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
-    assert not list(local_dir.glob(".safe.yaml.backup-*"))
-
-
-def test_macos_portable_atomic_overwrite_rolls_back_after_verification_failure(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    from metriplane.runner import safe_writes
-
-    local_dir = tmp_path / "configs" / "local"
-    local_dir.mkdir(parents=True)
-    destination = local_dir / "safe.yaml"
-    original = b"original\n"
-    replacement = b"replacement\n"
-    destination.write_bytes(original)
-    monkeypatch.setattr(safe_writes, "_use_portable_overwrite", lambda: True)
-    original_assert = safe_writes._assert_directory_chain
-
-    def fail_after_install(links) -> None:
-        original_assert(links)
-        if destination.read_bytes() == replacement:
-            raise safe_writes.UnsafeWritePathError("injected post-install verification failure")
-
-    monkeypatch.setattr(safe_writes, "_assert_directory_chain", fail_after_install)
+    monkeypatch.setattr(safe_writes, "_exchange_entries", interfere_with_rollback)
 
     with (
         safe_writes.open_secure_directory(
@@ -678,16 +692,16 @@ def test_macos_portable_atomic_overwrite_rolls_back_after_verification_failure(
             Path("configs/local"),
             create=False,
         ) as directory,
-        pytest.raises(
-            safe_writes.UnsafeWritePathError,
-            match="post-install verification failure",
-        ),
+        pytest.raises(OSError, match="could not roll back atomic write"),
     ):
         directory.atomic_write("safe.yaml", replacement, overwrite=True)
 
-    assert destination.read_bytes() == original
-    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
-    assert not list(local_dir.glob(".safe.yaml.backup-*"))
+    assert destination.read_bytes() == replacement
+    assert parked_destination.read_bytes() == original
+    assert outside.read_bytes() == outside_content
+    retained = list(local_dir.glob(".safe.yaml.tmp-*"))
+    assert len(retained) == 1
+    assert retained[0].read_bytes() == late_substitute
 
 
 def test_save_config_mid_write_failure_preserves_original_file(

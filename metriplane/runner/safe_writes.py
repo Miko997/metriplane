@@ -138,9 +138,7 @@ def _open_child_directory(
     )
 
 
-def _destination_identity(
-    directory_fd: int, name: str, display_path: Path
-) -> _EntryIdentity | None:
+def _entry_identity(directory_fd: int, name: str, display_path: Path) -> _EntryIdentity | None:
     try:
         result = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
     except FileNotFoundError:
@@ -148,15 +146,24 @@ def _destination_identity(
     except OSError as exc:
         _translate_component_error(display_path, exc)
 
-    if stat.S_ISLNK(result.st_mode):
+    return _identity(result)
+
+
+def _destination_identity(
+    directory_fd: int, name: str, display_path: Path
+) -> _EntryIdentity | None:
+    identity = _entry_identity(directory_fd, name, display_path)
+    if identity is None:
+        return None
+    if stat.S_ISLNK(identity.mode):
         raise UnsafeWritePathError(
             f"Unsafe operator output path '{display_path}': links are not allowed"
         )
-    if not stat.S_ISREG(result.st_mode):
+    if not stat.S_ISREG(identity.mode):
         raise UnsafeWritePathError(
             f"Unsafe operator output path '{display_path}': expected a regular file"
         )
-    return _identity(result)
+    return identity
 
 
 def _assert_destination_unchanged(
@@ -204,46 +211,16 @@ def _use_portable_overwrite() -> bool:
     return getattr(ctypes.CDLL(None), "renameatx_np", None) is None
 
 
-def _create_backup_link(
+def _unlink_if_identity(
     directory_fd: int,
-    destination: str,
+    name: str,
     display_path: Path,
     expected: _EntryIdentity,
-) -> str:
-    for _attempt in range(10):
-        backup_name = f".{destination}.backup-{secrets.token_hex(8)}"
-        try:
-            os.link(
-                destination,
-                backup_name,
-                src_dir_fd=directory_fd,
-                dst_dir_fd=directory_fd,
-                follow_symlinks=False,
-            )
-        except FileExistsError:
-            continue
-
-        try:
-            backup_identity = _destination_identity(directory_fd, backup_name, display_path)
-            if backup_identity != expected:
-                raise UnsafeWritePathError(
-                    f"Unsafe operator output path '{display_path}': "
-                    "destination changed while preserving the previous value"
-                )
-            _assert_destination_unchanged(
-                directory_fd,
-                destination,
-                display_path,
-                expected,
-            )
-        except BaseException:
-            try:
-                os.unlink(backup_name, dir_fd=directory_fd)
-            except OSError:
-                pass
-            raise
-        return backup_name
-    raise OSError(errno.EEXIST, f"could not preserve existing destination {display_path}")
+) -> bool:
+    if _entry_identity(directory_fd, name, display_path) != expected:
+        return False
+    os.unlink(name, dir_fd=directory_fd)
+    return True
 
 
 def _write_all(file_fd: int, content: bytes) -> None:
@@ -299,7 +276,7 @@ class SecureDirectory:
             os.close(child_fd)
         return created
 
-    def _portable_atomic_overwrite(
+    def _recover_trusted_destination(
         self,
         staged_name: str,
         destination: str,
@@ -307,69 +284,22 @@ class SecureDirectory:
         expected: _EntryIdentity,
         staged_identity: _EntryIdentity,
     ) -> None:
-        backup_name: str | None = _create_backup_link(
-            self.fd,
-            destination,
-            display_path,
-            expected,
-        )
-        installed = False
-        try:
-            self.verify()
-            _assert_destination_unchanged(self.fd, destination, display_path, expected)
-            os.replace(
-                staged_name,
-                destination,
-                src_dir_fd=self.fd,
-                dst_dir_fd=self.fd,
+        trusted = {expected, staged_identity}
+        current_destination = _entry_identity(self.fd, destination, display_path)
+        if current_destination in trusted:
+            return
+        current_staged = _entry_identity(self.fd, staged_name, display_path)
+        if current_staged not in trusted:
+            raise UnsafeWritePathError(
+                f"Unsafe operator output path '{display_path}': "
+                "neither exchange entry retains a trusted inode"
             )
-            installed = True
-            if _destination_identity(self.fd, destination, display_path) != staged_identity:
-                raise UnsafeWritePathError(
-                    f"Unsafe operator output path '{display_path}': "
-                    "staged value was not installed atomically"
-                )
-            self.verify()
-            if backup_name is None:
-                raise OSError(errno.EIO, "portable overwrite lost its rollback entry")
-            os.unlink(backup_name, dir_fd=self.fd)
-            backup_name = None
-        except BaseException:
-            if installed and backup_name is not None:
-                try:
-                    if _destination_identity(self.fd, backup_name, display_path) != expected:
-                        raise UnsafeWritePathError(
-                            f"Unsafe operator output path '{display_path}': "
-                            "rollback value changed during atomic replacement"
-                        )
-                    os.replace(
-                        backup_name,
-                        destination,
-                        src_dir_fd=self.fd,
-                        dst_dir_fd=self.fd,
-                    )
-                    backup_name = None
-                    if _destination_identity(self.fd, destination, display_path) != expected:
-                        raise UnsafeWritePathError(
-                            f"Unsafe operator output path '{display_path}': "
-                            "rollback did not restore the previous value"
-                        )
-                    os.fsync(self.fd)
-                except BaseException as rollback_error:
-                    retained_backup = backup_name
-                    backup_name = None
-                    raise OSError(
-                        errno.EIO,
-                        f"could not roll back atomic write for {display_path}; "
-                        f"previous value retained as {retained_backup}",
-                    ) from rollback_error
-            raise
-        finally:
-            if backup_name is not None:
-                try:
-                    os.unlink(backup_name, dir_fd=self.fd)
-                except FileNotFoundError:
-                    pass
+        _exchange_entries(self.fd, staged_name, destination)
+        if _entry_identity(self.fd, destination, display_path) != current_staged:
+            raise UnsafeWritePathError(
+                f"Unsafe operator output path '{display_path}': "
+                "trusted destination recovery was interfered with"
+            )
 
     def atomic_write(self, name: str, content: bytes, *, overwrite: bool) -> None:
         destination = _component_name(name)
@@ -382,13 +312,12 @@ class SecureDirectory:
         mode = stat.S_IMODE(expected.mode) if expected is not None else 0o666
         staged_name: str | None = None
         staged_fd: int | None = None
+        staged_identity: _EntryIdentity | None = None
         try:
             staged_name, staged_fd = _create_staged_file(self.fd, destination, mode)
+            staged_identity = _identity(os.fstat(staged_fd))
             _write_all(staged_fd, content)
             os.fsync(staged_fd)
-            staged_identity = _identity(os.fstat(staged_fd))
-            os.close(staged_fd)
-            staged_fd = None
 
             self.verify()
             _assert_destination_unchanged(self.fd, destination, display_path, expected)
@@ -404,77 +333,125 @@ class SecureDirectory:
                         follow_symlinks=False,
                     )
                     installed = True
+                    if _destination_identity(self.fd, destination, display_path) != staged_identity:
+                        raise UnsafeWritePathError(
+                            f"Unsafe operator output path '{display_path}': "
+                            "staged value was not installed atomically"
+                        )
                     self.verify()
                 except FileExistsError as exc:
                     raise WriteConflictError(
                         f"destination appeared during write: {display_path}"
                     ) from exc
                 except BaseException:
-                    if installed:
-                        os.unlink(destination, dir_fd=self.fd)
-                    raise
-                os.unlink(staged_name, dir_fd=self.fd)
-            else:
-                if _use_portable_overwrite():
-                    self._portable_atomic_overwrite(
-                        staged_name,
+                    if installed and _unlink_if_identity(
+                        self.fd,
                         destination,
                         display_path,
-                        expected,
                         staged_identity,
+                    ):
+                        os.fsync(self.fd)
+                    raise
+                if not _unlink_if_identity(
+                    self.fd,
+                    staged_name,
+                    display_path,
+                    staged_identity,
+                ):
+                    raise UnsafeWritePathError(
+                        f"Unsafe operator output path '{display_path}': "
+                        "staged path changed before cleanup"
+                    )
+            else:
+                if _use_portable_overwrite():
+                    raise OSError(
+                        errno.ENOTSUP,
+                        f"race-resistant atomic overwrite is unavailable for {display_path}",
                     )
                 else:
                     exchanged = False
+                    installed_identity: _EntryIdentity | None = None
+                    displaced_identity: _EntryIdentity | None = None
                     try:
                         _exchange_entries(self.fd, staged_name, destination)
                         exchanged = True
-                        displaced = os.stat(
-                            staged_name,
-                            dir_fd=self.fd,
-                            follow_symlinks=False,
-                        )
-                        if _identity(displaced) != expected:
+                        installed_identity = _entry_identity(self.fd, destination, display_path)
+                        displaced_identity = _entry_identity(self.fd, staged_name, display_path)
+                        if installed_identity != staged_identity or displaced_identity != expected:
                             raise UnsafeWritePathError(
                                 f"Unsafe operator output path '{display_path}': "
-                                "destination changed during atomic replacement"
+                                "exchange entries changed during atomic replacement"
                             )
                         self.verify()
-                    except BaseException as exc:
-                        unsupported_exchange = (
-                            not exchanged
-                            and sys.platform == "darwin"
-                            and isinstance(exc, OSError)
-                            and exc.errno in {errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}
-                        )
-                        if unsupported_exchange:
-                            self._portable_atomic_overwrite(
-                                staged_name,
-                                destination,
-                                display_path,
-                                expected,
-                                staged_identity,
+                        if not _unlink_if_identity(
+                            self.fd,
+                            staged_name,
+                            display_path,
+                            expected,
+                        ):
+                            raise UnsafeWritePathError(
+                                f"Unsafe operator output path '{display_path}': "
+                                "displaced destination changed before cleanup"
                             )
-                        else:
-                            if exchanged:
+                    except BaseException:
+                        if exchanged:
+                            try:
+                                if (
+                                    installed_identity is None
+                                    or displaced_identity is None
+                                    or _entry_identity(self.fd, destination, display_path)
+                                    != installed_identity
+                                    or _entry_identity(self.fd, staged_name, display_path)
+                                    != displaced_identity
+                                ):
+                                    raise UnsafeWritePathError(
+                                        f"Unsafe operator output path '{display_path}': "
+                                        "exchange entries changed before rollback"
+                                    )
+                                _exchange_entries(self.fd, staged_name, destination)
+                                if (
+                                    _entry_identity(self.fd, destination, display_path)
+                                    != displaced_identity
+                                    or _entry_identity(self.fd, staged_name, display_path)
+                                    != installed_identity
+                                ):
+                                    raise UnsafeWritePathError(
+                                        f"Unsafe operator output path '{display_path}': "
+                                        "rollback identities are not exact"
+                                    )
+                            except BaseException as rollback_error:
                                 try:
-                                    _exchange_entries(self.fd, staged_name, destination)
-                                except OSError as rollback_error:
+                                    self._recover_trusted_destination(
+                                        staged_name,
+                                        destination,
+                                        display_path,
+                                        expected,
+                                        staged_identity,
+                                    )
+                                except BaseException as recovery_error:
                                     raise OSError(
                                         errno.EIO,
-                                        f"could not roll back atomic write for {display_path}",
-                                    ) from rollback_error
-                            raise
-                    else:
-                        os.unlink(staged_name, dir_fd=self.fd)
+                                        f"could not recover a trusted destination for {display_path}",
+                                    ) from recovery_error
+                                raise OSError(
+                                    errno.EIO,
+                                    f"could not roll back atomic write for {display_path}",
+                                ) from rollback_error
+                        raise
             staged_name = None
             os.fsync(self.fd)
         finally:
             if staged_fd is not None:
                 os.close(staged_fd)
-            if staged_name is not None:
+            if staged_name is not None and staged_identity is not None:
                 try:
-                    os.unlink(staged_name, dir_fd=self.fd)
-                except FileNotFoundError:
+                    _unlink_if_identity(
+                        self.fd,
+                        staged_name,
+                        display_path,
+                        staged_identity,
+                    )
+                except OSError:
                     pass
 
     def close(self) -> None:
