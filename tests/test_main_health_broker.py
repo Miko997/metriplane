@@ -38,7 +38,6 @@ def _config(tmp_path: Path) -> broker.BrokerConfig:
             "app_slug": "metriplane-main-health-publisher",
             "core_ruleset_id": 20613848,
             "credential_path": str(tmp_path / "credentials" / "app.pem"),
-            "health_max_age_seconds": 300,
             "main_update_ruleset_id": 21600001,
             "max_clock_skew_seconds": 30,
             "poll_seconds": 60,
@@ -1327,6 +1326,7 @@ class FakeTransactionApi(broker.GitHubApi):
         self.extra_active_ruleset = False
         self.inventory_source_drift = False
         self.include_deep_runs = True
+        self.older_weekly_rerun: dict[str, Any] | None = None
         self.merged = False
         self.merge_calls = 0
         self.reported_commits = 1
@@ -1500,7 +1500,7 @@ class FakeTransactionApi(broker.GitHubApi):
             assert key == "workflow_runs"
             if not self.include_deep_runs:
                 return []
-            return [
+            runs = [
                 {
                     "conclusion": conclusion,
                     "display_title": f"Main Health Deep / main-health-{cadence} / main",
@@ -1520,6 +1520,9 @@ class FakeTransactionApi(broker.GitHubApi):
                     ),
                 )
             ]
+            if self.older_weekly_rerun is not None:
+                runs.append(dict(self.older_weekly_rerun))
+            return runs
         if "/actions/runs/" in path and path.endswith("/jobs"):
             assert key == "jobs"
             run_id = int(path.split("/runs/", 1)[1].split("/", 1)[0])
@@ -1782,7 +1785,9 @@ def test_provider_consumed_request_blocks_retry_after_spool_restore(tmp_path: Pa
     assert checks.succeeded == []
 
 
-def test_health_freshness_is_rechecked_at_exact_merge_boundary(tmp_path: Path) -> None:
+def test_old_retained_state_requires_live_health_instead_of_heartbeat_commits(
+    tmp_path: Path,
+) -> None:
     service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
 
     class BoundaryState(FakeAdmissionState):
@@ -1790,17 +1795,18 @@ def test_health_freshness_is_rechecked_at_exact_merge_boundary(tmp_path: Path) -
             return {**super().read(), "updated_at": "2026-08-26T11:59:00Z"}
 
     api.current_now = NOW + timedelta(minutes=4, seconds=30)
-    with pytest.raises(broker.BrokerError, match="state is stale"):
-        service._process_pull(
-            check_controller=checks,  # type: ignore[arg-type]
-            number=81,
-            provider_now=NOW + timedelta(minutes=2),
-            settings_token="token",
-            state_branch=BoundaryState(),  # type: ignore[arg-type]
-            token="token",
-        )
-    assert api.merge_calls == 0
-    assert checks.succeeded == []
+    proof = service._process_pull(
+        check_controller=checks,  # type: ignore[arg-type]
+        number=81,
+        provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
+        state_branch=BoundaryState(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert proof is not None and proof["merge_sha"] == MERGE_SHA
+    assert api.merge_calls == 1
+    assert len(checks.succeeded) == 1
 
 
 @pytest.mark.parametrize(
@@ -1837,25 +1843,58 @@ def test_documentation_rerun_blocks_at_the_exact_merge_boundary(
 
 
 @pytest.mark.parametrize(
-    ("status", "conclusion", "message"),
+    ("status", "conclusion"),
     [
-        ("in_progress", None, "weekly deep-health attempt is not successful"),
-        ("completed", "failure", "weekly deep-health attempt is not successful"),
-        ("completed", "success", "does not retain current weekly evidence"),
+        ("in_progress", None),
+        ("completed", "failure"),
+        ("completed", "success"),
     ],
 )
 def test_deep_health_rerun_blocks_at_the_exact_merge_boundary(
     tmp_path: Path,
     status: str,
     conclusion: str | None,
-    message: str,
 ) -> None:
     service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
     api.weekly_run_id = 603
     api.weekly_status = status
     api.weekly_conclusion = conclusion
 
-    with pytest.raises(broker.BrokerError, match=message):
+    with pytest.raises(broker.BrokerError, match="unreconciled weekly deep-health attempt"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("in_progress", None), ("completed", "failure"), ("completed", "success")],
+)
+def test_older_deep_health_rerun_cannot_hide_behind_a_later_run(
+    tmp_path: Path,
+    status: str,
+    conclusion: str | None,
+) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.older_weekly_rerun = {
+        "conclusion": conclusion,
+        "display_title": "Main Health Deep / main-health-weekly / main",
+        "head_sha": BASE_SHA,
+        "id": 600,
+        "run_attempt": 2,
+        "status": status,
+        "updated_at": "2026-08-26T12:01:00Z",
+    }
+
+    with pytest.raises(broker.BrokerError, match="unreconciled weekly deep-health attempt"):
         service._process_pull(
             check_controller=checks,  # type: ignore[arg-type]
             number=81,
@@ -2347,6 +2386,19 @@ class FakeStateBranch:
         return dict(self.state)
 
 
+def test_protected_state_rejects_duplicate_aggregate_identity(tmp_path: Path) -> None:
+    results = tmp_path / "results"
+    results.mkdir()
+    run_id = "github-actions-set:v1:metriplane=501:1;documentation=502:1;security=503:1"
+    first = {"cadence": "protected-main", "recorded_at": "first", "run_id": run_id}
+    second = {"cadence": "protected-main", "recorded_at": "second", "run_id": run_id}
+    (results / "first.json").write_text(json.dumps(first), encoding="utf-8")
+    (results / "second.json").write_text(json.dumps(second), encoding="utf-8")
+
+    with pytest.raises(broker.BrokerError, match="repeats a result identity"):
+        broker.StateBranch._result_identities(tmp_path)
+
+
 def test_current_ci_selects_a_newer_active_rerun(tmp_path: Path) -> None:
     paths: list[str] = []
 
@@ -2414,6 +2466,33 @@ def test_fresh_cached_green_cannot_hide_a_newer_active_ci_attempt(
     with pytest.raises(broker.BrokerError, match="latest CI attempt is still active"):
         reconciler.reconcile_main(NOW)
     assert state.appends == []
+
+
+def test_recorded_aggregate_is_not_appended_again_as_a_freshness_heartbeat(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakeTransactionApi(config, "success")
+    state = FakeStateBranch()
+    state.state["updated_at"] = "2025-01-01T00:00:00Z"
+    state.result_identities.add(
+        (
+            "protected-main",
+            "github-actions-set:v1:metriplane=501:1;documentation=502:1;security=503:1",
+        )
+    )
+    spool = broker.DurableSpool(tmp_path / "spool")
+    reconciler = broker.HealthReconciler(
+        api=api,
+        config=config,
+        spool=spool,
+        state_branch=state,  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert reconciler.reconcile_main(NOW) == state.state
+    assert state.appends == []
+    assert spool.get_cursor("main_ci_run_id") == "501"
 
 
 def test_fresh_cached_green_records_a_new_documentation_failure(tmp_path: Path) -> None:

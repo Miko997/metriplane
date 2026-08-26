@@ -4,7 +4,6 @@
   "app_slug": "metriplane-main-health-publisher",
   "core_ruleset_id": 20613848,
   "credential_path": "/run/credentials/metriplane-main-health-broker.service/github-app-private-key.pem",
-  "health_max_age_seconds": 300,
   "main_update_ruleset_id": 0,
   "max_clock_skew_seconds": 30,
   "poll_seconds": 60,

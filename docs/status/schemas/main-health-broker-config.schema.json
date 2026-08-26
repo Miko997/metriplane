@@ -20,11 +20,6 @@
       "pattern": "^/",
       "type": "string"
     },
-    "health_max_age_seconds": {
-      "maximum": 900,
-      "minimum": 1,
-      "type": "integer"
-    },
     "main_update_ruleset_id": {
       "description": "The committed planned example uses 0; deployment must replace it with the positive provider ruleset ID.",
       "minimum": 0,
@@ -77,7 +72,6 @@
     "app_slug",
     "core_ruleset_id",
     "credential_path",
-    "health_max_age_seconds",
     "main_update_ruleset_id",
     "max_clock_skew_seconds",
     "poll_seconds",

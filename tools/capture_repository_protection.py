@@ -66,6 +66,61 @@ def _canonical(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
+def _require_positive_provider_id(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"repository response {field} must be a positive integer")
+    return int(value)
+
+
+def _validate_repository_payload(repository: str, repository_payload: dict[str, Any]) -> str:
+    owner_name, repository_name = repository.split("/", 1)
+    if repository_payload.get("full_name") != repository:
+        raise ValueError("repository response full_name does not match requested repository")
+    if repository_payload.get("name") != repository_name:
+        raise ValueError("repository response name does not match requested repository")
+    _require_positive_provider_id(repository_payload.get("id"), "id")
+    owner = repository_payload.get("owner")
+    if not isinstance(owner, dict):
+        raise TypeError("repository response owner must be an object")
+    if owner.get("login") != owner_name:
+        raise ValueError("repository response owner login does not match requested repository")
+    _require_positive_provider_id(owner.get("id"), "owner.id")
+    if owner.get("type") not in {"Organization", "User"}:
+        raise ValueError("repository response owner type is not a repository owner")
+    default_branch = repository_payload.get("default_branch")
+    if default_branch != broker.MAIN_BRANCH:
+        raise ValueError("repository default branch is not the governed main branch")
+    return default_branch
+
+
+def _validate_merge_queue_payload(
+    repository: str, merge_queue_payload: dict[str, Any]
+) -> dict[str, Any] | None:
+    if "errors" in merge_queue_payload:
+        raise ValueError("merge-queue GraphQL response contains an errors field")
+    data = merge_queue_payload.get("data")
+    if not isinstance(data, dict):
+        raise TypeError("merge-queue GraphQL response data must be an object")
+    repository_data = data.get("repository")
+    if not isinstance(repository_data, dict):
+        raise TypeError("merge-queue GraphQL repository must be an object")
+    if repository_data.get("nameWithOwner") != repository:
+        raise ValueError("merge-queue GraphQL repository does not match requested repository")
+    if "mergeQueue" not in repository_data:
+        raise ValueError("merge-queue GraphQL repository lacks mergeQueue")
+    queue = repository_data["mergeQueue"]
+    if queue is None:
+        return None
+    if not isinstance(queue, dict):
+        raise TypeError("merge-queue GraphQL mergeQueue must be an object or null")
+    if not isinstance(queue.get("id"), str) or not queue["id"]:
+        raise ValueError("merge-queue GraphQL mergeQueue id must be a non-empty string")
+    url = queue.get("url")
+    if not isinstance(url, str) or not url.startswith("https://github.com/"):
+        raise ValueError("merge-queue GraphQL mergeQueue url must be a GitHub URL")
+    return queue
+
+
 def _run_json(command: list[str]) -> dict[str, Any] | list[Any]:
     completed = subprocess.run(
         command,
@@ -374,9 +429,10 @@ def normalize_capture(
     rulesets_payload: list[dict[str, Any]],
     merge_queue_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    default_branch = repository_payload["default_branch"]
-    if default_branch != broker.MAIN_BRANCH:
-        raise ValueError("repository default branch is not the governed main branch")
+    if not REPOSITORY.fullmatch(repository):
+        raise ValueError("repository must be owner/name")
+    default_branch = _validate_repository_payload(repository, repository_payload)
+    queue = _validate_merge_queue_payload(repository, merge_queue_payload)
     active = [item for item in rulesets_payload if item.get("enforcement") == "active"]
     names = [item.get("name") for item in active]
     if len(names) != len(set(names)):
@@ -400,7 +456,6 @@ def normalize_capture(
             for ref in (broker.MAIN_REF, "~DEFAULT_BRANCH")
         )
     ]
-    queue = merge_queue_payload.get("data", {}).get("repository", {}).get("mergeQueue")
     supports_queue = queue is not None
     if supports_queue:
         selected_mode = "enforced_merge_queue"
@@ -536,7 +591,7 @@ def _capture_activation(
     query = (
         "query="
         f'query {{ repository(owner:"{owner}", name:"{name}") '
-        "{ mergeQueue { id url } } }"
+        "{ nameWithOwner mergeQueue { id url } } }"
     )
     evidence_requests: list[dict[str, Any]] = []
     repository_payload = _run_included_json(
@@ -548,6 +603,7 @@ def _capture_activation(
     )
     if not isinstance(repository_payload, dict):
         raise TypeError("repository response must be a JSON object")
+    _validate_repository_payload(repository, repository_payload)
     ruleset_summaries = _capture_ruleset_inventory(
         repository=repository,
         gh=gh,
@@ -584,6 +640,7 @@ def _capture_activation(
     )
     if not isinstance(merge_queue_payload, dict):
         raise TypeError("merge-queue GraphQL response must be a JSON object")
+    _validate_merge_queue_payload(repository, merge_queue_payload)
     capability, settings = normalize_capture(
         repository=repository,
         captured_at=captured_at,

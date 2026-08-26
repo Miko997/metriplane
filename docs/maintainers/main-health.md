@@ -137,9 +137,9 @@ same-plan proof that retains provider request IDs and raw responses:
 - human push and human merge are rejected;
 - direct App push is rejected by non-bypassed protection;
 - exact-head App merge succeeds only with four exact terminals;
-- wrong SHA, stale state, offline service, cancelled/skipped/wrong-source
-  checks, fork PR, duplicate credential, concurrent request, and settings drift
-  fail closed;
+- wrong SHA, future-dated state, unreconciled provider attempt, offline service,
+  cancelled/skipped/wrong-source checks, fork PR, duplicate credential,
+  concurrent request, and settings drift fail closed;
 - the merge commit has base and admitted head as its two parents, its tree
   equals the admitted head tree, and current main equals that merge commit;
 - the state branch remains an externally read-back-verified append-only chain.
@@ -148,7 +148,8 @@ same-plan proof that retains provider request IDs and raw responses:
 `repository-protection-activation-evidence.json` with the unnormalized
 repository, initial and verification inventories, ruleset details, merge-queue
 response, safe response headers, and one provider request ID per request. It
-rejects missing request IDs, summary/detail disagreement, or inventory changes.
+rejects mismatched REST/GraphQL repository identity, malformed GraphQL data or
+errors, missing request IDs, summary/detail disagreement, or inventory changes.
 
 Only after that proof and credential rotation may the repository-protection
 example change activation_state from planned to active.

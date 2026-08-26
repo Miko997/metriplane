@@ -38,8 +38,36 @@ def _capture() -> tuple[dict[str, object], dict[str, object], dict[str, object]]
     return policy, capability, settings
 
 
+def _repository_payload(
+    repository: str = "Miko997/metriplane", *, default_branch: str = "main"
+) -> dict[str, object]:
+    owner, name = repository.split("/", 1)
+    return {
+        "default_branch": default_branch,
+        "full_name": repository,
+        "id": 101,
+        "name": name,
+        "owner": {"id": 202, "login": owner, "type": "User"},
+    }
+
+
+def _merge_queue_payload(
+    repository: str = "Miko997/metriplane",
+    *,
+    queue: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "data": {
+            "repository": {
+                "mergeQueue": queue,
+                "nameWithOwner": repository,
+            }
+        }
+    }
+
+
 def _activation_provider_payloads() -> tuple[dict[str, object], ...]:
-    repository = {"default_branch": "main", "private": True}
+    repository = {**_repository_payload(), "private": True}
     summary = {
         "enforcement": "active",
         "id": 41,
@@ -64,7 +92,7 @@ def _activation_provider_payloads() -> tuple[dict[str, object], ...]:
             },
         ],
     }
-    merge_queue = {"data": {"repository": {"mergeQueue": None}}}
+    merge_queue = _merge_queue_payload()
     return repository, summary, detail, merge_queue
 
 
@@ -113,7 +141,7 @@ def test_capture_drift_fails_closed(target: str, key: str, value: object) -> Non
 
 
 def test_normalization_is_deterministic_and_selects_available_mode() -> None:
-    repository = {"default_branch": "main"}
+    repository = _repository_payload("owner/repo")
     ruleset = {
         "id": 1,
         "enforcement": "active",
@@ -131,7 +159,7 @@ def test_normalization_is_deterministic_and_selects_available_mode() -> None:
             },
         ],
     }
-    queue = {"data": {"repository": {"mergeQueue": None}}}
+    queue = _merge_queue_payload("owner/repo")
     first = normalize_capture(
         repository="owner/repo",
         captured_at="2026-08-25T00:00:00Z",
@@ -156,9 +184,94 @@ def test_normalization_rejects_a_non_main_default_branch() -> None:
         normalize_capture(
             repository="owner/repo",
             captured_at="2026-08-25T00:00:00Z",
-            repository_payload={"default_branch": "develop"},
+            repository_payload=_repository_payload("owner/repo", default_branch="develop"),
             rulesets_payload=[],
-            merge_queue_payload={"data": {"repository": {"mergeQueue": None}}},
+            merge_queue_payload=_merge_queue_payload("owner/repo"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("full_name", "attacker/repo", "full_name does not match"),
+        ("name", "foreign", "name does not match"),
+        ("id", 0, "id must be a positive integer"),
+        ("owner.login", "attacker", "owner login does not match"),
+        ("owner.id", True, "owner.id must be a positive integer"),
+        ("owner.type", "Bot", "owner type is not a repository owner"),
+    ],
+)
+def test_normalization_rejects_unbound_repository_identity(
+    field: str, value: object, message: str
+) -> None:
+    repository_payload = _repository_payload("owner/repo")
+    if field.startswith("owner."):
+        owner = repository_payload["owner"]
+        assert isinstance(owner, dict)
+        owner[field.removeprefix("owner.")] = value
+    else:
+        repository_payload[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        normalize_capture(
+            repository="owner/repo",
+            captured_at="2026-08-25T00:00:00Z",
+            repository_payload=repository_payload,
+            rulesets_payload=[],
+            merge_queue_payload=_merge_queue_payload("owner/repo"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "error_type", "message"),
+    [
+        (
+            {"data": {"repository": None}},
+            TypeError,
+            "GraphQL repository must be an object",
+        ),
+        (
+            {
+                "data": {
+                    "repository": {
+                        "mergeQueue": None,
+                        "nameWithOwner": "attacker/repo",
+                    }
+                }
+            },
+            ValueError,
+            "does not match requested repository",
+        ),
+        (
+            {"data": {"repository": {"nameWithOwner": "owner/repo"}}},
+            ValueError,
+            "lacks mergeQueue",
+        ),
+        (
+            {
+                "data": {
+                    "repository": {
+                        "mergeQueue": None,
+                        "nameWithOwner": "owner/repo",
+                    }
+                },
+                "errors": [],
+            },
+            ValueError,
+            "contains an errors field",
+        ),
+    ],
+)
+def test_normalization_rejects_unbound_or_malformed_graphql_repository(
+    payload: dict[str, object], error_type: type[Exception], message: str
+) -> None:
+    with pytest.raises(error_type, match=message):
+        normalize_capture(
+            repository="owner/repo",
+            captured_at="2026-08-25T00:00:00Z",
+            repository_payload=_repository_payload("owner/repo"),
+            rulesets_payload=[],
+            merge_queue_payload=payload,
         )
 
 
@@ -279,8 +392,63 @@ def test_activation_capture_retains_complete_raw_evidence(
     assert requests[-1]["endpoint"] == "graphql"
     assert requests[-1]["arguments"][0] == "-f"
     assert "mergeQueue" in requests[-1]["arguments"][1]
+    assert "nameWithOwner" in requests[-1]["arguments"][1]
     assert "provider-session-secret" not in json.dumps(evidence)
     assert all(command[:3] == ["/usr/bin/gh", "api", "--include"] for command in commands)
+
+
+def test_activation_capture_rejects_repository_identity_before_ruleset_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository_payload()
+    repository["full_name"] = "attacker/metriplane"
+    calls: list[str] = []
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        calls.append(str(kwargs["purpose"]))
+        return repository
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match="full_name does not match"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
+    assert calls == ["repository"]
+
+
+def test_activation_capture_rejects_graphql_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, summary, detail, merge_queue = _activation_provider_payloads()
+    merge_queue["errors"] = [{"message": "provider rejected the query"}]
+
+    def fake_run_included_json(**kwargs: object) -> object:
+        endpoint = kwargs["endpoint"]
+        purpose = kwargs["purpose"]
+        if endpoint == "repos/Miko997/metriplane":
+            return repository
+        if purpose in {
+            "ruleset_summary_inventory_initial",
+            "ruleset_summary_inventory_verification",
+        }:
+            return [summary]
+        if endpoint == "repos/Miko997/metriplane/rulesets/41":
+            return detail
+        if endpoint == "graphql":
+            return merge_queue
+        pytest.fail(f"unexpected provider request: {purpose} {endpoint}")
+
+    monkeypatch.setattr(capture_tool, "_run_included_json", fake_run_included_json)
+
+    with pytest.raises(ValueError, match="contains an errors field"):
+        capture_tool._capture_activation(
+            "Miko997/metriplane",
+            "2026-08-26T20:00:00Z",
+            Path("/usr/bin/gh"),
+        )
 
 
 @pytest.mark.parametrize("field", capture_tool.RULESET_GOVERNANCE_FIELDS)
@@ -527,9 +695,9 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
     capability, settings = normalize_capture(
         repository="Miko997/metriplane",
         captured_at="2026-08-26T12:00:00Z",
-        repository_payload={"default_branch": "main"},
+        repository_payload=_repository_payload(),
         rulesets_payload=rulesets,
-        merge_queue_payload={"data": {"repository": {"mergeQueue": None}}},
+        merge_queue_payload=_merge_queue_payload(),
     )
     assert capability["selected_mode"] == "app_brokered_strict_up_to_date"
     assert settings["activation_state"] == "active"
@@ -547,9 +715,9 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
     _capability, drifted_settings = normalize_capture(
         repository="Miko997/metriplane",
         captured_at="2026-08-26T12:00:00Z",
-        repository_payload={"default_branch": "main"},
+        repository_payload=_repository_payload(),
         rulesets_payload=drifted,
-        merge_queue_payload={"data": {"repository": {"mergeQueue": None}}},
+        merge_queue_payload=_merge_queue_payload(),
     )
     assert drifted_settings["actor_exclusivity_enforced"] is False
 
@@ -558,9 +726,9 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
         normalize_capture(
             repository="Miko997/metriplane",
             captured_at="2026-08-26T12:00:00Z",
-            repository_payload={"default_branch": "main"},
+            repository_payload=_repository_payload(),
             rulesets_payload=partial,
-            merge_queue_payload={"data": {"repository": {"mergeQueue": None}}},
+            merge_queue_payload=_merge_queue_payload(),
         )
 
     extra = [
@@ -578,9 +746,9 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
         normalize_capture(
             repository="Miko997/metriplane",
             captured_at="2026-08-26T12:00:00Z",
-            repository_payload={"default_branch": "main"},
+            repository_payload=_repository_payload(),
             rulesets_payload=extra,
-            merge_queue_payload={"data": {"repository": {"mergeQueue": None}}},
+            merge_queue_payload=_merge_queue_payload(),
         )
 
 

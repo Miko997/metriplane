@@ -155,11 +155,13 @@ protected state branch immediately before admission. Inventory summaries and
 detail bodies must agree on ID, name, enforcement, target, source, and source
 type. A protected-main result identity binds the exact CI, Documentation, and
 CodeQL run attempts together. A cached green state never skips a new companion
-rerun. Before normal admission, the broker observes that aggregate twice,
-observes every available latest current-main nightly or weekly run and exact
-job twice, requires every selected attempt to be retained by the same protected state
-generation, and rejects any change between observations. It then repeats the
-pull request, approval, state, main, core-check, and ruleset reads. Under one singleton lock,
+rerun and an already retained aggregate never creates a freshness-only state
+commit. Before normal admission, the broker observes that aggregate twice,
+requires every governed deep-health attempt in the complete provider inventory
+to be retained, observes every available latest current-main nightly or weekly
+run and exact job twice, and rejects any change between observations. It then
+repeats the pull request, approval, state, main, core-check, and ruleset reads.
+Under one singleton lock,
 it records the request as in-flight, mutates one recorded App check-run ID to
 literal `success`, and immediately calls the synchronous merge endpoint with
 the exact head SHA. It never retries
@@ -193,15 +195,17 @@ python -m tools.capture_repository_protection \
 `repository-protection-activation-evidence.json` retains the unnormalized
 repository response, both stable ruleset summary inventories, every ruleset
 detail, the merge-queue response, and each request's status, safe response
-headers, and GitHub request ID. Missing request IDs, summary/detail drift, or
-inventory drift makes capture fail closed. Authorization, cookie, and related
-headers are redacted before retention.
+headers, and GitHub request ID. The raw REST repository identity and GraphQL
+`nameWithOwner` must bind the requested repository; malformed GraphQL data or
+any GraphQL `errors` field fails closed. Missing request IDs, summary/detail
+drift, or inventory drift also makes capture fail closed. Authorization,
+cookie, and related headers are redacted before retention.
 
 Repository administrators remain a trusted settings boundary because GitHub
 does not offer an atomic ruleset-read-and-merge transaction. Any omitted
-`bypass_actors`, settings drift, stale state, clock skew, duplicate identity,
-fork, missing approval, cancelled/skipped check, process restart, or provider
-ambiguity fails closed.
+`bypass_actors`, settings drift, future-dated state, unreconciled provider
+attempt, clock skew, duplicate identity, fork, missing approval,
+cancelled/skipped check, process restart, or provider ambiguity fails closed.
 
 ## Red-state repair
 
