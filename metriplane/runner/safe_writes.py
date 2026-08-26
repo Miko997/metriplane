@@ -172,25 +172,26 @@ def _assert_destination_unchanged(
 
 
 def _exchange_entries(directory_fd: int, left: str, right: str) -> None:
-    """Atomically exchange two entries using Linux renameat2."""
+    """Atomically exchange two entries using the native POSIX platform API."""
     libc = ctypes.CDLL(None, use_errno=True)
-    renameat2 = getattr(libc, "renameat2", None)
-    if renameat2 is None:
+    function_name = "renameatx_np" if sys.platform == "darwin" else "renameat2"
+    exchange = getattr(libc, function_name, None)
+    if exchange is None:
         raise OSError(errno.ENOTSUP, "atomic exchange is unavailable")
-    renameat2.argtypes = [
+    exchange.argtypes = [
         ctypes.c_int,
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_char_p,
         ctypes.c_uint,
     ]
-    renameat2.restype = ctypes.c_int
-    result = renameat2(
+    exchange.restype = ctypes.c_int
+    result = exchange(
         directory_fd,
         os.fsencode(left),
         directory_fd,
         os.fsencode(right),
-        2,  # RENAME_EXCHANGE
+        2,  # Linux RENAME_EXCHANGE and Darwin RENAME_SWAP
     )
     if result != 0:
         error_number = ctypes.get_errno()
@@ -198,7 +199,9 @@ def _exchange_entries(directory_fd: int, left: str, right: str) -> None:
 
 
 def _use_portable_overwrite() -> bool:
-    return sys.platform == "darwin"
+    if sys.platform != "darwin":
+        return False
+    return getattr(ctypes.CDLL(None), "renameatx_np", None) is None
 
 
 def _create_backup_link(
@@ -436,17 +439,33 @@ class SecureDirectory:
                                 "destination changed during atomic replacement"
                             )
                         self.verify()
-                    except BaseException:
-                        if exchanged:
-                            try:
-                                _exchange_entries(self.fd, staged_name, destination)
-                            except OSError as rollback_error:
-                                raise OSError(
-                                    errno.EIO,
-                                    f"could not roll back atomic write for {display_path}",
-                                ) from rollback_error
-                        raise
-                    os.unlink(staged_name, dir_fd=self.fd)
+                    except BaseException as exc:
+                        unsupported_exchange = (
+                            not exchanged
+                            and sys.platform == "darwin"
+                            and isinstance(exc, OSError)
+                            and exc.errno in {errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}
+                        )
+                        if unsupported_exchange:
+                            self._portable_atomic_overwrite(
+                                staged_name,
+                                destination,
+                                display_path,
+                                expected,
+                                staged_identity,
+                            )
+                        else:
+                            if exchanged:
+                                try:
+                                    _exchange_entries(self.fd, staged_name, destination)
+                                except OSError as rollback_error:
+                                    raise OSError(
+                                        errno.EIO,
+                                        f"could not roll back atomic write for {display_path}",
+                                    ) from rollback_error
+                            raise
+                    else:
+                        os.unlink(staged_name, dir_fd=self.fd)
             staged_name = None
             os.fsync(self.fd)
         finally:

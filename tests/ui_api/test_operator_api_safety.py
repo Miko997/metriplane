@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -532,6 +533,60 @@ def test_macos_simulation_uses_portable_atomic_overwrite(
         raise AssertionError("Linux renameat2 path must not run in the macOS simulation")
 
     monkeypatch.setattr(safe_writes, "_exchange_entries", fail_exchange)
+
+    with safe_writes.open_secure_directory(
+        tmp_path,
+        Path("configs/local"),
+        create=False,
+    ) as directory:
+        directory.atomic_write("safe.yaml", b"replacement\n", overwrite=True)
+
+    assert destination.read_bytes() == b"replacement\n"
+    assert not list(local_dir.glob(".safe.yaml.tmp-*"))
+    assert not list(local_dir.glob(".safe.yaml.backup-*"))
+
+
+def test_darwin_atomic_exchange_uses_renameatx_np(monkeypatch) -> None:
+    from metriplane.runner import safe_writes
+
+    calls = []
+
+    class FakeExchange:
+        argtypes = None
+        restype = None
+
+        def __call__(self, *args):
+            calls.append(args)
+            return 0
+
+    class FakeLibc:
+        renameatx_np = FakeExchange()
+
+    monkeypatch.setattr(safe_writes.sys, "platform", "darwin")
+    monkeypatch.setattr(safe_writes.ctypes, "CDLL", lambda *_args, **_kwargs: FakeLibc())
+
+    safe_writes._exchange_entries(17, "staged", "destination")
+
+    assert calls == [(17, b"staged", 17, b"destination", 2)]
+
+
+def test_darwin_unsupported_atomic_exchange_uses_portable_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import safe_writes
+
+    local_dir = tmp_path / "configs" / "local"
+    local_dir.mkdir(parents=True)
+    destination = local_dir / "safe.yaml"
+    destination.write_bytes(b"original\n")
+    monkeypatch.setattr(safe_writes.sys, "platform", "darwin")
+    monkeypatch.setattr(safe_writes, "_use_portable_overwrite", lambda: False)
+
+    def unsupported_exchange(_directory_fd: int, _left: str, _right: str) -> None:
+        raise OSError(errno.ENOTSUP, "injected unsupported exchange")
+
+    monkeypatch.setattr(safe_writes, "_exchange_entries", unsupported_exchange)
 
     with safe_writes.open_secure_directory(
         tmp_path,
