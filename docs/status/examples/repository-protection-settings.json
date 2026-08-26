@@ -1,17 +1,38 @@
 {
-  "actor_exclusivity_enforced": false,
+  "activation_state": "planned",
+  "actor_exclusivity_enforced": true,
+  "broker_integration_id": 4722589,
   "captured_at": "2026-08-25T16:45:00Z",
   "default_branch": "main",
   "deletion_blocked": true,
   "merge_queue_enabled": false,
   "non_fast_forward_blocked": true,
   "pull_request_required": true,
+  "human_bypass_actors": [],
   "repository": "Miko997/metriplane",
   "required_status_checks": [
     "Metriplane / required",
     "Documentation / required",
     "Security / required",
     "Main health / required"
+  ],
+  "required_status_check_integrations": [
+    {
+      "context": "Metriplane / required",
+      "integration_id": 15368
+    },
+    {
+      "context": "Documentation / required",
+      "integration_id": 15368
+    },
+    {
+      "context": "Security / required",
+      "integration_id": 15368
+    },
+    {
+      "context": "Main health / required",
+      "integration_id": 4722589
+    }
   ],
   "ruleset_enforcement": "active",
   "ruleset_id": 20613848,
@@ -21,5 +42,6 @@
     "repository": "e1b1509a4c4873253d88db103ba58028852b53ca220dec2274c5dc7bad3e975f",
     "rulesets": "2355a9c3c161ed30fb68af63efa1681b64420ffb612bb053c2f2e0b6148da80f"
   },
-  "strict_up_to_date": true
+  "strict_up_to_date": true,
+  "trusted_admin_boundary": true
 }

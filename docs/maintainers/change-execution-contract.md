@@ -31,11 +31,34 @@ python tools/check_repository_protection.py capture \
   --settings <capture-directory>/repository-protection-settings.json
 ```
 
-The current repository has no merge queue. Its truthful mode is capability-limited
-serialized strict-up-to-date merging. That mode does not claim enforceable
-actor-exclusive merges or tags. It requires one candidate at a time and a fresh
-strict check result at the exact merge SHA. Hosted setting changes remain an owner
-operation and require a new capture.
+For a disposable live activation merge, capture the exact pull request, head
+and merge commits, every paginated check run, and current `main` in the same
+operation, then validate the retained proof offline:
+
+```console
+python tools/capture_repository_protection.py \
+  --repository Miko997/metriplane \
+  --captured-at <ISO-8601> \
+  --merge-proof-pr <merged-pull-request-number> \
+  --output-dir <capture-directory>
+python tools/check_repository_protection.py merge-proof \
+  --policy docs/status/repository-protection-policy.json \
+  --pull-request <capture-directory>/pull-request.json \
+  --head-commit <capture-directory>/head-commit.json \
+  --merge-commit <capture-directory>/merge-commit.json \
+  --check-runs <capture-directory>/check-runs.json \
+  --main-ref <capture-directory>/main-ref.json
+```
+
+The current repository has no merge queue. Its governed target mode is
+App-brokered strict-up-to-date merging: layered no-bypass core and admission
+rulesets, App-only update restrictions for `main` and the protected state
+branch, and the exact four integration-bound terminals. A partial five-ruleset
+activation, any additional active repository ruleset, or disagreement between
+ruleset inventory and detail source, target, name, or enforcement fails
+capture. Hosted setting changes remain an owner operation and require a new
+capture; the committed example remains `planned` until the independently
+approved same-plan live proof is retained.
 
 The hosted required-check set must equal the four MP2-004 terminal names exactly;
 legacy, missing, or extra contexts fail offline validation. Each aggregate consumes
@@ -53,26 +76,27 @@ MP2-004; MP2-007 is its sole reserved owner.
 
 ## Main health
 
-Candidate checks read global health and never write it. Completed protected-main
-CI reconciliation, nightly, and weekly results are the only normal writers. The
+The host-only GitHub App broker reads global health. Its merge App is the only
+permitted writer for `main`, the protected state branch, and the broker check;
+a distinct settings-only witness App reads complete rulesets and bypass actors.
+GitHub Actions never receives either App credential. Completed protected-main
+CI reconciliation, nightly, and weekly results are the only normal health
+writers. The
 protected-main writer observes the triggering CI attempt and the exact commit's
 latest Documentation and CodeQL attempts through paginated provider job APIs. It
 requires one exact aggregate terminal in each selected attempt and ingests them as
 one result; missing, duplicate, non-successful, or timed-out terminals retain failure.
 The selected provider attempts must remain unchanged in a second paginated read
 immediately before acceptance; a changed selection is observed again.
-Non-main and non-push workflow completions use unique non-writer concurrency
-groups and cannot displace the durable writer. Durable writers use the provider's
-maximum FIFO pending queue instead of pending-run replacement. The
-`metriplane-main-health-state` branch is a separate append-only state and retention
-backend; a normal fast-forward push is the external compare-and-swap. Every result,
+The `metriplane-main-health-state` branch is a separate append-only state and retention
+backend; a normal App-authenticated fast-forward push is the external
+compare-and-swap. Every result,
 retention receipt, incident, history entry, authorization, and resolution is
 read-back verified before the state pointer advances.
 
-Candidate admission requires fresh green state for the exact base commit.
-Scheduled qualification and persistence are separate jobs, so an early deep-check
-failure is still retained. A delayed result that no longer names live `main` is
-rejected before ingestion.
+Admission requires fresh green state for the exact base commit and an exact
+provider request plus independent write-authority approval. A delayed result
+that no longer names live `main` is rejected before ingestion.
 
 The first protected-main result creates the one-time activation record and marks
 all earlier history `not_measured`. A failure turns health red. Later ordinary
