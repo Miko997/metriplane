@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,8 @@ def _provider_jobs(selection: Selection) -> dict[str, list[dict[str, Any]]]:
 
 
 def test_main_health_shell_steps_are_syntax_valid() -> None:
+    bash = shutil.which("bash")
+    assert bash is not None
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
     for job in workflow["jobs"].values():
         for step in job.get("steps", []):
@@ -86,7 +89,7 @@ def test_main_health_shell_steps_are_syntax_valid() -> None:
             if script is None or step.get("shell", "bash") != "bash":
                 continue
             result = subprocess.run(
-                ["/usr/bin/bash", "-n"],
+                [bash, "-n"],
                 input=script,
                 capture_output=True,
                 text=True,
