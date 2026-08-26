@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from metriplane.paths import resolve_platform_paths
+from metriplane.paths import PlatformPathError, resolve_platform_paths
 from metriplane.provenance.run_provenance import generate_run_id
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,12 +39,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     py = sys.executable
-    runs_dir = (
-        Path(args.runs_dir).expanduser().resolve()
-        if args.runs_dir
-        else resolve_platform_paths().runs_dir
-    )
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        runs_dir = (
+            Path(args.runs_dir).expanduser().resolve()
+            if args.runs_dir
+            else resolve_platform_paths().runs_dir
+        )
+        runs_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PlatformPathError, RuntimeError) as exc:
+        print(f"platform path error: {exc}", file=sys.stderr)
+        return 2
     run_id = args.run_id or generate_run_id("metriplane_demo")
 
     run_step(

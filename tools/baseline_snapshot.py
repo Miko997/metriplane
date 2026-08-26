@@ -296,18 +296,6 @@ EXPECTED_HELP_IDENTITIES = {
         "16ecd4bf8f45f14aba40d5cb9859914ad75c1c18504ff0a283254591c7c572ef",
     ),
 }
-AUTHORIZED_HELP_IDENTITIES = {
-    "metriplane": (
-        EXPECTED_HELP_IDENTITIES["metriplane"][1:],
-    ),
-    "metriplane-run": (
-        EXPECTED_HELP_IDENTITIES["metriplane-run"][1:],
-        (
-            580,
-            "e2ca384121ea6b27b540e2848f7d8f8d75d429e3ce585d6a023e800cbd2bf3d2",
-        ),
-    ),
-}
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -3702,11 +3690,11 @@ def _installed_help(objects: GitObjects) -> dict[str, Any]:
             )
         _nfc(stdout, require_already_nfc=True)
         _nfc(stderr, require_already_nfc=True)
-        installed_identity = (len(result.stdout), _sha(result.stdout))
-        if installed_identity not in AUTHORIZED_HELP_IDENTITIES[command]:
+        _, expected_size, expected_digest = EXPECTED_HELP_IDENTITIES[command]
+        if len(result.stdout) != expected_size or _sha(result.stdout) != expected_digest:
             _fail(
                 "INSTALLED_HELP_MISMATCH",
-                f"installed {command} help has no governed identity",
+                f"installed {command} help differs from audited base",
             )
         rows.append(
             {
@@ -4694,17 +4682,16 @@ def _validate_snapshot_invariants(snapshot: dict[str, Any]) -> None:
     )
     for row in help_rows:
         command = row["command"]
-        entry_point, _, _ = EXPECTED_HELP_IDENTITIES[command]
+        entry_point, size, digest = EXPECTED_HELP_IDENTITIES[command]
         stdout = row["stdout"].encode("utf-8")
         stderr = row["stderr"].encode("utf-8")
-        help_identity = (len(stdout), _sha(stdout))
         _snapshot_invariant(
             row["entry_point"] == entry_point
             and row["version"] == AUDITED_VERSION
             and row["argv"] == [command, "--help"]
             and row["exit_code"] == 0
-            and help_identity in AUTHORIZED_HELP_IDENTITIES[command]
-            and row["stdout_sha256"] == help_identity[1]
+            and len(stdout) == size
+            and row["stdout_sha256"] == _sha(stdout) == digest
             and stderr == b""
             and row["stderr_sha256"] == _sha(stderr) == EMPTY_SHA256,
             f"installed {command} help identity or stream digest differs",

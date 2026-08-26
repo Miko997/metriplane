@@ -27,6 +27,9 @@ def pytest_configure() -> None:
     _ISOLATED_ROOT = Path(tempfile.mkdtemp(prefix="metriplane-tests-", dir=temp_base))
     values = {
         "HOME": _ISOLATED_ROOT / "home",
+        "USERPROFILE": _ISOLATED_ROOT / "windows" / "profile",
+        "APPDATA": _ISOLATED_ROOT / "windows" / "roaming",
+        "LOCALAPPDATA": _ISOLATED_ROOT / "windows" / "local",
         "XDG_CONFIG_HOME": _ISOLATED_ROOT / "xdg" / "config",
         "XDG_DATA_HOME": _ISOLATED_ROOT / "xdg" / "data",
         "XDG_CACHE_HOME": _ISOLATED_ROOT / "xdg" / "cache",

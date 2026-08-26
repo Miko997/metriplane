@@ -423,13 +423,17 @@ def _run_loop_fusion_impl(
     cfg = apply_profile_defaults(cfg)
 
     # M9.4: run provenance (FAIL FAST if we cannot create it)
-    ctx: RunContext = create_run_context(
-        cfg,
-        config_path=config_path,
-        argv=argv,
-        run_id=run_id,
-        runs_dir=runs_dir,
-    )
+    try:
+        ctx: RunContext = create_run_context(
+            cfg,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+        )
+    except (OSError, ValueError) as exc:
+        log.error("run storage unavailable: %s", exc)
+        return 2
 
     mirror_path = str(cfg.record_jsonl) if cfg.record_jsonl else None
     mirror_enabled = bool(mirror_path)

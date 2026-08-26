@@ -27,6 +27,7 @@ from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
     create_run_context,
+    data_dir,
     is_header_record,
     open_jsonl_writer,
 )
@@ -756,13 +757,17 @@ def _run_loop_impl(
         except Exception:
             pass
 
-    ctx: RunContext = create_run_context(
-        cfg,
-        config_path=config_path,
-        argv=argv,
-        run_id=run_id,
-        runs_dir=runs_dir,
-    )
+    try:
+        ctx: RunContext = create_run_context(
+            cfg,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+        )
+    except (OSError, ValueError) as exc:
+        log.error("run storage unavailable: %s", exc)
+        return 2
 
     mirror_enabled = bool(mirror_path)
     try:
@@ -1592,7 +1597,7 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     ap.add_argument(
         "--runs-dir",
         default=None,
-        help="Override runs base directory (default: platform data directory).",
+        help="Override runs base dir (default: /data/runs in docker, ./runs on host).",
     )
 
     # M9.3: reproducible fault injection
@@ -1607,6 +1612,9 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
+    runs_dir = args.runs_dir
+    if paths is None and runs_dir is None and not cfg.runs_dir:
+        runs_dir = str(data_dir() / "runs")
 
     return run_loop(
         cfg,
@@ -1614,7 +1622,7 @@ def main(argv=None, *, paths: PlatformPaths | None = None) -> int:
         config_path=Path(args.config),
         argv=["metriplane", *argv_in],
         run_id=args.run_id,
-        runs_dir=args.runs_dir,
+        runs_dir=runs_dir,
         paths=paths,
     )
 

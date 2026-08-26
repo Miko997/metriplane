@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from metriplane.paths import resolve_platform_paths
+from metriplane.paths import PlatformPathError, resolve_platform_paths
 from metriplane.provenance.run_provenance import generate_run_id
 
 
@@ -50,12 +50,16 @@ def main() -> int:
     ap.add_argument("--run-id", type=str, default=None, help="Optional run id override (otherwise auto)")
     args = ap.parse_args()
 
-    runs_dir = (
-        Path(args.runs_dir).expanduser().resolve()
-        if args.runs_dir
-        else resolve_platform_paths().runs_dir
-    )
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        runs_dir = (
+            Path(args.runs_dir).expanduser().resolve()
+            if args.runs_dir
+            else resolve_platform_paths().runs_dir
+        )
+        runs_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PlatformPathError, RuntimeError) as exc:
+        print(f"platform path error: {exc}", file=sys.stderr)
+        return 2
 
     run_id = args.run_id or generate_run_id("m95_latency")
     out_path = Path(args.out).expanduser().resolve()

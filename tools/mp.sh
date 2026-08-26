@@ -35,8 +35,16 @@ if [[ -z "${RUNS:-}" ]]; then
   elif [[ -x "$METRIPLANE_VENV/Scripts/python.exe" ]]; then
     PATHS_PYTHON="$METRIPLANE_VENV/Scripts/python.exe"
   fi
-  RUNS="$(cd "$ROOT" && "$PATHS_PYTHON" -c \
-    'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+  RUNS="$(cd "$ROOT" && "$PATHS_PYTHON" -c '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
 fi
 
 METRICS_HOST="${METRICS_HOST:-127.0.0.1}"

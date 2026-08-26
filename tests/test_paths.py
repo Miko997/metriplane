@@ -12,6 +12,18 @@ import pytest
 
 from metriplane.paths import PlatformPathError, PlatformPaths, resolve_platform_paths
 
+ROOT = Path(__file__).resolve().parents[1]
+_PLATFORM_ENV = (
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+)
+
 
 def test_linux_xdg_paths_are_canonical_and_do_not_write(tmp_path: Path):
     root = tmp_path / "not-created"
@@ -159,33 +171,42 @@ def test_read_only_home_is_not_touched_when_xdg_paths_are_writable(tmp_path: Pat
         home.chmod(0o700)
 
 
-def test_runtime_modules_import_without_home_or_xdg_paths(tmp_path: Path):
+def test_runtime_modules_import_without_home_or_xdg_paths():
     environment = os.environ.copy()
-    for name in (
-        "HOME",
-        "USERPROFILE",
-        "APPDATA",
-        "LOCALAPPDATA",
-        "XDG_CONFIG_HOME",
-        "XDG_DATA_HOME",
-        "XDG_CACHE_HOME",
-        "XDG_STATE_HOME",
-    ):
+    for name in _PLATFORM_ENV:
         environment.pop(name, None)
 
-    imports = (
-        "import metriplane.cli; import metriplane.launcher; import metriplane.run; "
-        "import metriplane.run_fusion; import metriplane.runner.allowlist; "
-        "import metriplane.runner.service; import metriplane.sentinel.cli_runtime; "
-        "import tools.run_ui_demo_replay; import benchmarks.run_latency_breakdown"
-    )
+    imports = """
+import importlib
+import pkgutil
+from pathlib import Path
+
+import metriplane
+import metriplane.paths as path_api
+
+def blocked(name):
+    raise RuntimeError(f"import-time platform path resolution: {name}")
+
+Path.home = classmethod(lambda cls: blocked("Path.home"))
+Path.expanduser = lambda self: blocked("Path.expanduser")
+path_api.resolve_platform_paths = lambda **kwargs: blocked("resolve_platform_paths")
+
+modules = sorted(
+    item.name
+    for item in pkgutil.walk_packages(metriplane.__path__, metriplane.__name__ + ".")
+)
+for module_name in modules:
+    importlib.import_module(module_name)
+importlib.import_module("tools.run_ui_demo_replay")
+importlib.import_module("benchmarks.run_latency_breakdown")
+"""
     result = subprocess.run(
         [
             sys.executable,
             "-c",
             imports,
         ],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=ROOT,
         env=environment,
         capture_output=True,
         text=True,
@@ -196,11 +217,56 @@ def test_runtime_modules_import_without_home_or_xdg_paths(tmp_path: Path):
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize(
+    "helper",
+    ["mp", "ui-demo", "latency"],
+)
+def test_shipped_helpers_fail_cleanly_without_platform_home(
+    helper: str,
+    tmp_path: Path,
+) -> None:
+    environment = os.environ.copy()
+    for name in (*_PLATFORM_ENV, "METRIPLANE_DATA_DIR", "RUNS"):
+        environment.pop(name, None)
+    commands = {
+        "mp": ["bash", "tools/mp.sh", "help"],
+        "ui-demo": [sys.executable, "tools/run_ui_demo_replay.py"],
+        "latency": [
+            sys.executable,
+            "benchmarks/run_latency_breakdown.py",
+            "--out",
+            str(tmp_path / "latency.csv"),
+        ],
+    }
+
+    result = subprocess.run(
+        commands[helper],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "platform path error:" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_full_suite_uses_isolated_writable_home():
     root = Path(os.environ["METRIPLANE_TEST_HOME"])
+    for name in _PLATFORM_ENV:
+        assert Path(os.environ[name]).is_relative_to(root)
     home = Path(os.environ["HOME"])
-
-    assert home.is_relative_to(root)
     probe = home / "suite-write-probe"
     probe.write_text("ok", encoding="utf-8")
     assert probe.read_text(encoding="utf-8") == "ok"
+
+
+def test_full_suite_windows_paths_are_isolated():
+    root = Path(os.environ["METRIPLANE_TEST_HOME"])
+    paths = resolve_platform_paths(environment=os.environ, system="Windows")
+
+    for path in (paths.config_dir, paths.data_dir, paths.cache_dir, paths.state_dir):
+        assert path.is_relative_to(root)

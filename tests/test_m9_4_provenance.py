@@ -118,6 +118,43 @@ def test_runtime_path_resolution_failure_is_user_facing(
 
 
 @pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+def test_runtime_run_storage_permission_failure_is_clean(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    read_only = tmp_path / "read-only-data"
+    read_only.mkdir()
+    read_only.chmod(0o500)
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=read_only,
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+
+    try:
+        result = getattr(module, entrypoint_name)(
+            Config(source_mode="dummy"),
+            run_id="read_only_probe",
+            paths=paths,
+        )
+    finally:
+        read_only.chmod(0o700)
+
+    assert result == 2
+    assert "run storage unavailable:" in caplog.text
+
+
+@pytest.mark.parametrize(
     ("module_name", "entrypoint_name", "implementation_name"),
     [
         ("metriplane.run", "run_loop", "_run_loop_impl"),
@@ -223,7 +260,7 @@ def test_ui_demo_replay_generates_a_unique_safe_run_id_each_time(
     assert len(set(run_ids)) == 2
 
 
-def test_metriplane_run_help_describes_platform_runs_default(capsys) -> None:
+def test_metriplane_run_help_retains_frozen_legacy_default(capsys) -> None:
     from metriplane.run import main as run_main
 
     with pytest.raises(SystemExit) as exc_info:
@@ -232,9 +269,28 @@ def test_metriplane_run_help_describes_platform_runs_default(capsys) -> None:
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
     normalized = " ".join(output.split())
-    assert "default: platform data directory" in normalized
-    assert "/data/runs" not in output
-    assert "./runs on host" not in output
+    assert "default: /data/runs in docker, ./runs on host" in normalized
+
+
+def test_metriplane_run_console_retains_legacy_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane import run
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(run, "data_dir", lambda: tmp_path)
+
+    def fake_run_loop(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 31
+
+    monkeypatch.setattr(run, "run_loop", fake_run_loop)
+
+    assert run.main([]) == 31
+    assert captured["runs_dir"] == str(tmp_path / "runs")
+    assert captured["paths"] is None
 
 
 def test_shell_run_writers_use_canonical_defaults_and_preserve_overrides() -> None:
