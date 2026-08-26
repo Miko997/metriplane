@@ -211,10 +211,18 @@ def test_app_token_permissions_are_exact() -> None:
 
 
 class FakeTokenApi(broker.GitHubApi):
-    def __init__(self, permissions: dict[str, str]) -> None:
+    def __init__(
+        self,
+        *,
+        installation: dict[str, Any] | None = None,
+        repository: dict[str, Any] | None = None,
+        token_response: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__()
         self.calls = 0
-        self.permissions = permissions
+        self.installation = _installation_response() if installation is None else installation
+        self.repository = _repository_response() if repository is None else repository
+        self.token_response = _token_response() if token_response is None else token_response
 
     def request(
         self,
@@ -227,37 +235,195 @@ class FakeTokenApi(broker.GitHubApi):
     ) -> broker.ApiResult:
         assert token
         self.calls += 1
-        if path.endswith("/installation"):
+        if path == f"repos/{REPOSITORY}/installation":
             assert method == "GET"
-            return broker.ApiResult({}, 200, {"id": 7})
-        assert path == "app/installations/7/access_tokens"
-        assert method == "POST"
-        assert expected == (201,)
-        assert payload == {"permissions": broker.APP_TOKEN_PERMISSIONS}
-        return broker.ApiResult(
-            {},
-            201,
-            {
-                "expires_at": "2026-08-26T13:00:00Z",
-                "permissions": self.permissions,
-                "token": "installation-token",
-            },
-        )
+            return broker.ApiResult({}, 200, self.installation)
+        if path.startswith("app/installations/"):
+            assert path == "app/installations/7/access_tokens"
+            assert method == "POST"
+            assert expected == (201,)
+            assert payload == {
+                "permissions": broker.APP_TOKEN_PERMISSIONS,
+                "repositories": ["metriplane"],
+            }
+            return broker.ApiResult({}, 201, self.token_response)
+        assert path == f"repos/{REPOSITORY}"
+        assert token == "installation-token"
+        assert method == "GET"
+        return broker.ApiResult({}, 200, self.repository)
+
+
+def _installation_response() -> dict[str, Any]:
+    return {
+        "access_tokens_url": "https://api.github.com/app/installations/7/access_tokens",
+        "account": {"id": 997, "login": "Miko997", "type": "User"},
+        "app_id": broker.APP_INTEGRATION_ID,
+        "app_slug": broker.APP_SLUG,
+        "id": 7,
+        "permissions": dict(broker.APP_TOKEN_PERMISSIONS),
+        "repository_selection": "selected",
+        "suspended_at": None,
+        "target_id": 997,
+        "target_type": "User",
+    }
+
+
+def _repository_response(*, repository_id: int = 1234) -> dict[str, Any]:
+    return {
+        "full_name": REPOSITORY,
+        "id": repository_id,
+        "name": "metriplane",
+        "owner": {"id": 997, "login": "Miko997", "type": "User"},
+    }
+
+
+def _token_response() -> dict[str, Any]:
+    return {
+        "expires_at": "2026-08-26T13:00:00Z",
+        "permissions": dict(broker.APP_TOKEN_PERMISSIONS),
+        "repositories": [_repository_response()],
+        "repository_selection": "selected",
+        "token": "installation-token",
+    }
+
+
+def _authenticator(tmp_path: Path, api: FakeTokenApi) -> broker.AppAuthenticator:
+    authenticator = broker.AppAuthenticator(api, _config(tmp_path), clock=lambda: NOW)
+    authenticator.signer = lambda _value: b"signature"
+    return authenticator
 
 
 def test_authenticator_rejects_permission_expansion(tmp_path: Path) -> None:
-    exact_api = FakeTokenApi(dict(broker.APP_TOKEN_PERMISSIONS))
-    exact = broker.AppAuthenticator(exact_api, _config(tmp_path), clock=lambda: NOW)
-    exact.signer = lambda _value: b"signature"
+    exact_api = FakeTokenApi()
+    exact = _authenticator(tmp_path, exact_api)
     assert exact.mint().token == "installation-token"
     assert exact.mint().token == "installation-token"
-    assert exact_api.calls == 2
+    assert exact_api.calls == 3
 
-    expanded_api = FakeTokenApi({**broker.APP_TOKEN_PERMISSIONS, "administration": "write"})
-    expanded = broker.AppAuthenticator(expanded_api, _config(tmp_path), clock=lambda: NOW)
-    expanded.signer = lambda _value: b"signature"
+    response = _token_response()
+    response["permissions"] = {**broker.APP_TOKEN_PERMISSIONS, "administration": "write"}
+    expanded = _authenticator(tmp_path, FakeTokenApi(token_response=response))
     with pytest.raises(broker.BrokerError, match="permissions are not exact"):
         expanded.mint()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("app_id", 1, "App identity"),
+        ("app_slug", "wrong-app", "App identity"),
+        ("id", True, "installation ID"),
+        ("target_id", 998, "target identity"),
+        ("target_type", "Organization", "target identity"),
+        ("repository_selection", "all", "repository selection"),
+        ("suspended_at", "2026-08-26T11:00:00Z", "suspended"),
+        (
+            "access_tokens_url",
+            "https://api.github.com/app/installations/8/access_tokens",
+            "installation ID",
+        ),
+    ],
+)
+def test_authenticator_rejects_wrong_installation_identity(
+    tmp_path: Path, field: str, value: Any, message: str
+) -> None:
+    installation = _installation_response()
+    installation[field] = value
+    with pytest.raises(broker.BrokerError, match=message):
+        _authenticator(tmp_path, FakeTokenApi(installation=installation)).mint()
+
+
+@pytest.mark.parametrize(
+    "account",
+    [
+        {"id": 997, "login": "other", "type": "User"},
+        {"id": 997, "login": "Miko997", "type": "Organization"},
+        {"id": True, "login": "Miko997", "type": "User"},
+    ],
+)
+def test_authenticator_rejects_wrong_installation_account(
+    tmp_path: Path, account: dict[str, Any]
+) -> None:
+    installation = _installation_response()
+    installation["account"] = account
+    with pytest.raises(broker.BrokerError, match="account"):
+        _authenticator(tmp_path, FakeTokenApi(installation=installation)).mint()
+
+
+def test_authenticator_rejects_suspended_state_without_provider_field(tmp_path: Path) -> None:
+    installation = _installation_response()
+    del installation["suspended_at"]
+    with pytest.raises(broker.BrokerError, match="suspension is unresolved"):
+        _authenticator(tmp_path, FakeTokenApi(installation=installation)).mint()
+
+
+def test_authenticator_rejects_installation_permission_drift(tmp_path: Path) -> None:
+    installation = _installation_response()
+    installation["permissions"] = {
+        **broker.APP_TOKEN_PERMISSIONS,
+        "administration": "write",
+    }
+    with pytest.raises(broker.BrokerError, match="installation permissions are not exact"):
+        _authenticator(tmp_path, FakeTokenApi(installation=installation)).mint()
+
+
+@pytest.mark.parametrize("selection", ["all", None])
+def test_authenticator_rejects_wrong_token_selection(tmp_path: Path, selection: str | None) -> None:
+    response = _token_response()
+    response["repository_selection"] = selection
+    with pytest.raises(broker.BrokerError, match="token repository selection is not exact"):
+        _authenticator(tmp_path, FakeTokenApi(token_response=response)).mint()
+
+
+def test_authenticator_rejects_repository_overbreadth(tmp_path: Path) -> None:
+    response = _token_response()
+    response["repositories"].append(
+        {
+            "full_name": "Miko997/other",
+            "id": 5678,
+            "name": "other",
+            "owner": {"id": 997, "login": "Miko997", "type": "User"},
+        }
+    )
+    with pytest.raises(broker.BrokerError, match="repository inventory is not exact"):
+        _authenticator(tmp_path, FakeTokenApi(token_response=response)).mint()
+
+
+def test_authenticator_rejects_wrong_repository_inventory_identity(tmp_path: Path) -> None:
+    response = _token_response()
+    response["repositories"] = [
+        {
+            "full_name": "Miko997/other",
+            "id": 5678,
+            "name": "other",
+            "owner": {"id": 997, "login": "Miko997", "type": "User"},
+        }
+    ]
+    with pytest.raises(broker.BrokerError, match="identity is not canonical"):
+        _authenticator(tmp_path, FakeTokenApi(token_response=response)).mint()
+
+
+@pytest.mark.parametrize("repositories", [None, [], {}])
+def test_authenticator_rejects_missing_repository_inventory(
+    tmp_path: Path, repositories: Any
+) -> None:
+    response = _token_response()
+    response["repositories"] = repositories
+    with pytest.raises(broker.BrokerError, match="repository inventory is not exact"):
+        _authenticator(tmp_path, FakeTokenApi(token_response=response)).mint()
+
+
+def test_authenticator_binds_inventory_to_canonical_repository(tmp_path: Path) -> None:
+    wrong_owner = _repository_response()
+    wrong_owner["owner"] = {"id": 998, "login": "Miko997", "type": "User"}
+    with pytest.raises(broker.BrokerError, match="identity is not canonical"):
+        _authenticator(tmp_path, FakeTokenApi(repository=wrong_owner)).mint()
+
+    with pytest.raises(broker.BrokerError, match="repository ID is not exact"):
+        _authenticator(
+            tmp_path,
+            FakeTokenApi(repository=_repository_response(repository_id=5678)),
+        ).mint()
 
 
 def test_provider_server_error_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -451,6 +617,43 @@ def test_admission_rejects_author_requester_and_commit_actors(
             repository=REPOSITORY,
             reviewer_permissions={approver_login.casefold(): "write"},
             reviews=_reviews(approver_id=approver_id, approver_login=approver_login),
+        )
+
+
+@pytest.mark.parametrize("actor_key", ["author", "committer"])
+@pytest.mark.parametrize(
+    ("form", "actor"),
+    [
+        ("missing", None),
+        ("null", None),
+        ("non-object", []),
+        ("empty", {}),
+        ("missing-login", {"id": 30}),
+        ("missing-id", {"login": "commit-actor"}),
+        ("boolean-id", {"id": True, "login": "commit-actor"}),
+        ("zero-id", {"id": 0, "login": "commit-actor"}),
+        ("negative-id", {"id": -1, "login": "commit-actor"}),
+        ("string-id", {"id": "30", "login": "commit-actor"}),
+        ("empty-login", {"id": 30, "login": ""}),
+        ("non-string-login", {"id": 30, "login": 30}),
+    ],
+)
+def test_admission_rejects_unresolved_or_partial_commit_actors(
+    actor_key: str, form: str, actor: Any
+) -> None:
+    commits = _commits()
+    if form == "missing":
+        del commits[0][actor_key]
+    else:
+        commits[0][actor_key] = actor
+    with pytest.raises(broker.BrokerError, match=f"provider commit {actor_key} actor"):
+        broker.select_admission(
+            commits=commits,
+            now=NOW + timedelta(minutes=2),
+            pull=_pull(),
+            repository=REPOSITORY,
+            reviewer_permissions={"reviewer": "write"},
+            reviews=_reviews(),
         )
 
 

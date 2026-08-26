@@ -32,6 +32,9 @@ from tools import observe_main_health, stop_the_line
 APP_INTEGRATION_ID = 4722589
 ACTIONS_INTEGRATION_ID = 15368
 APP_SLUG = "metriplane-main-health-publisher"
+REPOSITORY_OWNER = "Miko997"
+REPOSITORY_NAME = "metriplane"
+REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
 MAX_PULL_COMMITS = 250
 MAIN_HEALTH_CHECK = "Main health / required"
 CORE_CHECKS = (
@@ -195,7 +198,7 @@ class BrokerConfig:
         repository = value["repository"]
         if not isinstance(repository, str) or re.fullmatch(r"[^/\s]+/[^/\s]+", repository) is None:
             raise BrokerError("broker repository is invalid")
-        if repository != "Miko997/metriplane":
+        if repository != REPOSITORY:
             raise BrokerError("broker repository is not canonical")
         app_slug = value["app_slug"]
         if app_slug != APP_SLUG:
@@ -386,6 +389,53 @@ class InstallationToken:
     token: str
 
 
+def _installation_identity(value: Any, *, api_url: str, config: BrokerConfig) -> tuple[int, int]:
+    if not isinstance(value, dict):
+        raise BrokerError("GitHub App installation response is malformed")
+    installation_id = _require_positive_int(value.get("id"), "installation ID")
+    app_id = _require_positive_int(value.get("app_id"), "installation App ID")
+    if app_id != config.app_id or value.get("app_slug") != config.app_slug:
+        raise BrokerError("GitHub App installation App identity is not exact")
+    account = value.get("account")
+    if not isinstance(account, dict):
+        raise BrokerError("GitHub App installation account is malformed")
+    account_id = _require_positive_int(account.get("id"), "installation account ID")
+    if account.get("login") != REPOSITORY_OWNER or account.get("type") != "User":
+        raise BrokerError("GitHub App installation account identity is not canonical")
+    target_id = _require_positive_int(value.get("target_id"), "installation target ID")
+    if target_id != account_id or value.get("target_type") != "User":
+        raise BrokerError("GitHub App installation target identity is not exact")
+    if value.get("permissions") != APP_TOKEN_PERMISSIONS:
+        raise BrokerError("GitHub App installation permissions are not exact")
+    if value.get("repository_selection") != "selected":
+        raise BrokerError("GitHub App installation repository selection is not exact")
+    if "suspended_at" not in value or value["suspended_at"] is not None:
+        raise BrokerError("GitHub App installation is suspended or suspension is unresolved")
+    expected_tokens_url = f"{api_url}/app/installations/{installation_id}/access_tokens"
+    if value.get("access_tokens_url") != expected_tokens_url:
+        raise BrokerError("GitHub App installation ID is not exact")
+    return installation_id, account_id
+
+
+def _repository_identity(value: Any, *, account_id: int, label: str) -> int:
+    if not isinstance(value, dict):
+        raise BrokerError(f"{label} is malformed")
+    repository_id = _require_positive_int(value.get("id"), f"{label} ID")
+    owner = value.get("owner")
+    if not isinstance(owner, dict):
+        raise BrokerError(f"{label} owner is malformed")
+    owner_id = _require_positive_int(owner.get("id"), f"{label} owner ID")
+    if (
+        value.get("name") != REPOSITORY_NAME
+        or value.get("full_name") != REPOSITORY
+        or owner.get("login") != REPOSITORY_OWNER
+        or owner.get("type") != "User"
+        or owner_id != account_id
+    ):
+        raise BrokerError(f"{label} identity is not canonical")
+    return repository_id
+
+
 class AppAuthenticator:
     def __init__(
         self,
@@ -416,14 +466,17 @@ class AppAuthenticator:
             f"repos/{self.config.repository}/installation",
             token=app_jwt,
         )
-        if not isinstance(installation.value, dict):
-            raise BrokerError("GitHub App installation response is malformed")
-        installation_id = _require_positive_int(installation.value.get("id"), "installation_id")
+        installation_id, account_id = _installation_identity(
+            installation.value, api_url=self.api.api_url, config=self.config
+        )
         token_result = self.api.request(
             f"app/installations/{installation_id}/access_tokens",
             token=app_jwt,
             method="POST",
-            payload={"permissions": APP_TOKEN_PERMISSIONS},
+            payload={
+                "permissions": APP_TOKEN_PERMISSIONS,
+                "repositories": [REPOSITORY_NAME],
+            },
             expected=(201,),
         )
         if not isinstance(token_result.value, dict):
@@ -433,6 +486,25 @@ class AppAuthenticator:
         expires_at = token_result.value.get("expires_at")
         if not isinstance(token, str) or not token or permissions != APP_TOKEN_PERMISSIONS:
             raise BrokerError("GitHub App token identity or permissions are not exact")
+        if token_result.value.get("repository_selection") != "selected":
+            raise BrokerError("GitHub App token repository selection is not exact")
+        repositories = token_result.value.get("repositories")
+        if not isinstance(repositories, list) or len(repositories) != 1:
+            raise BrokerError("GitHub App token repository inventory is not exact")
+        inventory_repository_id = _repository_identity(
+            repositories[0], account_id=account_id, label="GitHub App token repository"
+        )
+        repository_result = self.api.request(
+            f"repos/{self.config.repository}",
+            token=token,
+        )
+        repository_id = _repository_identity(
+            repository_result.value,
+            account_id=account_id,
+            label="token-authenticated repository",
+        )
+        if repository_id != inventory_repository_id:
+            raise BrokerError("GitHub App token repository ID is not exact")
         if not isinstance(expires_at, str):
             raise BrokerError("GitHub App token expiry is malformed")
         installation_token = InstallationToken(
@@ -809,7 +881,7 @@ def parse_merge_request(body: Any, *, reviewer_id: int) -> dict[str, Any]:
     requester_id = _require_positive_int(value["requester_id"], "merge request requester_id")
     if requester_id != reviewer_id:
         raise BrokerError("merge request requester does not match provider review actor")
-    if value["repository"] != "Miko997/metriplane":
+    if value["repository"] != REPOSITORY:
         raise BrokerError("merge request repository is not canonical")
     if not isinstance(value["nonce"], str) or NONCE_RE.fullmatch(value["nonce"]) is None:
         raise BrokerError("merge request nonce is invalid")
@@ -854,7 +926,7 @@ def parse_repair_request(body: Any, *, reviewer_id: int) -> dict[str, Any]:
     requester_id = _require_positive_int(value["requester_id"], "repair request requester_id")
     if requester_id != reviewer_id:
         raise BrokerError("repair requester does not match provider review actor")
-    if value["repository"] != "Miko997/metriplane":
+    if value["repository"] != REPOSITORY:
         raise BrokerError("repair request repository is not canonical")
     if not isinstance(value["nonce"], str) or NONCE_RE.fullmatch(value["nonce"]) is None:
         raise BrokerError("repair request nonce is invalid")
@@ -891,16 +963,14 @@ def _commit_actor_ids(commits: Iterable[dict[str, Any]]) -> tuple[set[int], set[
     for commit in commits:
         for key in ("author", "committer"):
             actor = commit.get(key)
-            if actor is None:
-                continue
             if not isinstance(actor, dict):
-                raise BrokerError("provider commit actor is malformed")
-            actor_id = actor.get("id")
+                raise BrokerError(f"provider commit {key} actor is unresolved or malformed")
+            actor_id = _require_positive_int(actor.get("id"), f"provider commit {key} actor ID")
             login = actor.get("login")
-            if type(actor_id) is int and actor_id > 0:
-                ids.add(actor_id)
-            if isinstance(login, str) and login:
-                logins.add(login.casefold())
+            if not isinstance(login, str) or not login:
+                raise BrokerError(f"provider commit {key} actor login is malformed")
+            ids.add(actor_id)
+            logins.add(login.casefold())
     return ids, logins
 
 

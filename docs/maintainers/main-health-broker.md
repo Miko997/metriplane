@@ -34,7 +34,13 @@ The service reads the decrypted credential only from
 uses systemd's stable absolute credential path. The App installation grants
 only Actions read, Checks write, Contents write, Pull requests read, and
 Metadata read. It has no Administration, Commit statuses, Workflows, or webhook
-permission.
+permission. The installation must belong to the unsuspended canonical
+`Miko997` user account, use selected-repository mode, and expose exactly those
+permissions. Each minted installation token is additionally narrowed with
+GitHub's `repositories` request field to `Miko997/metriplane`; the broker caches
+it only after the token response returns exactly that repository and a
+token-authenticated repository read confirms the canonical owner, full name,
+and repository ID.
 
 The committed broker-config example is deliberately non-runnable:
 `main_update_ruleset_id` is `0`. Create the App-only main update restriction,
@@ -131,7 +137,11 @@ request digest remains in the provider-owned check external ID, so a restored
 local spool reconstructs the no-retry decision from GitHub before admission.
 Pull requests above GitHub's complete 250-commit pull-inventory bound are not
 admitted; for every smaller pull request, the provider-reported count, unique
-commit SHAs, and final head SHA must exactly match the returned inventory.
+commit SHAs, and final head SHA must exactly match the returned inventory. Every
+commit must also have complete provider-resolved `author` and `committer`
+objects with positive integer IDs and nonempty logins. Null, partial, or
+malformed commit identities fail closed before reviewer independence is
+evaluated.
 
 Repository administrators remain a trusted settings boundary because GitHub
 does not offer an atomic ruleset-read-and-merge transaction. Any omitted
