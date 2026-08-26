@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  expire-successes:
+  arm-and-wait:
     name: Main health lease closer / ${{ github.event.client_payload.replica }}
     if: >-
       github.actor == format('{0}[bot]', vars.MAIN_HEALTH_APP_SLUG) &&
@@ -27,24 +27,27 @@ jobs:
         with:
           app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
           private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
-          permission-actions: read
-          permission-contents: write
-          permission-pull-requests: read
-          permission-statuses: write
+          permission-checks: write
 
-      - name: Expire exact provider leases
+      - name: Check out trusted lease code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
+
+      - name: Arm lease and wait for shared deadline
         shell: bash
         env:
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
         run: |
           set -euo pipefail
-          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           leases="$RUNNER_TEMP/main-health-expiry-leases.tsv"
-          armed_leases="$RUNNER_TEMP/main-health-armed-leases.tsv"
           metadata="$RUNNER_TEMP/main-health-expiry-metadata.tsv"
-          python - "$PAYLOAD" "$GITHUB_REPOSITORY" "$metadata" > "$leases" <<'PY'
+          python - "$PAYLOAD" "$metadata" > "$leases" <<'PY'
+          import datetime
           import json
           import pathlib
           import re
@@ -52,6 +55,8 @@ jobs:
 
           payload = json.loads(sys.argv[1])
           if set(payload) != {
+              "deadline",
+              "deadline_epoch",
               "leases",
               "nonce",
               "origin_run_attempt",
@@ -61,247 +66,214 @@ jobs:
               raise SystemExit("main-health lease payload has unexpected fields")
           run_id = str(payload["origin_run_id"])
           run_attempt = str(payload["origin_run_attempt"])
+          nonce = payload["nonce"]
+          deadline = payload["deadline"]
+          deadline_epoch = payload["deadline_epoch"]
+          replica = payload["replica"]
           if not re.fullmatch(r"[1-9][0-9]*", run_id):
               raise SystemExit("main-health lease origin run is invalid")
           if not re.fullmatch(r"[1-9][0-9]*", run_attempt):
               raise SystemExit("main-health lease origin attempt is invalid")
-          nonce = payload["nonce"]
           if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce):
               raise SystemExit("main-health lease nonce is invalid")
-          if payload["replica"] not in {1, 2}:
+          if replica not in {1, 2}:
               raise SystemExit("main-health lease replica is invalid")
-          pathlib.Path(sys.argv[3]).write_text(
-              f"{run_id}\t{run_attempt}\t{nonce}\t{payload['replica']}\n",
+          if not isinstance(deadline_epoch, int) or deadline_epoch <= 0:
+              raise SystemExit("main-health lease deadline epoch is invalid")
+          try:
+              parsed_deadline = datetime.datetime.fromisoformat(
+                  str(deadline).replace("Z", "+00:00")
+              )
+          except ValueError as exc:
+              raise SystemExit("main-health lease deadline is malformed") from exc
+          if (
+              parsed_deadline.tzinfo is None
+              or int(parsed_deadline.timestamp()) != deadline_epoch
+              or parsed_deadline.microsecond != 0
+          ):
+              raise SystemExit("main-health lease deadline is inconsistent")
+          pathlib.Path(sys.argv[2]).write_text(
+              f"{run_id}\t{run_attempt}\t{nonce}\t{replica}\t"
+              f"{deadline}\t{deadline_epoch}\n",
               encoding="utf-8",
           )
           leases = payload["leases"]
           if not isinstance(leases, list) or not leases or len(leases) > 1000:
               raise SystemExit("main-health lease inventory is invalid")
-          expected_target = f"https://github.com/{sys.argv[2]}/actions/runs/{run_id}"
           seen: set[str] = set()
           for lease in leases:
               if not isinstance(lease, dict) or set(lease) != {
+                  "check_run_id",
+                  "external_id",
                   "head_sha",
-                  "target_url",
               }:
                   raise SystemExit("main-health lease entry is malformed")
               sha = lease["head_sha"]
+              check_run_id = lease["check_run_id"]
+              expected_external_id = (
+                  f"mh1:{sha}:{run_id}:{run_attempt}:{nonce}:{deadline_epoch}"
+              )
               if (
                   not isinstance(sha, str)
                   or not re.fullmatch(r"[0-9a-f]{40}", sha)
                   or sha in seen
-                  or lease["target_url"] != expected_target
+                  or not isinstance(check_run_id, int)
+                  or check_run_id <= 0
+                  or lease["external_id"] != expected_external_id
               ):
                   raise SystemExit("main-health lease entry is not provider-bound")
               seen.add(sha)
-              print(sha, expected_target, sep="\t")
+              print(sha, check_run_id, expected_external_id, sep="\t")
           PY
-          IFS=$'\t' read -r origin_run_id origin_run_attempt lease_nonce replica < "$metadata"
-
-          post_failure() {
-            local head_sha="$1"
-            local description="$2"
-            local response="$RUNNER_TEMP/main-health-expired-${head_sha}.json"
-            if ! timeout 30s gh api --method POST \
-              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-              -f state=failure \
-              -f context="Main health / required" \
-              -f description="$description" \
-              -f target_url="$target_url" > "$response" || \
-              ! python - "$response" "$head_sha" "$target_url" "$PUBLISHER_LOGIN" <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          if not (
-              status.get("sha") == sys.argv[2]
-              and status.get("state") == "failure"
-              and status.get("context") == "Main health / required"
-              and status.get("target_url") == sys.argv[3]
-              and status.get("creator", {}).get("login") == sys.argv[4]
-              and isinstance(status.get("id"), int)
-              and status.get("created_at") == status.get("updated_at")
-          ):
-              raise SystemExit("provider did not attest exact main-health lease expiry")
-          PY
-            then
-              return 1
-            fi
-          }
-          cleanup_armed=true
-          fail_closed() {
-            local exit_code="$?"
-            trap - EXIT INT TERM
-            if [[ "$cleanup_armed" == true ]]; then
-              while IFS=$'\t' read -r head_sha _admitted_target; do
-                post_failure "$head_sha" "Main health lease closer exited early" || true
-              done < "$leases"
-            fi
-            exit "$exit_code"
-          }
-          trap fail_closed EXIT
-          trap 'exit 130' INT
-          trap 'exit 143' TERM
-
-          post_marker() {
-            local head_sha="$1"
-            local context="$2"
-            local description="$3"
-            local output="$4"
-            timeout 30s gh api --method POST \
-              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-              -f state=pending \
-              -f context="$context" \
-              -f description="$description" \
-              -f target_url="$target_url" > "$output"
-          }
-          latest_context_status() {
-            local head_sha="$1"
-            local context="$2"
-            local output="$3"
-            local page=1
-            local batch="$RUNNER_TEMP/main-health-current-page.json"
-            : > "$output"
-            while true; do
-              gh api \
-                "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/statuses?per_page=100&page=${page}" \
-                > "$batch" || return 1
-              jq -c --arg context "$context" \
-                '[.[] | select(.context == $context)][0] // empty' \
-                "$batch" > "$output" || return 1
-              [[ -s "$output" ]] && return 0
-              [[ "$(jq -er 'length' "$batch")" == 100 ]] || return 0
-              page=$((page + 1))
-            done
-          }
-          provider_epoch() {
-            python - <<'PY'
-          import email.utils
-          import json
-          import os
-          import urllib.request
-
-          request = urllib.request.Request(
-              f"{os.environ['GITHUB_API_URL']}/rate_limit",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-          )
-          with urllib.request.urlopen(request, timeout=30) as response:
-              json.load(response)
-              provider_date = response.headers.get("Date")
-          provider_now = email.utils.parsedate_to_datetime(provider_date)
-          if provider_now.tzinfo is None:
-              raise SystemExit("GitHub provider time has no timezone")
-          print(int(provider_now.timestamp()))
-          PY
-          }
-
-          : > "$armed_leases"
-          while IFS=$'\t' read -r head_sha admitted_target; do
-            prefix="Main health lease / ${origin_run_id}/${origin_run_attempt}/${lease_nonce}/${replica}"
-            anchor_context="$prefix / anchor"
-            armed_context="$prefix / armed"
-            anchor="$RUNNER_TEMP/main-health-anchor-${head_sha}.json"
-            armed="$RUNNER_TEMP/main-health-armed-${head_sha}.json"
-            post_marker "$head_sha" "$anchor_context" "Provider lease anchor" "$anchor"
-            binding="$(python - "$anchor" "$head_sha" "$anchor_context" "$target_url" \
-              "$PUBLISHER_LOGIN" <<'PY'
-          import datetime
-          import json
-          import pathlib
-          import sys
-
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          try:
-              created_at = datetime.datetime.fromisoformat(
-                  str(status.get("created_at", "")).replace("Z", "+00:00")
-              )
-          except ValueError as exc:
-              raise SystemExit("provider lease anchor timestamp is malformed") from exc
-          if not (
-              status.get("sha") == sys.argv[2]
-              and status.get("state") == "pending"
-              and status.get("context") == sys.argv[3]
-              and status.get("description") == "Provider lease anchor"
-              and status.get("target_url") == sys.argv[4]
-              and status.get("creator", {}).get("login") == sys.argv[5]
-              and isinstance(status.get("creator", {}).get("id"), int)
-              and isinstance(status.get("id"), int)
-              and status.get("created_at") == status.get("updated_at")
-          ):
-              raise SystemExit("provider did not attest exact lease anchor")
-          deadline = created_at + datetime.timedelta(seconds=240)
-          print(
-              status["id"],
-              deadline.isoformat().replace("+00:00", "Z"),
-              int(deadline.timestamp()),
-              sep="\t",
-          )
-          PY
-            )"
-            IFS=$'\t' read -r anchor_id deadline deadline_epoch <<<"$binding"
-            post_marker "$head_sha" "$armed_context" \
-              "Expires at ${deadline} anchor ${anchor_id}" "$armed"
-            python - "$anchor" "$armed" "$head_sha" "$anchor_context" "$armed_context" \
-              "$target_url" "$PUBLISHER_LOGIN" "$anchor_id" "$deadline" <<'PY'
-          import datetime
-          import json
-          import pathlib
-          import sys
-
-          anchor = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          armed = json.loads(pathlib.Path(sys.argv[2]).read_bytes())
-          armed_created = datetime.datetime.fromisoformat(
-              str(armed.get("created_at", "")).replace("Z", "+00:00")
-          )
-          deadline = datetime.datetime.fromisoformat(sys.argv[9].replace("Z", "+00:00"))
-          if not (
-              armed.get("sha") == sys.argv[3]
-              and armed.get("state") == "pending"
-              and armed.get("context") == sys.argv[5]
-              and armed.get("description") == f"Expires at {sys.argv[9]} anchor {sys.argv[8]}"
-              and armed.get("target_url") == sys.argv[6]
-              and armed.get("creator", {}).get("login") == sys.argv[7]
-              and isinstance(armed.get("creator", {}).get("id"), int)
-              and isinstance(armed.get("id"), int)
-              and armed.get("id") > anchor.get("id")
-              and armed.get("created_at") == armed.get("updated_at")
-              and armed_created < deadline
-          ):
-              raise SystemExit("provider did not attest exact armed lease")
-          PY
-            printf '%s\t%s\t%s\t%s\n' \
-              "$head_sha" "$admitted_target" "$deadline" "$deadline_epoch" >> "$armed_leases"
+          IFS=$'\t' read -r origin_run_id origin_run_attempt lease_nonce replica \
+            deadline deadline_epoch < "$metadata"
+          details_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          while IFS=$'\t' read -r head_sha check_run_id external_id; do
+            required="$RUNNER_TEMP/main-health-required-${head_sha}.json"
+            python tools/stop_the_line.py github-check-get \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "Main health admission / required" \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG" > "$required"
+            jq -e \
+              --arg external_id "$external_id" \
+              --argjson check_run_id "$check_run_id" \
+              '.id == $check_run_id and .external_id == $external_id and
+               .conclusion == "failure" and .status == "completed"' \
+              "$required" >/dev/null
+            marker_external_id="mh1-closer:${head_sha}:${origin_run_id}:${origin_run_attempt}:${lease_nonce}:${deadline_epoch}:${replica}:${check_run_id}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"
+            python tools/stop_the_line.py github-check-set \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "Main health lease closer / ${replica}" \
+              --external-id "$marker_external_id" \
+              --conclusion success \
+              --details-url "$details_url" \
+              --output-title "Main health lease closer armed" \
+              --output-summary "Replica ${replica} is waiting for ${deadline}." \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG" >/dev/null
           done < "$leases"
 
-          while IFS=$'\t' read -r head_sha admitted_target _deadline deadline_epoch; do
-            while true; do
-              now_epoch="$(provider_epoch)"
-              if (( now_epoch >= deadline_epoch )); then
-                break
-              fi
-              remaining=$((deadline_epoch - now_epoch))
-              if (( remaining > 15 )); then
-                remaining=15
-              fi
-              sleep "$remaining"
-            done
-            current="$RUNNER_TEMP/main-health-current-${head_sha}.json"
-            if ! latest_context_status "$head_sha" "Main health / required" "$current"; then
-              post_failure "$head_sha" "Main health lease status lookup failed"
-              continue
+          while true; do
+            clock="$(python tools/stop_the_line.py github-provider-clock)"
+            now_epoch="$(jq -er '.epoch' <<<"$clock")"
+            if (( now_epoch >= deadline_epoch )); then
+              break
             fi
-            if [[ -s "$current" ]] && jq -e \
-              --arg login "$PUBLISHER_LOGIN" \
-              --arg sha "$head_sha" \
-              --arg target "$admitted_target" \
-              '.sha == $sha and .state == "success" and .context == "Main health / required" and .target_url == $target and .creator.login == $login' \
-              "$current" >/dev/null; then
-              post_failure "$head_sha" "Main health admission lease expired"
+            remaining=$((deadline_epoch - now_epoch))
+            if (( remaining > 15 )); then
+              remaining=15
             fi
-          done < "$armed_leases"
-          cleanup_armed=false
+            sleep "$remaining"
+          done
+
+  expire-successes:
+    name: Main health lease expiry writer / ${{ github.event.client_payload.replica }}
+    if: always() && needs.arm-and-wait.result == 'success'
+    needs: arm-and-wait
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: main-health-publisher
+    concurrency:
+      group: main-health-check-writer
+      queue: max
+    steps:
+      - name: Mint isolated publisher token
+        id: publisher
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
+          private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
+          permission-checks: write
+
+      - name: Check out trusted lease code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
+
+      - name: Expire exact check-run generations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          leases="$RUNNER_TEMP/main-health-expiry-leases.tsv"
+          python - "$PAYLOAD" > "$leases" <<'PY'
+          import json
+          import re
+          import sys
+
+          payload = json.loads(sys.argv[1])
+          run_id = str(payload.get("origin_run_id", ""))
+          run_attempt = str(payload.get("origin_run_attempt", ""))
+          nonce = payload.get("nonce")
+          deadline_epoch = payload.get("deadline_epoch")
+          replica = payload.get("replica")
+          leases = payload.get("leases")
+          if (
+              set(payload) != {
+                  "deadline",
+                  "deadline_epoch",
+                  "leases",
+                  "nonce",
+                  "origin_run_attempt",
+                  "origin_run_id",
+                  "replica",
+              }
+              or not re.fullmatch(r"[1-9][0-9]*", run_id)
+              or not re.fullmatch(r"[1-9][0-9]*", run_attempt)
+              or not isinstance(nonce, str)
+              or not re.fullmatch(r"[0-9a-f]{32}", nonce)
+              or not isinstance(deadline_epoch, int)
+              or deadline_epoch <= 0
+              or replica not in {1, 2}
+              or not isinstance(leases, list)
+              or not leases
+              or len(leases) > 1000
+          ):
+              raise SystemExit("main-health expiry payload is invalid")
+          seen: set[str] = set()
+          for lease in leases:
+              if not isinstance(lease, dict) or set(lease) != {
+                  "check_run_id",
+                  "external_id",
+                  "head_sha",
+              }:
+                  raise SystemExit("main-health expiry lease is malformed")
+              sha = lease["head_sha"]
+              check_run_id = lease["check_run_id"]
+              expected_external_id = (
+                  f"mh1:{sha}:{run_id}:{run_attempt}:{nonce}:{deadline_epoch}"
+              )
+              if (
+                  not isinstance(sha, str)
+                  or not re.fullmatch(r"[0-9a-f]{40}", sha)
+                  or sha in seen
+                  or not isinstance(check_run_id, int)
+                  or check_run_id <= 0
+                  or lease["external_id"] != expected_external_id
+              ):
+                  raise SystemExit("main-health expiry lease is not provider-bound")
+              seen.add(sha)
+              print(sha, check_run_id, expected_external_id, sep="\t")
+          PY
+          details_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          while IFS=$'\t' read -r head_sha check_run_id external_id; do
+            python tools/stop_the_line.py github-check-expire \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --check-run-id "$check_run_id" \
+              --name "Main health admission / required" \
+              --external-id "$external_id" \
+              --details-url "$details_url" \
+              --output-title "Main health admission expired" \
+              --output-summary "The shared provider deadline elapsed." \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG"
+          done < "$leases"

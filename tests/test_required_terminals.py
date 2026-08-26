@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -276,6 +277,10 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     for job_name in publisher_jobs:
         job = health["jobs"][job_name]
         assert job["environment"] == "main-health-publisher"
+        assert job["concurrency"] == {
+            "group": "main-health-check-writer",
+            "queue": "max",
+        }
         publisher = job["steps"][0]
         assert publisher["id"] == "publisher"
         assert publisher["uses"] == (
@@ -285,16 +290,19 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
             "app-id": "${{ vars.MAIN_HEALTH_APP_ID }}",
             "private-key": "${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}",
             "permission-actions": "read",
+            "permission-checks": "write",
             "permission-contents": "write",
             "permission-pull-requests": "read",
-            "permission-statuses": "write",
         }
     reconcile = "\n".join(
         step.get("run", "") for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
     )
     assert "validate-git" in reconcile
     assert "state=open" in reconcile
-    assert 'context="Main health / required"' in reconcile
+    assert "Main health admission / required" in reconcile
+    assert "github-check-set" in reconcile
+    assert "github-check-get" in reconcile
+    assert "github-check-expire" in reconcile
     reconcile_step = next(
         step
         for step in health["jobs"]["reconcile-candidate-statuses"]["steps"]
@@ -306,7 +314,7 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert '[[ "$admission_ready" == true ]]' in reconcile
     assert '"$state_available" == true ]]' in reconcile
     assert "Main health writer / latest" in reconcile
-    assert "commits/${expected_main_sha}/statuses" in reconcile
+    assert '"$expected_main_sha" "Main health writer / latest" "$writer_snapshot"' in reconcile
     assert 'job.get("name") == "persist-health"' in reconcile
     assert 'cmp -s "$run_before" "$run_after"' in reconcile
     assert 'cmp -s "$state_before" "$state_after"' in reconcile
@@ -323,31 +331,38 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert '"$(jq -er \'.head_sha\' "$latest_snapshot")" == "$expected_main_sha"' in reconcile
     assert 'cmp -s "$latest_snapshot" "$boundary_latest"' in reconcile
     assert reconcile.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}"') >= 2
-    assert 'status.get("creator", {}).get("login") == sys.argv[6]' in reconcile
-    assert 'status.get("created_at") == status.get("updated_at")' in reconcile
-    assert "Main health success could not be provider-verified" in reconcile
+    assert 'check_run.get("conclusion") == "success"' in reconcile
+    assert "latest writer check is not an exact provider attestation" in reconcile
     assert 'leases="$RUNNER_TEMP/main-health-success-leases.jsonl"' in reconcile
     assert ': > "$leases"' in reconcile
     assert "main-health-expire" in reconcile
     assert "for replica in 1 2" in reconcile
-    assert "Main health lease closer did not start" in reconcile
-    assert "Provider lease anchor" in reconcile
+    assert "deadline_epoch=$((provider_epoch + 240))" in reconcile
+    assert "mh1:${lease_sha}:${GITHUB_RUN_ID}" in reconcile
+    assert "Main health lease closer / ${replica}" in reconcile
     assert "lease_marker_binding" in reconcile
     assert "verify_closer_run" in reconcile
     assert "main-health lease closer is not provider-active" in reconcile
-    assert "github_provider_clock" in reconcile
-    assert "Main health lease activation window expired" in reconcile
-    assert "Main health publisher exited before lease handoff" in reconcile
+    assert "github-provider-clock" in reconcile
+    assert "deadline_epoch - provider_epoch < 60" in reconcile
+    assert "Main health publisher exited" in reconcile
     assert "cleanup_successes" in reconcile
+    assert reconcile.count("while true; do") >= 1
+    assert "provider_epoch >= deadline_epoch" in reconcile
+    assert health["jobs"]["reconcile-candidate-statuses"]["concurrency"] == {
+        "group": "main-health-check-writer",
+        "queue": "max",
+    }
     dispatch_index = reconcile.index("main-health-expire")
     marker_index = reconcile.index("! lease_marker_binding")
-    active_index = reconcile.rindex('verify_closer_run 2 "$closer_run_2"')
-    success_index = reconcile.index('post_main_health_status "$lease_sha" success')
+    active_index = reconcile.index('verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"')
+    success_index = reconcile.index('"$lease_sha" success "$external_id"')
     assert dispatch_index < marker_index < active_index < success_index
     invalidator = "\n".join(
         step.get("run", "") for step in health["jobs"]["invalidate-candidate-statuses"]["steps"]
     )
-    assert "Main health reconciliation in progress" in invalidator
+    assert "Main health admission invalidated" in invalidator
+    assert "github-check-set" in invalidator
     assert "failed=0" in invalidator
     assert 'exit "$failed"' in invalidator
     assert health["jobs"]["persist-health"]["outputs"]["state_commit"] == (
@@ -370,8 +385,9 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     assert "observe_main_health.py invalidate" in writer
     assert "github.event.workflow_run.run_attempt" in str(health["jobs"]["persist-health"]["steps"])
     assert "tools/observe_main_health.py" in writer
-    assert 'context="Main health writer / latest"' in writer
-    assert "state ${local_commit} run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}" in writer
+    assert '--name "Main health writer / latest"' in writer
+    assert "mhw1:${MEASURED_SHA}:${GITHUB_RUN_ID}" in writer
+    assert "Main health state committed" in writer
     assert REQUIRED_WORKFLOWS == {
         "metriplane": ("Metriplane / required", "CI"),
         "documentation": ("Documentation / required", "Documentation"),
@@ -389,21 +405,40 @@ def test_workflows_have_always_run_exact_aggregate_jobs() -> None:
     lease = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
     lease_trigger = lease.get("on", lease.get(True))
     assert lease_trigger == {"repository_dispatch": {"types": ["main-health-expire"]}}
+    arm = lease["jobs"]["arm-and-wait"]
     expiry = lease["jobs"]["expire-successes"]
+    assert arm["environment"] == "main-health-publisher"
     assert expiry["environment"] == "main-health-publisher"
-    assert "github.actor == format" in expiry["if"]
-    assert "github.event.sender.login == format" in expiry["if"]
+    assert "github.actor == format" in arm["if"]
+    assert "github.event.sender.login == format" in arm["if"]
+    assert expiry["needs"] == "arm-and-wait"
+    assert expiry["concurrency"] == {
+        "group": "main-health-check-writer",
+        "queue": "max",
+    }
+    for job in (arm, expiry):
+        publisher = job["steps"][0]
+        assert publisher["with"] == {
+            "app-id": "${{ vars.MAIN_HEALTH_APP_ID }}",
+            "private-key": "${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}",
+            "permission-checks": "write",
+        }
+    arm_script = "\n".join(step.get("run", "") for step in arm["steps"])
     expiry_script = "\n".join(step.get("run", "") for step in expiry["steps"])
-    assert "Provider lease anchor" in expiry_script
-    assert "datetime.timedelta(seconds=240)" in expiry_script
-    assert "provider_epoch" in expiry_script
-    assert "GITHUB_API_URL" in expiry_script
-    assert "while true" in expiry_script
-    assert "page=$((page + 1))" in expiry_script
-    assert "per_page=100&page=${page}" in expiry_script
-    assert "Main health lease closer exited early" in expiry_script
-    assert 'status.get("creator", {}).get("login") == sys.argv[4]' in expiry_script
-    assert "Main health admission lease expired" in expiry_script
+    assert "deadline_epoch" in arm_script
+    assert "main-health lease deadline is inconsistent" in arm_script
+    assert "mh1-closer:" in arm_script
+    assert "github-check-get" in arm_script
+    assert "github-check-set" in arm_script
+    assert "while true" in arm_script
+    assert "github-provider-clock" in arm_script
+    assert "github-check-expire" in expiry_script
+    assert "Main health admission expired" in expiry_script
+    all_health_workflows = (WORKFLOWS / "main-health.yml").read_text(encoding="utf-8") + (
+        WORKFLOWS / "main-health-lease.yml"
+    ).read_text(encoding="utf-8")
+    assert "/statuses" not in all_health_workflows
+    assert "permission-statuses" not in all_health_workflows
 
     ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
     ci_trigger = ci.get("on", ci.get(True))
@@ -452,7 +487,7 @@ def test_main_health_candidate_reconciliation_step_is_valid_bash() -> None:
 
 
 def test_main_health_embedded_python_is_valid() -> None:
-    expected = {"main-health.yml": 12, "main-health-lease.yml": 5}
+    expected = {"main-health.yml": 8, "main-health-lease.yml": 2}
     for filename, expected_count in expected.items():
         workflow = yaml.safe_load((WORKFLOWS / filename).read_text(encoding="utf-8"))
         snippets: list[str] = []
@@ -466,57 +501,92 @@ def test_main_health_embedded_python_is_valid() -> None:
             compile(snippet, f"{filename}-heredoc-{index}.py", "exec")
 
 
-def test_main_health_lease_marker_binds_exact_provider_deadline(tmp_path: Path) -> None:
+def test_main_health_closers_require_one_shared_provider_deadline(tmp_path: Path) -> None:
+    snippet = _workflow_python_snippet(
+        "main-health-lease.yml", "main-health lease deadline is inconsistent"
+    )
+    head_sha = "b" * 40
+    nonce = "c" * 32
+    deadline = "2026-08-26T06:04:00Z"
+    deadline_epoch = int(datetime.fromisoformat(deadline).astimezone(UTC).timestamp())
+    payload = {
+        "deadline": deadline,
+        "deadline_epoch": deadline_epoch,
+        "leases": [
+            {
+                "check_run_id": 42,
+                "external_id": f"mh1:{head_sha}:123:1:{nonce}:{deadline_epoch}",
+                "head_sha": head_sha,
+            }
+        ],
+        "nonce": nonce,
+        "origin_run_attempt": "1",
+        "origin_run_id": "123",
+        "replica": 1,
+    }
+    metadata = tmp_path / "metadata.tsv"
+    args = [sys.executable, "-", json.dumps(payload), str(metadata)]
+    accepted = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
+    assert accepted.returncode == 0, accepted.stderr
+    lease_external_id = f"mh1:{head_sha}:123:1:{nonce}:{deadline_epoch}"
+    assert accepted.stdout == f"{head_sha}\t42\t{lease_external_id}\n"
+    assert metadata.read_text(encoding="utf-8").endswith(f"\t{deadline}\t{deadline_epoch}\n")
+
+    payload["deadline"] = "2026-08-26T06:04:01Z"
+    rejected = subprocess.run(
+        [sys.executable, "-", json.dumps(payload), str(metadata)],
+        input=snippet,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert rejected.returncode != 0
+    assert "deadline is inconsistent" in rejected.stderr
+
+
+def test_main_health_lease_marker_binds_exact_shared_generation(tmp_path: Path) -> None:
     snippet = _workflow_python_snippet(
         "main-health.yml", "main-health lease marker is not provider-bound"
     )
     head_sha = "b" * 40
-    prefix = "Main health lease / 123/1/" + "c" * 32 + "/1"
+    nonce = "c" * 32
+    deadline_epoch = "1787724240"
     target = "https://github.com/Miko997/metriplane/actions/runs/456"
-    anchor = {
-        "context": f"{prefix} / anchor",
-        "created_at": "2026-08-26T06:00:00Z",
-        "creator": {"id": 10, "login": "publisher[bot]"},
-        "description": "Provider lease anchor",
+    marker = {
+        "app": {"id": 4722589, "slug": "metriplane-main-health-publisher"},
+        "conclusion": "success",
+        "details_url": target,
+        "external_id": (f"mh1-closer:{head_sha}:123:1:{nonce}:{deadline_epoch}:1:42:456:1"),
+        "head_sha": head_sha,
         "id": 100,
-        "sha": head_sha,
-        "state": "pending",
-        "target_url": target,
-        "updated_at": "2026-08-26T06:00:00Z",
+        "name": "Main health lease closer / 1",
+        "output": {"summary": "armed", "title": "Main health lease closer armed"},
+        "status": "completed",
     }
-    armed = {
-        "context": f"{prefix} / armed",
-        "created_at": "2026-08-26T06:00:01Z",
-        "creator": {"id": 10, "login": "publisher[bot]"},
-        "description": "Expires at 2026-08-26T06:04:00Z anchor 100",
-        "id": 101,
-        "sha": head_sha,
-        "state": "pending",
-        "target_url": target,
-        "updated_at": "2026-08-26T06:00:01Z",
-    }
-    anchor_path = tmp_path / "anchor.json"
-    armed_path = tmp_path / "armed.json"
-    anchor_path.write_text(json.dumps(anchor), encoding="utf-8")
-    armed_path.write_text(json.dumps(armed), encoding="utf-8")
+    marker_path = tmp_path / "marker.json"
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
     args: list[str] = [
         sys.executable,
         "-",
-        str(anchor_path),
-        str(armed_path),
+        str(marker_path),
         head_sha,
-        str(anchor["context"]),
-        str(armed["context"]),
-        "publisher[bot]",
+        "42",
+        "123",
+        "1",
+        nonce,
+        deadline_epoch,
+        "1",
         "Miko997/metriplane",
     ]
     accepted = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
     assert accepted.returncode == 0, accepted.stderr
-    assert accepted.stdout.startswith("456\t2026-08-26T06:04:00Z\t")
+    assert accepted.stdout == "456\t1\n"
 
-    armed["description"] = "Expires at 2026-08-26T06:04:01Z anchor 100"
-    armed_path.write_text(json.dumps(armed), encoding="utf-8")
-    rejected = subprocess.run(args, input=snippet, capture_output=True, text=True, check=False)
+    rejected_args = [*args]
+    rejected_args[8] = str(int(deadline_epoch) + 1)
+    rejected = subprocess.run(
+        rejected_args, input=snippet, capture_output=True, text=True, check=False
+    )
     assert rejected.returncode != 0
     assert "not provider-bound" in rejected.stderr
 
@@ -544,7 +614,12 @@ def test_main_health_success_requires_active_waiting_closer(tmp_path: Path) -> N
                 "conclusion": None,
                 "name": "Main health lease closer / 1",
                 "status": "in_progress",
-                "steps": [{"name": "Expire exact provider leases", "status": "in_progress"}],
+                "steps": [
+                    {
+                        "name": "Arm lease and wait for shared deadline",
+                        "status": "in_progress",
+                    }
+                ],
             }
         ]
     }
@@ -559,6 +634,7 @@ def test_main_health_success_requires_active_waiting_closer(tmp_path: Path) -> N
         str(jobs_path),
         "1",
         "456",
+        "1",
         nonce,
         "123",
         "1",
@@ -575,13 +651,34 @@ def test_main_health_success_requires_active_waiting_closer(tmp_path: Path) -> N
     assert "not provider-active" in rejected.stderr
 
 
+def test_publisher_is_third_closer_for_the_shared_deadline() -> None:
+    workflow = yaml.safe_load((WORKFLOWS / "main-health.yml").read_text(encoding="utf-8"))
+    script = next(
+        item["run"]
+        for item in workflow["jobs"]["reconcile-candidate-statuses"]["steps"]
+        if item.get("name") == "Reconcile every open pull request head"
+    )
+    success_index = script.index('"$lease_sha" success "$external_id"')
+    wait_index = script.index("while true; do", success_index)
+    expiry_index = script.index('"Main health admission expired"', wait_index)
+    assert success_index < wait_index < expiry_index
+    assert script.count('verify_closer_run 1 "$closer_run_1" "$closer_attempt_1"') >= 2
+    assert script.count('verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"') >= 2
+    assert '"$closer_run_1" != "$closer_run_2"' in script
+
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="Main Health runs on a Bash runner")
-def test_main_health_lease_step_is_valid_bash() -> None:
+@pytest.mark.parametrize(
+    ("job_name", "step_name"),
+    (
+        ("arm-and-wait", "Arm lease and wait for shared deadline"),
+        ("expire-successes", "Expire exact check-run generations"),
+    ),
+)
+def test_main_health_lease_step_is_valid_bash(job_name: str, step_name: str) -> None:
     workflow = yaml.safe_load((WORKFLOWS / "main-health-lease.yml").read_text(encoding="utf-8"))
     step = next(
-        item
-        for item in workflow["jobs"]["expire-successes"]["steps"]
-        if item.get("name") == "Expire exact provider leases"
+        item for item in workflow["jobs"][job_name]["steps"] if item.get("name") == step_name
     )
     completed = subprocess.run(
         ["bash", "-n"],

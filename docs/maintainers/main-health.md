@@ -1,8 +1,9 @@
 # Main health operations
 
-`Main health / required` is the stable terminal for the durable state owned by
-MP2-004. The state lives outside the product branch on
-`metriplane-main-health-state`.
+`Main health / required` is the default-branch aggregate terminal for the durable
+state owned by MP2-004. `Main health admission / required` is the dedicated
+App-owned admission check on each pull request head. The state lives outside the
+product branch on `metriplane-main-health-state`.
 
 ## State layout
 
@@ -29,45 +30,59 @@ incident identity, and any resolution's authorization and approval evidence.
 ## Normal ingestion
 
 Pull requests use `scope=candidate`; the tool validates the result and returns
-without creating or changing state. The trusted default-branch workflow publishes
-`Main health / required` on each exact open pull request head during its five-minute
-reconciliation and immediately after every durable transition. Pull request events
-do not run privileged admission or occupy the serialized writer queue, and
-candidate-controlled code is never executed with the status-writing token. The
-token is a repository-scoped installation token from the dedicated Main Health
-GitHub App. Its private key is available only through the `main-health-publisher`
-environment, whose deployment branch policy admits `main` only. The App has
-Actions read, contents write, pull requests read, and commit statuses write; it
-does not have workflow write. The required-check ruleset is pinned to this App,
-not to the shared GitHub Actions integration. The
-checkout-free invalidator overwrites earlier success with failure for every open
-head before the reconciler starts. The reconciler keeps failure when health turns red, the base
-becomes stale, or the 36-hour window expires; a persistent commit status is never
-treated as an unbounded lease. Before publishing success, reconciliation dispatches
-two independent, default-branch-only expiry runs with a unique nonce. Each run
-publishes App-authenticated anchor and armed statuses, derives an absolute
-four-minute deadline from the anchor's GitHub `created_at`, and waits against
-GitHub's authenticated provider time. Reconciliation exhaustively finds both
-marker pairs, verifies their distinct Actions runs and closer jobs are still in
-progress, and requires at least 60 seconds to remain before it can publish green.
-Each closer exhaustively searches the status history at its deadline and changes
-the exact origin run's current App-created success to failure only if no newer
-reconciliation has replaced it. If dispatch, arming, active-run verification, or
-success verification fails, reconciliation retains or restores failure. An
-EXIT/INT/TERM cleanup covers every handled post-success publisher exit; the two
-already active closers cover abrupt runner loss. All status publishers and durable
-writers are trusted triggers in one serialized concurrency group, so an older
-green snapshot cannot publish success after a newer red transition. Every writer first publishes
-provider-verified failure on its measured main SHA. Only after CAS and read-back
-does the successful `persist-health` job publish an isolated-App status binding
-that main SHA to the exact state commit, run ID, and attempt. A five-minute tick
-reads the main ref, state ref, writer status, exact run, and exact attempt jobs
+without creating or changing state. The trusted default-branch workflow mutates
+one `Main health admission / required` check run on each exact open pull request
+head during its five-minute reconciliation and immediately after every durable
+transition. A separate name avoids GitHub's rule that a same-named check and
+legacy commit status must both pass. Pull request events do not run privileged
+admission or occupy the serialized writer queue, and candidate-controlled code is
+never executed with the App token. The token is a repository-scoped installation
+token from the dedicated Main Health GitHub App. Its private key is available only
+through the `main-health-publisher` environment, whose deployment branch policy
+admits `main` only. Runtime tokens request Actions read, Checks write, contents
+write, and pull requests read; they never request commit-status write. The
+required-check ruleset is pinned to this App, not to the shared GitHub Actions
+integration.
+
+The invalidator checks out trusted `main` code and changes the existing App check
+to failure for every open head before the reconciler starts. Failure remains when
+health turns red, the base becomes stale, or the 36-hour window expires. Each head
+and check name has one mutable App-owned check run, so a stable SHA cannot exhaust
+GitHub's 1,000-entry status or same-name check-run limits. The check's
+`external_id` binds the exact head SHA, origin run ID, origin attempt, random
+nonce, and one provider-derived deadline.
+
+Before publishing success, reconciliation derives one absolute four-minute
+deadline from GitHub's authenticated `Date` response and dispatches two
+independent, default-branch-only expiry runs with that exact deadline and check-run
+identity. Each closer updates one fixed-name App marker check, binds its own run
+and attempt into the marker `external_id`, and waits against authenticated provider
+time. Reconciliation verifies both distinct Actions runs, jobs, and wait steps are
+still in progress and requires at least 60 seconds to remain before it can publish
+green. The publisher then remains alive as a third closer until the same deadline.
+At the deadline the publisher and both independent expiry writers can change only
+the exact generation to failure. Failure and success mutations from every workflow
+share the repository-wide `main-health-check-writer` concurrency group with
+`queue: max`; the identity check and PATCH therefore execute as one serialized
+critical section. An older attempt that observes a newer `external_id` is a no-op,
+and expiry omits `external_id` from its PATCH so it cannot restore an older
+generation even if transport behavior changes.
+
+If dispatch, arming, active-run verification, or success verification fails,
+reconciliation retains or restores failure. An EXIT/INT/TERM cleanup covers every
+handled post-success publisher exit; the already active closers cover abrupt
+publisher runner loss. Every durable writer first publishes provider-verified
+failure on its measured main SHA. Only after CAS and read-back does the successful
+`persist-health` job update the one isolated-App `Main health writer / latest`
+check, whose `external_id` binds that main SHA to the exact state commit, run ID,
+and attempt. A five-minute tick reads the main ref, state ref, writer check,
+exact run, and exact attempt jobs
 before and after validation; it requires all snapshots to remain unchanged and
 exactly one successful `persist-health` job. Immediate reconciliation requires the
-same provider status plus the successful dependency's exact main and state-commit
-outputs. Both paths recheck main, state, writer status, and PR base/head at the
-success boundary. A success response that cannot be provider-verified is followed
-by failure. The completed protected-main CI workflow, nightly and weekly schedules,
+same provider check plus the successful dependency's exact main and state-commit
+outputs. Both paths recheck main, state, writer check, and PR base/head at the
+success boundary. A response that cannot be provider-verified fails the job and
+leaves or restores failure. The completed protected-main CI workflow, nightly and weekly schedules,
 and default-branch-only `repository_dispatch` deep runs are the only normal writer
 triggers. A
 protected-main writer binds the triggering CI run attempt, selects the exact
@@ -158,10 +173,11 @@ snapshot, and both active default-branch rulesets itself with an
 owner-authenticated token. `Protect main` must retain the pull-request, deletion,
 non-fast-forward, and three non-health required-check protections without a
 bypass. `Protect main health admission` must contain only
-`Main health / required`, pin it to the dedicated Main Health App integration,
+`Main health admission / required`, pin it to the dedicated Main Health App integration,
 and grant repository role `5` only the `pull_request` bypass mode. The state branch
 uses a non-bypassable deletion/non-fast-forward ruleset plus a separate update
-ruleset that permits writes only from that App or the exact repository owner. This permanent split is
+ruleset that permits writes only from that App or the exact repository owner.
+This permanent split is
 the truthful single-maintainer capability boundary; it never permits a direct
 push, tag, or bypass of the other required checks. Admission records that
 independent approval did not exist and publishes the canonical admission payload
@@ -266,13 +282,16 @@ protected-main, nightly, weekly, provider, authorization, and resolution evidenc
 The Main Health App `metriplane-main-health-publisher` (App and integration ID
 `4722589`) is installed only on `Miko997/metriplane`. Its repository
 permissions are Actions read, contents write, pull requests read, and commit
-statuses write; webhooks are disabled and workflow write is not granted. The
+statuses write, plus Checks write. Commit-status write is retained only because
+GitHub requires it when selecting an App as a required-check source; workflow
+tokens do not request it and the workflows contain no commit-status transport.
+Webhooks are disabled and workflow write is not granted. The
 repository variables `MAIN_HEALTH_APP_ID` and `MAIN_HEALTH_APP_SLUG` identify the
 installation. `MAIN_HEALTH_APP_PRIVATE_KEY` is an environment secret in
 `main-health-publisher`, and that environment's custom deployment branch policy
 contains only `main`.
 
-The main-health admission ruleset pins `Main health / required` to the App's
+The main-health admission ruleset pins `Main health admission / required` to the App's
 integration ID. State ruleset `21487681` contains deletion and non-fast-forward
 restrictions with no bypass actors. Writer ruleset `21533351` contains only the
 update restriction with exactly two `always` bypass actors: App integration

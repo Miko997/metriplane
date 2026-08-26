@@ -15,6 +15,7 @@ import re
 import subprocess
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,7 +33,7 @@ PASS = "success"
 CANONICAL_REPAIR_CADENCES = ["nightly", "weekly"]
 AUTHORIZED_REVIEWER_PERMISSIONS = {"admin", "maintain", "write"}
 OWNER_ADMISSION_MAX_AGE_SECONDS = 300
-MAIN_HEALTH_CONTEXT = "Main health / required"
+MAIN_HEALTH_CONTEXT = "Main health admission / required"
 GITHUB_ACTIONS_INTEGRATION_ID = 15368
 MAIN_HEALTH_PUBLISHER_INTEGRATION_ID = 4722589
 CORE_REQUIRED_CONTEXTS = {
@@ -844,6 +845,355 @@ def _github_provider_now(token: str) -> datetime:
 
 def _github_provider_timestamp(token: str) -> str:
     return _github_provider_now(token).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def github_provider_clock(token: str) -> dict[str, Any]:
+    provider_now = _github_provider_now(token).replace(microsecond=0)
+    return {
+        "epoch": int(provider_now.timestamp()),
+        "timestamp": provider_now.isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _validate_github_check_run(
+    check_run: dict[str, Any],
+    *,
+    app_id: int,
+    app_slug: str,
+    conclusion: str | None,
+    details_url: str | None,
+    external_id: str | None,
+    head_sha: str,
+    name: str,
+    completed_at: str | None = None,
+    output_summary: str | None = None,
+    output_title: str | None = None,
+) -> None:
+    app = check_run.get("app")
+    if not (
+        type(check_run.get("id")) is int
+        and check_run["id"] > 0
+        and check_run.get("head_sha") == head_sha
+        and check_run.get("name") == name
+        and check_run.get("status") == "completed"
+        and isinstance(app, dict)
+        and app.get("id") == app_id
+        and app.get("slug") == app_slug
+    ):
+        raise HealthError("GitHub check run identity is not provider-bound")
+    if conclusion is not None and check_run.get("conclusion") != conclusion:
+        raise HealthError("GitHub check run conclusion is not provider-bound")
+    if details_url is not None and check_run.get("details_url") != details_url:
+        raise HealthError("GitHub check run details URL is not provider-bound")
+    if external_id is not None and check_run.get("external_id") != external_id:
+        raise HealthError("GitHub check run external ID is not provider-bound")
+    if completed_at is not None:
+        actual_completed_at = check_run.get("completed_at")
+        if not isinstance(actual_completed_at, str) or (
+            _timestamp(actual_completed_at) != _timestamp(completed_at)
+        ):
+            raise HealthError("GitHub check run completion time is not provider-bound")
+    output = check_run.get("output")
+    if output_title is not None and (
+        not isinstance(output, dict) or output.get("title") != output_title
+    ):
+        raise HealthError("GitHub check run output title is not provider-bound")
+    if output_summary is not None and (
+        not isinstance(output, dict) or output.get("summary") != output_summary
+    ):
+        raise HealthError("GitHub check run output summary is not provider-bound")
+
+
+def _github_check_runs(
+    *, repository: str, head_sha: str, name: str, app_id: int, token: str
+) -> list[dict[str, Any]]:
+    _validate_sha(head_sha)
+    query = urllib.parse.urlencode({"check_name": name, "filter": "all"})
+    runs: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        response = _github_get(
+            f"repos/{repository}/commits/{head_sha}/check-runs?{query}&per_page=100&page={page}",
+            token,
+        )
+        if not isinstance(response, dict):
+            raise HealthError("GitHub check-run inventory is malformed")
+        batch = response.get("check_runs")
+        if not isinstance(batch, list) or not all(isinstance(item, dict) for item in batch):
+            raise HealthError("GitHub check-run inventory is malformed")
+        for item in batch:
+            app = item.get("app")
+            if not isinstance(app, dict):
+                raise HealthError("GitHub check-run inventory is malformed")
+            if item.get("name") == name and app.get("id") == app_id:
+                runs.append(item)
+        if len(batch) < 100:
+            return runs
+        page += 1
+
+
+def _github_check_payload(
+    *,
+    completed_at: str,
+    conclusion: str,
+    details_url: str,
+    external_id: str,
+    name: str,
+    output_summary: str,
+    output_title: str,
+) -> dict[str, Any]:
+    if conclusion not in {"failure", "success"}:
+        raise HealthError("GitHub check conclusion must be failure or success")
+    if not all((name, external_id, details_url, output_title, output_summary)):
+        raise HealthError("GitHub check fields must be non-empty")
+    _timestamp(completed_at)
+    return {
+        "completed_at": completed_at,
+        "conclusion": conclusion,
+        "details_url": details_url,
+        "external_id": external_id,
+        "name": name,
+        "output": {"summary": output_summary, "title": output_title},
+        "status": "completed",
+    }
+
+
+def set_github_check_run(
+    *,
+    app_id: int,
+    app_slug: str,
+    conclusion: str,
+    details_url: str,
+    external_id: str,
+    head_sha: str,
+    name: str,
+    output_summary: str,
+    output_title: str,
+    repository: str,
+    token: str,
+) -> dict[str, Any]:
+    """Create one App-owned check per head/name and mutate that exact check thereafter."""
+    if app_id <= 0 or not app_slug:
+        raise HealthError("GitHub App identity is invalid")
+    completed_at = _github_provider_timestamp(token)
+    runs = _github_check_runs(
+        repository=repository,
+        head_sha=head_sha,
+        name=name,
+        app_id=app_id,
+        token=token,
+    )
+    ordered_runs: list[tuple[int, dict[str, Any]]] = []
+    seen_ids: set[int] = set()
+    for check_run in runs:
+        _validate_github_check_run(
+            check_run,
+            app_id=app_id,
+            app_slug=app_slug,
+            conclusion=None,
+            details_url=None,
+            external_id=None,
+            head_sha=head_sha,
+            name=name,
+        )
+        check_run_id = check_run["id"]
+        if check_run_id in seen_ids:
+            raise HealthError("GitHub check-run inventory contains a duplicate ID")
+        seen_ids.add(check_run_id)
+        ordered_runs.append((check_run_id, check_run))
+    ordered_runs.sort(key=lambda item: item[0])
+    runs = [check_run for _, check_run in ordered_runs]
+    canonical = runs[-1] if runs else None
+    for duplicate in runs[:-1]:
+        assert canonical is not None
+        duplicate_id = duplicate.get("id")
+        if type(duplicate_id) is not int or duplicate_id <= 0:
+            raise HealthError("GitHub duplicate check run has an invalid ID")
+        superseded_name = f"{name} [superseded {duplicate_id}]"
+        superseded_external_id = f"superseded:{duplicate_id}"
+        superseded_title = "Superseded check run"
+        superseded_summary = f"Replaced by canonical check run {canonical['id']}."
+        payload = _github_check_payload(
+            completed_at=completed_at,
+            conclusion="failure",
+            details_url=details_url,
+            external_id=superseded_external_id,
+            name=superseded_name,
+            output_summary=superseded_summary,
+            output_title=superseded_title,
+        )
+        response = _github_request(
+            f"repos/{repository}/check-runs/{duplicate_id}",
+            token,
+            method="PATCH",
+            payload=payload,
+        )
+        if not isinstance(response, dict):
+            raise HealthError("GitHub duplicate check quarantine response is malformed")
+        _validate_github_check_run(
+            response,
+            app_id=app_id,
+            app_slug=app_slug,
+            conclusion="failure",
+            details_url=details_url,
+            external_id=superseded_external_id,
+            head_sha=head_sha,
+            name=superseded_name,
+            completed_at=completed_at,
+            output_summary=superseded_summary,
+            output_title=superseded_title,
+        )
+
+    payload = _github_check_payload(
+        completed_at=completed_at,
+        conclusion=conclusion,
+        details_url=details_url,
+        external_id=external_id,
+        name=name,
+        output_summary=output_summary,
+        output_title=output_title,
+    )
+    if canonical is None:
+        payload = {"head_sha": head_sha, **payload}
+        response = _github_request(
+            f"repos/{repository}/check-runs",
+            token,
+            method="POST",
+            payload=payload,
+        )
+    else:
+        check_run_id = canonical.get("id")
+        if type(check_run_id) is not int or check_run_id <= 0:
+            raise HealthError("GitHub canonical check run has an invalid ID")
+        response = _github_request(
+            f"repos/{repository}/check-runs/{check_run_id}",
+            token,
+            method="PATCH",
+            payload=payload,
+        )
+    if not isinstance(response, dict):
+        raise HealthError("GitHub check publication response is malformed")
+    _validate_github_check_run(
+        response,
+        app_id=app_id,
+        app_slug=app_slug,
+        conclusion=conclusion,
+        details_url=details_url,
+        external_id=external_id,
+        head_sha=head_sha,
+        name=name,
+        completed_at=completed_at,
+        output_summary=output_summary,
+        output_title=output_title,
+    )
+    return response
+
+
+def get_github_check_run(
+    *,
+    app_id: int,
+    app_slug: str,
+    head_sha: str,
+    name: str,
+    repository: str,
+    token: str,
+) -> dict[str, Any]:
+    runs = _github_check_runs(
+        repository=repository,
+        head_sha=head_sha,
+        name=name,
+        app_id=app_id,
+        token=token,
+    )
+    if len(runs) != 1:
+        raise HealthError("GitHub App must own exactly one canonical check run")
+    check_run = runs[0]
+    _validate_github_check_run(
+        check_run,
+        app_id=app_id,
+        app_slug=app_slug,
+        conclusion=None,
+        details_url=None,
+        external_id=None,
+        head_sha=head_sha,
+        name=name,
+    )
+    return check_run
+
+
+def expire_github_check_run(
+    *,
+    app_id: int,
+    app_slug: str,
+    check_run_id: int,
+    details_url: str,
+    external_id: str,
+    head_sha: str,
+    name: str,
+    output_summary: str,
+    output_title: str,
+    repository: str,
+    token: str,
+) -> dict[str, Any]:
+    """Fail an exact lease identity; a newer external ID is an explicit no-op."""
+    current = _github_get(f"repos/{repository}/check-runs/{check_run_id}", token)
+    if not isinstance(current, dict):
+        raise HealthError("GitHub check expiry lookup is malformed")
+    _validate_github_check_run(
+        current,
+        app_id=app_id,
+        app_slug=app_slug,
+        conclusion=None,
+        details_url=None,
+        external_id=None,
+        head_sha=head_sha,
+        name=name,
+    )
+    if current.get("external_id") != external_id:
+        return {
+            "check_run_id": check_run_id,
+            "external_id": current.get("external_id"),
+            "state": "stale",
+        }
+    if current.get("conclusion") == "failure":
+        return {
+            "check_run_id": check_run_id,
+            "external_id": external_id,
+            "state": "already-failed",
+        }
+    completed_at = _github_provider_timestamp(token)
+    payload = _github_check_payload(
+        completed_at=completed_at,
+        conclusion="failure",
+        details_url=details_url,
+        external_id=external_id,
+        name=name,
+        output_summary=output_summary,
+        output_title=output_title,
+    )
+    del payload["external_id"]
+    response = _github_request(
+        f"repos/{repository}/check-runs/{check_run_id}",
+        token,
+        method="PATCH",
+        payload=payload,
+    )
+    if not isinstance(response, dict):
+        raise HealthError("GitHub check expiry response is malformed")
+    _validate_github_check_run(
+        response,
+        app_id=app_id,
+        app_slug=app_slug,
+        conclusion="failure",
+        details_url=details_url,
+        external_id=external_id,
+        head_sha=head_sha,
+        name=name,
+        completed_at=completed_at,
+        output_summary=output_summary,
+        output_title=output_title,
+    )
+    return {"check_run": response, "state": "expired"}
 
 
 def _github_graphql(query: str, variables: dict[str, Any], token: str) -> dict[str, Any]:
@@ -2845,6 +3195,39 @@ def _parser() -> argparse.ArgumentParser:
     owner_parser.add_argument("--admission-json", type=_json_file_argument, required=True)
     owner_parser.add_argument("--merge-gate-json", type=_json_file_argument, required=True)
 
+    check_set_parser = subparsers.add_parser("github-check-set")
+    check_set_parser.add_argument("--repository", required=True)
+    check_set_parser.add_argument("--head-sha", required=True)
+    check_set_parser.add_argument("--name", required=True)
+    check_set_parser.add_argument("--external-id", required=True)
+    check_set_parser.add_argument("--conclusion", choices=("failure", "success"), required=True)
+    check_set_parser.add_argument("--details-url", required=True)
+    check_set_parser.add_argument("--output-title", required=True)
+    check_set_parser.add_argument("--output-summary", required=True)
+    check_set_parser.add_argument("--app-id", type=int, required=True)
+    check_set_parser.add_argument("--app-slug", required=True)
+
+    check_get_parser = subparsers.add_parser("github-check-get")
+    check_get_parser.add_argument("--repository", required=True)
+    check_get_parser.add_argument("--head-sha", required=True)
+    check_get_parser.add_argument("--name", required=True)
+    check_get_parser.add_argument("--app-id", type=int, required=True)
+    check_get_parser.add_argument("--app-slug", required=True)
+
+    check_expire_parser = subparsers.add_parser("github-check-expire")
+    check_expire_parser.add_argument("--repository", required=True)
+    check_expire_parser.add_argument("--head-sha", required=True)
+    check_expire_parser.add_argument("--check-run-id", type=int, required=True)
+    check_expire_parser.add_argument("--name", required=True)
+    check_expire_parser.add_argument("--external-id", required=True)
+    check_expire_parser.add_argument("--details-url", required=True)
+    check_expire_parser.add_argument("--output-title", required=True)
+    check_expire_parser.add_argument("--output-summary", required=True)
+    check_expire_parser.add_argument("--app-id", type=int, required=True)
+    check_expire_parser.add_argument("--app-slug", required=True)
+
+    subparsers.add_parser("github-provider-clock")
+
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--root", type=Path, required=True)
 
@@ -2966,6 +3349,56 @@ def main() -> int:
                 admission_attestation=args.admission_json,
                 token=token,
             )
+        elif args.command in {
+            "github-check-set",
+            "github-check-get",
+            "github-check-expire",
+            "github-provider-clock",
+        }:
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            if not token:
+                raise HealthError(
+                    "GH_TOKEN or GITHUB_TOKEN is required for provider authentication"
+                )
+            if args.command == "github-provider-clock":
+                result = github_provider_clock(token)
+            elif args.command == "github-check-set":
+                result = set_github_check_run(
+                    repository=args.repository,
+                    head_sha=args.head_sha,
+                    name=args.name,
+                    external_id=args.external_id,
+                    conclusion=args.conclusion,
+                    details_url=args.details_url,
+                    output_title=args.output_title,
+                    output_summary=args.output_summary,
+                    app_id=args.app_id,
+                    app_slug=args.app_slug,
+                    token=token,
+                )
+            elif args.command == "github-check-get":
+                result = get_github_check_run(
+                    repository=args.repository,
+                    head_sha=args.head_sha,
+                    name=args.name,
+                    app_id=args.app_id,
+                    app_slug=args.app_slug,
+                    token=token,
+                )
+            else:
+                result = expire_github_check_run(
+                    repository=args.repository,
+                    head_sha=args.head_sha,
+                    check_run_id=args.check_run_id,
+                    name=args.name,
+                    external_id=args.external_id,
+                    details_url=args.details_url,
+                    output_title=args.output_title,
+                    output_summary=args.output_summary,
+                    app_id=args.app_id,
+                    app_slug=args.app_slug,
+                    token=token,
+                )
         elif args.command == "validate":
             result = validate_history(args.root)
         elif args.command == "validate-git":

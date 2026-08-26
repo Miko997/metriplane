@@ -76,6 +76,9 @@ jobs:
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: main-health-publisher
+    concurrency:
+      group: main-health-check-writer
+      queue: max
     permissions:
       contents: read
     outputs:
@@ -88,16 +91,23 @@ jobs:
           app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
           private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
           permission-actions: read
+          permission-checks: write
           permission-contents: write
           permission-pull-requests: read
-          permission-statuses: write
+
+      - name: Check out trusted publisher code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
 
       - name: Fail closed before the writer starts
         id: invalidate
         shell: bash
         env:
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
-          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
@@ -107,36 +117,19 @@ jobs:
               --jq '.object.sha')"
           fi
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
-          checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          response="$RUNNER_TEMP/main-health-writer-invalidated.json"
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
-            -f state=failure \
-            -f context="Main health writer / latest" \
-            -f description="Writer ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT} has not committed state" \
-            -f target_url="$target_url" > "$response"
-          python - "$response" "$sha" "$target_url" "$checked_at" "$PUBLISHER_LOGIN" <<'PY'
-          import datetime
-          import json
-          import pathlib
-          import sys
-
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          checked_at = datetime.datetime.fromisoformat(sys.argv[4].replace("Z", "+00:00"))
-          created_at = datetime.datetime.fromisoformat(
-              str(status.get("created_at", "")).replace("Z", "+00:00")
-          )
-          if not (
-              status.get("sha") == sys.argv[2]
-              and status.get("state") == "failure"
-              and status.get("context") == "Main health writer / latest"
-              and status.get("target_url") == sys.argv[3]
-              and status.get("creator", {}).get("login") == sys.argv[5]
-              and isinstance(status.get("id"), int)
-              and created_at >= checked_at
-          ):
-              raise SystemExit("provider did not attest writer invalidation")
-          PY
+          external_id="mhw1:${sha}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:pending"
+          python tools/stop_the_line.py github-check-set \
+            --repository "$GITHUB_REPOSITORY" \
+            --head-sha "$sha" \
+            --name "Main health writer / latest" \
+            --external-id "$external_id" \
+            --conclusion failure \
+            --details-url "$target_url" \
+            --output-title "Main health writer invalidated" \
+            --output-summary "Run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT} has not committed state." \
+            --app-id "$PUBLISHER_APP_ID" \
+            --app-slug "$PUBLISHER_APP_SLUG" >/dev/null
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
   persist-health:
@@ -153,6 +146,9 @@ jobs:
       - invalidate-writer
     runs-on: ubuntu-latest
     environment: main-health-publisher
+    concurrency:
+      group: main-health-check-writer
+      queue: max
     permissions:
       actions: read
       contents: read
@@ -167,9 +163,9 @@ jobs:
           app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
           private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
           permission-actions: read
+          permission-checks: write
           permission-contents: write
           permission-pull-requests: read
-          permission-statuses: write
 
       - name: Check out measured source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -375,7 +371,8 @@ jobs:
           EXPECTED_COMMIT: ${{ steps.backend.outputs.expected_commit }}
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
           MEASURED_SHA: ${{ steps.ingest.outputs.sha }}
-          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
           STATE_ROOT: ${{ steps.backend.outputs.root }}
         run: |
           set -euo pipefail
@@ -402,39 +399,19 @@ jobs:
           status="$(python tools/stop_the_line.py status --root "$readback" \
             | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
           test "$status" != red
-          checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          description="state ${local_commit} run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}"
-          writer_status="$RUNNER_TEMP/main-health-writer-success.json"
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${MEASURED_SHA}" \
-            -f state=success \
-            -f context="Main health writer / latest" \
-            -f description="$description" \
-            -f target_url="$target_url" > "$writer_status"
-          python - "$writer_status" "$MEASURED_SHA" "$description" "$target_url" \
-            "$checked_at" "$PUBLISHER_LOGIN" <<'PY'
-          import datetime
-          import json
-          import pathlib
-          import sys
-
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          checked_at = datetime.datetime.fromisoformat(sys.argv[5].replace("Z", "+00:00"))
-          created_at = datetime.datetime.fromisoformat(
-              str(status.get("created_at", "")).replace("Z", "+00:00")
-          )
-          if not (
-              status.get("sha") == sys.argv[2]
-              and status.get("state") == "success"
-              and status.get("context") == "Main health writer / latest"
-              and status.get("description") == sys.argv[3]
-              and status.get("target_url") == sys.argv[4]
-              and status.get("creator", {}).get("login") == sys.argv[6]
-              and isinstance(status.get("id"), int)
-              and created_at >= checked_at
-          ):
-              raise SystemExit("provider did not attest the exact committed state")
-          PY
+          external_id="mhw1:${MEASURED_SHA}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${local_commit}"
+          python tools/stop_the_line.py github-check-set \
+            --repository "$GITHUB_REPOSITORY" \
+            --head-sha "$MEASURED_SHA" \
+            --name "Main health writer / latest" \
+            --external-id "$external_id" \
+            --conclusion success \
+            --details-url "$target_url" \
+            --output-title "Main health state committed" \
+            --output-summary "State ${local_commit} was committed by run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}." \
+            --app-id "$PUBLISHER_APP_ID" \
+            --app-slug "$PUBLISHER_APP_SLUG" >/dev/null
 
   invalidate-candidate-statuses:
     if: >-
@@ -445,9 +422,14 @@ jobs:
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     environment: main-health-publisher
+    concurrency:
+      group: main-health-check-writer
+      queue: max
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      lease_nonce: ${{ steps.invalidate.outputs.lease_nonce }}
     steps:
       - name: Mint isolated publisher token
         id: publisher
@@ -456,20 +438,31 @@ jobs:
           app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
           private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
           permission-actions: read
+          permission-checks: write
           permission-contents: write
           permission-pull-requests: read
-          permission-statuses: write
+
+      - name: Check out trusted admission code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
 
       - name: Fail every open pull request before reconciliation
+        id: invalidate
         shell: bash
         env:
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
-          PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
         run: |
           set -uo pipefail
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
+          lease_nonce="$(openssl rand -hex 16)" || exit 1
+          echo "lease_nonce=$lease_nonce" >> "$GITHUB_OUTPUT"
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls" || exit 1
+          target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           failed=0
           while IFS= read -r pull; do
             number="$(jq -er '.number' <<<"$pull")" || { failed=1; continue; }
@@ -479,38 +472,18 @@ jobs:
             }
             head_sha="$(jq -er '.head.sha | select(test("^[0-9a-f]{40}$"))' \
               <<<"$current")" || { failed=1; continue; }
-            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            response="$RUNNER_TEMP/main-health-invalidate-${number}.json"
-            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-              -f state=failure \
-              -f context="Main health / required" \
-              -f description="Main health reconciliation in progress" \
-              -f target_url="$target_url" > "$response" || \
-              ! python - "$response" "$head_sha" "$target_url" "$checked_at" \
-                "$PUBLISHER_LOGIN" <<'PY'
-          import datetime
-          import json
-          import pathlib
-          import sys
-
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          checked_at = datetime.datetime.fromisoformat(sys.argv[4].replace("Z", "+00:00"))
-          created_at = datetime.datetime.fromisoformat(
-              str(status.get("created_at", "")).replace("Z", "+00:00")
-          )
-          if not (
-              status.get("sha") == sys.argv[2]
-              and status.get("state") == "failure"
-              and status.get("context") == "Main health / required"
-              and status.get("target_url") == sys.argv[3]
-              and status.get("creator", {}).get("login") == sys.argv[5]
-              and isinstance(status.get("id"), int)
-              and created_at >= checked_at
-          ):
-              raise SystemExit("provider did not attest candidate invalidation")
-          PY
-            then
+            external_id="mh0:${head_sha}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${lease_nonce}"
+            if ! python tools/stop_the_line.py github-check-set \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "Main health admission / required" \
+              --external-id "$external_id" \
+              --conclusion failure \
+              --details-url "$target_url" \
+              --output-title "Main health admission invalidated" \
+              --output-summary "Reconciliation run ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT} is in progress." \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG" >/dev/null; then
               failed=1
             fi
           done < "$pulls"
@@ -529,6 +502,9 @@ jobs:
       - persist-health
     runs-on: ubuntu-latest
     environment: main-health-publisher
+    concurrency:
+      group: main-health-check-writer
+      queue: max
     permissions:
       actions: read
       contents: read
@@ -541,9 +517,9 @@ jobs:
           app-id: ${{ vars.MAIN_HEALTH_APP_ID }}
           private-key: ${{ secrets.MAIN_HEALTH_APP_PRIVATE_KEY }}
           permission-actions: read
+          permission-checks: write
           permission-contents: write
           permission-pull-requests: read
-          permission-statuses: write
 
       - name: Check out trusted admission code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -556,194 +532,121 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.publisher.outputs.token }}
+          INVALIDATE_NONCE: ${{ needs.invalidate-candidate-statuses.outputs.lease_nonce }}
           INVALIDATE_RESULT: ${{ needs.invalidate-candidate-statuses.result }}
           PERSIST_MEASURED_SHA: ${{ needs.persist-health.outputs.measured_sha }}
           PERSIST_RESULT: ${{ needs.persist-health.result }}
           PERSIST_STATE_COMMIT: ${{ needs.persist-health.outputs.state_commit }}
+          PUBLISHER_APP_ID: ${{ vars.MAIN_HEALTH_APP_ID }}
+          PUBLISHER_APP_SLUG: ${{ steps.publisher.outputs.app-slug }}
           PUBLISHER_LOGIN: ${{ format('{0}[bot]', steps.publisher.outputs.app-slug) }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
           state_root="$RUNNER_TEMP/main-health-state"
           target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          github_provider_clock() {
-            python - <<'PY'
-          import datetime
-          import email.utils
-          import json
-          import os
-          import urllib.request
-
-          request = urllib.request.Request(
-              f"{os.environ['GITHUB_API_URL']}/rate_limit",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
-          )
-          with urllib.request.urlopen(request, timeout=30) as response:
-              json.load(response)
-              provider_date = response.headers.get("Date")
-          provider_now = email.utils.parsedate_to_datetime(provider_date)
-          if provider_now.tzinfo is None:
-              raise SystemExit("GitHub provider time has no timezone")
-          provider_now = provider_now.astimezone(datetime.UTC)
-          print(
-              provider_now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-              int(provider_now.timestamp()),
-              sep="\t",
-          )
-          PY
-          }
-          post_main_health_status() {
+          set_main_health_check() {
             local head_sha="$1"
-            local state="$2"
-            local description="$3"
-            local not_after="${4:-}"
-            local status_file="$RUNNER_TEMP/main-health-status-${head_sha}.json"
-            if timeout 30s gh api --method POST \
-              "repos/${GITHUB_REPOSITORY}/statuses/${head_sha}" \
-              -f state="$state" \
-              -f context="Main health / required" \
-              -f description="$description" \
-              -f target_url="$target_url" > "$status_file" && \
-              python - "$status_file" "$head_sha" "$state" "$target_url" "$not_after" \
-                "$PUBLISHER_LOGIN" <<'PY'
-          import datetime
-          import json
-          import pathlib
-          import sys
-
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          created_at = datetime.datetime.fromisoformat(
-              str(status.get("created_at", "")).replace("Z", "+00:00")
-          )
-          not_after = (
-              datetime.datetime.fromisoformat(sys.argv[5].replace("Z", "+00:00"))
-              if sys.argv[5]
-              else None
-          )
-          if not (
-              status.get("sha") == sys.argv[2]
-              and status.get("state") == sys.argv[3]
-              and status.get("context") == "Main health / required"
-              and status.get("target_url") == sys.argv[4]
-              and status.get("creator", {}).get("login") == sys.argv[6]
-              and isinstance(status.get("creator", {}).get("id"), int)
-              and isinstance(status.get("id"), int)
-              and status.get("created_at") == status.get("updated_at")
-              and (not_after is None or created_at <= not_after)
-          ):
-              raise SystemExit("provider status response does not bind the reconciled head")
-          PY
-            then
-              return 0
-            fi
-            if [[ "$state" == success ]]; then
-              post_main_health_status "$head_sha" failure \
-                "Main health success could not be provider-verified" || true
-            fi
-            return 1
+            local conclusion="$2"
+            local external_id="$3"
+            local title="$4"
+            local summary="$5"
+            python tools/stop_the_line.py github-check-set \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "Main health admission / required" \
+              --external-id "$external_id" \
+              --conclusion "$conclusion" \
+              --details-url "$target_url" \
+              --output-title "$title" \
+              --output-summary "$summary" \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG"
           }
-          latest_context_status() {
+          get_app_check() {
             local head_sha="$1"
-            local context="$2"
+            local name="$2"
             local output="$3"
-            local page=1
-            local batch="$RUNNER_TEMP/main-health-status-page.json"
-            : > "$output"
-            while true; do
-              gh api \
-                "repos/${GITHUB_REPOSITORY}/commits/${head_sha}/statuses?per_page=100&page=${page}" \
-                > "$batch" || return 1
-              jq -c --arg context "$context" \
-                '[.[] | select(.context == $context)][0] // empty' \
-                "$batch" > "$output" || return 1
-              [[ -s "$output" ]] && return 0
-              [[ "$(jq -er 'length' "$batch")" == 100 ]] || return 0
-              page=$((page + 1))
-            done
+            python tools/stop_the_line.py github-check-get \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --name "$name" \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG" > "$output"
+          }
+          expire_main_health_check() {
+            local head_sha="$1"
+            local check_run_id="$2"
+            local external_id="$3"
+            local title="$4"
+            local summary="$5"
+            python tools/stop_the_line.py github-check-expire \
+              --repository "$GITHUB_REPOSITORY" \
+              --head-sha "$head_sha" \
+              --check-run-id "$check_run_id" \
+              --name "Main health admission / required" \
+              --external-id "$external_id" \
+              --details-url "$target_url" \
+              --output-title "$title" \
+              --output-summary "$summary" \
+              --app-id "$PUBLISHER_APP_ID" \
+              --app-slug "$PUBLISHER_APP_SLUG"
           }
           lease_marker_binding() {
-            python - "$1" "$2" "$3" "$4" "$5" "$PUBLISHER_LOGIN" \
+            python - "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" \
               "$GITHUB_REPOSITORY" <<'PY'
-          import datetime
           import json
           import pathlib
           import re
           import sys
 
-          anchor = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
-          armed = json.loads(pathlib.Path(sys.argv[2]).read_bytes())
-          head_sha, anchor_context, armed_context = sys.argv[3:6]
-          publisher_login, repository = sys.argv[6:8]
-          target_pattern = re.compile(
-              rf"https://github\.com/{re.escape(repository)}/actions/runs/([1-9][0-9]*)"
+          marker = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          (
+              head_sha,
+              check_run_id,
+              origin_run_id,
+              origin_run_attempt,
+              nonce,
+              deadline_epoch,
+              replica,
+              repository,
+          ) = sys.argv[2:10]
+          target_match = re.fullmatch(
+              rf"https://github\.com/{re.escape(repository)}/actions/runs/([1-9][0-9]*)",
+              str(marker.get("details_url", "")),
           )
-          anchor_target = str(anchor.get("target_url", ""))
-          armed_target = str(armed.get("target_url", ""))
-          target_match = target_pattern.fullmatch(anchor_target)
-          description_match = re.fullmatch(
-              r"Expires at ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z) "
-              r"anchor ([1-9][0-9]*)",
-              str(armed.get("description", "")),
+          external_match = re.fullmatch(
+              rf"mh1-closer:{head_sha}:{origin_run_id}:{origin_run_attempt}:{nonce}:"
+              rf"{deadline_epoch}:{replica}:{check_run_id}:([1-9][0-9]*):([1-9][0-9]*)",
+              str(marker.get("external_id", "")),
           )
-          try:
-              anchor_created = datetime.datetime.fromisoformat(
-                  str(anchor.get("created_at", "")).replace("Z", "+00:00")
-              )
-              armed_created = datetime.datetime.fromisoformat(
-                  str(armed.get("created_at", "")).replace("Z", "+00:00")
-              )
-              deadline = datetime.datetime.fromisoformat(
-                  description_match.group(1).replace("Z", "+00:00")
-              )
-          except (AttributeError, ValueError) as exc:
-              raise SystemExit("main-health lease marker timestamp is malformed") from exc
           if not (
               target_match
-              and armed_target == anchor_target
-              and anchor.get("sha") == head_sha
-              and armed.get("sha") == head_sha
-              and anchor.get("state") == "pending"
-              and armed.get("state") == "pending"
-              and anchor.get("context") == anchor_context
-              and armed.get("context") == armed_context
-              and anchor.get("description") == "Provider lease anchor"
-              and anchor.get("creator", {}).get("login") == publisher_login
-              and armed.get("creator", {}).get("login") == publisher_login
-              and isinstance(anchor.get("creator", {}).get("id"), int)
-              and isinstance(armed.get("creator", {}).get("id"), int)
-              and isinstance(anchor.get("id"), int)
-              and isinstance(armed.get("id"), int)
-              and armed.get("id") > anchor.get("id")
-              and description_match.group(2) == str(anchor.get("id"))
-              and anchor.get("created_at") == anchor.get("updated_at")
-              and armed.get("created_at") == armed.get("updated_at")
-              and armed_created >= anchor_created
-              and deadline == anchor_created + datetime.timedelta(seconds=240)
-              and armed_created < deadline
+              and external_match
+              and target_match.group(1) == external_match.group(1)
+              and marker.get("head_sha") == head_sha
+              and marker.get("name") == f"Main health lease closer / {replica}"
+              and marker.get("status") == "completed"
+              and marker.get("conclusion") == "success"
+              and marker.get("output", {}).get("title")
+              == "Main health lease closer armed"
           ):
               raise SystemExit("main-health lease marker is not provider-bound")
-          print(
-              target_match.group(1),
-              deadline.isoformat().replace("+00:00", "Z"),
-              int(deadline.timestamp()),
-              sep="\t",
-          )
+          print(target_match.group(1), external_match.group(2), sep="\t")
           PY
           }
           verify_closer_run() {
             local replica="$1"
             local closer_run_id="$2"
+            local closer_run_attempt="$3"
             local run="$RUNNER_TEMP/main-health-closer-run-${replica}.json"
             local jobs="$RUNNER_TEMP/main-health-closer-jobs-${replica}.json"
             gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}" > "$run" && \
               gh api \
-                "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}/attempts/1/jobs?per_page=100" \
+                "repos/${GITHUB_REPOSITORY}/actions/runs/${closer_run_id}/attempts/${closer_run_attempt}/jobs?per_page=100" \
                 > "$jobs" && \
-              python - "$run" "$jobs" "$replica" "$closer_run_id" "$lease_nonce" \
+              python - "$run" "$jobs" "$replica" "$closer_run_id" \
+                "$closer_run_attempt" "$lease_nonce" \
                 "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$PUBLISHER_LOGIN" <<'PY'
           import json
           import pathlib
@@ -751,7 +654,9 @@ jobs:
 
           run = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
           jobs = json.loads(pathlib.Path(sys.argv[2]).read_bytes()).get("jobs", [])
-          replica, run_id, nonce, origin_id, origin_attempt, publisher = sys.argv[3:9]
+          replica, run_id, run_attempt, nonce, origin_id, origin_attempt, publisher = (
+              sys.argv[3:10]
+          )
           expected_title = (
               f"Main Health Lease / {origin_id}/{origin_attempt} / {nonce} / {replica}"
           )
@@ -761,12 +666,12 @@ jobs:
               step
               for job in matching_jobs
               for step in job.get("steps", [])
-              if step.get("name") == "Expire exact provider leases"
+              if step.get("name") == "Arm lease and wait for shared deadline"
           ]
           if not (
               str(run.get("id")) == run_id
               and run.get("event") == "repository_dispatch"
-              and run.get("run_attempt") == 1
+              and str(run.get("run_attempt")) == run_attempt
               and run.get("status") == "in_progress"
               and run.get("conclusion") is None
               and run.get("head_branch") == "main"
@@ -790,6 +695,10 @@ jobs:
           pulls="$RUNNER_TEMP/main-health-open-pulls.jsonl"
           leases="$RUNNER_TEMP/main-health-success-leases.jsonl"
           active_successes="$RUNNER_TEMP/main-health-active-successes.jsonl"
+          lease_nonce="$INVALIDATE_NONCE"
+          if [[ ! "$lease_nonce" =~ ^[0-9a-f]{32}$ ]]; then
+            lease_nonce="$(openssl rand -hex 16)"
+          fi
           : > "$leases"
           : > "$active_successes"
           cleanup_armed=true
@@ -799,8 +708,12 @@ jobs:
             if [[ "$cleanup_armed" == true && -s "$active_successes" ]]; then
               while IFS= read -r active; do
                 active_sha="$(jq -er '.head_sha' <<<"$active")" || continue
-                post_main_health_status "$active_sha" failure \
-                  "Main health publisher exited before lease handoff" || true
+                active_check_run_id="$(jq -er '.check_run_id' <<<"$active")" || continue
+                active_external_id="$(jq -er '.external_id' <<<"$active")" || continue
+                expire_main_health_check \
+                  "$active_sha" "$active_check_run_id" "$active_external_id" \
+                  "Main health publisher exited" \
+                  "The publisher exited before the shared deadline." || true
               done < "$active_successes"
             fi
             exit "$exit_code"
@@ -811,29 +724,29 @@ jobs:
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
             --jq '.[]' > "$pulls"
           writer_binding() {
-            python - "$1" "$2" "$GITHUB_REPOSITORY" "$PUBLISHER_LOGIN" <<'PY'
+            python - "$1" "$2" "$GITHUB_REPOSITORY" <<'PY'
           import json
           import pathlib
           import re
           import sys
 
-          status = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
+          check_run = json.loads(pathlib.Path(sys.argv[1]).read_bytes())
           match = re.fullmatch(
-              r"state ([0-9a-f]{40}) run ([1-9][0-9]*)/([1-9][0-9]*)",
-              str(status.get("description", "")),
+              rf"mhw1:{sys.argv[2]}:([1-9][0-9]*):([1-9][0-9]*):([0-9a-f]{{40}})",
+              str(check_run.get("external_id", "")),
           )
           if not (
               match
-              and status.get("sha") == sys.argv[2]
-              and status.get("state") == "success"
-              and status.get("context") == "Main health writer / latest"
-              and status.get("target_url")
-              == f"https://github.com/{sys.argv[3]}/actions/runs/{match.group(2)}"
-              and status.get("creator", {}).get("login") == sys.argv[4]
-              and isinstance(status.get("id"), int)
+              and check_run.get("head_sha") == sys.argv[2]
+              and check_run.get("status") == "completed"
+              and check_run.get("conclusion") == "success"
+              and check_run.get("name") == "Main health writer / latest"
+              and check_run.get("details_url")
+              == f"https://github.com/{sys.argv[3]}/actions/runs/{match.group(1)}"
+              and isinstance(check_run.get("id"), int)
           ):
-              raise SystemExit("latest writer status is not an exact provider attestation")
-          print(match.group(1), match.group(2), match.group(3), sep="\t")
+              raise SystemExit("latest writer check is not an exact provider attestation")
+          print(match.group(3), match.group(1), match.group(2), sep="\t")
           PY
           }
           latest_writer_run() {
@@ -866,10 +779,8 @@ jobs:
             "$PERSIST_STATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
             expected_main_sha="$PERSIST_MEASURED_SHA"
             expected_state_commit="$PERSIST_STATE_COMMIT"
-            if gh api \
-              "repos/${GITHUB_REPOSITORY}/commits/${expected_main_sha}/statuses?per_page=100&page=1" \
-              --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
-              > "$writer_snapshot" && \
+            if get_app_check \
+              "$expected_main_sha" "Main health writer / latest" "$writer_snapshot" && \
               binding="$(writer_binding "$writer_snapshot" "$expected_main_sha")" && \
               IFS=$'\t' read -r bound_state run_id run_attempt <<<"$binding" && \
               latest_writer_run "$latest_snapshot" && \
@@ -900,10 +811,8 @@ jobs:
                 "refs/heads/$STATE_BRANCH" | cut -f1 > "$state_ref_before" && \
               [[ "$(cat "$main_before")" =~ ^[0-9a-f]{40}$ && \
                  "$(cat "$state_ref_before")" =~ ^[0-9a-f]{40}$ ]] && \
-              gh api \
-                "repos/${GITHUB_REPOSITORY}/commits/$(cat "$main_before")/statuses?per_page=100&page=1" \
-                --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
-                > "$writer_before" && \
+              get_app_check \
+                "$(cat "$main_before")" "Main health writer / latest" "$writer_before" && \
               binding="$(writer_binding "$writer_before" "$(cat "$main_before")")" && \
               IFS=$'\t' read -r bound_state run_id run_attempt <<<"$binding" && \
               [[ "$bound_state" == "$(cat "$state_ref_before")" ]] && \
@@ -916,10 +825,8 @@ jobs:
               gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
                 --jq '{conclusion,event,head_sha,id,run_attempt,status}' > "$run_after" && \
               latest_writer_run "$latest_after" && \
-              gh api \
-                "repos/${GITHUB_REPOSITORY}/commits/$(cat "$main_before")/statuses?per_page=100&page=1" \
-                --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
-                > "$writer_after" && \
+              get_app_check \
+                "$(cat "$main_before")" "Main health writer / latest" "$writer_after" && \
               git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main \
                 | cut -f1 > "$main_after" && \
               git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
@@ -981,7 +888,8 @@ jobs:
               <<<"$pull")"
             head_sha="$(python -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])' \
               <<<"$pull")"
-            checked_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            checked_at="$(python tools/stop_the_line.py github-provider-clock \
+              | jq -er '.timestamp')"
             state=failure
             description="Main health admission failed"
             candidate_ready=false
@@ -1020,10 +928,8 @@ jobs:
                     | cut -f1 > "$boundary_main" && \
                   git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
                     "refs/heads/$STATE_BRANCH" | cut -f1 > "$boundary_state" && \
-                  gh api \
-                    "repos/${GITHUB_REPOSITORY}/commits/${expected_main_sha}/statuses?per_page=100&page=1" \
-                    --jq '[.[] | select(.context == "Main health writer / latest")][0]' \
-                    > "$boundary_writer" && \
+                  get_app_check \
+                    "$expected_main_sha" "Main health writer / latest" "$boundary_writer" && \
                   latest_writer_run "$boundary_latest" && \
                   [[ "$(cat "$boundary_main")" == "$expected_main_sha" && \
                      "$(cat "$boundary_state")" == "$expected_state_commit" ]] && \
@@ -1037,37 +943,69 @@ jobs:
             if [[ "$state" == success ]]; then
               if ! jq -e --arg head_sha "$head_sha" \
                 'select(.head_sha == $head_sha)' "$leases" >/dev/null; then
-                jq -cn --arg head_sha "$head_sha" --arg target_url "$target_url" \
-                  '{head_sha:$head_sha,target_url:$target_url}' >> "$leases"
+                jq -cn --arg head_sha "$head_sha" \
+                  '{head_sha:$head_sha}' >> "$leases"
               fi
             else
-              post_main_health_status "$head_sha" failure "$description"
+              failure_external_id="mh0:${head_sha}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${lease_nonce}"
+              set_main_health_check \
+                "$head_sha" failure "$failure_external_id" \
+                "Main health admission failed" "$description" >/dev/null
             fi
           done < "$pulls"
           if [[ -s "$leases" ]]; then
-            lease_nonce="$(openssl rand -hex 16)"
+            clock="$(python tools/stop_the_line.py github-provider-clock)"
+            provider_epoch="$(jq -er '.epoch' <<<"$clock")"
+            deadline_epoch=$((provider_epoch + 240))
+            deadline="$(python - "$deadline_epoch" <<'PY'
+          import datetime
+          import sys
+
+          print(
+              datetime.datetime.fromtimestamp(
+                  int(sys.argv[1]), datetime.UTC
+              ).isoformat().replace("+00:00", "Z")
+          )
+          PY
+            )"
+            armed_leases="$RUNNER_TEMP/main-health-armed-leases.jsonl"
+            : > "$armed_leases"
+            while IFS= read -r lease; do
+              lease_sha="$(jq -er '.head_sha' <<<"$lease")"
+              external_id="mh1:${lease_sha}:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${lease_nonce}:${deadline_epoch}"
+              armed="$RUNNER_TEMP/main-health-armed-${lease_sha}.json"
+              set_main_health_check \
+                "$lease_sha" failure "$external_id" \
+                "Main health lease arming" \
+                "Two independent closers are arming for ${deadline}." > "$armed"
+              check_run_id="$(jq -er '.id | select(type == "number" and . > 0)' "$armed")"
+              jq -cn \
+                --arg external_id "$external_id" \
+                --arg head_sha "$lease_sha" \
+                --argjson check_run_id "$check_run_id" \
+                '{check_run_id:$check_run_id,external_id:$external_id,head_sha:$head_sha}' \
+                >> "$armed_leases"
+            done < "$leases"
+            mv "$armed_leases" "$leases"
+
             dispatch_failed=0
             for replica in 1 2; do
               dispatch="$RUNNER_TEMP/main-health-expiry-dispatch-${replica}.json"
               jq -n \
+                --arg deadline "$deadline" \
+                --argjson deadline_epoch "$deadline_epoch" \
                 --arg event_type main-health-expire \
                 --arg origin_run_attempt "$GITHUB_RUN_ATTEMPT" \
                 --arg origin_run_id "$GITHUB_RUN_ID" \
                 --arg nonce "$lease_nonce" \
                 --argjson replica "$replica" \
                 --slurpfile leases "$leases" \
-                '{event_type:$event_type,client_payload:{leases:$leases,nonce:$nonce,origin_run_attempt:$origin_run_attempt,origin_run_id:$origin_run_id,replica:$replica}}' \
+                '{event_type:$event_type,client_payload:{deadline:$deadline,deadline_epoch:$deadline_epoch,leases:$leases,nonce:$nonce,origin_run_attempt:$origin_run_attempt,origin_run_id:$origin_run_id,replica:$replica}}' \
                 > "$dispatch"
               gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" \
                 --input "$dispatch" >/dev/null || dispatch_failed=1
             done
             if [[ "$dispatch_failed" != 0 ]]; then
-              failed=0
-              while IFS= read -r lease; do
-                lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { failed=1; continue; }
-                post_main_health_status "$lease_sha" failure \
-                  "Main health lease closer did not start" || failed=1
-              done < "$leases"
               exit 1
             fi
 
@@ -1078,16 +1016,19 @@ jobs:
               ready=true
               while IFS= read -r lease; do
                 lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { ready=false; break; }
+                check_run_id="$(jq -er '.check_run_id' <<<"$lease")" || {
+                  ready=false
+                  break
+                }
                 for replica in 1 2; do
-                  prefix="Main health lease / ${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${lease_nonce}/${replica}"
-                  anchor="$markers/${lease_sha}-${replica}-anchor.json"
-                  armed="$markers/${lease_sha}-${replica}-armed.json"
+                  marker="$markers/${lease_sha}-${replica}.json"
                   binding="$markers/${lease_sha}-${replica}.tsv"
-                  if ! latest_context_status "$lease_sha" "$prefix / anchor" "$anchor" || \
-                    ! latest_context_status "$lease_sha" "$prefix / armed" "$armed" || \
-                    [[ ! -s "$anchor" || ! -s "$armed" ]] || \
-                    ! lease_marker_binding "$anchor" "$armed" "$lease_sha" \
-                      "$prefix / anchor" "$prefix / armed" > "$binding"; then
+                  if ! get_app_check \
+                    "$lease_sha" "Main health lease closer / ${replica}" "$marker" || \
+                    ! lease_marker_binding \
+                      "$marker" "$lease_sha" "$check_run_id" "$GITHUB_RUN_ID" \
+                      "$GITHUB_RUN_ATTEMPT" "$lease_nonce" "$deadline_epoch" \
+                      "$replica" > "$binding"; then
                     ready=false
                     break 2
                   fi
@@ -1100,62 +1041,83 @@ jobs:
               sleep 5
             done
             if [[ "$lease_ready" != true ]]; then
-              while IFS= read -r lease; do
-                lease_sha="$(jq -er '.head_sha' <<<"$lease")" || continue
-                post_main_health_status "$lease_sha" failure \
-                  "Main health lease closers did not arm" || true
-              done < "$leases"
               exit 1
             fi
 
             closer_run_1=""
             closer_run_2=""
+            closer_attempt_1=""
+            closer_attempt_2=""
             for replica in 1 2; do
               closer_run=""
+              closer_attempt=""
               while IFS= read -r lease; do
                 lease_sha="$(jq -er '.head_sha' <<<"$lease")"
-                IFS=$'\t' read -r marker_run _deadline _deadline_epoch \
+                IFS=$'\t' read -r marker_run marker_attempt \
                   < "$markers/${lease_sha}-${replica}.tsv"
                 if [[ -z "$closer_run" ]]; then
                   closer_run="$marker_run"
+                  closer_attempt="$marker_attempt"
                 else
-                  [[ "$marker_run" == "$closer_run" ]]
+                  [[ "$marker_run" == "$closer_run" && \
+                    "$marker_attempt" == "$closer_attempt" ]]
                 fi
               done < "$leases"
-              verify_closer_run "$replica" "$closer_run"
+              verify_closer_run "$replica" "$closer_run" "$closer_attempt"
               printf -v "closer_run_${replica}" '%s' "$closer_run"
+              printf -v "closer_attempt_${replica}" '%s' "$closer_attempt"
             done
             [[ -n "$closer_run_1" && -n "$closer_run_2" && \
               "$closer_run_1" != "$closer_run_2" ]]
 
+            clock="$(python tools/stop_the_line.py github-provider-clock)"
+            provider_epoch="$(jq -er '.epoch' <<<"$clock")"
+            if (( deadline_epoch - provider_epoch < 60 )); then
+              exit 1
+            fi
+            verify_closer_run 1 "$closer_run_1" "$closer_attempt_1"
+            verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"
+
             publish_failed=0
             while IFS= read -r lease; do
               lease_sha="$(jq -er '.head_sha' <<<"$lease")" || { publish_failed=1; break; }
-              IFS=$'\t' read -r _run_1 deadline_1 deadline_epoch_1 \
-                < "$markers/${lease_sha}-1.tsv"
-              IFS=$'\t' read -r _run_2 deadline_2 deadline_epoch_2 \
-                < "$markers/${lease_sha}-2.tsv"
-              if (( deadline_epoch_1 <= deadline_epoch_2 )); then
-                deadline="$deadline_1"
-                deadline_epoch="$deadline_epoch_1"
-              else
-                deadline="$deadline_2"
-                deadline_epoch="$deadline_epoch_2"
-              fi
-              clock="$(github_provider_clock)" || { publish_failed=1; break; }
-              IFS=$'\t' read -r _provider_now provider_epoch <<<"$clock"
-              if (( deadline_epoch - provider_epoch < 60 )); then
-                post_main_health_status "$lease_sha" failure \
-                  "Main health lease activation window expired" || true
+              check_run_id="$(jq -er '.check_run_id' <<<"$lease")" || {
                 publish_failed=1
                 break
-              fi
-              verify_closer_run 1 "$closer_run_1" || { publish_failed=1; break; }
-              verify_closer_run 2 "$closer_run_2" || { publish_failed=1; break; }
-              jq -cn --arg head_sha "$lease_sha" '{head_sha:$head_sha}' \
+              }
+              external_id="$(jq -er '.external_id' <<<"$lease")" || {
+                publish_failed=1
+                break
+              }
+              current="$RUNNER_TEMP/main-health-current-${lease_sha}.json"
+              get_app_check \
+                "$lease_sha" "Main health admission / required" "$current" || {
+                publish_failed=1
+                break
+              }
+              jq -e \
+                --arg external_id "$external_id" \
+                --argjson check_run_id "$check_run_id" \
+                '.id == $check_run_id and .external_id == $external_id and
+                 .status == "completed" and .conclusion == "failure"' \
+                "$current" >/dev/null || { publish_failed=1; break; }
+              jq -cn \
+                --arg external_id "$external_id" \
+                --arg head_sha "$lease_sha" \
+                --argjson check_run_id "$check_run_id" \
+                '{check_run_id:$check_run_id,external_id:$external_id,head_sha:$head_sha}' \
                 >> "$active_successes"
-              if ! post_main_health_status "$lease_sha" success \
-                "Main health admission passed until ${deadline}" "$deadline"; then
+              published="$RUNNER_TEMP/main-health-success-${lease_sha}.json"
+              if ! set_main_health_check \
+                "$lease_sha" success "$external_id" \
+                "Main health admission passed" \
+                "Admission is valid until ${deadline}." > "$published" || \
+                ! jq -e \
+                  --arg external_id "$external_id" \
+                  --argjson check_run_id "$check_run_id" \
+                  '.id == $check_run_id and .external_id == $external_id and
+                   .status == "completed" and .conclusion == "success"' \
+                  "$published" >/dev/null; then
                 publish_failed=1
                 break
               fi
@@ -1163,6 +1125,30 @@ jobs:
             if [[ "$publish_failed" != 0 ]]; then
               exit 1
             fi
+
+            verify_closer_run 1 "$closer_run_1" "$closer_attempt_1"
+            verify_closer_run 2 "$closer_run_2" "$closer_attempt_2"
+            while true; do
+              clock="$(python tools/stop_the_line.py github-provider-clock)"
+              provider_epoch="$(jq -er '.epoch' <<<"$clock")"
+              if (( provider_epoch >= deadline_epoch )); then
+                break
+              fi
+              remaining=$((deadline_epoch - provider_epoch))
+              if (( remaining > 15 )); then
+                remaining=15
+              fi
+              sleep "$remaining"
+            done
+            while IFS= read -r active; do
+              active_sha="$(jq -er '.head_sha' <<<"$active")"
+              active_check_run_id="$(jq -er '.check_run_id' <<<"$active")"
+              active_external_id="$(jq -er '.external_id' <<<"$active")"
+              expire_main_health_check \
+                "$active_sha" "$active_check_run_id" "$active_external_id" \
+                "Main health admission expired" \
+                "The shared provider deadline elapsed." >/dev/null
+            done < "$active_successes"
           fi
           cleanup_armed=false
 

@@ -40,6 +40,28 @@ TREE_SHA = "e" * 40
 POLICY = json.loads((STATUS / "main-health-policy.json").read_text(encoding="utf-8"))
 
 
+def _check_run(
+    *,
+    check_run_id: int = 42,
+    conclusion: str = "failure",
+    external_id: str = "main-health:1:1:old",
+    head_sha: str = GOOD_SHA,
+    name: str = "Main health admission / required",
+) -> dict[str, object]:
+    return {
+        "app": {"id": 4722589, "slug": "metriplane-main-health-publisher"},
+        "completed_at": "2026-08-26T08:00:00Z",
+        "conclusion": conclusion,
+        "details_url": "https://github.com/Miko997/metriplane/actions/runs/1",
+        "external_id": external_id,
+        "head_sha": head_sha,
+        "id": check_run_id,
+        "name": name,
+        "output": {"summary": "old summary", "title": "old title"},
+        "status": "completed",
+    }
+
+
 def _core_ruleset() -> dict[str, object]:
     return {
         "bypass_actors": [],
@@ -96,7 +118,10 @@ def _main_health_ruleset() -> dict[str, object]:
                 "parameters": {
                     "do_not_enforce_on_create": False,
                     "required_status_checks": [
-                        {"context": "Main health / required", "integration_id": 4722589}
+                        {
+                            "context": "Main health admission / required",
+                            "integration_id": 4722589,
+                        }
                     ],
                     "strict_required_status_checks_policy": True,
                 },
@@ -134,6 +159,244 @@ def test_owner_bypass_ruleset_rejects_shared_actions_main_health_identity() -> N
     rules[0]["parameters"]["required_status_checks"][0]["integration_id"] = 15368
     with pytest.raises(HealthError, match="main-health bypass"):
         stop_the_line._validate_owner_bypass_rulesets(_core_ruleset(), main_health)
+
+
+def test_main_health_reuses_one_app_check_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    existing = _check_run()
+    requests: list[tuple[str, str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_provider_timestamp",
+        lambda _token: "2026-08-26T08:01:00Z",
+    )
+    monkeypatch.setattr(stop_the_line, "_github_check_runs", lambda **_kwargs: [existing])
+
+    def request(
+        path: str,
+        _token: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        assert payload is not None
+        requests.append((path, method, payload))
+        return {
+            **existing,
+            **payload,
+            "app": existing["app"],
+            "head_sha": GOOD_SHA,
+            "id": 42,
+        }
+
+    monkeypatch.setattr(stop_the_line, "_github_request", request)
+    external_id = f"main-health:123:2:{'a' * 32}:{GOOD_SHA}:1710000240"
+    result = stop_the_line.set_github_check_run(
+        app_id=4722589,
+        app_slug="metriplane-main-health-publisher",
+        conclusion="success",
+        details_url="https://github.com/Miko997/metriplane/actions/runs/123",
+        external_id=external_id,
+        head_sha=GOOD_SHA,
+        name="Main health admission / required",
+        output_summary="Valid until the shared provider deadline.",
+        output_title="Main health admission passed",
+        repository="Miko997/metriplane",
+        token="token",
+    )
+    assert result["id"] == 42
+    assert requests == [
+        (
+            "repos/Miko997/metriplane/check-runs/42",
+            "PATCH",
+            {
+                "completed_at": "2026-08-26T08:01:00Z",
+                "conclusion": "success",
+                "details_url": "https://github.com/Miko997/metriplane/actions/runs/123",
+                "external_id": external_id,
+                "name": "Main health admission / required",
+                "output": {
+                    "summary": "Valid until the shared provider deadline.",
+                    "title": "Main health admission passed",
+                },
+                "status": "completed",
+            },
+        )
+    ]
+
+
+def test_main_health_quarantines_duplicate_app_checks_before_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duplicate = _check_run(check_run_id=41)
+    canonical = _check_run(check_run_id=42)
+    requests: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_provider_timestamp",
+        lambda _token: "2026-08-26T08:01:00Z",
+    )
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_check_runs",
+        lambda **_kwargs: [canonical, duplicate],
+    )
+
+    def request(
+        path: str,
+        _token: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        assert method == "PATCH"
+        assert payload is not None
+        requests.append((path, payload))
+        check_run_id = int(path.rsplit("/", 1)[1])
+        source = duplicate if check_run_id == 41 else canonical
+        return {**source, **payload, "app": source["app"], "id": check_run_id}
+
+    monkeypatch.setattr(stop_the_line, "_github_request", request)
+    result = stop_the_line.set_github_check_run(
+        app_id=4722589,
+        app_slug="metriplane-main-health-publisher",
+        conclusion="success",
+        details_url="https://github.com/Miko997/metriplane/actions/runs/123",
+        external_id=f"mh1:{GOOD_SHA}:123:1:{'a' * 32}:1710000240",
+        head_sha=GOOD_SHA,
+        name="Main health admission / required",
+        output_summary="Valid until the shared provider deadline.",
+        output_title="Main health admission passed",
+        repository="Miko997/metriplane",
+        token="token",
+    )
+    assert result["id"] == 42
+    assert [path for path, _payload in requests] == [
+        "repos/Miko997/metriplane/check-runs/41",
+        "repos/Miko997/metriplane/check-runs/42",
+    ]
+    assert requests[0][1]["name"] == "Main health admission / required [superseded 41]"
+    assert requests[0][1]["conclusion"] == "failure"
+    assert requests[1][1]["name"] == "Main health admission / required"
+    assert requests[1][1]["conclusion"] == "success"
+
+
+def test_main_health_rejects_foreign_existing_check_before_patch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    foreign = _check_run()
+    app = foreign["app"]
+    assert isinstance(app, dict)
+    app["slug"] = "another-publisher"
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_provider_timestamp",
+        lambda _token: "2026-08-26T08:01:00Z",
+    )
+    monkeypatch.setattr(stop_the_line, "_github_check_runs", lambda **_kwargs: [foreign])
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("an unbound check must not be patched")
+        ),
+    )
+
+    with pytest.raises(HealthError, match="identity is not provider-bound"):
+        stop_the_line.set_github_check_run(
+            app_id=4722589,
+            app_slug="metriplane-main-health-publisher",
+            conclusion="success",
+            details_url="https://github.com/Miko997/metriplane/actions/runs/123",
+            external_id=f"mh1:{GOOD_SHA}:123:1:{'a' * 32}:1710000240",
+            head_sha=GOOD_SHA,
+            name="Main health admission / required",
+            output_summary="Valid until the shared provider deadline.",
+            output_title="Main health admission passed",
+            repository="Miko997/metriplane",
+            token="token",
+        )
+
+
+def test_stale_attempt_expiry_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    newer_external_id = f"main-health:124:1:{'b' * 32}:{GOOD_SHA}:1710000540"
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_get",
+        lambda _path, _token: _check_run(conclusion="success", external_id=newer_external_id),
+    )
+
+    def unexpected_request(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("a stale lease must never PATCH the mutable check")
+
+    monkeypatch.setattr(stop_the_line, "_github_request", unexpected_request)
+    result = stop_the_line.expire_github_check_run(
+        app_id=4722589,
+        app_slug="metriplane-main-health-publisher",
+        check_run_id=42,
+        details_url="https://github.com/Miko997/metriplane/actions/runs/200",
+        external_id=f"main-health:123:1:{'a' * 32}:{GOOD_SHA}:1710000240",
+        head_sha=GOOD_SHA,
+        name="Main health admission / required",
+        output_summary="The shared provider deadline elapsed.",
+        output_title="Main health admission expired",
+        repository="Miko997/metriplane",
+        token="token",
+    )
+    assert result == {
+        "check_run_id": 42,
+        "external_id": newer_external_id,
+        "state": "stale",
+    }
+
+
+def test_exact_expiry_cannot_restore_an_external_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    external_id = f"mh1:{GOOD_SHA}:123:1:{'a' * 32}:1710000240"
+    current = _check_run(conclusion="success", external_id=external_id)
+    captured_payload: dict[str, object] = {}
+    monkeypatch.setattr(stop_the_line, "_github_get", lambda _path, _token: current)
+    monkeypatch.setattr(
+        stop_the_line,
+        "_github_provider_timestamp",
+        lambda _token: "2026-08-26T08:04:00Z",
+    )
+
+    def request(
+        _path: str,
+        _token: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        assert method == "PATCH"
+        assert payload is not None
+        captured_payload.update(payload)
+        return {
+            **current,
+            **payload,
+            "app": current["app"],
+            "external_id": external_id,
+            "head_sha": GOOD_SHA,
+            "id": 42,
+        }
+
+    monkeypatch.setattr(stop_the_line, "_github_request", request)
+    result = stop_the_line.expire_github_check_run(
+        app_id=4722589,
+        app_slug="metriplane-main-health-publisher",
+        check_run_id=42,
+        details_url="https://github.com/Miko997/metriplane/actions/runs/200",
+        external_id=external_id,
+        head_sha=GOOD_SHA,
+        name="Main health admission / required",
+        output_summary="The shared provider deadline elapsed.",
+        output_title="Main health admission expired",
+        repository="Miko997/metriplane",
+        token="token",
+    )
+    assert result["state"] == "expired"
+    assert "external_id" not in captured_payload
+    assert captured_payload["conclusion"] == "failure"
 
 
 def _summary(
