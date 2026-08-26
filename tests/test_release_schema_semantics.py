@@ -27,7 +27,15 @@ except ModuleNotFoundError:  # The frozen project environment does not own this 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "schemas"
 STATUS = ROOT / "docs/status"
-SCHEMA_PATHS = tuple(sorted(SCHEMAS.glob("metriplane.release-*.v1.schema.json")))
+SCHEMA_PATHS = tuple(
+    sorted(
+        {
+            *SCHEMAS.glob("metriplane.release-*.v1.schema.json"),
+            SCHEMAS / "metriplane.linear-release-snapshot.v1.schema.json",
+            SCHEMAS / "metriplane.provider-run-termination.v1.schema.json",
+        }
+    )
+)
 SIGNATURE_REQUIRED = {
     "release-approval-decision",
     "release-approval",
@@ -60,6 +68,12 @@ WORKFLOW_STATES = {
         "name": "Done",
         "type": "completed",
     },
+}
+BASE_SEMANTIC_CHECKS = {
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == payload_digest",
+    "all referenced digests resolve to the exact retained subject bytes",
 }
 
 
@@ -208,6 +222,12 @@ def _sample_string(schema: Mapping[str, Any], seed: int) -> str:
         return "abcdef"[seed % 6] * 40
     if pattern == "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$":
         return f"v0.4.{seed}"
+    if pattern == "^[A-Z][A-Z0-9]*-[1-9][0-9]*$":
+        return f"MET-{seed + 1}"
+    if pattern == "^[A-Za-z0-9._-]*[Ll]inear[A-Za-z0-9._-]*$":
+        return "fake-linear"
+    if pattern == "^[A-Za-z0-9._-]*(?:[Pp]rovider|[Gg]it[Hh]ub)[A-Za-z0-9._-]*$":
+        return "fake-provider"
     if schema.get("format") == "date-time":
         return f"2026-08-27T00:00:{seed % 60:02d}Z"
     if schema.get("format") == "uri":
@@ -414,9 +434,9 @@ def _validate_task_state_policy(value: Mapping[str, Any]) -> None:
         raise ValueError("provider evidence claim")
 
 
-def test_all_release_schemas_are_distinct_draft_2020_12_contracts() -> None:
-    assert len(SCHEMA_PATHS) == 47
-    projections: set[str] = set()
+def test_all_registry_schemas_are_distinct_draft_2020_12_contracts() -> None:
+    assert len(SCHEMA_PATHS) == 49
+    fingerprints: dict[str, Path] = {}
     for path in SCHEMA_PATHS:
         schema = _load(path)
         if Draft202012Validator is not None:
@@ -425,9 +445,15 @@ def test_all_release_schemas_are_distinct_draft_2020_12_contracts() -> None:
         assert schema["$id"].endswith(path.name)
         assert schema["properties"]["data"]["additionalProperties"] is False
         assert schema["properties"]["data"]["required"]
-        assert len(schema["x-metriplane-semantic-checks"]) == 4
-        projections.add(_canonical(schema["properties"]["data"]))
-    assert len(projections) == 47
+        assert BASE_SEMANTIC_CHECKS <= set(schema["x-metriplane-semantic-checks"])
+        fingerprint = hashlib.sha256(
+            _canonical(schema["properties"]["data"]).encode("utf-8")
+        ).hexdigest()
+        assert fingerprint not in fingerprints, (
+            f"{path.name} duplicates the subject contract in {fingerprints[fingerprint].name}"
+        )
+        fingerprints[fingerprint] = path
+    assert len(fingerprints) == 49
 
 
 @pytest.mark.parametrize(
@@ -435,14 +461,32 @@ def test_all_release_schemas_are_distinct_draft_2020_12_contracts() -> None:
     tuple(
         path
         for path in sorted((ROOT / "tests/fixtures/release/valid").glob("*.json"))
-        if _load(path)["record_type"].startswith("release-")
+        if SCHEMAS / f"metriplane.{_load(path)['record_type']}.v1.schema.json" in SCHEMA_PATHS
     ),
     ids=lambda path: path.stem,
 )
-def test_checked_in_release_fixtures_validate_against_subject_contracts(path: Path) -> None:
+def test_checked_in_registry_fixtures_validate_against_subject_contracts(path: Path) -> None:
     record = _load(path)
     schema = _load(SCHEMAS / f"metriplane.{record['record_type']}.v1.schema.json")
     assert _errors(record, schema) == []
+
+
+@pytest.mark.parametrize(
+    ("kind", "generic_data"),
+    [
+        (
+            "linear-release-snapshot",
+            {"state": "In Progress", "task_id": "generic", "tool": "generic"},
+        ),
+        ("provider-run-termination", {"state": "success", "tool": "generic"}),
+    ],
+)
+def test_snapshot_and_termination_contracts_reject_empty_and_generic_data(
+    kind: str, generic_data: dict[str, str]
+) -> None:
+    schema = _load(SCHEMAS / f"metriplane.{kind}.v1.schema.json")
+    assert _errors({}, schema["properties"]["data"])
+    assert _errors(generic_data, schema["properties"]["data"])
 
 
 @pytest.mark.parametrize("path", SCHEMA_PATHS, ids=lambda path: path.stem)

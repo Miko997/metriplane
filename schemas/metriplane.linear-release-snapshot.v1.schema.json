@@ -37,199 +37,71 @@
   "$id": "https://metriplane.com/schemas/metriplane.linear-release-snapshot.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "required_bom_ids",
+              "required_bom_snapshot_digest",
+              "state",
+              "task_id",
+              "tool"
+            ]
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "data": {
       "additionalProperties": false,
       "properties": {
-        "actor_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "artifacts": {
-          "additionalProperties": {
-            "$ref": "#/$defs/digest"
-          },
-          "type": "object"
-        },
-        "attempt_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "author_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "authorized_executor_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "blockers": {
+        "required_bom_ids": {
           "items": {
+            "pattern": "^[A-Z][A-Z0-9]*-[1-9][0-9]*$",
             "type": "string"
           },
+          "minItems": 1,
           "type": "array",
           "uniqueItems": true
         },
-        "candidate_digest": {
+        "required_bom_snapshot_digest": {
           "$ref": "#/$defs/digest"
-        },
-        "candidate_milestone": {
-          "$ref": "#/$defs/milestone"
-        },
-        "cells": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "closed_decision_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "conflicts": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "decision": {
-          "enum": [
-            "APPROVED",
-            "REJECTED",
-            "INVALIDATED"
-          ]
-        },
-        "environment": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "epoch": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "evidence_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "expected_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "inputs": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "path": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "sha256": {
-                "$ref": "#/$defs/digest"
-              }
-            },
-            "required": [
-              "path",
-              "sha256"
-            ],
-            "type": "object"
-          },
-          "type": "array"
-        },
-        "lease_until": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "lkg_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "milestone": {
-          "$ref": "#/$defs/milestone"
-        },
-        "non_author_reviewer_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "observations": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "owner": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "predecessor_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "publisher_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "reason": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "receipts": {
-          "items": {
-            "$ref": "#/$defs/digest"
-          },
-          "minItems": 2,
-          "type": "array"
-        },
-        "required_terminals": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        "reviewer_id": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "source_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "stage": {
-          "$ref": "#/$defs/stage"
         },
         "state": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "stores": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 2,
-          "type": "array",
-          "uniqueItems": true
-        },
-        "target": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "targets": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
+          "enum": [
+            "In Progress",
+            "In Review",
+            "Done"
+          ]
         },
         "task_id": {
-          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9]*-[1-9][0-9]*$",
           "type": "string"
         },
         "tool": {
           "minLength": 1,
-          "type": "string"
-        },
-        "version": {
-          "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
+          "pattern": "^[A-Za-z0-9._-]*[Ll]inear[A-Za-z0-9._-]*$",
           "type": "string"
         }
       },
-      "required": [],
+      "required": [
+        "state",
+        "task_id",
+        "tool"
+      ],
       "type": "object"
     },
     "invocation_id": {
@@ -325,5 +197,17 @@
     "synthetic"
   ],
   "title": "Metriplane linear-release-snapshot record",
-  "type": "object"
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == payload_digest",
+    "all referenced digests resolve to the exact retained subject bytes",
+    "live required_bom_ids == sorted(unique(required_bom_ids))",
+    "live required_bom_snapshot_digest == sha256(canonical_json(required_bom_ids))"
+  ],
+  "x-metriplane-live-required": [
+    "required_bom_ids",
+    "required_bom_snapshot_digest"
+  ]
 }
