@@ -375,18 +375,24 @@ jobs:
         env:
           QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$QUALIFICATION_RECORD_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          MILESTONE="v${RELEASE_VERSION%.*}"
+          case "$MILESTONE" in
+            v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0) ;;
+            *) echo "unsupported cumulative release milestone: $MILESTONE" >&2; exit 1 ;;
+          esac
           test "$(sha256sum release-authority/qualification.json | awk '{print $1}')" = \
             "$QUALIFICATION_RECORD_DIGEST"
           python tools/validate_release_qualification.py \
             --record release-authority/qualification.json
           python tools/validate_release_role_assignments.py \
             --record release-authority/role-assignments.json \
-            --milestone v0.4 \
+            --milestone "$MILESTONE" \
             --run-id "$QUALIFICATION_RUN_ID" \
             --check-conflicts \
             --check-freshness

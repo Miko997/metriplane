@@ -774,6 +774,358 @@ def audit_release_repository(repository: Path, *, live: bool) -> dict[str, Any]:
     }
 
 
+def _release_input(path: Path, expected_type: str, *, live: bool) -> dict[str, Any]:
+    record = read_json(path)
+    validate_record(record, expected_type)
+    if record["status"] not in {"PASS", "READY"}:
+        raise ReleaseControlError(f"{expected_type} is not passing authority")
+    if live and record["synthetic"] is not False:
+        raise ReleaseControlError(f"synthetic {expected_type} cannot satisfy a live release")
+    return record
+
+
+def _release_data(
+    record: Mapping[str, Any], expected_fields: set[str], label: str
+) -> dict[str, Any]:
+    data = record["data"]
+    if not isinstance(data, dict) or set(data) != expected_fields:
+        raise ReleaseControlError(f"{label} data shape is not closed")
+    return data
+
+
+def _regular_file_digest(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise ReleaseControlError(f"artifact is missing or not a regular file: {path}")
+    try:
+        return sha256_bytes(path.read_bytes())
+    except OSError as exc:
+        raise ReleaseControlError(f"cannot read artifact bytes: {path}") from exc
+
+
+def validate_release_artifact_files(
+    record: Mapping[str, Any], artifacts: Path, *, live: bool
+) -> None:
+    """Bind every publishable byte and filename to the frozen-source manifest."""
+
+    validate_record(record, "release-artifact-manifest")
+    if record["status"] != "PASS":
+        raise ReleaseControlError("artifact manifest is not passing authority")
+    if live and record["synthetic"] is not False:
+        raise ReleaseControlError("synthetic artifact manifests cannot authorize live publication")
+    if artifacts.is_symlink() or not artifacts.is_dir():
+        raise ReleaseControlError("artifact directory is missing or unsafe")
+    data = _release_data(
+        record,
+        {
+            "artifact_set_digest",
+            "artifacts",
+            "build_invocation_id",
+            "build_recipe_digest",
+            "milestone",
+            "source_digest",
+            "source_freeze_digest",
+            "target_resolution_digest",
+        },
+        "release artifact manifest",
+    )
+    rows = data["artifacts"]
+    if not isinstance(rows, list) or len(rows) != 2:
+        raise ReleaseControlError("artifact manifest must name exactly one wheel and one sdist")
+    expected_names: set[str] = set()
+    expected_types = {
+        ".whl": "application/vnd.pypa.wheel+zip",
+        ".tar.gz": "application/gzip",
+    }
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {"media_type", "path", "sha256", "size"}:
+            raise ReleaseControlError("artifact manifest row shape is not closed")
+        name = row["path"]
+        if not isinstance(name, str) or Path(name).name != name or name in expected_names:
+            raise ReleaseControlError("artifact manifest contains an unsafe or duplicate filename")
+        suffix = ".tar.gz" if name.endswith(".tar.gz") else Path(name).suffix
+        if suffix not in expected_types or row["media_type"] != expected_types[suffix]:
+            raise ReleaseControlError(f"artifact media type does not match filename: {name}")
+        path = artifacts / name
+        digest = _regular_file_digest(path)
+        if digest != _require_digest(row["sha256"], f"artifact {name}"):
+            raise ReleaseControlError(f"artifact digest differs from frozen manifest: {name}")
+        if isinstance(row["size"], bool) or row["size"] != path.stat().st_size:
+            raise ReleaseControlError(f"artifact size differs from frozen manifest: {name}")
+        expected_names.add(name)
+    if [row["path"] for row in rows] != sorted(expected_names):
+        raise ReleaseControlError("artifact manifest rows are not canonically ordered")
+    observed_entries = list(artifacts.iterdir())
+    if any(path.is_symlink() or not path.is_file() for path in observed_entries):
+        raise ReleaseControlError("artifact directory contains an unsafe non-artifact entry")
+    observed_names = {path.name for path in observed_entries}
+    if observed_names != expected_names:
+        raise ReleaseControlError("artifact directory membership differs from frozen manifest")
+    if data["artifact_set_digest"] != sha256_json(rows):
+        raise ReleaseControlError("artifact set digest does not bind the manifest rows")
+
+
+def validate_release_retention_receipts(
+    receipts: Mapping[str, Any],
+    *,
+    inputs: Sequence[Path],
+    manifest: Path | None,
+    invocation_root: Path | None,
+    through_stage: str | None,
+    live: bool,
+) -> None:
+    """Validate two independent read-backs against the supplied canonical input."""
+
+    validate_record(receipts, "release-retention-receipts")
+    if receipts["status"] != "PASS":
+        raise ReleaseControlError("retention receipt set is not passing")
+    if live and receipts["synthetic"] is not False:
+        raise ReleaseControlError("synthetic retention receipts cannot authorize a live release")
+    data = _release_data(
+        receipts,
+        {
+            "all_content_equal",
+            "input_digest",
+            "phase",
+            "receipt_set_digest",
+            "retained_at",
+            "stores",
+        },
+        "release retention receipts",
+    )
+    if data["all_content_equal"] is not True:
+        raise ReleaseControlError("retention stores did not report identical content")
+    stores = data["stores"]
+    if not isinstance(stores, list) or len(stores) != 2:
+        raise ReleaseControlError("retention requires exactly two store receipts")
+    if [row.get("store_id") for row in stores if isinstance(row, dict)] != [
+        "payload-store-a",
+        "payload-store-b",
+    ]:
+        raise ReleaseControlError("retention stores are missing or not canonically ordered")
+    independence_groups: set[str] = set()
+    input_digest = _require_digest(data["input_digest"], "retained input")
+    required_store_fields = {
+        "content_digest",
+        "hold_receipt_digest",
+        "independence_group",
+        "namespace",
+        "object_key",
+        "put_receipt_digest",
+        "read_back_digest",
+        "store_id",
+    }
+    for row in stores:
+        if not isinstance(row, dict) or set(row) != required_store_fields:
+            raise ReleaseControlError("retention store receipt shape is not closed")
+        group = row["independence_group"]
+        if not isinstance(group, str) or not group.strip():
+            raise ReleaseControlError("retention store independence group is missing")
+        independence_groups.add(group)
+        for field in (
+            "content_digest",
+            "hold_receipt_digest",
+            "put_receipt_digest",
+            "read_back_digest",
+        ):
+            _require_digest(row[field], f"retention {field}")
+        if row["content_digest"] != input_digest or row["read_back_digest"] != input_digest:
+            raise ReleaseControlError("retention read-back differs from the canonical input")
+    if len(independence_groups) != 2:
+        raise ReleaseControlError("retention stores are not independently administered")
+    if data["receipt_set_digest"] != sha256_json(stores):
+        raise ReleaseControlError("retention receipt-set digest mismatch")
+
+    supplied_digests: list[str] = []
+    for path in inputs:
+        record = read_json(path)
+        validate_record(record)
+        supplied_digests.append(_regular_file_digest(path))
+    if manifest is not None:
+        manifest_record = _release_input(manifest, "release-evidence-manifest", live=live)
+        manifest_digest = _regular_file_digest(manifest)
+        entries = manifest_record["data"].get("entries")
+        if not isinstance(entries, list):
+            raise ReleaseControlError("evidence manifest entries are missing")
+        listed = {
+            entry.get("sha256")
+            for entry in entries
+            if isinstance(entry, dict) and isinstance(entry.get("sha256"), str)
+        }
+        if any(digest not in listed for digest in supplied_digests):
+            raise ReleaseControlError("retained input is absent from the evidence manifest")
+        expected_input_digest = manifest_digest
+    elif len(supplied_digests) == 1:
+        expected_input_digest = supplied_digests[0]
+    elif supplied_digests:
+        expected_input_digest = sha256_json(sorted(supplied_digests))
+    else:
+        raise ReleaseControlError("retention validation has no canonical input")
+    if input_digest != expected_input_digest:
+        raise ReleaseControlError("retention receipts bind a different canonical input")
+    if (invocation_root is None) != (through_stage is None):
+        raise ReleaseControlError("invocation-root and through-stage must be supplied together")
+    if invocation_root is not None and (
+        invocation_root.is_symlink() or not invocation_root.is_dir() or not through_stage
+    ):
+        raise ReleaseControlError("retention invocation journal is missing or unsafe")
+    if live:
+        signers = {
+            _validated_signature(
+                signature,
+                subject_digest=receipts["payload_digest"],
+                live=True,
+            )
+            for signature in receipts["signatures"]
+        }
+        if not signers:
+            raise ReleaseControlError("live retention receipts lack provider attestation")
+
+
+def build_release_readiness_record(
+    *,
+    gate_instance: Mapping[str, Any],
+    candidate_identity_record: Mapping[str, Any],
+    predecessor: Mapping[str, Any],
+    linear_snapshot: Mapping[str, Any],
+    artifact_manifest: Mapping[str, Any],
+    delta: Mapping[str, Any],
+    delta_test_map: Mapping[str, Any],
+    readiness_registry: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build one deterministic readiness decision from exact, cross-bound inputs."""
+
+    typed = (
+        (gate_instance, "release-gate-instance"),
+        (candidate_identity_record, "release-candidate-identity"),
+        (predecessor, "release-predecessor"),
+        (linear_snapshot, "linear-release-snapshot"),
+        (artifact_manifest, "release-artifact-manifest"),
+        (delta, "release-capability-delta"),
+        (delta_test_map, "release-delta-test-map"),
+    )
+    for record, expected_type in typed:
+        validate_record(record, expected_type)
+        if record["status"] not in {"PASS", "READY"}:
+            raise ReleaseControlError(f"{expected_type} is not passing authority")
+    synthetic_modes = {record["synthetic"] for record, _ in typed}
+    if len(synthetic_modes) != 1:
+        raise ReleaseControlError("readiness inputs mix live and synthetic authority")
+
+    gate = gate_instance["data"]
+    candidate = candidate_identity_record["data"]
+    predecessor_data = predecessor["data"]
+    linear = linear_snapshot["data"]
+    artifact = artifact_manifest["data"]
+    delta_data = delta["data"]
+    mapping = delta_test_map["data"]
+    if not all(
+        isinstance(value, dict)
+        for value in (gate, candidate, predecessor_data, linear, artifact, delta_data, mapping)
+    ):
+        raise ReleaseControlError("readiness subject data must be closed objects")
+
+    bindings = {
+        "candidate identity": (
+            gate.get("candidate_identity_digest"),
+            sha256_json(candidate_identity_record),
+        ),
+        "gate candidate": (gate.get("candidate_digest"), candidate.get("candidate_digest")),
+        "gate predecessor": (gate.get("predecessor_digest"), sha256_json(predecessor)),
+        "candidate predecessor": (candidate.get("predecessor_digest"), sha256_json(predecessor)),
+        "gate Linear snapshot": (gate.get("linear_snapshot_digest"), sha256_json(linear_snapshot)),
+        "candidate artifact manifest": (
+            candidate.get("artifact_manifest_digest"),
+            sha256_json(artifact_manifest),
+        ),
+        "delta predecessor": (delta_data.get("predecessor_digest"), sha256_json(predecessor)),
+        "delta source": (delta_data.get("candidate_sha"), gate.get("frozen_source_sha")),
+        "delta map": (mapping.get("delta_digest"), delta_data.get("delta_digest")),
+        "environment registry": (
+            mapping.get("environment_registry_digest"),
+            gate.get("environment_registry_digest"),
+        ),
+        "obligation registry": (
+            mapping.get("obligation_registry_digest"),
+            gate.get("obligation_registry_digest"),
+        ),
+        "scenario registry": (
+            mapping.get("scenario_registry_digest"),
+            gate.get("scenario_registry_digest"),
+        ),
+    }
+    for label, (observed, expected) in bindings.items():
+        if observed != expected:
+            raise ReleaseControlError(f"readiness {label} binding mismatch")
+    milestones = {
+        gate.get("milestone"),
+        candidate.get("milestone"),
+        artifact.get("milestone"),
+        delta_data.get("milestone"),
+        mapping.get("milestone"),
+        predecessor_data.get("candidate_milestone"),
+    }
+    if len(milestones) != 1 or next(iter(milestones)) not in MILESTONES:
+        raise ReleaseControlError("readiness milestone bindings disagree")
+    required_bom_ids = linear.get("required_bom_ids")
+    if (
+        not isinstance(required_bom_ids, list)
+        or not required_bom_ids
+        or any(not isinstance(item, str) or not item.strip() for item in required_bom_ids)
+        or len(set(required_bom_ids)) != len(required_bom_ids)
+    ):
+        raise ReleaseControlError("Linear snapshot has no exact required BOM identifiers")
+    if required_bom_ids != sorted(required_bom_ids):
+        raise ReleaseControlError("Linear snapshot required BOM identifiers are not canonical")
+    required_bom_snapshot_digest = _require_digest(
+        linear.get("required_bom_snapshot_digest"),
+        "Linear required BOM snapshot",
+    )
+    if required_bom_snapshot_digest != sha256_json(required_bom_ids):
+        raise ReleaseControlError("Linear required BOM snapshot digest mismatch")
+
+    blockers = sorted(
+        {
+            str(blocker.get("code"))
+            for blocker in readiness_registry.get("blockers", [])
+            if isinstance(blocker, dict) and blocker.get("code")
+        }
+    )
+    evidence = readiness_registry.get("evidence_resolution")
+    registry_ready = (
+        readiness_registry.get("framework") == "READY"
+        and readiness_registry.get("live_release") == "READY"
+        and isinstance(evidence, dict)
+        and evidence.get("status") == "READY"
+    )
+    if not registry_ready and not blockers:
+        blockers = ["RELEASE_READINESS_REGISTRY_NOT_READY"]
+    data = {
+        "artifact_manifest_digest": candidate["artifact_manifest_digest"],
+        "candidate_digest": candidate["candidate_digest"],
+        "delta_digest": delta_data["delta_digest"],
+        "delta_test_map_digest": mapping["map_digest"],
+        "disposition": "READY" if registry_ready and not blockers else "BLOCKED_NOT_READY",
+        "gate_instance_digest": gate["instance_digest"],
+        "linear_snapshot_digest": gate["linear_snapshot_digest"],
+        "main_health_digest": gate["main_health_digest"],
+        "predecessor_digest": gate["predecessor_digest"],
+        "readiness_digest": sha256_json(readiness_registry),
+        "required_bom_ids": required_bom_ids,
+        "required_bom_snapshot_digest": required_bom_snapshot_digest,
+        "store_preflight_digest": gate["evidence_store_preflight_digest"],
+        "unresolved_blockers": blockers,
+    }
+    invocation_id = f"release-readiness-{sha256_json(data)[:24]}"
+    return make_record(
+        "release-readiness",
+        data,
+        invocation_id=invocation_id,
+        sequence=1,
+        synthetic=bool(next(iter(synthetic_modes))),
+        status="READY" if data["disposition"] == "READY" else "BLOCKED",
+    )
+
+
 def _record_type_from_tool(tool: str) -> str:
     stem = Path(tool).stem
     for prefix in (
@@ -1100,7 +1452,8 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "check_release_readiness.py": _tool_contract(
         "gate-instance candidate-identity predecessor linear-snapshot artifact-manifest "
-        "delta delta-test-map out"
+        "delta delta-test-map out",
+        fixture_producer=False,
     ),
     "collect_publication_observations.py": _tool_contract(
         "promotion promotion-lock-receipt artifact-manifest targets out"
@@ -1604,7 +1957,67 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
 
     fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
     try:
-        if contract.fixture_producer:
+        if name == "check_release_readiness.py":
+            gate_instance = _release_input(
+                Path(args.gate_instance), "release-gate-instance", live=not fixture_mode
+            )
+            candidate = _release_input(
+                Path(args.candidate_identity),
+                "release-candidate-identity",
+                live=not fixture_mode,
+            )
+            predecessor = _release_input(
+                Path(args.predecessor), "release-predecessor", live=not fixture_mode
+            )
+            linear_snapshot = _release_input(
+                Path(args.linear_snapshot), "linear-release-snapshot", live=not fixture_mode
+            )
+            artifact_manifest = _release_input(
+                Path(args.artifact_manifest),
+                "release-artifact-manifest",
+                live=not fixture_mode,
+            )
+            delta = _release_input(
+                Path(args.delta), "release-capability-delta", live=not fixture_mode
+            )
+            delta_test_map = _release_input(
+                Path(args.delta_test_map), "release-delta-test-map", live=not fixture_mode
+            )
+            readiness_registry = read_json(Path("docs/status/release-readiness.json"))
+            result = build_release_readiness_record(
+                gate_instance=gate_instance,
+                candidate_identity_record=candidate,
+                predecessor=predecessor,
+                linear_snapshot=linear_snapshot,
+                artifact_manifest=artifact_manifest,
+                delta=delta,
+                delta_test_map=delta_test_map,
+                readiness_registry=readiness_registry,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0 if result["data"]["disposition"] == "READY" else 3
+        if name == "validate_release_artifact_manifest.py":
+            result = read_json(Path(args.record))
+            validate_release_artifact_files(
+                result,
+                Path(args.artifacts),
+                live=not fixture_mode,
+            )
+        elif name == "validate_release_retention.py":
+            result = read_json(Path(args.receipts))
+            raw_inputs = args.input if isinstance(args.input, list) else []
+            validate_release_retention_receipts(
+                result,
+                inputs=[Path(value) for value in raw_inputs],
+                manifest=Path(args.manifest) if args.manifest is not None else None,
+                invocation_root=(
+                    Path(args.invocation_root) if args.invocation_root is not None else None
+                ),
+                through_stage=args.through_stage,
+                live=not fixture_mode,
+            )
+        elif contract.fixture_producer:
             if not fixture_mode:
                 result = _blocked_result(
                     name,
@@ -1667,6 +2080,7 @@ __all__ = [
     "append_cas_event",
     "audit_release_repository",
     "build_promotion_plan",
+    "build_release_readiness_record",
     "candidate_identity",
     "canonical_json",
     "finalize_cells",
@@ -1687,6 +2101,8 @@ __all__ = [
     "validate_predecessor",
     "validate_promotion_plan",
     "validate_record",
+    "validate_release_artifact_files",
+    "validate_release_retention_receipts",
     "validate_role_assignments",
     "validate_task_state_observation",
     "write_immutable_json",

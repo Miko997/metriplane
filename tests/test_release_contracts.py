@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -12,7 +13,15 @@ from typing import Any
 
 import pytest
 
-from metriplane.release_control import MILESTONES, TOOL_CONTRACTS, tool_main, validate_record
+from metriplane.release_control import (
+    MILESTONES,
+    TOOL_CONTRACTS,
+    make_record,
+    sha256_json,
+    tool_main,
+    validate_record,
+    write_immutable_json,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "schemas"
@@ -401,6 +410,349 @@ def test_release_artifact_adapter_is_directly_executable() -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "--manifest" in completed.stdout
+
+
+def test_release_artifact_validator_binds_every_publishable_byte(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts = tmp_path / "dist"
+    artifacts.mkdir()
+    wheel = artifacts / "metriplane-0.4.0-py3-none-any.whl"
+    sdist = artifacts / "metriplane-0.4.0.tar.gz"
+    wheel.write_bytes(b"wheel-bytes")
+    sdist.write_bytes(b"sdist-bytes")
+    rows = [
+        {
+            "media_type": "application/vnd.pypa.wheel+zip",
+            "path": wheel.name,
+            "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+            "size": wheel.stat().st_size,
+        },
+        {
+            "media_type": "application/gzip",
+            "path": sdist.name,
+            "sha256": hashlib.sha256(sdist.read_bytes()).hexdigest(),
+            "size": sdist.stat().st_size,
+        },
+    ]
+    manifest = make_record(
+        "release-artifact-manifest",
+        {
+            "artifact_set_digest": sha256_json(rows),
+            "artifacts": rows,
+            "build_invocation_id": "artifact-build-fixture",
+            "build_recipe_digest": "a" * 64,
+            "milestone": "v0.4",
+            "source_digest": "b" * 64,
+            "source_freeze_digest": "c" * 64,
+            "target_resolution_digest": "d" * 64,
+        },
+        invocation_id="artifact-manifest-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    manifest_path = tmp_path / "artifact-manifest.json"
+    write_immutable_json(manifest_path, manifest)
+    argv = [
+        "--record",
+        str(manifest_path),
+        "--artifacts",
+        str(artifacts),
+        "--read-hash",
+    ]
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    assert tool_main("validate_release_artifact_manifest.py", argv) == 0
+    blocked_manifest = make_record(
+        "release-artifact-manifest",
+        manifest["data"],
+        invocation_id="artifact-manifest-blocked-fixture",
+        sequence=1,
+        synthetic=True,
+        status="BLOCKED",
+    )
+    blocked_manifest_path = tmp_path / "artifact-manifest-blocked.json"
+    write_immutable_json(blocked_manifest_path, blocked_manifest)
+    argv[1] = str(blocked_manifest_path)
+    assert tool_main("validate_release_artifact_manifest.py", argv) == 3
+    argv[1] = str(manifest_path)
+    wheel.write_bytes(b"rebuilt-wheel")
+    assert tool_main("validate_release_artifact_manifest.py", argv) == 3
+
+
+def test_release_retention_validator_reads_two_independent_store_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    retained = make_record(
+        "release-qualification",
+        {"candidate_digest": "a" * 64},
+        invocation_id="retained-input-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    retained_path = tmp_path / "retained.json"
+    input_digest = write_immutable_json(retained_path, retained)
+    stores = [
+        {
+            "content_digest": input_digest,
+            "hold_receipt_digest": "a" * 64,
+            "independence_group": "provider-a",
+            "namespace": "release-a",
+            "object_key": "candidate/input.json",
+            "put_receipt_digest": "b" * 64,
+            "read_back_digest": input_digest,
+            "store_id": "payload-store-a",
+        },
+        {
+            "content_digest": input_digest,
+            "hold_receipt_digest": "c" * 64,
+            "independence_group": "provider-b",
+            "namespace": "release-b",
+            "object_key": "candidate/input.json",
+            "put_receipt_digest": "d" * 64,
+            "read_back_digest": input_digest,
+            "store_id": "payload-store-b",
+        },
+    ]
+    receipt = make_record(
+        "release-retention-receipts",
+        {
+            "all_content_equal": True,
+            "input_digest": input_digest,
+            "phase": "prepublication",
+            "receipt_set_digest": sha256_json(stores),
+            "retained_at": "2026-08-27T00:00:00Z",
+            "stores": stores,
+        },
+        invocation_id="retention-receipts-fixture",
+        sequence=1,
+        synthetic=True,
+    )
+    receipt_path = tmp_path / "receipts.json"
+    write_immutable_json(receipt_path, receipt)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    assert (
+        tool_main(
+            "validate_release_retention.py",
+            ["--input", str(retained_path), "--receipts", str(receipt_path), "--read-back"],
+        )
+        == 0
+    )
+
+    wrong_stores = [dict(row) for row in stores]
+    wrong_stores[1]["read_back_digest"] = "e" * 64
+    wrong_receipt = make_record(
+        "release-retention-receipts",
+        {
+            "all_content_equal": True,
+            "input_digest": input_digest,
+            "phase": "prepublication",
+            "receipt_set_digest": sha256_json(wrong_stores),
+            "retained_at": "2026-08-27T00:00:00Z",
+            "stores": wrong_stores,
+        },
+        invocation_id="retention-receipts-mismatch",
+        sequence=1,
+        synthetic=True,
+    )
+    wrong_path = tmp_path / "wrong-receipts.json"
+    write_immutable_json(wrong_path, wrong_receipt)
+    assert (
+        tool_main(
+            "validate_release_retention.py",
+            ["--input", str(retained_path), "--receipts", str(wrong_path), "--read-back"],
+        )
+        == 3
+    )
+
+
+def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = "a" * 64
+    predecessor = make_record(
+        "release-predecessor",
+        {
+            "candidate_milestone": "v0.4",
+            "closed_decision_digest": "b" * 64,
+            "lkg_digest": "c" * 64,
+            "version": "v0.3.0",
+        },
+        invocation_id="readiness-predecessor",
+        sequence=1,
+        synthetic=True,
+    )
+    linear = make_record(
+        "linear-release-snapshot",
+        {
+            "required_bom_ids": ["MET-154"],
+            "required_bom_snapshot_digest": sha256_json(["MET-154"]),
+            "state": "In Progress",
+            "task_id": "MET-154",
+            "tool": "linear",
+        },
+        invocation_id="readiness-linear-snapshot",
+        sequence=1,
+        synthetic=True,
+    )
+    artifact = make_record(
+        "release-artifact-manifest",
+        {
+            "artifact_set_digest": "d" * 64,
+            "artifacts": [],
+            "build_invocation_id": "readiness-artifact-build",
+            "build_recipe_digest": "e" * 64,
+            "milestone": "v0.4",
+            "source_digest": "f" * 64,
+            "source_freeze_digest": "1" * 64,
+            "target_resolution_digest": "2" * 64,
+        },
+        invocation_id="readiness-artifact-manifest",
+        sequence=1,
+        synthetic=True,
+    )
+    candidate = make_record(
+        "release-candidate-identity",
+        {
+            "artifact_manifest_digest": sha256_json(artifact),
+            "artifact_set_digest": "d" * 64,
+            "build_invocation_id": "readiness-artifact-build",
+            "candidate_digest": "3" * 64,
+            "evaluation_adoption_digest": None,
+            "evaluation_adoption_mode": "none",
+            "gate_input_digest": "4" * 64,
+            "milestone": "v0.4",
+            "package_version": "v0.4.0",
+            "predecessor_digest": sha256_json(predecessor),
+            "release_tag": "v0.4.0",
+            "source_freeze_digest": "1" * 64,
+        },
+        invocation_id="readiness-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    delta = make_record(
+        "release-capability-delta",
+        {
+            "added": [],
+            "candidate_sha": "1" * 40,
+            "changed": [],
+            "delta_digest": "5" * 64,
+            "impact_manifest_digest": "6" * 64,
+            "milestone": "v0.4",
+            "predecessor_digest": sha256_json(predecessor),
+            "removed": [],
+        },
+        invocation_id="readiness-delta",
+        sequence=1,
+        synthetic=True,
+    )
+    delta_map = make_record(
+        "release-delta-test-map",
+        {
+            "delta_digest": "5" * 64,
+            "environment_registry_digest": "7" * 64,
+            "impact_manifest_digest": "6" * 64,
+            "map_digest": "8" * 64,
+            "mappings": [
+                {
+                    "capability_id": "release-framework",
+                    "environment_ids": ["ubuntu-24.04-py312"],
+                    "obligation_ids": ["MP2-007.A01"],
+                    "scenario_ids": ["hard-runner-loss"],
+                }
+            ],
+            "milestone": "v0.4",
+            "obligation_registry_digest": "9" * 64,
+            "scenario_registry_digest": "a" * 64,
+            "unmapped_capabilities": [],
+        },
+        invocation_id="readiness-delta-map",
+        sequence=1,
+        synthetic=True,
+    )
+    gate = make_record(
+        "release-gate-instance",
+        {
+            "candidate_digest": "3" * 64,
+            "candidate_identity_digest": sha256_json(candidate),
+            "environment_registry_digest": "7" * 64,
+            "evidence_store_preflight_digest": "b" * 64,
+            "evidence_store_registry_digest": "c" * 64,
+            "frozen_source_sha": "1" * 40,
+            "gate_input_digest": "4" * 64,
+            "instance_digest": digest,
+            "linear_snapshot_digest": sha256_json(linear),
+            "main_health_digest": "d" * 64,
+            "main_health_history_digest": "e" * 64,
+            "milestone": "v0.4",
+            "obligation_registry_digest": "9" * 64,
+            "package_version": "v0.4.0",
+            "predecessor_digest": sha256_json(predecessor),
+            "release_tag": "v0.4.0",
+            "repository_protection_digest": "f" * 64,
+            "run_id": "readiness-run",
+            "scenario_registry_digest": "a" * 64,
+            "target_registry_digest": "1" * 64,
+            "task_state_policy_digest": "2" * 64,
+        },
+        invocation_id="readiness-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    records = {
+        "artifact-manifest": artifact,
+        "candidate-identity": candidate,
+        "delta-test-map": delta_map,
+        "delta": delta,
+        "gate-instance": gate,
+        "linear-snapshot": linear,
+        "predecessor": predecessor,
+    }
+    paths: dict[str, Path] = {}
+    for name, record in records.items():
+        path = tmp_path / f"{name}.json"
+        write_immutable_json(path, record)
+        paths[name] = path
+    status = tmp_path / "docs/status"
+    status.mkdir(parents=True)
+    registry = {
+        "blockers": [],
+        "evidence_resolution": {"status": "READY"},
+        "framework": "READY",
+        "live_release": "READY",
+    }
+    (status / "release-readiness.json").write_text(json.dumps(registry), encoding="utf-8")
+    argv = [
+        "--gate-instance",
+        str(paths["gate-instance"]),
+        "--candidate-identity",
+        str(paths["candidate-identity"]),
+        "--predecessor",
+        str(paths["predecessor"]),
+        "--linear-snapshot",
+        str(paths["linear-snapshot"]),
+        "--artifact-manifest",
+        str(paths["artifact-manifest"]),
+        "--delta",
+        str(paths["delta"]),
+        "--delta-test-map",
+        str(paths["delta-test-map"]),
+        "--out",
+        str(tmp_path / "ready.json"),
+    ]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    assert tool_main("check_release_readiness.py", argv) == 0
+    assert json.loads((tmp_path / "ready.json").read_text())["data"]["disposition"] == "READY"
+
+    registry["blockers"] = [{"code": "MISSING_LIVE_EVIDENCE"}]
+    registry["framework"] = "BLOCKED_NOT_READY"
+    (status / "release-readiness.json").write_text(json.dumps(registry), encoding="utf-8")
+    argv[-1] = str(tmp_path / "blocked.json")
+    assert tool_main("check_release_readiness.py", argv) == 3
+    blocked = json.loads((tmp_path / "blocked.json").read_text())["data"]
+    assert blocked["disposition"] == "BLOCKED_NOT_READY"
+    assert blocked["unresolved_blockers"] == ["MISSING_LIVE_EVIDENCE"]
 
 
 def test_release_fixtures_are_exact_and_valid_fixtures_are_digest_bound() -> None:
