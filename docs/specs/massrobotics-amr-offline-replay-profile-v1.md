@@ -26,21 +26,6 @@ fixture**. The records were written for this profile and are not derived from a
 robot recording or an official example. The profile covers offline current-state
 replay only.
 
-## Practical relevance
-
-Discussing offline replay of multi-vendor AMR status data, Zachary Dydek offered
-the following personal perspective:
-
-> “I expect that people will want to build dashboards for live (and replay)
-> views of deployed AMR fleets from multiple vendors.”
-
-— Zachary Dydek, Ph.D., speaking in a personal capacity (August 2026; quoted
-with permission).
-
-This observation identifies a potential use case. It does not constitute
-Metriplane adoption, technical validation, conformance, or endorsement by any
-organization.
-
 ## Frozen reference identity and rights
 
 The referenced interoperability specification is the MassRobotics AMR
