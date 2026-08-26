@@ -10,7 +10,16 @@ cd "$REPO_ROOT"
 
 # Match your transcript defaults.
 if [[ -z "${RUNS:-}" ]]; then
-  RUNS="$(python -c 'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+  RUNS="$(python -c '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
 fi
 export RUNS
 export CONFIG="${CONFIG:-configs/fusion_health_300fps.yaml}"

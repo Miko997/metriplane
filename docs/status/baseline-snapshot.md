@@ -193,9 +193,9 @@ those support dispositions independently.
   registry. MP2-014 imports the active `MP2-000.OBL.*` lineage. MP2-016 later
   migrates and validates the bootstrap records without rewriting their identity.
 - The frozen 0.3.0 version, historical installed-help streams, and root test obligations
-  remain active stop-the-line goldens. A reviewed help evolution is appended as an exact
-  size/digest identity; it does not rewrite the historical artifact. Broader legitimate changes
-  require approval and supersession through MP2-017, and later work must not silently derive or
+  remain active stop-the-line goldens. A reviewed help evolution requires approval and
+  supersession through MP2-017 of the command's one exact size/digest identity; multiple
+  identities are not appended or accepted concurrently. Later work must not silently derive or
   replace historical identities from the current package version.
 
 The snapshot observes existing state. It does not characterize every success or

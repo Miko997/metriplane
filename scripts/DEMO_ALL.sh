@@ -41,7 +41,7 @@ Options:
   -h, --help           Show this help
 
 Environment:
-  RUNS (optional)      Where mp.sh writes run directories (default: platform data directory)
+  RUNS (optional)      Where mp.sh writes run directories (default: platform runs directory)
 EOF
 }
 
@@ -96,7 +96,16 @@ else
     PATHS_PYTHON="$PYTHON"
   fi
   RUNS_DIR="$(cd "$ROOT" && "$PATHS_PYTHON" -c \
-    'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+    '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
 fi
 LOG_DIR="$RUNS_DIR/$RUN_ID"
 mkdir -p "$LOG_DIR"

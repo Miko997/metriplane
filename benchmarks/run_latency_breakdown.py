@@ -38,7 +38,7 @@ def main() -> int:
         "--runs-dir",
         type=str,
         default=None,
-        help="Runs base dir (default: platform data directory)",
+        help="Runs base dir (default: platform runs directory)",
     )
     ap.add_argument("--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path")
     ap.add_argument(

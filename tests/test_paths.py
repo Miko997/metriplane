@@ -220,14 +220,14 @@ importlib.import_module("benchmarks.run_latency_breakdown")
 
 @pytest.mark.parametrize(
     "helper",
-    ["mp", "ui-demo", "latency"],
+    ["mp", "ui-demo", "latency", "demo-all", "vt-env", "sd4-demo"],
 )
 def test_shipped_helpers_fail_cleanly_without_platform_home(
     helper: str,
     tmp_path: Path,
 ) -> None:
     environment = os.environ.copy()
-    for name in (*_PLATFORM_ENV, "METRIPLANE_DATA_DIR", "RUNS"):
+    for name in (*_PLATFORM_ENV, "METRIPLANE_DATA_DIR", "RUNS", "RUNS_DIR"):
         environment.pop(name, None)
     commands = {
         "mp": ["bash", "tools/mp.sh", "help"],
@@ -238,6 +238,9 @@ def test_shipped_helpers_fail_cleanly_without_platform_home(
             "--out",
             str(tmp_path / "latency.csv"),
         ],
+        "demo-all": ["bash", "scripts/DEMO_ALL.sh"],
+        "vt-env": ["bash", "scripts/_vt_env.sh"],
+        "sd4-demo": ["bash", "scripts/sd4_demo.sh"],
     }
 
     result = subprocess.run(
@@ -253,6 +256,30 @@ def test_shipped_helpers_fail_cleanly_without_platform_home(
     assert result.returncode == 2
     assert "platform path error:" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        [sys.executable, "tools/run_ui_demo_replay.py", "--help"],
+        [sys.executable, "benchmarks/run_latency_breakdown.py", "--help"],
+        ["bash", "scripts/DEMO_ALL.sh", "--help"],
+    ],
+)
+def test_changed_helper_help_names_platform_runs_directory(command: list[str]) -> None:
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    normalized = " ".join(result.stdout.split())
+    assert "default: platform runs directory" in normalized
+    assert "default: platform data directory" not in normalized
 
 
 def test_full_suite_uses_isolated_writable_home():

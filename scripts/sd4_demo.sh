@@ -5,7 +5,16 @@
 set -euo pipefail
 
 if [[ -z "${RUNS_DIR:-}" ]]; then
-  RUNS_DIR="$(python -c 'from metriplane.paths import resolve_platform_paths; print(resolve_platform_paths().runs_dir)')"
+  RUNS_DIR="$(python -c '
+import sys
+from metriplane.paths import PlatformPathError, resolve_platform_paths
+
+try:
+    print(resolve_platform_paths().runs_dir)
+except PlatformPathError as exc:
+    print(f"platform path error: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+')"
 fi
 CFG="${CFG:-configs/fusion_health.yaml}"
 

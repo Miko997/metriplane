@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--runs-dir",
         default=None,
-        help="Run-recording base directory (default: platform data directory)",
+        help="Run-recording base directory (default: platform runs directory)",
     )
     parser.add_argument(
         "--run-id",
