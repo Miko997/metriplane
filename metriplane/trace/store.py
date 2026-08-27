@@ -6,10 +6,10 @@ from __future__ import annotations
 import csv
 import json
 import math
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from metriplane.sentinel.registry import ObjectRegistryConfig
 
 
 @dataclass
@@ -51,9 +51,16 @@ def _load_registry_map(registry_path: str | Path) -> dict[int, str]:
 
 
 class TraceStore:
-    def __init__(self, registry_path: str | Path | None = None):
+    def __init__(
+        self,
+        registry_path: str | Path | None = None,
+        *,
+        registry: ObjectRegistryConfig | None = None,
+    ):
         self._registry: dict[int, str] = {}
-        if registry_path:
+        if registry is not None:
+            self._registry = {entry.marker_id: entry.object_id for entry in registry.objects}
+        elif registry_path:
             self._registry = _load_registry_map(registry_path)
         self._points: list[TracePoint] = []
 
@@ -64,12 +71,12 @@ class TraceStore:
         except (ValueError, TypeError):
             return f"marker_{raw_id}"
 
-    def load_session(self, session_path: str | Path) -> None:
+    def _load_session_lines(self, lines: list[str]) -> None:
         from metriplane.schema import FrameStateModel, frame_time_s
 
         self._points = []
         run_id: str | None = None
-        for line in Path(session_path).read_text().splitlines():
+        for line in lines:
             line = line.strip()
             if not line:
                 continue
@@ -102,14 +109,11 @@ class TraceStore:
                 )
         self._points.sort(key=lambda p: (p.object_id, p.ts))
 
+    def load_session(self, session_path: str | Path) -> None:
+        self._load_session_lines(Path(session_path).read_text().splitlines())
+
     def load_session_text(self, text: str) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
-            f.write(text)
-            tmp = f.name
-        try:
-            self.load_session(tmp)
-        finally:
-            os.unlink(tmp)
+        self._load_session_lines(text.splitlines())
 
     def points(self) -> list[TracePoint]:
         return list(self._points)

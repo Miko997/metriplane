@@ -30,6 +30,8 @@ from metriplane.run_ids import portable_run_id_for_collision, validate_portable_
 
 HEADER_TYPES = {"header", "run_header", "provenance"}
 _REDACTED = "<redacted>"
+_PRIVATE_DIRECTORY_MODE = 0o700
+_PRIVATE_FILE_MODE = 0o600
 _SENSITIVE_CONFIG_KEYS = {
     "access_token",
     "api_key",
@@ -48,6 +50,12 @@ _SENSITIVE_CONFIG_KEYS = {
     "user",
     "username",
 }
+
+
+def _set_descriptor_mode(file_fd: int, mode: int) -> None:
+    fchmod = getattr(os, "fchmod", None)
+    if fchmod is not None:
+        fchmod(file_fd, mode)
 
 
 def is_header_record(obj: Any) -> bool:
@@ -313,6 +321,7 @@ def _write_run_reservation_marker(directory_fd: int, token: str) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     marker_fd = os.open(_RUN_RESERVATION_MARKER, flags, 0o600, dir_fd=directory_fd)
     try:
+        _set_descriptor_mode(marker_fd, _PRIVATE_FILE_MODE)
         remaining = memoryview(token.encode("utf-8"))
         while remaining:
             written = os.write(marker_fd, remaining)
@@ -462,13 +471,14 @@ def _write_claimed_text(
     name: str,
     content: str,
     *,
-    mode: int = 0o666,
+    mode: int = _PRIVATE_FILE_MODE,
 ) -> None:
     if Path(name).name != name or name in {"", ".", ".."}:
         raise ValueError(f"invalid run artifact name: {name}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     file_fd = os.open(name, flags, mode, dir_fd=directory_fd)
     try:
+        _set_descriptor_mode(file_fd, mode & 0o700)
         remaining = memoryview(content.encode("utf-8"))
         while remaining:
             written = os.write(file_fd, remaining)
@@ -478,6 +488,23 @@ def _write_claimed_text(
         os.fsync(file_fd)
     finally:
         os.close(file_fd)
+
+
+def _mkdir_private(path: Path, *, parents: bool, exist_ok: bool) -> None:
+    """Create every missing directory component with a private mode."""
+    try:
+        os.mkdir(path, _PRIVATE_DIRECTORY_MODE)
+    except FileNotFoundError:
+        if not parents or path.parent == path:
+            raise
+        _mkdir_private(path.parent, parents=True, exist_ok=True)
+        _mkdir_private(path, parents=False, exist_ok=exist_ok)
+    except FileExistsError:
+        if not exist_ok:
+            raise
+        opened = path.lstat()
+        if stat.S_ISLNK(opened.st_mode) or not stat.S_ISDIR(opened.st_mode):
+            raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -565,7 +592,7 @@ class RunDirectoryReservation:
 def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
     """Atomically reserve one canonical collision-safe run directory."""
     requested_run_id = validate_portable_run_id(run_id)
-    base.mkdir(parents=True, exist_ok=True)
+    _mkdir_private(base, parents=True, exist_ok=True)
     try:
         base_before_open = base.lstat()
         base_fd = os.open(base, _reservation_directory_flags())
@@ -583,7 +610,11 @@ def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
             )
             run_dir = base / reserved_run_id
             try:
-                os.mkdir(reserved_run_id, dir_fd=base_fd)
+                os.mkdir(
+                    reserved_run_id,
+                    mode=_PRIVATE_DIRECTORY_MODE,
+                    dir_fd=base_fd,
+                )
             except FileExistsError:
                 continue
 
@@ -613,6 +644,7 @@ def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
                     ) from exc
                 opened_identity = os.fstat(run_fd)
                 _assert_directory_identity(created_identity, opened_identity, run_dir)
+                _set_descriptor_mode(run_fd, _PRIVATE_DIRECTORY_MODE)
 
                 token = secrets.token_hex(32)
                 _write_run_reservation_marker(run_fd, token)
@@ -769,8 +801,33 @@ def _capture_env_text() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _open_private_text(path: Path, *, exclusive: bool, buffering: int = -1) -> TextIO:
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= os.O_EXCL if exclusive else os.O_TRUNC
+    file_fd = os.open(path, flags, _PRIVATE_FILE_MODE)
+    try:
+        opened = os.fstat(file_fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise PlatformPathError(f"run artifact is not a regular file: {path}")
+        _set_descriptor_mode(file_fd, _PRIVATE_FILE_MODE)
+        handle = os.fdopen(file_fd, "w", encoding="utf-8", buffering=buffering)
+        file_fd = -1
+        return handle
+    finally:
+        if file_fd >= 0:
+            os.close(file_fd)
+
+
+def _write_private_text(path: Path, content: str, *, exclusive: bool) -> None:
+    with _open_private_text(path, exclusive=exclusive) as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def capture_env_txt(path: Path) -> None:
-    path.write_text(_capture_env_text(), encoding="utf-8")
+    _write_private_text(path, _capture_env_text(), exclusive=False)
 
 
 def create_run_context(
@@ -826,7 +883,7 @@ def create_run_context(
         run_dir = candidate
     else:
         run_dir = _ensure_unique_run_dir(candidate)
-        run_dir.mkdir(parents=True, exist_ok=False)
+        _mkdir_private(run_dir, parents=True, exist_ok=False)
     try:
         # If collision suffixing changed the directory, keep the persisted ID in sync.
         rid = validate_portable_run_id(run_dir.name)
@@ -858,9 +915,9 @@ def create_run_context(
             config_canonical_checksum = sha256_text(cfg_canon)
             env_checksum = sha256_text(env_content)
         else:
-            config_yaml.write_text(config_yaml_content, encoding="utf-8")
-            cfg_canon_path.write_text(cfg_canon, encoding="utf-8")
-            env_txt.write_text(env_content, encoding="utf-8")
+            _write_private_text(config_yaml, config_yaml_content, exclusive=True)
+            _write_private_text(cfg_canon_path, cfg_canon, exclusive=True)
+            _write_private_text(env_txt, env_content, exclusive=True)
             config_yaml_checksum = sha256_file(config_yaml)
             config_canonical_checksum = sha256_file(cfg_canon_path)
             env_checksum = sha256_file(env_txt)
@@ -906,7 +963,7 @@ def create_run_context(
             os.fsync(claimed_directory.fd)
             claimed_directory.verify_visible_path()
         else:
-            meta_json.write_text(meta_content, encoding="utf-8")
+            _write_private_text(meta_json, meta_content, exclusive=True)
 
         return RunContext(
             run_id=rid,
@@ -941,7 +998,12 @@ def _open_reserved_text_artifact(path: Path) -> TextIO | None:
         claimed.verify_visible_path()
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
         try:
-            file_fd = os.open(path.name, flags, 0o666, dir_fd=claimed.fd)
+            file_fd = os.open(
+                path.name,
+                flags,
+                _PRIVATE_FILE_MODE,
+                dir_fd=claimed.fd,
+            )
         except OSError as exc:
             raise PlatformPathError(
                 f"reserved run artifact cannot be opened safely: {path}"
@@ -949,6 +1011,7 @@ def _open_reserved_text_artifact(path: Path) -> TextIO | None:
         opened = os.fstat(file_fd)
         if not stat.S_ISREG(opened.st_mode):
             raise PlatformPathError(f"reserved run artifact is not a regular file: {path}")
+        _set_descriptor_mode(file_fd, _PRIVATE_FILE_MODE)
         os.fsync(claimed.fd)
         claimed.verify_visible_path()
         handle = os.fdopen(file_fd, "w", encoding="utf-8", buffering=1)
@@ -983,8 +1046,12 @@ def open_jsonl_writer(*, primary_path: Path, mirror_path: str | None) -> JsonlWr
                 if reserved_handle is not None:
                     opened_files[index] = reserved_handle
                     continue
-            p.parent.mkdir(parents=True, exist_ok=True)
-            opened_files[index] = p.open("w", encoding="utf-8", buffering=1)
+            _mkdir_private(p.parent, parents=True, exist_ok=True)
+            opened_files[index] = _open_private_text(
+                p,
+                exclusive=False,
+                buffering=1,
+            )
     except Exception:
         for handle in opened_files.values():
             try:

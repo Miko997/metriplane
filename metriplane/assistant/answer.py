@@ -9,16 +9,23 @@ from typing import Callable
 from metriplane.assistant import retrieval
 from metriplane.assistant.intents import classify, supported_questions
 from metriplane.assistant.models import AssistantAnswer, AssistantQuery
+from metriplane.runner.safe_reads import PinnedDirectory
+
+RunSource = Path | PinnedDirectory
 
 
-def answer_question(question: str, run_dir: str | Path) -> AssistantAnswer:
+def answer_question(
+    question: str,
+    run_dir: str | Path | PinnedDirectory,
+) -> AssistantAnswer:
     intent = classify(question)
     q = AssistantQuery(question=question, run_dir=str(run_dir), intent=intent)
     handler = _HANDLERS.get(intent, _unknown)
-    return handler(q, Path(run_dir))
+    run = run_dir if isinstance(run_dir, PinnedDirectory) else Path(run_dir)
+    return handler(q, run)
 
 
-def _incident_search(q: AssistantQuery, run: Path) -> AssistantAnswer:
+def _incident_search(q: AssistantQuery, run: RunSource) -> AssistantAnswer:
     incidents, cites, lims = retrieval.retrieve_incidents(run)
     if not incidents:
         return AssistantAnswer(
@@ -47,7 +54,7 @@ def _incident_search(q: AssistantQuery, run: Path) -> AssistantAnswer:
     )
 
 
-def _object_history(q: AssistantQuery, run: Path) -> AssistantAnswer:
+def _object_history(q: AssistantQuery, run: RunSource) -> AssistantAnswer:
     known = retrieval.known_object_ids(run)
     target = next((oid for oid in known if oid.lower() in q.question.lower()), None)
     if target is None:
@@ -84,7 +91,7 @@ def _object_history(q: AssistantQuery, run: Path) -> AssistantAnswer:
     )
 
 
-def _zone_occupancy(q: AssistantQuery, run: Path) -> AssistantAnswer:
+def _zone_occupancy(q: AssistantQuery, run: RunSource) -> AssistantAnswer:
     incidents, inc_cites, inc_lims = retrieval.retrieve_incidents(run)
     rows, tr_cites, tr_lims = retrieval.retrieve_traces(run)
     zone_incidents = [i for i in incidents if i.get("zones")]
@@ -115,7 +122,7 @@ def _zone_occupancy(q: AssistantQuery, run: Path) -> AssistantAnswer:
     )
 
 
-def _rule_explanation(q: AssistantQuery, run: Path) -> AssistantAnswer:
+def _rule_explanation(q: AssistantQuery, run: RunSource) -> AssistantAnswer:
     # prefer a rule id named in the question; else use the incident's rule
     rules_obj, _, _ = retrieval.retrieve_rule(run, None)
     candidates = (rules_obj or {}).get("rules", []) if rules_obj else []
@@ -155,7 +162,7 @@ def _rule_explanation(q: AssistantQuery, run: Path) -> AssistantAnswer:
     )
 
 
-def _camera_health(q: AssistantQuery, run: Path) -> AssistantAnswer:
+def _camera_health(q: AssistantQuery, run: RunSource) -> AssistantAnswer:
     report, cites, lims = retrieval.retrieve_camera_trust(run)
     if report is None:
         return AssistantAnswer(
@@ -189,7 +196,7 @@ def _camera_health(q: AssistantQuery, run: Path) -> AssistantAnswer:
     )
 
 
-def _unknown(q: AssistantQuery, run: Path) -> AssistantAnswer:
+def _unknown(q: AssistantQuery, run: RunSource) -> AssistantAnswer:
     return AssistantAnswer(
         question=q.question,
         intent="unknown",
@@ -199,7 +206,7 @@ def _unknown(q: AssistantQuery, run: Path) -> AssistantAnswer:
     )
 
 
-_HANDLERS: dict[str, Callable[[AssistantQuery, Path], AssistantAnswer]] = {
+_HANDLERS: dict[str, Callable[[AssistantQuery, RunSource], AssistantAnswer]] = {
     "incident_search": _incident_search,
     "object_history": _object_history,
     "zone_occupancy": _zone_occupancy,

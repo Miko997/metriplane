@@ -130,7 +130,14 @@ class CommandExecutor:
                 return self.current_job.get("job_id")
             return None
 
-    def execute(self, command_id: str, command: list[str], timeout_s: int) -> str:
+    def execute(
+        self,
+        command_id: str,
+        command: list[str],
+        timeout_s: int,
+        *,
+        pass_fds: tuple[int, ...] = (),
+    ) -> str:
         """
         Execute command and return job_id immediately.
         Raises ValueError if already running.
@@ -139,10 +146,20 @@ class CommandExecutor:
             command_id: Identifier for the command
             command: Command as list of arguments (not shell string)
             timeout_s: Maximum execution time in seconds
+            pass_fds: POSIX descriptors whose ownership transfers after the
+                background thread starts successfully
 
         Returns:
             job_id: Unique identifier for this execution
         """
+        inherited_fds = tuple(dict.fromkeys(pass_fds))
+        if inherited_fds and os.name != "posix":
+            raise OSError("inherited descriptors require a POSIX subprocess")
+        for file_fd in inherited_fds:
+            if not isinstance(file_fd, int) or file_fd < 0:
+                raise ValueError("pass_fds must contain open non-negative descriptors")
+            os.fstat(file_fd)
+
         print(f"[Executor] execute() called for command_id: {command_id}")
         print("[Executor] Before acquiring lock")
 
@@ -196,35 +213,61 @@ class CommandExecutor:
         # Start async execution (no lock held)
         print(f"[Executor] Starting background thread for: {job_id}")
         thread = threading.Thread(
-            target=self._run_command, args=(job_id, command, timeout_s), daemon=True
+            target=self._run_command,
+            args=(job_id, command, timeout_s, inherited_fds),
+            daemon=True,
         )
-        thread.start()
+        try:
+            thread.start()
+        except BaseException:
+            with self.lock:
+                if self.current_job is not None and self.current_job["job_id"] == job_id:
+                    self.current_job["status"] = "failed"
+                    self.current_job["completed_at"] = self.current_job["started_at"]
+                    self.current_job["stderr"] = "Execution thread could not be started"
+                    self.current_job["exit_code"] = -1
+            raise
         print(f"[Executor] Background thread started for: {job_id}")
         print(f"[Executor] Returning job_id: {job_id}")
 
         return job_id
 
-    def _run_command(self, job_id: str, command: list[str], timeout_s: int) -> None:
+    def _run_command(
+        self,
+        job_id: str,
+        command: list[str],
+        timeout_s: int,
+        pass_fds: tuple[int, ...] = (),
+    ) -> None:
         """Background thread for command execution"""
         print(f"[Executor] Background thread running for: {job_id}")
 
         job = self.current_job
         if not job or job["job_id"] != job_id:
             print(f"[Executor] Job mismatch, aborting: {job_id}")
+            for file_fd in pass_fds:
+                os.close(file_fd)
             return
 
         try:
             print(f"[Executor] Subprocess starting: {' '.join(command)}")
             # Execute without shell=True (security: no shell injection)
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=str(self.repo_root),
-                env=self._command_environment(),
-                **_popen_group_options(),
-            )
+            popen_options: dict[str, Any] = _popen_group_options()
+            if pass_fds:
+                popen_options["pass_fds"] = pass_fds
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    cwd=str(self.repo_root),
+                    env=self._command_environment(),
+                    **popen_options,
+                )
+            finally:
+                for file_fd in pass_fds:
+                    os.close(file_fd)
             print(f"[Executor] Subprocess spawned, PID: {process.pid}")
 
             # Store process for cancellation

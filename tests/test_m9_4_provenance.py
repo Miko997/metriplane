@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -1512,3 +1516,105 @@ def test_run_context_collision_suffix_remains_portable_and_matches_metadata(
 )
 def test_portable_run_id_validator_preserves_valid_names(run_id: str) -> None:
     assert validate_portable_run_id(run_id) == run_id
+
+
+def test_run_provenance_artifacts_ignore_umask_zero(tmp_path: Path) -> None:
+    script = textwrap.dedent(
+        """
+        import json
+        import os
+        import stat
+        import sys
+        from pathlib import Path
+
+        from metriplane.config import Config
+        from metriplane.provenance.run_provenance import (
+            capture_env_txt,
+            create_run_context,
+            open_jsonl_writer,
+            reserve_run_directory,
+        )
+
+        root = Path(sys.argv[1])
+        os.umask(0)
+        unclaimed = create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="unclaimed",
+            runs_dir=str(root / "unclaimed-runs"),
+        )
+        mirror = root / "mirror" / "session.jsonl"
+        writer = open_jsonl_writer(
+            primary_path=unclaimed.session_jsonl,
+            mirror_path=str(mirror),
+        )
+        writer.write(unclaimed.header_record())
+        writer.close()
+
+        captured = root / "captured-env.txt"
+        capture_fd = os.open(captured, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        os.close(capture_fd)
+        capture_env_txt(captured)
+
+        reservation = reserve_run_directory(root / "reserved-runs", "claimed")
+        os.environ.update(reservation.child_environment(os.environ))
+        claimed = create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="claimed",
+            runs_dir=str(root / "reserved-runs"),
+        )
+        claimed_writer = open_jsonl_writer(
+            primary_path=claimed.session_jsonl,
+            mirror_path=None,
+        )
+        claimed_writer.write(claimed.header_record())
+        claimed_writer.close()
+
+        paths = {
+            "created_root": root,
+            "unclaimed_base": root / "unclaimed-runs",
+            "unclaimed_dir": unclaimed.run_dir,
+            "unclaimed_config": unclaimed.config_yaml,
+            "unclaimed_canonical": unclaimed.config_canonical_json_path,
+            "unclaimed_env": unclaimed.env_txt,
+            "unclaimed_meta": unclaimed.meta_json,
+            "unclaimed_session": unclaimed.session_jsonl,
+            "mirror_dir": mirror.parent,
+            "mirror_session": mirror,
+            "captured_env": captured,
+            "reserved_base": root / "reserved-runs",
+            "claimed_dir": claimed.run_dir,
+            "claimed_config": claimed.config_yaml,
+            "claimed_canonical": claimed.config_canonical_json_path,
+            "claimed_env": claimed.env_txt,
+            "claimed_meta": claimed.meta_json,
+            "claimed_session": claimed.session_jsonl,
+        }
+        print(json.dumps({name: stat.S_IMODE(path.stat().st_mode) for name, path in paths.items()}))
+        """
+    )
+    environment = os.environ.copy()
+    environment["METRIPLANE_NO_PIP_FREEZE"] = "1"
+    environment["METRIPLANE_GIT_COMMIT"] = "a" * 40
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path / "mode-root")],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    modes = json.loads(result.stdout)
+
+    assert modes["created_root"] == 0o700
+    assert modes["unclaimed_base"] == 0o700
+    assert modes["unclaimed_dir"] == 0o700
+    assert modes["mirror_dir"] == 0o700
+    assert modes["reserved_base"] == 0o700
+    assert modes["claimed_dir"] == 0o700
+    for name, mode in modes.items():
+        if name.endswith(("_dir", "_base")) or name == "created_root":
+            continue
+        assert mode == 0o600, name
