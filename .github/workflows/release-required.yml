@@ -33,6 +33,10 @@ on:
         description: Existing annotated canonical tag; required only post-publication
         required: false
         type: string
+      production_run_id:
+        description: Successful production publication workflow run; required post-publication
+        required: false
+        type: string
       authority_bundle_sha256:
         description: SHA-256 of the exact authority bundle retained in both external stores
         required: true
@@ -41,8 +45,16 @@ on:
         description: External authority production run identity bound into retained records
         required: true
         type: string
+      authority_policy_digest:
+        description: SHA-256 identity of the protected release authority policy
+        required: true
+        type: string
       evidence_manifest_sha256:
         description: SHA-256 of the transported evidence-manifest.json
+        required: true
+        type: string
+      provider_attestation_keyring_digest:
+        description: SHA-256 of the exact canonical provider attestation keyring
         required: true
         type: string
 
@@ -71,6 +83,7 @@ jobs:
           DISPATCH_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           DISPATCH_MAIN_HEALTH_SHA: ${{ inputs.main_health_sha }}
           DISPATCH_MODE: ${{ inputs.mode }}
+          DISPATCH_PRODUCTION_RUN_ID: ${{ inputs.production_run_id }}
           DISPATCH_TAG: ${{ inputs.canonical_tag }}
           EVENT_SHA_FALLBACK: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
@@ -88,6 +101,7 @@ jobs:
           source_sha = ""
           main_health_sha = ""
           tag = ""
+          production_run_id = ""
           checkout_ref = ""
           if event_name == "pull_request":
               mode = "pr-merge-control"
@@ -100,13 +114,14 @@ jobs:
               main_health_sha = event["merge_group"]["base_sha"]
               checkout_ref = source_sha
           elif event_name == "push":
-              mode = "post-publication"
+              mode = "release-qualification"
               tag = os.environ["GITHUB_REF_NAME"]
               checkout_ref = f"refs/tags/{tag}"
           elif event_name == "workflow_dispatch":
               mode = os.environ["DISPATCH_MODE"]
               source_sha = os.environ["DISPATCH_CANDIDATE_SHA"]
               main_health_sha = os.environ["DISPATCH_MAIN_HEALTH_SHA"]
+              production_run_id = os.environ["DISPATCH_PRODUCTION_RUN_ID"]
               tag = os.environ["DISPATCH_TAG"]
               checkout_ref = source_sha
           else:
@@ -127,14 +142,22 @@ jobs:
           if mode == "post-publication":
               if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) is None:
                   raise SystemExit("post-publication mode requires one canonical semantic-version tag")
-          elif tag:
-              raise SystemExit("a canonical tag is forbidden before post-publication mode")
+              if re.fullmatch(r"[1-9][0-9]*", production_run_id) is None:
+                  raise SystemExit("post-publication mode requires a production workflow run")
+          elif event_name == "push":
+              if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) is None:
+                  raise SystemExit("tag qualification requires one canonical semantic-version tag")
+              if production_run_id:
+                  raise SystemExit("tag qualification cannot name a production workflow run")
+          elif tag or production_run_id:
+              raise SystemExit("publication identity is forbidden before post-publication mode")
 
           output = Path(os.environ["GITHUB_OUTPUT"])
           with output.open("a", encoding="utf-8") as stream:
               stream.write(f"mode={mode}\n")
               stream.write(f"source_sha={source_sha}\n")
               stream.write(f"main_health_sha={main_health_sha}\n")
+              stream.write(f"production_run_id={production_run_id}\n")
               stream.write(f"tag={tag}\n")
               stream.write(f"checkout_ref={checkout_ref}\n")
           PY
@@ -163,7 +186,7 @@ jobs:
           if [[ -n "$EXPECTED_SHA" ]]; then
             test "$source_sha" = "$EXPECTED_SHA"
           fi
-          if [[ "$RELEASE_MODE" == "post-publication" ]]; then
+          if [[ -n "$RELEASE_TAG" ]]; then
             tag_ref="refs/tags/${RELEASE_TAG}"
             test "$(git cat-file -t "$tag_ref")" = "tag"
             tag_object="$(git rev-parse "${tag_ref}^{tag}")"
@@ -180,6 +203,189 @@ jobs:
           fi
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
           echo "main_health_sha=$MAIN_HEALTH_SHA" >> "$GITHUB_OUTPUT"
+
+      - id: production-verification
+        name: Require successful production verification before reconciliation
+        if: steps.context.outputs.mode == 'post-publication'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_RUN_ID: ${{ steps.context.outputs.production_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PRODUCTION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${PRODUCTION_RUN_ID}" \
+            > "$RUNNER_TEMP/production-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${PRODUCTION_RUN_ID}/jobs?filter=latest&per_page=100" \
+            > "$RUNNER_TEMP/production-jobs.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${PRODUCTION_RUN_ID}/artifacts?name=production-verification&per_page=100" \
+            > "$RUNNER_TEMP/production-artifacts.json"
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          run_id = int(os.environ["PRODUCTION_RUN_ID"])
+          runner_temp = Path(os.environ["RUNNER_TEMP"])
+          run = json.loads(
+              (runner_temp / "production-run.json").read_text(encoding="utf-8")
+          )
+          expected = {
+              "conclusion": "success",
+              "event": "workflow_dispatch",
+              "head_branch": "main",
+              "id": run_id,
+              "path": ".github/workflows/publish-pypi.yml",
+              "status": "completed",
+          }
+          mismatches = {
+              key: (run.get(key), value)
+              for key, value in expected.items()
+              if run.get(key) != value
+          }
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              mismatches["repository.full_name"] = (
+                  run.get("repository", {}).get("full_name"),
+                  os.environ["GITHUB_REPOSITORY"],
+              )
+          head_sha = run.get("head_sha")
+          if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+              mismatches["head_sha"] = (head_sha, "exact commit")
+          if mismatches:
+              raise SystemExit(f"production workflow mismatch: {mismatches}")
+          jobs = json.loads(
+              (runner_temp / "production-jobs.json").read_text(encoding="utf-8")
+          ).get("jobs", [])
+          verified = [
+              job
+              for job in jobs
+              if job.get("name") == "Verify production artifact identity and installation"
+              and job.get("status") == "completed"
+              and job.get("conclusion") == "success"
+          ]
+          if len(verified) != 1:
+              raise SystemExit("production run lacks one successful PyPI verification job")
+
+          artifact_payload = json.loads(
+              (runner_temp / "production-artifacts.json").read_text(encoding="utf-8")
+          )
+          artifacts = artifact_payload.get("artifacts")
+          if (
+              artifact_payload.get("total_count") != 1
+              or not isinstance(artifacts, list)
+              or len(artifacts) != 1
+          ):
+              raise SystemExit("production run lacks one exact verification artifact")
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("production verification artifact has no workflow identity")
+          artifact_mismatches = {
+              key: (artifact.get(key), expected_value)
+              for key, expected_value in {
+                  "expired": False,
+                  "name": "production-verification",
+              }.items()
+              if artifact.get(key) != expected_value
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), expected_value)
+                  for key, expected_value in {
+                      "head_branch": "main",
+                      "head_sha": head_sha,
+                      "id": run_id,
+                  }.items()
+                  if workflow_run.get(key) != expected_value
+              }
+          )
+          artifact_id = artifact.get("id")
+          if type(artifact_id) is not int or artifact_id <= 0:
+              artifact_mismatches["id"] = (artifact_id, "positive integer")
+          if artifact_mismatches:
+              raise SystemExit(
+                  f"production verification artifact mismatch: {artifact_mismatches}"
+              )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"artifact_id={artifact_id}\n")
+          PY
+
+      - name: Download exact production verification
+        if: steps.context.outputs.mode == 'post-publication'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ steps.production-verification.outputs.artifact_id }}
+          path: production-verification/
+          run-id: ${{ steps.context.outputs.production_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Bind production verification to the reconciled candidate
+        if: steps.context.outputs.mode == 'post-publication'
+        env:
+          EXPECTED_CANDIDATE_SHA: ${{ steps.source.outputs.sha }}
+          PRODUCTION_RUN_ID: ${{ steps.context.outputs.production_run_id }}
+          RELEASE_TAG: ${{ steps.context.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+              result: dict[str, object] = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate production verification key: {key}")
+                  result[key] = value
+              return result
+
+          path = Path("production-verification/production-verification.json")
+          if path.is_symlink() or not path.is_file():
+              raise SystemExit("production verification record is missing or unsafe")
+          files = [candidate for candidate in path.parent.rglob("*") if candidate.is_file()]
+          if files != [path]:
+              raise SystemExit("production verification artifact inventory is not closed")
+          raw = path.read_bytes()
+          try:
+              record = json.loads(
+                  raw.decode("utf-8"),
+                  object_pairs_hook=closed_object,
+              )
+          except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+              raise SystemExit("production verification is not closed UTF-8 JSON") from exc
+          expected = {
+              "candidate_sha": os.environ["EXPECTED_CANDIDATE_SHA"],
+              "production_run_id": int(os.environ["PRODUCTION_RUN_ID"]),
+              "schema_version": "metriplane.production-verification.v1",
+              "version": os.environ["RELEASE_TAG"].removeprefix("v"),
+          }
+          if record != expected:
+              raise SystemExit("production verification targets a different release candidate")
+          canonical = json.dumps(
+              record,
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8") + b"\n"
+          if raw != canonical:
+              raise SystemExit("production verification bytes are not canonical")
+          PY
 
       - name: Check out immutable main-health history read-only
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -233,16 +439,22 @@ jobs:
         if: steps.context.outputs.mode != 'pr-merge-control'
         env:
           AUTHORITY_BUNDLE_SHA256: ${{ inputs.authority_bundle_sha256 || vars.RELEASE_AUTHORITY_BUNDLE_SHA256 }}
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest || vars.RELEASE_AUTHORITY_POLICY_DIGEST }}
           AUTHORITY_RUN_ID: ${{ inputs.authority_run_id || vars.RELEASE_AUTHORITY_RUN_ID }}
           EVIDENCE_MANIFEST_SHA256: ${{ inputs.evidence_manifest_sha256 || vars.RELEASE_EVIDENCE_MANIFEST_SHA256 }}
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest || vars.RELEASE_PROVIDER_ATTESTATION_KEYRING_DIGEST }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$AUTHORITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$AUTHORITY_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$AUTHORITY_POLICY_DIGEST" =~ ^[0-9a-f]{64}$ ]]
           [[ "$EVIDENCE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$PROVIDER_ATTESTATION_KEYRING_DIGEST" =~ ^[0-9a-f]{64}$ ]]
           echo "bundle_sha256=$AUTHORITY_BUNDLE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "policy_digest=$AUTHORITY_POLICY_DIGEST" >> "$GITHUB_OUTPUT"
           echo "manifest_sha256=$EVIDENCE_MANIFEST_SHA256" >> "$GITHUB_OUTPUT"
+          echo "keyring_digest=$PROVIDER_ATTESTATION_KEYRING_DIGEST" >> "$GITHUB_OUTPUT"
           echo "run_id=$AUTHORITY_RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download and compare independent authority-store bundles
@@ -417,7 +629,9 @@ jobs:
         if: steps.context.outputs.mode != 'pr-merge-control'
         env:
           AUTHORITY_BUNDLE_SHA256: ${{ steps.authority-inputs.outputs.bundle_sha256 }}
+          AUTHORITY_POLICY_DIGEST: ${{ steps.authority-inputs.outputs.policy_digest }}
           PROVIDER_ATTESTATION_KEYRING_B64: ${{ vars.RELEASE_PROVIDER_ATTESTATION_KEYRING_B64 }}
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ steps.authority-inputs.outputs.keyring_digest }}
         shell: bash
         run: |
           set -euo pipefail
@@ -435,7 +649,7 @@ jobs:
 
           def canonical(value: object) -> bytes:
               return json.dumps(
-                  value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+                  value, ensure_ascii=True, separators=(",", ":"), sort_keys=True
               ).encode("utf-8")
 
           def write_once(path: Path, payload: bytes) -> None:
@@ -496,6 +710,20 @@ jobs:
               identities.append((provider, actor_id))
           if identities != sorted(set(identities)):
               raise SystemExit("provider attestation public keys are not unique and ordered")
+
+          keyring_digest = hashlib.sha256(canonical(keyring)).hexdigest()
+          if keyring_digest != os.environ["PROVIDER_ATTESTATION_KEYRING_DIGEST"]:
+              raise SystemExit("provider attestation keyring digest mismatch")
+          policy_digest = hashlib.sha256(
+              canonical(
+                  {
+                      "provider_attestation_keyring_digest": keyring_digest,
+                      "schema_version": "metriplane.release-authority-policy.v1",
+                  }
+              )
+          ).hexdigest()
+          if policy_digest != os.environ["AUTHORITY_POLICY_DIGEST"]:
+              raise SystemExit("release authority policy does not bind the exact keyring")
 
           runner_temp = Path(os.environ["RUNNER_TEMP"]).resolve()
           keyring_path = runner_temp / "provider-attestation-keyring.json"
@@ -676,7 +904,9 @@ jobs:
               "ATTEMPT_READBACK_ARGS_FILE": attempt_args_path,
               "AUTHORITY_STORE_A_MANIFEST_READBACK": manifest_a,
               "AUTHORITY_STORE_B_MANIFEST_READBACK": manifest_b,
+              "RELEASE_AUTHORITY_POLICY_DIGEST": policy_digest,
               "PROVIDER_ATTESTATION_KEYRING": keyring_path,
+              "PROVIDER_ATTESTATION_KEYRING_DIGEST": keyring_digest,
           }
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as stream:
               for name, value in sorted(environment.items()):
@@ -1005,14 +1235,17 @@ jobs:
             --candidate-identity "$root/candidate-identity.json" \
             --predecessor "$root/predecessor.json" \
             --task-state-policy docs/status/release-task-state-policy.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_role_assignments.py \
             --record "$root/role-assignments.json" \
             --milestone "$milestone" \
             --run-id "$AUTHORITY_SOURCE_RUN_ID" \
             --check-conflicts \
             --check-freshness \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --authority-policy-digest "$RELEASE_AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/check_release_readiness.py \
             --gate-instance "$root/gate-instance.json" \
             --candidate-identity "$root/candidate-identity.json" \
@@ -1022,15 +1255,18 @@ jobs:
             --delta "$root/delta.json" \
             --delta-test-map "$root/delta-test-map.json" \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --out "$RUNNER_TEMP/readiness.json"
           cmp --silent "$root/readiness.json" "$RUNNER_TEMP/readiness.json"
           uv run python tools/validate_release_qualification_plan.py \
             --record "$root/qualification-plan.json" \
             --gate-instance "$root/gate-instance.json" \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_qualification.py \
             --record "$root/qualification.json" \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             "${attempt_readback_args[@]}"
           uv run python tools/validate_release_approval.py \
             --approval-decision "$APPROVAL_DECISION_PATH" \
@@ -1039,12 +1275,15 @@ jobs:
             --role-assignments "$root/role-assignments.json" \
             --no-prepublication-rubric \
             --record "$root/prepublication/approval.json" \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --authority-policy-digest "$RELEASE_AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_retention.py \
             --manifest "$root/evidence-manifest.json" \
             --receipts "$root/prepublication/retention-receipts.json" \
             --read-back \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --store-readback \
             "payload-store-a=$AUTHORITY_STORE_A_MANIFEST_READBACK" \
             --store-readback \
@@ -1071,7 +1310,9 @@ jobs:
           mapfile -t attempt_readback_args < "$ATTEMPT_READBACK_ARGS_FILE"
           uv run python tools/validate_publication_reconciliation.py \
             --record "$root/publication-reconciliation.json" \
+            --authority-policy-digest "$RELEASE_AUTHORITY_POLICY_DIGEST" \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --store-readback \
             "payload-store-a=$AUTHORITY_STORE_A_MANIFEST_READBACK" \
             --store-readback \
@@ -1082,6 +1323,7 @@ jobs:
             --receipts "$root/final-retention-receipts.json" \
             --read-back \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --store-readback \
             "payload-store-a=$AUTHORITY_STORE_A_MANIFEST_READBACK" \
             --store-readback \

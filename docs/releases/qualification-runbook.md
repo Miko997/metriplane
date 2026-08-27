@@ -40,6 +40,16 @@ The exact milestone and test inventories are in
 observed `v0.3.0` genesis. Later milestones require the preceding closed
 decision and last-known-good transition.
 
+An annotated version-tag push starts only prepublication qualification and the
+TestPyPI artifact path. Production publication is a separate, approved
+`Publish Python distributions` dispatch bound to the retained qualification.
+After its `Verify production artifact identity and installation` job succeeds,
+postpublication reconciliation is dispatched with that production run ID and
+the final two-store authority bundle. A tag event cannot enter
+`post-publication`, and reconciliation rejects a production run that is not the
+completed successful publication workflow or whose retained verification record
+does not name the exact tagged candidate and version being reconciled.
+
 ## Local qualification
 
 Use the repository-pinned `uv==0.12.0` and disable external pytest plugins:
@@ -90,6 +100,15 @@ attempt:
   key in this value, the repository, or a workflow secret.
   Verification uses Python cryptography when present and otherwise fails over
   to the GitHub runner's Node.js built-in Ed25519 implementation.
+- `RELEASE_PROVIDER_ATTESTATION_KEYRING_DIGEST`: SHA-256 of that exact canonical
+  keyring object. The same digest is required as an explicit qualification and
+  production-dispatch input. Key rotation between qualification and production
+  therefore fails closed.
+- `RELEASE_AUTHORITY_POLICY_DIGEST`: SHA-256 of canonical JSON containing only
+  `provider_attestation_keyring_digest` and schema version
+  `metriplane.release-authority-policy.v1`. Live role assignments and approval
+  decisions carry both identities and validators compare them to the supplied
+  protected inputs.
 - `RELEASE_AUTHORITY_STORE_A_URL` and `RELEASE_AUTHORITY_STORE_B_URL`: distinct
   HTTPS read-back endpoints for the same immutable authority bundle.
 - `RELEASE_AUTHORITY_RUN_ID`, `RELEASE_AUTHORITY_BUNDLE_SHA256`, and

@@ -78,6 +78,12 @@
         "provenance_digest": {
           "$ref": "#/$defs/digest"
         },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
         "role": {
           "enum": [
             "release_operator",
@@ -93,6 +99,7 @@
         "backup_actor_id",
         "conflict_free",
         "provenance_digest",
+        "provider",
         "role"
       ],
       "type": "object"
@@ -210,12 +217,14 @@
         "properties": {
           "data": {
             "required": [
+              "author_provider",
               "authority_policy_digest",
               "independent_assurance",
               "infrastructure_owner",
               "milestone",
               "non_author_reviewer",
               "operator",
+              "provider_attestation_keyring_digest",
               "publisher",
               "run_id",
               "signing_method",
@@ -239,6 +248,12 @@
       "properties": {
         "author_id": {
           "$ref": "#/$defs/nonempty"
+        },
+        "author_provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
         },
         "authority_policy_digest": {
           "$ref": "#/$defs/digest"
@@ -298,6 +313,9 @@
         },
         "publisher_id": {
           "$ref": "#/$defs/nonempty"
+        },
+        "provider_attestation_keyring_digest": {
+          "$ref": "#/$defs/digest"
         },
         "run_id": {
           "$ref": "#/$defs/identifier"
@@ -384,12 +402,14 @@
   "title": "Metriplane release-role-assignments record",
   "type": "object",
   "x-metriplane-live-required": [
+    "author_provider",
     "authority_policy_digest",
     "independent_assurance",
     "infrastructure_owner",
     "milestone",
     "non_author_reviewer",
     "operator",
+    "provider_attestation_keyring_digest",
     "publisher",
     "run_id",
     "signing_method",

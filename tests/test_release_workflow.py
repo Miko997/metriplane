@@ -90,10 +90,15 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
     upload = contract_steps[upload_index]
 
     assert download_index < extraction_index < validation_index < upload_index
-    assert not any(
-        str(step.get("uses", "")).startswith("actions/download-artifact@")
+    artifact_downloads = [
+        step
         for step in contract_steps
-    )
+        if str(step.get("uses", "")).startswith("actions/download-artifact@")
+    ]
+    assert [step.get("name") for step in artifact_downloads] == [
+        "Download exact production verification"
+    ]
+    assert artifact_downloads[0]["if"] == ("steps.context.outputs.mode == 'post-publication'")
     assert upload["if"] == "steps.context.outputs.mode == 'release-qualification'"
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["with"]["path"].splitlines() == [".release-authority/**/*.json"]
@@ -160,8 +165,10 @@ def test_publication_consumes_qualification_and_does_not_create_authority() -> N
     assert inputs["qualification_run_id"]["required"] is True
     assert inputs["qualification_record_digest"]["required"] is True
     assert inputs["authority_bundle_sha256"]["required"] is True
+    assert inputs["authority_policy_digest"]["required"] is True
     assert inputs["authority_run_id"]["required"] is True
     assert inputs["evidence_manifest_sha256"]["required"] is True
+    assert inputs["provider_attestation_keyring_digest"]["required"] is True
     jobs = workflow["jobs"]
     request = jobs["validate-production-request"]
     request_commands = "\n".join(step.get("run", "") for step in request["steps"])
@@ -279,6 +286,7 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
     assert "AUTHORITY_SOURCE_SHA" not in workflow_text
     assert workflow_text.count("validate_release_retention.py") == 2
     assert workflow_text.count("validate_publication_reconciliation.py") == 1
+    assert workflow_text.count('--authority-policy-digest "$AUTHORITY_POLICY_DIGEST"') >= 3
 
     authorization = workflow["jobs"]["authorize-production"]
     assert authorization["environment"] == {
@@ -378,6 +386,31 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
         "${{ needs.authorize-production.outputs.release_artifact_id }}"
     )
 
+    production_verification = workflow["jobs"]["verify-pypi"]
+    assert production_verification["env"]["CANDIDATE_SHA"] == (
+        "${{ needs.validate-production-request.outputs.commit }}"
+    )
+    record_index = next(
+        index
+        for index, step in enumerate(production_verification["steps"])
+        if step.get("name") == "Record the exact verified production target"
+    )
+    retain_index = next(
+        index
+        for index, step in enumerate(production_verification["steps"])
+        if step.get("name") == "Retain exact production verification"
+    )
+    assert record_index < retain_index
+    retain = production_verification["steps"][retain_index]
+    assert retain["uses"].startswith("actions/upload-artifact@")
+    assert retain["with"] == {
+        "name": "production-verification",
+        "path": "production-verification.json",
+        "if-no-files-found": "error",
+        "overwrite": False,
+        "retention-days": 90,
+    }
+
     testpypi_validation = workflow["jobs"]["validate-testpypi-artifacts"]
     assert testpypi_validation["permissions"] == {"actions": "read"}
     assert testpypi_validation["needs"] == ["provenance", "build"]
@@ -426,8 +459,9 @@ def test_qualification_provenance_precedes_authority_download() -> None:
     required = (
         "/actions/runs/${QUALIFICATION_RUN_ID}",
         "/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100",
-        '"event": "workflow_dispatch"',
-        '"head_branch": "main"',
+        'event not in {"push", "workflow_dispatch"}',
+        "f\"v{os.environ['RELEASE_VERSION']}\"",
+        'event == "push" and head_sha != os.environ["CANDIDATE_SHA"]',
         're.fullmatch(r"[0-9a-f]{40}", head_sha)',
         '"path": ".github/workflows/release-required.yml"',
         '"status": "completed"',
@@ -469,9 +503,11 @@ def _run_qualification_validator(
     env.update(
         {
             "GITHUB_REPOSITORY": "Miko997/metriplane",
+            "CANDIDATE_SHA": "a" * 40,
             "QUALIFICATION_ARTIFACTS_JSON": str(artifacts_path),
             "QUALIFICATION_RUN_ID": "1234",
             "QUALIFICATION_RUN_JSON": str(run_path),
+            "RELEASE_VERSION": "0.4.0",
             "GITHUB_OUTPUT": str(root / "output.txt"),
         }
     )
@@ -508,6 +544,16 @@ def test_qualification_provider_payload_mutations_fail_closed(tmp_path: Path) ->
     artifacts: dict[str, object] = {"total_count": 1, "artifacts": [artifact]}
     valid = _run_qualification_validator(tmp_path / "valid", run, artifacts)
     assert valid.returncode == 0, valid.stderr
+
+    tag_run = {**run, "event": "push", "head_branch": "v0.4.0"}
+    tag_artifact = copy.deepcopy(artifact)
+    tag_artifact["workflow_run"]["head_branch"] = "v0.4.0"
+    valid_tag = _run_qualification_validator(
+        tmp_path / "valid-tag",
+        tag_run,
+        {"total_count": 1, "artifacts": [tag_artifact]},
+    )
+    assert valid_tag.returncode == 0, valid_tag.stderr
 
     run_mutations: tuple[tuple[str, dict[str, object]], ...] = (
         ("workflow", {"path": ".github/workflows/publish-pypi.yml"}),

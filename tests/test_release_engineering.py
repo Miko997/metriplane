@@ -67,7 +67,9 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         "qualification_record_digest",
         "authority_run_id",
         "authority_bundle_sha256",
+        "authority_policy_digest",
         "evidence_manifest_sha256",
+        "provider_attestation_keyring_digest",
         "version",
         "confirmation",
     }

@@ -24,6 +24,7 @@ from metriplane.release_control import (
     build_release_readiness_record,
     canonical_json,
     make_record,
+    release_authority_policy_digest,
     sha256_json,
     signature_subject_digest,
     tool_main,
@@ -367,7 +368,59 @@ def _signed_live_record(
 def _live_verifier(
     *, actor_id: str = "executor", provider: str = "github"
 ) -> ProviderAttestationVerifier:
-    return ProviderAttestationVerifier(keys={(provider, actor_id): LIVE_PROVIDER_PUBLIC_KEY})
+    keyring = {
+        "keys": [
+            {
+                "actor_id": actor_id,
+                "provider": provider,
+                "public_key_hex": LIVE_PROVIDER_PUBLIC_KEY.hex(),
+            }
+        ],
+        "schema_version": "metriplane.provider-attestation-keyring.v1",
+    }
+    return ProviderAttestationVerifier(
+        keys={(provider, actor_id): LIVE_PROVIDER_PUBLIC_KEY},
+        keyring_digest=sha256_json(keyring),
+    )
+
+
+def _live_role_data(
+    keyring_digest: str,
+    *,
+    operator_provider: str = "github",
+) -> dict[str, Any]:
+    def binding(role: str, actor_id: str, backup_actor_id: str, digest: str) -> dict[str, Any]:
+        return {
+            "actor_id": actor_id,
+            "backup_actor_id": backup_actor_id,
+            "conflict_free": True,
+            "provenance_digest": digest * 64,
+            "provider": operator_provider,
+            "role": role,
+        }
+
+    return {
+        "author_id": "author",
+        "author_provider": operator_provider,
+        "authority_policy_digest": release_authority_policy_digest(keyring_digest),
+        "authorized_executor_id": "executor",
+        "independent_assurance": {"applicability": "not_applicable"},
+        "infrastructure_owner": binding(
+            "infrastructure_owner", "infrastructure", "infrastructure-backup", "b"
+        ),
+        "milestone": "v0.4",
+        "non_author_reviewer": binding("non_author_reviewer", "reviewer", "reviewer-backup", "c"),
+        "non_author_reviewer_id": "reviewer",
+        "operator": binding("release_operator", "executor", "executor-backup", "d"),
+        "provider_attestation_keyring_digest": keyring_digest,
+        "publisher": binding("publisher", "publisher", "publisher-backup", "e"),
+        "publisher_id": "publisher",
+        "run_id": "111",
+        "signing_method": "provider-attestation-v1",
+        "task_id": "MP2-007",
+        "valid_from": "2020-01-01T00:00:00Z",
+        "valid_until": "2099-01-01T00:00:00Z",
+    }
 
 
 def test_node_ed25519_fallback_verifies_and_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -427,9 +480,24 @@ def test_provider_attestation_keyring_accepts_only_public_ed25519_keys(
         "schema_version": "metriplane.provider-attestation-keyring.v1",
     }
     keyring_path.write_text(json.dumps(keyring), encoding="utf-8")
-    assert ProviderAttestationVerifier.from_keyring(keyring_path).keys == {
-        ("github", "executor"): LIVE_PROVIDER_PUBLIC_KEY
-    }
+    verifier = ProviderAttestationVerifier.from_keyring(
+        keyring_path,
+        expected_digest=sha256_json(keyring),
+    )
+    assert verifier.keys == {("github", "executor"): LIVE_PROVIDER_PUBLIC_KEY}
+    assert verifier.keyring_digest == sha256_json(keyring)
+    with pytest.raises(ReleaseControlError, match="keyring digest mismatch"):
+        ProviderAttestationVerifier.from_keyring(keyring_path, expected_digest="0" * 64)
+
+    rotated_keyring = json.loads(json.dumps(keyring))
+    rotated_keyring["keys"][0]["public_key_hex"] = "2" * 64
+    keyring_path.write_text(json.dumps(rotated_keyring), encoding="utf-8")
+    with pytest.raises(ReleaseControlError, match="keyring digest mismatch"):
+        ProviderAttestationVerifier.from_keyring(
+            keyring_path,
+            expected_digest=sha256_json(keyring),
+        )
+    keyring_path.write_text(json.dumps(keyring), encoding="utf-8")
 
     keyring["keys"][0]["key_hex"] = keyring["keys"][0].pop("public_key_hex")
     keyring_path.write_text(json.dumps(keyring), encoding="utf-8")
@@ -445,29 +513,28 @@ def test_provider_attestation_keyring_accepts_only_public_ed25519_keys(
 
 
 def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> None:
-    data = {
-        "author_id": "author",
-        "authorized_executor_id": "executor",
-        "non_author_reviewer_id": "reviewer",
-        "publisher_id": "publisher",
-        "task_id": "MP2-007",
-    }
+    verifier = _live_verifier()
+    assert verifier.keyring_digest is not None
+    data = _live_role_data(verifier.keyring_digest)
+    policy_digest = data["authority_policy_digest"]
     live = _signed_live_record(
         "release-role-assignments",
         data,
         invocation_id="live-signature-shape-fixture",
         actor_id="executor",
     )
-    with pytest.raises(ReleaseControlError, match="no trusted verifier"):
-        validate_role_assignments(live, live=True)
-    assert (
+    with pytest.raises(ReleaseControlError, match="trust-root identity"):
         validate_role_assignments(
             live,
             live=True,
-            attestation_verifier=_live_verifier(),
-        )["authorized_executor_id"]
-        == "executor"
-    )
+            expected_authority_policy_digest=policy_digest,
+        )
+    assert validate_role_assignments(
+        live,
+        live=True,
+        expected_authority_policy_digest=policy_digest,
+        attestation_verifier=verifier,
+    )["authorized_executor_id"] == ("github", "executor")
 
     forged = json.loads(json.dumps(live))
     forged["signatures"][0]["signature"] = "0" * 64
@@ -478,7 +545,8 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
         validate_role_assignments(
             forged,
             live=True,
-            attestation_verifier=_live_verifier(),
+            expected_authority_policy_digest=policy_digest,
+            attestation_verifier=verifier,
         )
 
     forged_unsigned = make_record(
@@ -508,6 +576,42 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
     )
     with pytest.raises(ReleaseControlError, match="authentication failed"):
         validate_role_assignments(forged_fixture, live=False)
+
+
+def test_live_authority_preserves_provider_namespace_for_colliding_actor_ids() -> None:
+    rows = [
+        {
+            "actor_id": "executor",
+            "provider": provider,
+            "public_key_hex": LIVE_PROVIDER_PUBLIC_KEY.hex(),
+        }
+        for provider in ("github", "linear")
+    ]
+    keyring_digest = sha256_json(
+        {
+            "keys": rows,
+            "schema_version": "metriplane.provider-attestation-keyring.v1",
+        }
+    )
+    verifier = ProviderAttestationVerifier(
+        keys={(row["provider"], row["actor_id"]): LIVE_PROVIDER_PUBLIC_KEY for row in rows},
+        keyring_digest=keyring_digest,
+    )
+    data = _live_role_data(keyring_digest)
+    wrong_provider = _signed_live_record(
+        "release-role-assignments",
+        data,
+        invocation_id="provider-namespace-collision",
+        actor_id="executor",
+        provider="linear",
+    )
+    with pytest.raises(ReleaseControlError, match="authorized executor lacks"):
+        validate_role_assignments(
+            wrong_provider,
+            live=True,
+            expected_authority_policy_digest=data["authority_policy_digest"],
+            attestation_verifier=verifier,
+        )
 
 
 def test_signature_cannot_be_reused_after_decision_status_changes() -> None:
@@ -786,6 +890,68 @@ def test_live_subject_records_require_authenticated_authority(tmp_path: Path) ->
         path = tmp_path / f"{name}.json"
         write_immutable_json(path, record)
         assert tool_main(name, ["--record", str(path)]) == 3
+
+
+def test_live_reconciliation_cli_threads_authority_policy_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    keyring = {
+        "keys": [
+            {
+                "actor_id": "executor",
+                "provider": "github",
+                "public_key_hex": LIVE_PROVIDER_PUBLIC_KEY.hex(),
+            }
+        ],
+        "schema_version": "metriplane.provider-attestation-keyring.v1",
+    }
+    keyring_digest = sha256_json(keyring)
+    policy_digest = release_authority_policy_digest(keyring_digest)
+    keyring_path = tmp_path / "provider-attestation-keyring.json"
+    keyring_path.write_bytes(canonical_json(keyring))
+    record_path = tmp_path / "publication-reconciliation.json"
+    write_immutable_json(
+        record_path,
+        _signed_live_record(
+            "release-publication-reconciliation",
+            {},
+            invocation_id="live-reconciliation-policy-threading",
+            actor_id="executor",
+        ),
+    )
+    captured: dict[str, Any] = {}
+
+    def capture_validation(record: dict[str, Any], **kwargs: Any) -> None:
+        captured["record"] = record
+        captured.update(kwargs)
+
+    monkeypatch.delenv("METRIPLANE_RELEASE_FIXTURE_MODE", raising=False)
+    monkeypatch.setattr(
+        "metriplane.release_control.validate_publication_reconciliation_record",
+        capture_validation,
+    )
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            [
+                "--record",
+                str(record_path),
+                "--authority-policy-digest",
+                policy_digest,
+                "--provider-attestation-keyring",
+                str(keyring_path),
+                "--provider-attestation-keyring-digest",
+                keyring_digest,
+            ],
+        )
+        == 0
+    )
+    assert captured["live"] is True
+    assert captured["expected_authority_policy_digest"] == policy_digest
+    verifier = captured["attestation_verifier"]
+    assert isinstance(verifier, ProviderAttestationVerifier)
+    assert verifier.keyring_digest == keyring_digest
 
 
 def test_malformed_record_status_blocks_without_type_crash(
@@ -2053,8 +2219,26 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
     reconciliation_path = tmp_path / "publication-reconciliation.json"
     write_immutable_json(reconciliation_path, reconciliation)
     monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
-    argv = ["--record", str(reconciliation_path)]
-    assert tool_main("validate_publication_reconciliation.py", argv) == 0
+    policy_digest = "a" * 64
+    approval_policy_calls: list[str | None] = []
+
+    def validate_approval_with_policy(*args: Any, **kwargs: Any) -> None:
+        approval_policy_calls.append(kwargs.get("expected_authority_policy_digest"))
+        validate_release_approval_record(*args, **kwargs)
+
+    argv = [
+        "--record",
+        str(reconciliation_path),
+        "--authority-policy-digest",
+        policy_digest,
+    ]
+    with monkeypatch.context() as policy_context:
+        policy_context.setattr(
+            "metriplane.release_control.validate_release_approval_record",
+            validate_approval_with_policy,
+        )
+        assert tool_main("validate_publication_reconciliation.py", argv) == 0
+    assert approval_policy_calls == [policy_digest]
 
     base_lock = json.loads(lock_path.read_text(encoding="utf-8"))["data"]
     base_promotion = json.loads(promotion_path.read_text(encoding="utf-8"))["data"]

@@ -85,7 +85,7 @@ def test_mp2_007_a01_cumulative_release_system() -> None:
 def test_mp2_007_a02_signed_roles_and_task_state() -> None:
     roles = _fixture("valid/synthetic-role-assignments.json")
     actors = validate_role_assignments(roles, live=False)
-    assert actors["authorized_executor_id"] == "fixture-executor"
+    assert actors["authorized_executor_id"] == ("test-fixture", "fixture-executor")
     with pytest.raises(ReleaseControlError, match="synthetic role"):
         validate_role_assignments(roles, live=True)
     assert _fixture("valid/fake-linear-snapshot.json")["data"] == {
@@ -226,7 +226,11 @@ def test_mp2_007_a08_non_author_approval_boundary() -> None:
     with pytest.raises(ReleaseControlError, match="synthetic approval"):
         validate_approval(approval, roles, live=True)
     self_approved = _fixture("invalid/self-approved-live.json")
-    live_roles = dict(roles, author_id="fixture-author", non_author_reviewer_id="fixture-reviewer")
+    live_roles = dict(
+        roles,
+        author_id=("github", "fixture-author"),
+        non_author_reviewer_id=("github", "fixture-author"),
+    )
     with pytest.raises(ReleaseControlError, match="non-author"):
         validate_approval(self_approved, live_roles, live=True)
     with pytest.raises(SystemExit, match="synthetic role"):
@@ -332,11 +336,11 @@ def test_mp2_007_a11_retention_chain_lkg_and_invalidation(tmp_path: Path) -> Non
     role_record = _fixture("valid/synthetic-role-assignments.json")
     roles = validate_role_assignments(role_record, live=False)
     invalidation_data = {
-        "author_id": roles["author_id"],
+        "author_id": roles["author_id"][1],
         "candidate_digest": DIGEST_A,
         "decision": "INVALIDATED",
         "reason": "product contradiction",
-        "reviewer_id": roles["non_author_reviewer_id"],
+        "reviewer_id": roles["non_author_reviewer_id"][1],
     }
     unsigned_invalidation = make_record(
         "release-approval-decision",
@@ -354,7 +358,7 @@ def test_mp2_007_a11_retention_chain_lkg_and_invalidation(tmp_path: Path) -> Non
         sequence=1,
         synthetic=True,
         status="INVALIDATED",
-        signatures=[_test_signature(roles["non_author_reviewer_id"], invalidation_digest)],
+        signatures=[_test_signature(roles["non_author_reviewer_id"][1], invalidation_digest)],
     )
     validate_lkg_invalidation(
         invalidation_record,

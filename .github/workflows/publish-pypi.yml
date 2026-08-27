@@ -29,8 +29,16 @@ on:
         description: "External authority production run identity bound into retained records"
         required: true
         type: string
+      authority_policy_digest:
+        description: "SHA-256 identity of the protected release authority policy"
+        required: true
+        type: string
       evidence_manifest_sha256:
         description: "SHA-256 of the transported evidence-manifest.json"
+        required: true
+        type: string
+      provider_attestation_keyring_digest:
+        description: "SHA-256 of the exact canonical provider attestation keyring"
         required: true
         type: string
       version:
@@ -557,8 +565,10 @@ jobs:
 
       - name: Materialize the independent public provider trust root
         env:
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
           PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
           PROVIDER_ATTESTATION_KEYRING_B64: ${{ vars.RELEASE_PROVIDER_ATTESTATION_KEYRING_B64 }}
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
         shell: bash
         run: |
           set -euo pipefail
@@ -567,6 +577,7 @@ jobs:
           python - <<'PY'
           import base64
           import binascii
+          import hashlib
           import json
           import os
           import re
@@ -624,13 +635,31 @@ jobs:
           if identities != sorted(set(identities)):
               raise SystemExit("provider attestation keys are duplicated or not canonical")
 
+          canonical_payload = json.dumps(
+              keyring, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+          ).encode("utf-8")
+          keyring_digest = hashlib.sha256(canonical_payload).hexdigest()
+          if keyring_digest != os.environ["PROVIDER_ATTESTATION_KEYRING_DIGEST"]:
+              raise SystemExit("provider attestation keyring digest mismatch")
+          policy_payload = json.dumps(
+              {
+                  "provider_attestation_keyring_digest": keyring_digest,
+                  "schema_version": "metriplane.release-authority-policy.v1",
+              },
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8")
+          if hashlib.sha256(policy_payload).hexdigest() != os.environ["AUTHORITY_POLICY_DIGEST"]:
+              raise SystemExit("release authority policy does not bind the exact keyring")
+
           destination = Path(os.environ["PROVIDER_ATTESTATION_KEYRING"])
           flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
           if hasattr(os, "O_NOFOLLOW"):
               flags |= os.O_NOFOLLOW
           descriptor = os.open(destination, flags, 0o400)
           with os.fdopen(descriptor, "wb") as output:
-              output.write(payload)
+              output.write(canonical_payload)
               output.flush()
               os.fsync(output.fileno())
           if destination.is_symlink() or not destination.is_file():
@@ -640,8 +669,10 @@ jobs:
       - id: qualification
         name: Require exact qualification workflow provenance
         env:
+          CANDIDATE_SHA: ${{ steps.request.outputs.commit }}
           GH_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -678,8 +709,6 @@ jobs:
           )
           expected_run = {
               "id": run_id,
-              "event": "workflow_dispatch",
-              "head_branch": "main",
               "path": ".github/workflows/release-required.yml",
               "status": "completed",
               "conclusion": "success",
@@ -692,6 +721,16 @@ jobs:
           head_sha = run.get("head_sha")
           if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
               mismatches["head_sha"] = (head_sha, "exact commit")
+          event = run.get("event")
+          expected_branch = (
+              "main" if event == "workflow_dispatch" else f"v{os.environ['RELEASE_VERSION']}"
+          )
+          if event not in {"push", "workflow_dispatch"}:
+              mismatches["event"] = (event, "push or workflow_dispatch")
+          if run.get("head_branch") != expected_branch:
+              mismatches["head_branch"] = (run.get("head_branch"), expected_branch)
+          if event == "push" and head_sha != os.environ["CANDIDATE_SHA"]:
+              mismatches["head_sha"] = (head_sha, os.environ["CANDIDATE_SHA"])
           if run.get("repository", {}).get("full_name") != repository:
               mismatches["repository.full_name"] = (
                   run.get("repository", {}).get("full_name"),
@@ -721,7 +760,7 @@ jobs:
           }
           expected_artifact_run = {
               "id": run_id,
-              "head_branch": "main",
+              "head_branch": expected_branch,
               "head_sha": head_sha,
           }
           artifact_mismatches.update(
@@ -761,9 +800,11 @@ jobs:
       - name: Require retained cumulative release authority
         env:
           APPROVAL_DECISION_PATH: ${{ runner.temp }}/release-approval-decision.json
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
           AUTHORITY_SOURCE_RUN_ID: ${{ inputs.authority_run_id }}
           CANDIDATE_SHA: ${{ steps.request.outputs.commit }}
           PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
           QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
           RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
@@ -889,18 +930,22 @@ jobs:
             --candidate-identity release-authority/candidate-identity.json \
             --predecessor release-authority/predecessor.json \
             --task-state-policy docs/status/release-task-state-policy.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_qualification_plan.py \
             --record release-authority/qualification-plan.json \
             --gate-instance release-authority/gate-instance.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_role_assignments.py \
             --record release-authority/role-assignments.json \
             --milestone "$MILESTONE" \
             --run-id "$AUTHORITY_SOURCE_RUN_ID" \
             --check-conflicts \
             --check-freshness \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_approval.py \
             --approval-decision "$APPROVAL_DECISION_PATH" \
             --gate-instance release-authority/gate-instance.json \
@@ -908,7 +953,9 @@ jobs:
             --role-assignments release-authority/role-assignments.json \
             --no-prepublication-rubric \
             --record release-authority/prepublication/approval.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/check_release_readiness.py \
             --gate-instance release-authority/gate-instance.json \
             --candidate-identity release-authority/candidate-identity.json \
@@ -918,6 +965,7 @@ jobs:
             --delta release-authority/delta.json \
             --delta-test-map release-authority/delta-test-map.json \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --out "$RUNNER_TEMP/readiness.json"
           cmp --silent \
             release-authority/readiness.json \
@@ -933,7 +981,8 @@ jobs:
             --record release-authority/artifact-manifest.json \
             --artifacts release-artifacts/dist \
             --read-hash \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
 
   verify-production-artifacts:
     name: Reverify artifacts before production approval
@@ -1019,8 +1068,10 @@ jobs:
 
       - name: Materialize the independent public provider trust root
         env:
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
           PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
           PROVIDER_ATTESTATION_KEYRING_B64: ${{ vars.RELEASE_PROVIDER_ATTESTATION_KEYRING_B64 }}
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1029,6 +1080,7 @@ jobs:
           python - <<'PY'
           import base64
           import binascii
+          import hashlib
           import json
           import os
           import re
@@ -1086,13 +1138,31 @@ jobs:
           if identities != sorted(set(identities)):
               raise SystemExit("provider attestation keys are duplicated or not canonical")
 
+          canonical_payload = json.dumps(
+              keyring, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+          ).encode("utf-8")
+          keyring_digest = hashlib.sha256(canonical_payload).hexdigest()
+          if keyring_digest != os.environ["PROVIDER_ATTESTATION_KEYRING_DIGEST"]:
+              raise SystemExit("provider attestation keyring digest mismatch")
+          policy_payload = json.dumps(
+              {
+                  "provider_attestation_keyring_digest": keyring_digest,
+                  "schema_version": "metriplane.release-authority-policy.v1",
+              },
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8")
+          if hashlib.sha256(policy_payload).hexdigest() != os.environ["AUTHORITY_POLICY_DIGEST"]:
+              raise SystemExit("release authority policy does not bind the exact keyring")
+
           destination = Path(os.environ["PROVIDER_ATTESTATION_KEYRING"])
           flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
           if hasattr(os, "O_NOFOLLOW"):
               flags |= os.O_NOFOLLOW
           descriptor = os.open(destination, flags, 0o400)
           with os.fdopen(descriptor, "wb") as output:
-              output.write(payload)
+              output.write(canonical_payload)
               output.flush()
               os.fsync(output.fileno())
           if destination.is_symlink() or not destination.is_file():
@@ -1482,10 +1552,12 @@ jobs:
         env:
           APPROVAL_DECISION_PATH: ${{ runner.temp }}/release-approval-decision.json
           ATTEMPT_STORE_READBACKS: ${{ runner.temp }}/attempt-store-readbacks.txt
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
           AUTHORITY_SOURCE_RUN_ID: ${{ inputs.authority_run_id }}
           CANDIDATE_SHA: ${{ needs.validate-production-request.outputs.commit }}
           GH_TOKEN: ${{ github.token }}
           PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
           QUALIFICATION_ARTIFACT_ID: ${{ needs.validate-production-request.outputs.qualification_artifact_id }}
           QUALIFICATION_HEAD_SHA: ${{ needs.validate-production-request.outputs.qualification_head_sha }}
           QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
@@ -1568,8 +1640,6 @@ jobs:
           )
           expected_qualification_run = {
               "conclusion": "success",
-              "event": "workflow_dispatch",
-              "head_branch": "main",
               "head_sha": qualification_head_sha,
               "id": qualification_run_id,
               "path": ".github/workflows/release-required.yml",
@@ -1580,6 +1650,29 @@ jobs:
               for key, expected in expected_qualification_run.items()
               if qualification_run.get(key) != expected
           }
+          qualification_event = qualification_run.get("event")
+          expected_qualification_branch = (
+              "main"
+              if qualification_event == "workflow_dispatch"
+              else f"v{os.environ['RELEASE_VERSION']}"
+          )
+          if qualification_event not in {"push", "workflow_dispatch"}:
+              mismatches["event"] = (
+                  qualification_event,
+                  "push or workflow_dispatch",
+              )
+          if qualification_run.get("head_branch") != expected_qualification_branch:
+              mismatches["head_branch"] = (
+                  qualification_run.get("head_branch"),
+                  expected_qualification_branch,
+              )
+          if qualification_event == "push" and qualification_head_sha != os.environ[
+              "CANDIDATE_SHA"
+          ]:
+              mismatches["head_sha"] = (
+                  qualification_head_sha,
+                  os.environ["CANDIDATE_SHA"],
+              )
           if qualification_run.get("repository", {}).get("full_name") != repository:
               mismatches["repository.full_name"] = (
                   qualification_run.get("repository", {}).get("full_name"),
@@ -1605,7 +1698,7 @@ jobs:
               if qualification_artifact.get(key) != expected
           }
           expected_artifact_run = {
-              "head_branch": "main",
+              "head_branch": expected_qualification_branch,
               "head_sha": qualification_head_sha,
               "id": qualification_run_id,
           }
@@ -1711,27 +1804,33 @@ jobs:
             --candidate-identity release-authority/candidate-identity.json \
             --predecessor release-authority/predecessor.json \
             --task-state-policy docs/status/release-task-state-policy.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_role_assignments.py \
             --record release-authority/role-assignments.json \
             --milestone "$milestone" \
             --run-id "$authority_run_id" \
             --check-conflicts \
             --check-freshness \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_qualification_plan.py \
             --record release-authority/qualification-plan.json \
             --gate-instance release-authority/gate-instance.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/validate_release_qualification.py \
             --record release-authority/qualification.json \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             "${attempt_store_readback_args[@]}"
           uv run python tools/validate_release_retention.py \
             --manifest release-authority/evidence-manifest.json \
             --receipts release-authority/prepublication/retention-receipts.json \
             --read-back \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --store-readback \
               "payload-store-a=$STORE_A_READBACK_ROOT/evidence-manifest.json" \
             --store-readback \
@@ -1743,7 +1842,9 @@ jobs:
             --role-assignments release-authority/role-assignments.json \
             --no-prepublication-rubric \
             --record release-authority/prepublication/approval.json \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
           uv run python tools/check_release_readiness.py \
             --gate-instance release-authority/gate-instance.json \
             --candidate-identity release-authority/candidate-identity.json \
@@ -1753,6 +1854,7 @@ jobs:
             --delta release-authority/delta.json \
             --delta-test-map release-authority/delta-test-map.json \
             --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
             --out "${RUNNER_TEMP}/fresh-readiness.json"
           cmp --silent release-authority/readiness.json "${RUNNER_TEMP}/fresh-readiness.json"
           python tools/release_artifacts.py verify-manifest \
@@ -1767,7 +1869,8 @@ jobs:
             --record release-authority/artifact-manifest.json \
             --artifacts release-artifacts/dist \
             --read-hash \
-            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
 
           if [[ -e release-authority/final-retention-receipts.json || \
                 -e release-authority/publication-reconciliation.json ]]; then
@@ -1778,13 +1881,16 @@ jobs:
               --receipts release-authority/final-retention-receipts.json \
               --read-back \
               --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+              --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
               --store-readback \
                 "payload-store-a=$STORE_A_READBACK_ROOT/evidence-manifest.json" \
               --store-readback \
                 "payload-store-b=$STORE_B_READBACK_ROOT/evidence-manifest.json"
             uv run python tools/validate_publication_reconciliation.py \
               --record release-authority/publication-reconciliation.json \
+              --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
               --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+              --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
               --store-readback \
                 "payload-store-a=$STORE_A_READBACK_ROOT/evidence-manifest.json" \
               --store-readback \
@@ -1824,6 +1930,7 @@ jobs:
     needs: [validate-production-request, publish-pypi]
     runs-on: ubuntu-latest
     env:
+      CANDIDATE_SHA: ${{ needs.validate-production-request.outputs.commit }}
       RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
     permissions:
       actions: read
@@ -1896,3 +2003,38 @@ jobs:
           expected = os.environ["VERSION"]
           assert metriplane.__version__ == metadata.version("metriplane") == expected
           PY
+
+      - name: Record the exact verified production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          record = {
+              "candidate_sha": os.environ["CANDIDATE_SHA"],
+              "production_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "schema_version": "metriplane.production-verification.v1",
+              "version": os.environ["RELEASE_VERSION"],
+          }
+          payload = json.dumps(
+              record,
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8") + b"\n"
+          Path("production-verification.json").write_bytes(payload)
+          PY
+
+      - name: Retain exact production verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-verification
+          path: production-verification.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90

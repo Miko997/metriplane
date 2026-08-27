@@ -10,15 +10,19 @@ import re
 from collections.abc import Iterator, Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import pytest
 
 from metriplane.release_control import (
+    ProviderAttestationVerifier,
     canonical_json,
+    make_record,
+    release_authority_policy_digest,
     signature_subject_digest,
     validate_record,
+    validate_role_assignments,
 )
 
 try:
@@ -550,6 +554,89 @@ def test_live_records_require_authority_and_provenance_fields(path: Path) -> Non
         del mutated["data"][field]
         _rebind_record(mutated, synthetic=False)
         assert _errors(mutated, schema), field
+
+
+def test_live_role_assignment_passes_schema_and_semantic_validator() -> None:
+    keyring_digest = "a" * 64
+
+    def binding(role: str, actor: str, backup: str, provenance: str) -> dict[str, object]:
+        return {
+            "actor_id": actor,
+            "backup_actor_id": backup,
+            "conflict_free": True,
+            "provenance_digest": provenance * 64,
+            "provider": "github",
+            "role": role,
+        }
+
+    data = {
+        "author_id": "author",
+        "author_provider": "github",
+        "authority_policy_digest": release_authority_policy_digest(keyring_digest),
+        "authorized_executor_id": "executor",
+        "independent_assurance": {"applicability": "not_applicable"},
+        "infrastructure_owner": binding(
+            "infrastructure_owner", "infrastructure", "infrastructure-backup", "b"
+        ),
+        "milestone": "v0.4",
+        "non_author_reviewer": binding("non_author_reviewer", "reviewer", "reviewer-backup", "c"),
+        "non_author_reviewer_id": "reviewer",
+        "operator": binding("release_operator", "executor", "executor-backup", "d"),
+        "provider_attestation_keyring_digest": keyring_digest,
+        "publisher": binding("publisher", "publisher", "publisher-backup", "e"),
+        "publisher_id": "publisher",
+        "run_id": "111",
+        "signing_method": "provider-attestation-v1",
+        "task_id": "MP2-007",
+        "valid_from": "2020-01-01T00:00:00Z",
+        "valid_until": "2099-01-01T00:00:00Z",
+    }
+    unsigned = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="live-role-schema-runtime",
+        sequence=1,
+        synthetic=False,
+    )
+    subject_digest = signature_subject_digest(unsigned)
+    record = make_record(
+        "release-role-assignments",
+        data,
+        invocation_id="live-role-schema-runtime",
+        sequence=1,
+        synthetic=False,
+        signatures=[
+            {
+                "actor_id": "executor",
+                "algorithm": "provider-attestation-v1",
+                "provider": "github",
+                "signature": "0" * 128,
+                "subject_digest": subject_digest,
+                "synthetic": False,
+            }
+        ],
+    )
+    schema = _load(SCHEMAS / "metriplane.release-role-assignments.v1.schema.json")
+    assert _errors(record, schema) == []
+
+    class AcceptingVerifier:
+        @staticmethod
+        def verify(_signature: Mapping[str, Any], *, subject_digest: str) -> bool:
+            return bool(subject_digest)
+
+    verifier = AcceptingVerifier()
+    verifier.keyring_digest = keyring_digest
+
+    validate_role_assignments(
+        record,
+        live=True,
+        expected_milestone="v0.4",
+        expected_run_id="111",
+        expected_authority_policy_digest=data["authority_policy_digest"],
+        check_conflicts=True,
+        check_freshness=True,
+        attestation_verifier=cast(ProviderAttestationVerifier, verifier),
+    )
 
 
 def test_digest_relationships_remain_runtime_enforced() -> None:

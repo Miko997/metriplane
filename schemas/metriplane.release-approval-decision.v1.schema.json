@@ -178,7 +178,11 @@
       },
       "then": {
         "properties": {
-          "data": {},
+          "data": {
+            "required": [
+              "provider_attestation_keyring_digest"
+            ]
+          },
           "signatures": {
             "items": {
               "$ref": "#/$defs/live_signature"
@@ -229,6 +233,9 @@
           "$ref": "#/$defs/milestone"
         },
         "qualification_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "provider_attestation_keyring_digest": {
           "$ref": "#/$defs/digest"
         },
         "reviewer_id": {
@@ -317,6 +324,9 @@
   ],
   "title": "Metriplane release-approval-decision record",
   "type": "object",
+  "x-metriplane-live-required": [
+    "provider_attestation_keyring_digest"
+  ],
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",

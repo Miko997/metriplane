@@ -162,6 +162,7 @@ def _resolve_context(
     dispatch_candidate_sha: str = "",
     dispatch_main_health_sha: str = "",
     dispatch_tag: str = "",
+    dispatch_production_run_id: str = "",
     github_ref_name: str = "",
     github_sha: str = "",
     event_sha_fallback: str = "",
@@ -179,6 +180,7 @@ def _resolve_context(
         "DISPATCH_CANDIDATE_SHA": dispatch_candidate_sha,
         "DISPATCH_MAIN_HEALTH_SHA": dispatch_main_health_sha,
         "DISPATCH_MODE": dispatch_mode,
+        "DISPATCH_PRODUCTION_RUN_ID": dispatch_production_run_id,
         "DISPATCH_TAG": dispatch_tag,
         "EVENT_SHA_FALLBACK": event_sha_fallback,
         "GITHUB_EVENT_NAME": event_name,
@@ -207,11 +209,14 @@ def test_release_terminal_routes_all_three_modes_fail_closed() -> None:
     assert inputs["mode"]["options"] == ["release-qualification", "post-publication"]
     assert {
         "authority_bundle_sha256",
+        "authority_policy_digest",
         "authority_run_id",
         "candidate_sha",
         "evidence_manifest_sha256",
         "main_health_sha",
         "mode",
+        "production_run_id",
+        "provider_attestation_keyring_digest",
     } <= set(inputs)
     assert "authority_artifact" not in inputs
     assert inputs["authority_bundle_sha256"]["required"] is True
@@ -219,11 +224,28 @@ def test_release_terminal_routes_all_three_modes_fail_closed() -> None:
     contracts = workflow["jobs"]["contracts"]
     text = _run_text(contracts)
     assert 'mode = "pr-merge-control"' in text
-    assert 'mode = "post-publication"' in text
+    assert 'mode = "release-qualification"' in text
     assert 'event_name == "workflow_dispatch"' in text
     assert "source_sha != main_health_sha" in text
     assert 'git cat-file -t "$tag_ref"' in text
     assert "unsupported release mode" in text
+    verification = _named_step(
+        contracts,
+        "Require successful production verification before reconciliation",
+    )
+    assert verification["if"] == "steps.context.outputs.mode == 'post-publication'"
+    assert "/actions/runs/${PRODUCTION_RUN_ID}/jobs" in verification["run"]
+    assert "/actions/runs/${PRODUCTION_RUN_ID}/artifacts" in verification["run"]
+    assert "Verify production artifact identity and installation" in verification["run"]
+    assert '"head_branch": "main"' in verification["run"]
+    assert '"name": "production-verification"' in verification["run"]
+    binding = _named_step(
+        contracts,
+        "Bind production verification to the reconciled candidate",
+    )
+    assert binding["if"] == "steps.context.outputs.mode == 'post-publication'"
+    assert "EXPECTED_CANDIDATE_SHA" in binding["env"]
+    assert "production verification targets a different release candidate" in binding["run"]
 
 
 def test_authority_store_urls_require_distinct_https_hosts() -> None:
@@ -471,6 +493,15 @@ def test_public_trust_and_attempt_readbacks_are_materialized_from_both_stores(
         ],
         "schema_version": "metriplane.provider-attestation-keyring.v1",
     }
+    keyring_digest = _sha256(_canonical_json(keyring))
+    policy_digest = _sha256(
+        _canonical_json(
+            {
+                "provider_attestation_keyring_digest": keyring_digest,
+                "schema_version": "metriplane.release-authority-policy.v1",
+            }
+        )
+    )
     github_env = tmp_path / "github-env"
     result = subprocess.run(
         [sys.executable, "-c", script],
@@ -478,8 +509,10 @@ def test_public_trust_and_attempt_readbacks_are_materialized_from_both_stores(
         env={
             **os.environ,
             "AUTHORITY_BUNDLE_SHA256": _sha256(store_a.read_bytes()),
+            "AUTHORITY_POLICY_DIGEST": policy_digest,
             "GITHUB_ENV": str(github_env),
             "PROVIDER_ATTESTATION_KEYRING_B64": base64.b64encode(_canonical_json(keyring)).decode(),
+            "PROVIDER_ATTESTATION_KEYRING_DIGEST": keyring_digest,
             "RUNNER_TEMP": str(runner_temp),
         },
         capture_output=True,
@@ -496,6 +529,8 @@ def test_public_trust_and_attempt_readbacks_are_materialized_from_both_stores(
         "AUTHORITY_STORE_A_MANIFEST_READBACK",
         "AUTHORITY_STORE_B_MANIFEST_READBACK",
         "PROVIDER_ATTESTATION_KEYRING",
+        "PROVIDER_ATTESTATION_KEYRING_DIGEST",
+        "RELEASE_AUTHORITY_POLICY_DIGEST",
     }
     assert Path(environment["APPROVAL_DECISION_PATH"]).read_bytes() == _canonical_json(
         approval_decision
@@ -542,7 +577,7 @@ def test_event_mode_resolution_executes_against_provider_payloads(tmp_path: Path
             {
                 "checkout_ref": "refs/tags/v0.4.0",
                 "main_health_sha": "",
-                "mode": "post-publication",
+                "mode": "release-qualification",
                 "source_sha": "",
                 "tag": "v0.4.0",
             },
@@ -559,6 +594,24 @@ def test_event_mode_resolution_executes_against_provider_payloads(tmp_path: Path
                 "main_health_sha": source,
                 "mode": "release-qualification",
                 "source_sha": source,
+            },
+        ),
+        (
+            "workflow_dispatch",
+            {},
+            {
+                "dispatch_candidate_sha": source,
+                "dispatch_main_health_sha": source,
+                "dispatch_mode": "post-publication",
+                "dispatch_production_run_id": "12345",
+                "dispatch_tag": "v0.4.0",
+            },
+            {
+                "main_health_sha": source,
+                "mode": "post-publication",
+                "production_run_id": "12345",
+                "source_sha": source,
+                "tag": "v0.4.0",
             },
         ),
     ]
@@ -600,6 +653,20 @@ def test_event_mode_resolution_rejects_identity_and_tag_drift(tmp_path: Path) ->
     )
     assert bad_tag.returncode != 0
     assert "requires one canonical semantic-version tag" in bad_tag.stderr
+
+    missing_run_path = tmp_path / "missing-production-run"
+    missing_run_path.mkdir()
+    missing_run = _resolve_context(
+        missing_run_path,
+        event_name="workflow_dispatch",
+        event={},
+        dispatch_candidate_sha=source,
+        dispatch_main_health_sha=source,
+        dispatch_mode="post-publication",
+        dispatch_tag="v0.4.0",
+    )
+    assert missing_run.returncode != 0
+    assert "requires a production workflow run" in missing_run.stderr
 
 
 def test_matrix_executes_every_exact_registry_cell() -> None:
@@ -672,6 +739,7 @@ def test_live_modes_require_real_authority_and_exact_validators() -> None:
         WORKFLOW_PATH.read_text(encoding="utf-8")
     )
     assert "validate_publication_reconciliation.py" in text
+    assert '--authority-policy-digest "$RELEASE_AUTHORITY_POLICY_DIGEST"' in text
     assert "authority store read-backs are not exact-byte identical" in text
     assert '--record "$root/prepublication/approval.json"' in text
     assert 'cmp --silent "$root/readiness.json"' in text

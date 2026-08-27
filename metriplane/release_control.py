@@ -66,6 +66,7 @@ RECORD_KEYS: Final[frozenset[str]] = frozenset(
     }
 )
 RECORD_VERSION: Final[str] = "metriplane.release-record.v1"
+AUTHORITY_POLICY_VERSION: Final[str] = "metriplane.release-authority-policy.v1"
 RELEASE_TARGETS_PATH: Final[Path] = (
     Path(__file__).resolve().parents[1] / "docs/status/release-targets.json"
 )
@@ -130,9 +131,15 @@ class ProviderAttestationVerifier:
     """Verify Ed25519 provider attestations against a public trust root."""
 
     keys: Mapping[tuple[str, str], bytes]
+    keyring_digest: str | None = None
 
     @classmethod
-    def from_keyring(cls, path: Path) -> ProviderAttestationVerifier:
+    def from_keyring(
+        cls,
+        path: Path,
+        *,
+        expected_digest: str | None = None,
+    ) -> ProviderAttestationVerifier:
         keyring = read_json(path)
         if set(keyring) != {"keys", "schema_version"} or keyring["schema_version"] != (
             "metriplane.provider-attestation-keyring.v1"
@@ -167,7 +174,12 @@ class ProviderAttestationVerifier:
             identities.append(identity)
         if identities != sorted(identities):
             raise ReleaseControlError("provider attestation keys are not canonically ordered")
-        return cls(keys=parsed)
+        keyring_digest = sha256_json(keyring)
+        if expected_digest is not None and keyring_digest != _require_digest(
+            expected_digest, "provider attestation keyring"
+        ):
+            raise ReleaseControlError("provider attestation keyring digest mismatch")
+        return cls(keys=parsed, keyring_digest=keyring_digest)
 
     def verify(self, signature: Mapping[str, Any], *, subject_digest: str) -> bool:
         provider = signature.get("provider")
@@ -230,6 +242,21 @@ def sha256_bytes(value: bytes) -> str:
 
 def sha256_json(value: object) -> str:
     return sha256_bytes(canonical_json(value))
+
+
+def release_authority_policy_digest(provider_attestation_keyring_digest: str) -> str:
+    """Return the protected policy identity for one immutable provider keyring."""
+
+    keyring_digest = _require_digest(
+        provider_attestation_keyring_digest,
+        "provider attestation keyring",
+    )
+    return sha256_json(
+        {
+            "provider_attestation_keyring_digest": keyring_digest,
+            "schema_version": AUTHORITY_POLICY_VERSION,
+        }
+    )
 
 
 def _require_digest(value: object, label: str) -> str:
@@ -395,7 +422,7 @@ def _validated_signature(
     subject_digest: str,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
-) -> str:
+) -> tuple[str, str]:
     exact = {"actor_id", "algorithm", "provider", "signature", "subject_digest", "synthetic"}
     if not isinstance(signature, Mapping):
         raise ReleaseControlError("signature is not an object")
@@ -430,9 +457,11 @@ def _validated_signature(
             raise ReleaseControlError("test signatures cannot authorize live release work")
         if attestation_verifier is None:
             raise ReleaseControlError("live provider attestation has no trusted verifier")
+        if attestation_verifier.keyring_digest is None:
+            raise ReleaseControlError("live provider attestation trust root has no digest identity")
         if not attestation_verifier.verify(signature, subject_digest=subject_digest):
             raise ReleaseControlError("live provider attestation authentication failed")
-        return actor_id
+        return provider, actor_id
     if (
         synthetic is not True
         or provider != "test-fixture"
@@ -440,7 +469,7 @@ def _validated_signature(
         or signature_value != sha256_json({"actor_id": actor_id, "subject_digest": subject_digest})
     ):
         raise ReleaseControlError("synthetic signature authentication failed")
-    return actor_id
+    return provider, actor_id
 
 
 def _validated_record_signers(
@@ -448,7 +477,7 @@ def _validated_record_signers(
     *,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
-) -> set[str]:
+) -> set[tuple[str, str]]:
     signatures = record["signatures"]
     if live and not signatures:
         raise ReleaseControlError("live release authority has no authenticated signature")
@@ -475,16 +504,51 @@ def _parse_utc_timestamp(value: object, label: str) -> datetime:
     return parsed
 
 
+def _role_binding_identity(
+    value: object,
+    *,
+    expected_role: str,
+    label: str,
+) -> tuple[tuple[str, str], tuple[str, str]]:
+    fields = {
+        "actor_id",
+        "backup_actor_id",
+        "conflict_free",
+        "provenance_digest",
+        "provider",
+        "role",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ReleaseControlError(f"{label} role binding shape is not closed")
+    if value["role"] != expected_role or value["conflict_free"] is not True:
+        raise ReleaseControlError(f"{label} role binding is not conflict-free authority")
+    provider = value["provider"]
+    if not isinstance(provider, str) or provider not in {"github", "linear"}:
+        raise ReleaseControlError(f"{label} role binding provider is invalid")
+    actor_id = _require_nonempty_string(value["actor_id"], f"{label} actor")
+    backup_actor_id = _require_nonempty_string(
+        value["backup_actor_id"],
+        f"{label} backup actor",
+    )
+    _require_digest(value["provenance_digest"], f"{label} provenance")
+    primary = (provider, actor_id)
+    backup = (provider, backup_actor_id)
+    if primary == backup:
+        raise ReleaseControlError(f"{label} primary and backup authority are identical")
+    return primary, backup
+
+
 def validate_role_assignments(
     record: Mapping[str, Any],
     *,
     live: bool,
     expected_milestone: str | None = None,
     expected_run_id: str | None = None,
+    expected_authority_policy_digest: str | None = None,
     check_conflicts: bool = False,
     check_freshness: bool = False,
     attestation_verifier: ProviderAttestationVerifier | None = None,
-) -> dict[str, str]:
+) -> dict[str, tuple[str, str]]:
     validate_record(record, "release-role-assignments")
     if record["status"] != "PASS":
         raise ReleaseControlError("release role assignments are not passing authority")
@@ -499,26 +563,136 @@ def validate_role_assignments(
         "task_id",
     }
     optional = {"milestone", "run_id", "valid_from", "valid_until"}
-    if not required <= set(data) <= required | optional or data["task_id"] != "MP2-007":
+    live_fields = {
+        "author_provider",
+        "authority_policy_digest",
+        "independent_assurance",
+        "infrastructure_owner",
+        "non_author_reviewer",
+        "operator",
+        "provider_attestation_keyring_digest",
+        "publisher",
+        "signing_method",
+    }
+    if (
+        not required <= set(data) <= required | optional | live_fields
+        or data["task_id"] != "MP2-007"
+    ):
         raise ReleaseControlError("release role assignment shape or task binding is invalid")
-    actors: dict[str, str] = {}
+    actor_ids: dict[str, str] = {}
     for key in required - {"task_id"}:
         actor = data[key]
         if not isinstance(actor, str) or not actor:
             raise ReleaseControlError(f"role {key} has no actor")
-        actors[key] = actor
+        actor_ids[key] = actor
+
+    actors: dict[str, tuple[str, str]]
+    authority_identities: list[tuple[str, str]] = []
+    if live:
+        required_live = live_fields | optional
+        if not required_live <= set(data):
+            raise ReleaseControlError("live release role assignment is incomplete")
+        if data["signing_method"] != "provider-attestation-v1":
+            raise ReleaseControlError("live release role signing method is invalid")
+        keyring_digest = _require_digest(
+            data["provider_attestation_keyring_digest"],
+            "release role provider attestation keyring",
+        )
+        policy_digest = _require_digest(
+            data["authority_policy_digest"],
+            "release role authority policy",
+        )
+        if expected_authority_policy_digest is None:
+            raise ReleaseControlError("live release role authority policy identity is not supplied")
+        if policy_digest != _require_digest(
+            expected_authority_policy_digest,
+            "expected release authority policy",
+        ):
+            raise ReleaseControlError("release role authority policy binding mismatch")
+        if attestation_verifier is None or attestation_verifier.keyring_digest is None:
+            raise ReleaseControlError("live release role trust-root identity is not supplied")
+        if keyring_digest != attestation_verifier.keyring_digest:
+            raise ReleaseControlError("release role provider keyring binding mismatch")
+        if policy_digest != release_authority_policy_digest(keyring_digest):
+            raise ReleaseControlError("release role authority policy does not bind its keyring")
+
+        author_provider = data["author_provider"]
+        if not isinstance(author_provider, str) or author_provider not in {"github", "linear"}:
+            raise ReleaseControlError("release author provider is invalid")
+        operator, operator_backup = _role_binding_identity(
+            data["operator"], expected_role="release_operator", label="operator"
+        )
+        reviewer, reviewer_backup = _role_binding_identity(
+            data["non_author_reviewer"],
+            expected_role="non_author_reviewer",
+            label="non-author reviewer",
+        )
+        infrastructure_owner, infrastructure_backup = _role_binding_identity(
+            data["infrastructure_owner"],
+            expected_role="infrastructure_owner",
+            label="infrastructure owner",
+        )
+        publisher, publisher_backup = _role_binding_identity(
+            data["publisher"], expected_role="publisher", label="publisher"
+        )
+        if (
+            operator[1] != actor_ids["authorized_executor_id"]
+            or reviewer[1] != actor_ids["non_author_reviewer_id"]
+            or publisher[1] != actor_ids["publisher_id"]
+        ):
+            raise ReleaseControlError("release role binding disagrees with its actor identity")
+        assurance = data["independent_assurance"]
+        assurance_identities: list[tuple[str, str]] = []
+        if not isinstance(assurance, Mapping):
+            raise ReleaseControlError("independent assurance assignment is invalid")
+        if set(assurance) == {"applicability"} and assurance["applicability"] == "not_applicable":
+            pass
+        elif (
+            set(assurance) == {"applicability", "binding"}
+            and assurance["applicability"] == "required"
+        ):
+            assurance_identities.extend(
+                _role_binding_identity(
+                    assurance["binding"],
+                    expected_role="independent_assurance_verifier",
+                    label="independent assurance",
+                )
+            )
+        else:
+            raise ReleaseControlError("independent assurance assignment shape is not closed")
+        actors = {
+            "author_id": (author_provider, actor_ids["author_id"]),
+            "authorized_executor_id": operator,
+            "non_author_reviewer_id": reviewer,
+            "publisher_id": publisher,
+        }
+        authority_identities = [
+            *actors.values(),
+            operator_backup,
+            reviewer_backup,
+            infrastructure_owner,
+            infrastructure_backup,
+            publisher_backup,
+            *assurance_identities,
+        ]
+    else:
+        actors = {key: ("test-fixture", actor_id) for key, actor_id in actor_ids.items()}
+
     if actors["author_id"] == actors["non_author_reviewer_id"]:
         raise ReleaseControlError("the release author cannot be the non-author reviewer")
     if expected_milestone is not None and data.get("milestone") != expected_milestone:
         raise ReleaseControlError("release role assignment milestone binding mismatch")
     if expected_run_id is not None and data.get("run_id") != expected_run_id:
         raise ReleaseControlError("release role assignment run binding mismatch")
-    if check_conflicts and actors["non_author_reviewer_id"] in {
-        actors["author_id"],
-        actors["authorized_executor_id"],
-        actors["publisher_id"],
-    }:
-        raise ReleaseControlError("release role assignment reviewer has an actor conflict")
+    if check_conflicts:
+        if actors["non_author_reviewer_id"] in {
+            actors["author_id"],
+            actors["authorized_executor_id"],
+            actors["publisher_id"],
+        }:
+            raise ReleaseControlError("release role assignment reviewer has an actor conflict")
+        if live and len(authority_identities) != len(set(authority_identities)):
+            raise ReleaseControlError("release role assignment contains an authority conflict")
     if check_freshness:
         valid_from = _parse_utc_timestamp(data.get("valid_from"), "role validity start")
         valid_until = _parse_utc_timestamp(data.get("valid_until"), "role validity end")
@@ -541,7 +715,7 @@ def validate_role_assignments(
 
 def validate_approval(
     record: Mapping[str, Any],
-    roles: Mapping[str, str],
+    roles: Mapping[str, tuple[str, str]],
     *,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
@@ -558,10 +732,12 @@ def validate_approval(
     _require_digest(data["candidate_digest"], "candidate_digest")
     if data["decision"] != "APPROVED" or data["conflicts"] != []:
         raise ReleaseControlError("release approval is not conflict-free and approved")
-    if data["author_id"] != roles["author_id"]:
+    author_identity = roles["author_id"]
+    reviewer_identity = roles["non_author_reviewer_id"]
+    if data["author_id"] != author_identity[1]:
         raise ReleaseControlError("approval author does not match the role assignment")
     reviewer = data["reviewer_id"]
-    if reviewer == data["author_id"] or reviewer != roles["non_author_reviewer_id"]:
+    if reviewer_identity == author_identity or reviewer != reviewer_identity[1]:
         raise ReleaseControlError("approval is not from the assigned non-author reviewer")
     signers = {
         _validated_signature(
@@ -572,13 +748,13 @@ def validate_approval(
         )
         for signature in record["signatures"]
     }
-    if reviewer not in signers:
+    if reviewer_identity not in signers:
         raise ReleaseControlError("approval lacks the reviewer's digest-bound signature")
 
 
 def validate_task_state_observation(
     record: Mapping[str, Any],
-    roles: Mapping[str, str],
+    roles: Mapping[str, tuple[str, str]],
     *,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
@@ -595,7 +771,8 @@ def validate_task_state_observation(
         raise ReleaseControlError("release task-state observation names the wrong task")
     if data["state"] != "In Progress":
         raise ReleaseControlError("release task is not in an executable state")
-    if data["assignee_id"] != roles["authorized_executor_id"]:
+    executor_identity = roles["authorized_executor_id"]
+    if data["assignee_id"] != executor_identity[1]:
         raise ReleaseControlError("release task assignee is not the authorized executor")
     signers = {
         _validated_signature(
@@ -606,7 +783,7 @@ def validate_task_state_observation(
         )
         for signature in record["signatures"]
     }
-    if live and data["assignee_id"] not in signers:
+    if live and executor_identity not in signers:
         raise ReleaseControlError("live task state lacks provider-authenticated assignee proof")
 
 
@@ -824,7 +1001,7 @@ def validate_promotion_plan(
 
 def validate_lkg_invalidation(
     record: Mapping[str, Any],
-    roles: Mapping[str, str],
+    roles: Mapping[str, tuple[str, str]],
     *,
     live: bool,
     candidate_digest: str,
@@ -841,10 +1018,12 @@ def validate_lkg_invalidation(
         raise ReleaseControlError("LKG invalidation decision is incomplete")
     if data["candidate_digest"] != candidate_digest:
         raise ReleaseControlError("LKG invalidation names a different candidate")
-    if data["author_id"] != roles["author_id"]:
+    author_identity = roles["author_id"]
+    reviewer_identity = roles["non_author_reviewer_id"]
+    if data["author_id"] != author_identity[1]:
         raise ReleaseControlError("LKG invalidation author does not match assigned roles")
     reviewer = data["reviewer_id"]
-    if reviewer != roles["non_author_reviewer_id"] or reviewer == data["author_id"]:
+    if reviewer != reviewer_identity[1] or reviewer_identity == author_identity:
         raise ReleaseControlError("LKG invalidation is not a non-author decision")
     signers = {
         _validated_signature(
@@ -855,7 +1034,7 @@ def validate_lkg_invalidation(
         )
         for signature in record["signatures"]
     }
-    if reviewer not in signers:
+    if reviewer_identity not in signers:
         raise ReleaseControlError("LKG invalidation lacks the reviewer's signature")
 
 
@@ -2286,6 +2465,7 @@ def validate_publication_reconciliation_record(
     *,
     evidence_root: Path,
     live: bool,
+    expected_authority_policy_digest: str | None = None,
     attestation_verifier: ProviderAttestationVerifier | None = None,
     retention_readbacks: Mapping[str, Path] | None = None,
     attempt_retention_readbacks: Mapping[str, Mapping[str, Path]] | None = None,
@@ -2444,6 +2624,7 @@ def validate_publication_reconciliation_record(
         role_assignments=role_assignments,
         no_prepublication_rubric=True,
         live=live,
+        expected_authority_policy_digest=expected_authority_policy_digest,
         attestation_verifier=attestation_verifier,
     )
     candidate_record = _candidate_record_for_digest(
@@ -2930,9 +3111,10 @@ def _validate_release_approval_decision_record(
     approval: Mapping[str, Any],
     gate: Mapping[str, Any],
     qualification: Mapping[str, Any],
-    roles: Mapping[str, str],
+    roles: Mapping[str, tuple[str, str]],
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None,
+    expected_authority_policy_digest: str | None,
 ) -> None:
     decision = _passing_record(
         record,
@@ -2955,7 +3137,12 @@ def _validate_release_approval_decision_record(
         "rubric_result_digest",
         "signing_method",
     }
-    if set(decision) != expected_fields:
+    live_fields = {"provider_attestation_keyring_digest"}
+    allowed_fields = expected_fields | live_fields
+    if (live and set(decision) != allowed_fields) or (
+        not live
+        and frozenset(decision) not in {frozenset(expected_fields), frozenset(allowed_fields)}
+    ):
         raise ReleaseControlError("release approval decision data shape is not closed")
     if (
         decision["approval_kind"] != "non_author_release_decision"
@@ -2964,7 +3151,27 @@ def _validate_release_approval_decision_record(
         or decision["signing_method"] != "provider-attestation-v1"
     ):
         raise ReleaseControlError("release approval decision is not a clean approval")
-    _require_digest(decision["authority_policy_digest"], "approval decision authority policy")
+    policy_digest = _require_digest(
+        decision["authority_policy_digest"], "approval decision authority policy"
+    )
+    if live:
+        if expected_authority_policy_digest is None:
+            raise ReleaseControlError("approval decision authority policy identity is not supplied")
+        if policy_digest != _require_digest(
+            expected_authority_policy_digest,
+            "expected approval authority policy",
+        ):
+            raise ReleaseControlError("release approval decision authority policy binding mismatch")
+        if attestation_verifier is None or attestation_verifier.keyring_digest is None:
+            raise ReleaseControlError("approval decision trust-root identity is not supplied")
+        decision_keyring_digest = _require_digest(
+            decision["provider_attestation_keyring_digest"],
+            "approval decision provider attestation keyring",
+        )
+        if decision_keyring_digest != attestation_verifier.keyring_digest:
+            raise ReleaseControlError("release approval decision provider keyring binding mismatch")
+        if policy_digest != release_authority_policy_digest(decision_keyring_digest):
+            raise ReleaseControlError("release approval authority policy does not bind its keyring")
     _require_digest(decision["candidate_digest"], "approval decision candidate")
     _require_digest(decision["qualification_digest"], "approval decision qualification")
     _require_nonempty_string(decision["author_id"], "approval decision author")
@@ -2979,9 +3186,11 @@ def _validate_release_approval_decision_record(
         raise ReleaseControlError("release approval decision validity window is invalid")
     if live and not issued_at <= datetime.now(UTC) < expires_at:
         raise ReleaseControlError("release approval decision is not currently valid")
+    author_identity = roles["author_id"]
+    reviewer_identity = roles["non_author_reviewer_id"]
     bindings = {
-        "author": (decision["author_id"], roles["author_id"]),
-        "reviewer": (decision["reviewer_id"], roles["non_author_reviewer_id"]),
+        "author": (decision["author_id"], author_identity[1]),
+        "reviewer": (decision["reviewer_id"], reviewer_identity[1]),
         "approval author": (decision["author_id"], approval["author_id"]),
         "approval reviewer": (decision["reviewer_id"], approval["reviewer_id"]),
         "candidate": (decision["candidate_digest"], approval["candidate_digest"]),
@@ -2993,14 +3202,14 @@ def _validate_release_approval_decision_record(
     for label, (observed, expected) in bindings.items():
         if observed != expected:
             raise ReleaseControlError(f"release approval decision {label} binding mismatch")
-    if decision["reviewer_id"] == decision["author_id"]:
+    if reviewer_identity == author_identity:
         raise ReleaseControlError("release approval decision is not independent")
     signers = _validated_record_signers(
         record,
         live=live,
         attestation_verifier=attestation_verifier,
     )
-    if decision["reviewer_id"] not in signers:
+    if reviewer_identity not in signers:
         raise ReleaseControlError("release approval decision lacks reviewer authority")
 
 
@@ -3013,6 +3222,7 @@ def validate_release_approval_record(
     role_assignments: Mapping[str, Any],
     no_prepublication_rubric: bool,
     live: bool,
+    expected_authority_policy_digest: str | None = None,
     attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
     approval = _passing_record(
@@ -3054,15 +3264,18 @@ def validate_release_approval_record(
         live=live,
         expected_milestone=milestone,
         expected_run_id=run_id,
+        expected_authority_policy_digest=expected_authority_policy_digest,
         check_conflicts=True,
         check_freshness=live,
         attestation_verifier=attestation_verifier,
     )
     author = approval["author_id"]
     reviewer = approval["reviewer_id"]
-    if author != roles["author_id"]:
+    author_identity = roles["author_id"]
+    reviewer_identity = roles["non_author_reviewer_id"]
+    if author != author_identity[1]:
         raise ReleaseControlError("release approval author does not match assigned roles")
-    if reviewer == author or reviewer != roles["non_author_reviewer_id"]:
+    if reviewer_identity == author_identity or reviewer != reviewer_identity[1]:
         raise ReleaseControlError("release approval is not from the assigned non-author reviewer")
     if approval["candidate_digest"] != gate.get("candidate_digest") or approval[
         "candidate_digest"
@@ -3087,6 +3300,7 @@ def validate_release_approval_record(
         roles=roles,
         live=live,
         attestation_verifier=attestation_verifier,
+        expected_authority_policy_digest=expected_authority_policy_digest,
     )
     signers = {
         _validated_signature(
@@ -3097,7 +3311,7 @@ def validate_release_approval_record(
         )
         for signature in record["signatures"]
     }
-    if reviewer not in signers:
+    if reviewer_identity not in signers:
         raise ReleaseControlError("release approval lacks reviewer-authenticated authority")
 
 
@@ -4360,7 +4574,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     "check_release_readiness.py": _tool_contract(
         "gate-instance candidate-identity predecessor linear-snapshot artifact-manifest "
         "delta delta-test-map out",
-        optional="provider-attestation-keyring",
+        optional="provider-attestation-keyring provider-attestation-keyring-digest",
         fixture_producer=False,
     ),
     "collect_publication_observations.py": _tool_contract(
@@ -4614,7 +4828,10 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_publication_reconciliation.py": _tool_contract(
         "record",
-        optional="provider-attestation-keyring store-readback attempt-store-readback",
+        optional=(
+            "authority-policy-digest provider-attestation-keyring "
+            "provider-attestation-keyring-digest store-readback attempt-store-readback"
+        ),
         repeatable="store-readback attempt-store-readback",
         output_flag=None,
         fixture_producer=False,
@@ -4623,7 +4840,10 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     "validate_release_approval.py": _tool_contract(
         "approval-decision gate-instance qualification role-assignments "
         "no-prepublication-rubric record",
-        optional="provider-attestation-keyring",
+        optional=(
+            "authority-policy-digest provider-attestation-keyring "
+            "provider-attestation-keyring-digest"
+        ),
         boolean="no-prepublication-rubric",
         output_flag=None,
         fixture_producer=False,
@@ -4631,7 +4851,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_artifact_manifest.py": _tool_contract(
         "record artifacts read-hash",
-        optional="provider-attestation-keyring",
+        optional="provider-attestation-keyring provider-attestation-keyring-digest",
         boolean="read-hash",
         output_flag=None,
         fixture_producer=False,
@@ -4650,7 +4870,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_candidate_identity.py": _tool_contract(
         "record predecessor no-evaluation-adoption candidate-dir",
-        optional="provider-attestation-keyring",
+        optional="provider-attestation-keyring provider-attestation-keyring-digest",
         boolean="no-evaluation-adoption",
         output_flag=None,
         fixture_producer=False,
@@ -4679,7 +4899,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_gate_instance.py": _tool_contract(
         "record candidate-identity predecessor task-state-policy",
-        optional="provider-attestation-keyring",
+        optional="provider-attestation-keyring provider-attestation-keyring-digest",
         output_flag=None,
         fixture_producer=False,
         record_flag="record",
@@ -4703,7 +4923,10 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_qualification.py": _tool_contract(
         "record",
-        optional="provider-attestation-keyring attempt-store-readback",
+        optional=(
+            "provider-attestation-keyring provider-attestation-keyring-digest "
+            "attempt-store-readback"
+        ),
         repeatable="attempt-store-readback",
         output_flag=None,
         fixture_producer=False,
@@ -4711,7 +4934,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_qualification_plan.py": _tool_contract(
         "record gate-instance",
-        optional="provider-attestation-keyring",
+        optional="provider-attestation-keyring provider-attestation-keyring-digest",
         output_flag=None,
         fixture_producer=False,
         record_flag="record",
@@ -4720,7 +4943,9 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "manifest receipts read-back",
         "input receipts read-back",
         "input manifest invocation-root through-stage receipts read-back",
-        optional="provider-attestation-keyring store-readback",
+        optional=(
+            "provider-attestation-keyring provider-attestation-keyring-digest store-readback"
+        ),
         boolean="read-back",
         repeatable="input store-readback",
         output_flag=None,
@@ -4729,7 +4954,10 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_role_assignments.py": _tool_contract(
         "record milestone run-id check-conflicts check-freshness",
-        optional="provider-attestation-keyring",
+        optional=(
+            "authority-policy-digest provider-attestation-keyring "
+            "provider-attestation-keyring-digest"
+        ),
         boolean="check-conflicts check-freshness",
         choices=_MILESTONE_CHOICES,
         output_flag=None,
@@ -4838,13 +5066,25 @@ def _normalized_arguments(args: argparse.Namespace, contract: ToolContract) -> d
 
 def _attestation_verifier_from_args(
     args: argparse.Namespace,
+    *,
+    live: bool,
 ) -> ProviderAttestationVerifier | None:
     value = getattr(args, "provider_attestation_keyring", None)
+    expected_digest = getattr(args, "provider_attestation_keyring_digest", None)
     if value is None:
+        if expected_digest is not None:
+            raise ReleaseControlError("provider attestation keyring digest has no keyring")
         return None
     if not isinstance(value, str) or not value.strip():
         raise ReleaseControlError("provider attestation keyring path is missing")
-    return ProviderAttestationVerifier.from_keyring(Path(value))
+    if live and expected_digest is None:
+        raise ReleaseControlError("live provider attestation keyring digest is missing")
+    if expected_digest is not None and not isinstance(expected_digest, str):
+        raise ReleaseControlError("provider attestation keyring digest is invalid")
+    return ProviderAttestationVerifier.from_keyring(
+        Path(value),
+        expected_digest=expected_digest,
+    )
 
 
 def _store_readbacks_from_args(values: object) -> Mapping[str, Path] | None:
@@ -4942,7 +5182,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
 
     fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
     try:
-        attestation_verifier = _attestation_verifier_from_args(args)
+        attestation_verifier = _attestation_verifier_from_args(args, live=not fixture_mode)
         if name == "check_release_readiness.py":
             readiness_paths = [
                 Path(args.gate_instance),
@@ -5077,6 +5317,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 result,
                 evidence_root=record_path.parent,
                 live=not fixture_mode,
+                expected_authority_policy_digest=args.authority_policy_digest,
                 attestation_verifier=attestation_verifier,
                 retention_readbacks=_store_readbacks_from_args(args.store_readback),
                 attempt_retention_readbacks=_attempt_store_readbacks_from_args(
@@ -5111,6 +5352,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 role_assignments=read_json(Path(args.role_assignments)),
                 no_prepublication_rubric=bool(args.no_prepublication_rubric),
                 live=not fixture_mode,
+                expected_authority_policy_digest=args.authority_policy_digest,
                 attestation_verifier=attestation_verifier,
             )
         elif name == "validate_release_candidate_identity.py":
@@ -5160,6 +5402,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                     live=not fixture_mode,
                     expected_milestone=args.milestone,
                     expected_run_id=args.run_id,
+                    expected_authority_policy_digest=args.authority_policy_digest,
                     check_conflicts=bool(args.check_conflicts),
                     check_freshness=bool(args.check_freshness),
                     attestation_verifier=attestation_verifier,
