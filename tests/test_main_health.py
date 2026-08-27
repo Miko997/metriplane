@@ -2876,7 +2876,11 @@ def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Pat
             ["git", "-C", str(root), "commit", "-qm", f"generation {generation + 1}"],
             check=True,
         )
-    assert validate_git_history(root)["generation"] == 2
+    validated = validate_git_history(root)
+    assert validated["generation"] == 2
+    assert validated["last_good_sha"] == GOOD_SHA
+    assert validated["incident_digest"] is None
+    assert validated["updated_at"] == "2026-08-25T18:00:00Z"
 
     symlinked = tmp_path / "symlinked"
     shutil.copytree(root, symlinked)

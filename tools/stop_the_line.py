@@ -3809,6 +3809,7 @@ def validate_git_history(root: Path) -> dict[str, Any]:
     current_state = validate_history(root)
     expected_additions = _expected_git_additions(root)
     expected_states = _expected_git_states(root)
+    provider_state: dict[str, Any] | None = None
     if len(expected_additions) != len(commits):
         raise HealthError("retained state Git history does not match its generations")
     for ordinal, commit in enumerate(commits, start=1):
@@ -3823,6 +3824,7 @@ def validate_git_history(root: Path) -> dict[str, Any]:
             raise HealthError("retained state Git commit has malformed state") from exc
         if not isinstance(state, dict) or state != expected_states[ordinal - 1]:
             raise HealthError("retained state Git commit has an invalid generation pointer")
+        provider_state = state
         if ordinal == 1:
             actual = set(
                 _git_output(root, "ls-tree", "-r", "--name-only", "-z", commit).decode().split("\0")
@@ -3866,7 +3868,9 @@ def validate_git_history(root: Path) -> dict[str, Any]:
             raise HealthError("retained state Git commit has invalid generation evidence")
     if current_state["generation"] != len(commits):
         raise HealthError("retained state checkout does not match its Git HEAD")
-    return {**current_state, "state_commit": head}
+    if provider_state is None:
+        raise HealthError("retained state Git history has no provider state pointer")
+    return {**provider_state, "state_commit": head}
 
 
 def validate_candidate(
