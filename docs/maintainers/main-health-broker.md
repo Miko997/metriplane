@@ -1,13 +1,14 @@
 # Main-health broker
 
 The `metriplane-main-health-publisher` merge App is the only actor permitted by
-the dedicated update rulesets to update `main` and
-`metriplane-main-health-state`. A distinct `metriplane-ruleset-witness` App has
+the dedicated rulesets to update `main` and `metriplane-main-health-state` or
+create, update, and delete `release-leases/**`. A distinct
+`metriplane-ruleset-witness` App has
 repository-settings authority only, so it can read complete ruleset bodies and
 bypass actors but cannot write contents, checks, or pull requests. The core
 pull-request, deletion, non-fast-forward, and exact required-check rules remain
 in separate active rulesets with no bypass actors. Rulesets layer; the merge App
-bypasses only each dedicated `update` restriction.
+bypasses only the dedicated mutation restrictions.
 
 The broker is an outbound-polling system service. It never checks out or
 executes pull-request code. GitHub Actions produces the three exact candidate
@@ -59,10 +60,11 @@ check. The three rulesets governing main target explicit `refs/heads/main`;
 they do not follow the mutable `~DEFAULT_BRANCH` alias.
 
 The committed broker-config example is deliberately non-runnable:
-`main_update_ruleset_id` and `settings_app_id` are `0`. Create the App-only main
-update restriction and the witness App, capture their positive provider IDs,
-and place both IDs in the host's `/etc/metriplane/main-health-broker.json`.
-`validate-config` and `run` reject either zero sentinel.
+`main_update_ruleset_id`, `release_lease_ruleset_id`, and `settings_app_id` are
+`0`. Create the App-only main-update and release-lease restrictions and the
+witness App, capture their positive provider IDs, and place all three IDs in
+the host's `/etc/metriplane/main-health-broker.json`. `validate-config` and
+`run` reject every zero sentinel.
 
 Run the broker as the repository module, including for manual validation:
 
@@ -132,9 +134,20 @@ sudo journalctl -u metriplane-main-health-broker.service \
   --grep='ready after one successful full cycle' --lines=1
 ~~~
 
-Replace only the `main_update_ruleset_id` and `settings_app_id` zero sentinels
-in the installed host configuration before `validate-config`; all other
-committed identities and boundaries remain exact.
+Replace only the `main_update_ruleset_id`, `release_lease_ruleset_id`, and
+`settings_app_id` zero sentinels in the installed host configuration before
+`validate-config`; all other committed identities and boundaries remain exact.
+
+Activate the sixth ruleset only during a deliberate broker and main-update
+freeze. Stop the old broker, create `Restrict release lease writers` in
+`disabled` mode with branch include `refs/heads/release-leases/**`, the broker
+Integration ID `4722589` as its sole `always` bypass actor, and exactly the
+`creation`, `update`, and `deletion` rules. Install the independently approved
+broker commit and positive ruleset ID while the service remains stopped, switch
+that ruleset to `active`, and then start the new broker. Its first cycle accepts
+only the exact six-rule inventory. Activating the sixth rule before replacing
+the old broker, or starting the new broker before the rule is active, fails the
+exact-inventory check by design.
 
 The systemd unit is `Type=notify`. It becomes active only after one complete
 successful broker cycle, including authentication, orphan reconciliation,
@@ -197,7 +210,7 @@ The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
 earlier approval. It re-reads the pull request, every commit actor, reviews,
 exact Actions checks, the complete inventory of all active repository rulesets
-and all five governed ruleset bodies, current `main`, provider clock, and the
+and all six governed ruleset bodies, current `main`, provider clock, and the
 protected state branch immediately before admission. Inventory summaries and
 detail bodies must agree on ID, name, enforcement, target, source, and source
 type. A protected-main result identity binds the exact CI, Documentation, and
@@ -270,6 +283,50 @@ does not offer an atomic ruleset-read-and-merge transaction. Any omitted
 `bypass_actors`, settings drift, future-dated state, unreconciled provider
 attempt, clock skew, duplicate identity, fork, missing approval,
 cancelled/skipped check, process restart, or provider ambiguity fails closed.
+
+## Production publication lease
+
+The same singleton loop observes only active `workflow_dispatch` runs of the
+literal `.github/workflows/publish-pypi.yml`. Before creating a lease, it binds
+the provider workflow ID, path, name, repository, `main` head, run ID and
+attempt, and both the dispatching and triggering actors to the canonical owner.
+It requires successful production-request, dispatch-time blocker-validation,
+and artifact-verification jobs. The environment-approved publication job must
+be in progress with its exact lease-wait step in progress and every later
+blocker, reassertion, and upload step still queued.
+
+The workflow, `tools/release_artifacts.py`, `tools/check_blockers.py`, and the
+blocker schema at the release commit must be byte-identical Git blobs to the
+independently approved broker checkout. The broker then revalidates current
+`main` and the exact six hosted rulesets immediately before reserving the
+durable transaction. Any governed authority change therefore requires a new
+broker review and deployment before production publication can proceed.
+
+SQLite reserves one fence before the first provider write. A unique durable
+slot prevents a second run from entering publication even across processes or
+restarts. The broker creates
+`refs/heads/release-leases/pypi-<run-id>-<run-attempt>` first and only then
+creates `Release serialization / required` in progress with external ID
+`metriplane-publish-lease.v1:<run-id>:<run-attempt>:<commit>`. Its canonical
+JSON output binds the repository, ref, run, attempt, commit, schema, and state.
+The lease expires two hours after the workflow enters its wait step.
+
+The durable fence suppresses every later broker-mediated `main` merge. The
+broker accepts normal progression only through fenced blocker validation,
+lease reassertion, upload, production verification, and the in-progress
+reconciliation observer. It repeats workflow, source-authority, current-main,
+and hosted-ruleset proof before release. It records `releasing`, deletes and
+read-back-proves absence of the exact ref, and only then completes the same
+check ID with `success`. Those mutation boundaries make both crash points
+restart-safe.
+
+A failed job, identity mutation, main drift, missing provider object, or expiry
+completes the exact acknowledgment with `failure` but retains any lease ref and
+the durable broker fence. Provider ambiguity leaves the current state in place
+and terminates the broker cycle. Neither condition is auto-deleted: it is a
+release incident requiring independent exact-byte and provider reconciliation
+during a controlled settings freeze. A reservation that is proved to have made
+no provider mutation may be abandoned automatically.
 
 ## Red-state repair
 

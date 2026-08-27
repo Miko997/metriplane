@@ -12,7 +12,9 @@ import stat
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,7 +23,7 @@ from typing import Any, Self
 import pytest
 
 from tools import main_health_broker as broker
-from tools import stop_the_line
+from tools import release_artifacts, stop_the_line
 from tools.baseline_snapshot import _internal_validate
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +46,7 @@ def _config(tmp_path: Path) -> broker.BrokerConfig:
             "main_update_ruleset_id": 21600001,
             "max_clock_skew_seconds": 30,
             "poll_seconds": 60,
+            "release_lease_ruleset_id": 21600002,
             "repository": REPOSITORY,
             "settings_app_id": 9876543,
             "settings_app_slug": "metriplane-ruleset-witness",
@@ -68,6 +71,7 @@ def _rulesets(config: broker.BrokerConfig) -> dict[int, dict[str, Any]]:
             name="Restrict main health state writers",
             include=[f"refs/heads/{config.state_branch}"],
         ),
+        config.release_lease_ruleset_id: broker._release_lease_ruleset(),
     }
     return {
         identifier: {"id": identifier, **broker._provider_ruleset(value)}
@@ -149,6 +153,7 @@ def _owner_ruleset_digests() -> dict[str, str]:
         "21500579": "3" * 64,
         "21533351": "4" * 64,
         "21600001": "5" * 64,
+        "21600002": "6" * 64,
     }
 
 
@@ -728,6 +733,7 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     )
     _internal_validate(example, schema)
     assert example["main_update_ruleset_id"] == 0
+    assert example["release_lease_ruleset_id"] == 0
     assert example["settings_app_id"] == 0
     assert example["poll_seconds"] == 60
     assert Path(example["state_root"]) == Path("/home/metriplane-health/state")
@@ -736,6 +742,9 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     example_with_witness = {**example, "settings_app_id": 9876543}
     with pytest.raises(broker.BrokerError, match="main_update_ruleset_id"):
         broker.BrokerConfig.from_mapping(example_with_witness)
+    example_with_main_rule = {**example_with_witness, "main_update_ruleset_id": 21600001}
+    with pytest.raises(broker.BrokerError, match="release_lease_ruleset_id"):
+        broker.BrokerConfig.from_mapping(example_with_main_rule)
     unit = (ROOT / "scripts" / "systemd" / "metriplane-main-health-broker.service").read_text(
         encoding="utf-8"
     )
@@ -926,6 +935,27 @@ def test_rulesets_require_app_only_updates_and_no_human_bypass(tmp_path: Path) -
             "exclude": [],
             "include": [broker.MAIN_REF],
         }
+    assert values[config.release_lease_ruleset_id]["conditions"]["ref_name"] == {
+        "exclude": [],
+        "include": [broker.PUBLISH_LEASE_REF_GLOB],
+    }
+    assert values[config.release_lease_ruleset_id]["bypass_actors"] == [
+        {
+            "actor_id": broker.APP_INTEGRATION_ID,
+            "actor_type": "Integration",
+            "bypass_mode": "always",
+        }
+    ]
+    assert values[config.release_lease_ruleset_id]["rules"] == [
+        {"type": "creation"},
+        {"type": "update"},
+        {"type": "deletion"},
+    ]
+
+    changed = _rulesets(config)
+    changed[config.release_lease_ruleset_id]["rules"].remove({"type": "creation"})
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
 
     changed = _rulesets(config)
     changed[config.admission_ruleset_id]["bypass_actors"] = [
@@ -1467,7 +1497,7 @@ def test_spool_rejects_incompatible_or_future_schema(tmp_path: Path) -> None:
     future_root = tmp_path / "future-spool"
     future = broker.DurableSpool(future_root)
     with closing(sqlite3.connect(future.path)) as connection, connection:
-        connection.execute("PRAGMA user_version = 2")
+        connection.execute(f"PRAGMA user_version = {broker.SPOOL_SCHEMA_VERSION + 1}")
     with pytest.raises(broker.BrokerError, match="schema version is incompatible"):
         broker.DurableSpool(future_root)
 
@@ -4239,3 +4269,772 @@ def test_active_current_main_deep_run_blocks_merge_reconciliation(tmp_path: Path
     )
     with pytest.raises(broker.BrokerError, match="still active"):
         reconciler.reconcile_deep(NOW)
+
+
+def _publish_step(
+    name: str,
+    number: int,
+    status: str,
+    *,
+    conclusion: str | None = None,
+    started_at: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "conclusion": conclusion,
+        "name": name,
+        "number": number,
+        "started_at": started_at,
+        "status": status,
+    }
+
+
+def _publish_job(
+    *,
+    conclusion: str | None,
+    job_id: int,
+    name: str,
+    run_id: int,
+    status: str,
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "conclusion": conclusion,
+        "head_branch": "main",
+        "head_sha": HEAD_SHA,
+        "id": job_id,
+        "name": name,
+        "run_id": run_id,
+        "run_url": f"https://api.github.com/repos/{REPOSITORY}/actions/runs/{run_id}",
+        "status": status,
+        "steps": steps,
+        "workflow_name": broker.PUBLISH_WORKFLOW_NAME,
+    }
+
+
+class FakePublishLeaseApi(broker.GitHubApi):
+    def __init__(self, config: broker.BrokerConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.current_now = NOW
+        self.main_sha = HEAD_SHA
+        self.owner_id = 20
+        self.workflow_id = 9001
+        self.phase = "awaiting"
+        self.wait_started_at = "2026-08-26T12:00:00Z"
+        self.dispatch_blocker_success = True
+        self.authority_mutation: str | None = None
+        self.ambiguous_check_create = False
+        self.ambiguous_ref_delete = False
+        self.reconciliation_failed = False
+        self.refs: dict[str, str] = {}
+        self.check: dict[str, Any] | None = None
+        self.runs = [self._run(8001, 1)]
+        self.calls: list[tuple[str, str]] = []
+
+    def _actor(self) -> dict[str, Any]:
+        return {"id": self.owner_id, "login": "Miko997", "type": "User"}
+
+    def _run(self, run_id: int, run_attempt: int) -> dict[str, Any]:
+        return {
+            "actor": self._actor(),
+            "conclusion": None,
+            "created_at": "2026-08-26T11:54:00Z",
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "head_sha": HEAD_SHA,
+            "html_url": f"https://github.com/{REPOSITORY}/actions/runs/{run_id}",
+            "id": run_id,
+            "name": broker.PUBLISH_WORKFLOW_NAME,
+            "path": broker.PUBLISH_WORKFLOW_RUN_PATH,
+            "repository": {"full_name": REPOSITORY, "owner": self._actor()},
+            "run_attempt": run_attempt,
+            "run_started_at": "2026-08-26T11:55:00Z",
+            "status": "in_progress",
+            "triggering_actor": self._actor(),
+            "updated_at": "2026-08-26T12:00:00Z",
+            "url": f"https://api.github.com/repos/{REPOSITORY}/actions/runs/{run_id}",
+            "workflow_id": self.workflow_id,
+        }
+
+    def _jobs(self, run_id: int, run_attempt: int) -> list[dict[str, Any]]:
+        run = next(value for value in self.runs if value["id"] == run_id)
+        assert run["run_attempt"] == run_attempt
+        blocker_conclusion = "success" if self.dispatch_blocker_success else "failure"
+        validate = _publish_job(
+            conclusion="success" if self.dispatch_blocker_success else "failure",
+            job_id=run_id * 10 + 1,
+            name=broker.PUBLISH_VALIDATE_JOB,
+            run_id=run_id,
+            status="completed",
+            steps=[
+                _publish_step(
+                    broker.PUBLISH_DISPATCH_BLOCKER_STEP,
+                    8,
+                    "completed",
+                    conclusion=blocker_conclusion,
+                )
+            ],
+        )
+        artifact = _publish_job(
+            conclusion="success",
+            job_id=run_id * 10 + 2,
+            name=broker.PUBLISH_ARTIFACT_JOB,
+            run_id=run_id,
+            status="completed",
+            steps=[],
+        )
+        step_states = {
+            "awaiting": (
+                ("in_progress", None),
+                ("queued", None),
+                ("queued", None),
+                ("queued", None),
+            ),
+            "publishing": (
+                ("completed", "success"),
+                ("in_progress", None),
+                ("queued", None),
+                ("queued", None),
+            ),
+            "verifying": (
+                ("completed", "success"),
+                ("completed", "success"),
+                ("completed", "success"),
+                ("completed", "success"),
+            ),
+            "reconciling": (
+                ("completed", "success"),
+                ("completed", "success"),
+                ("completed", "success"),
+                ("completed", "success"),
+            ),
+        }[self.phase]
+        critical_names = (
+            broker.PUBLISH_WAIT_STEP,
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            broker.PUBLISH_REASSERT_STEP,
+            broker.PUBLISH_UPLOAD_STEP,
+        )
+        critical = [
+            _publish_step(
+                name,
+                number + 4,
+                state,
+                conclusion=conclusion,
+                started_at=self.wait_started_at if number == 1 else None,
+            )
+            for number, (name, (state, conclusion)) in enumerate(
+                zip(critical_names, step_states, strict=True), start=1
+            )
+        ]
+        publish_complete = self.phase in {"verifying", "reconciling"}
+        publish = _publish_job(
+            conclusion="success" if publish_complete else None,
+            job_id=run_id * 10 + 3,
+            name=broker.PUBLISH_JOB,
+            run_id=run_id,
+            status="completed" if publish_complete else "in_progress",
+            steps=critical,
+        )
+        if self.phase == "reconciling":
+            verify_status = "completed"
+        elif self.phase == "verifying":
+            verify_status = "in_progress"
+        else:
+            verify_status = "queued"
+        verify = _publish_job(
+            conclusion="success" if verify_status == "completed" else None,
+            job_id=run_id * 10 + 4,
+            name=broker.PUBLISH_VERIFY_JOB,
+            run_id=run_id,
+            status=verify_status,
+            steps=[],
+        )
+        reconcile_steps: list[dict[str, Any]] = []
+        reconcile_status = "queued"
+        if self.phase == "reconciling":
+            reconcile_status = "in_progress"
+            reconcile_steps = [
+                _publish_step(
+                    broker.PUBLISH_RECONCILE_GUARD_STEP,
+                    1,
+                    "completed",
+                    conclusion="success",
+                ),
+                _publish_step(
+                    broker.PUBLISH_RECONCILE_OBSERVE_STEP,
+                    2,
+                    "in_progress",
+                ),
+            ]
+        reconcile = _publish_job(
+            conclusion="failure" if self.reconciliation_failed else None,
+            job_id=run_id * 10 + 5,
+            name=broker.PUBLISH_RECONCILE_JOB,
+            run_id=run_id,
+            status="completed" if self.reconciliation_failed else reconcile_status,
+            steps=reconcile_steps,
+        )
+        return [validate, artifact, publish, verify, reconcile]
+
+    def provider_now(self, token: str) -> datetime:
+        assert token in {"settings-token", "token"}
+        return self.current_now
+
+    def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+        assert token in {"settings-token", "token"}
+        if "/rulesets?includes_parents=true" in path:
+            assert key == "items"
+            return [
+                {
+                    field: value[field]
+                    for field in ("enforcement", "id", "name", "source", "source_type", "target")
+                }
+                for value in _rulesets(self.config).values()
+            ]
+        if "actions/workflows/publish-pypi.yml/runs" in path:
+            assert key == "workflow_runs"
+            return [dict(run) for run in self.runs]
+        if "/attempts/" in path and path.endswith("/jobs"):
+            assert key == "jobs"
+            run_id = int(path.split("/runs/", 1)[1].split("/", 1)[0])
+            attempt = int(path.split("/attempts/", 1)[1].split("/", 1)[0])
+            return self._jobs(run_id, attempt)
+        if "/check-runs?" in path:
+            assert key == "check_runs"
+            return [] if self.check is None else [dict(self.check)]
+        raise AssertionError((key, path))
+
+    def request(
+        self,
+        path: str,
+        *,
+        token: str,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        expected: tuple[int, ...] = (200,),
+    ) -> broker.ApiResult:
+        assert token in {"settings-token", "token"}
+        self.calls.append((method, path))
+        if path == f"repos/{REPOSITORY}":
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "default_branch": "main",
+                    "full_name": REPOSITORY,
+                    "id": 100,
+                    "name": "metriplane",
+                    "owner": self._actor(),
+                },
+            )
+        if path == f"repos/{REPOSITORY}/actions/workflows/publish-pypi.yml":
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "id": self.workflow_id,
+                    "name": broker.PUBLISH_WORKFLOW_NAME,
+                    "path": broker.PUBLISH_WORKFLOW_PATH,
+                    "state": "active",
+                },
+            )
+        if path.startswith(f"repos/{REPOSITORY}/actions/runs/"):
+            run_id = int(path.rsplit("/", 1)[1])
+            match = next(run for run in self.runs if run["id"] == run_id)
+            return broker.ApiResult({}, 200, dict(match))
+        if "/rulesets?includes_parents=true" in path:
+            return broker.ApiResult(
+                {},
+                200,
+                [
+                    {
+                        field: value[field]
+                        for field in (
+                            "enforcement",
+                            "id",
+                            "name",
+                            "source",
+                            "source_type",
+                            "target",
+                        )
+                    }
+                    for value in _rulesets(self.config).values()
+                ],
+            )
+        if path == f"repos/{REPOSITORY}/git/ref/heads/main":
+            return broker.ApiResult(
+                {},
+                200,
+                {"object": {"sha": self.main_sha, "type": "commit"}, "ref": "refs/heads/main"},
+            )
+        if path == f"repos/{REPOSITORY}/git/matching-refs/heads/release-leases/":
+            return broker.ApiResult(
+                {},
+                200,
+                [
+                    {"object": {"sha": sha, "type": "commit"}, "ref": ref}
+                    for ref, sha in sorted(self.refs.items())
+                ],
+            )
+        if path.startswith(f"repos/{REPOSITORY}/contents/"):
+            encoded_path = path.split("/contents/", 1)[1].split("?", 1)[0]
+            authority_path = urllib.parse.unquote(encoded_path)
+            content, blob_sha = broker._local_authority_blob(authority_path)
+            if authority_path == self.authority_mutation:
+                content += b"\nmutated\n"
+                blob_sha = "f" * 40
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "content": base64.b64encode(content).decode(),
+                    "encoding": "base64",
+                    "path": authority_path,
+                    "sha": blob_sha,
+                    "size": len(content),
+                    "type": "file",
+                },
+            )
+        if "/rulesets/" in path:
+            ruleset_id = int(path.rsplit("/", 1)[1])
+            return broker.ApiResult({}, 200, _rulesets(self.config)[ruleset_id])
+        if path == f"repos/{REPOSITORY}/git/refs" and method == "POST":
+            assert payload is not None
+            ref = str(payload["ref"])
+            sha = str(payload["sha"])
+            if self.refs:
+                raise broker.ProviderError("ref exists", status=422)
+            self.refs[ref] = sha
+            return broker.ApiResult({}, 201, {"object": {"sha": sha, "type": "commit"}, "ref": ref})
+        if path.startswith(f"repos/{REPOSITORY}/git/refs/") and method == "DELETE":
+            encoded_ref = path.split("/git/refs/", 1)[1]
+            ref = "refs/" + urllib.parse.unquote(encoded_ref)
+            del self.refs[ref]
+            if self.ambiguous_ref_delete:
+                self.ambiguous_ref_delete = False
+                raise broker.ProviderTransportError("ambiguous ref deletion")
+            return broker.ApiResult({}, 204, None)
+        if path == f"repos/{REPOSITORY}/check-runs" and method == "POST":
+            assert payload is not None
+            self.check = {
+                **payload,
+                "app": {"id": self.config.app_id, "slug": self.config.app_slug},
+                "conclusion": payload.get("conclusion"),
+                "id": 7001,
+            }
+            if self.ambiguous_check_create:
+                self.ambiguous_check_create = False
+                raise broker.ProviderTransportError("ambiguous check creation")
+            return broker.ApiResult({}, 201, dict(self.check))
+        if path == f"repos/{REPOSITORY}/check-runs/7001" and method == "PATCH":
+            assert payload is not None and self.check is not None
+            self.check.update(payload)
+            return broker.ApiResult({}, 200, dict(self.check))
+        raise AssertionError((method, path, expected))
+
+
+def _publish_controller(
+    api: FakePublishLeaseApi, spool: broker.DurableSpool
+) -> broker.PublishLeaseController:
+    return broker.PublishLeaseController(
+        api=api,
+        config=api.config,
+        spool=spool,
+        token="token",
+    )
+
+
+def test_publish_lease_identity_is_the_exact_read_only_consumer_contract() -> None:
+    record = broker.PublishLeaseRecord.create(
+        release_sha=HEAD_SHA,
+        run_attempt=3,
+        run_id=8001,
+        created_at="2026-08-26T12:00:00Z",
+        expires_at="2026-08-26T14:00:00Z",
+    )
+    consumer = release_artifacts._publish_lease(REPOSITORY, HEAD_SHA, "8001", "3")
+    assert broker.APP_INTEGRATION_ID == release_artifacts.PUBLISH_BROKER_APP_ID
+    assert broker.APP_SLUG == release_artifacts.PUBLISH_BROKER_APP_SLUG
+    assert broker.PUBLISH_LEASE_CHECK == release_artifacts.PUBLISH_LEASE_CHECK_NAME
+    assert record.lease_ref == consumer.ref
+    assert record.external_id == consumer.external_id
+
+
+def test_publish_lease_activation_restart_and_successful_reconciliation(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active" and active.check_run_id == 7001
+    assert api.refs == {active.lease_ref: HEAD_SHA}
+    assert api.check is not None
+    assert api.check["external_id"] == f"metriplane-publish-lease.v1:8001:1:{HEAD_SHA}"
+    assert api.check["status"] == "in_progress"
+
+    api.phase = "reconciling"
+    restored = broker.DurableSpool(tmp_path / "spool")
+    assert not _publish_controller(api, restored).reconcile(
+        provider_now=NOW + timedelta(minutes=10),
+        settings_token="settings-token",
+    )
+    assert restored.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check["status"] == "completed"
+    assert api.check["conclusion"] == "success"
+    delete_index = next(index for index, call in enumerate(api.calls) if call[0] == "DELETE")
+    success_index = max(
+        index
+        for index, call in enumerate(api.calls)
+        if call == ("PATCH", f"repos/{REPOSITORY}/check-runs/7001")
+    )
+    assert delete_index < success_index
+
+
+def test_publish_lease_recovers_ambiguous_check_creation_after_restart(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.ambiguous_check_create = True
+    spool = broker.DurableSpool(tmp_path / "spool")
+    with pytest.raises(broker.ProviderTransportError, match="ambiguous check creation"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    creating = spool.publish_lease_fence()
+    assert creating is not None and creating.status == "creating"
+    assert api.refs == {creating.lease_ref: HEAD_SHA}
+    assert api.check is not None and api.check["status"] == "in_progress"
+
+    restored = broker.DurableSpool(tmp_path / "spool")
+    assert _publish_controller(api, restored).reconcile(
+        provider_now=NOW + timedelta(minutes=1),
+        settings_token="settings-token",
+    )
+    active = restored.publish_lease_fence()
+    assert active is not None and active.status == "active" and active.check_run_id == 7001
+
+
+def test_publish_lease_recovers_ambiguous_ref_deletion_after_restart(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    api.phase = "reconciling"
+    api.ambiguous_ref_delete = True
+    with pytest.raises(broker.ProviderTransportError, match="ambiguous ref deletion"):
+        _publish_controller(api, spool).reconcile(
+            provider_now=NOW + timedelta(minutes=10),
+            settings_token="settings-token",
+        )
+    releasing = spool.publish_lease_fence()
+    assert releasing is not None and releasing.status == "releasing"
+    assert api.refs == {}
+    assert api.check is not None and api.check["status"] == "in_progress"
+
+    restored = broker.DurableSpool(tmp_path / "spool")
+    assert not _publish_controller(api, restored).reconcile(
+        provider_now=NOW + timedelta(minutes=11),
+        settings_token="settings-token",
+    )
+    assert restored.publish_lease_fence() is None
+    assert api.check["conclusion"] == "success"
+
+
+def test_publish_lease_quarantines_when_observer_loses_ref_deletion_race(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    api.phase = "reconciling"
+    api.ambiguous_ref_delete = True
+    with pytest.raises(broker.ProviderTransportError, match="ambiguous ref deletion"):
+        _publish_controller(api, spool).reconcile(
+            provider_now=NOW + timedelta(minutes=10),
+            settings_token="settings-token",
+        )
+
+    api.reconciliation_failed = True
+    assert _publish_controller(api, broker.DurableSpool(tmp_path / "spool")).reconcile(
+        provider_now=NOW + timedelta(minutes=11),
+        settings_token="settings-token",
+    )
+    quarantined = broker.DurableSpool(tmp_path / "spool").publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {}
+    assert api.check is not None and api.check["conclusion"] == "failure"
+    assert "left reconciliation before lease release" in str(quarantined.reason)
+
+
+def test_publish_lease_expiry_quarantines_and_retains_the_ref(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    active = spool.publish_lease_fence()
+    assert active is not None
+    api.phase = "publishing"
+    api.current_now = NOW + timedelta(hours=3)
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=api.current_now,
+        settings_token="settings-token",
+    )
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {active.lease_ref: HEAD_SHA}
+    assert api.check is not None and api.check["conclusion"] == "failure"
+    assert "expired" in str(quarantined.reason)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("actor", "canonical repository owner"),
+        ("authority", "differs from deployed broker"),
+    ],
+)
+def test_publish_lease_rejects_identity_and_authority_mutation_before_provider_write(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    if mutation == "actor":
+        api.runs[0]["actor"] = {"id": 999, "login": "attacker", "type": "User"}
+    else:
+        api.authority_mutation = broker.PUBLISH_WORKFLOW_PATH
+    spool = broker.DurableSpool(tmp_path / "spool")
+    with pytest.raises(broker.BrokerError, match=message):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is None
+
+
+def test_publish_lease_rejects_failed_blocker_authority_without_provider_write(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.dispatch_blocker_success = False
+    spool = broker.DurableSpool(tmp_path / "spool")
+    assert not _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is None
+
+
+def test_publish_lease_rejects_a_future_wait_identity_before_provider_write(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.wait_started_at = "2026-08-26T12:01:00Z"
+    spool = broker.DurableSpool(tmp_path / "spool")
+    with pytest.raises(broker.BrokerError, match="wait begins in the future"):
+        _publish_controller(api, spool).reconcile(
+            provider_now=NOW,
+            settings_token="settings-token",
+        )
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is None
+
+
+def test_publish_lease_orphan_ref_revalidates_authority_before_acknowledgment(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    lease_ref = f"{broker.PUBLISH_LEASE_REF_PREFIX}8001-1"
+    api.refs[lease_ref] = HEAD_SHA
+    api.authority_mutation = broker.PUBLISH_WORKFLOW_PATH
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW,
+        settings_token="settings-token",
+    )
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {lease_ref: HEAD_SHA}
+    assert api.check is not None and api.check["conclusion"] == "failure"
+    assert "differs from deployed broker" in str(quarantined.reason)
+
+
+def test_publish_lease_rejects_two_provider_contenders_before_reservation(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.runs.append(api._run(8002, 1))
+    spool = broker.DurableSpool(tmp_path / "spool")
+    with pytest.raises(broker.BrokerError, match="multiple production runs"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is None
+
+
+def test_publish_lease_ref_or_check_mutation_keeps_the_durable_fence(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    active = spool.publish_lease_fence()
+    assert active is not None
+    api.refs[active.lease_ref] = BASE_SHA
+    with pytest.raises(broker.BrokerError, match="identities differ"):
+        _publish_controller(api, spool).reconcile(
+            provider_now=NOW + timedelta(minutes=1),
+            settings_token="settings-token",
+        )
+    assert spool.publish_lease_fence() == active
+
+    api.refs[active.lease_ref] = HEAD_SHA
+    assert api.check is not None
+    api.check["output"]["summary"] = "mutated"
+    with pytest.raises(broker.BrokerError, match="not provider-bound"):
+        _publish_controller(api, spool).reconcile(
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="settings-token",
+        )
+    assert spool.publish_lease_fence() == active
+
+
+def test_durable_publish_lease_database_serializes_racing_contenders(tmp_path: Path) -> None:
+    root = tmp_path / "spool"
+    first = broker.PublishLeaseRecord.create(
+        release_sha=HEAD_SHA,
+        run_attempt=1,
+        run_id=8001,
+        created_at="2026-08-26T12:00:00Z",
+        expires_at="2026-08-26T14:00:00Z",
+    )
+    second = broker.PublishLeaseRecord.create(
+        release_sha=HEAD_SHA,
+        run_attempt=1,
+        run_id=8002,
+        created_at="2026-08-26T12:00:00Z",
+        expires_at="2026-08-26T14:00:00Z",
+    )
+    broker.DurableSpool(root)
+
+    def contend(record: broker.PublishLeaseRecord) -> str:
+        try:
+            broker.DurableSpool(root).begin_publish_lease(record)
+        except broker.BrokerError:
+            return "blocked"
+        return "entered"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(contend, (first, second)))
+    assert sorted(outcomes) == ["blocked", "entered"]
+    fence = broker.DurableSpool(root).publish_lease_fence()
+    assert fence is not None and fence.external_id in {first.external_id, second.external_id}
+
+
+def test_durable_spool_migrates_v1_for_publish_lease_restart_state(tmp_path: Path) -> None:
+    root = tmp_path / "spool"
+    original = broker.DurableSpool(root)
+    with closing(sqlite3.connect(original.path)) as connection, connection:
+        connection.execute("DROP TABLE publish_leases")
+        connection.execute("PRAGMA user_version = 1")
+    migrated = broker.DurableSpool(root)
+    with closing(sqlite3.connect(migrated.path)) as connection:
+        version = connection.execute("PRAGMA user_version").fetchone()
+        table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'publish_leases'"
+        ).fetchone()
+    assert version == (broker.SPOOL_SCHEMA_VERSION,)
+    assert table == ("publish_leases",)
+
+
+def test_run_once_never_processes_a_pull_while_publication_is_fenced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    events: list[str] = []
+
+    class Authenticator:
+        def mint(self) -> broker.InstallationToken:
+            return broker.InstallationToken(
+                expires_at=now + timedelta(hours=1),
+                installation_id=1,
+                token="token",
+            )
+
+    class Api(broker.GitHubApi):
+        def provider_now(self, token: str) -> datetime:
+            assert token == "token"
+            return now
+
+    class Checks:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def ensure_failed(self, *, head_sha: str, reason: str) -> int:
+            assert head_sha == HEAD_SHA and reason
+            return 1
+
+    class Leases:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def reconcile(self, *, provider_now: datetime, settings_token: str) -> bool:
+            assert provider_now == now and settings_token == "token"
+            events.append("lease-fenced")
+            return True
+
+    class State:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+    class Health:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def reconcile_main(self, provider_now: datetime) -> None:
+            assert provider_now == now
+
+        def reconcile_deep(self, provider_now: datetime) -> None:
+            assert provider_now == now
+
+    service = broker.Broker(
+        api=Api(),
+        authenticator=Authenticator(),  # type: ignore[arg-type]
+        config=_config(tmp_path),
+        settings_authenticator=Authenticator(),  # type: ignore[arg-type]
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+    monkeypatch.setattr(service, "_reconcile_orphans", lambda _token: [])
+    monkeypatch.setattr(service, "_reconcile_repair", lambda **_values: {})
+    monkeypatch.setattr(
+        service,
+        "_process_pull",
+        lambda **_values: pytest.fail("pull processing ran while publication was fenced"),
+    )
+    monkeypatch.setattr(
+        broker,
+        "_provider_list",
+        lambda *_args, **_kwargs: [{"head": {"sha": HEAD_SHA}, "number": 81}],
+    )
+    monkeypatch.setattr(broker, "CheckController", Checks)
+    monkeypatch.setattr(broker, "PublishLeaseController", Leases)
+    monkeypatch.setattr(broker, "StateBranch", State)
+    monkeypatch.setattr(broker, "HealthReconciler", Health)
+    monkeypatch.setattr(broker, "_rulesets", lambda *_args, **_kwargs: _rulesets(_config(tmp_path)))
+    monkeypatch.setattr(broker, "validate_hosted_rulesets", lambda **_values: {})
+
+    assert service.run_once() == []
+    assert events == ["lease-fenced", "lease-fenced"]

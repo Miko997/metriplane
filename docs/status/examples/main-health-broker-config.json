@@ -7,6 +7,7 @@
   "main_update_ruleset_id": 0,
   "max_clock_skew_seconds": 30,
   "poll_seconds": 60,
+  "release_lease_ruleset_id": 0,
   "repository": "Miko997/metriplane",
   "settings_app_id": 0,
   "settings_app_slug": "metriplane-ruleset-witness",

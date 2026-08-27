@@ -46,6 +46,34 @@ MERGE_READINESS_TIMEOUT_SECONDS = 60
 MERGE_READINESS_LEASE_MARGIN_SECONDS = 120
 MERGE_READINESS_MAX_ATTEMPTS = 31
 MAIN_HEALTH_CHECK = "Main health / required"
+PUBLISH_LEASE_CHECK = "Release serialization / required"
+PUBLISH_LEASE_REF_PREFIX = "refs/heads/release-leases/pypi-"
+PUBLISH_LEASE_REF_GLOB = "refs/heads/release-leases/**"
+PUBLISH_LEASE_EXTERNAL_PREFIX = "metriplane-publish-lease.v1"
+PUBLISH_WORKFLOW_PATH = ".github/workflows/publish-pypi.yml"
+PUBLISH_WORKFLOW_RUN_PATH = f"{PUBLISH_WORKFLOW_PATH}@{MAIN_BRANCH}"
+PUBLISH_WORKFLOW_NAME = "Publish Python distributions"
+PUBLISH_REQUEST_MAX_AGE = timedelta(hours=2)
+PUBLISH_AUTHORITY_PATHS = (
+    PUBLISH_WORKFLOW_PATH,
+    "schemas/metriplane.blockers.v1.schema.json",
+    "tools/check_blockers.py",
+    "tools/release_artifacts.py",
+)
+PUBLISH_VALIDATE_JOB = "Validate explicit production-promotion request"
+PUBLISH_ARTIFACT_JOB = "Reverify artifacts before production approval"
+PUBLISH_JOB = "Publish the verified artifacts to PyPI"
+PUBLISH_VERIFY_JOB = "Verify production artifact identity and installation"
+PUBLISH_RECONCILE_JOB = "Observe production main-update lease reconciliation"
+PUBLISH_DISPATCH_BLOCKER_STEP = "Revalidate release blockers at production dispatch"
+PUBLISH_WAIT_STEP = "Wait for the App-owned main-update lease"
+PUBLISH_FENCED_BLOCKER_STEP = "Revalidate release blockers while main updates are fenced"
+PUBLISH_REASSERT_STEP = "Reassert the lease and exact main immediately before publish"
+PUBLISH_UPLOAD_STEP = "Publish the verified distributions to PyPI"
+PUBLISH_RECONCILE_GUARD_STEP = "Retain the lease after any ambiguous or failed publication"
+PUBLISH_RECONCILE_OBSERVE_STEP = "Observe exact main and the broker's terminal reconciliation"
+PROVIDER_ACTION_STATUSES = {"completed", "in_progress", "pending", "queued", "requested", "waiting"}
+PROVIDER_PENDING_ACTION_STATUSES = PROVIDER_ACTION_STATUSES - {"completed"}
 CORE_CHECKS = (
     "Metriplane / required",
     "Documentation / required",
@@ -62,8 +90,18 @@ SETTINGS_TOKEN_PERMISSIONS = {
     "administration": "write",
     "metadata": "read",
 }
-SPOOL_SCHEMA_VERSION = 1
+SPOOL_SCHEMA_VERSION = 2
 REQUEST_STATUSES = {"merged", "merging", "rejected", "uncertain"}
+PUBLISH_LEASE_STATUSES = {
+    "abandoned",
+    "active",
+    "creating",
+    "quarantined",
+    "released",
+    "releasing",
+}
+PUBLISH_LEASE_FENCE_STATUSES = {"active", "creating", "quarantined", "releasing"}
+PUBLISH_LEASE_TERMINAL_STATUSES = {"abandoned", "released"}
 REQUEST_MARKER = "metriplane-merge-request:v1"
 APPROVAL_MARKER = "metriplane-merge-approval:v1"
 REPAIR_REQUEST_MARKER = "metriplane-repair-request:v1"
@@ -138,6 +176,7 @@ CONFIG_FIELDS = {
     "main_update_ruleset_id",
     "max_clock_skew_seconds",
     "poll_seconds",
+    "release_lease_ruleset_id",
     "repository",
     "settings_app_id",
     "settings_app_slug",
@@ -147,6 +186,7 @@ CONFIG_FIELDS = {
     "state_root",
     "state_writer_ruleset_id",
 }
+GOVERNED_RULESET_COUNT = 6
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 NONCE_RE = re.compile(r"[0-9a-f]{32}")
@@ -269,6 +309,7 @@ class BrokerConfig:
     main_update_ruleset_id: int
     max_clock_skew_seconds: int
     poll_seconds: int
+    release_lease_ruleset_id: int
     repository: str
     settings_app_id: int
     settings_app_slug: str
@@ -343,6 +384,9 @@ class BrokerConfig:
             ),
             max_clock_skew_seconds=max_clock_skew,
             poll_seconds=poll_seconds,
+            release_lease_ruleset_id=_require_positive_int(
+                value["release_lease_ruleset_id"], "release_lease_ruleset_id"
+            ),
             repository=repository,
             settings_app_id=settings_app_id,
             settings_app_slug=settings_app_slug,
@@ -356,6 +400,80 @@ class BrokerConfig:
                 value["state_writer_ruleset_id"], "state_writer_ruleset_id"
             ),
         )
+
+
+@dataclass(frozen=True)
+class PublishLeaseRecord:
+    check_run_id: int | None
+    created_at: str
+    expires_at: str
+    external_id: str
+    lease_ref: str
+    reason: str | None
+    release_sha: str
+    run_attempt: int
+    run_id: int
+    status: str
+    updated_at: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        release_sha: str,
+        run_attempt: int,
+        run_id: int,
+        created_at: str,
+        expires_at: str,
+    ) -> PublishLeaseRecord:
+        release_sha = _require_sha(release_sha, "publish-lease release SHA")
+        run_id = _require_positive_int(run_id, "publish-lease run ID")
+        run_attempt = _require_positive_int(run_attempt, "publish-lease run attempt")
+        lease_ref = f"{PUBLISH_LEASE_REF_PREFIX}{run_id}-{run_attempt}"
+        external_id = f"{PUBLISH_LEASE_EXTERNAL_PREFIX}:{run_id}:{run_attempt}:{release_sha}"
+        record = cls(
+            check_run_id=None,
+            created_at=created_at,
+            expires_at=expires_at,
+            external_id=external_id,
+            lease_ref=lease_ref,
+            reason=None,
+            release_sha=release_sha,
+            run_attempt=run_attempt,
+            run_id=run_id,
+            status="creating",
+            updated_at=created_at,
+        )
+        _validate_publish_lease_record(record)
+        return record
+
+
+def _validate_publish_lease_record(record: PublishLeaseRecord) -> None:
+    _require_sha(record.release_sha, "publish-lease release SHA")
+    _require_positive_int(record.run_id, "publish-lease run ID")
+    _require_positive_int(record.run_attempt, "publish-lease run attempt")
+    expected_ref = f"{PUBLISH_LEASE_REF_PREFIX}{record.run_id}-{record.run_attempt}"
+    expected_external = (
+        f"{PUBLISH_LEASE_EXTERNAL_PREFIX}:{record.run_id}:{record.run_attempt}:{record.release_sha}"
+    )
+    if record.lease_ref != expected_ref or record.external_id != expected_external:
+        raise BrokerError("durable publish-lease identity is inconsistent")
+    if record.status not in PUBLISH_LEASE_STATUSES:
+        raise BrokerError("durable publish-lease status is invalid")
+    created_at = _timestamp(record.created_at)
+    expires_at = _timestamp(record.expires_at)
+    updated_at = _timestamp(record.updated_at)
+    if expires_at <= created_at or updated_at < created_at:
+        raise BrokerError("durable publish-lease timestamps are invalid")
+    if record.check_run_id is not None:
+        _require_positive_int(record.check_run_id, "publish-lease check-run ID")
+    if record.status in {"active", "released", "releasing"} and record.check_run_id is None:
+        raise BrokerError("durable publish-lease check-run identity is missing")
+    if record.status in {"abandoned", "quarantined"}:
+        if not isinstance(record.reason, str) or not record.reason:
+            raise BrokerError("durable publish-lease terminal reason is missing")
+    elif record.reason is not None:
+        raise BrokerError("durable publish-lease reason is unexpected")
 
 
 @dataclass(frozen=True)
@@ -716,6 +834,26 @@ class DurableSpool:
                     name TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS publish_leases (
+                    external_id TEXT PRIMARY KEY,
+                    run_id INTEGER NOT NULL,
+                    run_attempt INTEGER NOT NULL,
+                    release_sha TEXT NOT NULL,
+                    lease_ref TEXT NOT NULL,
+                    check_run_id INTEGER,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    reason TEXT,
+                    fence_slot INTEGER
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS publish_leases_run_identity
+                    ON publish_leases(run_id, run_attempt);
+                CREATE UNIQUE INDEX IF NOT EXISTS publish_leases_ref_identity
+                    ON publish_leases(lease_ref);
+                CREATE UNIQUE INDEX IF NOT EXISTS publish_leases_single_fence
+                    ON publish_leases(fence_slot);
                 """
             )
             self._validate_schema(connection)
@@ -724,7 +862,7 @@ class DurableSpool:
     @staticmethod
     def _validate_schema(connection: sqlite3.Connection) -> None:
         version_row = connection.execute("PRAGMA user_version").fetchone()
-        if version_row is None or int(version_row[0]) not in {0, SPOOL_SCHEMA_VERSION}:
+        if version_row is None or int(version_row[0]) not in {0, 1, SPOOL_SCHEMA_VERSION}:
             raise BrokerError("durable spool schema version is incompatible")
         expected_columns = {
             "check_runs": (
@@ -745,6 +883,20 @@ class DurableSpool:
                 ("name", "TEXT", False, True),
                 ("value", "TEXT", True, False),
             ),
+            "publish_leases": (
+                ("external_id", "TEXT", False, True),
+                ("run_id", "INTEGER", True, False),
+                ("run_attempt", "INTEGER", True, False),
+                ("release_sha", "TEXT", True, False),
+                ("lease_ref", "TEXT", True, False),
+                ("check_run_id", "INTEGER", False, False),
+                ("status", "TEXT", True, False),
+                ("created_at", "TEXT", True, False),
+                ("expires_at", "TEXT", True, False),
+                ("updated_at", "TEXT", True, False),
+                ("reason", "TEXT", False, False),
+                ("fence_slot", "INTEGER", False, False),
+            ),
         }
         for table, expected in expected_columns.items():
             rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
@@ -762,7 +914,36 @@ class DurableSpool:
             unique_request_columns.add(tuple(str(row[2]) for row in columns))
         if ("nonce",) not in unique_request_columns:
             raise BrokerError("durable spool nonce uniqueness is missing")
-        if int(version_row[0]) == 0:
+        publish_indexes: set[tuple[str, ...]] = set()
+        for index in connection.execute("PRAGMA index_list(publish_leases)").fetchall():
+            if not bool(index[2]):
+                continue
+            index_name = '"' + str(index[1]).replace('"', '""') + '"'
+            columns = connection.execute(f"PRAGMA index_info({index_name})").fetchall()
+            publish_indexes.add(tuple(str(row[2]) for row in columns))
+        if (
+            not {
+                ("fence_slot",),
+                ("lease_ref",),
+                ("run_id", "run_attempt"),
+            }
+            <= publish_indexes
+        ):
+            raise BrokerError("durable publish-lease uniqueness is missing")
+        rows = connection.execute(
+            """
+            SELECT external_id, run_id, run_attempt, release_sha, lease_ref,
+                   check_run_id, status, created_at, expires_at, updated_at,
+                   reason, fence_slot
+            FROM publish_leases
+            """
+        ).fetchall()
+        for row in rows:
+            record = DurableSpool._publish_lease_from_row(row[:-1])
+            expected_slot = 1 if record.status in PUBLISH_LEASE_FENCE_STATUSES else None
+            if row[-1] != expected_slot:
+                raise BrokerError("durable publish-lease fence slot is invalid")
+        if int(version_row[0]) != SPOOL_SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {SPOOL_SCHEMA_VERSION}")
 
     @contextmanager
@@ -922,6 +1103,143 @@ class DurableSpool:
                 (name, value),
             )
 
+    @staticmethod
+    def _publish_lease_from_row(row: tuple[Any, ...]) -> PublishLeaseRecord:
+        if len(row) != 11:
+            raise BrokerError("durable publish-lease row is malformed")
+        record = PublishLeaseRecord(
+            external_id=str(row[0]),
+            run_id=int(row[1]),
+            run_attempt=int(row[2]),
+            release_sha=str(row[3]),
+            lease_ref=str(row[4]),
+            check_run_id=None if row[5] is None else int(row[5]),
+            status=str(row[6]),
+            created_at=str(row[7]),
+            expires_at=str(row[8]),
+            updated_at=str(row[9]),
+            reason=None if row[10] is None else str(row[10]),
+        )
+        _validate_publish_lease_record(record)
+        return record
+
+    def publish_lease_fence(self) -> PublishLeaseRecord | None:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT external_id, run_id, run_attempt, release_sha, lease_ref,
+                       check_run_id, status, created_at, expires_at, updated_at, reason
+                FROM publish_leases WHERE fence_slot = 1
+                """
+            ).fetchall()
+        if len(rows) > 1:
+            raise BrokerError("durable spool contains concurrent publish leases")
+        return None if not rows else self._publish_lease_from_row(rows[0])
+
+    def begin_publish_lease(self, record: PublishLeaseRecord) -> PublishLeaseRecord:
+        _validate_publish_lease_record(record)
+        if record.status != "creating" or record.check_run_id is not None:
+            raise BrokerError("new durable publish lease must begin in creating state")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing_fence = connection.execute(
+                "SELECT external_id FROM publish_leases WHERE fence_slot = 1"
+            ).fetchone()
+            if existing_fence is not None:
+                raise BrokerError("another durable publish lease already owns the fence")
+            connection.execute(
+                """
+                INSERT INTO publish_leases(
+                    external_id, run_id, run_attempt, release_sha, lease_ref,
+                    check_run_id, status, created_at, expires_at, updated_at,
+                    reason, fence_slot
+                ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, 1)
+                """,
+                (
+                    record.external_id,
+                    record.run_id,
+                    record.run_attempt,
+                    record.release_sha,
+                    record.lease_ref,
+                    record.status,
+                    record.created_at,
+                    record.expires_at,
+                    record.updated_at,
+                ),
+            )
+        return record
+
+    def transition_publish_lease(
+        self,
+        *,
+        external_id: str,
+        status: str,
+        updated_at: str,
+        check_run_id: int | None = None,
+        reason: str | None = None,
+    ) -> PublishLeaseRecord:
+        transitions = {
+            "creating": {"abandoned", "active", "creating", "quarantined", "releasing"},
+            "active": {"active", "quarantined", "releasing"},
+            "quarantined": {"quarantined"},
+            "releasing": {"quarantined", "released", "releasing"},
+        }
+        if status not in PUBLISH_LEASE_STATUSES:
+            raise BrokerError("durable publish-lease status is invalid")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT external_id, run_id, run_attempt, release_sha, lease_ref,
+                       check_run_id, status, created_at, expires_at, updated_at, reason
+                FROM publish_leases WHERE external_id = ?
+                """,
+                (external_id,),
+            ).fetchone()
+            if row is None:
+                raise BrokerError("durable publish lease is missing")
+            old = self._publish_lease_from_row(row)
+            if old.status in PUBLISH_LEASE_TERMINAL_STATUSES:
+                if status != old.status or check_run_id not in {None, old.check_run_id}:
+                    raise BrokerError("durable publish-lease status is terminal")
+                return old
+            if status not in transitions[old.status]:
+                raise BrokerError("durable publish-lease transition is invalid")
+            next_check_id = old.check_run_id if check_run_id is None else check_run_id
+            if old.check_run_id is not None and next_check_id != old.check_run_id:
+                raise BrokerError("durable publish-lease check identity changed")
+            next_record = PublishLeaseRecord(
+                check_run_id=next_check_id,
+                created_at=old.created_at,
+                expires_at=old.expires_at,
+                external_id=old.external_id,
+                lease_ref=old.lease_ref,
+                reason=reason,
+                release_sha=old.release_sha,
+                run_attempt=old.run_attempt,
+                run_id=old.run_id,
+                status=status,
+                updated_at=updated_at,
+            )
+            _validate_publish_lease_record(next_record)
+            fence_slot = 1 if status in PUBLISH_LEASE_FENCE_STATUSES else None
+            connection.execute(
+                """
+                UPDATE publish_leases
+                SET check_run_id = ?, status = ?, updated_at = ?, reason = ?, fence_slot = ?
+                WHERE external_id = ?
+                """,
+                (
+                    next_record.check_run_id,
+                    status,
+                    updated_at,
+                    reason,
+                    fence_slot,
+                    external_id,
+                ),
+            )
+        return next_record
+
 
 def _ruleset_view(value: dict[str, Any]) -> dict[str, Any]:
     required = {
@@ -1022,6 +1340,19 @@ def _state_protection_ruleset(state_branch: str) -> dict[str, Any]:
     }
 
 
+def _release_lease_ruleset() -> dict[str, Any]:
+    return {
+        "bypass_actors": [
+            {"actor_id": APP_INTEGRATION_ID, "actor_type": "Integration", "bypass_mode": "always"}
+        ],
+        "conditions": {"ref_name": {"exclude": [], "include": [PUBLISH_LEASE_REF_GLOB]}},
+        "enforcement": "active",
+        "name": "Restrict release lease writers",
+        "rules": [{"type": "creation"}, {"type": "update"}, {"type": "deletion"}],
+        "target": "branch",
+    }
+
+
 def validate_hosted_rulesets(
     *, config: BrokerConfig, rulesets: dict[int, dict[str, Any]]
 ) -> dict[str, str]:
@@ -1040,6 +1371,7 @@ def validate_hosted_rulesets(
                 include=[f"refs/heads/{config.state_branch}"],
             )
         ),
+        config.release_lease_ruleset_id: _provider_ruleset(_release_lease_ruleset()),
     }
     if set(rulesets) != set(expected):
         raise BrokerError("live ruleset ID inventory is not exact")
@@ -1153,7 +1485,7 @@ def _validate_owner_request_bindings(
     ruleset_digests = value["ruleset_digests"]
     if (
         not isinstance(ruleset_digests, dict)
-        or len(ruleset_digests) != 5
+        or len(ruleset_digests) != GOVERNED_RULESET_COUNT
         or not all(
             isinstance(identifier, str)
             and re.fullmatch(r"[1-9][0-9]*", identifier) is not None
@@ -1321,7 +1653,7 @@ def _validate_owner_context(context: dict[str, Any], *, repair: bool) -> None:
     ruleset_digests = context.get("ruleset_digests")
     if (
         not isinstance(ruleset_digests, dict)
-        or len(ruleset_digests) != 5
+        or len(ruleset_digests) != GOVERNED_RULESET_COUNT
         or not all(
             isinstance(identifier, str)
             and re.fullmatch(r"[1-9][0-9]*", identifier) is not None
@@ -2537,7 +2869,7 @@ def _check_runs(
     )
 
 
-def _validate_runtime_repository(api: GitHubApi, *, config: BrokerConfig, token: str) -> None:
+def _validate_runtime_repository(api: GitHubApi, *, config: BrokerConfig, token: str) -> int:
     result = api.request(f"repos/{config.repository}", token=token)
     value = result.value
     if not isinstance(value, dict):
@@ -2556,6 +2888,7 @@ def _validate_runtime_repository(api: GitHubApi, *, config: BrokerConfig, token:
         or owner.get("type") != "User"
     ):
         raise BrokerError("runtime repository identity or default branch is not canonical")
+    return _require_positive_int(owner.get("id"), "runtime repository owner ID")
 
 
 def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, dict[str, Any]]:
@@ -2566,6 +2899,7 @@ def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, 
         config.main_update_ruleset_id,
         config.state_protection_ruleset_id,
         config.state_writer_ruleset_id,
+        config.release_lease_ruleset_id,
     )
     if len(set(identifiers)) != len(identifiers):
         raise BrokerError("governed ruleset IDs are not distinct")
@@ -2595,6 +2929,1249 @@ def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, 
                 raise BrokerError(f"ruleset {identifier} inventory and detail {field} differ")
         values[identifier] = result.value
     return values
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _local_authority_blob(path: str) -> tuple[bytes, str]:
+    root = Path(__file__).resolve().parents[1]
+    candidate = root / path
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise BrokerError(f"local publish authority path is invalid: {path}") from exc
+    if candidate.is_symlink() or not resolved.is_file():
+        raise BrokerError(f"local publish authority path is not a regular file: {path}")
+    try:
+        content = resolved.read_bytes()
+    except OSError as exc:
+        raise BrokerError(f"cannot read local publish authority path: {path}") from exc
+    header = f"blob {len(content)}\0".encode()
+    blob_sha = hashlib.sha1(header + content, usedforsecurity=False).hexdigest()
+    return content, blob_sha
+
+
+def _validate_publish_authority(
+    api: GitHubApi,
+    *,
+    config: BrokerConfig,
+    release_sha: str,
+    token: str,
+) -> dict[str, str]:
+    release_sha = _require_sha(release_sha, "publish authority release SHA")
+    digests: dict[str, str] = {}
+    for path in PUBLISH_AUTHORITY_PATHS:
+        local_content, local_blob_sha = _local_authority_blob(path)
+        encoded_path = urllib.parse.quote(path, safe="/")
+        query = urllib.parse.urlencode({"ref": release_sha})
+        result = api.request(
+            f"repos/{config.repository}/contents/{encoded_path}?{query}",
+            token=token,
+        )
+        value = result.value
+        if not isinstance(value, dict):
+            raise BrokerError(f"provider publish authority is malformed: {path}")
+        encoded_content = value.get("content")
+        if not isinstance(encoded_content, str):
+            raise BrokerError(f"provider publish authority content is missing: {path}")
+        try:
+            provider_content = base64.b64decode(
+                "".join(encoded_content.splitlines()).encode("ascii"), validate=True
+            )
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise BrokerError(f"provider publish authority content is invalid: {path}") from exc
+        if (
+            value.get("type") != "file"
+            or value.get("path") != path
+            or value.get("sha") != local_blob_sha
+            or value.get("size") != len(local_content)
+            or value.get("encoding") != "base64"
+            or provider_content != local_content
+        ):
+            raise BrokerError(f"provider publish authority differs from deployed broker: {path}")
+        digests[path] = hashlib.sha256(local_content).hexdigest()
+    return digests
+
+
+def _require_owner_actor(value: Any, *, label: str, owner_id: int) -> None:
+    if not isinstance(value, dict):
+        raise BrokerError(f"{label} is malformed")
+    if (
+        value.get("id") != owner_id
+        or value.get("login") != REPOSITORY_OWNER
+        or value.get("type") != "User"
+    ):
+        raise BrokerError(f"{label} is not the canonical repository owner")
+
+
+def _validate_publish_workflow(api: GitHubApi, *, config: BrokerConfig, token: str) -> int:
+    result = api.request(
+        f"repos/{config.repository}/actions/workflows/publish-pypi.yml",
+        token=token,
+    )
+    value = result.value
+    if not isinstance(value, dict):
+        raise BrokerError("production workflow identity is malformed")
+    workflow_id = _require_positive_int(value.get("id"), "production workflow ID")
+    if (
+        value.get("name") != PUBLISH_WORKFLOW_NAME
+        or value.get("path") != PUBLISH_WORKFLOW_PATH
+        or value.get("state") != "active"
+    ):
+        raise BrokerError("production workflow identity is not canonical and active")
+    return workflow_id
+
+
+def _publish_run_identity(
+    run: dict[str, Any],
+    *,
+    config: BrokerConfig,
+    main_sha: str,
+    owner_id: int,
+    workflow_id: int,
+) -> tuple[int, int, datetime]:
+    run_id = _require_positive_int(run.get("id"), "production workflow run ID")
+    run_attempt = _require_positive_int(run.get("run_attempt"), "production workflow run attempt")
+    head_sha = _require_sha(run.get("head_sha"), "production workflow head SHA")
+    repository = run.get("repository")
+    if not isinstance(repository, dict):
+        raise BrokerError("production workflow repository identity is malformed")
+    repository_owner = repository.get("owner")
+    if not isinstance(repository_owner, dict):
+        raise BrokerError("production workflow repository owner is malformed")
+    _require_owner_actor(
+        repository_owner, label="production workflow repository owner", owner_id=owner_id
+    )
+    if (
+        run.get("name") != PUBLISH_WORKFLOW_NAME
+        or run.get("path") != PUBLISH_WORKFLOW_RUN_PATH
+        or run.get("workflow_id") != workflow_id
+        or run.get("event") != "workflow_dispatch"
+        or run.get("head_branch") != MAIN_BRANCH
+        or head_sha != main_sha
+        or repository.get("full_name") != config.repository
+        or run.get("url")
+        != f"https://api.github.com/repos/{config.repository}/actions/runs/{run_id}"
+        or run.get("html_url") != f"https://github.com/{config.repository}/actions/runs/{run_id}"
+    ):
+        raise BrokerError("production workflow run identity is not canonical")
+    _require_owner_actor(run.get("actor"), label="production workflow actor", owner_id=owner_id)
+    _require_owner_actor(
+        run.get("triggering_actor"),
+        label="production workflow triggering actor",
+        owner_id=owner_id,
+    )
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    if status not in PROVIDER_ACTION_STATUSES:
+        raise BrokerError("production workflow run status is invalid")
+    if (status == "completed") != isinstance(conclusion, str):
+        raise BrokerError("production workflow run conclusion is inconsistent")
+    started_raw = run.get("run_started_at")
+    created_raw = run.get("created_at")
+    updated_raw = run.get("updated_at")
+    if not all(isinstance(value, str) for value in (started_raw, created_raw, updated_raw)):
+        raise BrokerError("production workflow run timestamps are malformed")
+    assert (
+        isinstance(started_raw, str)
+        and isinstance(created_raw, str)
+        and isinstance(updated_raw, str)
+    )
+    started_at = _timestamp(started_raw)
+    created_at = _timestamp(created_raw)
+    updated_at = _timestamp(updated_raw)
+    if created_at > started_at or updated_at < started_at:
+        raise BrokerError("production workflow run timestamps are inconsistent")
+    return run_id, run_attempt, started_at
+
+
+def _publish_jobs(
+    api: GitHubApi,
+    *,
+    config: BrokerConfig,
+    lease: PublishLeaseRecord,
+    token: str,
+) -> list[dict[str, Any]]:
+    jobs = api.list_items(
+        (
+            f"repos/{config.repository}/actions/runs/{lease.run_id}/attempts/"
+            f"{lease.run_attempt}/jobs"
+        ),
+        key="jobs",
+        token=token,
+    )
+    seen_ids: set[int] = set()
+    for job in jobs:
+        job_id = _require_positive_int(job.get("id"), "production workflow job ID")
+        if job_id in seen_ids:
+            raise BrokerError("production workflow job inventory contains duplicate IDs")
+        seen_ids.add(job_id)
+        if (
+            job.get("run_id") != lease.run_id
+            or job.get("run_url")
+            != f"https://api.github.com/repos/{config.repository}/actions/runs/{lease.run_id}"
+            or job.get("head_sha") != lease.release_sha
+            or job.get("head_branch") != MAIN_BRANCH
+            or job.get("workflow_name") != PUBLISH_WORKFLOW_NAME
+            or not isinstance(job.get("name"), str)
+            or job.get("status") not in PROVIDER_ACTION_STATUSES
+        ):
+            raise BrokerError("production workflow job identity is malformed")
+        status = job["status"]
+        if (status == "completed") != isinstance(job.get("conclusion"), str):
+            raise BrokerError("production workflow job conclusion is inconsistent")
+    return jobs
+
+
+def _named_publish_job(
+    jobs: list[dict[str, Any]], name: str, *, required: bool = True
+) -> dict[str, Any] | None:
+    matches = [job for job in jobs if job.get("name") == name]
+    if len(matches) > 1 or (required and len(matches) != 1):
+        raise BrokerError(f"production workflow job identity is not unique: {name}")
+    return matches[0] if matches else None
+
+
+def _named_publish_step(job: dict[str, Any], name: str) -> dict[str, Any]:
+    raw_steps = job.get("steps")
+    if not isinstance(raw_steps, list) or not all(isinstance(step, dict) for step in raw_steps):
+        raise BrokerError(f"production workflow job steps are malformed: {job.get('name')}")
+    steps: list[dict[str, Any]] = [step for step in raw_steps if isinstance(step, dict)]
+    numbers: set[int] = set()
+    for step in steps:
+        number = _require_positive_int(step.get("number"), "production workflow step number")
+        if number in numbers:
+            raise BrokerError("production workflow step inventory contains duplicate numbers")
+        numbers.add(number)
+        status = step.get("status")
+        if status not in {"completed", "in_progress", "queued"}:
+            raise BrokerError("production workflow step status is invalid")
+        if (status == "completed") != isinstance(step.get("conclusion"), str):
+            raise BrokerError("production workflow step conclusion is inconsistent")
+    matches = [step for step in steps if step.get("name") == name]
+    if len(matches) != 1:
+        raise BrokerError(f"production workflow step identity is not unique: {name}")
+    return matches[0]
+
+
+def _completed_success(value: dict[str, Any]) -> bool:
+    return value.get("status") == "completed" and value.get("conclusion") == "success"
+
+
+def _publish_phase(jobs: list[dict[str, Any]]) -> tuple[str, datetime | None]:
+    validate_job = _named_publish_job(jobs, PUBLISH_VALIDATE_JOB)
+    artifact_job = _named_publish_job(jobs, PUBLISH_ARTIFACT_JOB)
+    publish_job = _named_publish_job(jobs, PUBLISH_JOB)
+    assert validate_job is not None and artifact_job is not None and publish_job is not None
+    blocker_dispatch = _named_publish_step(validate_job, PUBLISH_DISPATCH_BLOCKER_STEP)
+    prerequisites = (validate_job, artifact_job, blocker_dispatch)
+    if any(
+        item.get("status") == "completed" and not _completed_success(item) for item in prerequisites
+    ):
+        return "failed", None
+    if not all(_completed_success(item) for item in prerequisites):
+        return "not_ready", None
+
+    wait_step = _named_publish_step(publish_job, PUBLISH_WAIT_STEP)
+    blocker_step = _named_publish_step(publish_job, PUBLISH_FENCED_BLOCKER_STEP)
+    reassert_step = _named_publish_step(publish_job, PUBLISH_REASSERT_STEP)
+    upload_step = _named_publish_step(publish_job, PUBLISH_UPLOAD_STEP)
+    ordered_steps = (wait_step, blocker_step, reassert_step, upload_step)
+    if any(
+        item.get("status") == "completed" and not _completed_success(item) for item in ordered_steps
+    ):
+        return "failed", None
+    started_raw = wait_step.get("started_at")
+    wait_started = _timestamp(started_raw) if isinstance(started_raw, str) else None
+    if (
+        publish_job.get("status") == "in_progress"
+        and wait_step.get("status") == "in_progress"
+        and all(step.get("status") == "queued" for step in ordered_steps[1:])
+    ):
+        if wait_started is None:
+            raise BrokerError("production publish-lease wait step has no start time")
+        return "awaiting", wait_started
+
+    if not _completed_success(wait_step):
+        if publish_job.get("status") == "completed":
+            return "failed", wait_started
+        return "not_ready", wait_started
+
+    ranks = {"queued": 0, "in_progress": 1, "completed": 2}
+    ordered_ranks = [ranks[str(step["status"])] for step in ordered_steps]
+    if ordered_ranks != sorted(ordered_ranks, reverse=True):
+        raise BrokerError("production publication steps are not monotonic")
+    if sum(step.get("status") == "in_progress" for step in ordered_steps) > 1:
+        raise BrokerError("production publication has concurrent critical steps")
+    if publish_job.get("status") == "in_progress":
+        return "publishing", wait_started
+    if not _completed_success(publish_job):
+        return "failed", wait_started
+    if not all(_completed_success(step) for step in ordered_steps):
+        raise BrokerError("successful production job omits a successful fenced publication step")
+
+    verify_job = _named_publish_job(jobs, PUBLISH_VERIFY_JOB, required=False)
+    if verify_job is None or verify_job.get("status") in PROVIDER_PENDING_ACTION_STATUSES:
+        return "verifying", wait_started
+    if not _completed_success(verify_job):
+        return "failed", wait_started
+    reconcile_job = _named_publish_job(jobs, PUBLISH_RECONCILE_JOB, required=False)
+    if reconcile_job is None or reconcile_job.get("status") in (
+        PROVIDER_PENDING_ACTION_STATUSES - {"in_progress"}
+    ):
+        return "verifying", wait_started
+    if reconcile_job.get("status") == "completed":
+        return ("completed" if _completed_success(reconcile_job) else "failed"), wait_started
+    guard_step = _named_publish_step(reconcile_job, PUBLISH_RECONCILE_GUARD_STEP)
+    observe_step = _named_publish_step(reconcile_job, PUBLISH_RECONCILE_OBSERVE_STEP)
+    if _completed_success(guard_step) and observe_step.get("status") == "in_progress":
+        return "reconciling", wait_started
+    if guard_step.get("status") == "completed" and not _completed_success(guard_step):
+        return "failed", wait_started
+    if (
+        guard_step.get("status") in {"queued", "in_progress"}
+        and observe_step.get("status") == "queued"
+    ):
+        return "verifying", wait_started
+    raise BrokerError("production reconciliation steps are not monotonic")
+
+
+def _publish_lease_refs(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[str, str]:
+    result = api.request(
+        f"repos/{config.repository}/git/matching-refs/heads/release-leases/",
+        token=token,
+    )
+    if not isinstance(result.value, list) or not all(
+        isinstance(item, dict) for item in result.value
+    ):
+        raise BrokerError("provider publish-lease ref inventory is malformed")
+    refs: dict[str, str] = {}
+    pattern = re.compile(rf"{re.escape(PUBLISH_LEASE_REF_PREFIX)}[1-9][0-9]*-[1-9][0-9]*")
+    for item in result.value:
+        ref = item.get("ref")
+        provider_object = item.get("object")
+        if (
+            not isinstance(ref, str)
+            or pattern.fullmatch(ref) is None
+            or not isinstance(provider_object, dict)
+            or provider_object.get("type") != "commit"
+        ):
+            raise BrokerError("provider publish-lease ref identity is malformed")
+        sha = _require_sha(provider_object.get("sha"), "provider publish-lease ref SHA")
+        if ref in refs:
+            raise BrokerError("provider publish-lease ref inventory contains duplicates")
+        refs[ref] = sha
+    if len(refs) > 1:
+        raise BrokerError("provider contains concurrent publish-lease refs")
+    return refs
+
+
+def _publish_lease_output(
+    record: PublishLeaseRecord, *, state: str, reason: str | None = None
+) -> dict[str, str]:
+    if state not in {"active", "quarantined", "released"}:
+        raise BrokerError("publish-lease check output state is invalid")
+    identity: dict[str, Any] = {
+        "external_id": record.external_id,
+        "lease_ref": record.lease_ref,
+        "release_sha": record.release_sha,
+        "repository": REPOSITORY,
+        "run_attempt": record.run_attempt,
+        "run_id": record.run_id,
+        "schema_version": 1,
+        "state": state,
+    }
+    if reason is not None:
+        identity["reason"] = reason
+    titles = {
+        "active": "Production publication lease active",
+        "quarantined": "Production publication lease quarantined",
+        "released": "Production publication lease released",
+    }
+    return {
+        "summary": canonical_bytes(identity).decode().rstrip("\n"),
+        "title": titles[state],
+    }
+
+
+def _publish_lease_details_url(config: BrokerConfig, record: PublishLeaseRecord) -> str:
+    return (
+        f"https://github.com/{config.repository}/actions/runs/{record.run_id}/attempts/"
+        f"{record.run_attempt}"
+    )
+
+
+def _validate_publish_lease_check(
+    value: Any,
+    *,
+    config: BrokerConfig,
+    record: PublishLeaseRecord,
+    state: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise BrokerError("publish-lease check-run response is malformed")
+    app = value.get("app")
+    output = value.get("output")
+    check_run_id = _require_positive_int(value.get("id"), "publish-lease check-run ID")
+    expected_status = "in_progress" if state == "active" else "completed"
+    expected_conclusion = (
+        None if state == "active" else ("success" if state == "released" else "failure")
+    )
+    expected_output = _publish_lease_output(record, state=state, reason=reason)
+    if (
+        value.get("name") != PUBLISH_LEASE_CHECK
+        or value.get("head_sha") != record.release_sha
+        or value.get("external_id") != record.external_id
+        or value.get("details_url") != _publish_lease_details_url(config, record)
+        or value.get("status") != expected_status
+        or value.get("conclusion") != expected_conclusion
+        or not isinstance(output, dict)
+        or output.get("summary") != expected_output["summary"]
+        or output.get("title") != expected_output["title"]
+        or not isinstance(app, dict)
+        or app.get("id") != config.app_id
+        or app.get("slug") != config.app_slug
+    ):
+        raise BrokerError("publish-lease check-run response is not provider-bound")
+    if record.check_run_id is not None and check_run_id != record.check_run_id:
+        raise BrokerError("publish-lease check-run identity changed")
+    return value
+
+
+def _publish_lease_check(
+    api: GitHubApi,
+    *,
+    config: BrokerConfig,
+    record: PublishLeaseRecord,
+    token: str,
+) -> dict[str, Any] | None:
+    query = urllib.parse.urlencode({"check_name": PUBLISH_LEASE_CHECK, "filter": "all"})
+    runs = api.list_items(
+        f"repos/{config.repository}/commits/{record.release_sha}/check-runs?{query}",
+        key="check_runs",
+        token=token,
+    )
+    matches = [run for run in runs if run.get("external_id") == record.external_id]
+    if len(runs) > 100 or (not matches and len(runs) >= 100):
+        raise BrokerError("provider publish-lease checks exceed the consumer inventory bound")
+    if len(matches) > 1:
+        raise BrokerError("provider contains duplicate publish-lease acknowledgments")
+    return matches[0] if matches else None
+
+
+def _publish_check_payload(
+    *,
+    config: BrokerConfig,
+    record: PublishLeaseRecord,
+    state: str,
+    provider_now: datetime,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "details_url": _publish_lease_details_url(config, record),
+        "external_id": record.external_id,
+        "name": PUBLISH_LEASE_CHECK,
+        "output": _publish_lease_output(record, state=state, reason=reason),
+    }
+    if state == "active":
+        payload.update({"started_at": _format_timestamp(provider_now), "status": "in_progress"})
+    else:
+        payload.update(
+            {
+                "completed_at": _format_timestamp(provider_now),
+                "conclusion": "success" if state == "released" else "failure",
+                "status": "completed",
+            }
+        )
+    return payload
+
+
+def _create_publish_lease_check(
+    api: GitHubApi,
+    *,
+    config: BrokerConfig,
+    record: PublishLeaseRecord,
+    state: str,
+    provider_now: datetime,
+    token: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    result = api.request(
+        f"repos/{config.repository}/check-runs",
+        token=token,
+        method="POST",
+        payload={
+            "head_sha": record.release_sha,
+            **_publish_check_payload(
+                config=config,
+                record=record,
+                state=state,
+                provider_now=provider_now,
+                reason=reason,
+            ),
+        },
+        expected=(201,),
+    )
+    return _validate_publish_lease_check(
+        result.value,
+        config=config,
+        record=record,
+        state=state,
+        reason=reason,
+    )
+
+
+def _complete_publish_lease_check(
+    api: GitHubApi,
+    *,
+    config: BrokerConfig,
+    record: PublishLeaseRecord,
+    state: str,
+    provider_now: datetime,
+    token: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    if record.check_run_id is None:
+        return _create_publish_lease_check(
+            api,
+            config=config,
+            record=record,
+            state=state,
+            provider_now=provider_now,
+            token=token,
+            reason=reason,
+        )
+    result = api.request(
+        f"repos/{config.repository}/check-runs/{record.check_run_id}",
+        token=token,
+        method="PATCH",
+        payload=_publish_check_payload(
+            config=config,
+            record=record,
+            state=state,
+            provider_now=provider_now,
+            reason=reason,
+        ),
+    )
+    return _validate_publish_lease_check(
+        result.value,
+        config=config,
+        record=record,
+        state=state,
+        reason=reason,
+    )
+
+
+class PublishLeaseController:
+    def __init__(
+        self,
+        *,
+        api: GitHubApi,
+        config: BrokerConfig,
+        spool: DurableSpool,
+        token: str,
+    ) -> None:
+        self.api = api
+        self.config = config
+        self.spool = spool
+        self.token = token
+
+    def _validate_live_authority(
+        self,
+        record: PublishLeaseRecord,
+        *,
+        settings_token: str,
+    ) -> None:
+        validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=settings_token),
+        )
+        if _main_ref(self.api, config=self.config, token=self.token) != record.release_sha:
+            raise BrokerError("main differs from the production publication commit")
+        _validate_publish_authority(
+            self.api,
+            config=self.config,
+            release_sha=record.release_sha,
+            token=self.token,
+        )
+        if _main_ref(self.api, config=self.config, token=self.token) != record.release_sha:
+            raise BrokerError("main changed while validating publication authority")
+
+    def _snapshot(
+        self,
+        record: PublishLeaseRecord,
+        *,
+        owner_id: int,
+        workflow_id: int,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], str, datetime | None]:
+        result = self.api.request(
+            f"repos/{self.config.repository}/actions/runs/{record.run_id}",
+            token=self.token,
+        )
+        if not isinstance(result.value, dict):
+            raise BrokerError("production workflow run response is malformed")
+        run = result.value
+        run_id, run_attempt, _started_at = _publish_run_identity(
+            run,
+            config=self.config,
+            main_sha=record.release_sha,
+            owner_id=owner_id,
+            workflow_id=workflow_id,
+        )
+        if run_id != record.run_id or run_attempt != record.run_attempt:
+            raise BrokerError("production workflow run identity changed")
+        jobs = _publish_jobs(
+            self.api,
+            config=self.config,
+            lease=record,
+            token=self.token,
+        )
+        phase, wait_started = _publish_phase(jobs)
+        return run, jobs, phase, wait_started
+
+    def _discover_candidate(
+        self,
+        *,
+        owner_id: int,
+        provider_now: datetime,
+        settings_token: str,
+        workflow_id: int,
+    ) -> PublishLeaseRecord | None:
+        main_sha = _main_ref(self.api, config=self.config, token=self.token)
+        runs = self.api.list_items(
+            (
+                f"repos/{self.config.repository}/actions/workflows/publish-pypi.yml/runs"
+                "?event=workflow_dispatch&status=in_progress"
+            ),
+            key="workflow_runs",
+            token=self.token,
+        )
+        candidates: list[PublishLeaseRecord] = []
+        for run in runs:
+            if run.get("status") != "in_progress":
+                raise BrokerError("active production workflow inventory contains a non-active run")
+            run_id, run_attempt, run_started = _publish_run_identity(
+                run,
+                config=self.config,
+                main_sha=main_sha,
+                owner_id=owner_id,
+                workflow_id=workflow_id,
+            )
+            provisional = PublishLeaseRecord.create(
+                release_sha=main_sha,
+                run_attempt=run_attempt,
+                run_id=run_id,
+                created_at=_format_timestamp(run_started),
+                expires_at=_format_timestamp(run_started + PUBLISH_REQUEST_MAX_AGE),
+            )
+            jobs = _publish_jobs(
+                self.api,
+                config=self.config,
+                lease=provisional,
+                token=self.token,
+            )
+            publish_job = _named_publish_job(jobs, PUBLISH_JOB, required=False)
+            if publish_job is None or publish_job.get("status") != "in_progress":
+                continue
+            phase, wait_started = _publish_phase(jobs)
+            if phase != "awaiting":
+                continue
+            if wait_started is None:
+                raise BrokerError("eligible production run has no publish-lease wait start")
+            if wait_started > provider_now + timedelta(seconds=self.config.max_clock_skew_seconds):
+                raise BrokerError("production publish-lease wait begins in the future")
+            record = PublishLeaseRecord.create(
+                release_sha=main_sha,
+                run_attempt=run_attempt,
+                run_id=run_id,
+                created_at=_format_timestamp(wait_started),
+                expires_at=_format_timestamp(wait_started + PUBLISH_REQUEST_MAX_AGE),
+            )
+            if provider_now >= _timestamp(record.expires_at):
+                continue
+            candidates.append(record)
+        if len(candidates) > 1:
+            raise BrokerError("multiple production runs concurrently request the publication fence")
+        if not candidates:
+            return None
+        candidate = candidates[0]
+
+        self._validate_live_authority(candidate, settings_token=settings_token)
+        _run, _jobs, phase, wait_started = self._snapshot(
+            candidate,
+            owner_id=owner_id,
+            workflow_id=workflow_id,
+        )
+        if (
+            phase != "awaiting"
+            or wait_started is None
+            or _format_timestamp(wait_started) != candidate.created_at
+        ):
+            raise BrokerError("production workflow changed before publish-lease reservation")
+        if _main_ref(self.api, config=self.config, token=self.token) != candidate.release_sha:
+            raise BrokerError("main changed before publish-lease reservation")
+        if _publish_lease_refs(self.api, config=self.config, token=self.token):
+            raise BrokerError("provider publish-lease ref appeared before durable reservation")
+        if (
+            _publish_lease_check(
+                self.api,
+                config=self.config,
+                record=candidate,
+                token=self.token,
+            )
+            is not None
+        ):
+            raise BrokerError("provider publish-lease check appeared before durable reservation")
+        return candidate
+
+    def _create_ref(self, record: PublishLeaseRecord) -> None:
+        result = self.api.request(
+            f"repos/{self.config.repository}/git/refs",
+            token=self.token,
+            method="POST",
+            payload={"ref": record.lease_ref, "sha": record.release_sha},
+            expected=(201,),
+        )
+        value = result.value
+        provider_object = value.get("object") if isinstance(value, dict) else None
+        if (
+            not isinstance(value, dict)
+            or value.get("ref") != record.lease_ref
+            or not isinstance(provider_object, dict)
+            or provider_object.get("type") != "commit"
+            or provider_object.get("sha") != record.release_sha
+        ):
+            raise ProviderTransportError("publish-lease ref creation response is ambiguous")
+
+    def _activate(
+        self, record: PublishLeaseRecord, *, provider_now: datetime
+    ) -> PublishLeaseRecord:
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        if refs and refs != {record.lease_ref: record.release_sha}:
+            raise BrokerError("provider publish-lease ref conflicts with durable reservation")
+        check = _publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            token=self.token,
+        )
+        if not refs:
+            if check is not None:
+                raise BrokerError("publish-lease acknowledgment exists without its durable ref")
+            self._create_ref(record)
+            refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+            if refs != {record.lease_ref: record.release_sha}:
+                raise BrokerError("publish-lease ref creation was not read back exactly")
+        if check is None:
+            check = _create_publish_lease_check(
+                self.api,
+                config=self.config,
+                record=record,
+                state="active",
+                provider_now=provider_now,
+                token=self.token,
+            )
+        else:
+            _validate_publish_lease_check(
+                check,
+                config=self.config,
+                record=record,
+                state="active",
+            )
+        check_id = _require_positive_int(check.get("id"), "publish-lease check-run ID")
+        active = self.spool.transition_publish_lease(
+            external_id=record.external_id,
+            status="active",
+            updated_at=_format_timestamp(provider_now),
+            check_run_id=check_id,
+        )
+        final_refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        final_check = _publish_lease_check(
+            self.api,
+            config=self.config,
+            record=active,
+            token=self.token,
+        )
+        if final_refs != {active.lease_ref: active.release_sha}:
+            raise BrokerError("publish-lease ref changed across acknowledgment")
+        _validate_publish_lease_check(
+            final_check,
+            config=self.config,
+            record=active,
+            state="active",
+        )
+        return active
+
+    def _abandon(
+        self, record: PublishLeaseRecord, *, provider_now: datetime, reason: str
+    ) -> PublishLeaseRecord:
+        if _publish_lease_refs(self.api, config=self.config, token=self.token):
+            raise BrokerError("cannot abandon a publish lease after provider mutation")
+        if (
+            _publish_lease_check(
+                self.api,
+                config=self.config,
+                record=record,
+                token=self.token,
+            )
+            is not None
+        ):
+            raise BrokerError("cannot abandon a publish lease with an App acknowledgment")
+        return self.spool.transition_publish_lease(
+            external_id=record.external_id,
+            status="abandoned",
+            updated_at=_format_timestamp(provider_now),
+            reason=reason,
+        )
+
+    def _quarantine(
+        self, record: PublishLeaseRecord, *, provider_now: datetime, reason: str
+    ) -> PublishLeaseRecord:
+        if record.status == "quarantined":
+            assert record.reason is not None
+            reason = record.reason
+        check = _publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            token=self.token,
+        )
+        check_id: int | None = None
+        if check is not None:
+            check_id = _require_positive_int(check.get("id"), "publish-lease check-run ID")
+            if check.get("status") == "in_progress":
+                _validate_publish_lease_check(
+                    check,
+                    config=self.config,
+                    record=record,
+                    state="active",
+                )
+            elif not (check.get("status") == "completed" and check.get("conclusion") == "failure"):
+                raise BrokerError("publish-lease acknowledgment cannot be quarantined safely")
+        quarantined = self.spool.transition_publish_lease(
+            external_id=record.external_id,
+            status="quarantined",
+            updated_at=_format_timestamp(provider_now),
+            check_run_id=check_id,
+            reason=reason,
+        )
+        if check is None or check.get("status") == "in_progress":
+            check = _complete_publish_lease_check(
+                self.api,
+                config=self.config,
+                record=quarantined,
+                state="quarantined",
+                provider_now=provider_now,
+                token=self.token,
+                reason=reason,
+            )
+            check_id = _require_positive_int(check.get("id"), "publish-lease check-run ID")
+            quarantined = self.spool.transition_publish_lease(
+                external_id=quarantined.external_id,
+                status="quarantined",
+                updated_at=_format_timestamp(provider_now),
+                check_run_id=check_id,
+                reason=reason,
+            )
+        _validate_publish_lease_check(
+            check,
+            config=self.config,
+            record=quarantined,
+            state="quarantined",
+            reason=reason,
+        )
+        return quarantined
+
+    def _release(
+        self,
+        record: PublishLeaseRecord,
+        *,
+        owner_id: int,
+        provider_now: datetime,
+        settings_token: str,
+        workflow_id: int,
+    ) -> PublishLeaseRecord:
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        check = _publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            token=self.token,
+        )
+        if (
+            record.status == "releasing"
+            and check is not None
+            and check.get("status") == "completed"
+        ):
+            _validate_publish_lease_check(
+                check,
+                config=self.config,
+                record=record,
+                state="released",
+            )
+            if refs:
+                raise BrokerError("successful publish-lease check still has a provider ref")
+            return self.spool.transition_publish_lease(
+                external_id=record.external_id,
+                status="released",
+                updated_at=_format_timestamp(provider_now),
+                check_run_id=record.check_run_id,
+            )
+
+        if record.status in {"active", "releasing"}:
+            try:
+                self._validate_live_authority(record, settings_token=settings_token)
+                _run, _jobs, phase, _wait_started = self._snapshot(
+                    record,
+                    owner_id=owner_id,
+                    workflow_id=workflow_id,
+                )
+            except ProviderTransportError:
+                raise
+            except BrokerError as exc:
+                return self._quarantine(
+                    record,
+                    provider_now=provider_now,
+                    reason=f"publication reconciliation authority is invalid: {exc}",
+                )
+            if phase != "reconciling":
+                return self._quarantine(
+                    record,
+                    provider_now=provider_now,
+                    reason="production workflow left reconciliation before lease release",
+                )
+            if _main_ref(self.api, config=self.config, token=self.token) != record.release_sha:
+                return self._quarantine(
+                    record,
+                    provider_now=provider_now,
+                    reason="main changed before successful publication reconciliation",
+                )
+            if record.status != "releasing":
+                record = self.spool.transition_publish_lease(
+                    external_id=record.external_id,
+                    status="releasing",
+                    updated_at=_format_timestamp(provider_now),
+                    check_run_id=record.check_run_id,
+                )
+
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        if refs and refs != {record.lease_ref: record.release_sha}:
+            raise BrokerError("publish-lease ref changed before release")
+        check = _publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            token=self.token,
+        )
+        if check is None:
+            raise BrokerError("publish-lease acknowledgment disappeared before release")
+        if check.get("status") == "completed":
+            _validate_publish_lease_check(
+                check,
+                config=self.config,
+                record=record,
+                state="released",
+            )
+            if refs:
+                raise BrokerError("successful publish-lease check still has a provider ref")
+            return self.spool.transition_publish_lease(
+                external_id=record.external_id,
+                status="released",
+                updated_at=_format_timestamp(provider_now),
+                check_run_id=record.check_run_id,
+            )
+        _validate_publish_lease_check(
+            check,
+            config=self.config,
+            record=record,
+            state="active",
+        )
+        if refs:
+            encoded_ref = urllib.parse.quote(record.lease_ref.removeprefix("refs/"), safe="/")
+            self.api.request(
+                f"repos/{self.config.repository}/git/refs/{encoded_ref}",
+                token=self.token,
+                method="DELETE",
+                expected=(204,),
+            )
+        if _publish_lease_refs(self.api, config=self.config, token=self.token):
+            raise BrokerError("publish-lease ref deletion was not read back exactly")
+        check = _complete_publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            state="released",
+            provider_now=provider_now,
+            token=self.token,
+        )
+        check_id = _require_positive_int(check.get("id"), "publish-lease check-run ID")
+        if _publish_lease_refs(self.api, config=self.config, token=self.token):
+            raise BrokerError("publish-lease ref reappeared after terminal acknowledgment")
+        return self.spool.transition_publish_lease(
+            external_id=record.external_id,
+            status="released",
+            updated_at=_format_timestamp(provider_now),
+            check_run_id=check_id,
+        )
+
+    def _restore_ref(
+        self,
+        *,
+        owner_id: int,
+        provider_now: datetime,
+        ref: str,
+        release_sha: str,
+        workflow_id: int,
+    ) -> PublishLeaseRecord:
+        match = re.fullmatch(
+            rf"{re.escape(PUBLISH_LEASE_REF_PREFIX)}([1-9][0-9]*)-([1-9][0-9]*)",
+            ref,
+        )
+        if match is None:
+            raise BrokerError("provider publish-lease ref cannot be restored")
+        run_id, run_attempt = (int(match.group(1)), int(match.group(2)))
+        provisional = PublishLeaseRecord.create(
+            release_sha=release_sha,
+            run_attempt=run_attempt,
+            run_id=run_id,
+            created_at=_format_timestamp(provider_now),
+            expires_at=_format_timestamp(provider_now + PUBLISH_REQUEST_MAX_AGE),
+        )
+        _run, _jobs, _phase, wait_started = self._snapshot(
+            provisional,
+            owner_id=owner_id,
+            workflow_id=workflow_id,
+        )
+        if wait_started is None:
+            raise BrokerError("provider publish-lease ref has no workflow wait identity")
+        if wait_started > provider_now + timedelta(seconds=self.config.max_clock_skew_seconds):
+            raise BrokerError("provider publish-lease ref has a future workflow wait identity")
+        restored = PublishLeaseRecord.create(
+            release_sha=release_sha,
+            run_attempt=run_attempt,
+            run_id=run_id,
+            created_at=_format_timestamp(wait_started),
+            expires_at=_format_timestamp(wait_started + PUBLISH_REQUEST_MAX_AGE),
+        )
+        return self.spool.begin_publish_lease(restored)
+
+    def reconcile(self, *, provider_now: datetime, settings_token: str) -> bool:
+        owner_id = _validate_runtime_repository(
+            self.api,
+            config=self.config,
+            token=self.token,
+        )
+        workflow_id = _validate_publish_workflow(
+            self.api,
+            config=self.config,
+            token=self.token,
+        )
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        record = self.spool.publish_lease_fence()
+        if record is None and refs:
+            ref, release_sha = next(iter(refs.items()))
+            record = self._restore_ref(
+                owner_id=owner_id,
+                provider_now=provider_now,
+                ref=ref,
+                release_sha=release_sha,
+                workflow_id=workflow_id,
+            )
+        if record is None:
+            candidate = self._discover_candidate(
+                owner_id=owner_id,
+                provider_now=provider_now,
+                settings_token=settings_token,
+                workflow_id=workflow_id,
+            )
+            if candidate is None:
+                return False
+            record = self.spool.begin_publish_lease(candidate)
+
+        if refs and refs != {record.lease_ref: record.release_sha}:
+            raise BrokerError("provider and durable publish-lease identities differ")
+        if record.status == "quarantined":
+            self._quarantine(
+                record,
+                provider_now=provider_now,
+                reason=record.reason or "durable publication quarantine",
+            )
+            return True
+        if record.status == "releasing":
+            try:
+                released = self._release(
+                    record,
+                    owner_id=owner_id,
+                    provider_now=provider_now,
+                    settings_token=settings_token,
+                    workflow_id=workflow_id,
+                )
+            except ProviderTransportError:
+                raise
+            except BrokerError as exc:
+                self._quarantine(
+                    record,
+                    provider_now=provider_now,
+                    reason=f"publication reconciliation became invalid: {exc}",
+                )
+                return True
+            return released.status != "released"
+
+        main_sha = _main_ref(self.api, config=self.config, token=self.token)
+        authority_validated = False
+        try:
+            _run, _jobs, phase, _wait_started = self._snapshot(
+                record,
+                owner_id=owner_id,
+                workflow_id=workflow_id,
+            )
+        except ProviderTransportError:
+            raise
+        except BrokerError as exc:
+            if (
+                record.status == "creating"
+                and not refs
+                and _publish_lease_check(
+                    self.api,
+                    config=self.config,
+                    record=record,
+                    token=self.token,
+                )
+                is None
+            ):
+                self._abandon(record, provider_now=provider_now, reason=str(exc))
+                return False
+            self._quarantine(record, provider_now=provider_now, reason=str(exc))
+            return True
+        if record.status == "creating":
+            check = _publish_lease_check(
+                self.api,
+                config=self.config,
+                record=record,
+                token=self.token,
+            )
+            resumable = phase in {"awaiting", "publishing", "reconciling", "verifying"}
+            objects_exact = refs == {record.lease_ref: record.release_sha} and check is not None
+            if (
+                resumable
+                and main_sha == record.release_sha
+                and (phase == "awaiting" or objects_exact)
+            ):
+                if provider_now >= _timestamp(record.expires_at):
+                    if not refs and check is None:
+                        self._abandon(
+                            record,
+                            provider_now=provider_now,
+                            reason="publish-lease request expired before provider acknowledgment",
+                        )
+                        return False
+                    self._quarantine(
+                        record,
+                        provider_now=provider_now,
+                        reason="publish-lease request expired during provider acknowledgment",
+                    )
+                    return True
+                try:
+                    self._validate_live_authority(record, settings_token=settings_token)
+                except ProviderTransportError:
+                    raise
+                except BrokerError as exc:
+                    if refs or check is not None:
+                        self._quarantine(record, provider_now=provider_now, reason=str(exc))
+                        return True
+                    self._abandon(record, provider_now=provider_now, reason=str(exc))
+                    return False
+                authority_validated = True
+                record = self._activate(record, provider_now=provider_now)
+                refs = {record.lease_ref: record.release_sha}
+            elif refs or check is not None:
+                self._quarantine(
+                    record,
+                    provider_now=provider_now,
+                    reason="production workflow changed during publish-lease acknowledgment",
+                )
+                return True
+            else:
+                self._abandon(
+                    record,
+                    provider_now=provider_now,
+                    reason="production workflow left the lease wait before acknowledgment",
+                )
+                return False
+
+        if main_sha != record.release_sha:
+            self._quarantine(
+                record,
+                provider_now=provider_now,
+                reason="main changed while the production publication fence was active",
+            )
+            return True
+        if provider_now >= _timestamp(record.expires_at):
+            self._quarantine(
+                record,
+                provider_now=provider_now,
+                reason="production publication lease expired before reconciliation",
+            )
+            return True
+        if not authority_validated:
+            try:
+                self._validate_live_authority(record, settings_token=settings_token)
+            except ProviderTransportError:
+                raise
+            except BrokerError as exc:
+                self._quarantine(record, provider_now=provider_now, reason=str(exc))
+                return True
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        check = _publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            token=self.token,
+        )
+        if refs != {record.lease_ref: record.release_sha} or check is None:
+            self._quarantine(
+                record,
+                provider_now=provider_now,
+                reason="production publication fence changed before reconciliation",
+            )
+            return True
+        _validate_publish_lease_check(
+            check,
+            config=self.config,
+            record=record,
+            state="active",
+        )
+        if phase == "reconciling":
+            try:
+                released = self._release(
+                    record,
+                    owner_id=owner_id,
+                    provider_now=provider_now,
+                    settings_token=settings_token,
+                    workflow_id=workflow_id,
+                )
+            except ProviderTransportError:
+                raise
+            except BrokerError as exc:
+                self._quarantine(
+                    record,
+                    provider_now=provider_now,
+                    reason=f"publication reconciliation became invalid: {exc}",
+                )
+                return True
+            return released.status != "released"
+        if phase in {"awaiting", "publishing", "verifying"}:
+            return True
+        self._quarantine(
+            record,
+            provider_now=provider_now,
+            reason=f"production workflow entered terminal phase {phase!r} before reconciliation",
+        )
+        return True
 
 
 def validate_clock(
@@ -4740,6 +6317,16 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
+        lease_controller = PublishLeaseController(
+            api=self.api,
+            config=self.config,
+            spool=self.spool,
+            token=token,
+        )
+        lease_fenced = lease_controller.reconcile(
+            provider_now=self.api.provider_now(token),
+            settings_token=settings_token,
+        )
         state_branch = StateBranch(api=self.api, config=self.config, token=token)
         reconciler = HealthReconciler(
             api=self.api,
@@ -4755,6 +6342,12 @@ class Broker:
             state_branch=state_branch,
             token=token,
         )
+        lease_fenced = lease_controller.reconcile(
+            provider_now=self.api.provider_now(token),
+            settings_token=settings_token,
+        )
+        if lease_fenced:
+            return proofs
         for pull in pulls:
             number = _require_positive_int(pull.get("number"), "open pull request number")
             proof = self._process_pull(
