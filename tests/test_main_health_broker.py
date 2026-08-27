@@ -2794,6 +2794,74 @@ def test_protected_state_rejects_duplicate_aggregate_identity(tmp_path: Path) ->
         broker.StateBranch._result_identities(tmp_path)
 
 
+def test_protected_state_preserves_digest_bound_legacy_rerun_results(tmp_path: Path) -> None:
+    results = tmp_path / "results"
+    results.mkdir()
+    legacy = [
+        {
+            "cadence": "protected-main",
+            "conclusion": "failure",
+            "obligations": [
+                {"id": "Metriplane / required", "result": "failure"},
+                {"id": "Documentation / required", "result": "success"},
+                {"id": "Security / required", "result": "success"},
+            ],
+            "recorded_at": "2026-08-25T20:15:34Z",
+            "run_id": "32893499507",
+            "schema_version": 1,
+            "sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+        },
+        {
+            "cadence": "protected-main",
+            "conclusion": "success",
+            "obligations": [
+                {"id": "Metriplane / required", "result": "success"},
+                {"id": "Documentation / required", "result": "success"},
+                {"id": "Security / required", "result": "success"},
+            ],
+            "recorded_at": "2026-08-25T20:21:53Z",
+            "run_id": "32893499507",
+            "schema_version": 1,
+            "sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+        },
+    ]
+    digests = {broker.digest(result) for result in legacy}
+    assert digests == {
+        "83da378f0d804e10480282b49c1dada4573cfc6ead2ea9810de7c5d8057d4f7f",
+        "f0eb90f3ff235434304b71ffe1b4b52606537734453f0211063601424dc4c976",
+    }
+    for result in legacy:
+        result_digest = broker.digest(result)
+        (results / f"{result_digest}.json").write_text(json.dumps(result), encoding="utf-8")
+
+    identities = broker.StateBranch._result_identities(tmp_path)
+
+    assert identities == {
+        (
+            "protected-main",
+            f"legacy-result:github-actions:32893499507:1:{result_digest}",
+        )
+        for result_digest in digests
+    }
+
+
+def test_protected_state_rejects_unbound_legacy_result_filename(tmp_path: Path) -> None:
+    results = tmp_path / "results"
+    results.mkdir()
+    result = {
+        "cadence": "protected-main",
+        "conclusion": "success",
+        "recorded_at": "2026-08-25T20:21:53Z",
+        "run_id": "32893499507",
+    }
+    (results / "wrong.json").write_text(json.dumps(result), encoding="utf-8")
+
+    with pytest.raises(
+        broker.BrokerError, match="legacy protected-main result is not digest-bound"
+    ):
+        broker.StateBranch._result_identities(tmp_path)
+
+
 def test_current_ci_selects_a_later_active_rerun_of_an_older_id(tmp_path: Path) -> None:
     paths: list[str] = []
 

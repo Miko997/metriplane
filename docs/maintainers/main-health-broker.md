@@ -181,7 +181,10 @@ CodeQL run attempts together. Provider update time determines the latest attempt
 across workflow-run IDs. Distinct identities tied at the latest provider time,
 or any repeated attempt identity, fail closed. A cached green state never skips
 a new companion rerun and an already retained aggregate never creates a
-freshness-only state commit. Before normal admission, the broker observes that
+freshness-only state commit. Legacy numeric protected-main records predate run
+attempt evidence, so the broker preserves each as a digest-bound opaque history
+entry instead of inferring attempt one; they cannot satisfy a current aggregate
+identity. Before normal admission, the broker observes that
 aggregate twice,
 requires every governed deep-health attempt in the complete provider inventory
 to be retained, observes every available latest current-main nightly or weekly

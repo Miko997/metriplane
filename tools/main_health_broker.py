@@ -1825,7 +1825,13 @@ class StateBranch:
             if cadence not in {"protected-main", "nightly", "weekly"}:
                 continue
             if cadence == "protected-main":
-                identity = _protected_main_result_identity(result.get("run_id"))
+                run_identity = result.get("run_id")
+                identity = _protected_main_result_identity(run_identity)
+                if isinstance(run_identity, str) and run_identity.isdigit():
+                    result_digest = digest(result)
+                    if path.name != f"{result_digest}.json":
+                        raise BrokerError("legacy protected-main result is not digest-bound")
+                    identity = f"legacy-result:{identity}:{result_digest}"
             else:
                 run_id, attempt = _deep_result_identity(result.get("run_id"))
                 identity = f"github-actions:{run_id}:{attempt}"
