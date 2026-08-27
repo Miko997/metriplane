@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import subprocess
@@ -16,8 +17,11 @@ import pytest
 from metriplane.release_control import (
     MILESTONES,
     TOOL_CONTRACTS,
+    ProviderAttestationVerifier,
     ReleaseControlError,
+    _validated_readiness_blockers,
     build_release_readiness_record,
+    canonical_json,
     make_record,
     sha256_json,
     signature_subject_digest,
@@ -266,6 +270,61 @@ def _passing_qualification(*, status: str = "PASS") -> dict[str, Any]:
     )
 
 
+LIVE_PROVIDER_KEY = bytes.fromhex("ab" * 32)
+
+
+def _signed_live_record(
+    record_type: str,
+    data: dict[str, Any],
+    *,
+    invocation_id: str,
+    actor_id: str,
+    provider: str = "github",
+) -> dict[str, Any]:
+    unsigned = make_record(
+        record_type,
+        data,
+        invocation_id=invocation_id,
+        sequence=1,
+        synthetic=False,
+    )
+    subject_digest = signature_subject_digest(unsigned)
+    signature = hmac.new(
+        LIVE_PROVIDER_KEY,
+        canonical_json(
+            {
+                "actor_id": actor_id,
+                "provider": provider,
+                "subject_digest": subject_digest,
+            }
+        ),
+        hashlib.sha256,
+    ).hexdigest()
+    return make_record(
+        record_type,
+        data,
+        invocation_id=invocation_id,
+        sequence=1,
+        synthetic=False,
+        signatures=[
+            {
+                "actor_id": actor_id,
+                "algorithm": "provider-attestation-v1",
+                "provider": provider,
+                "signature": signature,
+                "subject_digest": subject_digest,
+                "synthetic": False,
+            }
+        ],
+    )
+
+
+def _live_verifier(
+    *, actor_id: str = "executor", provider: str = "github"
+) -> ProviderAttestationVerifier:
+    return ProviderAttestationVerifier(keys={(provider, actor_id): LIVE_PROVIDER_KEY})
+
+
 def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> None:
     data = {
         "author_id": "author",
@@ -274,33 +333,34 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
         "publisher_id": "publisher",
         "task_id": "MP2-007",
     }
-    live_unsigned = make_record(
+    live = _signed_live_record(
         "release-role-assignments",
         data,
         invocation_id="live-signature-shape-fixture",
-        sequence=1,
-        synthetic=False,
+        actor_id="executor",
     )
-    live_subject = signature_subject_digest(live_unsigned)
-    live = make_record(
-        "release-role-assignments",
-        data,
-        invocation_id="live-signature-shape-fixture",
-        sequence=1,
-        synthetic=False,
-        signatures=[
-            {
-                "actor_id": "executor",
-                "algorithm": "provider-attestation-v1",
-                "provider": "github",
-                "signature": "fabricated-provider-value",
-                "subject_digest": live_subject,
-                "synthetic": False,
-            }
-        ],
-    )
-    with pytest.raises(ReleaseControlError, match="verification is not implemented"):
+    with pytest.raises(ReleaseControlError, match="no trusted verifier"):
         validate_role_assignments(live, live=True)
+    assert (
+        validate_role_assignments(
+            live,
+            live=True,
+            attestation_verifier=_live_verifier(),
+        )["authorized_executor_id"]
+        == "executor"
+    )
+
+    forged = json.loads(json.dumps(live))
+    forged["signatures"][0]["signature"] = "0" * 64
+    forged_without_id = dict(forged)
+    forged_without_id.pop("record_id")
+    forged["record_id"] = sha256_json(forged_without_id)
+    with pytest.raises(ReleaseControlError, match="authentication failed"):
+        validate_role_assignments(
+            forged,
+            live=True,
+            attestation_verifier=_live_verifier(),
+        )
 
     forged_unsigned = make_record(
         "release-role-assignments",
@@ -310,7 +370,7 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
         synthetic=True,
     )
     forged_subject = signature_subject_digest(forged_unsigned)
-    forged = make_record(
+    forged_fixture = make_record(
         "release-role-assignments",
         data,
         invocation_id="forged-test-signature-fixture",
@@ -328,7 +388,7 @@ def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> N
         ],
     )
     with pytest.raises(ReleaseControlError, match="authentication failed"):
-        validate_role_assignments(forged, live=False)
+        validate_role_assignments(forged_fixture, live=False)
 
 
 def test_signature_cannot_be_reused_after_decision_status_changes() -> None:
@@ -489,21 +549,99 @@ def test_role_assignment_cli_enforces_run_milestone_conflicts_and_freshness(
 
 
 def test_live_retention_claims_block_without_real_store_readback(tmp_path: Path) -> None:
-    receipts = make_record(
-        "release-retention-receipts",
+    retained = _signed_live_record(
+        "release-gate-input",
         {},
-        invocation_id="live-retention-claims-fixture",
-        sequence=1,
-        synthetic=False,
+        invocation_id="live-retained-input",
+        actor_id="executor",
     )
-    with pytest.raises(ReleaseControlError, match="two-store read-back verification"):
+    retained_path = tmp_path / "retained.json"
+    input_digest = write_immutable_json(retained_path, retained)
+    stores = [
+        {
+            "content_digest": input_digest,
+            "hold_receipt_digest": hold,
+            "independence_group": group,
+            "namespace": "live-retention",
+            "object_key": f"live/{store_id}",
+            "put_receipt_digest": put,
+            "read_back_digest": input_digest,
+            "store_id": store_id,
+        }
+        for store_id, group, hold, put in (
+            ("payload-store-a", "authority-a", "1" * 64, "2" * 64),
+            ("payload-store-b", "authority-b", "3" * 64, "4" * 64),
+        )
+    ]
+    receipts = _signed_live_record(
+        "release-retention-receipts",
+        {
+            "all_content_equal": True,
+            "input_digest": input_digest,
+            "phase": "prepublication",
+            "receipt_set_digest": sha256_json(stores),
+            "retained_at": "2026-08-27T00:00:00Z",
+            "stores": stores,
+        },
+        invocation_id="live-retention-claims",
+        actor_id="executor",
+    )
+    verifier = _live_verifier()
+    with pytest.raises(ReleaseControlError, match="explicit observed store readbacks"):
         validate_release_retention_receipts(
             receipts,
-            inputs=[],
+            inputs=[retained_path],
             manifest=None,
-            invocation_root=tmp_path,
-            through_stage="fabricated-stage",
+            invocation_root=None,
+            through_stage=None,
             live=True,
+            attestation_verifier=verifier,
+        )
+
+    readback_a = tmp_path / "store-a-readback.json"
+    readback_b = tmp_path / "store-b-readback.json"
+    readback_a.write_bytes(retained_path.read_bytes())
+    readback_b.write_bytes(retained_path.read_bytes())
+    readbacks = {"payload-store-a": readback_a, "payload-store-b": readback_b}
+    validate_release_retention_receipts(
+        receipts,
+        inputs=[retained_path],
+        manifest=None,
+        invocation_root=None,
+        through_stage=None,
+        live=True,
+        readbacks=readbacks,
+        attestation_verifier=verifier,
+    )
+
+    readback_b.write_bytes(b"{}")
+    with pytest.raises(ReleaseControlError, match="observed bytes differ"):
+        validate_release_retention_receipts(
+            receipts,
+            inputs=[retained_path],
+            manifest=None,
+            invocation_root=None,
+            through_stage=None,
+            live=True,
+            readbacks=readbacks,
+            attestation_verifier=verifier,
+        )
+
+    forged_receipts = json.loads(json.dumps(receipts))
+    forged_receipts["signatures"][0]["signature"] = "0" * 64
+    forged_without_id = dict(forged_receipts)
+    forged_without_id.pop("record_id")
+    forged_receipts["record_id"] = sha256_json(forged_without_id)
+    with pytest.raises(ReleaseControlError, match="authentication failed"):
+        validate_release_retention_receipts(
+            forged_receipts,
+            inputs=[retained_path],
+            manifest=None,
+            invocation_root=None,
+            through_stage=None,
+            live=True,
+            readbacks={"payload-store-a": readback_a, "payload-store-b": readback_a},
+            attestation_verifier=verifier,
         )
 
 
@@ -595,6 +733,8 @@ def test_subject_validators_reject_blocked_records_and_missing_dependencies(
         tool_main(
             "validate_release_approval.py",
             [
+                "--approval-decision",
+                str(tmp_path / "missing-approval-decision.json"),
                 "--gate-instance",
                 str(tmp_path / "missing-gate.json"),
                 "--qualification",
@@ -762,9 +902,36 @@ def _write_closed_qualification_bundle(
         path = root / f"{name}.json"
         return path, record, write_immutable_json(path, record)
 
+    artifact_rows = [
+        {
+            "media_type": "application/vnd.pypa.wheel+zip",
+            "path": "metriplane-0.4.0-py3-none-any.whl",
+            "sha256": "a" * 64,
+            "size": 101,
+        },
+        {
+            "media_type": "application/gzip",
+            "path": "metriplane-0.4.0.tar.gz",
+            "sha256": "b" * 64,
+            "size": 202,
+        },
+    ]
+    artifact_data = {
+        "artifact_set_digest": sha256_json(artifact_rows),
+        "artifacts": artifact_rows,
+        "build_invocation_id": "qualification-build",
+        "build_recipe_digest": "1" * 64,
+        "milestone": milestone,
+        "source_digest": "2" * 64,
+        "source_freeze_digest": "5" * 64,
+        "target_resolution_digest": "3" * 64,
+    }
+    artifact_path, artifact_manifest, artifact_manifest_digest = retain(
+        "artifact-manifest", "release-artifact-manifest", artifact_data
+    )
     candidate_data: dict[str, Any] = {
-        "artifact_manifest_digest": "1" * 64,
-        "artifact_set_digest": "2" * 64,
+        "artifact_manifest_digest": artifact_manifest_digest,
+        "artifact_set_digest": artifact_data["artifact_set_digest"],
         "build_invocation_id": "qualification-build",
         "candidate_digest": candidate_digest,
         "evaluation_adoption_digest": None,
@@ -867,7 +1034,14 @@ def _write_closed_qualification_bundle(
     termination_path, termination, termination_digest = retain(
         "provider-termination",
         "provider-run-termination",
-        {"state": "success", "tool": "github"},
+        {
+            "job_id": "wrong-job" if invalid_stage == "termination-job-binding" else "job-1",
+            "provider_run_id": (
+                "wrong-run" if invalid_stage == "termination-run-binding" else "run-1"
+            ),
+            "state": "success",
+            "tool": "github",
+        },
     )
     coordination_data: dict[str, Any] = {
         "attempt_id": attempt_id,
@@ -1067,6 +1241,10 @@ def _write_closed_qualification_bundle(
     return {
         "aggregate_warning": aggregate_warning,
         "aggregate_warning_path": aggregate_warning_path,
+        "artifact_manifest": artifact_manifest,
+        "artifact_manifest_digest": artifact_manifest_digest,
+        "artifact_path": artifact_path,
+        "artifact_rows": artifact_rows,
         "attempt": attempt,
         "attempt_path": attempt_path,
         "candidate": candidate,
@@ -1229,6 +1407,8 @@ def test_qualification_validator_resolves_the_retained_bundle(
         "retention-divergent",
         "retention-payload",
         "retention-phase",
+        "termination-job-binding",
+        "termination-run-binding",
     ],
 )
 def test_qualification_rejects_digest_valid_but_semantically_open_dependencies(
@@ -1260,6 +1440,83 @@ def test_qualification_rejects_any_malformed_retained_json_envelope(
         )
         == 3
     )
+
+
+def test_qualification_plan_uses_completed_attempt_count_and_dict_cells_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = make_record(
+        "release-gate-instance",
+        {
+            "candidate_digest": "c" * 64,
+            "milestone": "v0.4",
+            "predecessor_digest": "d" * 64,
+        },
+        invocation_id="qualification-plan-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    gate_path = tmp_path / "qualification-plan-gate.json"
+    write_immutable_json(gate_path, gate)
+    cells = [
+        {
+            "cell_id": cell_id,
+            "environment_id": environment_id,
+            "obligation_ids": [obligation_id],
+            "profile_id": "default",
+            "scenario_ids": [scenario_id],
+        }
+        for cell_id, environment_id, obligation_id, scenario_id in (
+            ("cell-1", "ubuntu-py312", "MP2-007.A01", "scenario-1"),
+            ("cell-2", "windows-py312", "MP2-007.A02", "scenario-2"),
+        )
+    ]
+    plan_without_digest: dict[str, Any] = {
+        "attempt_count": 1,
+        "candidate_digest": "c" * 64,
+        "candidate_manifest_digest": "1" * 64,
+        "cells": cells,
+        "delta_digest": "2" * 64,
+        "delta_test_map_digest": "3" * 64,
+        "expected_terminal_result": "PASS",
+        "gate_instance_digest": sha256_json(gate),
+        "milestone": "v0.4",
+        "predecessor_digest": "d" * 64,
+        "readiness_digest": "4" * 64,
+        "scenario_catalog_digest": "5" * 64,
+    }
+
+    def write_plan(name: str, changes: dict[str, Any]) -> Path:
+        unsigned = {**plan_without_digest, **changes}
+        plan = make_record(
+            "release-qualification-plan",
+            {**unsigned, "plan_digest": sha256_json(unsigned)},
+            invocation_id=f"qualification-plan-{name}",
+            sequence=1,
+            synthetic=True,
+        )
+        path = tmp_path / f"qualification-plan-{name}.json"
+        write_immutable_json(path, plan)
+        return path
+
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    valid_path = write_plan("valid", {})
+    argv = ["--record", str(valid_path), "--gate-instance", str(gate_path)]
+    assert tool_main("validate_release_qualification_plan.py", argv) == 0
+
+    for label, changes in (
+        ("string-cell", {"cells": ["cell-1"]}),
+        ("boolean-attempt-count", {"attempt_count": True}),
+        ("zero-attempt-count", {"attempt_count": 0}),
+    ):
+        path = write_plan(label, changes)
+        assert (
+            tool_main(
+                "validate_release_qualification_plan.py",
+                ["--record", str(path), "--gate-instance", str(gate_path)],
+            )
+            == 3
+        )
 
 
 def test_release_approval_binds_assigned_author_and_reviewer_without_fixture_clock() -> None:
@@ -1294,8 +1551,29 @@ def test_release_approval_binds_assigned_author_and_reviewer_without_fixture_clo
         sequence=1,
         synthetic=True,
     )
+    decision_data: dict[str, Any] = {
+        "approval_kind": "non_author_release_decision",
+        "author_id": role_data["author_id"],
+        "authority_policy_digest": "a" * 64,
+        "candidate_digest": candidate_digest,
+        "conflicts": [],
+        "decision": "APPROVED",
+        "expires_at": "2099-01-01T00:00:00Z",
+        "issued_at": "2026-08-25T00:00:00Z",
+        "milestone": "v0.4",
+        "qualification_digest": sha256_json(qualification),
+        "reviewer_id": role_data["non_author_reviewer_id"],
+        "rubric_result_digest": None,
+        "signing_method": "provider-attestation-v1",
+    }
+    approval_decision = _signed_fixture_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="approval-role-signed-decision",
+        actor_id=role_data["non_author_reviewer_id"],
+    )
     approval_data: dict[str, Any] = {
-        "approval_decision_digest": "1" * 64,
+        "approval_decision_digest": sha256_json(approval_decision),
         "author_id": role_data["author_id"],
         "candidate_digest": candidate_digest,
         "conflicts": [],
@@ -1313,6 +1591,7 @@ def test_release_approval_binds_assigned_author_and_reviewer_without_fixture_clo
     )
     validate_release_approval_record(
         approval,
+        approval_decision=approval_decision,
         gate_instance=gate,
         qualification=qualification,
         role_assignments=roles,
@@ -1334,9 +1613,69 @@ def test_release_approval_binds_assigned_author_and_reviewer_without_fixture_clo
     with pytest.raises(ReleaseControlError, match="assigned roles"):
         validate_release_approval_record(
             approval,
+            approval_decision=approval_decision,
             gate_instance=gate,
             qualification=qualification,
             role_assignments=unrelated_roles,
+            no_prepublication_rubric=True,
+            live=False,
+        )
+
+    for label, field, value, expected_error in (
+        ("candidate", "candidate_digest", "0" * 64, "candidate binding"),
+        ("qualification", "qualification_digest", "0" * 64, "qualification binding"),
+        ("author", "author_id", "unassigned-author", "author binding"),
+        ("reviewer", "reviewer_id", "unassigned-reviewer", "reviewer binding"),
+        ("milestone", "milestone", "v0.5", "milestone binding"),
+        ("decision", "decision", "REJECTED", "clean approval"),
+        ("time", "expires_at", "2020-01-01T00:00:00Z", "validity window"),
+    ):
+        mutated_decision = _signed_fixture_record(
+            "release-approval-decision",
+            {**decision_data, field: value},
+            invocation_id=f"approval-role-mutated-{label}",
+            actor_id=role_data["non_author_reviewer_id"],
+        )
+        mutated_approval = _signed_fixture_record(
+            "release-approval",
+            {
+                **approval_data,
+                "approval_decision_digest": sha256_json(mutated_decision),
+            },
+            invocation_id=f"approval-role-mutated-envelope-{label}",
+            actor_id=role_data["non_author_reviewer_id"],
+        )
+        with pytest.raises(ReleaseControlError, match=expected_error):
+            validate_release_approval_record(
+                mutated_approval,
+                approval_decision=mutated_decision,
+                gate_instance=gate,
+                qualification=qualification,
+                role_assignments=roles,
+                no_prepublication_rubric=True,
+                live=False,
+            )
+
+    unsigned_decision = make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="approval-role-unsigned-decision",
+        sequence=1,
+        synthetic=True,
+    )
+    unsigned_approval = _signed_fixture_record(
+        "release-approval",
+        {**approval_data, "approval_decision_digest": sha256_json(unsigned_decision)},
+        invocation_id="approval-role-unsigned-envelope",
+        actor_id=role_data["non_author_reviewer_id"],
+    )
+    with pytest.raises(ReleaseControlError, match="lacks reviewer authority"):
+        validate_release_approval_record(
+            unsigned_approval,
+            approval_decision=unsigned_decision,
+            gate_instance=gate,
+            qualification=qualification,
+            role_assignments=roles,
             no_prepublication_rubric=True,
             live=False,
         )
@@ -1348,20 +1687,7 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
     qualification_bundle = _write_closed_qualification_bundle(tmp_path)
     candidate_digest = qualification_bundle["candidate_digest"]
     qualification_digest = qualification_bundle["qualification_digest"]
-    artifacts = [
-        {
-            "media_type": "application/vnd.pypa.wheel+zip",
-            "path": "metriplane-0.4.0-py3-none-any.whl",
-            "sha256": "b" * 64,
-            "size": 10,
-        },
-        {
-            "media_type": "application/gzip",
-            "path": "metriplane-0.4.0.tar.gz",
-            "sha256": "a" * 64,
-            "size": 11,
-        },
-    ]
+    artifacts = qualification_bundle["artifact_rows"]
 
     def retain(name: str, record_type: str, data: dict[str, Any]) -> tuple[Path, str]:
         record = make_record(
@@ -1396,10 +1722,32 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
             "task_id": "MP2-007",
         },
     )
+    approval_decision = _signed_fixture_record(
+        "release-approval-decision",
+        {
+            "approval_kind": "non_author_release_decision",
+            "author_id": "fixture-author",
+            "authority_policy_digest": "e" * 64,
+            "candidate_digest": candidate_digest,
+            "conflicts": [],
+            "decision": "APPROVED",
+            "expires_at": "2099-01-01T00:00:00Z",
+            "issued_at": "2026-08-25T00:00:00Z",
+            "milestone": "v0.4",
+            "qualification_digest": qualification_digest,
+            "reviewer_id": "fixture-reviewer",
+            "rubric_result_digest": None,
+            "signing_method": "provider-attestation-v1",
+        },
+        invocation_id="resolved-reconciliation-approval-decision",
+        actor_id="fixture-reviewer",
+    )
+    approval_decision_path = tmp_path / "approval-decision.json"
+    approval_decision_digest = write_immutable_json(approval_decision_path, approval_decision)
     approval = _signed_fixture_record(
         "release-approval",
         {
-            "approval_decision_digest": "f" * 64,
+            "approval_decision_digest": approval_decision_digest,
             "author_id": "fixture-author",
             "candidate_digest": candidate_digest,
             "conflicts": [],
@@ -1480,6 +1828,7 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
         "release-publication-observations",
         {
             "all_targets_observed": True,
+            "artifact_manifest_digest": qualification_bundle["artifact_manifest_digest"],
             "candidate_digest": candidate_digest,
             "lock_receipt_digest": lock_digest,
             "promotion_digest": promotion_digest,
@@ -1495,28 +1844,34 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
                 }
                 for target_id in required_target_ids
             ],
-            "artifact_manifest_digest": "9" * 64,
             "observation_digest": "a" * 64,
             "observed_at": "2026-08-25T12:03:00Z",
         },
     )
+    publication_entries = [
+        {
+            "media_type": artifact["media_type"],
+            "path": artifact["path"],
+            "role": "release-artifact",
+            "sha256": artifact["sha256"],
+            "size": artifact["size"],
+        }
+        for artifact in artifacts
+    ]
+    publication_journals = ["b" * 64]
     _manifest_path, manifest_digest = retain(
         "evidence-manifest",
         "release-evidence-manifest",
         {
             "candidate_digest": candidate_digest,
-            "entries": [
+            "entries": publication_entries,
+            "invocation_journal_digests": publication_journals,
+            "manifest_digest": sha256_json(
                 {
-                    "media_type": artifact["media_type"],
-                    "path": artifact["path"],
-                    "role": "release-artifact",
-                    "sha256": artifact["sha256"],
-                    "size": artifact["size"],
+                    "entries": publication_entries,
+                    "invocation_journal_digests": publication_journals,
                 }
-                for artifact in artifacts
-            ],
-            "invocation_journal_digests": ["b" * 64],
-            "manifest_digest": "c" * 64,
+            ),
             "phase": "qualified-publication",
             "scope_id": "v0.4.0",
             "scope_kind": "release-candidate",
@@ -1586,6 +1941,122 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
     base_promotion = json.loads(promotion_path.read_text(encoding="utf-8"))["data"]
     base_observations = json.loads(observations_path.read_text(encoding="utf-8"))["data"]
 
+    mismatched_artifacts = [dict(artifact) for artifact in artifacts]
+    mismatched_artifacts[0]["sha256"] = "0" * 64
+    mismatched_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {**reconciliation["data"], "expected_artifacts": mismatched_artifacts},
+        invocation_id="resolved-reconciliation-mismatched-qualified-artifacts",
+        sequence=1,
+        synthetic=True,
+    )
+    mismatched_path = tmp_path / "mismatched-qualified-artifacts.json"
+    write_immutable_json(mismatched_path, mismatched_reconciliation)
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(mismatched_path)],
+        )
+        == 3
+    )
+
+    _wrong_manifest_observation_path, wrong_manifest_observation_digest = retain(
+        "publication-observations-wrong-artifact-manifest",
+        "release-publication-observations",
+        {**base_observations, "artifact_manifest_digest": "0" * 64},
+    )
+    wrong_manifest_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {
+            **reconciliation["data"],
+            "observations_digest": wrong_manifest_observation_digest,
+        },
+        invocation_id="resolved-reconciliation-wrong-artifact-manifest-observation",
+        sequence=1,
+        synthetic=True,
+    )
+    wrong_manifest_path = tmp_path / "wrong-artifact-manifest-observation-reconciliation.json"
+    write_immutable_json(wrong_manifest_path, wrong_manifest_reconciliation)
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(wrong_manifest_path)],
+        )
+        == 3
+    )
+
+    changed_entries = [dict(entry) for entry in publication_entries]
+    changed_entries[0]["sha256"] = "0" * 64
+    changed_manifest_data = {
+        "candidate_digest": candidate_digest,
+        "entries": changed_entries,
+        "invocation_journal_digests": publication_journals,
+        "manifest_digest": sha256_json(
+            {
+                "entries": changed_entries,
+                "invocation_journal_digests": publication_journals,
+            }
+        ),
+        "phase": "qualified-publication",
+        "scope_id": "v0.4.0",
+        "scope_kind": "release-candidate",
+    }
+    _changed_manifest_path, changed_manifest_digest = retain(
+        "evidence-manifest-wrong-artifact-bytes",
+        "release-evidence-manifest",
+        changed_manifest_data,
+    )
+    changed_publication_stores = [
+        {
+            **store,
+            "content_digest": changed_manifest_digest,
+            "read_back_digest": changed_manifest_digest,
+        }
+        for store in publication_stores
+    ]
+    _changed_retention_path, changed_retention_digest = retain(
+        "retention-wrong-artifact-bytes",
+        "release-retention-receipts",
+        {
+            "all_content_equal": True,
+            "input_digest": changed_manifest_digest,
+            "phase": "qualified-publication",
+            "receipt_set_digest": sha256_json(changed_publication_stores),
+            "retained_at": "2026-08-25T12:04:00Z",
+            "stores": changed_publication_stores,
+        },
+    )
+    changed_manifest_reconciliation = make_record(
+        "release-publication-reconciliation",
+        {
+            **reconciliation["data"],
+            "evidence_manifest_digest": changed_manifest_digest,
+            "staged_retention_receipts_digest": changed_retention_digest,
+        },
+        invocation_id="resolved-reconciliation-evidence-artifact-mismatch",
+        sequence=1,
+        synthetic=True,
+    )
+    changed_manifest_reconciliation_path = (
+        tmp_path / "evidence-artifact-mismatch-reconciliation.json"
+    )
+    write_immutable_json(
+        changed_manifest_reconciliation_path,
+        changed_manifest_reconciliation,
+    )
+    assert (
+        tool_main(
+            "validate_publication_reconciliation.py",
+            ["--record", str(changed_manifest_reconciliation_path)],
+        )
+        == 3
+    )
+
+    approval_decision_path.unlink()
+    assert tool_main("validate_publication_reconciliation.py", argv) == 3
+    write_immutable_json(approval_decision_path, approval_decision)
+    assert tool_main("validate_publication_reconciliation.py", argv) == 0
+
     def assert_control_chain_rejected(
         label: str,
         *,
@@ -1642,6 +2113,50 @@ def test_reconciliation_validator_resolves_exact_observed_bytes(
             )
             == 3
         )
+
+    rejected_decision = _signed_fixture_record(
+        "release-approval-decision",
+        {**approval_decision["data"], "decision": "REJECTED"},
+        invocation_id="resolved-reconciliation-rejected-decision",
+        actor_id="fixture-reviewer",
+    )
+    rejected_decision_digest = write_immutable_json(
+        tmp_path / "rejected-approval-decision.json", rejected_decision
+    )
+    rejected_approval = _signed_fixture_record(
+        "release-approval",
+        {
+            **approval["data"],
+            "approval_decision_digest": rejected_decision_digest,
+        },
+        invocation_id="resolved-reconciliation-rejected-approval",
+        actor_id="fixture-reviewer",
+    )
+    rejected_approval_digest = write_immutable_json(
+        tmp_path / "rejected-approval.json", rejected_approval
+    )
+    assert_control_chain_rejected(
+        "rejected-approval-decision",
+        selected_approval_digest=rejected_approval_digest,
+    )
+
+    self_hashed_approval = _signed_fixture_record(
+        "release-approval",
+        {
+            **approval["data"],
+            "approval_decision_digest": sha256_json(approval_decision_digest),
+        },
+        invocation_id="resolved-reconciliation-self-hashed-decision-reference",
+        actor_id="fixture-reviewer",
+    )
+    self_hashed_approval_digest = write_immutable_json(
+        tmp_path / "self-hashed-decision-reference-approval.json",
+        self_hashed_approval,
+    )
+    assert_control_chain_rejected(
+        "self-hashed-decision-reference",
+        selected_approval_digest=self_hashed_approval_digest,
+    )
 
     unrelated_approval = _signed_fixture_record(
         "release-approval",
@@ -2135,6 +2650,65 @@ def test_release_retention_validator_reads_two_independent_store_receipts(
         )
         == 3
     )
+
+
+def test_readiness_blockers_are_closed_typed_and_canonically_ordered() -> None:
+    assert _validated_readiness_blockers(
+        {
+            "blockers": [
+                {
+                    "code": "BLOCKER_A",
+                    "required_count": 2,
+                    "resolved_count": 1,
+                    "resolver": "resolve-a",
+                },
+                {"code": "BLOCKER_B", "resolver": "resolve-b"},
+            ]
+        }
+    ) == ["BLOCKER_A", "BLOCKER_B"]
+
+    malformed = (
+        {"blockers": None},
+        {"blockers": ["BLOCKER_A"]},
+        {"blockers": [{"code": "BLOCKER_A"}]},
+        {"blockers": [{"code": "BLOCKER_A", "resolver": "x", "extra": True}]},
+        {"blockers": [{"code": "BLOCKER_A", "required_count": 1, "resolver": "x"}]},
+        {
+            "blockers": [
+                {
+                    "code": "BLOCKER_A",
+                    "required_count": True,
+                    "resolved_count": 0,
+                    "resolver": "x",
+                }
+            ]
+        },
+        {
+            "blockers": [
+                {
+                    "code": "BLOCKER_A",
+                    "required_count": 1,
+                    "resolved_count": 2,
+                    "resolver": "x",
+                }
+            ]
+        },
+        {
+            "blockers": [
+                {"code": "BLOCKER_A", "resolver": "x"},
+                {"code": "BLOCKER_A", "resolver": "y"},
+            ]
+        },
+        {
+            "blockers": [
+                {"code": "BLOCKER_B", "resolver": "x"},
+                {"code": "BLOCKER_A", "resolver": "y"},
+            ]
+        },
+    )
+    for registry in malformed:
+        with pytest.raises(ReleaseControlError, match="readiness registry blocker"):
+            _validated_readiness_blockers(registry)
 
 
 def test_release_readiness_can_reach_ready_only_from_cross_bound_inputs(

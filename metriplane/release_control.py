@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -73,6 +74,69 @@ _INVOCATION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,127}")
 
 class ReleaseControlError(ValueError):
     """A release operation cannot proceed without weakening its contract."""
+
+
+@dataclass(frozen=True)
+class ProviderAttestationVerifier:
+    """Verify provider attestations against an independently supplied trust root."""
+
+    keys: Mapping[tuple[str, str], bytes]
+
+    @classmethod
+    def from_keyring(cls, path: Path) -> ProviderAttestationVerifier:
+        keyring = read_json(path)
+        if set(keyring) != {"keys", "schema_version"} or keyring["schema_version"] != (
+            "metriplane.provider-attestation-keyring.v1"
+        ):
+            raise ReleaseControlError("provider attestation keyring shape is not closed")
+        rows = keyring["keys"]
+        if not isinstance(rows, list) or not rows:
+            raise ReleaseControlError("provider attestation keyring has no trusted keys")
+        expected_fields = {"actor_id", "key_hex", "provider"}
+        parsed: dict[tuple[str, str], bytes] = {}
+        identities: list[tuple[str, str]] = []
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != expected_fields:
+                raise ReleaseControlError("provider attestation key row shape is not closed")
+            provider = row["provider"]
+            actor_id = row["actor_id"]
+            key_hex = row["key_hex"]
+            if provider not in {"github", "linear"}:
+                raise ReleaseControlError("provider attestation key names an unsupported provider")
+            _require_nonempty_string(actor_id, "provider attestation key actor")
+            if (
+                not isinstance(key_hex, str)
+                or re.fullmatch(r"[0-9a-f]{64,}", key_hex) is None
+                or len(key_hex) % 2 != 0
+            ):
+                raise ReleaseControlError("provider attestation key is not canonical hex")
+            identity = (provider, actor_id)
+            if identity in parsed:
+                raise ReleaseControlError("provider attestation key identity is duplicated")
+            parsed[identity] = bytes.fromhex(key_hex)
+            identities.append(identity)
+        if identities != sorted(identities):
+            raise ReleaseControlError("provider attestation keys are not canonically ordered")
+        return cls(keys=parsed)
+
+    def verify(self, signature: Mapping[str, Any], *, subject_digest: str) -> bool:
+        provider = signature.get("provider")
+        actor_id = signature.get("actor_id")
+        if not isinstance(provider, str) or not isinstance(actor_id, str):
+            return False
+        key = self.keys.get((provider, actor_id))
+        signature_value = signature.get("signature")
+        if key is None or not isinstance(signature_value, str):
+            return False
+        message = canonical_json(
+            {
+                "actor_id": actor_id,
+                "provider": provider,
+                "subject_digest": subject_digest,
+            }
+        )
+        expected = hmac.new(key, message, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature_value, expected)
 
 
 def canonical_json(value: object) -> bytes:
@@ -247,7 +311,13 @@ def signature_subject_digest(record: Mapping[str, Any]) -> str:
     return sha256_json({field: record[field] for field in fields})
 
 
-def _validated_signature(signature: Mapping[str, Any], *, subject_digest: str, live: bool) -> str:
+def _validated_signature(
+    signature: Mapping[str, Any],
+    *,
+    subject_digest: str,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> str:
     exact = {"actor_id", "algorithm", "provider", "signature", "subject_digest", "synthetic"}
     if not isinstance(signature, Mapping):
         raise ReleaseControlError("signature is not an object")
@@ -280,9 +350,11 @@ def _validated_signature(signature: Mapping[str, Any], *, subject_digest: str, l
             raise ReleaseControlError("live signatures require provider authority")
         if algorithm != "provider-attestation-v1":
             raise ReleaseControlError("test signatures cannot authorize live release work")
-        raise ReleaseControlError(
-            "live provider signature verification is not implemented; field shape is not authority"
-        )
+        if attestation_verifier is None:
+            raise ReleaseControlError("live provider attestation has no trusted verifier")
+        if not attestation_verifier.verify(signature, subject_digest=subject_digest):
+            raise ReleaseControlError("live provider attestation authentication failed")
+        return actor_id
     if (
         synthetic is not True
         or provider != "test-fixture"
@@ -293,7 +365,12 @@ def _validated_signature(signature: Mapping[str, Any], *, subject_digest: str, l
     return actor_id
 
 
-def _validated_record_signers(record: Mapping[str, Any], *, live: bool) -> set[str]:
+def _validated_record_signers(
+    record: Mapping[str, Any],
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> set[str]:
     signatures = record["signatures"]
     if live and not signatures:
         raise ReleaseControlError("live release authority has no authenticated signature")
@@ -302,6 +379,7 @@ def _validated_record_signers(record: Mapping[str, Any], *, live: bool) -> set[s
             signature,
             subject_digest=signature_subject_digest(record),
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for signature in signatures
     }
@@ -327,6 +405,7 @@ def validate_role_assignments(
     expected_run_id: str | None = None,
     check_conflicts: bool = False,
     check_freshness: bool = False,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> dict[str, str]:
     validate_record(record, "release-role-assignments")
     if record["status"] != "PASS":
@@ -373,6 +452,7 @@ def validate_role_assignments(
             signature,
             subject_digest=signature_subject_digest(record),
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for signature in record["signatures"]
     }
@@ -386,6 +466,7 @@ def validate_approval(
     roles: Mapping[str, str],
     *,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
     """Require a conflict-free, digest-bound decision by a distinct reviewer."""
 
@@ -409,6 +490,7 @@ def validate_approval(
             signature,
             subject_digest=signature_subject_digest(record),
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for signature in record["signatures"]
     }
@@ -417,7 +499,11 @@ def validate_approval(
 
 
 def validate_task_state_observation(
-    record: Mapping[str, Any], roles: Mapping[str, str], *, live: bool
+    record: Mapping[str, Any],
+    roles: Mapping[str, str],
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
     """Require the assigned live executor and an allowed implementation state."""
 
@@ -438,6 +524,7 @@ def validate_task_state_observation(
             signature,
             subject_digest=signature_subject_digest(record),
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for signature in record["signatures"]
     }
@@ -663,6 +750,7 @@ def validate_lkg_invalidation(
     *,
     live: bool,
     candidate_digest: str,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
     """Fence an LKG only through a signed non-author contradiction decision."""
 
@@ -685,6 +773,7 @@ def validate_lkg_invalidation(
             signature,
             subject_digest=signature_subject_digest(record),
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for signature in record["signatures"]
     }
@@ -896,14 +985,20 @@ def audit_release_repository(repository: Path, *, live: bool) -> dict[str, Any]:
     }
 
 
-def _release_input(path: Path, expected_type: str, *, live: bool) -> dict[str, Any]:
+def _release_input(
+    path: Path,
+    expected_type: str,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> dict[str, Any]:
     record = read_json(path)
     validate_record(record, expected_type)
     if record["status"] not in {"PASS", "READY"}:
         raise ReleaseControlError(f"{expected_type} is not passing authority")
     if live and record["synthetic"] is not False:
         raise ReleaseControlError(f"synthetic {expected_type} cannot satisfy a live release")
-    _validated_record_signers(record, live=live)
+    _validated_record_signers(record, live=live, attestation_verifier=attestation_verifier)
     return record
 
 
@@ -916,13 +1011,19 @@ def _release_data(
     return data
 
 
-def _passing_record(record: Mapping[str, Any], expected_type: str, *, live: bool) -> dict[str, Any]:
+def _passing_record(
+    record: Mapping[str, Any],
+    expected_type: str,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> dict[str, Any]:
     validate_record(record, expected_type)
     if record["status"] != "PASS":
         raise ReleaseControlError(f"{expected_type} is not passing authority")
     if live and record["synthetic"] is not False:
         raise ReleaseControlError(f"synthetic {expected_type} cannot authorize a live release")
-    _validated_record_signers(record, live=live)
+    _validated_record_signers(record, live=live, attestation_verifier=attestation_verifier)
     data = record["data"]
     if not isinstance(data, dict):
         raise ReleaseControlError(f"{expected_type} data is not an object")
@@ -954,6 +1055,7 @@ def _resolved_evidence_record(
     label: str,
     *,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> dict[str, Any]:
     required_digest = _require_digest(digest, label)
     matches = indexed.get(required_digest, ())
@@ -961,7 +1063,12 @@ def _resolved_evidence_record(
         raise ReleaseControlError(f"{label} does not resolve to retained bytes")
     records: list[dict[str, Any]] = []
     for _path, candidate in matches:
-        _passing_record(candidate, expected_type, live=live)
+        _passing_record(
+            candidate,
+            expected_type,
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
         records.append(candidate)
     first = records[0]
     if any(candidate != first for candidate in records[1:]):
@@ -974,13 +1081,19 @@ def _candidate_record_for_digest(
     candidate_digest: str,
     *,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     for entries in indexed.values():
         for _path, record in entries:
             if record.get("record_type") != "release-candidate-identity":
                 continue
-            data = _passing_record(record, "release-candidate-identity", live=live)
+            data = _passing_record(
+                record,
+                "release-candidate-identity",
+                live=live,
+                attestation_verifier=attestation_verifier,
+            )
             if data.get("candidate_digest") == candidate_digest:
                 matches.append(record)
     if len(matches) != 1:
@@ -1083,8 +1196,58 @@ def _validate_candidate_identity_payload(
     _require_invocation(candidate["build_invocation_id"])
 
 
+def _validate_artifact_manifest_payload(
+    artifact: Mapping[str, Any], *, expected_milestone: str
+) -> list[dict[str, Any]]:
+    expected_fields = {
+        "artifact_set_digest",
+        "artifacts",
+        "build_invocation_id",
+        "build_recipe_digest",
+        "milestone",
+        "source_digest",
+        "source_freeze_digest",
+        "target_resolution_digest",
+    }
+    if set(artifact) != expected_fields:
+        raise ReleaseControlError("qualified artifact manifest data shape is not closed")
+    if artifact["milestone"] != expected_milestone:
+        raise ReleaseControlError("qualified artifact manifest milestone binding mismatch")
+    _require_invocation(artifact["build_invocation_id"])
+    for field in expected_fields - {"artifacts", "build_invocation_id", "milestone"}:
+        _require_digest(artifact[field], f"qualified artifact manifest {field}")
+    rows = artifact["artifacts"]
+    if not isinstance(rows, list) or len(rows) != 2:
+        raise ReleaseControlError("qualified artifact manifest is not one wheel and one sdist")
+    expected_media = {
+        ".whl": "application/vnd.pypa.wheel+zip",
+        ".tar.gz": "application/gzip",
+    }
+    names: list[str] = []
+    suffixes: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {"media_type", "path", "sha256", "size"}:
+            raise ReleaseControlError("qualified artifact manifest row shape is not closed")
+        name = row["path"]
+        if not isinstance(name, str) or not name or Path(name).name != name:
+            raise ReleaseControlError("qualified artifact manifest path is unsafe")
+        suffix = ".tar.gz" if name.endswith(".tar.gz") else Path(name).suffix
+        if suffix not in expected_media or row["media_type"] != expected_media[suffix]:
+            raise ReleaseControlError("qualified artifact manifest media type is invalid")
+        _require_digest(row["sha256"], f"qualified artifact {name}")
+        if isinstance(row["size"], bool) or not isinstance(row["size"], int) or row["size"] < 1:
+            raise ReleaseControlError("qualified artifact manifest size is invalid")
+        names.append(name)
+        suffixes.add(suffix)
+    if names != sorted(set(names)) or suffixes != set(expected_media):
+        raise ReleaseControlError("qualified artifact manifest inventory is not canonical")
+    if artifact["artifact_set_digest"] != sha256_json(rows):
+        raise ReleaseControlError("qualified artifact set digest mismatch")
+    return rows
+
+
 def _validate_qualification_plan_payload(
-    plan: Mapping[str, Any], *, candidate: Mapping[str, Any]
+    plan: Mapping[str, Any], *, candidate: Mapping[str, Any] | None = None
 ) -> dict[str, dict[str, Any]]:
     expected_fields = {
         "attempt_count",
@@ -1117,9 +1280,10 @@ def _validate_qualification_plan_payload(
     claimed_plan_digest = unsigned_plan.pop("plan_digest")
     if claimed_plan_digest != sha256_json(unsigned_plan):
         raise ReleaseControlError("release qualification plan digest mismatch")
-    if (
-        plan["expected_terminal_result"] != "PASS"
-        or plan["candidate_digest"] != candidate["candidate_digest"]
+    if plan["expected_terminal_result"] != "PASS":
+        raise ReleaseControlError("release qualification plan terminal result is invalid")
+    if candidate is not None and (
+        plan["candidate_digest"] != candidate["candidate_digest"]
         or plan["candidate_manifest_digest"] != candidate["artifact_manifest_digest"]
         or plan["predecessor_digest"] != candidate["predecessor_digest"]
         or plan["milestone"] != candidate["milestone"]
@@ -1162,8 +1326,14 @@ def _validate_cell_result_payload(
     candidate_digest: str,
     plan_digest: str,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> dict[str, Any]:
-    cell = _passing_record(record, "release-cell-result", live=live)
+    cell = _passing_record(
+        record,
+        "release-cell-result",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "artifact_digest",
         "attempt_id",
@@ -1301,6 +1471,40 @@ def _validate_retention_payload(
         raise ReleaseControlError(f"{label} receipt-set digest mismatch")
 
 
+def _validate_observed_store_readbacks(
+    stores: Sequence[Mapping[str, Any]],
+    *,
+    expected_digest: str,
+    readbacks: Mapping[str, Path] | None,
+    label: str,
+) -> None:
+    expected_store_ids = {"payload-store-a", "payload-store-b"}
+    if not isinstance(readbacks, Mapping) or set(readbacks) != expected_store_ids:
+        raise ReleaseControlError(f"{label} requires two explicit observed store readbacks")
+    if any(not isinstance(path, Path) for path in readbacks.values()):
+        raise ReleaseControlError(f"{label} readback paths must be Path values")
+    paths = [readbacks[store_id] for store_id in sorted(expected_store_ids)]
+    if paths[0] == paths[1]:
+        raise ReleaseControlError(f"{label} readback paths are not independent observations")
+    try:
+        if paths[0].resolve(strict=True) == paths[1].resolve(strict=True) or os.path.samefile(
+            paths[0], paths[1]
+        ):
+            raise ReleaseControlError(f"{label} readbacks resolve to the same file")
+    except (OSError, RuntimeError) as exc:
+        raise ReleaseControlError(f"{label} readback path cannot be resolved: {exc}") from exc
+    stores_by_id = {store["store_id"]: store for store in stores}
+    for store_id, path in readbacks.items():
+        observed_digest = _regular_file_digest(path)
+        store = stores_by_id[store_id]
+        if (
+            observed_digest != expected_digest
+            or store["content_digest"] != observed_digest
+            or store["read_back_digest"] != observed_digest
+        ):
+            raise ReleaseControlError(f"{label} observed bytes differ for {store_id}")
+
+
 def _validate_attempt_coordination(
     record: Mapping[str, Any],
     *,
@@ -1308,8 +1512,14 @@ def _validate_attempt_coordination(
     attempt: Mapping[str, Any],
     expected_cell_ids: list[str],
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> set[str]:
-    coordination = _passing_record(record, "release-attempt-coordination", live=live)
+    coordination = _passing_record(
+        record,
+        "release-attempt-coordination",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "attempt_id",
         "candidate_digest",
@@ -1371,11 +1581,19 @@ def _validate_attempt_coordination(
             "provider-run-termination",
             "release attempt provider termination",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
-        termination_data = _passing_record(termination, "provider-run-termination", live=live)
+        termination_data = _passing_record(
+            termination,
+            "provider-run-termination",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
         if (
-            set(termination_data) != {"state", "tool"}
+            set(termination_data) != {"job_id", "provider_run_id", "state", "tool"}
             or termination_data["state"] != "success"
+            or termination_data["job_id"] != job_id
+            or termination_data["provider_run_id"] != provider_run_id
             or not isinstance(termination_data["tool"], str)
             or re.fullmatch(
                 r"[A-Za-z0-9._-]*(?:[Pp]rovider|[Gg]it[Hh]ub)[A-Za-z0-9._-]*",
@@ -1395,8 +1613,14 @@ def _validate_attempt_evidence_manifest(
     attempt: Mapping[str, Any],
     required_digests: set[str],
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    manifest = _passing_record(record, "release-evidence-manifest", live=live)
+    manifest = _passing_record(
+        record,
+        "release-evidence-manifest",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "candidate_digest",
         "entries",
@@ -1461,8 +1685,14 @@ def _validate_attempt_index_payload(
     expected_manifest_digest: str,
     retention_digest: str,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    index = _passing_record(record, "release-attempt-index", live=live)
+    index = _passing_record(
+        record,
+        "release-attempt-index",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "backend_id",
         "committed_head",
@@ -1519,8 +1749,14 @@ def _validate_clean_warning_summary(
     expected_subject_digest: str,
     label: str,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    warning = _passing_record(record, "release-warning-summary", live=live)
+    warning = _passing_record(
+        record,
+        "release-warning-summary",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "candidate_digest",
         "deselection_count",
@@ -1560,9 +1796,19 @@ def _validate_clean_warning_summary(
 
 
 def validate_release_qualification_record(
-    record: Mapping[str, Any], *, evidence_root: Path, live: bool
+    record: Mapping[str, Any],
+    *,
+    evidence_root: Path,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+    attempt_retention_readbacks: Mapping[str, Mapping[str, Path]] | None = None,
 ) -> None:
-    data = _passing_record(record, "release-qualification", live=live)
+    data = _passing_record(
+        record,
+        "release-qualification",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "attempt_digests",
         "attempt_index_receipt_digests",
@@ -1638,13 +1884,29 @@ def validate_release_qualification_record(
         "release-qualification-plan",
         "release qualification plan",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
-    plan = _passing_record(plan_record, "release-qualification-plan", live=live)
+    plan = _passing_record(
+        plan_record,
+        "release-qualification-plan",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     milestone = plan.get("milestone")
     if not isinstance(milestone, str) or milestone not in MILESTONES:
         raise ReleaseControlError("release qualification plan milestone is invalid")
-    candidate_record = _candidate_record_for_digest(indexed, data["candidate_digest"], live=live)
-    candidate = _passing_record(candidate_record, "release-candidate-identity", live=live)
+    candidate_record = _candidate_record_for_digest(
+        indexed,
+        data["candidate_digest"],
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     _validate_candidate_identity_payload(
         candidate,
         expected_digest=data["candidate_digest"],
@@ -1661,6 +1923,7 @@ def validate_release_qualification_record(
             "release-attempt",
             "release qualification attempt",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for digest in data["attempt_digests"]
     ]
@@ -1728,6 +1991,7 @@ def validate_release_qualification_record(
                 "release-cell-result",
                 "release qualification cell result",
                 live=live,
+                attestation_verifier=attestation_verifier,
             )
             _validate_cell_result_payload(
                 cell_record,
@@ -1736,6 +2000,7 @@ def validate_release_qualification_record(
                 candidate_digest=data["candidate_digest"],
                 plan_digest=data["plan_digest"],
                 live=live,
+                attestation_verifier=attestation_verifier,
             )
             validated_attempt_cells.append(cell_row)
         if observed_cell_ids != expected_cells:
@@ -1750,6 +2015,7 @@ def validate_release_qualification_record(
             "release-attempt-coordination",
             "release attempt coordination",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         termination_digests = _validate_attempt_coordination(
             coordination_record,
@@ -1757,6 +2023,7 @@ def validate_release_qualification_record(
             attempt=attempt,
             expected_cell_ids=expected_cells,
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         retention_digest = _require_digest(
             attempt["retention_receipts_digest"], "release attempt retention receipt"
@@ -1767,8 +2034,14 @@ def validate_release_qualification_record(
             "release-retention-receipts",
             "release qualification retention receipt",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
-        retention = _passing_record(retention_record, "release-retention-receipts", live=live)
+        retention = _passing_record(
+            retention_record,
+            "release-retention-receipts",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
         index_digest = _require_digest(
             attempt["index_receipt_digest"], "release attempt index receipt"
         )
@@ -1778,8 +2051,14 @@ def validate_release_qualification_record(
             "release-attempt-index",
             "release qualification index receipt",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
-        index = _passing_record(index_record, "release-attempt-index", live=live)
+        index = _passing_record(
+            index_record,
+            "release-attempt-index",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
         manifest_digest = _require_digest(
             index.get("entry_manifest_digest"), "release attempt evidence manifest"
         )
@@ -1789,6 +2068,7 @@ def validate_release_qualification_record(
             "release-evidence-manifest",
             "release attempt evidence manifest",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         _validate_attempt_evidence_manifest(
             manifest_record,
@@ -1800,6 +2080,7 @@ def validate_release_qualification_record(
                 *termination_digests,
             },
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         _validate_retention_payload(
             retention,
@@ -1807,12 +2088,25 @@ def validate_release_qualification_record(
             expected_phase="attempt",
             label="release qualification retention receipt",
         )
+        if live or attempt_retention_readbacks is not None:
+            readbacks = (
+                attempt_retention_readbacks.get(retention_digest)
+                if attempt_retention_readbacks is not None
+                else None
+            )
+            _validate_observed_store_readbacks(
+                retention["stores"],
+                expected_digest=manifest_digest,
+                readbacks=readbacks,
+                label="release qualification retention receipt",
+            )
         _validate_attempt_index_payload(
             index_record,
             attempt=attempt,
             expected_manifest_digest=manifest_digest,
             retention_digest=retention_digest,
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         attempt_warning = _resolved_evidence_record(
             indexed,
@@ -1820,6 +2114,7 @@ def validate_release_qualification_record(
             "release-warning-summary",
             "release attempt warning summary",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         attempt_subject = dict(attempt)
         del attempt_subject["warning_summary_digest"]
@@ -1829,6 +2124,7 @@ def validate_release_qualification_record(
             expected_subject_digest=sha256_json(attempt_subject),
             label="release attempt warning summary",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         observed_index_receipts.append(index_digest)
         observed_retention_receipts.append(retention_digest)
@@ -1840,6 +2136,10 @@ def validate_release_qualification_record(
         raise ReleaseControlError("release qualification index receipt bindings mismatch")
     if observed_retention_receipts != data["attempt_retention_receipt_digests"]:
         raise ReleaseControlError("release qualification retention receipt bindings mismatch")
+    if attempt_retention_readbacks is not None and set(attempt_retention_readbacks) != set(
+        observed_retention_receipts
+    ):
+        raise ReleaseControlError("release qualification readback receipt inventory mismatch")
     if latest_cells is None or latest_cells != terminals:
         raise ReleaseControlError("release qualification terminals are not the final attempt")
     warning_record = _resolved_evidence_record(
@@ -1848,6 +2148,7 @@ def validate_release_qualification_record(
         "release-warning-summary",
         "release qualification warning summary",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
     qualification_subject = dict(data)
     del qualification_subject["warning_summary_digest"]
@@ -1857,6 +2158,7 @@ def validate_release_qualification_record(
         expected_subject_digest=sha256_json(qualification_subject),
         label="release qualification warning summary",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
 
 
@@ -1902,9 +2204,20 @@ def _required_release_targets(milestone: str) -> list[str]:
 
 
 def validate_publication_reconciliation_record(
-    record: Mapping[str, Any], *, evidence_root: Path, live: bool
+    record: Mapping[str, Any],
+    *,
+    evidence_root: Path,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+    retention_readbacks: Mapping[str, Path] | None = None,
+    attempt_retention_readbacks: Mapping[str, Mapping[str, Path]] | None = None,
 ) -> None:
-    data = _passing_record(record, "release-publication-reconciliation", live=live)
+    data = _passing_record(
+        record,
+        "release-publication-reconciliation",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "approval_digest",
         "burn_required",
@@ -2004,49 +2317,137 @@ def validate_publication_reconciliation_record(
             record_type,
             f"publication reconciliation {field}",
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for field, record_type in dependency_types.items()
     }
     validate_release_qualification_record(
-        dependencies["qualification_digest"], evidence_root=evidence_root, live=live
+        dependencies["qualification_digest"],
+        evidence_root=evidence_root,
+        live=live,
+        attestation_verifier=attestation_verifier,
+        attempt_retention_readbacks=attempt_retention_readbacks,
     )
-    approval = _passing_record(dependencies["approval_digest"], "release-approval", live=live)
+    approval = _passing_record(
+        dependencies["approval_digest"],
+        "release-approval",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    approval_decision = _resolved_evidence_record(
+        indexed,
+        approval.get("approval_decision_digest"),
+        "release-approval-decision",
+        "publication reconciliation approval decision",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    dependencies["approval_decision_digest"] = approval_decision
     gate_instance = _resolved_evidence_record(
         indexed,
         approval.get("gate_instance_digest"),
         "release-gate-instance",
         "publication reconciliation approval gate instance",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
-    gate = _passing_record(gate_instance, "release-gate-instance", live=live)
+    gate = _passing_record(
+        gate_instance,
+        "release-gate-instance",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     role_assignments = _role_assignment_record_for_gate(indexed, gate)
     validate_release_approval_record(
         dependencies["approval_digest"],
+        approval_decision=approval_decision,
         gate_instance=gate_instance,
         qualification=dependencies["qualification_digest"],
         role_assignments=role_assignments,
         no_prepublication_rubric=True,
         live=live,
+        attestation_verifier=attestation_verifier,
     )
+    candidate_record = _candidate_record_for_digest(
+        indexed,
+        data["candidate_digest"],
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    _validate_candidate_identity_payload(
+        candidate,
+        expected_digest=data["candidate_digest"],
+        expected_milestone=data["milestone"],
+    )
+    artifact_manifest_record = _resolved_evidence_record(
+        indexed,
+        candidate["artifact_manifest_digest"],
+        "release-artifact-manifest",
+        "publication reconciliation qualified artifact manifest",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    artifact_manifest = _passing_record(
+        artifact_manifest_record,
+        "release-artifact-manifest",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    qualified_artifacts = _validate_artifact_manifest_payload(
+        artifact_manifest, expected_milestone=data["milestone"]
+    )
+    if artifacts != qualified_artifacts:
+        raise ReleaseControlError(
+            "publication reconciliation artifacts differ from the qualified candidate"
+        )
+    if candidate["artifact_set_digest"] != artifact_manifest["artifact_set_digest"]:
+        raise ReleaseControlError("publication reconciliation candidate artifact-set mismatch")
+    if (
+        candidate["build_invocation_id"] != artifact_manifest["build_invocation_id"]
+        or candidate["source_freeze_digest"] != artifact_manifest["source_freeze_digest"]
+    ):
+        raise ReleaseControlError("publication reconciliation candidate build binding mismatch")
     evidence_manifest = _passing_record(
         dependencies["evidence_manifest_digest"],
         "release-evidence-manifest",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
-    lock = _passing_record(dependencies["lock_receipt_digest"], "release-promotion-lock", live=live)
+    lock = _passing_record(
+        dependencies["lock_receipt_digest"],
+        "release-promotion-lock",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     observations = _passing_record(
         dependencies["observations_digest"],
         "release-publication-observations",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
-    promotion = _passing_record(dependencies["promotion_digest"], "release-promotion", live=live)
+    promotion = _passing_record(
+        dependencies["promotion_digest"],
+        "release-promotion",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     qualification = _passing_record(
-        dependencies["qualification_digest"], "release-qualification", live=live
+        dependencies["qualification_digest"],
+        "release-qualification",
+        live=live,
+        attestation_verifier=attestation_verifier,
     )
     retention = _passing_record(
         dependencies["staged_retention_receipts_digest"],
         "release-retention-receipts",
         live=live,
+        attestation_verifier=attestation_verifier,
     )
     manifest_fields = {
         "candidate_digest",
@@ -2068,8 +2469,11 @@ def validate_publication_reconciliation_record(
         or not entries
         or not isinstance(journals, list)
         or not journals
+        or any(not isinstance(digest, str) for digest in journals)
+        or journals != sorted(set(journals))
     ):
         raise ReleaseControlError("publication reconciliation evidence manifest is incomplete")
+    entry_paths: list[str] = []
     for entry in entries:
         if not isinstance(entry, dict) or set(entry) != {
             "media_type",
@@ -2086,6 +2490,8 @@ def validate_publication_reconciliation_record(
             or not entry["media_type"]
             or not isinstance(entry["path"], str)
             or not entry["path"]
+            or Path(entry["path"]).is_absolute()
+            or ".." in Path(entry["path"]).parts
             or not isinstance(entry["role"], str)
             or not entry["role"]
             or isinstance(entry["size"], bool)
@@ -2096,9 +2502,22 @@ def validate_publication_reconciliation_record(
                 "publication reconciliation evidence manifest entry is invalid"
             )
         _require_digest(entry["sha256"], "publication evidence manifest entry")
-    _require_digest(evidence_manifest["manifest_digest"], "publication evidence manifest")
+        entry_paths.append(entry["path"])
+    if entry_paths != sorted(set(entry_paths)):
+        raise ReleaseControlError("publication evidence manifest paths are not canonical")
+    manifest_digest = _require_digest(
+        evidence_manifest["manifest_digest"], "publication evidence manifest"
+    )
+    if manifest_digest != sha256_json({"entries": entries, "invocation_journal_digests": journals}):
+        raise ReleaseControlError("publication evidence manifest digest mismatch")
     for digest in journals:
         _require_digest(digest, "publication evidence invocation journal")
+    if (
+        evidence_manifest["phase"] != "qualified-publication"
+        or evidence_manifest["scope_kind"] != "release-candidate"
+        or evidence_manifest["scope_id"] != candidate["package_version"]
+    ):
+        raise ReleaseControlError("publication evidence manifest candidate scope mismatch")
     lock_fields = {
         "acquired_index_head",
         "approval_digest",
@@ -2222,6 +2641,13 @@ def validate_publication_reconciliation_record(
         expected_phase="qualified-publication",
         label="publication reconciliation retention",
     )
+    if live or retention_readbacks is not None:
+        _validate_observed_store_readbacks(
+            retention["stores"],
+            expected_digest=data["evidence_manifest_digest"],
+            readbacks=retention_readbacks,
+            label="publication reconciliation retention",
+        )
     candidate_digest = data["candidate_digest"]
     candidate_bindings = {
         "approval": approval.get("candidate_digest"),
@@ -2230,6 +2656,7 @@ def validate_publication_reconciliation_record(
         "observations": observations.get("candidate_digest"),
         "promotion": promotion.get("candidate_digest"),
         "qualification": qualification.get("candidate_digest"),
+        "candidate identity": candidate.get("candidate_digest"),
     }
     for label, observed_candidate in candidate_bindings.items():
         if observed_candidate != candidate_digest:
@@ -2241,6 +2668,7 @@ def validate_publication_reconciliation_record(
         or promotion.get("lock_receipt_digest") != data["lock_receipt_digest"]
         or observations.get("lock_receipt_digest") != data["lock_receipt_digest"]
         or observations.get("promotion_digest") != data["promotion_digest"]
+        or observations.get("artifact_manifest_digest") != candidate["artifact_manifest_digest"]
         or promotion.get("operation_id") != lock.get("operation_id")
         or promotion.get("promotion_plan_digest") != lock.get("promotion_plan_digest")
         or promotion.get("target_state_digest") != lock.get("target_state_digest")
@@ -2258,13 +2686,20 @@ def validate_publication_reconciliation_record(
         raise ReleaseControlError("publication reconciliation dependencies are not final")
 
     expected = {artifact["path"]: (artifact["sha256"], artifact["size"]) for artifact in artifacts}
-    manifest_artifacts = {
-        entry["path"]: (entry["sha256"], entry["size"])
+    manifest_artifacts = [
+        {
+            "media_type": entry["media_type"],
+            "path": entry["path"],
+            "sha256": entry["sha256"],
+            "size": entry["size"],
+        }
         for entry in entries
-        if entry["path"] in expected
-    }
-    if manifest_artifacts != expected:
-        raise ReleaseControlError("publication reconciliation manifest artifact set differs")
+        if entry["role"] == "release-artifact"
+    ]
+    if manifest_artifacts != artifacts:
+        raise ReleaseControlError(
+            "publication reconciliation evidence entries differ from qualified artifacts"
+        )
     if retention["input_digest"] != data["evidence_manifest_digest"]:
         raise ReleaseControlError("publication reconciliation retention input binding mismatch")
     if promotion_target_ids != target_ids:
@@ -2333,10 +2768,26 @@ def validate_release_gate_instance_record(
     predecessor_record: Mapping[str, Any],
     task_state_policy: Mapping[str, Any],
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    gate = _passing_record(record, "release-gate-instance", live=live)
-    candidate = _passing_record(candidate_identity_record, "release-candidate-identity", live=live)
-    predecessor = _passing_record(predecessor_record, "release-predecessor", live=live)
+    gate = _passing_record(
+        record,
+        "release-gate-instance",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate = _passing_record(
+        candidate_identity_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    predecessor = _passing_record(
+        predecessor_record,
+        "release-predecessor",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     bindings = {
         "candidate identity": (
             gate.get("candidate_identity_digest"),
@@ -2365,27 +2816,25 @@ def validate_release_gate_instance_record(
 
 
 def validate_release_qualification_plan_record(
-    record: Mapping[str, Any], *, gate_instance: Mapping[str, Any], live: bool
+    record: Mapping[str, Any],
+    *,
+    gate_instance: Mapping[str, Any],
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    plan = _passing_record(record, "release-qualification-plan", live=live)
-    gate = _passing_record(gate_instance, "release-gate-instance", live=live)
-    expected_fields = {
-        "attempt_count",
-        "candidate_digest",
-        "candidate_manifest_digest",
-        "cells",
-        "delta_digest",
-        "delta_test_map_digest",
-        "expected_terminal_result",
-        "gate_instance_digest",
-        "milestone",
-        "plan_digest",
-        "predecessor_digest",
-        "readiness_digest",
-        "scenario_catalog_digest",
-    }
-    if set(plan) != expected_fields:
-        raise ReleaseControlError("release qualification plan data shape is not closed")
+    plan = _passing_record(
+        record,
+        "release-qualification-plan",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    gate = _passing_record(
+        gate_instance,
+        "release-gate-instance",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    _validate_qualification_plan_payload(plan)
     bindings = {
         "gate instance": (plan["gate_instance_digest"], sha256_json(gate_instance)),
         "candidate": (plan["candidate_digest"], gate.get("candidate_digest")),
@@ -2395,42 +2844,117 @@ def validate_release_qualification_plan_record(
     for label, (observed, expected) in bindings.items():
         if observed != expected:
             raise ReleaseControlError(f"release qualification plan {label} binding mismatch")
-    cells = plan["cells"]
-    cell_identities = (
-        [sha256_json(cell) if isinstance(cell, dict) else cell for cell in cells]
-        if isinstance(cells, list)
-        else []
+
+
+def _validate_release_approval_decision_record(
+    record: Mapping[str, Any],
+    *,
+    approval: Mapping[str, Any],
+    gate: Mapping[str, Any],
+    qualification: Mapping[str, Any],
+    roles: Mapping[str, str],
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> None:
+    decision = _passing_record(
+        record,
+        "release-approval-decision",
+        live=live,
+        attestation_verifier=attestation_verifier,
     )
-    if (
-        plan["expected_terminal_result"] != "PASS"
-        or not isinstance(cells, list)
-        or not cells
-        or any(not isinstance(cell, (str, dict)) for cell in cells)
-        or len(cell_identities) != len(set(cell_identities))
-        or plan["attempt_count"] != len(cells)
-    ):
-        raise ReleaseControlError("release qualification plan matrix is invalid")
-    for field in expected_fields - {
-        "attempt_count",
-        "cells",
-        "expected_terminal_result",
+    expected_fields = {
+        "approval_kind",
+        "author_id",
+        "authority_policy_digest",
+        "candidate_digest",
+        "conflicts",
+        "decision",
+        "expires_at",
+        "issued_at",
         "milestone",
-    }:
-        _require_digest(plan[field], f"release qualification plan {field}")
+        "qualification_digest",
+        "reviewer_id",
+        "rubric_result_digest",
+        "signing_method",
+    }
+    if set(decision) != expected_fields:
+        raise ReleaseControlError("release approval decision data shape is not closed")
+    if (
+        decision["approval_kind"] != "non_author_release_decision"
+        or decision["decision"] != "APPROVED"
+        or decision["conflicts"] != []
+        or decision["signing_method"] != "provider-attestation-v1"
+    ):
+        raise ReleaseControlError("release approval decision is not a clean approval")
+    _require_digest(decision["authority_policy_digest"], "approval decision authority policy")
+    _require_digest(decision["candidate_digest"], "approval decision candidate")
+    _require_digest(decision["qualification_digest"], "approval decision qualification")
+    _require_nonempty_string(decision["author_id"], "approval decision author")
+    _require_nonempty_string(decision["reviewer_id"], "approval decision reviewer")
+    if decision["milestone"] not in MILESTONES:
+        raise ReleaseControlError("release approval decision milestone is invalid")
+    if decision["rubric_result_digest"] is not None:
+        _require_digest(decision["rubric_result_digest"], "approval decision rubric")
+    issued_at = _parse_utc_timestamp(decision["issued_at"], "approval decision issue time")
+    expires_at = _parse_utc_timestamp(decision["expires_at"], "approval decision expiry")
+    if expires_at <= issued_at:
+        raise ReleaseControlError("release approval decision validity window is invalid")
+    if live and not issued_at <= datetime.now(UTC) < expires_at:
+        raise ReleaseControlError("release approval decision is not currently valid")
+    bindings = {
+        "author": (decision["author_id"], roles["author_id"]),
+        "reviewer": (decision["reviewer_id"], roles["non_author_reviewer_id"]),
+        "approval author": (decision["author_id"], approval["author_id"]),
+        "approval reviewer": (decision["reviewer_id"], approval["reviewer_id"]),
+        "candidate": (decision["candidate_digest"], approval["candidate_digest"]),
+        "gate candidate": (decision["candidate_digest"], gate.get("candidate_digest")),
+        "milestone": (decision["milestone"], gate.get("milestone")),
+        "qualification": (decision["qualification_digest"], sha256_json(qualification)),
+        "approval rubric": (decision["rubric_result_digest"], approval["rubric_result_digest"]),
+    }
+    for label, (observed, expected) in bindings.items():
+        if observed != expected:
+            raise ReleaseControlError(f"release approval decision {label} binding mismatch")
+    if decision["reviewer_id"] == decision["author_id"]:
+        raise ReleaseControlError("release approval decision is not independent")
+    signers = _validated_record_signers(
+        record,
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    if decision["reviewer_id"] not in signers:
+        raise ReleaseControlError("release approval decision lacks reviewer authority")
 
 
 def validate_release_approval_record(
     record: Mapping[str, Any],
     *,
+    approval_decision: Mapping[str, Any],
     gate_instance: Mapping[str, Any],
     qualification: Mapping[str, Any],
     role_assignments: Mapping[str, Any],
     no_prepublication_rubric: bool,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    approval = _passing_record(record, "release-approval", live=live)
-    gate = _passing_record(gate_instance, "release-gate-instance", live=live)
-    qualification_data = _passing_record(qualification, "release-qualification", live=live)
+    approval = _passing_record(
+        record,
+        "release-approval",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    gate = _passing_record(
+        gate_instance,
+        "release-gate-instance",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    qualification_data = _passing_record(
+        qualification,
+        "release-qualification",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     basic = {"author_id", "candidate_digest", "conflicts", "decision", "reviewer_id"}
     extended = {
         "approval_decision_digest",
@@ -2454,6 +2978,7 @@ def validate_release_approval_record(
         expected_run_id=run_id,
         check_conflicts=True,
         check_freshness=live,
+        attestation_verifier=attestation_verifier,
     )
     author = approval["author_id"]
     reviewer = approval["reviewer_id"]
@@ -2473,12 +2998,24 @@ def validate_release_approval_record(
         raise ReleaseControlError("prepublication approval unexpectedly names a rubric result")
     if not no_prepublication_rubric:
         _require_digest(approval["rubric_result_digest"], "approval rubric result")
-    _require_digest(approval["approval_decision_digest"], "approval decision")
+    decision_digest = _require_digest(approval["approval_decision_digest"], "approval decision")
+    if decision_digest != sha256_json(approval_decision):
+        raise ReleaseControlError("release approval decision does not resolve to exact bytes")
+    _validate_release_approval_decision_record(
+        approval_decision,
+        approval=approval,
+        gate=gate,
+        qualification=qualification,
+        roles=roles,
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     signers = {
         _validated_signature(
             signature,
             subject_digest=signature_subject_digest(record),
             live=live,
+            attestation_verifier=attestation_verifier,
         )
         for signature in record["signatures"]
     }
@@ -2493,9 +3030,20 @@ def validate_release_candidate_identity_record(
     candidate_dir: Path,
     no_evaluation_adoption: bool,
     live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    candidate = _passing_record(record, "release-candidate-identity", live=live)
-    predecessor = _passing_record(predecessor_record, "release-predecessor", live=live)
+    candidate = _passing_record(
+        record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    predecessor = _passing_record(
+        predecessor_record,
+        "release-predecessor",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     expected_fields = {
         "artifact_manifest_digest",
         "artifact_set_digest",
@@ -2575,7 +3123,11 @@ def _regular_file_digest(path: Path) -> str:
 
 
 def validate_release_artifact_files(
-    record: Mapping[str, Any], artifacts: Path, *, live: bool
+    record: Mapping[str, Any],
+    artifacts: Path,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
     """Bind every publishable byte and filename to the frozen-source manifest."""
 
@@ -2584,6 +3136,11 @@ def validate_release_artifact_files(
         raise ReleaseControlError("artifact manifest is not passing authority")
     if live and record["synthetic"] is not False:
         raise ReleaseControlError("synthetic artifact manifests cannot authorize live publication")
+    _validated_record_signers(
+        record,
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     if artifacts.is_symlink() or not artifacts.is_dir():
         raise ReleaseControlError("artifact directory is missing or unsafe")
     data = _release_data(
@@ -2644,6 +3201,8 @@ def validate_release_retention_receipts(
     invocation_root: Path | None,
     through_stage: str | None,
     live: bool,
+    readbacks: Mapping[str, Path] | None = None,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
     """Validate two independent read-backs against the supplied canonical input."""
 
@@ -2652,10 +3211,11 @@ def validate_release_retention_receipts(
         raise ReleaseControlError("retention receipt set is not passing")
     if live and receipts["synthetic"] is not False:
         raise ReleaseControlError("synthetic retention receipts cannot authorize a live release")
-    if live:
-        raise ReleaseControlError(
-            "live two-store read-back verification is not implemented; receipt claims are not authority"
-        )
+    _validated_record_signers(
+        receipts,
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
     data = _release_data(
         receipts,
         {
@@ -2715,9 +3275,19 @@ def validate_release_retention_receipts(
     for path in inputs:
         record = read_json(path)
         validate_record(record)
+        _validated_record_signers(
+            record,
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
         supplied_digests.append(_regular_file_digest(path))
     if manifest is not None:
-        manifest_record = _release_input(manifest, "release-evidence-manifest", live=live)
+        manifest_record = _release_input(
+            manifest,
+            "release-evidence-manifest",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
         manifest_digest = _regular_file_digest(manifest)
         entries = manifest_record["data"].get("entries")
         if not isinstance(entries, list):
@@ -2738,12 +3308,57 @@ def validate_release_retention_receipts(
         raise ReleaseControlError("retention validation has no canonical input")
     if input_digest != expected_input_digest:
         raise ReleaseControlError("retention receipts bind a different canonical input")
+    if live or readbacks is not None:
+        _validate_observed_store_readbacks(
+            stores,
+            expected_digest=expected_input_digest,
+            readbacks=readbacks,
+            label="release retention",
+        )
     if (invocation_root is None) != (through_stage is None):
         raise ReleaseControlError("invocation-root and through-stage must be supplied together")
     if invocation_root is not None and (
         invocation_root.is_symlink() or not invocation_root.is_dir() or not through_stage
     ):
         raise ReleaseControlError("retention invocation journal is missing or unsafe")
+
+
+def _validated_readiness_blockers(readiness_registry: Mapping[str, Any]) -> list[str]:
+    raw_blockers = readiness_registry.get("blockers")
+    if not isinstance(raw_blockers, list):
+        raise ReleaseControlError("readiness registry blockers must be a list")
+    codes: list[str] = []
+    required_fields = {"code", "resolver"}
+    count_fields = {"required_count", "resolved_count"}
+    for blocker in raw_blockers:
+        if not isinstance(blocker, dict):
+            raise ReleaseControlError("readiness registry blocker must be an object")
+        fields = set(blocker)
+        if not required_fields.issubset(fields) or not fields.issubset(
+            required_fields | count_fields
+        ):
+            raise ReleaseControlError("readiness registry blocker shape is not closed")
+        if bool(fields & count_fields) and not count_fields.issubset(fields):
+            raise ReleaseControlError("readiness registry blocker counts are incomplete")
+        code = _require_nonempty_string(blocker["code"], "readiness blocker code")
+        _require_nonempty_string(blocker["resolver"], "readiness blocker resolver")
+        if count_fields.issubset(fields):
+            required_count = blocker["required_count"]
+            resolved_count = blocker["resolved_count"]
+            if (
+                isinstance(required_count, bool)
+                or not isinstance(required_count, int)
+                or required_count < 0
+                or isinstance(resolved_count, bool)
+                or not isinstance(resolved_count, int)
+                or resolved_count < 0
+                or resolved_count > required_count
+            ):
+                raise ReleaseControlError("readiness registry blocker counts are invalid")
+        codes.append(code)
+    if codes != sorted(set(codes)):
+        raise ReleaseControlError("readiness registry blockers are not canonical")
+    return codes
 
 
 def build_release_readiness_record(
@@ -2761,6 +3376,9 @@ def build_release_readiness_record(
     readiness_registry: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Build one deterministic readiness decision from exact, cross-bound inputs."""
+
+    if not isinstance(readiness_registry, Mapping):
+        raise ReleaseControlError("readiness registry must be an object")
 
     typed = (
         (gate_input, "release-gate-input"),
@@ -3300,13 +3918,7 @@ def build_release_readiness_record(
     if required_bom_snapshot_digest != sha256_json(required_bom_ids):
         raise ReleaseControlError("Linear required BOM snapshot digest mismatch")
 
-    blockers = sorted(
-        {
-            str(blocker.get("code"))
-            for blocker in readiness_registry.get("blockers", [])
-            if isinstance(blocker, dict) and blocker.get("code")
-        }
-    )
+    blockers = _validated_readiness_blockers(readiness_registry)
     evidence = readiness_registry.get("evidence_resolution")
     registry_ready = (
         readiness_registry.get("framework") == "READY"
@@ -3670,6 +4282,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     "check_release_readiness.py": _tool_contract(
         "gate-instance candidate-identity predecessor linear-snapshot artifact-manifest "
         "delta delta-test-map out",
+        optional="provider-attestation-keyring",
         fixture_producer=False,
     ),
     "collect_publication_observations.py": _tool_contract(
@@ -3922,10 +4535,17 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         record_flag="record",
     ),
     "validate_publication_reconciliation.py": _tool_contract(
-        "record", output_flag=None, fixture_producer=False, record_flag="record"
+        "record",
+        optional="provider-attestation-keyring store-readback attempt-store-readback",
+        repeatable="store-readback attempt-store-readback",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
     ),
     "validate_release_approval.py": _tool_contract(
-        "gate-instance qualification role-assignments no-prepublication-rubric record",
+        "approval-decision gate-instance qualification role-assignments "
+        "no-prepublication-rubric record",
+        optional="provider-attestation-keyring",
         boolean="no-prepublication-rubric",
         output_flag=None,
         fixture_producer=False,
@@ -3933,6 +4553,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_artifact_manifest.py": _tool_contract(
         "record artifacts read-hash",
+        optional="provider-attestation-keyring",
         boolean="read-hash",
         output_flag=None,
         fixture_producer=False,
@@ -3951,6 +4572,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_candidate_identity.py": _tool_contract(
         "record predecessor no-evaluation-adoption candidate-dir",
+        optional="provider-attestation-keyring",
         boolean="no-evaluation-adoption",
         output_flag=None,
         fixture_producer=False,
@@ -3979,6 +4601,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_gate_instance.py": _tool_contract(
         "record candidate-identity predecessor task-state-policy",
+        optional="provider-attestation-keyring",
         output_flag=None,
         fixture_producer=False,
         record_flag="record",
@@ -4001,23 +4624,34 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "gate-instance release-task-state linear-snapshot main-health repository-protection out"
     ),
     "validate_release_qualification.py": _tool_contract(
-        "record", output_flag=None, fixture_producer=False, record_flag="record"
+        "record",
+        optional="provider-attestation-keyring attempt-store-readback",
+        repeatable="attempt-store-readback",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
     ),
     "validate_release_qualification_plan.py": _tool_contract(
-        "record gate-instance", output_flag=None, fixture_producer=False, record_flag="record"
+        "record gate-instance",
+        optional="provider-attestation-keyring",
+        output_flag=None,
+        fixture_producer=False,
+        record_flag="record",
     ),
     "validate_release_retention.py": _tool_contract(
         "manifest receipts read-back",
         "input receipts read-back",
         "input manifest invocation-root through-stage receipts read-back",
+        optional="provider-attestation-keyring store-readback",
         boolean="read-back",
-        repeatable="input",
+        repeatable="input store-readback",
         output_flag=None,
         fixture_producer=False,
         record_flag=None,
     ),
     "validate_release_role_assignments.py": _tool_contract(
         "record milestone run-id check-conflicts check-freshness",
+        optional="provider-attestation-keyring",
         boolean="check-conflicts check-freshness",
         choices=_MILESTONE_CHOICES,
         output_flag=None,
@@ -4124,6 +4758,62 @@ def _normalized_arguments(args: argparse.Namespace, contract: ToolContract) -> d
     return result
 
 
+def _attestation_verifier_from_args(
+    args: argparse.Namespace,
+) -> ProviderAttestationVerifier | None:
+    value = getattr(args, "provider_attestation_keyring", None)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ReleaseControlError("provider attestation keyring path is missing")
+    return ProviderAttestationVerifier.from_keyring(Path(value))
+
+
+def _store_readbacks_from_args(values: object) -> Mapping[str, Path] | None:
+    if values in (None, []):
+        return None
+    if not isinstance(values, list):
+        raise ReleaseControlError("store readbacks must be repeatable bindings")
+    parsed: dict[str, Path] = {}
+    for value in values:
+        if not isinstance(value, str) or value.count("=") != 1:
+            raise ReleaseControlError("store readback must use STORE_ID=PATH")
+        store_id, raw_path = value.split("=", 1)
+        if store_id not in {"payload-store-a", "payload-store-b"} or not raw_path:
+            raise ReleaseControlError("store readback binding is invalid")
+        if store_id in parsed:
+            raise ReleaseControlError("store readback binding is duplicated")
+        parsed[store_id] = Path(raw_path)
+    return parsed
+
+
+def _attempt_store_readbacks_from_args(
+    values: object,
+) -> Mapping[str, Mapping[str, Path]] | None:
+    if values in (None, []):
+        return None
+    if not isinstance(values, list):
+        raise ReleaseControlError("attempt store readbacks must be repeatable bindings")
+    parsed: dict[str, dict[str, Path]] = {}
+    for value in values:
+        if not isinstance(value, str) or value.count("=") != 1:
+            raise ReleaseControlError(
+                "attempt store readback must use RETENTION_DIGEST:STORE_ID=PATH"
+            )
+        identity, raw_path = value.split("=", 1)
+        if identity.count(":") != 1 or not raw_path:
+            raise ReleaseControlError("attempt store readback binding is invalid")
+        retention_digest, store_id = identity.split(":", 1)
+        _require_digest(retention_digest, "attempt retention readback")
+        if store_id not in {"payload-store-a", "payload-store-b"}:
+            raise ReleaseControlError("attempt store readback store id is invalid")
+        stores = parsed.setdefault(retention_digest, {})
+        if store_id in stores:
+            raise ReleaseControlError("attempt store readback binding is duplicated")
+        stores[store_id] = Path(raw_path)
+    return parsed
+
+
 def _blocked_result(name: str, reason: str) -> dict[str, Any]:
     return {"reason": reason, "status": "BLOCKED_NOT_READY", "tool": name}
 
@@ -4174,6 +4864,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
 
     fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
     try:
+        attestation_verifier = _attestation_verifier_from_args(args)
         if name == "check_release_readiness.py":
             readiness_paths = [
                 Path(args.gate_instance),
@@ -4193,41 +4884,61 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 candidate_root / "gate-input.json",
                 "release-gate-input",
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             gate_instance = _release_input(
-                readiness_paths[0], "release-gate-instance", live=not fixture_mode
+                readiness_paths[0],
+                "release-gate-instance",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             candidate = _release_input(
                 readiness_paths[1],
                 "release-candidate-identity",
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             predecessor = _release_input(
-                readiness_paths[2], "release-predecessor", live=not fixture_mode
+                readiness_paths[2],
+                "release-predecessor",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             linear_snapshot = _release_input(
-                readiness_paths[3], "linear-release-snapshot", live=not fixture_mode
+                readiness_paths[3],
+                "linear-release-snapshot",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             source_freeze = _release_input(
                 candidate_root / "source-freeze.json",
                 "release-source-freeze",
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             impact_manifest = _release_input(
                 candidate_root / "impact-manifest.json",
                 "release-impact-manifest",
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             artifact_manifest = _release_input(
                 readiness_paths[4],
                 "release-artifact-manifest",
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             delta = _release_input(
-                readiness_paths[5], "release-capability-delta", live=not fixture_mode
+                readiness_paths[5],
+                "release-capability-delta",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             delta_test_map = _release_input(
-                readiness_paths[6], "release-delta-test-map", live=not fixture_mode
+                readiness_paths[6],
+                "release-delta-test-map",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
             readiness_registry = read_json(Path("docs/status/release-readiness.json"))
             result = build_release_readiness_record(
@@ -4252,6 +4963,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 result,
                 Path(args.artifacts),
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
         elif name == "validate_release_retention.py":
             result = read_json(Path(args.receipts))
@@ -4265,6 +4977,8 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 ),
                 through_stage=args.through_stage,
                 live=not fixture_mode,
+                readbacks=_store_readbacks_from_args(args.store_readback),
+                attestation_verifier=attestation_verifier,
             )
         elif name == "validate_release_qualification.py":
             record_path = Path(args.record)
@@ -4273,6 +4987,10 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 result,
                 evidence_root=record_path.parent,
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+                attempt_retention_readbacks=_attempt_store_readbacks_from_args(
+                    args.attempt_store_readback
+                ),
             )
         elif name == "validate_publication_reconciliation.py":
             record_path = Path(args.record)
@@ -4281,6 +4999,11 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 result,
                 evidence_root=record_path.parent,
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+                retention_readbacks=_store_readbacks_from_args(args.store_readback),
+                attempt_retention_readbacks=_attempt_store_readbacks_from_args(
+                    args.attempt_store_readback
+                ),
             )
         elif name == "validate_release_gate_instance.py":
             result = read_json(Path(args.record))
@@ -4290,6 +5013,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 predecessor_record=read_json(Path(args.predecessor)),
                 task_state_policy=read_json(Path(args.task_state_policy)),
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
         elif name == "validate_release_qualification_plan.py":
             result = read_json(Path(args.record))
@@ -4297,16 +5021,19 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 result,
                 gate_instance=read_json(Path(args.gate_instance)),
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
         elif name == "validate_release_approval.py":
             result = read_json(Path(args.record))
             validate_release_approval_record(
                 result,
+                approval_decision=read_json(Path(args.approval_decision)),
                 gate_instance=read_json(Path(args.gate_instance)),
                 qualification=read_json(Path(args.qualification)),
                 role_assignments=read_json(Path(args.role_assignments)),
                 no_prepublication_rubric=bool(args.no_prepublication_rubric),
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
         elif name == "validate_release_candidate_identity.py":
             result = read_json(Path(args.record))
@@ -4316,6 +5043,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 candidate_dir=Path(args.candidate_dir),
                 no_evaluation_adoption=bool(args.no_evaluation_adoption),
                 live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
             )
         elif contract.fixture_producer:
             if not fixture_mode:
@@ -4356,6 +5084,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                     expected_run_id=args.run_id,
                     check_conflicts=bool(args.check_conflicts),
                     check_freshness=bool(args.check_freshness),
+                    attestation_verifier=attestation_verifier,
                 )
             else:
                 _passing_record(result, expected_type, live=not fixture_mode)
