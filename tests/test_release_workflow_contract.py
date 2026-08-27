@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import io
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -110,9 +110,7 @@ def _live_retention_receipt(
         "status",
         "synthetic",
     )
-    subject_digest = _sha256(
-        _canonical_json({field: record[field] for field in signed_fields})
-    )
+    subject_digest = _sha256(_canonical_json({field: record[field] for field in signed_fields}))
     record["signatures"] = [
         {
             "actor_id": "retention-provider",
@@ -364,9 +362,7 @@ def test_retention_receipts_bind_to_both_observed_store_bundles(tmp_path: Path) 
         (runner_temp / "authority-store-a.tar").write_bytes(bundle_bytes)
         (runner_temp / "authority-store-b.tar").write_bytes(second_bundle)
         (authority / "evidence-manifest.json").write_bytes(manifest_bytes)
-        (receipts / "retention-receipts.json").write_text(
-            json.dumps(receipt), encoding="utf-8"
-        )
+        (receipts / "retention-receipts.json").write_text(json.dumps(receipt), encoding="utf-8")
         env = {
             **os.environ,
             "AUTHORITY_BUNDLE_SHA256": _sha256(bundle_bytes),

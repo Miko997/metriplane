@@ -364,16 +364,28 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
         "${{ needs.authorize-production.outputs.release_artifact_id }}"
     )
 
+    testpypi_validation = workflow["jobs"]["validate-testpypi-artifacts"]
+    assert testpypi_validation["permissions"] == {"actions": "read"}
+    assert testpypi_validation["needs"] == ["provenance", "build"]
+    assert any("run" in step for step in testpypi_validation["steps"])
+
+    testpypi_publish = workflow["jobs"]["publish-testpypi"]
+    assert testpypi_publish["needs"] == [
+        "provenance",
+        "build",
+        "validate-testpypi-artifacts",
+    ]
+    assert testpypi_publish["permissions"] == {"actions": "read", "id-token": "write"}
+
+    allowed_oidc_actions = {
+        "actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53",
+        "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+    }
     for job in workflow["jobs"].values():
         if job.get("permissions", {}).get("id-token") != "write":
             continue
-        assert all(
-            not str(step.get("uses", "")).startswith("actions/checkout@")
-            for step in job["steps"]
-        )
-        commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
-        assert "python tools/" not in commands
-        assert "./tools/" not in commands
+        assert all("run" not in step for step in job["steps"])
+        assert {step.get("uses") for step in job["steps"]}.issubset(allowed_oidc_actions)
 
 
 def test_qualification_provenance_precedes_authority_download() -> None:
@@ -410,7 +422,7 @@ def test_qualification_provenance_precedes_authority_download() -> None:
         '"expired": False',
         '"name": "release-qualification-evidence"',
         '"id": run_id',
-        'output.write(f"artifact_id={artifact[\'id\']}\\n")',
+        "output.write(f\"artifact_id={artifact['id']}\\n\")",
         'git merge-base --is-ancestor "$qualification_head_sha" origin/main',
     )
     assert all(fragment in command for fragment in required)

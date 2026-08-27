@@ -225,16 +225,13 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  publish-testpypi:
-    name: Publish exact artifacts to TestPyPI
+  validate-testpypi-artifacts:
+    name: Reverify artifacts before TestPyPI publication
     if: github.event_name == 'push'
     needs: [provenance, build]
     runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/metriplane
     permissions:
-      id-token: write
+      actions: read
     steps:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -250,6 +247,23 @@ jobs:
             <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
             <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           sha256sum --check ../SHA256SUMS
+
+  publish-testpypi:
+    name: Publish exact artifacts to TestPyPI
+    if: github.event_name == 'push'
+    needs: [provenance, build, validate-testpypi-artifacts]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/metriplane
+    permissions:
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
 
       - name: Publish distributions to TestPyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
