@@ -463,4 +463,6 @@ def inherited_fd_path(file_fd: int) -> str:
         raise OSError(errno.ENOTSUP, "descriptor inheritance is unsupported on this platform")
     if sys.platform.startswith("linux"):
         return f"/proc/self/fd/{file_fd}"
+    if sys.platform == "darwin":
+        return f"/dev/fd/{file_fd}"
     raise OSError(errno.ENOTSUP, "descriptor-backed report input is unsupported")
