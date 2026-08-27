@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 RELEASING = ROOT / "docs" / "releasing.md"
@@ -29,6 +28,11 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
 
     assert jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
     assert jobs["gates"]["needs"] == "provenance"
+    assert jobs["gates"]["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+    }
+    assert jobs["gates"]["with"] == {"enforce-release-decision": True}
     assert jobs["build"]["needs"] == ["provenance", "gates"]
     assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
@@ -63,7 +67,8 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     preflight = jobs["verify-production-artifacts"]
     publish = jobs["publish-pypi"]
     verify = jobs["verify-pypi"]
-    for job in (request, preflight, publish, verify):
+    reconcile = jobs["reconcile-production-lease"]
+    for job in (request, preflight, publish, verify, reconcile):
         assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert preflight["needs"] == "validate-production-request"
     assert "environment" not in preflight
@@ -74,6 +79,31 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     assert verify["needs"] == ["validate-production-request", "publish-pypi"]
     assert publish["environment"]["name"] == "pypi"
     assert publish["permissions"]["id-token"] == "write"
+    assert publish["permissions"]["checks"] == "read"
+    assert publish["permissions"]["contents"] == "read"
+    assert "contents: write" not in text
+    assert request["permissions"]["pull-requests"] == "read"
+    assert publish["permissions"]["pull-requests"] == "read"
+    assert reconcile["needs"] == [
+        "validate-production-request",
+        "publish-pypi",
+        "verify-pypi",
+    ]
+    assert reconcile["permissions"] == {"checks": "read", "contents": "read"}
+    assert text.count("uv run python tools/check_blockers.py") == 2
+    assert text.count("--require-merged-approval") == 2
+    assert text.count('--validated-sha "$RELEASE_COMMIT"') == 2
+
+    request_names = [step.get("name") for step in request["steps"]]
+    publish_names = [step.get("name") for step in publish["steps"]]
+    assert request_names[-1] == "Revalidate release blockers at production dispatch"
+    publish_index = publish_names.index("Publish the verified distributions to PyPI")
+    assert publish_names[publish_index - 4 : publish_index] == [
+        "Wait for the App-owned main-update lease",
+        "Revalidate release blockers while main updates are fenced",
+        "Reassert the lease and exact main immediately before publish",
+        "Rehash the exact artifact set immediately before publish",
+    ]
 
     required = (
         'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"',
@@ -92,6 +122,11 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         "github-token: ${{ github.token }}",
         "--repository https://test.pypi.org",
         "--repository https://pypi.org",
+        "acquire-publish-lease",
+        "assert-publish-lease",
+        "reconcile-publish-lease",
+        "PUBLISH_RESULT",
+        "VERIFY_RESULT",
     )
     assert all(fragment in text for fragment in required)
 
@@ -117,6 +152,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
+        'test "$tag_commit" = "$(git rev-parse origin/main)"',
         'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
@@ -126,8 +162,13 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
         "--repository https://test.pypi.org",
     )
     assert all(fragment in text for fragment in required)
+    assert 'test "$RELEASE_COMMIT" = "$(git rev-parse origin/main)"' not in text
+    assert text.count("acquire-publish-lease") == 1
+    assert text.count("assert-publish-lease") == 1
+    assert text.count("reconcile-publish-lease") == 1
     assert text.count("verify-registry") == 4
-    assert text.count("sha256sum --check ../SHA256SUMS") == 1
+    assert text.count("sha256sum --check ../SHA256SUMS") == 2
+    assert "find . -maxdepth 1 -type f -printf '%f\\n'" in text
 
 
 def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:

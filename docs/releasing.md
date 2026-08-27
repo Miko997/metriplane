@@ -49,7 +49,14 @@ but is explicitly excluded from the generated documentation site.
    `main`. The manual production dispatch rejects any other ref or a stale main
    commit. Protect `v*` tags against update and deletion with a repository
    ruleset.
-4. Configure Trusted Publishers for the `metriplane` project in both
+4. Activate the App-only `main` update ruleset and the protected
+   `release-leases/**` ruleset described in
+   [Release blocker workflow](maintainers/blocker-workflow.md#production-serialization).
+   Confirm that only the broker App can mutate lease refs and that it
+   acknowledges an exact lease with its App-owned
+   `Release serialization / required` check. Production publication is fail
+   closed until this MET-77 dependency is live.
+5. Configure Trusted Publishers for the `metriplane` project in both
    [TestPyPI](https://test.pypi.org/manage/account/publishing/) and
    [PyPI](https://pypi.org/manage/account/publishing/):
 
@@ -60,8 +67,8 @@ but is explicitly excluded from the generated documentation site.
    | Workflow | `publish-pypi.yml` | `publish-pypi.yml` |
    | Environment | `testpypi` | `pypi` |
 
-5. Require two-factor authentication on both registry accounts.
-6. Confirm that GitHub Actions has read access to repository contents and that
+6. Require two-factor authentication on both registry accounts.
+7. Confirm that GitHub Actions has read access to repository contents and that
    only the TestPyPI and production publishing jobs receive `id-token: write`.
 
 No long-lived registry token belongs in GitHub secrets.
@@ -209,9 +216,16 @@ The workflow performs this sequence:
     annotated tag and commit and that it has one unexpired immutable artifact;
 14. re-download that exact artifact set and compare it with TestPyPI before the
     `pypi` environment is entered;
-15. publish the verified files to PyPI;
-16. compare production PyPI's hashes with the same manifest and verify a clean
-    production installation.
+15. wait for the App-only main-update broker to create the exact protected
+    publish-lease ref and acknowledge that all main updates are fenced;
+16. revalidate live blocker approvals while the lease is held, then reassert the
+    lease, its exact App check, and exact current `main` immediately before the
+    trusted publishing action;
+17. publish the verified files to PyPI;
+18. while the lease remains active, compare production PyPI's hashes with the
+    same manifest and verify a clean production installation;
+19. wait for the broker to re-prove exact `main`, retire its exact lease, and
+    complete the same App check successfully before main updates resume.
 
 Do not start the production workflow dispatch until the TestPyPI verification
 job is green and its version, doctor, demo, bundle-verification, and
@@ -219,6 +233,13 @@ regression-check results have been reviewed. If the environment also pauses,
 approve it only after confirming the dispatch inputs. A failed TestPyPI stage
 means stop, diagnose, and prepare a new version if any immutable file was
 already accepted by a registry.
+
+Any `main` drift detected before step 17 burns the candidate; stop and create a
+new tag. A failed or ambiguous production upload or verification deliberately
+leaves the App-owned lease active. Do not delete it by hand or retry
+publication. Reconcile the PyPI file hashes and broker state first, then use the
+broker's audited recovery path. Drift detected after PyPI accepts immutable
+bytes is a release incident, not an unpublished candidate.
 
 ## Verify production and finish the release
 

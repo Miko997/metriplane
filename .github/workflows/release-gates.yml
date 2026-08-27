@@ -5,7 +5,14 @@ name: Release Gates
 
 on:
   workflow_call:
+    inputs:
+      enforce-release-decision:
+        description: "Fail when a valid registry contains an unresolved release blocker"
+        required: true
+        type: boolean
   pull_request:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
   push:
     branches:
       - main
@@ -13,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   fixture-integrity:
@@ -22,6 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          ref: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_review') && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -40,6 +50,39 @@ jobs:
       - name: Check required release fixtures
         run: |
           uv run python -m pytest -q tests/test_release_fixture_integrity.py
+
+      - name: Enforce release blocker policy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          context_args=(--github-repository "$GITHUB_REPOSITORY")
+          decision_args=()
+          if [[ "${{ inputs.enforce-release-decision }}" != "true" ]]; then
+            decision_args+=(--validation-only)
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" || "$GITHUB_EVENT_NAME" == "pull_request_review" ]]; then
+            context_args+=(
+              --github-pull-request "${{ github.event.pull_request.number }}"
+              --github-change-sha "${{ github.event.pull_request.head.sha }}"
+              --github-base-sha "${{ github.event.pull_request.base.sha }}"
+              --validated-sha "${{ github.event.pull_request.head.sha }}"
+            )
+          else
+            history_base="$(git rev-parse "${GITHUB_SHA}^")"
+            context_args+=(
+              --github-base-sha "$history_base"
+              --validated-sha "$GITHUB_SHA"
+              --require-merged-approval
+            )
+          fi
+          uv run python tools/check_blockers.py \
+            --registry docs/status/blockers.json \
+            --schema schemas/metriplane.blockers.v1.schema.json \
+            --repo-root . \
+            "${context_args[@]}" \
+            "${decision_args[@]}" \
+            --json
+          uv run python -m pytest -q tests/test_blocker_workflow.py
 
       - name: Confirm required fixture files are tracked
         run: |

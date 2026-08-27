@@ -76,7 +76,12 @@ jobs:
     name: Run required release gates
     if: github.event_name == 'push'
     needs: provenance
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/release-gates.yml
+    with:
+      enforce-release-decision: true
 
   build:
     name: Test and build distributions once
@@ -334,6 +339,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      pull-requests: read
     outputs:
       commit: ${{ steps.request.outputs.commit }}
       version: ${{ steps.request.outputs.version }}
@@ -347,6 +353,12 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
 
       - name: Require owner confirmation and a successful tag workflow
         id: request
@@ -373,7 +385,7 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
           test "$(git cat-file -t "$tag_ref")" = "tag"
           tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
-          git merge-base --is-ancestor "$tag_commit" origin/main
+          test "$tag_commit" = "$(git rev-parse origin/main)"
           test "$(git show "${tag_ref}:metriplane/__init__.py" | \
             sed -n 's/^__version__ = "\([^"]*\)"$/\1/p')" = \
             "$RELEASE_VERSION"
@@ -460,6 +472,25 @@ jobs:
           printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
           printf 'version=%s\n' "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Revalidate release blockers at production dispatch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ steps.request.outputs.commit }}
+        run: |
+          git checkout --detach "$RELEASE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          history_base="$(git rev-parse "${RELEASE_COMMIT}^")"
+          uv sync --locked --group dev
+          uv run python tools/check_blockers.py \
+            --registry docs/status/blockers.json \
+            --schema schemas/metriplane.blockers.v1.schema.json \
+            --repo-root . \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --github-base-sha "$history_base" \
+            --validated-sha "$RELEASE_COMMIT" \
+            --require-merged-approval \
+            --json
+
   verify-production-artifacts:
     name: Reverify artifacts before production approval
     if: github.event_name == 'workflow_dispatch'
@@ -510,11 +541,14 @@ jobs:
       url: https://pypi.org/p/metriplane
     permissions:
       actions: read
+      checks: read
       contents: read
       id-token: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
           ref: ${{ needs.validate-production-request.outputs.commit }}
           persist-credentials: false
 
@@ -529,6 +563,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
       - name: Reverify the approved artifact set
         env:
           RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
@@ -541,6 +581,56 @@ jobs:
             --repository https://test.pypi.org \
             --version "$RELEASE_VERSION" \
             --manifest release-artifacts/SHA256SUMS
+
+      - name: Wait for the App-owned main-update lease
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.validate-production-request.outputs.commit }}
+        run: |
+          python tools/release_artifacts.py acquire-publish-lease \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-sha "$RELEASE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Revalidate release blockers while main updates are fenced
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.validate-production-request.outputs.commit }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          history_base="$(git rev-parse "${RELEASE_COMMIT}^")"
+          uv sync --locked --group dev
+          uv run python tools/check_blockers.py \
+            --registry docs/status/blockers.json \
+            --schema schemas/metriplane.blockers.v1.schema.json \
+            --repo-root . \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --github-base-sha "$history_base" \
+            --validated-sha "$RELEASE_COMMIT" \
+            --require-merged-approval \
+            --json
+
+      - name: Reassert the lease and exact main immediately before publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.validate-production-request.outputs.commit }}
+        run: |
+          python tools/release_artifacts.py assert-publish-lease \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-sha "$RELEASE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Rehash the exact artifact set immediately before publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
 
       - name: Publish the verified distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
@@ -625,3 +715,40 @@ jobs:
           expected = os.environ["VERSION"]
           assert metriplane.__version__ == metadata.version("metriplane") == expected
           PY
+
+  reconcile-production-lease:
+    name: Observe production main-update lease reconciliation
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs: [validate-production-request, publish-pypi, verify-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Retain the lease after any ambiguous or failed publication
+        env:
+          PUBLISH_RESULT: ${{ needs.publish-pypi.result }}
+          VERIFY_RESULT: ${{ needs.verify-pypi.result }}
+        run: |
+          test "$PUBLISH_RESULT" = "success"
+          test "$VERIFY_RESULT" = "success"
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.validate-production-request.outputs.commit }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Observe exact main and the broker's terminal reconciliation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.validate-production-request.outputs.commit }}
+        run: |
+          python tools/release_artifacts.py reconcile-publish-lease \
+            --repository "$GITHUB_REPOSITORY" \
+            --release-sha "$RELEASE_COMMIT" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"

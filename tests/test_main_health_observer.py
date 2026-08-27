@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 import copy
+import shutil
+import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tools.observe_main_health import (
     REQUIRED_WORKFLOWS,
@@ -23,6 +27,7 @@ SHA = "a" * 40
 CI_RUN_ID = 101
 CI_ATTEMPT = 2
 RUN_IDS = {"documentation": 102, "security": 103}
+WORKFLOW_PATH = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "main-health.yml"
 
 
 def _provider_run(key: str, *, attempt: int = 1, **changes: Any) -> dict[str, Any]:
@@ -75,6 +80,25 @@ def _provider_jobs(selection: Selection) -> dict[str, list[dict[str, Any]]]:
             }
         ]
     return jobs
+
+
+def test_main_health_shell_steps_are_syntax_valid() -> None:
+    bash = shutil.which("bash")
+    assert bash is not None
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    for job in workflow["jobs"].values():
+        for step in job.get("steps", []):
+            script = step.get("run")
+            if script is None or step.get("shell", "bash") != "bash":
+                continue
+            result = subprocess.run(
+                [bash, "-n"],
+                input=script,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 0, f"{step.get('name')}: {result.stderr}"
 
 
 def test_exact_provider_attempt_observation_succeeds() -> None:
