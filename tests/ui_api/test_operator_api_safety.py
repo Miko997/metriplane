@@ -431,6 +431,80 @@ def test_latest_run_fails_cleanly_without_home_or_platform_bases(tmp_path: Path,
     assert "Platform paths unavailable" in payload["error"]
 
 
+def test_latest_run_preserves_selected_run_metadata_response(tmp_path: Path) -> None:
+    api = make_api(tmp_path)
+    runs_root = api._runs_root()
+    older = runs_root / "older"
+    selected = runs_root / "selected"
+    older.mkdir(parents=True)
+    selected.mkdir()
+    (older / "meta.json").write_text('{"run_id": "older"}\n', encoding="utf-8")
+    (selected / "session.jsonl").write_text("{}\n", encoding="utf-8")
+    (selected / "meta.json").write_text(
+        '{"run_id": "selected", "git_commit": "abc123"}\n',
+        encoding="utf-8",
+    )
+    os.utime(older, (1, 1))
+    os.utime(selected, (2, 2))
+
+    status, payload = api.route("GET", "/operator/latest-run", {})
+
+    assert status == 200
+    assert payload["runs_dir"] == str(runs_root)
+    assert payload["latest_run"] == {
+        "dir": str(selected),
+        "name": "selected",
+        "session_exists": True,
+        "session_size_mb": 0.0,
+        "meta_exists": True,
+        "mtime": 2.0,
+        "meta": {"run_id": "selected", "git_commit": "abc123"},
+    }
+    assert [run["name"] for run in payload["all_runs"]] == ["selected", "older"]
+
+
+def test_latest_run_does_not_read_outside_meta_after_selected_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from metriplane.runner.safe_reads import PinnedFile
+
+    api = make_api(tmp_path)
+    run = api._runs_root() / "selected"
+    parked = run.with_name("selected-original")
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    (run / "session.jsonl").write_text("{}\n", encoding="utf-8")
+    (run / "meta.json").write_text('{"run_id": "authorized"}\n', encoding="utf-8")
+    (outside / "meta.json").write_text('{"run_id": "outside"}\n', encoding="utf-8")
+    original_read_text = PinnedFile.read_text
+    swapped = False
+
+    def swap_before_meta_read(
+        artifact: PinnedFile,
+        encoding: str = "utf-8",
+        errors: str = "strict",
+    ) -> str:
+        nonlocal swapped
+        if artifact.name == "meta.json" and not swapped:
+            run.rename(parked)
+            run.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return original_read_text(artifact, encoding, errors)
+
+    monkeypatch.setattr(PinnedFile, "read_text", swap_before_meta_read)
+
+    status, payload = api.route("GET", "/operator/latest-run", {})
+
+    assert swapped
+    assert status == 200
+    assert payload["latest_run"]["name"] == "selected"
+    assert payload["latest_run"]["meta_exists"] is True
+    assert "meta" not in payload["latest_run"]
+    assert "outside" not in json.dumps(payload)
+
+
 def test_command_center_auto_discovery_ignores_external_artifact_symlink(tmp_path: Path):
     api = make_api(tmp_path)
     run = api._runs_root() / "candidate"

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-import time
+import threading
 
 from metriplane.fleet.agent import FleetAgent, FleetAgentConfig
 from metriplane.fleet.heartbeat import FleetHeartbeat
@@ -74,13 +74,25 @@ def test_metrics_provider_failure_is_safe():
 
 def test_start_stop_emits(tmp_path):
     out = tmp_path / "hb.jsonl"
+    emitted_twice = threading.Event()
+    emissions = 0
+
+    def metrics():
+        nonlocal emissions
+        emissions += 1
+        if emissions >= 2:
+            emitted_twice.set()
+        return {"fps": 10.0}
+
     agent = FleetAgent(
         FleetAgentConfig(node_id="n", heartbeat_interval_s=0.05, output_path=str(out)),
-        metrics_provider=lambda: {"fps": 10.0},
+        metrics_provider=metrics,
     )
     agent.start()
-    time.sleep(0.18)
-    agent.stop()
+    try:
+        assert emitted_twice.wait(timeout=2.0)
+    finally:
+        agent.stop()
     lines = out.read_text().strip().splitlines()
     assert len(lines) >= 2  # several heartbeats emitted
 

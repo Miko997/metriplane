@@ -16,6 +16,7 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -272,16 +273,6 @@ def dump_config_yaml(cfg: Config) -> str:
     return yaml.safe_dump(prim, sort_keys=True, default_flow_style=False)
 
 
-def _ensure_unique_run_dir(path: Path) -> Path:
-    run_id = validate_portable_run_id(path.name)
-    for collision_index in range(1000):
-        candidate_run_id = portable_run_id_for_collision(run_id, collision_index)
-        cand = path.with_name(candidate_run_id)
-        if not cand.exists():
-            return cand
-    raise RuntimeError(f"could not find unique run dir name for {path}")
-
-
 _RUN_RESERVATION_MARKER = ".metriplane-run-reservation"
 _RUN_RESERVATION_CANCELLED_MARKER = ".metriplane-run-reservation-cancelled"
 _RUN_RESERVATION_DIR_ENV = "METRIPLANE_RESERVED_RUN_DIR"
@@ -339,6 +330,24 @@ class _ReservationAuthority:
     token: str
     device: int
     inode: int
+
+
+_IN_PROCESS_RUN_AUTHORITIES: dict[str, _ReservationAuthority] = {}
+_IN_PROCESS_RUN_AUTHORITIES_LOCK = threading.RLock()
+
+
+def _authority_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _remember_run_authority(authority: _ReservationAuthority) -> None:
+    with _IN_PROCESS_RUN_AUTHORITIES_LOCK:
+        _IN_PROCESS_RUN_AUTHORITIES[_authority_key(authority.run_dir)] = authority
+
+
+def _in_process_run_authority(candidate: Path) -> _ReservationAuthority | None:
+    with _IN_PROCESS_RUN_AUTHORITIES_LOCK:
+        return _IN_PROCESS_RUN_AUTHORITIES.get(_authority_key(candidate))
 
 
 @dataclass(slots=True)
@@ -683,11 +692,10 @@ def reserve_run_directory(base: Path, run_id: str) -> RunDirectoryReservation:
     raise RuntimeError(f"could not reserve a unique run directory under {base}")
 
 
-def _claim_run_directory_reservation(candidate: Path) -> _ClaimedRunDirectory | None:
-    authority = _reservation_authority(candidate)
-    if authority is None:
-        return None
-
+def _claim_authorized_run_directory(
+    authority: _ReservationAuthority,
+) -> _ClaimedRunDirectory:
+    candidate = authority.run_dir
     claimed = _open_authorized_run_directory(authority)
     try:
         try:
@@ -711,6 +719,24 @@ def _claim_run_directory_reservation(candidate: Path) -> _ClaimedRunDirectory | 
         claimed.close()
         raise
     return claimed
+
+
+def _claim_run_directory_reservation(candidate: Path) -> _ClaimedRunDirectory | None:
+    authority = _reservation_authority(candidate)
+    if authority is None:
+        return None
+    return _claim_authorized_run_directory(authority)
+
+
+def _create_unreserved_run_directory(base: Path, run_id: str) -> _ClaimedRunDirectory:
+    reservation = reserve_run_directory(base, run_id)
+    authority = _ReservationAuthority(
+        run_dir=reservation.run_dir,
+        token=reservation.token,
+        device=reservation.device,
+        inode=reservation.inode,
+    )
+    return _claim_authorized_run_directory(authority)
 
 
 @dataclass(frozen=True, slots=True)
@@ -882,8 +908,8 @@ def create_run_context(
     if claimed_directory is not None:
         run_dir = candidate
     else:
-        run_dir = _ensure_unique_run_dir(candidate)
-        _mkdir_private(run_dir, parents=True, exist_ok=False)
+        claimed_directory = _create_unreserved_run_directory(base, rid)
+        run_dir = claimed_directory.authority.run_dir
     try:
         # If collision suffixing changed the directory, keep the persisted ID in sync.
         rid = validate_portable_run_id(run_dir.name)
@@ -907,20 +933,12 @@ def create_run_context(
 
         config_yaml_content = dump_config_yaml(cfg)
         env_content = _capture_env_text()
-        if claimed_directory is not None:
-            claimed_directory.write_text("config.yaml", config_yaml_content)
-            claimed_directory.write_text("config.canonical.json", cfg_canon)
-            claimed_directory.write_text("env.txt", env_content)
-            config_yaml_checksum = sha256_text(config_yaml_content)
-            config_canonical_checksum = sha256_text(cfg_canon)
-            env_checksum = sha256_text(env_content)
-        else:
-            _write_private_text(config_yaml, config_yaml_content, exclusive=True)
-            _write_private_text(cfg_canon_path, cfg_canon, exclusive=True)
-            _write_private_text(env_txt, env_content, exclusive=True)
-            config_yaml_checksum = sha256_file(config_yaml)
-            config_canonical_checksum = sha256_file(cfg_canon_path)
-            env_checksum = sha256_file(env_txt)
+        claimed_directory.write_text("config.yaml", config_yaml_content)
+        claimed_directory.write_text("config.canonical.json", cfg_canon)
+        claimed_directory.write_text("env.txt", env_content)
+        config_yaml_checksum = sha256_text(config_yaml_content)
+        config_canonical_checksum = sha256_text(cfg_canon)
+        env_checksum = sha256_text(env_content)
         assert config_canonical_checksum == cfg_hash
 
         meta: dict[str, Any] = {
@@ -958,14 +976,11 @@ def create_run_context(
             },
         }
         meta_content = json.dumps(meta, indent=2, sort_keys=True)
-        if claimed_directory is not None:
-            claimed_directory.write_text("meta.json", meta_content)
-            os.fsync(claimed_directory.fd)
-            claimed_directory.verify_visible_path()
-        else:
-            _write_private_text(meta_json, meta_content, exclusive=True)
+        claimed_directory.write_text("meta.json", meta_content)
+        os.fsync(claimed_directory.fd)
+        claimed_directory.verify_visible_path()
 
-        return RunContext(
+        context = RunContext(
             run_id=rid,
             run_dir=run_dir,
             created_utc=created,
@@ -980,13 +995,16 @@ def create_run_context(
             config_canonical_json_path=cfg_canon_path,
             session_jsonl=session_jsonl,
         )
+        _remember_run_authority(claimed_directory.authority)
+        return context
     finally:
-        if claimed_directory is not None:
-            claimed_directory.close()
+        claimed_directory.close()
 
 
 def _open_reserved_text_artifact(path: Path) -> TextIO | None:
     authority = _reservation_authority(path.parent)
+    if authority is None:
+        authority = _in_process_run_authority(path.parent)
     if authority is None:
         return None
     if Path(path.name).name != path.name or path.name in {"", ".", ".."}:

@@ -800,6 +800,160 @@ def _red_with_repair_results(
     return repaired_main, authorization, approval_evidence
 
 
+def _app_owner_repair_evidence(
+    root: Path,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object], dict[str, object]]:
+    repaired_main, _authorization, _evidence = _red_with_repair_results(root)
+    state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+    incident_digest = state["incident_digest"]
+    assert isinstance(incident_digest, str)
+    changed_paths = ["metriplane/fix.py", "tests/test_fix.py"]
+    collaborators = [{"id": 100, "login": "Miko997", "role_name": "admin"}]
+    collaboration_digest = digest(
+        {
+            "collaborators": [{"id": "100", "login": "Miko997", "permission": "admin"}],
+            "pending_invitations": [],
+        }
+    )
+    manifest = {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "allowed_paths": changed_paths,
+        "base_sha": BAD_SHA,
+        "collaboration_digest": collaboration_digest,
+        "expires_at": "2026-08-26T22:00:00Z",
+        "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
+        "issue": "MET-999",
+        "policy_amendment": {
+            "amended_rule": "repair_requires_non_author",
+            "authorization_mode": "single-maintainer-owner-emergency",
+            "incident_digest": incident_digest,
+            "reason": "single-maintainer-no-independent-collaborator",
+            "schema_version": 1,
+            "scope": "incident-only",
+        },
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+        "required_cadences": ["nightly", "weekly"],
+        "schema_version": 1,
+    }
+    ruleset_digests = {
+        identifier: str(index) * 64
+        for index, identifier in enumerate(sorted(stop_the_line.BROKER_OWNER_RULESET_IDS), start=1)
+    }
+    request = {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "base_ref": "main",
+        "base_sha": BAD_SHA,
+        "changed_paths_digest": digest(changed_paths),
+        "collaboration_digest": collaboration_digest,
+        "expires_at": "2026-08-25T21:50:00Z",
+        "head_sha": REVIEWED_SHA,
+        "incident_digest": incident_digest,
+        "issue": "MET-999",
+        "manifest_digest": digest(manifest),
+        "nonce": "9" * 32,
+        "policy_amendment_digest": digest(manifest["policy_amendment"]),
+        "pull_request": 123,
+        "repository": "Miko997/metriplane",
+        "requester_id": 100,
+        "ruleset_digests": ruleset_digests,
+        "schema_version": 1,
+        "state_commit": STATE_SHA,
+        "state_generation": 1,
+    }
+    review = {
+        "body": (
+            "metriplane-owner-repair-request:v1\n" + canonical_bytes(request).decode().rstrip("\n")
+        ),
+        "commit_id": REVIEWED_SHA,
+        "id": 501,
+        "state": "COMMENTED",
+        "submitted_at": "2026-08-25T21:40:00Z",
+        "user": {"id": 100, "login": "Miko997"},
+    }
+    pull = {
+        "base": {"repo": {"full_name": "Miko997/metriplane"}, "sha": BAD_SHA},
+        "body": (
+            "## Outcome\n\nRepair the incident.\n\n"
+            f"Main-health owner emergency: MET-999\nIncident: {incident_digest}\n"
+        ),
+        "changed_files": 2,
+        "head": {"sha": REVIEWED_SHA},
+        "merge_commit_sha": REPAIR_SHA,
+        "merged": True,
+        "merged_at": "2026-08-25T21:45:00Z",
+        "merged_by": {
+            "id": 900,
+            "login": "metriplane-main-health-publisher[bot]",
+            "type": "Bot",
+        },
+        "number": 123,
+        "user": {"id": 100, "login": "Miko997"},
+    }
+    check_run = {
+        "app": {"id": 4722589, "slug": "metriplane-main-health-publisher"},
+        "completed_at": "2026-08-25T21:44:00Z",
+        "conclusion": "success",
+        "external_id": f"mhb1:merge:{digest(request)}",
+        "head_sha": REVIEWED_SHA,
+        "id": 700,
+        "name": "Main health / required",
+        "status": "completed",
+    }
+    builder: dict[str, object] = {
+        "captured_at": "2026-08-25T21:46:00Z",
+        "check_run": check_run,
+        "collaborators": collaborators,
+        "files": [
+            {"filename": "tests/test_fix.py", "status": "modified"},
+            {"filename": "metriplane/fix.py", "status": "modified"},
+        ],
+        "head_commit": {"sha": REVIEWED_SHA, "tree": {"sha": TREE_SHA}},
+        "incident_digest": incident_digest,
+        "invitations": [],
+        "issue": "MET-999",
+        "manifest": manifest,
+        "merge_commit": {
+            "parents": [{"sha": BAD_SHA}, {"sha": REVIEWED_SHA}],
+            "sha": REPAIR_SHA,
+            "tree": {"sha": TREE_SHA},
+        },
+        "owner_permission": "admin",
+        "pull": pull,
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+        "review": review,
+        "ruleset_digests": ruleset_digests,
+    }
+    evidence = stop_the_line.github_app_owner_emergency_evidence(**builder)  # type: ignore[arg-type]
+    authorization = {
+        "authorization_mode": evidence["authorization_mode"],
+        "approval_digest": digest(evidence),
+        "approval_id": evidence["approval_id"],
+        "approval_provider": evidence["approval_provider"],
+        "allowed_paths": changed_paths,
+        "author": evidence["author"],
+        "author_id": evidence["author_id"],
+        "changed_paths_digest": digest(changed_paths),
+        "expires_at": manifest["expires_at"],
+        "failing_obligations": ["suite"],
+        "incident_digest": incident_digest,
+        "issue": "MET-999",
+        "manifest_digest": digest(manifest),
+        "policy_amendment_digest": digest(manifest["policy_amendment"]),
+        "proposed_repair_sha": REVIEWED_SHA,
+        "pull_request": "123",
+        "repository": "Miko997/metriplane",
+        "required_cadences": ["nightly", "weekly"],
+        "reviewer": evidence["reviewer"],
+        "reviewer_id": evidence["reviewer_id"],
+        "reviewer_permission": evidence["reviewer_permission"],
+        "schema_version": 1,
+    }
+    return repaired_main, authorization, evidence, builder
+
+
 def test_repair_resolution_rejects_newer_failed_cadence(tmp_path: Path) -> None:
     repaired_main, authorization, approval_evidence = _red_with_repair_results(tmp_path)
     ingest(
@@ -1006,6 +1160,27 @@ def test_owner_emergency_candidate_is_exact_read_only_admission(tmp_path: Path) 
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("base_sha", None, "base SHA"),
+        ("collaboration_digest", 1, "collaboration digest"),
+        ("expires_at", 1, "expiry"),
+        ("failing_obligations", "suite", "failing obligations"),
+        ("pull_request", 0, "provider identity"),
+    ],
+)
+def test_owner_emergency_manifest_rejects_malformed_provider_fields(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    manifest = json.loads((STATUS / "main-health-owner-emergency.json").read_text(encoding="utf-8"))
+    manifest[field] = value
+    with pytest.raises(HealthError, match=message):
+        stop_the_line._validate_owner_manifest(manifest)
+
+
 def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
     tmp_path: Path,
 ) -> None:
@@ -1103,6 +1278,7 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
         null_emergency_evidence[field] = None
     with pytest.raises(SnapshotError):
         _internal_validate(null_emergency_evidence, provider_schema)
+
     extra_parent_evidence = copy.deepcopy(evidence)
     extra_parent_evidence["merge_parent_shas"].append("9" * 40)
     with pytest.raises(SnapshotError):
@@ -1399,6 +1575,119 @@ def test_owner_emergency_resolution_binds_reviewed_head_merge_and_admin(
             pull_request="123",
             issue="MET-999",
             incident_digest=incident_digest,
+        )
+
+
+def test_app_broker_owner_emergency_resolves_with_exact_provider_check(
+    tmp_path: Path,
+) -> None:
+    repaired_main, authorization, evidence, builder = _app_owner_repair_evidence(tmp_path)
+    provider_schema = json.loads(
+        (STATUS / "schemas/main-health-provider-evidence.schema.json").read_text(encoding="utf-8")
+    )
+    _internal_validate(evidence, provider_schema)
+    extra_ruleset_evidence = copy.deepcopy(evidence)
+    extra_ruleset_digests = extra_ruleset_evidence["admission"]["request"]["ruleset_digests"]
+    extra_ruleset_digests["99999999"] = "f" * 64
+    with pytest.raises(SnapshotError):
+        _internal_validate(extra_ruleset_evidence, provider_schema)
+    resolved = resolve(
+        tmp_path,
+        authorization=authorization,
+        approval_evidence=evidence,
+        repaired_main=repaired_main,
+        resolved_at="2026-08-25T22:00:00Z",
+        expected_generation=4,
+    )
+    assert resolved["status"] == "green"
+    assert next((tmp_path / "policy-amendments").glob("*.json"))
+
+    check_run = builder["check_run"]
+    assert isinstance(check_run, dict)
+    wrong_builder = {
+        **builder,
+        "check_run": {**check_run, "external_id": "mhb1:merge:" + "0" * 64},
+    }
+    with pytest.raises(HealthError, match="check-run evidence"):
+        stop_the_line.github_app_owner_emergency_evidence(
+            **wrong_builder  # type: ignore[arg-type]
+        )
+
+    review = builder["review"]
+    assert isinstance(review, dict)
+    review_body = review["body"]
+    assert isinstance(review_body, str)
+    marker, request_json = review_body.splitlines()
+    malformed_request = json.loads(request_json)
+    malformed_request["ruleset_digests"]["99999999"] = "f" * 64
+    with pytest.raises(HealthError, match="ruleset digests"):
+        stop_the_line._parse_broker_owner_repair_review(
+            marker + "\n" + canonical_bytes(malformed_request).decode().rstrip("\n"),
+            reviewer_id=100,
+        )
+
+
+def test_app_broker_owner_emergency_rejects_request_outliving_manifest(
+    tmp_path: Path,
+) -> None:
+    repaired_main, authorization, evidence, builder = _app_owner_repair_evidence(tmp_path)
+    short_builder = copy.deepcopy(builder)
+    short_manifest = short_builder["manifest"]
+    short_review = short_builder["review"]
+    short_check_run = short_builder["check_run"]
+    assert isinstance(short_manifest, dict)
+    assert isinstance(short_review, dict)
+    assert isinstance(short_check_run, dict)
+    short_manifest["expires_at"] = "2026-08-25T21:47:00Z"
+    review_body = short_review["body"]
+    assert isinstance(review_body, str)
+    marker, request_json = review_body.splitlines()
+    short_request = json.loads(request_json)
+    short_request["manifest_digest"] = digest(short_manifest)
+    short_review["body"] = marker + "\n" + canonical_bytes(short_request).decode().rstrip("\n")
+    short_check_run["external_id"] = f"mhb1:merge:{digest(short_request)}"
+    with pytest.raises(HealthError, match="correctly ordered"):
+        stop_the_line.github_app_owner_emergency_evidence(
+            **short_builder  # type: ignore[arg-type]
+        )
+
+    historical_evidence = copy.deepcopy(evidence)
+    historical_manifest = historical_evidence["manifest"]
+    historical_admission = historical_evidence["admission"]
+    historical_merge_gate = historical_evidence["merge_gate"]
+    assert isinstance(historical_manifest, dict)
+    assert isinstance(historical_admission, dict)
+    assert isinstance(historical_merge_gate, dict)
+    historical_manifest["expires_at"] = "2026-08-25T21:47:00Z"
+    historical_request = historical_admission["request"]
+    assert isinstance(historical_request, dict)
+    historical_request["manifest_digest"] = digest(historical_manifest)
+    request_digest = digest(historical_request)
+    historical_admission["request_digest"] = request_digest
+    historical_admission["review_body"] = (
+        stop_the_line.BROKER_OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + canonical_bytes(historical_request).decode().rstrip("\n")
+    )
+    historical_evidence["admission_digest"] = digest(historical_admission)
+    historical_merge_gate["check_external_id"] = f"mhb1:merge:{request_digest}"
+    historical_merge_gate["request_digest"] = request_digest
+    historical_evidence["merge_gate_digest"] = digest(historical_merge_gate)
+    manifest_digest = digest(historical_manifest)
+    historical_evidence["manifest_digest"] = manifest_digest
+    historical_authorization = copy.deepcopy(authorization)
+    historical_authorization["approval_digest"] = digest(historical_evidence)
+    historical_authorization["expires_at"] = historical_manifest["expires_at"]
+    historical_authorization["manifest_digest"] = manifest_digest
+
+    with pytest.raises(HealthError, match="timestamps"):
+        resolve(
+            tmp_path,
+            authorization=historical_authorization,
+            approval_evidence=historical_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T21:46:30Z",
+            expected_generation=4,
         )
 
 
@@ -2565,6 +2854,37 @@ def test_identical_ingestion_is_byte_deterministic(tmp_path: Path) -> None:
     assert first_files == second_files
 
 
+def test_git_history_returns_complete_red_provider_state(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True
+    )
+    expected = ingest(
+        root,
+        scope="main",
+        summary=_summary(BAD_SHA, "failure"),
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+    subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "red generation"], check=True)
+    state_commit = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    validated = validate_git_history(root)
+
+    assert validated == {**expected, "state_commit": state_commit}
+    assert validated["incident_digest"] is not None
+    assert validated["first_bad_sha"] == BAD_SHA
+
+
 def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Path) -> None:
     root = tmp_path / "state"
     replacement = tmp_path / "replacement"
@@ -2587,7 +2907,11 @@ def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Pat
             ["git", "-C", str(root), "commit", "-qm", f"generation {generation + 1}"],
             check=True,
         )
-    assert validate_git_history(root)["generation"] == 2
+    validated = validate_git_history(root)
+    assert validated["generation"] == 2
+    assert validated["last_good_sha"] == GOOD_SHA
+    assert validated["incident_digest"] is None
+    assert validated["updated_at"] == "2026-08-25T18:00:00Z"
 
     symlinked = tmp_path / "symlinked"
     shutil.copytree(root, symlinked)

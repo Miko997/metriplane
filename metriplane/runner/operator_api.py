@@ -35,6 +35,7 @@ from metriplane.run_ids import validate_portable_run_id
 from metriplane.runner.command_center_api import find_run_artifact
 from metriplane.runner.safe_reads import (
     PinnedDirectory,
+    PinnedFile,
     UnsafeReadPathError,
     inherited_fd_path,
     open_pinned_directory,
@@ -526,48 +527,66 @@ class OperatorAPI:
             return 200, {"latest_run": None, "runs_dir": str(runs_root)}
 
         candidates: list[dict[str, Any]] = []
-        for d in sorted(runs_root.iterdir()):
-            if d.is_symlink():
-                continue
-            try:
-                resolved = d.resolve(strict=True)
-                resolved.relative_to(runs_root)
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if not resolved.is_dir():
-                continue
-            session = find_run_artifact(resolved, ["session.jsonl"])
-            meta = find_run_artifact(resolved, ["meta.json"])
-            candidates.append(
-                {
-                    "dir": str(resolved),
-                    "name": resolved.name,
-                    "session_exists": session is not None,
-                    "session_size_mb": (
-                        round(session.stat().st_size / 1e6, 1) if session is not None else None
-                    ),
-                    "meta_exists": meta is not None,
-                    "mtime": resolved.stat().st_mtime,
-                }
-            )
-
-        candidates.sort(key=lambda x: float(x["mtime"]), reverse=True)
-
-        run_info = None
-        if candidates:
-            latest = candidates[0]
-            # Try to read meta.json for run_id, git_commit
-            meta_path = find_run_artifact(Path(latest["dir"]), ["meta.json"])
-            if meta_path is not None:
+        selected: PinnedDirectory | None = None
+        selected_meta: PinnedFile | None = None
+        selected_info: dict[str, Any] | None = None
+        selected_mtime: float | None = None
+        try:
+            with open_pinned_directory([runs_root], runs_root) as root:
                 try:
-                    meta_data = json.loads(meta_path.read_text())
-                    latest["meta"] = meta_data
-                except Exception:
-                    pass
-            run_info = latest
+                    names = sorted(root.listdir())
+                except (OSError, UnsafeReadPathError):
+                    names = []
+
+                try:
+                    for name in names:
+                        candidate: PinnedDirectory | None = None
+                        try:
+                            candidate = root.open_directory(Path(name))
+                            candidate_stat = candidate.stat()
+                            session = find_run_artifact(candidate, ["session.jsonl"])
+                            meta = find_run_artifact(candidate, ["meta.json"])
+                            info = {
+                                "dir": str(candidate),
+                                "name": candidate.display_path.name,
+                                "session_exists": session is not None,
+                                "session_size_mb": (
+                                    round(session.stat().st_size / 1e6, 1)
+                                    if session is not None
+                                    else None
+                                ),
+                                "meta_exists": meta is not None,
+                                "mtime": candidate_stat.st_mtime,
+                            }
+                            candidates.append(info)
+                            if selected_mtime is None or candidate_stat.st_mtime > selected_mtime:
+                                if selected is not None:
+                                    selected.close()
+                                selected = candidate
+                                selected_meta = meta
+                                selected_info = info
+                                selected_mtime = candidate_stat.st_mtime
+                                candidate = None
+                        except (FileNotFoundError, OSError, UnsafeReadPathError):
+                            pass
+                        finally:
+                            if candidate is not None:
+                                candidate.close()
+
+                    candidates.sort(key=lambda item: float(item["mtime"]), reverse=True)
+                    if selected_info is not None and selected_meta is not None:
+                        try:
+                            selected_info["meta"] = json.loads(selected_meta.read_text())
+                        except (OSError, UnicodeError, ValueError, UnsafeReadPathError):
+                            pass
+                finally:
+                    if selected is not None:
+                        selected.close()
+        except (FileNotFoundError, OSError, UnsafeReadPathError):
+            candidates = []
 
         return 200, {
-            "latest_run": run_info,
+            "latest_run": selected_info,
             "all_runs": candidates[:10],
             "runs_dir": str(runs_root),
         }

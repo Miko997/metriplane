@@ -53,6 +53,38 @@ def test_pinned_file_allows_a_canonicalized_trusted_root(tmp_path: Path) -> None
         assert pinned.read_text() == "authorized\n"
 
 
+def test_pin_file_fails_closed_if_authority_is_replaced_after_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = tmp_path / "runs"
+    parked = tmp_path / "runs-original"
+    outside = tmp_path / "outside"
+    authority.mkdir()
+    outside.mkdir()
+    requested = authority / "meta.json"
+    requested.write_text('{"run_id": "authorized"}\n', encoding="utf-8")
+    (outside / requested.name).write_text('{"run_id": "outside"}\n', encoding="utf-8")
+    original_select = safe_reads._select_authority
+    selection_count = 0
+
+    def replace_after_selection(allowed_roots, selected):
+        nonlocal selection_count
+        result = original_select(allowed_roots, selected)
+        selection_count += 1
+        if selection_count == 1:
+            authority.rename(parked)
+            authority.symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(safe_reads, "_select_authority", replace_after_selection)
+
+    with pytest.raises(UnsafeReadPathError, match="symbolic links are not allowed"):
+        safe_reads.pin_file([authority], requested)
+
+    assert selection_count == 1
+
+
 @pytest.mark.parametrize(
     ("platform", "expected"),
     [
