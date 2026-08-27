@@ -1,0 +1,16 @@
+{
+  "data": {
+    "state": "In Progress",
+    "task_id": "MET-154",
+    "tool": "fake-linear"
+  },
+  "invocation_id": "fixture-linear-001",
+  "payload_digest": "7b2cbebe25a8b21b5fa51552e816ff9e624505afc880a848d21d06e281a8e9c0",
+  "record_id": "81a6953584904043167da0c9921fd1535a0731511eed8521f27a9cf046a3e361",
+  "record_type": "linear-release-snapshot",
+  "schema_version": "metriplane.release-record.v1",
+  "sequence": 1,
+  "signatures": [],
+  "status": "PASS",
+  "synthetic": true
+}

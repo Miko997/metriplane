@@ -1,0 +1,428 @@
+{
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "transition": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "from": {
+                  "const": "open_running"
+                },
+                "to": {
+                  "const": "open_finalizing"
+                }
+              }
+            },
+            {
+              "properties": {
+                "from": {
+                  "const": "open_finalizing"
+                },
+                "to": {
+                  "const": "closed"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "authorized_role": {
+          "const": "release_operator"
+        },
+        "from": {
+          "enum": [
+            "open_running",
+            "open_finalizing"
+          ]
+        },
+        "provider_event_required": {
+          "const": true
+        },
+        "to": {
+          "enum": [
+            "open_finalizing",
+            "closed"
+          ]
+        }
+      },
+      "required": [
+        "authorized_role",
+        "from",
+        "provider_event_required",
+        "to"
+      ],
+      "type": "object"
+    },
+    "workflow_state": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "6326ecac-afa9-4bdd-a9d2-2826db1e03b5"
+            },
+            "key": {
+              "const": "open_running"
+            },
+            "name": {
+              "const": "In Progress"
+            },
+            "type": {
+              "const": "started"
+            }
+          },
+          "required": [
+            "id",
+            "key",
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "7ba29f42-2854-4d0e-bf55-c04550be46eb"
+            },
+            "key": {
+              "const": "open_finalizing"
+            },
+            "name": {
+              "const": "In Review"
+            },
+            "type": {
+              "const": "started"
+            }
+          },
+          "required": [
+            "id",
+            "key",
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "a37b0586-c805-4225-94c3-c690abb56d5a"
+            },
+            "key": {
+              "const": "closed"
+            },
+            "name": {
+              "const": "Done"
+            },
+            "type": {
+              "const": "completed"
+            }
+          },
+          "required": [
+            "id",
+            "key",
+            "name",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-task-state-policy.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-task-state-policy. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_transitions": {
+          "items": {
+            "$ref": "#/$defs/transition"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "capture_clock_skew_seconds": {
+          "const": 30
+        },
+        "close_role": {
+          "const": "release_operator"
+        },
+        "cross_system_atomicity": {
+          "const": "not_claimed"
+        },
+        "policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "prepromotion_freshness_seconds": {
+          "const": 300
+        },
+        "provider": {
+          "const": "linear"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/workflow_state"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "terminal_commit_clock_skew_seconds": {
+          "const": 30
+        },
+        "terminal_freshness_seconds": {
+          "const": 120
+        },
+        "transition_role": {
+          "const": "release_operator"
+        }
+      },
+      "required": [
+        "allowed_transitions",
+        "capture_clock_skew_seconds",
+        "close_role",
+        "cross_system_atomicity",
+        "policy_digest",
+        "prepromotion_freshness_seconds",
+        "provider",
+        "states",
+        "terminal_commit_clock_skew_seconds",
+        "terminal_freshness_seconds",
+        "transition_role"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-task-state-policy"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "enum": [
+        "BLOCKED",
+        "CANCELLED",
+        "FAIL",
+        "INVALIDATED",
+        "OPEN",
+        "PASS",
+        "READY",
+        "SKIPPED"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-task-state-policy record",
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ]
+}

@@ -13,6 +13,34 @@ on:
         description: "Successful tag-publication workflow run ID"
         required: true
         type: string
+      qualification_run_id:
+        description: "Release qualification workflow run containing retained live authority"
+        required: true
+        type: string
+      qualification_record_digest:
+        description: "SHA-256 of the exact retained live qualification record"
+        required: true
+        type: string
+      authority_bundle_sha256:
+        description: "SHA-256 of the exact authority bundle retained in both external stores"
+        required: true
+        type: string
+      authority_run_id:
+        description: "External authority production run identity bound into retained records"
+        required: true
+        type: string
+      authority_policy_digest:
+        description: "SHA-256 identity of the protected release authority policy"
+        required: true
+        type: string
+      evidence_manifest_sha256:
+        description: "SHA-256 of the transported evidence-manifest.json"
+        required: true
+        type: string
+      provider_attestation_keyring_digest:
+        description: "SHA-256 of the exact canonical provider attestation keyring"
+        required: true
+        type: string
       version:
         description: "Exact version to promote, without the v prefix"
         required: true
@@ -23,6 +51,7 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -204,16 +233,13 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  publish-testpypi:
-    name: Publish exact artifacts to TestPyPI
+  validate-testpypi-artifacts:
+    name: Reverify artifacts before TestPyPI publication
     if: github.event_name == 'push'
     needs: [provenance, build]
     runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/metriplane
     permissions:
-      id-token: write
+      actions: read
     steps:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -229,6 +255,23 @@ jobs:
             <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
             <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           sha256sum --check ../SHA256SUMS
+
+  publish-testpypi:
+    name: Publish exact artifacts to TestPyPI
+    if: github.event_name == 'push'
+    needs: [provenance, build, validate-testpypi-artifacts]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/metriplane
+    permissions:
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
 
       - name: Publish distributions to TestPyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
@@ -336,9 +379,13 @@ jobs:
       contents: read
     outputs:
       commit: ${{ steps.request.outputs.commit }}
+      qualification_artifact_id: ${{ steps.qualification.outputs.artifact_id }}
+      qualification_head_sha: ${{ steps.qualification.outputs.head_sha }}
+      release_artifact_id: ${{ steps.request.outputs.artifact_id }}
       version: ${{ steps.request.outputs.version }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check out current protected-main history for ancestry only
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -348,11 +395,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Require owner confirmation and a successful tag workflow
-        id: request
+      - id: request
+        name: Resolve the exact annotated candidate and source artifact
         env:
-          CONFIRMATION: ${{ inputs.confirmation }}
           GH_TOKEN: ${{ github.token }}
+          CONFIRMATION: ${{ inputs.confirmation }}
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
           RELEASE_VERSION: ${{ inputs.version }}
         shell: bash
@@ -373,6 +420,7 @@ jobs:
           test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
           test "$(git cat-file -t "$tag_ref")" = "tag"
           tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
+          [[ "$tag_commit" =~ ^[0-9a-f]{40}$ ]]
           git merge-base --is-ancestor "$tag_commit" origin/main
           test "$(git show "${tag_ref}:metriplane/__init__.py" | \
             sed -n 's/^__version__ = "\([^"]*\)"$/\1/p')" = \
@@ -389,7 +437,7 @@ jobs:
             --header "Authorization: Bearer ${GH_TOKEN}" \
             --header "Accept: application/vnd.github+json" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            "${api_root}/actions/runs/${RELEASE_RUN_ID}/artifacts?per_page=100" \
+            "${api_root}/actions/runs/${RELEASE_RUN_ID}/artifacts?name=python-package-distributions&per_page=100" \
             > "${RUNNER_TEMP}/source-artifacts.json"
           curl --fail-with-body --silent --show-error \
             --header "Authorization: Bearer ${GH_TOKEN}" \
@@ -407,58 +455,534 @@ jobs:
           import os
           from pathlib import Path
 
-          run = json.loads(Path(os.environ["SOURCE_RUN_JSON"]).read_text())
-          expected = {
+          run_id = int(os.environ["RELEASE_RUN_ID"])
+          repository = os.environ["GITHUB_REPOSITORY"]
+          source_commit = os.environ["SOURCE_COMMIT"]
+          run = json.loads(Path(os.environ["SOURCE_RUN_JSON"]).read_text(encoding="utf-8"))
+          expected_run = {
+              "id": run_id,
               "event": "push",
               "head_branch": f"v{os.environ['RELEASE_VERSION']}",
-              "head_sha": os.environ["SOURCE_COMMIT"],
+              "head_sha": source_commit,
               "path": ".github/workflows/publish-pypi.yml",
               "status": "completed",
               "conclusion": "success",
           }
           mismatches = {
               key: (run.get(key), value)
-              for key, value in expected.items()
+              for key, value in expected_run.items()
               if run.get(key) != value
           }
+          if run.get("repository", {}).get("full_name") != repository:
+              mismatches["repository.full_name"] = (
+                  run.get("repository", {}).get("full_name"),
+                  repository,
+              )
           if mismatches:
               raise SystemExit(f"source workflow mismatch: {mismatches}")
 
-          payload = json.loads(
-              Path(os.environ["SOURCE_ARTIFACTS_JSON"]).read_text()
-          )
-          artifacts = [
-              item
-              for item in payload.get("artifacts", [])
-              if item.get("name") == "python-package-distributions"
-              and not item.get("expired", True)
-          ]
+          payload = json.loads(Path(os.environ["SOURCE_ARTIFACTS_JSON"]).read_text(encoding="utf-8"))
+          artifacts = payload.get("artifacts")
+          if payload.get("total_count") != 1 or not isinstance(artifacts, list):
+              raise SystemExit(
+                  "source run must contain exactly one unexpired "
+                  "python-package-distributions artifact"
+              )
           if len(artifacts) != 1:
               raise SystemExit(
                   "source run must contain exactly one unexpired "
                   "python-package-distributions artifact"
               )
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("source artifact has no workflow identity")
+          expected_artifact = {
+              "name": "python-package-distributions",
+              "expired": False,
+          }
+          artifact_mismatches = {
+              key: (artifact.get(key), value)
+              for key, value in expected_artifact.items()
+              if artifact.get(key) != value
+          }
+          expected_artifact_run = {
+              "id": run_id,
+              "head_branch": f"v{os.environ['RELEASE_VERSION']}",
+              "head_sha": source_commit,
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), value)
+                  for key, value in expected_artifact_run.items()
+                  if workflow_run.get(key) != value
+              }
+          )
+          if type(artifact.get("id")) is not int or artifact["id"] <= 0:
+              artifact_mismatches["id"] = (artifact.get("id"), "positive integer")
+          if artifact_mismatches:
+              raise SystemExit(f"source artifact mismatch: {artifact_mismatches}")
 
           jobs_payload = json.loads(
-              Path(os.environ["SOURCE_JOBS_JSON"]).read_text()
+              Path(os.environ["SOURCE_JOBS_JSON"]).read_text(encoding="utf-8")
           )
           verified_jobs = [
               item
               for item in jobs_payload.get("jobs", [])
-              if item.get("name")
-              == "Verify TestPyPI artifact identity and installation"
+              if item.get("name") == "Verify TestPyPI artifact identity and installation"
               and item.get("status") == "completed"
               and item.get("conclusion") == "success"
           ]
           if len(verified_jobs) != 1:
               raise SystemExit(
-                  "source run must contain exactly one successful "
-                  "TestPyPI verification job"
+                  "source run must contain exactly one successful TestPyPI verification job"
               )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"artifact_id={artifact['id']}\n")
           PY
 
           printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
           printf 'version=%s\n' "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check out only the exact tagged candidate for validation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+          ref: ${{ steps.request.outputs.commit }}
+
+      - name: Prove validator source identity
+        env:
+          CANDIDATE_SHA: ${{ steps.request.outputs.commit }}
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Sync locked validator dependencies
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Materialize the independent public provider trust root
+        env:
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
+          PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
+          PROVIDER_ATTESTATION_KEYRING_B64: ${{ vars.RELEASE_PROVIDER_ATTESTATION_KEYRING_B64 }}
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PROVIDER_ATTESTATION_KEYRING_B64"
+          umask 077
+          python - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          encoded = os.environ["PROVIDER_ATTESTATION_KEYRING_B64"]
+          if not encoded or encoded != encoded.strip():
+              raise SystemExit("provider attestation keyring base64 is empty or padded with whitespace")
+          try:
+              payload = base64.b64decode(encoded, validate=True)
+          except (binascii.Error, ValueError) as exc:
+              raise SystemExit("provider attestation keyring is not strict base64") from exc
+          if not payload:
+              raise SystemExit("provider attestation keyring decodes to no bytes")
+
+          def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+              result: dict[str, object] = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          try:
+              keyring = json.loads(payload.decode("utf-8"), object_pairs_hook=closed_object)
+          except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+              raise SystemExit("provider attestation keyring is not closed UTF-8 JSON") from exc
+          if (
+              not isinstance(keyring, dict)
+              or set(keyring) != {"keys", "schema_version"}
+              or keyring["schema_version"] != "metriplane.provider-attestation-keyring.v1"
+          ):
+              raise SystemExit("provider attestation keyring envelope is not closed")
+          rows = keyring["keys"]
+          if not isinstance(rows, list) or not rows:
+              raise SystemExit("provider attestation keyring has no trusted public keys")
+          identities: list[tuple[str, str]] = []
+          for row in rows:
+              if not isinstance(row, dict) or set(row) != {
+                  "actor_id",
+                  "provider",
+                  "public_key_hex",
+              }:
+                  raise SystemExit("provider attestation key row is not closed")
+              actor_id = row["actor_id"]
+              provider = row["provider"]
+              public_key = row["public_key_hex"]
+              if not isinstance(actor_id, str) or not actor_id.strip():
+                  raise SystemExit("provider attestation actor identity is missing")
+              if not isinstance(provider, str) or provider not in {"github", "linear"}:
+                  raise SystemExit("provider attestation key names an unsupported provider")
+              if not isinstance(public_key, str) or re.fullmatch(r"[0-9a-f]{64}", public_key) is None:
+                  raise SystemExit("provider attestation public key is not canonical Ed25519 hex")
+              identities.append((provider, actor_id))
+          if identities != sorted(set(identities)):
+              raise SystemExit("provider attestation keys are duplicated or not canonical")
+
+          canonical_payload = json.dumps(
+              keyring, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+          ).encode("utf-8")
+          keyring_digest = hashlib.sha256(canonical_payload).hexdigest()
+          if keyring_digest != os.environ["PROVIDER_ATTESTATION_KEYRING_DIGEST"]:
+              raise SystemExit("provider attestation keyring digest mismatch")
+          policy_payload = json.dumps(
+              {
+                  "provider_attestation_keyring_digest": keyring_digest,
+                  "schema_version": "metriplane.release-authority-policy.v1",
+              },
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8")
+          if hashlib.sha256(policy_payload).hexdigest() != os.environ["AUTHORITY_POLICY_DIGEST"]:
+              raise SystemExit("release authority policy does not bind the exact keyring")
+
+          destination = Path(os.environ["PROVIDER_ATTESTATION_KEYRING"])
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(destination, flags, 0o400)
+          with os.fdopen(descriptor, "wb") as output:
+              output.write(canonical_payload)
+              output.flush()
+              os.fsync(output.fileno())
+          if destination.is_symlink() or not destination.is_file():
+              raise SystemExit("provider attestation keyring materialization is unsafe")
+          PY
+
+      - id: qualification
+        name: Require exact qualification workflow provenance
+        env:
+          CANDIDATE_SHA: ${{ steps.request.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}" \
+            > "${RUNNER_TEMP}/qualification-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100" \
+            > "${RUNNER_TEMP}/qualification-artifacts.json"
+
+          QUALIFICATION_RUN_JSON="${RUNNER_TEMP}/qualification-run.json" \
+          QUALIFICATION_ARTIFACTS_JSON="${RUNNER_TEMP}/qualification-artifacts.json" \
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          run_id = int(os.environ["QUALIFICATION_RUN_ID"])
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run = json.loads(
+              Path(os.environ["QUALIFICATION_RUN_JSON"]).read_text(encoding="utf-8")
+          )
+          expected_run = {
+              "id": run_id,
+              "path": ".github/workflows/release-required.yml",
+              "status": "completed",
+              "conclusion": "success",
+          }
+          mismatches = {
+              key: (run.get(key), value)
+              for key, value in expected_run.items()
+              if run.get(key) != value
+          }
+          head_sha = run.get("head_sha")
+          if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+              mismatches["head_sha"] = (head_sha, "exact commit")
+          event = run.get("event")
+          expected_branch = (
+              "main" if event == "workflow_dispatch" else f"v{os.environ['RELEASE_VERSION']}"
+          )
+          if event not in {"push", "workflow_dispatch"}:
+              mismatches["event"] = (event, "push or workflow_dispatch")
+          if run.get("head_branch") != expected_branch:
+              mismatches["head_branch"] = (run.get("head_branch"), expected_branch)
+          if event == "push" and head_sha != os.environ["CANDIDATE_SHA"]:
+              mismatches["head_sha"] = (head_sha, os.environ["CANDIDATE_SHA"])
+          if run.get("repository", {}).get("full_name") != repository:
+              mismatches["repository.full_name"] = (
+                  run.get("repository", {}).get("full_name"),
+                  repository,
+              )
+          if mismatches:
+              raise SystemExit(f"qualification workflow mismatch: {mismatches}")
+
+          payload = json.loads(
+              Path(os.environ["QUALIFICATION_ARTIFACTS_JSON"]).read_text(encoding="utf-8")
+          )
+          artifacts = payload.get("artifacts")
+          if payload.get("total_count") != 1 or not isinstance(artifacts, list) or len(artifacts) != 1:
+              raise SystemExit(
+                  "qualification run must contain exactly one unexpired "
+                  "release-qualification-evidence artifact"
+              )
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("qualification artifact has no workflow identity")
+          expected_artifact = {"name": "release-qualification-evidence", "expired": False}
+          artifact_mismatches = {
+              key: (artifact.get(key), value)
+              for key, value in expected_artifact.items()
+              if artifact.get(key) != value
+          }
+          expected_artifact_run = {
+              "id": run_id,
+              "head_branch": expected_branch,
+              "head_sha": head_sha,
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), value)
+                  for key, value in expected_artifact_run.items()
+                  if workflow_run.get(key) != value
+              }
+          )
+          if type(artifact.get("id")) is not int or artifact["id"] <= 0:
+              artifact_mismatches["id"] = (artifact.get("id"), "positive integer")
+          if artifact_mismatches:
+              raise SystemExit(f"qualification artifact mismatch: {artifact_mismatches}")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"artifact_id={artifact['id']}\n")
+              output.write(f"head_sha={head_sha}\n")
+          PY
+
+          qualification_head_sha="$(python -c \
+            'import json, os; print(json.load(open(os.environ["RUNNER_TEMP"] + "/qualification-run.json"))["head_sha"])')"
+          git merge-base --is-ancestor "$qualification_head_sha" origin/main
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ steps.qualification.outputs.artifact_id }}
+          path: release-authority/
+          run-id: ${{ inputs.qualification_run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ steps.request.outputs.artifact_id }}
+          path: release-artifacts/
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Require retained cumulative release authority
+        env:
+          APPROVAL_DECISION_PATH: ${{ runner.temp }}/release-approval-decision.json
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
+          AUTHORITY_SOURCE_RUN_ID: ${{ inputs.authority_run_id }}
+          CANDIDATE_SHA: ${{ steps.request.outputs.commit }}
+          PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
+          QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AUTHORITY_SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALIFICATION_RECORD_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          MILESTONE="v${RELEASE_VERSION%.*}"
+          case "$MILESTONE" in
+            v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0) ;;
+            *) echo "unsupported cumulative release milestone: $MILESTONE" >&2; exit 1 ;;
+          esac
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          DIGEST = re.compile(r"[0-9a-f]{64}")
+          RECORD_FIELDS = {
+              "data",
+              "invocation_id",
+              "payload_digest",
+              "record_id",
+              "record_type",
+              "schema_version",
+              "sequence",
+              "signatures",
+              "status",
+              "synthetic",
+          }
+
+          def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+              result: dict[str, object] = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          def read_record(path: Path, label: str) -> tuple[bytes, dict[str, object]]:
+              if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+                  raise SystemExit(f"{label} is missing or unsafe")
+              parent = root
+              for part in path.relative_to(root).parts[:-1]:
+                  parent /= part
+                  if parent.is_symlink() or not parent.is_dir():
+                      raise SystemExit(f"{label} traverses an unsafe parent")
+              try:
+                  payload = path.read_bytes()
+                  value = json.loads(
+                      payload.decode("utf-8"), object_pairs_hook=closed_object
+                  )
+              except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                  raise SystemExit(f"{label} is not closed UTF-8 JSON") from exc
+              if not isinstance(value, dict):
+                  raise SystemExit(f"{label} is not a JSON record object")
+              return payload, value
+
+          def write_exclusive(path: Path, payload: bytes) -> None:
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags, 0o400)
+              with os.fdopen(descriptor, "wb") as output:
+                  output.write(payload)
+                  output.flush()
+                  os.fsync(output.fileno())
+
+          root_path = Path("release-authority")
+          if root_path.is_symlink() or not root_path.is_dir():
+              raise SystemExit("retained authority root is missing or unsafe")
+          root = root_path.resolve()
+          bindings = {
+              "delta.json": "candidate_sha",
+              "gate-instance.json": "frozen_source_sha",
+              "impact-manifest.json": "head_sha",
+              "source-freeze.json": "source_sha",
+          }
+          for relative, field in bindings.items():
+              _payload, record = read_record(root / relative, f"retained authority {relative}")
+              if record.get("data", {}).get(field) != os.environ["CANDIDATE_SHA"]:
+                  raise SystemExit(f"retained authority source mismatch: {relative}")
+          for relative in ("gate-instance.json", "role-assignments.json"):
+              _payload, record = read_record(root / relative, f"retained authority {relative}")
+              if record.get("data", {}).get("run_id") != os.environ["AUTHORITY_SOURCE_RUN_ID"]:
+                  raise SystemExit(f"retained authority run mismatch: {relative}")
+
+          _approval_payload, approval = read_record(
+              root / "prepublication/approval.json", "prepublication approval"
+          )
+          approval_data = approval.get("data")
+          decision_digest = (
+              approval_data.get("approval_decision_digest")
+              if isinstance(approval_data, dict)
+              else None
+          )
+          if not isinstance(decision_digest, str) or DIGEST.fullmatch(decision_digest) is None:
+              raise SystemExit("prepublication approval decision digest is invalid")
+          matches: list[tuple[bytes, dict[str, object]]] = []
+          for path in sorted(root.rglob("*.json")):
+              payload, record = read_record(path, f"retained authority record {path}")
+              if hashlib.sha256(payload).hexdigest() == decision_digest:
+                  matches.append((payload, record))
+          if len(matches) != 1:
+              raise SystemExit("approval decision digest does not resolve exactly once")
+          decision_payload, decision = matches[0]
+          if (
+              set(decision) != RECORD_FIELDS
+              or decision.get("schema_version") != "metriplane.release-record.v1"
+              or decision.get("record_type") != "release-approval-decision"
+              or decision.get("synthetic") is not False
+          ):
+              raise SystemExit("resolved approval decision is not closed live authority")
+          write_exclusive(Path(os.environ["APPROVAL_DECISION_PATH"]), decision_payload)
+          PY
+          test "$(sha256sum release-authority/qualification.json | awk '{print $1}')" = \
+            "$QUALIFICATION_RECORD_DIGEST"
+          uv run python tools/validate_release_gate_instance.py \
+            --record release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --task-state-policy docs/status/release-task-state-policy.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/validate_release_qualification_plan.py \
+            --record release-authority/qualification-plan.json \
+            --gate-instance release-authority/gate-instance.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/validate_release_role_assignments.py \
+            --record release-authority/role-assignments.json \
+            --milestone "$MILESTONE" \
+            --run-id "$AUTHORITY_SOURCE_RUN_ID" \
+            --check-conflicts \
+            --check-freshness \
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/validate_release_approval.py \
+            --approval-decision "$APPROVAL_DECISION_PATH" \
+            --gate-instance release-authority/gate-instance.json \
+            --qualification release-authority/qualification.json \
+            --role-assignments release-authority/role-assignments.json \
+            --no-prepublication-rubric \
+            --record release-authority/prepublication/approval.json \
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/check_release_readiness.py \
+            --gate-instance release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --linear-snapshot release-authority/linear-snapshot.json \
+            --artifact-manifest release-authority/artifact-manifest.json \
+            --delta release-authority/delta.json \
+            --delta-test-map release-authority/delta-test-map.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
+            --out "$RUNNER_TEMP/readiness.json"
+          cmp --silent \
+            release-authority/readiness.json \
+            "$RUNNER_TEMP/readiness.json"
+
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
+          cd ../..
+          uv run python tools/validate_release_artifact_manifest.py \
+            --record release-authority/artifact-manifest.json \
+            --artifacts release-artifacts/dist \
+            --read-hash \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
 
   verify-production-artifacts:
     name: Reverify artifacts before production approval
@@ -476,7 +1000,7 @@ jobs:
 
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: python-package-distributions
+          artifact-ids: ${{ needs.validate-production-request.outputs.release_artifact_id }}
           path: release-artifacts/
           run-id: ${{ inputs.release_run_id }}
           github-token: ${{ github.token }}
@@ -500,8 +1024,8 @@ jobs:
             --version "$RELEASE_VERSION" \
             --manifest release-artifacts/SHA256SUMS
 
-  publish-pypi:
-    name: Publish the verified artifacts to PyPI
+  authorize-production:
+    name: Reauthorize exact production inputs after approval
     if: github.event_name == 'workflow_dispatch'
     needs: [validate-production-request, verify-production-artifacts]
     runs-on: ubuntu-latest
@@ -511,7 +1035,8 @@ jobs:
     permissions:
       actions: read
       contents: read
-      id-token: write
+    outputs:
+      release_artifact_id: ${{ steps.authorization.outputs.release_artifact_id }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -520,19 +1045,818 @@ jobs:
 
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: python-package-distributions
+          artifact-ids: ${{ needs.validate-production-request.outputs.release_artifact_id }}
           path: release-artifacts/
           run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.validate-production-request.outputs.qualification_artifact_id }}
+          path: release-authority/
+          run-id: ${{ inputs.qualification_run_id }}
           github-token: ${{ github.token }}
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Reverify the approved artifact set
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Sync locked validator dependencies
+        run: uv sync --locked --group dev --python 3.12
+
+      - name: Materialize the independent public provider trust root
         env:
-          RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
+          PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
+          PROVIDER_ATTESTATION_KEYRING_B64: ${{ vars.RELEASE_PROVIDER_ATTESTATION_KEYRING_B64 }}
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
+        shell: bash
         run: |
+          set -euo pipefail
+          test -n "$PROVIDER_ATTESTATION_KEYRING_B64"
+          umask 077
+          python - <<'PY'
+          import base64
+          import binascii
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          encoded = os.environ["PROVIDER_ATTESTATION_KEYRING_B64"]
+          if not encoded or encoded != encoded.strip():
+              raise SystemExit("provider attestation keyring base64 is empty or padded with whitespace")
+          try:
+              payload = base64.b64decode(encoded, validate=True)
+          except (binascii.Error, ValueError) as exc:
+              raise SystemExit("provider attestation keyring is not strict base64") from exc
+          if not payload:
+              raise SystemExit("provider attestation keyring decodes to no bytes")
+
+          def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+              result: dict[str, object] = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          try:
+              keyring = json.loads(payload.decode("utf-8"), object_pairs_hook=closed_object)
+          except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+              raise SystemExit("provider attestation keyring is not closed UTF-8 JSON") from exc
+          if (
+              not isinstance(keyring, dict)
+              or set(keyring) != {"keys", "schema_version"}
+              or keyring["schema_version"] != "metriplane.provider-attestation-keyring.v1"
+          ):
+              raise SystemExit("provider attestation keyring envelope is not closed")
+          rows = keyring["keys"]
+          if not isinstance(rows, list) or not rows:
+              raise SystemExit("provider attestation keyring has no trusted public keys")
+          identities: list[tuple[str, str]] = []
+          for row in rows:
+              if not isinstance(row, dict) or set(row) != {
+                  "actor_id",
+                  "provider",
+                  "public_key_hex",
+              }:
+                  raise SystemExit("provider attestation key row is not closed")
+              actor_id = row["actor_id"]
+              provider = row["provider"]
+              public_key = row["public_key_hex"]
+              if not isinstance(actor_id, str) or not actor_id.strip():
+                  raise SystemExit("provider attestation actor identity is missing")
+              if not isinstance(provider, str) or provider not in {"github", "linear"}:
+                  raise SystemExit("provider attestation key names an unsupported provider")
+              if not isinstance(public_key, str) or re.fullmatch(r"[0-9a-f]{64}", public_key) is None:
+                  raise SystemExit("provider attestation public key is not canonical Ed25519 hex")
+              identities.append((provider, actor_id))
+          if identities != sorted(set(identities)):
+              raise SystemExit("provider attestation keys are duplicated or not canonical")
+
+          canonical_payload = json.dumps(
+              keyring, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+          ).encode("utf-8")
+          keyring_digest = hashlib.sha256(canonical_payload).hexdigest()
+          if keyring_digest != os.environ["PROVIDER_ATTESTATION_KEYRING_DIGEST"]:
+              raise SystemExit("provider attestation keyring digest mismatch")
+          policy_payload = json.dumps(
+              {
+                  "provider_attestation_keyring_digest": keyring_digest,
+                  "schema_version": "metriplane.release-authority-policy.v1",
+              },
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8")
+          if hashlib.sha256(policy_payload).hexdigest() != os.environ["AUTHORITY_POLICY_DIGEST"]:
+              raise SystemExit("release authority policy does not bind the exact keyring")
+
+          destination = Path(os.environ["PROVIDER_ATTESTATION_KEYRING"])
+          flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+          if hasattr(os, "O_NOFOLLOW"):
+              flags |= os.O_NOFOLLOW
+          descriptor = os.open(destination, flags, 0o400)
+          with os.fdopen(descriptor, "wb") as output:
+              output.write(canonical_payload)
+              output.flush()
+              os.fsync(output.fileno())
+          if destination.is_symlink() or not destination.is_file():
+              raise SystemExit("provider attestation keyring materialization is unsafe")
+          PY
+
+      - name: Read back and compare exact authority bytes from both external stores
+        env:
+          AUTHORITY_BUNDLE_SHA256: ${{ inputs.authority_bundle_sha256 }}
+          AUTHORITY_STORE_A_TOKEN: ${{ secrets.RELEASE_AUTHORITY_STORE_A_TOKEN }}
+          AUTHORITY_STORE_A_URL: ${{ vars.RELEASE_AUTHORITY_STORE_A_URL }}
+          AUTHORITY_STORE_B_TOKEN: ${{ secrets.RELEASE_AUTHORITY_STORE_B_TOKEN }}
+          AUTHORITY_STORE_B_URL: ${{ vars.RELEASE_AUTHORITY_STORE_B_URL }}
+          EVIDENCE_MANIFEST_SHA256: ${{ inputs.evidence_manifest_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AUTHORITY_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$EVIDENCE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test -n "$AUTHORITY_STORE_A_TOKEN"
+          test -n "$AUTHORITY_STORE_B_TOKEN"
+          python - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          hosts = []
+          for name in ("AUTHORITY_STORE_A_URL", "AUTHORITY_STORE_B_URL"):
+              parsed = urlsplit(os.environ[name])
+              host = parsed.hostname.rstrip(".").casefold() if parsed.hostname else ""
+              if (
+                  parsed.scheme != "https"
+                  or not host
+                  or parsed.username is not None
+                  or parsed.password is not None
+                  or parsed.fragment
+              ):
+                  raise SystemExit("authority store URL is not a closed HTTPS identity")
+              hosts.append(host)
+          if hosts[0] == hosts[1]:
+              raise SystemExit("authority stores must use distinct HTTPS host identities")
+          PY
+          curl --proto '=https' \
+            --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-filesize 536870912 --max-time 300 \
+            --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer ${AUTHORITY_STORE_A_TOKEN}" \
+            --output "${RUNNER_TEMP}/authority-store-a.tar" \
+            "$AUTHORITY_STORE_A_URL"
+          curl --proto '=https' \
+            --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-filesize 536870912 --max-time 300 \
+            --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer ${AUTHORITY_STORE_B_TOKEN}" \
+            --output "${RUNNER_TEMP}/authority-store-b.tar" \
+            "$AUTHORITY_STORE_B_URL"
+          cmp --silent \
+            "${RUNNER_TEMP}/authority-store-a.tar" \
+            "${RUNNER_TEMP}/authority-store-b.tar"
+          store_a_sha256="$(sha256sum "${RUNNER_TEMP}/authority-store-a.tar" | awk '{print $1}')"
+          store_b_sha256="$(sha256sum "${RUNNER_TEMP}/authority-store-b.tar" | awk '{print $1}')"
+          test "$store_a_sha256" = "$store_b_sha256"
+          test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"
+
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          DIGEST = re.compile(r"[0-9a-f]{64}")
+          RECORD_FIELDS = {
+              "data",
+              "invocation_id",
+              "payload_digest",
+              "record_id",
+              "record_type",
+              "schema_version",
+              "sequence",
+              "signatures",
+              "status",
+              "synthetic",
+          }
+
+          def require_digest(value: object, label: str) -> str:
+              if not isinstance(value, str) or DIGEST.fullmatch(value) is None:
+                  raise SystemExit(f"{label} is not a canonical SHA-256 digest")
+              return value
+
+          def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+              result: dict[str, object] = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON key: {key}")
+                  result[key] = value
+              return result
+
+          def read_archive(path: Path, store_id: str) -> dict[str, bytes]:
+              members: dict[str, bytes] = {}
+              names: dict[str, str] = {}
+              expanded_size = 0
+              root_directory_seen = False
+              with tarfile.open(path, mode="r:*") as archive:
+                  entries = archive.getmembers()
+                  if not entries or len(entries) > 10_000:
+                      raise SystemExit(f"{store_id} authority bundle has an invalid member count")
+                  for member in entries:
+                      raw_name = member.name
+                      is_directory = member.isdir()
+                      if not is_directory and not member.isfile():
+                          raise SystemExit(f"{store_id} authority member is unsafe: {raw_name}")
+                      path_name = (
+                          raw_name[:-1]
+                          if is_directory and raw_name.endswith("/")
+                          else raw_name
+                      )
+                      raw_parts = path_name.split("/")
+                      if (
+                          not path_name
+                          or "\\" in path_name
+                      or any(
+                          ord(character) < 32 or ord(character) == 127
+                          for character in path_name
+                      )
+                          or any(part in {"", ".."} for part in raw_parts)
+                      ):
+                          raise SystemExit(f"{store_id} authority path is unsafe: {raw_name!r}")
+                      if raw_parts[0] == ".":
+                          raw_parts = raw_parts[1:]
+                      if not raw_parts:
+                          if not is_directory or root_directory_seen:
+                              raise SystemExit(f"{store_id} authority bundle misuses its root")
+                          root_directory_seen = True
+                          continue
+                      if any(part in {"", ".", ".."} for part in raw_parts):
+                          raise SystemExit(f"{store_id} authority path is unsafe: {raw_name!r}")
+                      if re.fullmatch(r"[A-Za-z]:", raw_parts[0]) is not None:
+                          raise SystemExit(f"{store_id} authority drive path is unsafe: {raw_name!r}")
+                      relative = PurePosixPath(*raw_parts)
+                      normalized = relative.as_posix()
+                      if relative.is_absolute() or normalized in names:
+                          raise SystemExit(
+                              f"{store_id} authority path is repeated or absolute: {raw_name!r}"
+                          )
+                      if member.size < 0 or (is_directory and member.size != 0):
+                          raise SystemExit(
+                              f"{store_id} authority member size is invalid: {normalized}"
+                          )
+                      names[normalized] = "directory" if is_directory else "file"
+                      if is_directory:
+                          continue
+                      expanded_size += member.size
+                      if expanded_size > 512 * 1024 * 1024:
+                          raise SystemExit(f"{store_id} authority bundle expands too far")
+                      source = archive.extractfile(member)
+                      if source is None:
+                          raise SystemExit(
+                              f"{store_id} authority member has no bytes: {normalized}"
+                          )
+                      value = source.read(member.size + 1)
+                      if len(value) != member.size:
+                          raise SystemExit(
+                              f"{store_id} authority member size changed: {normalized}"
+                          )
+                      members[normalized] = value
+              for normalized in names:
+                  for parent in PurePosixPath(normalized).parents:
+                      if parent == PurePosixPath("."):
+                          break
+                      if names.get(parent.as_posix()) == "file":
+                          raise SystemExit(
+                              f"{store_id} authority has a file/path collision: {normalized}"
+                          )
+              return members
+
+          def parse_record(payload: bytes, label: str) -> dict[str, object]:
+              try:
+                  value = json.loads(
+                      payload.decode("utf-8"), object_pairs_hook=closed_object
+                  )
+              except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                  raise SystemExit(f"{label} is not closed UTF-8 JSON") from exc
+              if not isinstance(value, dict):
+                  raise SystemExit(f"{label} is not a JSON record object")
+              return value
+
+          def write_exclusive(path: Path, payload: bytes) -> None:
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(path, flags, 0o400)
+              with os.fdopen(descriptor, "wb") as output:
+                  output.write(payload)
+                  output.flush()
+                  os.fsync(output.fileno())
+
+          def materialize(root: Path, values: dict[str, bytes]) -> None:
+              if root.exists() or root.is_symlink():
+                  raise SystemExit(f"authority readback destination already exists: {root.name}")
+              root.mkdir(mode=0o700)
+              resolved_root = root.resolve()
+              for name in sorted(values):
+                  relative = PurePosixPath(name)
+                  parent = root
+                  for part in relative.parts[:-1]:
+                      parent /= part
+                      try:
+                          parent.mkdir(mode=0o700)
+                      except FileExistsError:
+                          if parent.is_symlink() or not parent.is_dir():
+                              raise SystemExit(f"authority readback parent is unsafe: {name}")
+                  target = root.joinpath(*relative.parts)
+                  if not target.parent.resolve().is_relative_to(resolved_root):
+                      raise SystemExit(f"authority readback escapes its root: {name}")
+                  write_exclusive(target, values[name])
+                  if hashlib.sha256(target.read_bytes()).digest() != hashlib.sha256(
+                      values[name]
+                  ).digest():
+                      raise SystemExit(f"authority readback changed while materializing: {name}")
+
+          runner_temp = Path(os.environ["RUNNER_TEMP"]).resolve()
+          store_a_members = read_archive(
+              runner_temp / "authority-store-a.tar", "payload-store-a"
+          )
+          store_b_members = read_archive(
+              runner_temp / "authority-store-b.tar", "payload-store-b"
+          )
+          if set(store_a_members) != set(store_b_members) or any(
+              store_a_members[name] != store_b_members[name] for name in store_a_members
+          ):
+              raise SystemExit("external authority stores differ after safe archive parsing")
+          store_a_json = {
+              name: value for name, value in store_a_members.items() if name.endswith(".json")
+          }
+          store_b_json = {
+              name: value for name, value in store_b_members.items() if name.endswith(".json")
+          }
+          if not store_a_json:
+              raise SystemExit("external authority stores contain no JSON records")
+          if set(store_a_members) != set(store_a_json):
+              raise SystemExit("external authority stores contain unexpected non-JSON files")
+
+          disk_root_path = Path("release-authority")
+          if disk_root_path.is_symlink() or not disk_root_path.is_dir():
+              raise SystemExit("downloaded authority root is missing or unsafe")
+          disk_root = disk_root_path.resolve()
+          disk_json: dict[str, bytes] = {}
+          for path in sorted(disk_root.rglob("*.json")):
+              if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(disk_root):
+                  raise SystemExit(f"downloaded authority path is unsafe: {path}")
+              parent = disk_root
+              for part in path.relative_to(disk_root).parts[:-1]:
+                  parent /= part
+                  if parent.is_symlink() or not parent.is_dir():
+                      raise SystemExit(f"downloaded authority parent is unsafe: {path}")
+              disk_json[path.relative_to(disk_root).as_posix()] = path.read_bytes()
+          if set(store_a_json) != set(disk_json):
+              raise SystemExit("external stores and GitHub artifact have different JSON inventories")
+          if any(store_a_json[name] != disk_json[name] for name in store_a_json):
+              raise SystemExit("external stores and GitHub artifact contain digest-mismatched records")
+
+          records = {
+              name: parse_record(value, f"retained authority {name}")
+              for name, value in store_a_json.items()
+          }
+          digest_index: dict[str, list[str]] = {}
+          for name, value in store_a_json.items():
+              digest_index.setdefault(hashlib.sha256(value).hexdigest(), []).append(name)
+
+          def required_record(name: str, expected_type: str) -> dict[str, object]:
+              record = records.get(name)
+              if (
+                  record is None
+                  or set(record) != RECORD_FIELDS
+                  or record.get("schema_version") != "metriplane.release-record.v1"
+                  or record.get("record_type") != expected_type
+                  or record.get("status") != "PASS"
+                  or record.get("synthetic") is not False
+              ):
+                  raise SystemExit(f"required live authority record is missing or invalid: {name}")
+              return record
+
+          def resolve_record(
+              digest: object, expected_type: str, label: str
+          ) -> tuple[str, dict[str, object]]:
+              required_digest = require_digest(digest, label)
+              matches = digest_index.get(required_digest, [])
+              if len(matches) != 1:
+                  raise SystemExit(f"{label} does not resolve exactly once")
+              name = matches[0]
+              return name, required_record(name, expected_type)
+
+          manifest = required_record("evidence-manifest.json", "release-evidence-manifest")
+          del manifest
+          manifest_digest = hashlib.sha256(store_a_json["evidence-manifest.json"]).hexdigest()
+          if manifest_digest != os.environ["EVIDENCE_MANIFEST_SHA256"]:
+              raise SystemExit("external evidence manifest digest mismatch")
+          required_record(
+              "prepublication/retention-receipts.json", "release-retention-receipts"
+          )
+
+          postpublication_names = {
+              "final-retention-receipts.json",
+              "publication-reconciliation.json",
+          }
+          present_postpublication = postpublication_names & set(records)
+          if present_postpublication and present_postpublication != postpublication_names:
+              raise SystemExit("postpublication authority inventory is incomplete")
+          if present_postpublication:
+              required_record("final-retention-receipts.json", "release-retention-receipts")
+              required_record(
+                  "publication-reconciliation.json", "release-publication-reconciliation"
+              )
+
+          approval = required_record("prepublication/approval.json", "release-approval")
+          approval_data = approval.get("data")
+          if not isinstance(approval_data, dict):
+              raise SystemExit("prepublication approval data is missing")
+          decision_name, _decision = resolve_record(
+              approval_data.get("approval_decision_digest"),
+              "release-approval-decision",
+              "approval decision digest",
+          )
+
+          qualification = required_record("qualification.json", "release-qualification")
+          qualification_data = qualification.get("data")
+          retention_digests = (
+              qualification_data.get("attempt_retention_receipt_digests")
+              if isinstance(qualification_data, dict)
+              else None
+          )
+          if (
+              not isinstance(retention_digests, list)
+              or not retention_digests
+              or any(
+                  not isinstance(digest, str) or DIGEST.fullmatch(digest) is None
+                  for digest in retention_digests
+              )
+              or len(retention_digests) != len(set(retention_digests))
+          ):
+              raise SystemExit("qualification attempt retention inventory is incomplete")
+
+          store_a_root = runner_temp / "authority-store-a-readback"
+          store_b_root = runner_temp / "authority-store-b-readback"
+          materialize(store_a_root, store_a_json)
+          materialize(store_b_root, store_b_json)
+
+          bindings: list[str] = []
+          for retention_digest in retention_digests:
+              _receipt_name, receipt = resolve_record(
+                  retention_digest,
+                  "release-retention-receipts",
+                  "qualification attempt retention receipt digest",
+              )
+              receipt_data = receipt.get("data")
+              if not isinstance(receipt_data, dict):
+                  raise SystemExit("qualification attempt retention data is missing")
+              manifest_name, _attempt_manifest = resolve_record(
+                  receipt_data.get("input_digest"),
+                  "release-evidence-manifest",
+                  "qualification attempt manifest digest",
+              )
+              if "=" in manifest_name:
+                  raise SystemExit("qualification attempt manifest path is not CLI-safe")
+              for store_id, root in (
+                  ("payload-store-a", store_a_root),
+                  ("payload-store-b", store_b_root),
+              ):
+                  path = root.joinpath(*PurePosixPath(manifest_name).parts)
+                  if path.is_symlink() or not path.is_file():
+                      raise SystemExit("qualification attempt readback is missing or unsafe")
+                  bindings.append(f"{retention_digest}:{store_id}={path}")
+
+          write_exclusive(
+              runner_temp / "release-approval-decision.json",
+              store_a_json[decision_name],
+          )
+          write_exclusive(
+              runner_temp / "attempt-store-readbacks.txt",
+              ("\n".join(bindings) + "\n").encode("utf-8"),
+          )
+          PY
+
+      - id: authorization
+        name: Revalidate exact authority and artifacts immediately before OIDC handoff
+        env:
+          APPROVAL_DECISION_PATH: ${{ runner.temp }}/release-approval-decision.json
+          ATTEMPT_STORE_READBACKS: ${{ runner.temp }}/attempt-store-readbacks.txt
+          AUTHORITY_POLICY_DIGEST: ${{ inputs.authority_policy_digest }}
+          AUTHORITY_SOURCE_RUN_ID: ${{ inputs.authority_run_id }}
+          CANDIDATE_SHA: ${{ needs.validate-production-request.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
+          PROVIDER_ATTESTATION_KEYRING: ${{ runner.temp }}/provider-attestation-keyring.json
+          PROVIDER_ATTESTATION_KEYRING_DIGEST: ${{ inputs.provider_attestation_keyring_digest }}
+          QUALIFICATION_ARTIFACT_ID: ${{ needs.validate-production-request.outputs.qualification_artifact_id }}
+          QUALIFICATION_HEAD_SHA: ${{ needs.validate-production-request.outputs.qualification_head_sha }}
+          QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+          RELEASE_ARTIFACT_ID: ${{ needs.validate-production-request.outputs.release_artifact_id }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
+          STORE_A_READBACK_ROOT: ${{ runner.temp }}/authority-store-a-readback
+          STORE_B_READBACK_ROOT: ${{ runner.temp }}/authority-store-b-readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AUTHORITY_SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALIFICATION_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$QUALIFICATION_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALIFICATION_RECORD_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RELEASE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          test -s "$ATTEMPT_STORE_READBACKS"
+          test -f "$APPROVAL_DECISION_PATH"
+          test -f "$PROVIDER_ATTESTATION_KEYRING"
+          test -f "$STORE_A_READBACK_ROOT/evidence-manifest.json"
+          test -f "$STORE_B_READBACK_ROOT/evidence-manifest.json"
+          attempt_store_readback_args=()
+          while IFS= read -r binding; do
+            test -n "$binding"
+            [[ "$binding" =~ ^[0-9a-f]{64}:payload-store-[ab]=/ ]]
+            attempt_store_readback_args+=(--attempt-store-readback "$binding")
+          done < "$ATTEMPT_STORE_READBACKS"
+          (( ${#attempt_store_readback_args[@]} >= 4 ))
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          tag_ref="refs/tags/v${RELEASE_VERSION}"
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main \
+            "+${tag_ref}:${tag_ref}"
+          test "$(git cat-file -t "$tag_ref")" = "tag"
+          test "$(git rev-parse "${tag_ref}^{commit}")" = "$CANDIDATE_SHA"
+          git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main
+          git merge-base --is-ancestor "$QUALIFICATION_HEAD_SHA" origin/main
+
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}" \
+            > "${RUNNER_TEMP}/fresh-qualification-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/artifacts/${QUALIFICATION_ARTIFACT_ID}" \
+            > "${RUNNER_TEMP}/fresh-qualification-artifact.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${RELEASE_RUN_ID}" \
+            > "${RUNNER_TEMP}/fresh-release-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/artifacts/${RELEASE_ARTIFACT_ID}" \
+            > "${RUNNER_TEMP}/fresh-release-artifact.json"
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          runner_temp = Path(os.environ["RUNNER_TEMP"])
+          qualification_run_id = int(os.environ["QUALIFICATION_RUN_ID"])
+          qualification_head_sha = os.environ["QUALIFICATION_HEAD_SHA"]
+          qualification_run = json.loads(
+              (runner_temp / "fresh-qualification-run.json").read_text(encoding="utf-8")
+          )
+          expected_qualification_run = {
+              "conclusion": "success",
+              "head_sha": qualification_head_sha,
+              "id": qualification_run_id,
+              "path": ".github/workflows/release-required.yml",
+              "status": "completed",
+          }
+          mismatches = {
+              key: (qualification_run.get(key), expected)
+              for key, expected in expected_qualification_run.items()
+              if qualification_run.get(key) != expected
+          }
+          qualification_event = qualification_run.get("event")
+          expected_qualification_branch = (
+              "main"
+              if qualification_event == "workflow_dispatch"
+              else f"v{os.environ['RELEASE_VERSION']}"
+          )
+          if qualification_event not in {"push", "workflow_dispatch"}:
+              mismatches["event"] = (
+                  qualification_event,
+                  "push or workflow_dispatch",
+              )
+          if qualification_run.get("head_branch") != expected_qualification_branch:
+              mismatches["head_branch"] = (
+                  qualification_run.get("head_branch"),
+                  expected_qualification_branch,
+              )
+          if qualification_event == "push" and qualification_head_sha != os.environ[
+              "CANDIDATE_SHA"
+          ]:
+              mismatches["head_sha"] = (
+                  qualification_head_sha,
+                  os.environ["CANDIDATE_SHA"],
+              )
+          if qualification_run.get("repository", {}).get("full_name") != repository:
+              mismatches["repository.full_name"] = (
+                  qualification_run.get("repository", {}).get("full_name"),
+                  repository,
+              )
+          if mismatches:
+              raise SystemExit(f"fresh qualification workflow mismatch: {mismatches}")
+
+          qualification_artifact = json.loads(
+              (runner_temp / "fresh-qualification-artifact.json").read_text(encoding="utf-8")
+          )
+          workflow_run = qualification_artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("fresh qualification artifact has no workflow identity")
+          expected_artifact = {
+              "id": int(os.environ["QUALIFICATION_ARTIFACT_ID"]),
+              "expired": False,
+              "name": "release-qualification-evidence",
+          }
+          artifact_mismatches = {
+              key: (qualification_artifact.get(key), expected)
+              for key, expected in expected_artifact.items()
+              if qualification_artifact.get(key) != expected
+          }
+          expected_artifact_run = {
+              "head_branch": expected_qualification_branch,
+              "head_sha": qualification_head_sha,
+              "id": qualification_run_id,
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), expected)
+                  for key, expected in expected_artifact_run.items()
+                  if workflow_run.get(key) != expected
+              }
+          )
+          if artifact_mismatches:
+              raise SystemExit(f"fresh qualification artifact mismatch: {artifact_mismatches}")
+
+          release_run_id = int(os.environ["RELEASE_RUN_ID"])
+          candidate_sha = os.environ["CANDIDATE_SHA"]
+          release_run = json.loads(
+              (runner_temp / "fresh-release-run.json").read_text(encoding="utf-8")
+          )
+          expected_release_run = {
+              "conclusion": "success",
+              "event": "push",
+              "head_branch": f"v{os.environ['RELEASE_VERSION']}",
+              "head_sha": candidate_sha,
+              "id": release_run_id,
+              "path": ".github/workflows/publish-pypi.yml",
+              "status": "completed",
+          }
+          release_mismatches = {
+              key: (release_run.get(key), expected)
+              for key, expected in expected_release_run.items()
+              if release_run.get(key) != expected
+          }
+          if release_run.get("repository", {}).get("full_name") != repository:
+              release_mismatches["repository.full_name"] = (
+                  release_run.get("repository", {}).get("full_name"),
+                  repository,
+              )
+          if release_mismatches:
+              raise SystemExit(f"fresh release workflow mismatch: {release_mismatches}")
+          release_artifact = json.loads(
+              (runner_temp / "fresh-release-artifact.json").read_text(encoding="utf-8")
+          )
+          release_workflow_run = release_artifact.get("workflow_run")
+          if not isinstance(release_workflow_run, dict):
+              raise SystemExit("fresh release artifact has no workflow identity")
+          expected_release_artifact = {
+              "expired": False,
+              "id": int(os.environ["RELEASE_ARTIFACT_ID"]),
+              "name": "python-package-distributions",
+          }
+          release_artifact_mismatches = {
+              key: (release_artifact.get(key), expected)
+              for key, expected in expected_release_artifact.items()
+              if release_artifact.get(key) != expected
+          }
+          expected_release_artifact_run = {
+              "head_branch": f"v{os.environ['RELEASE_VERSION']}",
+              "head_sha": candidate_sha,
+              "id": release_run_id,
+          }
+          release_artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (release_workflow_run.get(key), expected)
+                  for key, expected in expected_release_artifact_run.items()
+                  if release_workflow_run.get(key) != expected
+              }
+          )
+          if release_artifact_mismatches:
+              raise SystemExit(f"fresh release artifact mismatch: {release_artifact_mismatches}")
+
+          root = Path("release-authority")
+          bound_sources = {
+              "delta.json": "candidate_sha",
+              "gate-instance.json": "frozen_source_sha",
+              "impact-manifest.json": "head_sha",
+              "source-freeze.json": "source_sha",
+          }
+          for relative, field in bound_sources.items():
+              record = json.loads((root / relative).read_text(encoding="utf-8"))
+              if record.get("data", {}).get(field) != candidate_sha:
+                  raise SystemExit(f"fresh authority source mismatch: {relative}")
+          gate = json.loads((root / "gate-instance.json").read_text(encoding="utf-8"))
+          roles = json.loads((root / "role-assignments.json").read_text(encoding="utf-8"))
+          authority_run_id = gate.get("data", {}).get("run_id")
+          if (
+              authority_run_id != os.environ["AUTHORITY_SOURCE_RUN_ID"]
+              or roles.get("data", {}).get("run_id") != authority_run_id
+          ):
+              raise SystemExit("fresh authority external run binding mismatch")
+          PY
+
+          test "$(sha256sum release-authority/qualification.json | awk '{print $1}')" = \
+            "$QUALIFICATION_RECORD_DIGEST"
+          milestone="v${RELEASE_VERSION%.*}"
+          case "$milestone" in
+            v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0) ;;
+            *) echo "unsupported cumulative release milestone: $milestone" >&2; exit 1 ;;
+          esac
+          authority_run_id="$(python -c \
+            'import json; print(json.load(open("release-authority/gate-instance.json"))["data"]["run_id"])')"
+          uv run python tools/validate_release_gate_instance.py \
+            --record release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --task-state-policy docs/status/release-task-state-policy.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/validate_release_role_assignments.py \
+            --record release-authority/role-assignments.json \
+            --milestone "$milestone" \
+            --run-id "$authority_run_id" \
+            --check-conflicts \
+            --check-freshness \
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/validate_release_qualification_plan.py \
+            --record release-authority/qualification-plan.json \
+            --gate-instance release-authority/gate-instance.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/validate_release_qualification.py \
+            --record release-authority/qualification.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
+            "${attempt_store_readback_args[@]}"
+          uv run python tools/validate_release_retention.py \
+            --manifest release-authority/evidence-manifest.json \
+            --receipts release-authority/prepublication/retention-receipts.json \
+            --read-back \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
+            --store-readback \
+              "payload-store-a=$STORE_A_READBACK_ROOT/evidence-manifest.json" \
+            --store-readback \
+              "payload-store-b=$STORE_B_READBACK_ROOT/evidence-manifest.json"
+          uv run python tools/validate_release_approval.py \
+            --approval-decision "$APPROVAL_DECISION_PATH" \
+            --gate-instance release-authority/gate-instance.json \
+            --qualification release-authority/qualification.json \
+            --role-assignments release-authority/role-assignments.json \
+            --no-prepublication-rubric \
+            --record release-authority/prepublication/approval.json \
+            --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+          uv run python tools/check_release_readiness.py \
+            --gate-instance release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --linear-snapshot release-authority/linear-snapshot.json \
+            --artifact-manifest release-authority/artifact-manifest.json \
+            --delta release-authority/delta.json \
+            --delta-test-map release-authority/delta-test-map.json \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
+            --out "${RUNNER_TEMP}/fresh-readiness.json"
+          cmp --silent release-authority/readiness.json "${RUNNER_TEMP}/fresh-readiness.json"
           python tools/release_artifacts.py verify-manifest \
             --dist release-artifacts/dist \
             --manifest release-artifacts/SHA256SUMS \
@@ -541,6 +1865,59 @@ jobs:
             --repository https://test.pypi.org \
             --version "$RELEASE_VERSION" \
             --manifest release-artifacts/SHA256SUMS
+          uv run python tools/validate_release_artifact_manifest.py \
+            --record release-authority/artifact-manifest.json \
+            --artifacts release-artifacts/dist \
+            --read-hash \
+            --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+            --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST"
+
+          if [[ -e release-authority/final-retention-receipts.json || \
+                -e release-authority/publication-reconciliation.json ]]; then
+            test -f release-authority/final-retention-receipts.json
+            test -f release-authority/publication-reconciliation.json
+            uv run python tools/validate_release_retention.py \
+              --manifest release-authority/evidence-manifest.json \
+              --receipts release-authority/final-retention-receipts.json \
+              --read-back \
+              --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+              --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
+              --store-readback \
+                "payload-store-a=$STORE_A_READBACK_ROOT/evidence-manifest.json" \
+              --store-readback \
+                "payload-store-b=$STORE_B_READBACK_ROOT/evidence-manifest.json"
+            uv run python tools/validate_publication_reconciliation.py \
+              --record release-authority/publication-reconciliation.json \
+              --authority-policy-digest "$AUTHORITY_POLICY_DIGEST" \
+              --provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING" \
+              --provider-attestation-keyring-digest "$PROVIDER_ATTESTATION_KEYRING_DIGEST" \
+              --store-readback \
+                "payload-store-a=$STORE_A_READBACK_ROOT/evidence-manifest.json" \
+              --store-readback \
+                "payload-store-b=$STORE_B_READBACK_ROOT/evidence-manifest.json" \
+              "${attempt_store_readback_args[@]}"
+          fi
+
+          echo "release_artifact_id=$RELEASE_ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+
+  publish-pypi:
+    name: Publish the authorized immutable artifact to PyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs: authorize-production
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/metriplane
+    permissions:
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.authorize-production.outputs.release_artifact_id }}
+          path: release-artifacts/
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
 
       - name: Publish the verified distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
@@ -553,6 +1930,7 @@ jobs:
     needs: [validate-production-request, publish-pypi]
     runs-on: ubuntu-latest
     env:
+      CANDIDATE_SHA: ${{ needs.validate-production-request.outputs.commit }}
       RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
     permissions:
       actions: read
@@ -565,7 +1943,7 @@ jobs:
 
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: python-package-distributions
+          artifact-ids: ${{ needs.validate-production-request.outputs.release_artifact_id }}
           path: release-artifacts/
           run-id: ${{ inputs.release_run_id }}
           github-token: ${{ github.token }}
@@ -625,3 +2003,38 @@ jobs:
           expected = os.environ["VERSION"]
           assert metriplane.__version__ == metadata.version("metriplane") == expected
           PY
+
+      - name: Record the exact verified production target
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          record = {
+              "candidate_sha": os.environ["CANDIDATE_SHA"],
+              "production_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "schema_version": "metriplane.production-verification.v1",
+              "version": os.environ["RELEASE_VERSION"],
+          }
+          payload = json.dumps(
+              record,
+              ensure_ascii=True,
+              separators=(",", ":"),
+              sort_keys=True,
+          ).encode("utf-8") + b"\n"
+          Path("production-verification.json").write_bytes(payload)
+          PY
+
+      - name: Retain exact production verification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-verification
+          path: production-verification.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 90

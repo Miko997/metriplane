@@ -1,0 +1,271 @@
+{
+  "owner": "MP2-007",
+  "phases": [
+    "qualification",
+    "publication_reconciliation",
+    "postpublication"
+  ],
+  "scenarios": [
+    {
+      "covers_stages": [
+        "roles",
+        "task-state",
+        "staging",
+        "targets",
+        "predecessor",
+        "source-freeze",
+        "candidate",
+        "qualification",
+        "approval",
+        "prepromotion",
+        "promotion",
+        "reconciliation",
+        "retention",
+        "closed"
+      ],
+      "expected": "PASS",
+      "fault": "none",
+      "id": "complete-fake-release",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "forbidden",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[complete-fake-release]"
+    },
+    {
+      "covers_stages": ["roles"],
+      "expected": "BLOCKED",
+      "fault": "missing-provider-backed-role-signature",
+      "id": "missing-role-signature",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-invocation-after-authority",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[missing-role-signature]"
+    },
+    {
+      "covers_stages": ["task-state"],
+      "expected": "BLOCKED",
+      "fault": "stale-or-wrong-provider-task-state",
+      "id": "stale-task-state",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-invocation-after-fresh-capture",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[stale-task-state]"
+    },
+    {
+      "covers_stages": ["staging"],
+      "expected": "CANCELLED",
+      "fault": "operator-cancellation-before-tag",
+      "id": "staging-cancelled",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-invocation-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[staging-cancelled]"
+    },
+    {
+      "covers_stages": ["targets"],
+      "expected": "BURN",
+      "fault": "occupied-target-with-mismatched-bytes",
+      "id": "target-occupation-burn",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-patch-and-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[target-occupation-burn]"
+    },
+    {
+      "covers_stages": ["predecessor"],
+      "expected": "BLOCKED",
+      "fault": "missing-actual-prior-lkg-or-closed-decision",
+      "id": "missing-predecessor",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-invocation-after-resolution",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[missing-predecessor]"
+    },
+    {
+      "covers_stages": ["source-freeze"],
+      "expected": "FAIL",
+      "fault": "source-or-registry-identity-drift",
+      "id": "source-freeze-drift",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[source-freeze-drift]"
+    },
+    {
+      "covers_stages": ["candidate"],
+      "expected": "FAIL",
+      "fault": "artifact-rebuilt-after-candidate-identity",
+      "id": "candidate-rebuild",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[candidate-rebuild]"
+    },
+    {
+      "covers_stages": ["qualification"],
+      "expected": "FAIL",
+      "fault": "product-test-failure",
+      "id": "qualification-failed",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[qualification-failed]"
+    },
+    {
+      "covers_stages": ["qualification"],
+      "expected": "SKIPPED",
+      "fault": "required-cell-reported-skip",
+      "id": "required-cell-skipped",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "forbidden-without-new-plan",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[required-cell-skipped]"
+    },
+    {
+      "covers_stages": ["qualification"],
+      "expected": "BLOCKED",
+      "fault": "hard-runner-loss-without-terminal-record",
+      "id": "hard-runner-loss",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-invocation-after-terminal-coordination",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[hard-runner-loss]"
+    },
+    {
+      "covers_stages": ["qualification"],
+      "expected": "RECOVER",
+      "fault": "independently-classified-runner-service-failure",
+      "id": "runner-service-retry",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-invocation-preserve-first-attempt",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[runner-service-retry]"
+    },
+    {
+      "covers_stages": ["approval"],
+      "expected": "BLOCKED",
+      "fault": "author-and-reviewer-identity-equal",
+      "id": "self-approval",
+      "mode": "live-boundary",
+      "phase": "qualification",
+      "retry": "new-signed-decision-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[self-approval]"
+    },
+    {
+      "covers_stages": ["approval"],
+      "expected": "BLOCKED",
+      "fault": "synthetic-identity-used-for-live-approval",
+      "id": "synthetic-live-approval",
+      "mode": "live-boundary",
+      "phase": "qualification",
+      "retry": "new-provider-backed-decision-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[synthetic-live-approval]"
+    },
+    {
+      "covers_stages": ["prepromotion"],
+      "expected": "BLOCKED",
+      "fault": "stale-main-health-or-task-state",
+      "id": "stale-prepromotion-controls",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-prepublication-round-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[stale-prepromotion-controls]"
+    },
+    {
+      "covers_stages": ["promotion"],
+      "expected": "BLOCKED",
+      "fault": "fenced-cas-concurrent-writer",
+      "id": "concurrent-writer",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "reread-head-and-new-invocation",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[concurrent-writer]"
+    },
+    {
+      "covers_stages": ["promotion"],
+      "expected": "BURN",
+      "fault": "unauthorized-tag-created-in-capability-limited-mode",
+      "id": "capability-limited-tag-burn",
+      "mode": "fixture",
+      "phase": "qualification",
+      "retry": "new-patch-and-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[capability-limited-tag-burn]"
+    },
+    {
+      "covers_stages": ["reconciliation"],
+      "expected": "BURN",
+      "fault": "partial-publication",
+      "id": "partial-publication",
+      "mode": "fixture",
+      "phase": "publication_reconciliation",
+      "retry": "new-version-and-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[partial-publication]"
+    },
+    {
+      "covers_stages": ["reconciliation"],
+      "expected": "FAIL",
+      "fault": "published-byte-mismatch",
+      "id": "artifact-mismatch",
+      "mode": "fixture",
+      "phase": "publication_reconciliation",
+      "retry": "new-version-and-candidate-only",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[artifact-mismatch]"
+    },
+    {
+      "covers_stages": ["retention"],
+      "expected": "RECOVER",
+      "fault": "kill-after-cas-before-receipt",
+      "id": "kill-after-cas",
+      "mode": "fixture",
+      "phase": "postpublication",
+      "retry": "same-operation-reconstruction-new-invocation",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[kill-after-cas]"
+    },
+    {
+      "covers_stages": ["retention"],
+      "expected": "BLOCKED",
+      "fault": "external-store-or-index-unavailable",
+      "id": "external-store-outage",
+      "mode": "live-boundary",
+      "phase": "postpublication",
+      "retry": "new-invocation-after-provider-recovery",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[external-store-outage]"
+    },
+    {
+      "covers_stages": ["closed"],
+      "expected": "PASS",
+      "fault": "later-product-contradiction-fenced-by-signed-invalidation",
+      "id": "signed-lkg-invalidation",
+      "mode": "fixture",
+      "phase": "postpublication",
+      "retry": "forbidden-without-signed-decision",
+      "test_node_id": "tests/release/test_local_fake_release.py::test_declared_release_scenario_contract[signed-lkg-invalidation]"
+    }
+  ],
+  "schema_version": "metriplane.release-scenarios.v2",
+  "stages": [
+    "roles",
+    "task-state",
+    "staging",
+    "targets",
+    "predecessor",
+    "source-freeze",
+    "candidate",
+    "qualification",
+    "approval",
+    "prepromotion",
+    "promotion",
+    "reconciliation",
+    "retention",
+    "closed"
+  ],
+  "terminal_results": [
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "CANCELLED",
+    "SKIPPED",
+    "RECOVER",
+    "BURN"
+  ]
+}

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-pypi.yml"
 RELEASING = ROOT / "docs" / "releasing.md"
@@ -30,12 +29,18 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
     assert jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
     assert jobs["gates"]["needs"] == "provenance"
     assert jobs["build"]["needs"] == ["provenance", "gates"]
-    assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
+    assert jobs["validate-testpypi-artifacts"]["needs"] == ["provenance", "build"]
+    assert jobs["publish-testpypi"]["needs"] == [
+        "provenance",
+        "build",
+        "validate-testpypi-artifacts",
+    ]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
     for name in (
         "provenance",
         "gates",
         "build",
+        "validate-testpypi-artifacts",
         "publish-testpypi",
         "verify-testpypi",
     ):
@@ -56,22 +61,36 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
 
     assert set(trigger) == {"push", "workflow_dispatch"}
     inputs = trigger["workflow_dispatch"]["inputs"]
-    assert set(inputs) == {"release_run_id", "version", "confirmation"}
+    assert set(inputs) == {
+        "release_run_id",
+        "qualification_run_id",
+        "qualification_record_digest",
+        "authority_run_id",
+        "authority_bundle_sha256",
+        "authority_policy_digest",
+        "evidence_manifest_sha256",
+        "provider_attestation_keyring_digest",
+        "version",
+        "confirmation",
+    }
     assert all(item["required"] is True for item in inputs.values())
 
     request = jobs["validate-production-request"]
     preflight = jobs["verify-production-artifacts"]
+    authorize = jobs["authorize-production"]
     publish = jobs["publish-pypi"]
     verify = jobs["verify-pypi"]
-    for job in (request, preflight, publish, verify):
+    for job in (request, preflight, authorize, publish, verify):
         assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert preflight["needs"] == "validate-production-request"
     assert "environment" not in preflight
-    assert publish["needs"] == [
+    assert authorize["needs"] == [
         "validate-production-request",
         "verify-production-artifacts",
     ]
+    assert publish["needs"] == "authorize-production"
     assert verify["needs"] == ["validate-production-request", "publish-pypi"]
+    assert authorize["environment"]["name"] == "pypi"
     assert publish["environment"]["name"] == "pypi"
     assert publish["permissions"]["id-token"] == "write"
 
@@ -81,36 +100,66 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         'test "$GITHUB_REF" = "refs/heads/main"',
         'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
         "publish metriplane ${RELEASE_VERSION} to production",
+        "release-qualification-evidence",
+        "qualification.json",
+        "validate_release_qualification.py",
+        "validate_release_role_assignments.py",
+        "validate_release_approval.py",
+        "Read back and compare exact authority bytes from both external stores",
+        "authority stores must use distinct HTTPS host identities",
+        'test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"',
+        "external authority stores differ after safe archive parsing",
+        "attempt-store-readbacks.txt",
+        "--attempt-store-readback",
+        "--provider-attestation-keyring",
+        "validate_release_retention.py",
+        "check_release_readiness.py",
         "/actions/runs/${RELEASE_RUN_ID}",
         "/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100",
         '"event": "push"',
         '"path": ".github/workflows/publish-pypi.yml"',
         '"conclusion": "success"',
         "Verify TestPyPI artifact identity and installation",
-        '"name") == "python-package-distributions"',
+        'item.get("name")',
+        '"python-package-distributions"',
         "run-id: ${{ inputs.release_run_id }}",
         "github-token: ${{ github.token }}",
         "--repository https://test.pypi.org",
         "--repository https://pypi.org",
     )
     assert all(fragment in text for fragment in required)
+    assert "--mode live" not in text
 
 
 def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     workflow, _ = _workflow()
     jobs = workflow["jobs"]
+    pinned_checkout = "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
+    pinned_download = "actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53"
+    pinned_publisher = "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
 
     for name in (
+        "validate-production-request",
         "verify-production-artifacts",
-        "publish-pypi",
+        "authorize-production",
         "verify-pypi",
     ):
         uses = [step.get("uses", "") for step in jobs[name]["steps"]]
-        checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
-        download = next(
-            i for i, value in enumerate(uses) if "actions/download-artifact@" in value
-        )
-        assert checkout < download, name
+        checkouts = [i for i, value in enumerate(uses) if "actions/checkout@" in value]
+        downloads = [i for i, value in enumerate(uses) if "actions/download-artifact@" in value]
+        assert checkouts, name
+        assert downloads, name
+        assert all(uses[i] == pinned_checkout for i in checkouts), name
+        assert all(uses[i] == pinned_download for i in downloads), name
+        assert max(checkouts) < min(downloads), name
+
+    publish = jobs["publish-pypi"]
+    assert publish["permissions"] == {"actions": "read", "id-token": "write"}
+    assert [step.get("uses") for step in publish["steps"]] == [
+        pinned_download,
+        pinned_publisher,
+    ]
+    assert all("run" not in step for step in publish["steps"])
 
 
 def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
@@ -119,7 +168,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
-        "git merge-base --is-ancestor \"$tag_commit\" origin/main",
+        'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",
@@ -129,7 +178,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     )
     assert all(fragment in text for fragment in required)
     assert text.count("verify-registry") == 4
-    assert text.count("sha256sum --check ../SHA256SUMS") == 1
+    assert text.count("sha256sum --check ../SHA256SUMS") == 2
 
 
 def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
@@ -179,9 +228,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     )
     assert all(topic in migration for topic in required_migration_topics)
 
-    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index(
-        "## Install and run"
-    )
+    assert notes.index("Metriplane v0.3.0 adds a bundled") < notes.index("## Install and run")
     for result in ("six events", "one incident", "35.0 seconds", "verified", "passed"):
         assert result in notes
     assert "No unfamiliar-user comprehension study was completed before release" in notes

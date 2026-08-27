@@ -1,0 +1,27 @@
+{
+  "data": {
+    "author_id": "fixture-author",
+    "authorized_executor_id": "fixture-executor",
+    "non_author_reviewer_id": "fixture-reviewer",
+    "publisher_id": "fixture-publisher",
+    "task_id": "MP2-007"
+  },
+  "invocation_id": "fixture-roles-001",
+  "payload_digest": "2523a3a38937aeb85adc1afe7825c2de1691f631c364b4805abe1bf12fe9e1b5",
+  "record_id": "9b088bc1abe8903360cc366432f1912dcf8b3c41d91710a1a40300c2b1134cf2",
+  "record_type": "release-role-assignments",
+  "schema_version": "metriplane.release-record.v1",
+  "sequence": 1,
+  "signatures": [
+    {
+      "actor_id": "fixture-executor",
+      "algorithm": "test-sha256-v1",
+      "provider": "test-fixture",
+      "signature": "054763f6ca161059b3c9dda8382a52c686ddfe3c2631ab3395e10ab77f554189",
+      "subject_digest": "4657b01e8207cdbd3559a5472c71236eae7805e088c0e441bda9efb651e463ef",
+      "synthetic": true
+    }
+  ],
+  "status": "PASS",
+  "synthetic": true
+}

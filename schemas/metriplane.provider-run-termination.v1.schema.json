@@ -1,0 +1,164 @@
+{
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "stage": {
+      "enum": [
+        "roles",
+        "task-state",
+        "staging",
+        "targets",
+        "predecessor",
+        "source-freeze",
+        "candidate",
+        "qualification",
+        "approval",
+        "prepromotion",
+        "promotion",
+        "reconciliation",
+        "retention",
+        "closed"
+      ]
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.provider-run-termination.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "cancelled",
+            "failure",
+            "success",
+            "timed_out"
+          ]
+        },
+        "tool": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]*(?:[Pp]rovider|[Gg]it[Hh]ub)[A-Za-z0-9._-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "tool"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "provider-run-termination"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "algorithm": {
+            "enum": [
+              "provider-attestation-v1",
+              "test-sha256-v1"
+            ]
+          },
+          "provider": {
+            "enum": [
+              "github",
+              "linear",
+              "test-fixture"
+            ]
+          },
+          "signature": {
+            "minLength": 16,
+            "type": "string"
+          },
+          "subject_digest": {
+            "$ref": "#/$defs/digest"
+          },
+          "synthetic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "actor_id",
+          "algorithm",
+          "provider",
+          "signature",
+          "subject_digest",
+          "synthetic"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "BLOCKED",
+        "CANCELLED",
+        "FAIL",
+        "INVALIDATED",
+        "OPEN",
+        "PASS",
+        "READY",
+        "SKIPPED"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane provider-run-termination record",
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ]
+}

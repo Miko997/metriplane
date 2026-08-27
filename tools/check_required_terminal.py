@@ -57,12 +57,11 @@ def validate_terminal(
 
 
 def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
-    """Validate sole producers and the future Release handoff."""
+    """Validate the exact sole producer of every required terminal."""
     try:
         import yaml
     except ImportError as exc:
         raise TerminalValidationError("policy validation requires PyYAML") from exc
-
     policy = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(policy, dict):
         raise TerminalValidationError("terminal policy must be a JSON object")
@@ -79,6 +78,7 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
         "Documentation / required": ".github/workflows/docs.yml",
         "Security / required": ".github/workflows/codeql.yml",
         "Main health / required": "github-app:metriplane-main-health-publisher",
+        "Release / required": ".github/workflows/release-required.yml",
     }
     expected_main_health_transition = {
         "actions_integration_id": 15368,
@@ -134,10 +134,11 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
             producer = terminal["producer"]
             expected_producer = expected_active_producers.get(terminal["name"])
             if expected_producer is None:
-                raise TerminalValidationError("Release / required must remain reserved")
-            if terminal["owner"] != "MP2-004" or producer != expected_producer:
+                raise TerminalValidationError(f"{terminal['name']}: producer is not governed")
+            expected_owner = "MP2-007" if terminal["name"] == "Release / required" else "MP2-004"
+            if terminal["owner"] != expected_owner or producer != expected_producer:
                 raise TerminalValidationError(
-                    f"{terminal['name']}: owner or producer is not the governed MP2-004 value"
+                    f"{terminal['name']}: owner or producer is not the governed {expected_owner} value"
                 )
             if producer == "github-app:metriplane-main-health-publisher":
                 transition = terminal.get("transition")
@@ -156,13 +157,6 @@ def validate_policy(path: Path, workflow_root: Path) -> dict[str, Any]:
             if producers != expected_producers:
                 raise TerminalValidationError(
                     f"{terminal['name']}: expected sole producer {producer!r}, found {producers!r}"
-                )
-        elif terminal["state"] == "reserved":
-            if terminal["name"] != "Release / required":
-                raise TerminalValidationError("only Release / required may be reserved")
-            if terminal["owner"] != "MP2-007" or producers:
-                raise TerminalValidationError(
-                    "Release / required must be producer-free and reserved for MP2-007"
                 )
         else:
             raise TerminalValidationError(f"{terminal['name']}: terminal state is invalid")

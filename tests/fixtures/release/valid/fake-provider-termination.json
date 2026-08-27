@@ -1,0 +1,15 @@
+{
+  "data": {
+    "state": "success",
+    "tool": "fake-provider"
+  },
+  "invocation_id": "fixture-provider-001",
+  "payload_digest": "3f51633f6919b0f7e40f7075f31da12f7c3fc37465956875bc5dfb36ed7fd76c",
+  "record_id": "ea3cba4c3d00385d6ade29403f985505ad33c5602b9838c85c0f8577a57482a9",
+  "record_type": "provider-run-termination",
+  "schema_version": "metriplane.release-record.v1",
+  "sequence": 1,
+  "signatures": [],
+  "status": "PASS",
+  "synthetic": true
+}

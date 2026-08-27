@@ -1,0 +1,64 @@
+{
+  "environments": [
+    {
+      "architecture": "x64",
+      "claim_level": "release-qualification",
+      "command": "python -m pytest -q",
+      "id": "ubuntu-24.04-py312",
+      "operating_system": "Ubuntu 24.04",
+      "profile": "full-camera-free",
+      "python": "3.12",
+      "required": true,
+      "runner": "ubuntu-24.04",
+      "runner_kind": "github-hosted",
+      "terminal_results": ["PASS", "FAIL", "CANCELLED", "SKIPPED", "BLOCKED"]
+    },
+    {
+      "architecture": "x64",
+      "claim_level": "release-qualification",
+      "command": "python -m pytest -q",
+      "id": "ubuntu-24.04-py313",
+      "operating_system": "Ubuntu 24.04",
+      "profile": "full-camera-free",
+      "python": "3.13",
+      "required": true,
+      "runner": "ubuntu-24.04",
+      "runner_kind": "github-hosted",
+      "terminal_results": ["PASS", "FAIL", "CANCELLED", "SKIPPED", "BLOCKED"]
+    },
+    {
+      "architecture": "arm64",
+      "claim_level": "release-qualification",
+      "command": "python -m pytest -q",
+      "id": "macos-15-py312",
+      "operating_system": "macOS 15",
+      "profile": "full-camera-free",
+      "python": "3.12",
+      "required": true,
+      "runner": "macos-15",
+      "runner_kind": "github-hosted",
+      "terminal_results": ["PASS", "FAIL", "CANCELLED", "SKIPPED", "BLOCKED"]
+    },
+    {
+      "architecture": "x64",
+      "claim_level": "release-qualification",
+      "command": "python -m pytest -q",
+      "id": "windows-2025-py312",
+      "operating_system": "Windows Server 2025",
+      "profile": "full-camera-free",
+      "python": "3.12",
+      "required": true,
+      "runner": "windows-2025",
+      "runner_kind": "github-hosted",
+      "terminal_results": ["PASS", "FAIL", "CANCELLED", "SKIPPED", "BLOCKED"]
+    }
+  ],
+  "evidence_policy": {
+    "attempt_index_required": true,
+    "first_attempt_retained": true,
+    "terminal_coordinator_required": true,
+    "two_independent_stores_required": true
+  },
+  "owner": "MP2-007",
+  "schema_version": "metriplane.release-supported-environments.v2"
+}

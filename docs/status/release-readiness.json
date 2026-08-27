@@ -1,0 +1,50 @@
+{
+  "blockers": [
+    {
+      "code": "MP2_007_RESULT_EVIDENCE_ABSENT",
+      "required_count": 13,
+      "resolved_count": 0,
+      "resolver": "docs/status/release-test-obligations.json"
+    },
+    {
+      "code": "LIVE_NON_AUTHOR_APPROVAL_REQUIRED",
+      "resolver": "tools/validate_release_approval.py"
+    },
+    {
+      "code": "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED",
+      "resolver": "tools/validate_release_retention.py"
+    },
+    {
+      "code": "HOSTED_PROTECTION_AND_REAL_MERGE_PROOF_REQUIRED",
+      "resolver": "tools/validate_repository_protection.py"
+    },
+    {
+      "code": "MP2_018_POPULATED_INVENTORY_REQUIRED",
+      "resolver": "tools/check_release_readiness.py"
+    }
+  ],
+  "evidence_resolution": {
+    "allow_synthetic": false,
+    "allow_temporary_ci_artifact_as_retention": false,
+    "required_result_count": 13,
+    "resolved_result_count": 0,
+    "status": "BLOCKED_NOT_READY"
+  },
+  "first_release": "v0.4",
+  "framework": "BLOCKED_NOT_READY",
+  "last_release": "v1.0",
+  "live_release": "BLOCKED_NOT_READY",
+  "main_health": {
+    "max_age_seconds": 21600,
+    "state_branch": "metriplane-main-health-state",
+    "validator": "tools/stop_the_line.py candidate"
+  },
+  "modes": {
+    "post-publication": "BLOCKED_NOT_READY",
+    "pr-merge-control": "IMPLEMENTED_UNQUALIFIED",
+    "release-qualification": "BLOCKED_NOT_READY"
+  },
+  "owner": "MP2-007",
+  "required_terminal": "Release / required",
+  "schema_version": "metriplane.release-readiness.v2"
+}

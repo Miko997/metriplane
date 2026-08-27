@@ -70,9 +70,28 @@ about live provider state. Release or activation evidence must come from a fresh
 `capture_repository_protection.py` run whose capability and settings records share
 one capture time and source-digest set and pass the offline policy validator.
 
-The four MP2-004 terminal names and their sole producers are recorded in
-`docs/status/required-terminals.json`. `Release / required` has no producer in
-MP2-004; MP2-007 is its sole reserved owner.
+The five required terminal names and their sole producers are recorded in
+`docs/status/required-terminals.json`. MP2-004 owns the four aggregate CI and
+health terminals. MP2-007 owns the active `Release / required` terminal and
+`.github/workflows/release-required.yml` is its sole producer.
+
+## Release qualification
+
+MP2-007 owns one cumulative state machine for `v0.4` through `v1.0`. Its
+schemas, registries, stable tools, fixtures, and runbook are closed finite
+interfaces. The existing `publish-pypi.yml` workflow and
+`tools/release_artifacts.py` are integrated consumers, not a second release
+state machine. A tag may identify a candidate but cannot stage, approve, or
+promote one by itself.
+
+Ordinary pull requests execute the deterministic fake-release and mutation
+suite. Synthetic role and approval fixtures are test-only and fail every live
+authority predicate. Live promotion additionally requires a provider-bound
+executor delegation, distinct non-author approval, complete terminal matrix,
+two independent read-verified stores, fenced CAS attempt index and lock,
+exact-byte reconciliation, and the retained chain/LKG/pointer close path.
+Missing external proof remains `BLOCKED_NOT_READY`; no hosted setting, tag,
+release, publication, or merge mutation is implied by local framework success.
 
 ## Main health
 
