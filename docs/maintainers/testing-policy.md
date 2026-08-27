@@ -8,6 +8,7 @@ Metriplane supports Python 3.12 and 3.13. Runtime dependency ranges remain in
 | uv | `uv==0.12.0` |
 | build backend | `setuptools==82.0.1` |
 | build | `build==1.5.0` |
+| cryptography | `cryptography==50.0.0` |
 | MkDocs | `mkdocs==1.6.1` |
 | mypy | `mypy==1.20.2` |
 | Playwright | `playwright==1.62.0` |
