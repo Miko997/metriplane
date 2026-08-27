@@ -35,41 +35,29 @@ run is active, and appends every unrecorded governed attempt in provider update
 order. An unreconciled deep run for another SHA is an operator-visible stop
 rather than a silently skipped result.
 
-Until activation removes the legacy Actions-owned main-health context from the
-core ruleset, the same read-only workflow emits a pull-request compatibility
-terminal. This executable one-PR transition accepts only PR 86, canonical owner,
-actor, author, and head repository, `main` at exact base
-`9d5b4ffa5236521423196a84acc6a613f7f13108`, and an exact checkout. It then reads
-the complete exact-head check-run inventory with a checks-read `GITHUB_TOKEN` and
-requires the provider-ordered latest `Metriplane / required`,
-`Documentation / required`, and `Security / required` attempts from GitHub Actions
-integration 15368 to be completed successes. Missing or running checks are polled
-at most 90 times at ten-second intervals. Failed checks, malformed data, duplicate
-IDs, ambiguous or inverted attempt chronology, pagination drift, and exhausted
-polling all fail closed. Pull-request text is not an approval source.
-
-The repository Actions variable `MET77_APPROVED_HEAD_SHA` is the one-use provider
-approval. Keep it absent while the candidate changes or is under qualification.
-After independent review approves one fully qualified head, set the variable to
-that complete lowercase SHA before starting or rerunning the compatibility job.
-An absent, malformed, stale, or mismatched value cannot pass, and any head change
-requires full requalification before replacing the variable. Immediately after
-the governed merge and ruleset activation, delete the variable. Remove the
-transition metadata and compatibility job when the obsolete Actions-owned core
-requirement is removed. The fixed PR and base bindings make a retained value
-unusable for another pull request. The bridge cannot authorize the final App-owned
-topology and becomes redundant after activation.
+The one-use PR 86 Actions compatibility terminal is retired. Hosted rulesets now
+bind `Main health / required` exclusively to GitHub App integration 4722589, so
+the deep workflow has no pull-request trigger, required-check job, checks
+permission, or merge authority. Its only triggers are the governed nightly and
+weekly schedules and matching repository dispatches. Deep observations run one
+at a time with the bounded maximum queue, so an overlapping schedule or dispatch
+does not cancel an already pending observation. The historical transition
+validator remains covered as retained evidence, but no active workflow invokes
+it and the obsolete `MET77_APPROVED_HEAD_SHA` variable must remain absent.
 
 A failed global cadence turns the state red. Later successful observations do
 not clear red state. Normal pull requests stop; only a provider review request
 bound to the current incident, generation, base, and head can admit a repair.
-Resolution requires an exact independent non-author `write` or `admin`
-approval plus latest passing protected-main, nightly, and weekly evidence for
+Resolution normally requires an exact independent non-author `write` or `admin`
+approval. A personal repository with no eligible independent collaborator or
+pending write-authority invitation may instead use the incident-only
+single-maintainer owner-emergency request described in the broker runbook. Both
+paths require latest passing protected-main, nightly, and weekly evidence for
 the merged repair SHA. An older success cannot mask a later failed attempt. The
-broker reconstructs that evidence from the provider and then appends the
-resolution to the protected state branch. The former
-single-maintainer owner-emergency CLI is retired, and no active manifest can
-authorize it.
+broker reconstructs the provider evidence and appends the resolution to the
+protected state branch. The former direct owner-emergency CLI and human ruleset
+bypass remain retired; only the App-broker transaction can consume an active
+manifest.
 
 ## Admission
 
@@ -124,7 +112,9 @@ aggregate and every available latest current-main nightly or weekly attempt twic
 to retained protected-state identities, and rejects active, failed, missing, or
 changing evidence. It then repeats admission, state, main, core-check, and
 ruleset validation immediately before success can be published. The broker
-then changes the recorded merge-App check ID to literal success and immediately
+then changes the recorded merge-App check ID to literal success, accepts either
+provider `clean` or the expected `mergeable: true`/`blocked` state produced by
+the App-only update restriction, re-seals the complete admission context, and
 calls the synchronous merge endpoint with the exact head SHA. A definite
 rejection closes the check. An ambiguous response is never retried: the broker
 reconciles the pull request, main ref, merge parents, and exact tree and
