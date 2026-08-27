@@ -63,13 +63,16 @@ topology and becomes redundant after activation.
 A failed global cadence turns the state red. Later successful observations do
 not clear red state. Normal pull requests stop; only a provider review request
 bound to the current incident, generation, base, and head can admit a repair.
-Resolution requires an exact independent non-author `write` or `admin`
-approval plus latest passing protected-main, nightly, and weekly evidence for
+Resolution normally requires an exact independent non-author `write` or `admin`
+approval. A personal repository with no eligible independent collaborator or
+pending write-authority invitation may instead use the incident-only
+single-maintainer owner-emergency request described in the broker runbook. Both
+paths require latest passing protected-main, nightly, and weekly evidence for
 the merged repair SHA. An older success cannot mask a later failed attempt. The
-broker reconstructs that evidence from the provider and then appends the
-resolution to the protected state branch. The former
-single-maintainer owner-emergency CLI is retired, and no active manifest can
-authorize it.
+broker reconstructs the provider evidence and appends the resolution to the
+protected state branch. The former direct owner-emergency CLI and human ruleset
+bypass remain retired; only the App-broker transaction can consume an active
+manifest.
 
 ## Admission
 

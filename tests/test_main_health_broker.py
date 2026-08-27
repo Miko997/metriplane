@@ -141,6 +141,95 @@ def _repair_reviews() -> list[dict[str, Any]]:
     return _repair_reviews_for(81)
 
 
+def _owner_ruleset_digests() -> dict[str, str]:
+    return {
+        "20613848": "1" * 64,
+        "21487681": "2" * 64,
+        "21500579": "3" * 64,
+        "21533351": "4" * 64,
+        "21600001": "5" * 64,
+    }
+
+
+def _owner_context(*, repair: bool = False) -> dict[str, Any]:
+    collaborators = [{"id": "10", "login": "Miko997", "permission": "admin"}]
+    context: dict[str, Any] = {
+        "changed_paths_digest": broker.digest(["metriplane/fix.py", "tests/test_fix.py"]),
+        "collaboration_digest": broker.digest(
+            {"collaborators": collaborators, "pending_invitations": []}
+        ),
+        "collaborators": collaborators,
+        "owner_id": 10,
+        "owner_login": "Miko997",
+        "owner_permission": "admin",
+        "pending_invitations": [],
+        "ruleset_digests": _owner_ruleset_digests(),
+        "state_commit": "6" * 40,
+    }
+    if repair:
+        context.update(
+            {
+                "manifest_digest": "7" * 64,
+                "policy_amendment_digest": "8" * 64,
+            }
+        )
+    return context
+
+
+def _owner_request(*, repair: bool = False) -> dict[str, Any]:
+    context = _owner_context(repair=repair)
+    request: dict[str, Any] = {
+        "authorization_mode": (
+            broker.OWNER_EMERGENCY_MODE if repair else broker.OWNER_AUTHORIZATION_MODE
+        ),
+        "base_ref": "main",
+        "base_sha": BASE_SHA,
+        "changed_paths_digest": context["changed_paths_digest"],
+        "collaboration_digest": context["collaboration_digest"],
+        "expires_at": "2026-08-26T12:05:00Z",
+        "head_sha": HEAD_SHA,
+        "health_generation": 42,
+        "nonce": "7" * 32,
+        "pull_request": 81,
+        "repository": REPOSITORY,
+        "requester_id": 10,
+        "ruleset_digests": context["ruleset_digests"],
+        "schema_version": 1,
+        "state_commit": context["state_commit"],
+    }
+    if repair:
+        request.pop("health_generation")
+        request.update(
+            {
+                "incident_digest": "f" * 64,
+                "issue": "MET-77",
+                "manifest_digest": context["manifest_digest"],
+                "policy_amendment_digest": context["policy_amendment_digest"],
+                "state_generation": 7,
+            }
+        )
+    return request
+
+
+def _owner_reviews(*, repair: bool = False) -> list[dict[str, Any]]:
+    request = _owner_request(repair=repair)
+    marker = broker.OWNER_REPAIR_REQUEST_MARKER if repair else broker.OWNER_REQUEST_MARKER
+    return [
+        {
+            "body": marker + "\n" + broker.canonical_bytes(request).decode().rstrip("\n"),
+            "commit_id": HEAD_SHA,
+            "id": 301,
+            "state": "COMMENTED",
+            "submitted_at": "2026-08-26T12:00:00Z",
+            "user": {"id": 10, "login": "Miko997"},
+        }
+    ]
+
+
+def _owner_pull() -> dict[str, Any]:
+    return {**_pull(), "user": {"id": 10, "login": "Miko997"}}
+
+
 def _reviews(*, approver_id: int = 40, approver_login: str = "reviewer") -> list[dict[str, Any]]:
     request = _request()
     return [
@@ -1104,6 +1193,71 @@ def test_repair_admission_rejects_stale_generation_and_requested_changes() -> No
         )
 
 
+def test_single_maintainer_owner_requests_bind_exact_provider_context() -> None:
+    normal = broker.select_admission(
+        commits=_commits(),
+        now=NOW + timedelta(minutes=2),
+        owner_context=_owner_context(),
+        pull=_owner_pull(),
+        repository=REPOSITORY,
+        reviewer_permissions={},
+        reviews=_owner_reviews(),
+    )
+    assert normal["kind"] == "owner-normal"
+    assert normal["authorization_mode"] == broker.OWNER_AUTHORIZATION_MODE
+    assert normal["request_digest"] == broker.digest(_owner_request())
+
+    repair = broker.select_repair_admission(
+        commits=_commits(),
+        now=NOW + timedelta(minutes=2),
+        owner_context=_owner_context(repair=True),
+        pull=_owner_pull(),
+        repository=REPOSITORY,
+        reviewer_permissions={},
+        reviews=_owner_reviews(repair=True),
+        state={"generation": 7, "incident_digest": "f" * 64, "status": "red"},
+    )
+    assert repair["kind"] == "owner-repair"
+    assert repair["authorization_mode"] == broker.OWNER_EMERGENCY_MODE
+    assert repair["manifest_digest"] == "7" * 64
+
+
+def test_single_maintainer_owner_request_fails_closed_on_context_drift() -> None:
+    context = _owner_context(repair=True)
+    context["pending_invitations"] = [{"id": "99", "invitee": "reviewer", "permission": "write"}]
+    context["collaboration_digest"] = broker.digest(
+        {
+            "collaborators": context["collaborators"],
+            "pending_invitations": context["pending_invitations"],
+        }
+    )
+    with pytest.raises(broker.BrokerError, match="eligible independent collaborator"):
+        broker.select_repair_admission(
+            commits=_commits(),
+            now=NOW + timedelta(minutes=2),
+            owner_context=context,
+            pull=_owner_pull(),
+            repository=REPOSITORY,
+            reviewer_permissions={},
+            reviews=_owner_reviews(repair=True),
+            state={"generation": 7, "incident_digest": "f" * 64, "status": "red"},
+        )
+
+    stale = _owner_context(repair=True)
+    stale["state_commit"] = "9" * 40
+    with pytest.raises(broker.BrokerError, match="live provider context"):
+        broker.select_repair_admission(
+            commits=_commits(),
+            now=NOW + timedelta(minutes=2),
+            owner_context=stale,
+            pull=_owner_pull(),
+            repository=REPOSITORY,
+            reviewer_permissions={},
+            reviews=_owner_reviews(repair=True),
+            state={"generation": 7, "incident_digest": "f" * 64, "status": "red"},
+        )
+
+
 def test_core_checks_use_latest_exact_actions_identity() -> None:
     runs = []
     for offset, name in enumerate(broker.CORE_CHECKS, start=1):
@@ -1740,6 +1894,91 @@ class FakeTransactionApi(broker.GitHubApi):
         raise AssertionError((key, path))
 
 
+class FakeOwnerTransactionApi(FakeTransactionApi):
+    def __init__(self, config: broker.BrokerConfig, behavior: str) -> None:
+        super().__init__(config, behavior)
+        request = _owner_request()
+        request["ruleset_digests"] = broker.validate_hosted_rulesets(
+            config=config,
+            rulesets=_rulesets(config),
+        )
+        request["state_commit"] = "f" * 40
+        self.owner_request = request
+        self.reviews = [
+            {
+                "body": (
+                    broker.OWNER_REQUEST_MARKER
+                    + "\n"
+                    + broker.canonical_bytes(request).decode().rstrip("\n")
+                ),
+                "commit_id": HEAD_SHA,
+                "id": 301,
+                "state": "COMMENTED",
+                "submitted_at": "2026-08-26T12:00:00Z",
+                "user": {"id": 10, "login": "Miko997"},
+            }
+        ]
+        self.collaborator_inventory_calls = 0
+        self.file_inventory_calls = 0
+
+    def request(
+        self,
+        path: str,
+        *,
+        token: str,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        expected: tuple[int, ...] = (200,),
+    ) -> broker.ApiResult:
+        assert token == "token"
+        if "/collaborators?affiliation=all&" in path:
+            self.collaborator_inventory_calls += 1
+            return broker.ApiResult(
+                {},
+                200,
+                [
+                    {
+                        "id": 10,
+                        "login": "Miko997",
+                        "permissions": {"admin": True},
+                        "role_name": "admin",
+                    }
+                ],
+            )
+        if "/invitations?" in path:
+            return broker.ApiResult({}, 200, [])
+        if "/pulls/81/files?" in path:
+            self.file_inventory_calls += 1
+            return broker.ApiResult(
+                {},
+                200,
+                [
+                    {"filename": "metriplane/fix.py", "status": "modified"},
+                    {"filename": "tests/test_fix.py", "status": "modified"},
+                ],
+            )
+        if path.endswith("/collaborators/Miko997/permission"):
+            return broker.ApiResult({}, 200, {"permission": "admin"})
+        if path.endswith("/pulls/81"):
+            value = {**_owner_pull(), "changed_files": 2, "commits": self.reported_commits}
+            if self.merged:
+                value.update(
+                    {
+                        "merge_commit_sha": MERGE_SHA,
+                        "merged": True,
+                        "state": "closed",
+                    }
+                )
+            return broker.ApiResult({}, 200, value)
+        return super().request(
+            path,
+            token=token,
+            method=method,
+            payload=payload,
+            expected=expected,
+        )
+
+
 def test_pull_snapshot_rejects_an_incomplete_provider_commit_inventory(tmp_path: Path) -> None:
     config = _config(tmp_path)
     api = FakeTransactionApi(config, "success")
@@ -1899,6 +2138,45 @@ def test_exact_merge_transaction_proves_success(tmp_path: Path, behavior: str) -
     assert checks.failed == []
     assert len(checks.succeeded) == 1
     assert spool.request_status(broker.digest(_request())) == "merged"
+
+
+def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakeOwnerTransactionApi(config, "success")
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id="mhb1:closed:test",
+        updated_at="2026-08-26T12:00:00Z",
+    )
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=spool,
+    )
+    checks = FakeAdmissionChecks()
+
+    proof = service._process_pull(
+        check_controller=checks,  # type: ignore[arg-type]
+        number=81,
+        provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
+        state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    request_digest = broker.digest(api.owner_request)
+    assert proof is not None and proof["merge_sha"] == MERGE_SHA
+    assert api.merge_calls == 1
+    assert api.collaborator_inventory_calls == 6
+    assert api.file_inventory_calls == 3
+    assert checks.failed == []
+    assert checks.succeeded == [(42, HEAD_SHA, request_digest)]
+    assert spool.request_status(request_digest) == "merged"
 
 
 def test_normal_merge_does_not_require_an_unscheduled_current_deep_run(tmp_path: Path) -> None:

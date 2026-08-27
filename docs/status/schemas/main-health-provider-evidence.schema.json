@@ -181,6 +181,74 @@
       "required": ["artifact", "artifact_digest", "comment_author", "comment_author_id", "comment_created_at", "comment_id", "comment_updated_at", "provider", "schema_version"],
       "type": "object"
     },
+    "brokerOwnerRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "base_ref": {"const": "main"},
+        "base_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "changed_paths_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "collaboration_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "expires_at": {"format": "date-time", "type": "string"},
+        "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "incident_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "issue": {"pattern": "^[A-Z]+-[0-9]+$", "type": "string"},
+        "manifest_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "nonce": {"pattern": "^[0-9a-f]{32}$", "type": "string"},
+        "policy_amendment_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "pull_request": {"minimum": 1, "type": "integer"},
+        "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
+        "requester_id": {"minimum": 1, "type": "integer"},
+        "ruleset_digests": {"additionalProperties": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "minProperties": 5, "propertyNames": {"pattern": "^[1-9][0-9]*$"}, "type": "object"},
+        "schema_version": {"const": 1},
+        "state_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "state_generation": {"minimum": 1, "type": "integer"}
+      },
+      "required": ["authorization_mode", "base_ref", "base_sha", "changed_paths_digest", "collaboration_digest", "expires_at", "head_sha", "incident_digest", "issue", "manifest_digest", "nonce", "policy_amendment_digest", "pull_request", "repository", "requester_id", "ruleset_digests", "schema_version", "state_commit", "state_generation"],
+      "type": "object"
+    },
+    "brokerOwnerAdmission": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_mode": {"const": "single-maintainer-owner-emergency"},
+        "checked_at": {"format": "date-time", "type": "string"},
+        "mechanism": {"const": "github-app-broker-v1"},
+        "request": {"$ref": "#/$defs/brokerOwnerRequest"},
+        "request_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "review_body": {"minLength": 1, "type": "string"},
+        "review_commit_id": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "review_id": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "review_state": {"const": "COMMENTED"},
+        "review_submitted_at": {"format": "date-time", "type": "string"},
+        "reviewer": {"minLength": 1, "type": "string"},
+        "reviewer_id": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "schema_version": {"const": 1}
+      },
+      "required": ["authorization_mode", "checked_at", "mechanism", "request", "request_digest", "review_body", "review_commit_id", "review_id", "review_state", "review_submitted_at", "reviewer", "reviewer_id", "schema_version"],
+      "type": "object"
+    },
+    "brokerOwnerMergeGate": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {"const": 4722589},
+        "app_slug": {"const": "metriplane-main-health-publisher"},
+        "check_completed_at": {"format": "date-time", "type": "string"},
+        "check_external_id": {"pattern": "^mhb1:merge:[0-9a-f]{64}$", "type": "string"},
+        "check_run_id": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "mechanism": {"const": "github-app-broker-v1"},
+        "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "merged_at": {"format": "date-time", "type": "string"},
+        "merged_by": {"const": "metriplane-main-health-publisher[bot]"},
+        "merged_by_id": {"pattern": "^[1-9][0-9]*$", "type": "string"},
+        "request_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+        "schema_version": {"const": 1},
+        "state_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+        "state_generation": {"minimum": 1, "type": "integer"}
+      },
+      "required": ["app_id", "app_slug", "check_completed_at", "check_external_id", "check_run_id", "head_sha", "mechanism", "merge_commit_sha", "merged_at", "merged_by", "merged_by_id", "request_digest", "schema_version", "state_commit", "state_generation"],
+      "type": "object"
+    },
     "mergeGate": {
       "additionalProperties": false,
       "properties": {"admission_comment_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "admission_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "bypass_actor": {"$ref": "#/$defs/bypassActor"}, "head_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "main_health_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "main_health_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "merge_commit_sha": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "merged_at": {"format": "date-time", "type": "string"}, "merged_by": {"minLength": 1, "type": "string"}, "merged_by_id": {"minLength": 1, "type": "string"}, "protection_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "protection_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "pull_request": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"}, "schema_version": {"const": 1}, "state_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"}, "state_generation": {"minimum": 1, "type": "integer"}, "state_protection_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "state_protection_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}, "state_writer_ruleset_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "state_writer_ruleset_id": {"pattern": "^[1-9][0-9]*$", "type": "string"}},
@@ -205,14 +273,18 @@
       }
     },
     {
+      "oneOf": [
+        {"properties": {"admission": {"$ref": "#/$defs/admission"}, "merge_gate": {"$ref": "#/$defs/mergeGate"}}},
+        {"properties": {"admission": {"$ref": "#/$defs/brokerOwnerAdmission"}, "merge_gate": {"$ref": "#/$defs/brokerOwnerMergeGate"}}}
+      ],
       "properties": {
-        "admission": {"$ref": "#/$defs/admission"},
+        "admission": {"oneOf": [{"$ref": "#/$defs/admission"}, {"$ref": "#/$defs/brokerOwnerAdmission"}]},
         "admission_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
         "authorization_mode": {"const": "single-maintainer-owner-emergency"},
         "collaborators": {"items": {"$ref": "#/$defs/collaborator"}, "minItems": 1, "type": "array"},
         "manifest": {"$ref": "#/$defs/manifest"},
         "manifest_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
-        "merge_gate": {"$ref": "#/$defs/mergeGate"},
+        "merge_gate": {"oneOf": [{"$ref": "#/$defs/mergeGate"}, {"$ref": "#/$defs/brokerOwnerMergeGate"}]},
         "merge_gate_digest": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
         "pending_invitations": {"items": {"$ref": "#/$defs/invitation"}, "type": "array"},
         "state": {"const": "OWNER_EMERGENCY"}
@@ -220,7 +292,7 @@
     }
   ],
   "properties": {
-    "admission": {"oneOf": [{"$ref": "#/$defs/admission"}, {"type": "null"}]},
+    "admission": {"oneOf": [{"$ref": "#/$defs/admission"}, {"$ref": "#/$defs/brokerOwnerAdmission"}, {"type": "null"}]},
     "admission_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "authorization_mode": {"enum": ["independent-review", "single-maintainer-owner-emergency"]},
     "approval_id": {"minLength": 1, "type": "string"},
@@ -247,7 +319,7 @@
     "reviewer": {"minLength": 1, "type": "string"},
     "reviewer_id": {"minLength": 1, "type": "string"},
     "reviewer_permission": {"enum": ["admin", "maintain", "write"]},
-    "merge_gate": {"oneOf": [{"$ref": "#/$defs/mergeGate"}, {"type": "null"}]},
+    "merge_gate": {"oneOf": [{"$ref": "#/$defs/mergeGate"}, {"$ref": "#/$defs/brokerOwnerMergeGate"}, {"type": "null"}]},
     "merge_gate_digest": {"oneOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}]},
     "schema_version": {"const": 1},
     "state": {"enum": ["APPROVED", "OWNER_EMERGENCY"]}

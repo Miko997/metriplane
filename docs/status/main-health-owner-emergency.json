@@ -1,0 +1,38 @@
+{
+  "authorization_mode": "single-maintainer-owner-emergency",
+  "allowed_paths": [
+    "docs/maintainers/change-execution-contract.md",
+    "docs/maintainers/main-health-broker.md",
+    "docs/maintainers/main-health.md",
+    "docs/status/main-health-owner-emergency.json",
+    "docs/status/schemas/main-health-provider-evidence.schema.json",
+    "scripts/systemd/metriplane-main-health-broker.service",
+    "tests/test_main_health.py",
+    "tests/test_main_health_broker.py",
+    "tools/main_health_broker.py",
+    "tools/stop_the_line.py"
+  ],
+  "base_sha": "0644a5dbd7fcdf4f9447b995a2baa5df17af8f75",
+  "collaboration_digest": "97956f2c016d6323f4e7921877599536bc72d63f26a73a3ab9e2d91abaf909d4",
+  "expires_at": "2026-09-03T23:59:59Z",
+  "failing_obligations": [
+    "Metriplane / required"
+  ],
+  "incident_digest": "646109343112eb9ba6b736928206c5560e4be28e4e64d377ef2807de5cfa39e8",
+  "issue": "MET-77",
+  "policy_amendment": {
+    "amended_rule": "repair_requires_non_author",
+    "authorization_mode": "single-maintainer-owner-emergency",
+    "incident_digest": "646109343112eb9ba6b736928206c5560e4be28e4e64d377ef2807de5cfa39e8",
+    "reason": "single-maintainer-no-independent-collaborator",
+    "schema_version": 1,
+    "scope": "incident-only"
+  },
+  "pull_request": "89",
+  "repository": "Miko997/metriplane",
+  "required_cadences": [
+    "nightly",
+    "weekly"
+  ],
+  "schema_version": 1
+}

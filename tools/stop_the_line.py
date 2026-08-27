@@ -17,7 +17,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -36,10 +36,35 @@ OWNER_ADMISSION_MAX_AGE_SECONDS = 300
 MAIN_HEALTH_CONTEXT = "Main health admission / required"
 GITHUB_ACTIONS_INTEGRATION_ID = 15368
 MAIN_HEALTH_PUBLISHER_INTEGRATION_ID = 4722589
+MAIN_HEALTH_PUBLISHER_SLUG = "metriplane-main-health-publisher"
+MAIN_HEALTH_BROKER_CHECK = "Main health / required"
+BROKER_OWNER_REPAIR_REQUEST_MARKER = "metriplane-owner-repair-request:v1"
+BROKER_OWNER_EMERGENCY_MODE = "single-maintainer-owner-emergency"
 CORE_REQUIRED_CONTEXTS = {
     "Documentation / required",
     "Metriplane / required",
     "Security / required",
+}
+BROKER_OWNER_REPAIR_REQUEST_FIELDS = {
+    "authorization_mode",
+    "base_ref",
+    "base_sha",
+    "changed_paths_digest",
+    "collaboration_digest",
+    "expires_at",
+    "head_sha",
+    "incident_digest",
+    "issue",
+    "manifest_digest",
+    "nonce",
+    "policy_amendment_digest",
+    "pull_request",
+    "repository",
+    "requester_id",
+    "ruleset_digests",
+    "schema_version",
+    "state_commit",
+    "state_generation",
 }
 OWNER_BYPASS_ACTOR = {
     "actor_id": 5,
@@ -100,6 +125,72 @@ def canonical_bytes(value: Any) -> bytes:
 
 def digest(value: Any) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
+
+
+def _parse_broker_owner_repair_review(body: Any, *, reviewer_id: int) -> dict[str, Any]:
+    if not isinstance(body, str):
+        raise HealthError("broker owner-repair review has no body")
+    lines = body.rstrip("\n").splitlines()
+    if len(lines) != 2 or lines[0] != BROKER_OWNER_REPAIR_REQUEST_MARKER:
+        raise HealthError("broker owner-repair review marker is invalid")
+    try:
+        request = json.loads(lines[1])
+    except json.JSONDecodeError as exc:
+        raise HealthError("broker owner-repair review JSON is invalid") from exc
+    if not isinstance(request, dict) or set(request) != BROKER_OWNER_REPAIR_REQUEST_FIELDS:
+        raise HealthError("broker owner-repair review fields are not exact")
+    if lines[1] != canonical_bytes(request).decode().rstrip("\n"):
+        raise HealthError("broker owner-repair review JSON is not canonical")
+    if (
+        request["schema_version"] != SCHEMA_VERSION
+        or request["authorization_mode"] != BROKER_OWNER_EMERGENCY_MODE
+        or request["base_ref"] != "main"
+        or request["requester_id"] != reviewer_id
+        or type(request["requester_id"]) is not int
+        or request["requester_id"] <= 0
+        or type(request["pull_request"]) is not int
+        or request["pull_request"] <= 0
+        or type(request["state_generation"]) is not int
+        or request["state_generation"] <= 0
+        or not isinstance(request["repository"], str)
+        or re.fullmatch(r"[^/\s]+/[^/\s]+", request["repository"]) is None
+        or not isinstance(request["issue"], str)
+        or re.fullmatch(r"[A-Z]+-[0-9]+", request["issue"]) is None
+        or not isinstance(request["nonce"], str)
+        or re.fullmatch(r"[0-9a-f]{32}", request["nonce"]) is None
+    ):
+        raise HealthError("broker owner-repair request identity is invalid")
+    for field in ("base_sha", "head_sha", "state_commit"):
+        _validate_sha(request[field])
+    for field in (
+        "changed_paths_digest",
+        "collaboration_digest",
+        "incident_digest",
+        "manifest_digest",
+        "policy_amendment_digest",
+    ):
+        if (
+            not isinstance(request[field], str)
+            or re.fullmatch(r"[0-9a-f]{64}", request[field]) is None
+        ):
+            raise HealthError(f"broker owner-repair {field} is invalid")
+    ruleset_digests = request["ruleset_digests"]
+    if (
+        not isinstance(ruleset_digests, dict)
+        or len(ruleset_digests) != 5
+        or not all(
+            isinstance(identifier, str)
+            and re.fullmatch(r"[1-9][0-9]*", identifier) is not None
+            and isinstance(value, str)
+            and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+            for identifier, value in ruleset_digests.items()
+        )
+    ):
+        raise HealthError("broker owner-repair ruleset digests are invalid")
+    if not isinstance(request["expires_at"], str):
+        raise HealthError("broker owner-repair expiry is invalid")
+    _timestamp(request["expires_at"])
+    return request
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -832,6 +923,222 @@ def github_owner_emergency_evidence(
         "repository": repository,
         "reviewer": author,
         "reviewer_id": str(pull["user"]["id"]),
+        "reviewer_permission": owner_permission,
+        "merge_gate": merge_gate,
+        "merge_gate_digest": digest(merge_gate),
+        "schema_version": SCHEMA_VERSION,
+        "state": "OWNER_EMERGENCY",
+        **merge_proof,
+    }
+
+
+def github_app_owner_emergency_evidence(
+    *,
+    captured_at: str,
+    check_run: dict[str, Any],
+    collaborators: list[dict[str, Any]],
+    files: list[dict[str, Any]],
+    head_commit: dict[str, Any],
+    incident_digest: str,
+    invitations: list[dict[str, Any]],
+    issue: str,
+    manifest: dict[str, Any],
+    merge_commit: dict[str, Any],
+    owner_permission: str,
+    pull: dict[str, Any],
+    pull_request: str,
+    repository: str,
+    review: dict[str, Any],
+    ruleset_digests: dict[str, str],
+) -> dict[str, Any]:
+    """Normalize an App-broker merge authorized by one exact owner request."""
+    _validate_owner_manifest(manifest)
+    repository_owner = repository.split("/", 1)[0]
+    try:
+        author = pull["user"]["login"]
+        author_id = int(pull["user"]["id"])
+        reviewer = review["user"]["login"]
+        reviewer_id = int(review["user"]["id"])
+        review_id = int(review["id"])
+        review_submitted_at = review["submitted_at"]
+        merged_at_value = pull["merged_at"]
+        merged_by = pull["merged_by"]
+        merged_by_login = merged_by["login"]
+        merged_by_id = int(merged_by["id"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HealthError("App-broker owner-emergency provider identity is malformed") from exc
+    if (
+        not isinstance(author, str)
+        or not isinstance(reviewer, str)
+        or not isinstance(review_submitted_at, str)
+        or not isinstance(merged_at_value, str)
+        or not isinstance(merged_by_login, str)
+        or author.casefold() != repository_owner.casefold()
+        or reviewer.casefold() != repository_owner.casefold()
+        or author_id <= 0
+        or reviewer_id != author_id
+        or review_id <= 0
+        or merged_by_id <= 0
+        or owner_permission != "admin"
+        or merged_by_login != f"{MAIN_HEALTH_PUBLISHER_SLUG}[bot]"
+        or merged_by.get("type") != "Bot"
+    ):
+        raise HealthError("App-broker owner emergency requires exact owner and App identities")
+    request = _parse_broker_owner_repair_review(review.get("body"), reviewer_id=reviewer_id)
+    request_digest = digest(request)
+    if (
+        review.get("state") != "COMMENTED"
+        or review.get("commit_id") != pull.get("head", {}).get("sha")
+        or request["repository"] != repository
+        or str(request["pull_request"]) != pull_request
+        or request["base_sha"] != pull.get("base", {}).get("sha")
+        or request["head_sha"] != pull.get("head", {}).get("sha")
+        or request["incident_digest"] != incident_digest
+        or request["issue"] != issue
+    ):
+        raise HealthError("App-broker owner request does not bind the merged repair")
+    collaborator_inventory, invitation_inventory = _github_collaboration_inventory(
+        collaborators, invitations
+    )
+    if (
+        not any(
+            item["id"] == str(author_id)
+            and item["login"].casefold() == repository_owner.casefold()
+            and item["permission"] == "admin"
+            for item in collaborator_inventory
+        )
+        or any(
+            item["login"].casefold() != repository_owner.casefold()
+            and item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS
+            for item in collaborator_inventory
+        )
+        or any(
+            item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitation_inventory
+        )
+        or request["collaboration_digest"]
+        != digest(
+            {
+                "collaborators": collaborator_inventory,
+                "pending_invitations": invitation_inventory,
+            }
+        )
+    ):
+        raise HealthError("App-broker owner evidence does not prove single-maintainer status")
+    changed_paths = _github_changed_paths(pull, files)
+    marker = f"Main-health owner emergency: {issue}\nIncident: {incident_digest}"
+    if (
+        (pull.get("body") or "").count(marker) != 1
+        or manifest["allowed_paths"] != changed_paths
+        or manifest["base_sha"] != request["base_sha"]
+        or manifest["collaboration_digest"] != request["collaboration_digest"]
+        or manifest["incident_digest"] != incident_digest
+        or manifest["issue"] != issue
+        or str(manifest["pull_request"]) != pull_request
+        or manifest["repository"] != repository
+        or request["changed_paths_digest"] != digest(changed_paths)
+        or request["manifest_digest"] != digest(manifest)
+        or request["policy_amendment_digest"] != digest(manifest["policy_amendment"])
+        or request["ruleset_digests"] != ruleset_digests
+    ):
+        raise HealthError("App-broker owner manifest or provider bindings changed")
+    if len(ruleset_digests) != 5 or not all(
+        re.fullmatch(r"[1-9][0-9]*", identifier) is not None
+        and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+        for identifier, value in ruleset_digests.items()
+    ):
+        raise HealthError("App-broker owner ruleset digest inventory is invalid")
+    check_app = check_run.get("app")
+    check_run_id = check_run.get("id")
+    check_completed_at = check_run.get("completed_at")
+    expected_external_id = f"mhb1:merge:{request_digest}"
+    if (
+        type(check_run_id) is not int
+        or check_run_id <= 0
+        or not isinstance(check_completed_at, str)
+        or check_run.get("name") != MAIN_HEALTH_BROKER_CHECK
+        or check_run.get("head_sha") != request["head_sha"]
+        or check_run.get("status") != "completed"
+        or check_run.get("conclusion") != "success"
+        or check_run.get("external_id") != expected_external_id
+        or not isinstance(check_app, dict)
+        or check_app.get("id") != MAIN_HEALTH_PUBLISHER_INTEGRATION_ID
+        or check_app.get("slug") != MAIN_HEALTH_PUBLISHER_SLUG
+    ):
+        raise HealthError("App-broker owner check-run evidence is invalid")
+    submitted_at = _timestamp(review_submitted_at)
+    check_completed = _timestamp(check_completed_at)
+    merged_at = _timestamp(merged_at_value)
+    captured = _timestamp(captured_at)
+    request_expires = _timestamp(request["expires_at"])
+    if (
+        request_expires <= submitted_at
+        or request_expires - submitted_at > timedelta(minutes=10)
+        or submitted_at > check_completed
+        or check_completed > merged_at
+        or merged_at >= request_expires
+        or merged_at > _timestamp(manifest["expires_at"])
+        or merged_at > captured
+    ):
+        raise HealthError("App-broker owner decision, check, and merge are not correctly ordered")
+    merge_proof = _github_merge_proof(
+        pull=pull,
+        head_commit=head_commit,
+        merge_commit=merge_commit,
+    )
+    admission = {
+        "authorization_mode": BROKER_OWNER_EMERGENCY_MODE,
+        "checked_at": check_completed_at,
+        "mechanism": "github-app-broker-v1",
+        "request": request,
+        "request_digest": request_digest,
+        "review_body": review["body"],
+        "review_commit_id": review["commit_id"],
+        "review_id": str(review_id),
+        "review_state": review["state"],
+        "review_submitted_at": review_submitted_at,
+        "reviewer": reviewer,
+        "reviewer_id": str(reviewer_id),
+        "schema_version": SCHEMA_VERSION,
+    }
+    merge_gate = {
+        "app_id": MAIN_HEALTH_PUBLISHER_INTEGRATION_ID,
+        "app_slug": MAIN_HEALTH_PUBLISHER_SLUG,
+        "check_completed_at": check_completed_at,
+        "check_external_id": expected_external_id,
+        "check_run_id": str(check_run_id),
+        "head_sha": request["head_sha"],
+        "mechanism": "github-app-broker-v1",
+        "merge_commit_sha": merge_proof["merge_commit_sha"],
+        "merged_at": merged_at_value,
+        "merged_by": merged_by_login,
+        "merged_by_id": str(merged_by_id),
+        "request_digest": request_digest,
+        "schema_version": SCHEMA_VERSION,
+        "state_commit": request["state_commit"],
+        "state_generation": request["state_generation"],
+    }
+    return {
+        "admission": admission,
+        "admission_digest": digest(admission),
+        "authorization_mode": BROKER_OWNER_EMERGENCY_MODE,
+        "approval_id": str(review_id),
+        "approval_provider": "github",
+        "author": author,
+        "author_id": str(author_id),
+        "base_sha": request["base_sha"],
+        "captured_at": captured_at,
+        "changed_paths": changed_paths,
+        "collaborators": collaborator_inventory,
+        "decision_at": review_submitted_at,
+        "incident_digest": incident_digest,
+        "issue": issue,
+        "manifest": manifest,
+        "manifest_digest": digest(manifest),
+        "pending_invitations": invitation_inventory,
+        "pull_request": pull_request,
+        "repository": repository,
+        "reviewer": reviewer,
+        "reviewer_id": str(reviewer_id),
         "reviewer_permission": owner_permission,
         "merge_gate": merge_gate,
         "merge_gate_digest": digest(merge_gate),
@@ -2144,6 +2451,345 @@ def capture_github_owner_emergency(
     )
 
 
+def _validate_app_broker_owner_repair_binding(
+    *,
+    approval_evidence: dict[str, Any],
+    authorization: dict[str, Any],
+    incident: dict[str, Any],
+    repaired_main_sha: str,
+    resolved_at: str,
+) -> list[str]:
+    expected_incident = {
+        "failing_obligations",
+        "first_bad_sha",
+        "opened_at",
+        "result_digest",
+        "schema_version",
+        "status",
+    }
+    expected_authorization = {
+        "authorization_mode",
+        "approval_digest",
+        "approval_id",
+        "approval_provider",
+        "allowed_paths",
+        "author",
+        "author_id",
+        "changed_paths_digest",
+        "expires_at",
+        "failing_obligations",
+        "incident_digest",
+        "issue",
+        "manifest_digest",
+        "policy_amendment_digest",
+        "proposed_repair_sha",
+        "pull_request",
+        "repository",
+        "required_cadences",
+        "reviewer",
+        "reviewer_id",
+        "reviewer_permission",
+        "schema_version",
+    }
+    expected_evidence = {
+        "admission",
+        "admission_digest",
+        "authorization_mode",
+        "approval_id",
+        "approval_provider",
+        "author",
+        "author_id",
+        "base_sha",
+        "captured_at",
+        "changed_paths",
+        "collaborators",
+        "decision_at",
+        "head_sha",
+        "incident_digest",
+        "issue",
+        "manifest",
+        "manifest_digest",
+        "merge_commit_sha",
+        "merge_parent_shas",
+        "merge_tree_sha",
+        "pending_invitations",
+        "pull_request",
+        "repository",
+        "reviewed_tree_sha",
+        "reviewer",
+        "reviewer_id",
+        "reviewer_permission",
+        "merge_gate",
+        "merge_gate_digest",
+        "schema_version",
+        "state",
+    }
+    if (
+        set(incident) != expected_incident
+        or incident.get("schema_version") != SCHEMA_VERSION
+        or incident.get("status") != "open"
+        or set(authorization) != expected_authorization
+        or authorization.get("schema_version") != SCHEMA_VERSION
+        or set(approval_evidence) != expected_evidence
+        or approval_evidence.get("schema_version") != SCHEMA_VERSION
+        or digest(approval_evidence) != authorization.get("approval_digest")
+    ):
+        raise HealthError("App-broker owner repair evidence shape or schema is invalid")
+    mode = BROKER_OWNER_EMERGENCY_MODE
+    repository = authorization.get("repository")
+    if not isinstance(repository, str) or re.fullmatch(r"[^/\s]+/[^/\s]+", repository) is None:
+        raise HealthError("App-broker owner repair repository identity is invalid")
+    repository_owner = repository.split("/", 1)[0]
+    if (
+        authorization.get("authorization_mode") != mode
+        or authorization.get("approval_provider") != "github"
+        or authorization.get("reviewer_id") != authorization.get("author_id")
+        or str(authorization.get("reviewer", "")).casefold() != repository_owner.casefold()
+        or str(authorization.get("author", "")).casefold() != repository_owner.casefold()
+        or authorization.get("reviewer_permission") != "admin"
+        or approval_evidence.get("authorization_mode") != mode
+        or approval_evidence.get("approval_provider") != "github"
+        or approval_evidence.get("state") != "OWNER_EMERGENCY"
+    ):
+        raise HealthError("App-broker owner repair identity or authorization mode is invalid")
+    for field in (
+        "approval_id",
+        "approval_provider",
+        "authorization_mode",
+        "author",
+        "author_id",
+        "incident_digest",
+        "issue",
+        "pull_request",
+        "repository",
+        "reviewer",
+        "reviewer_id",
+        "reviewer_permission",
+    ):
+        if approval_evidence.get(field) != authorization.get(field):
+            raise HealthError(f"App-broker owner evidence disagrees on {field}")
+    if authorization.get("incident_digest") != digest(incident):
+        raise HealthError("App-broker owner repair does not bind the open incident")
+    manifest = approval_evidence.get("manifest")
+    if not isinstance(manifest, dict):
+        raise HealthError("App-broker owner repair has no emergency manifest")
+    _validate_owner_manifest(manifest)
+    manifest_digest = digest(manifest)
+    amendment_digest = digest(manifest["policy_amendment"])
+    if (
+        approval_evidence.get("manifest_digest") != manifest_digest
+        or authorization.get("manifest_digest") != manifest_digest
+        or authorization.get("policy_amendment_digest") != amendment_digest
+        or authorization.get("allowed_paths") != manifest["allowed_paths"]
+        or authorization.get("expires_at") != manifest["expires_at"]
+        or authorization.get("failing_obligations") != manifest["failing_obligations"]
+        or authorization.get("incident_digest") != manifest["incident_digest"]
+        or authorization.get("issue") != manifest["issue"]
+        or authorization.get("pull_request") != str(manifest["pull_request"])
+        or authorization.get("repository") != manifest["repository"]
+        or authorization.get("required_cadences") != manifest["required_cadences"]
+        or approval_evidence.get("base_sha") != manifest["base_sha"]
+    ):
+        raise HealthError("App-broker owner authorization disagrees with its manifest")
+    collaborators = approval_evidence.get("collaborators")
+    invitations = approval_evidence.get("pending_invitations")
+    if not isinstance(collaborators, list) or not isinstance(invitations, list):
+        raise HealthError("App-broker owner collaboration evidence is missing")
+    if (
+        not collaborators
+        or collaborators
+        != sorted(collaborators, key=lambda item: str(item.get("login", "")).casefold())
+        or not all(
+            isinstance(item, dict)
+            and set(item) == {"id", "login", "permission"}
+            and all(isinstance(item[field], str) and item[field] for field in item)
+            for item in collaborators
+        )
+        or not any(
+            item["login"].casefold() == repository_owner.casefold()
+            and item["id"] == authorization["author_id"]
+            and item["permission"] == "admin"
+            for item in collaborators
+        )
+        or any(
+            item["login"].casefold() != repository_owner.casefold()
+            and item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS
+            for item in collaborators
+        )
+        or invitations
+        != sorted(
+            invitations,
+            key=lambda item: (str(item.get("invitee", "")).casefold(), str(item.get("id", ""))),
+        )
+        or not all(
+            isinstance(item, dict)
+            and set(item) == {"id", "invitee", "permission"}
+            and all(isinstance(item[field], str) and item[field] for field in item)
+            for item in invitations
+        )
+        or any(item["permission"] in AUTHORIZED_REVIEWER_PERMISSIONS for item in invitations)
+        or digest({"collaborators": collaborators, "pending_invitations": invitations})
+        != manifest["collaboration_digest"]
+    ):
+        raise HealthError("App-broker owner evidence does not prove single-maintainer status")
+    admission = approval_evidence.get("admission")
+    merge_gate = approval_evidence.get("merge_gate")
+    expected_admission = {
+        "authorization_mode",
+        "checked_at",
+        "mechanism",
+        "request",
+        "request_digest",
+        "review_body",
+        "review_commit_id",
+        "review_id",
+        "review_state",
+        "review_submitted_at",
+        "reviewer",
+        "reviewer_id",
+        "schema_version",
+    }
+    expected_gate = {
+        "app_id",
+        "app_slug",
+        "check_completed_at",
+        "check_external_id",
+        "check_run_id",
+        "head_sha",
+        "mechanism",
+        "merge_commit_sha",
+        "merged_at",
+        "merged_by",
+        "merged_by_id",
+        "request_digest",
+        "schema_version",
+        "state_commit",
+        "state_generation",
+    }
+    if (
+        not isinstance(admission, dict)
+        or not isinstance(merge_gate, dict)
+        or set(admission) != expected_admission
+        or set(merge_gate) != expected_gate
+        or approval_evidence.get("admission_digest") != digest(admission)
+        or approval_evidence.get("merge_gate_digest") != digest(merge_gate)
+        or admission.get("schema_version") != SCHEMA_VERSION
+        or merge_gate.get("schema_version") != SCHEMA_VERSION
+        or admission.get("mechanism") != "github-app-broker-v1"
+        or merge_gate.get("mechanism") != "github-app-broker-v1"
+    ):
+        raise HealthError("App-broker owner admission or merge gate is invalid")
+    try:
+        reviewer_id = int(admission["reviewer_id"])
+    except (TypeError, ValueError) as exc:
+        raise HealthError("App-broker owner review identity is invalid") from exc
+    request = _parse_broker_owner_repair_review(
+        admission.get("review_body"), reviewer_id=reviewer_id
+    )
+    request_digest = digest(request)
+    ruleset_digests = request["ruleset_digests"]
+    if (
+        admission.get("authorization_mode") != mode
+        or admission.get("request") != request
+        or admission.get("request_digest") != request_digest
+        or admission.get("review_id") != authorization["approval_id"]
+        or admission.get("review_state") != "COMMENTED"
+        or admission.get("review_commit_id") != approval_evidence["head_sha"]
+        or admission.get("reviewer") != authorization["reviewer"]
+        or admission.get("reviewer_id") != authorization["reviewer_id"]
+        or admission.get("review_submitted_at") != approval_evidence["decision_at"]
+        or request["repository"] != authorization["repository"]
+        or str(request["pull_request"]) != authorization["pull_request"]
+        or request["base_sha"] != approval_evidence["base_sha"]
+        or request["head_sha"] != approval_evidence["head_sha"]
+        or request["incident_digest"] != authorization["incident_digest"]
+        or request["issue"] != authorization["issue"]
+        or request["changed_paths_digest"] != authorization["changed_paths_digest"]
+        or request["collaboration_digest"] != manifest["collaboration_digest"]
+        or request["manifest_digest"] != manifest_digest
+        or request["policy_amendment_digest"] != amendment_digest
+        or len(ruleset_digests) != 5
+    ):
+        raise HealthError("App-broker owner request changed after admission")
+    expected_external_id = f"mhb1:merge:{request_digest}"
+    if (
+        merge_gate.get("app_id") != MAIN_HEALTH_PUBLISHER_INTEGRATION_ID
+        or merge_gate.get("app_slug") != MAIN_HEALTH_PUBLISHER_SLUG
+        or merge_gate.get("check_completed_at") != admission.get("checked_at")
+        or merge_gate.get("check_external_id") != expected_external_id
+        or not isinstance(merge_gate.get("check_run_id"), str)
+        or not merge_gate["check_run_id"].isdigit()
+        or merge_gate.get("head_sha") != approval_evidence["head_sha"]
+        or merge_gate.get("merge_commit_sha") != approval_evidence["merge_commit_sha"]
+        or merge_gate.get("merged_by") != f"{MAIN_HEALTH_PUBLISHER_SLUG}[bot]"
+        or not isinstance(merge_gate.get("merged_by_id"), str)
+        or not merge_gate["merged_by_id"].isdigit()
+        or merge_gate.get("request_digest") != request_digest
+        or merge_gate.get("state_commit") != request["state_commit"]
+        or merge_gate.get("state_generation") != request["state_generation"]
+    ):
+        raise HealthError("App-broker owner merge gate does not bind the admitted request")
+    decision_at = _timestamp(approval_evidence["decision_at"])
+    checked_at = _timestamp(admission["checked_at"])
+    merged_at = _timestamp(merge_gate["merged_at"])
+    captured_at = _timestamp(approval_evidence["captured_at"])
+    request_expires = _timestamp(request["expires_at"])
+    resolution_time = _timestamp(resolved_at)
+    if (
+        request_expires <= decision_at
+        or request_expires - decision_at > timedelta(minutes=10)
+        or decision_at > checked_at
+        or checked_at > merged_at
+        or merged_at >= request_expires
+        or merged_at > captured_at
+        or merged_at > _timestamp(manifest["expires_at"])
+        or resolution_time < captured_at
+        or resolution_time > _timestamp(authorization["expires_at"])
+    ):
+        raise HealthError("App-broker owner repair timestamps are not correctly ordered")
+    if (
+        approval_evidence.get("head_sha") != authorization.get("proposed_repair_sha")
+        or approval_evidence.get("merge_commit_sha") != repaired_main_sha
+        or merge_gate.get("merge_commit_sha") != repaired_main_sha
+        or approval_evidence.get("reviewed_tree_sha") != approval_evidence.get("merge_tree_sha")
+    ):
+        raise HealthError("App-broker owner repair does not bind reviewed head to repaired main")
+    for field in (
+        "base_sha",
+        "head_sha",
+        "merge_commit_sha",
+        "reviewed_tree_sha",
+        "merge_tree_sha",
+    ):
+        _validate_sha(approval_evidence[field])
+    parents = approval_evidence.get("merge_parent_shas")
+    if parents != [approval_evidence["base_sha"], approval_evidence["head_sha"]]:
+        raise HealthError("App-broker owner repair merge parents are invalid")
+    changed_paths = approval_evidence.get("changed_paths")
+    if (
+        not isinstance(changed_paths, list)
+        or not changed_paths
+        or changed_paths != sorted(set(changed_paths))
+        or not all(
+            isinstance(path, str)
+            and path
+            and not path.startswith("/")
+            and ".." not in Path(path).parts
+            for path in changed_paths
+        )
+        or changed_paths != authorization["allowed_paths"]
+        or digest(changed_paths) != authorization["changed_paths_digest"]
+    ):
+        raise HealthError("App-broker owner repair changed paths are invalid")
+    if (
+        sorted(authorization["failing_obligations"]) != sorted(incident["failing_obligations"])
+        or authorization["required_cadences"] != CANONICAL_REPAIR_CADENCES
+        or authorization["reviewer_permission"] not in AUTHORIZED_REVIEWER_PERMISSIONS
+    ):
+        raise HealthError("App-broker owner repair policy bindings are invalid")
+    return list(CANONICAL_REPAIR_CADENCES)
+
+
 def _validate_repair_binding(
     *,
     authorization: dict[str, Any],
@@ -2152,6 +2798,15 @@ def _validate_repair_binding(
     repaired_main_sha: str,
     resolved_at: str,
 ) -> list[str]:
+    admission = approval_evidence.get("admission")
+    if isinstance(admission, dict) and admission.get("mechanism") == "github-app-broker-v1":
+        return _validate_app_broker_owner_repair_binding(
+            authorization=authorization,
+            approval_evidence=approval_evidence,
+            incident=incident,
+            repaired_main_sha=repaired_main_sha,
+            resolved_at=resolved_at,
+        )
     if (
         set(incident)
         != {
@@ -3254,15 +3909,35 @@ def _validate_owner_manifest(manifest: dict[str, Any]) -> None:
         raise HealthError("owner-emergency candidate mode is invalid")
     if manifest["required_cadences"] != CANONICAL_REPAIR_CADENCES:
         raise HealthError("owner-emergency candidate cadences do not match canonical policy")
+    if not isinstance(manifest["base_sha"], str):
+        raise HealthError("owner-emergency candidate base SHA is invalid")
     _validate_sha(manifest["base_sha"])
-    if not re.fullmatch(r"[0-9a-f]{64}", manifest["collaboration_digest"]):
+    if not isinstance(manifest["collaboration_digest"], str) or not re.fullmatch(
+        r"[0-9a-f]{64}", manifest["collaboration_digest"]
+    ):
         raise HealthError("owner-emergency collaboration digest is invalid")
-    if not re.fullmatch(r"[0-9a-f]{64}", manifest["incident_digest"]):
+    if not isinstance(manifest["incident_digest"], str) or not re.fullmatch(
+        r"[0-9a-f]{64}", manifest["incident_digest"]
+    ):
         raise HealthError("owner-emergency candidate incident digest is invalid")
+    if not isinstance(manifest["expires_at"], str):
+        raise HealthError("owner-emergency candidate expiry is invalid")
+    _timestamp(manifest["expires_at"])
+    failing_obligations = manifest["failing_obligations"]
     if (
-        not re.fullmatch(r"[A-Z]+-[0-9]+", manifest["issue"])
-        or not re.fullmatch(r"[^/\s]+/[^/\s]+", manifest["repository"])
-        or not str(manifest["pull_request"]).isdigit()
+        not isinstance(failing_obligations, list)
+        or not failing_obligations
+        or not all(isinstance(item, str) and item for item in failing_obligations)
+        or len(failing_obligations) != len(set(failing_obligations))
+    ):
+        raise HealthError("owner-emergency candidate failing obligations are invalid")
+    if (
+        not isinstance(manifest["issue"], str)
+        or re.fullmatch(r"[A-Z]+-[0-9]+", manifest["issue"]) is None
+        or not isinstance(manifest["repository"], str)
+        or re.fullmatch(r"[^/\s]+/[^/\s]+", manifest["repository"]) is None
+        or not isinstance(manifest["pull_request"], str)
+        or re.fullmatch(r"[1-9][0-9]*", manifest["pull_request"]) is None
     ):
         raise HealthError("owner-emergency candidate provider identity is invalid")
     amendment = manifest["policy_amendment"]

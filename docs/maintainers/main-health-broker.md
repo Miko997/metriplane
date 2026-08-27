@@ -169,6 +169,23 @@ metriplane-merge-approval:v1 <sha256-of-canonical-request>
 
 The approval body may end at the digest or include one terminal newline.
 
+For a personal repository with no other eligible `write` or `admin`
+collaborator and no pending invitation carrying that authority, the repository
+owner may instead submit this exact `COMMENTED` review on an owner-authored PR:
+
+~~~text
+metriplane-owner-merge-request:v1
+{"authorization_mode":"single-maintainer-owner-attestation","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","health_generation":1,"nonce":"<32hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>"},"schema_version":1,"state_commit":"<40hex>"}
+~~~
+
+This request is the explicit owner decision and has the same maximum ten-minute
+provider lease. The witness App reads the complete collaborator and pending
+invitation inventories twice and requires their canonical digest, every changed
+path, all five exact hosted-ruleset digests, and the protected state commit to
+match the request at every admission pass. Adding an eligible collaborator or
+invitation disables the single-maintainer path immediately. It does not create
+a human push, settings, required-check, or merge bypass.
+
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
 earlier approval. It re-reads the pull request, every commit actor, reviews,
@@ -268,6 +285,24 @@ an approval from the author, requester, or any commit actor fails closed. The
 broker uses the same serialized, single-use exact-head merge transaction as
 normal admission.
 
+If no eligible independent collaborator or pending invitation exists, the
+owner-authored repair PR may carry
+`docs/status/main-health-owner-emergency.json` and exactly one matching two-line
+marker in its body. The manifest binds the base, incident, issue, PR, complete
+changed-path inventory, collaborator digest, failing obligations, expiry, and
+incident-only policy amendment. After qualification, the owner submits:
+
+~~~text
+metriplane-owner-repair-request:v1
+{"authorization_mode":"single-maintainer-owner-emergency","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","incident_digest":"<64hex>","issue":"MET-77","manifest_digest":"<64hex>","nonce":"<32hex>","policy_amendment_digest":"<64hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>"},"schema_version":1,"state_commit":"<40hex>","state_generation":1}
+~~~
+
+The broker validates that request and manifest against live provider state on
+all three admission passes. The successful App check retains the canonical
+request digest in its external ID. After merge, the broker requires that exact
+check, App merge actor, merge parents and tree, unchanged single-maintainer and
+ruleset digests, and the manifest before constructing resolution evidence.
+
 Merging the repair does not clear red state. The latest retained observation
 for each cadence must pass; an older success cannot mask a newer failure. The
 read-only workflows must record passing protected-main, nightly, and weekly
@@ -281,9 +316,9 @@ gh api --method POST repos/Miko997/metriplane/dispatches \
   -f event_type=main-health-weekly
 ~~~
 
-The broker then re-fetches the closed pull request, retained request and
+The broker then re-fetches the closed pull request, retained request and any
 approval reviews, commits, merge parents and tree, current main, collaborator
-permission, and provider time. It captures the provider approval evidence and
-appends the governed repair resolution to the protected state branch with a
-normal fast-forward CAS push. There is no owner-emergency or local-spool
-recovery path.
+inventory, rulesets, exact App check, and provider time. It captures the
+provider authorization evidence and appends the governed repair resolution to
+the protected state branch with a normal fast-forward CAS push. There is no
+direct owner-emergency CLI, human bypass, or local-spool recovery path.
