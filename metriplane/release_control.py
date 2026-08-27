@@ -273,7 +273,7 @@ def write_immutable_json(path: Path, value: object) -> str:
     payload = canonical_json(value)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
     except FileExistsError as exc:
         raise ReleaseControlError(f"refusing to overwrite retained output: {path}") from exc
     try:

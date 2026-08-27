@@ -246,6 +246,15 @@ def _tool_environment() -> dict[str, str]:
     return environment
 
 
+def test_immutable_json_is_owner_read_only_and_no_overwrite(tmp_path: Path) -> None:
+    path = tmp_path / "retained.json"
+    value = {"record": "retained"}
+    assert write_immutable_json(path, value) == hashlib.sha256(canonical_json(value)).hexdigest()
+    assert path.stat().st_mode & 0o777 == 0o400
+    with pytest.raises(ReleaseControlError, match="overwrite"):
+        write_immutable_json(path, value)
+
+
 def _passing_qualification(*, status: str = "PASS") -> dict[str, Any]:
     data = {
         "attempt_digests": ["1" * 64],
