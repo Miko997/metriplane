@@ -29,12 +29,18 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
     assert jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
     assert jobs["gates"]["needs"] == "provenance"
     assert jobs["build"]["needs"] == ["provenance", "gates"]
-    assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
+    assert jobs["validate-testpypi-artifacts"]["needs"] == ["provenance", "build"]
+    assert jobs["publish-testpypi"]["needs"] == [
+        "provenance",
+        "build",
+        "validate-testpypi-artifacts",
+    ]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
     for name in (
         "provenance",
         "gates",
         "build",
+        "validate-testpypi-artifacts",
         "publish-testpypi",
         "verify-testpypi",
     ):
@@ -59,6 +65,9 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         "release_run_id",
         "qualification_run_id",
         "qualification_record_digest",
+        "authority_run_id",
+        "authority_bundle_sha256",
+        "evidence_manifest_sha256",
         "version",
         "confirmation",
     }
@@ -66,17 +75,20 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
 
     request = jobs["validate-production-request"]
     preflight = jobs["verify-production-artifacts"]
+    authorize = jobs["authorize-production"]
     publish = jobs["publish-pypi"]
     verify = jobs["verify-pypi"]
-    for job in (request, preflight, publish, verify):
+    for job in (request, preflight, authorize, publish, verify):
         assert "github.event_name == 'workflow_dispatch'" in job["if"]
     assert preflight["needs"] == "validate-production-request"
     assert "environment" not in preflight
-    assert publish["needs"] == [
+    assert authorize["needs"] == [
         "validate-production-request",
         "verify-production-artifacts",
     ]
+    assert publish["needs"] == "authorize-production"
     assert verify["needs"] == ["validate-production-request", "publish-pypi"]
+    assert authorize["environment"]["name"] == "pypi"
     assert publish["environment"]["name"] == "pypi"
     assert publish["permissions"]["id-token"] == "write"
 
@@ -91,7 +103,10 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
         "validate_release_qualification.py",
         "validate_release_role_assignments.py",
         "validate_release_approval.py",
-        "validate_release_retention.py",
+        "Read back and compare exact authority bytes from both external stores",
+        "authority stores must use distinct HTTPS host identities",
+        'test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"',
+        "retention receipt differs from observed store bytes",
         "check_release_readiness.py",
         "/actions/runs/${RELEASE_RUN_ID}",
         "/actions/runs/${RELEASE_RUN_ID}/jobs?filter=latest&per_page=100",
@@ -113,16 +128,32 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
 def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     workflow, _ = _workflow()
     jobs = workflow["jobs"]
+    pinned_checkout = "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803"
+    pinned_download = "actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53"
+    pinned_publisher = "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
 
     for name in (
+        "validate-production-request",
         "verify-production-artifacts",
-        "publish-pypi",
+        "authorize-production",
         "verify-pypi",
     ):
         uses = [step.get("uses", "") for step in jobs[name]["steps"]]
-        checkout = next(i for i, value in enumerate(uses) if "actions/checkout@" in value)
-        download = next(i for i, value in enumerate(uses) if "actions/download-artifact@" in value)
-        assert checkout < download, name
+        checkouts = [i for i, value in enumerate(uses) if "actions/checkout@" in value]
+        downloads = [i for i, value in enumerate(uses) if "actions/download-artifact@" in value]
+        assert checkouts, name
+        assert downloads, name
+        assert all(uses[i] == pinned_checkout for i in checkouts), name
+        assert all(uses[i] == pinned_download for i in downloads), name
+        assert max(checkouts) < min(downloads), name
+
+    publish = jobs["publish-pypi"]
+    assert publish["permissions"] == {"actions": "read", "id-token": "write"}
+    assert [step.get("uses") for step in publish["steps"]] == [
+        pinned_download,
+        pinned_publisher,
+    ]
+    assert all("run" not in step for step in publish["steps"])
 
 
 def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
