@@ -196,6 +196,9 @@ and exact tree, then records either `merged` or terminal `uncertain`. An
 unproved interrupted transaction also closes the App check. The consumed
 request digest remains in the provider-owned check external ID, so a restored
 local spool reconstructs the no-retry decision from GitHub before admission.
+Protected-state Git smart HTTP uses the fixed `x-access-token` GitHub App
+username through a process-scoped Basic authorization header. The installation
+token is never embedded in the remote URL, and terminal prompts stay disabled.
 Pull requests above GitHub's complete 250-commit pull-inventory bound are not
 admitted; for every smaller pull request, the provider-reported count, unique
 commit SHAs, and final head SHA must exactly match the returned inventory. Every

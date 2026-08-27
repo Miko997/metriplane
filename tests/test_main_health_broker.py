@@ -584,6 +584,18 @@ def test_mutating_malformed_json_is_ambiguous(monkeypatch: pytest.MonkeyPatch) -
     assert not isinstance(exc_info.value, broker.ProviderTransportError)
 
 
+def test_git_environment_uses_noninteractive_github_app_basic_auth() -> None:
+    environment = broker._git_environment("installation-token")
+    expected = base64.b64encode(b"x-access-token:installation-token").decode("ascii")
+    assert environment["GIT_CONFIG_COUNT"] == "1"
+    assert environment["GIT_CONFIG_KEY_0"] == "http.extraHeader"
+    assert environment["GIT_CONFIG_VALUE_0"] == f"Authorization: Basic {expected}"
+    assert environment["GIT_TERMINAL_PROMPT"] == "0"
+
+    with pytest.raises(broker.BrokerError, match="token is not ASCII"):
+        broker._git_environment("not-ascii-\N{SNOWMAN}")
+
+
 def test_config_rejects_noncanonical_app_and_permissive_clock(tmp_path: Path) -> None:
     config = _config(tmp_path)
     assert config.state_root == tmp_path / "state"

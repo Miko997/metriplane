@@ -1616,12 +1616,18 @@ class CheckController:
 
 
 def _git_environment(token: str) -> dict[str, str]:
+    try:
+        basic_credential = base64.b64encode(f"x-access-token:{token}".encode("ascii")).decode(
+            "ascii"
+        )
+    except UnicodeEncodeError as exc:
+        raise BrokerError("GitHub App token is not ASCII") from exc
     environment = os.environ.copy()
     environment.update(
         {
             "GIT_CONFIG_COUNT": "1",
             "GIT_CONFIG_KEY_0": "http.extraHeader",
-            "GIT_CONFIG_VALUE_0": f"Authorization: Bearer {token}",
+            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic_credential}",
             "GIT_TERMINAL_PROMPT": "0",
         }
     )
