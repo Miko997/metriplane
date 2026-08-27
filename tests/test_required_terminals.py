@@ -243,6 +243,10 @@ def test_actions_have_three_canonical_aggregates_and_no_main_health_terminal() -
             main_health_producers.append(workflow_path.name)
     assert main_health_producers == []
 
+    ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+    ci_trigger = ci.get("on", ci.get(True))
+    assert ci_trigger["push"] == {"branches": ["main"]}
+
     docs = yaml.safe_load((WORKFLOWS / "docs.yml").read_text(encoding="utf-8"))
     trigger = docs.get("on", docs.get(True))
     assert trigger["pull_request"] is None

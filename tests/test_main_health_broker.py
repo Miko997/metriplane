@@ -1680,6 +1680,7 @@ class FakeTransactionApi(broker.GitHubApi):
         self.weekly_run_id = 602
         self.weekly_status = "completed"
         self.drift_on_final_ruleset = False
+        self.drift_update_bypass = False
         self.inject_older_rerun_on_final_ruleset = False
         self.extra_active_ruleset = False
         self.inventory_source_drift = False
@@ -1829,7 +1830,10 @@ class FakeTransactionApi(broker.GitHubApi):
             return broker.ApiResult({}, 200, inventory)
         if "/rulesets/" in path:
             ruleset_id = int(path.rsplit("/", 1)[1])
-            return broker.ApiResult({}, 200, _rulesets(self.config)[ruleset_id])
+            ruleset = copy.deepcopy(_rulesets(self.config)[ruleset_id])
+            if self.drift_update_bypass and ruleset_id == self.config.main_update_ruleset_id:
+                ruleset["bypass_actors"] = []
+            return broker.ApiResult({}, 200, ruleset)
         if path.endswith(f"/commits/{HEAD_SHA}"):
             return broker.ApiResult(
                 {}, 200, {"commit": {"tree": {"sha": TREE_SHA}}, "sha": HEAD_SHA}
@@ -2392,6 +2396,32 @@ def test_review_change_after_success_publication_blocks_merge(tmp_path: Path) ->
 
     assert api.merge_calls == 0
     assert spool.request_status(broker.digest(_request())) == "merging"
+
+
+def test_blocked_provider_state_rechecks_app_bypass_after_success(tmp_path: Path) -> None:
+    service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
+
+    class DriftingChecks(FakeAdmissionChecks):
+        def succeed(self, **kwargs: Any) -> dict[str, Any]:
+            result = super().succeed(**kwargs)
+            api.drift_update_bypass = True
+            api.mergeable_states = ["blocked"]
+            return result
+
+    checks = DriftingChecks()
+    with pytest.raises(broker.BrokerError, match="governed broker configuration"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert len(checks.succeeded) == 1
+    assert api.merge_readiness_calls == 1
+    assert api.merge_calls == 0
 
 
 @pytest.mark.parametrize("drift", ["aggregate", "nightly", "weekly"])
