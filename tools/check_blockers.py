@@ -627,6 +627,9 @@ def _check_evidence(
     validated_sha: str | None,
     errors: list[str],
 ) -> None:
+    if not records:
+        errors.append(f"{blocker_id}: {expected_kind} evidence must not be empty")
+        return
     identities = [_canonical_bytes(record) for record in records]
     if len(identities) != len(set(identities)):
         errors.append(f"{blocker_id}: duplicate {expected_kind} evidence record")

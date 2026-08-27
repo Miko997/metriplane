@@ -771,6 +771,40 @@ def test_downgrade_requires_reproduction_and_control_evidence(tmp_path: Path) ->
         assert report["valid"] is False
 
 
+@pytest.mark.parametrize(
+    ("field", "expected_kind"),
+    (
+        ("reproduction_evidence", "reproduction"),
+        ("control_evidence", "control"),
+    ),
+)
+@pytest.mark.parametrize("min_items", [0, None], ids=["zero", "removed"])
+def test_semantic_downgrade_evidence_requirement_survives_schema_weakening(
+    tmp_path: Path,
+    field: str,
+    expected_kind: str,
+    min_items: int | None,
+) -> None:
+    blocker = _valid_downgrade(tmp_path)
+    blocker["downgrade"][field] = []
+    _bind_action(blocker, "downgrade")
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    evidence_schema = schema["$defs"]["downgrade"]["properties"][field]
+    if min_items is None:
+        evidence_schema.pop("minItems")
+    else:
+        evidence_schema["minItems"] = min_items
+    _write_json(tmp_path / tool.REGISTRY_PATH, _registry([blocker]))
+    _write_json(tmp_path / tool.SCHEMA_PATH, schema)
+    validated_sha = _commit_fixture(tmp_path, f"weaken {field} minItems")
+
+    result, report = _run_canonical_policy(tmp_path, validated_sha)
+
+    assert result == 2
+    assert report["valid"] is False
+    assert report["errors"] == [f"{blocker['id']}: {expected_kind} evidence must not be empty"]
+
+
 def test_provider_verified_synthetic_downgrade_fixture_passes(tmp_path: Path) -> None:
     blocker = _valid_downgrade(tmp_path)
     payload = _synthetic_provider_payload(blocker, "downgrade")
