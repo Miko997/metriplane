@@ -136,13 +136,7 @@ def test_terminal_inventory_has_app_owned_main_health_and_release_handoff() -> N
         "Main health / required",
     ]
     assert active[-1]["producer"] == "github-app:metriplane-main-health-publisher"
-    assert active[-1]["transition"] == {
-        "actions_integration_id": 15368,
-        "approval_variable": "MET77_APPROVED_HEAD_SHA",
-        "base_sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
-        "producer": ".github/workflows/main-health.yml",
-        "pull_request": 86,
-    }
+    assert "transition" not in active[-1]
     assert reserved == [
         {
             "name": "Release / required",
@@ -165,27 +159,21 @@ def test_terminal_inventory_rejects_a_substituted_app_producer(tmp_path: Path) -
         validate_policy(changed, WORKFLOWS)
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("actions_integration_id", 1),
-        ("approval_variable", "PR_BODY"),
-        ("base_sha", "a" * 40),
-        ("producer", ".github/workflows/substituted.yml"),
-        ("pull_request", 87),
-    ],
-)
-def test_terminal_inventory_rejects_a_substituted_transition(
-    tmp_path: Path, field: str, value: object
-) -> None:
+def test_terminal_inventory_rejects_retired_transition_metadata(tmp_path: Path) -> None:
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
     main_health = next(
         item for item in policy["terminals"] if item["name"] == "Main health / required"
     )
-    main_health["transition"][field] = value
+    main_health["transition"] = {
+        "actions_integration_id": 15368,
+        "approval_variable": "MET77_APPROVED_HEAD_SHA",
+        "base_sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
+        "producer": ".github/workflows/main-health.yml",
+        "pull_request": 86,
+    }
     changed = tmp_path / "required-terminals.json"
     changed.write_text(json.dumps(policy), encoding="utf-8")
-    with pytest.raises(TerminalValidationError, match="governed transition is invalid"):
+    with pytest.raises(TerminalValidationError, match="transition is not permitted"):
         validate_policy(changed, WORKFLOWS)
 
 
@@ -233,7 +221,7 @@ def test_dynamic_job_name_that_can_render_a_terminal_is_rejected(
         validate_policy(POLICY, workflow_root)
 
 
-def test_actions_have_three_canonical_aggregates_and_one_legacy_main_health_bridge() -> None:
+def test_actions_have_three_canonical_aggregates_and_no_main_health_terminal() -> None:
     expected = {
         "ci.yml": "Metriplane / required",
         "docs.yml": "Documentation / required",
@@ -253,7 +241,11 @@ def test_actions_have_three_canonical_aggregates_and_one_legacy_main_health_brid
             job.get("name") == "Main health / required" for job in workflow.get("jobs", {}).values()
         ):
             main_health_producers.append(workflow_path.name)
-    assert main_health_producers == ["main-health.yml"]
+    assert main_health_producers == []
+
+    ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+    ci_trigger = ci.get("on", ci.get(True))
+    assert ci_trigger["push"] == {"branches": ["main"]}
 
     docs = yaml.safe_load((WORKFLOWS / "docs.yml").read_text(encoding="utf-8"))
     trigger = docs.get("on", docs.get(True))
@@ -266,23 +258,21 @@ def test_actions_have_three_canonical_aggregates_and_one_legacy_main_health_brid
     }
 
 
-def test_main_health_workflow_is_read_only_deep_observation_with_transition_bridge() -> None:
+def test_main_health_workflow_is_read_only_deep_observation() -> None:
     workflow_path = WORKFLOWS / "main-health.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger = workflow.get("on", workflow.get(True))
     assert trigger == {
-        "pull_request": {
-            "types": ["opened", "synchronize", "reopened", "ready_for_review", "edited"]
-        },
         "repository_dispatch": {"types": ["main-health-nightly", "main-health-weekly"]},
         "schedule": [{"cron": "23 3 * * 1-6"}, {"cron": "23 3 * * 0"}],
     }
-    assert workflow["permissions"] == {"checks": "read", "contents": "read"}
+    assert workflow["permissions"] == {"contents": "read"}
     assert workflow["concurrency"] == {
-        "group": "main-health-${{ github.event.pull_request.number || 'deep' }}",
-        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+        "group": "main-health-deep",
+        "queue": "max",
+        "cancel-in-progress": False,
     }
-    assert set(workflow["jobs"]) == {"legacy-main-health-required", "nightly", "weekly"}
+    assert set(workflow["jobs"]) == {"nightly", "weekly"}
     assert {workflow["jobs"][name]["name"] for name in ("nightly", "weekly")} == {
         "Main health deep / nightly",
         "Main health deep / weekly",
@@ -300,31 +290,9 @@ def test_main_health_workflow_is_read_only_deep_observation_with_transition_brid
             "run": 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"',
         }
         assert job["timeout-minutes"] == 60
-    bridge = workflow["jobs"]["legacy-main-health-required"]
-    assert bridge["name"] == "Main health / required"
-    assert bridge["if"] == "github.event_name == 'pull_request'"
-    assert bridge["timeout-minutes"] == 20
-    assert bridge["steps"][0]["with"] == {
-        "persist-credentials": False,
-        "ref": "${{ github.event.pull_request.head.sha }}",
-    }
-    assert bridge["steps"][1] == {
-        "env": {
-            "GITHUB_TOKEN": "${{ github.token }}",
-            "MET77_APPROVED_HEAD_SHA": "${{ vars.MET77_APPROVED_HEAD_SHA }}",
-            "MET77_BASE_REF": "${{ github.event.pull_request.base.ref }}",
-            "MET77_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
-            "MET77_HEAD_REPOSITORY": "${{ github.event.pull_request.head.repo.full_name }}",
-            "MET77_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
-            "MET77_PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
-            "MET77_PR_NUMBER": "${{ github.event.pull_request.number }}",
-        },
-        "name": "Validate provider-approved exact transition",
-        "run": (
-            "python3 tools/check_met77_transition.py --poll-attempts 90 --poll-interval-seconds 10"
-        ),
-    }
     text = workflow_path.read_text(encoding="utf-8")
+    assert "Main health / required" not in text
+    assert "check_met77_transition.py" not in text
     assert "PR_BODY" not in text
     assert "PR_TITLE" not in text
     assert "Independent exact-SHA review" not in text

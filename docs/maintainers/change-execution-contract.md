@@ -63,7 +63,9 @@ approved same-plan live proof is retained.
 The hosted required-check set must equal the four MP2-004 terminal names exactly;
 legacy, missing, or extra contexts fail offline validation. Each aggregate consumes
 the checked-out SHA reported by its dependency job rather than copying an expected
-event SHA into the result.
+event SHA into the result. Candidate CI runs only for the pull-request event;
+the push trigger is restricted to `main`, preventing duplicate exact-head CI
+terminals and readiness races on contributor branches.
 
 Files under `docs/status/examples/` are schema and fault-test fixtures, not claims
 about live provider state. Release or activation evidence must come from a fresh
@@ -95,17 +97,22 @@ retention receipt, incident, history entry, authorization, and resolution is
 read-back verified before the state pointer advances.
 
 Admission requires fresh green state for the exact base commit and an exact
-provider request plus independent write-authority approval. A delayed result
-that no longer names live `main` is rejected before ingestion.
+provider request plus independent write-authority approval. In a repository
+proved to have one admin owner and no other eligible collaborator or pending
+invitation, an exact owner request may replace that approval while binding the
+complete changed-path, ruleset, collaboration, and protected-state digests. A
+delayed result that no longer names live `main` is rejected before ingestion.
 
 The first protected-main result creates the one-time activation record and marks
 all earlier history `not_measured`. A failure turns health red. Later ordinary
 green results remain red. Resolution requires an issue-bound, unexpired,
 provider-authenticated non-author approval for the exact obligations, repair SHA,
 and changed paths, plus retained green protected-main and required deep results.
-The resolver re-fetches GitHub provider state with `GITHUB_TOKEN`; a supplied JSON
-claim cannot authorize repair. If no non-author is available, repair remains
-blocked.
+When provider inventory proves there is no eligible non-author, the exact
+incident-only App-broker owner-emergency manifest and owner request may supply
+the authorization instead. The request digest remains in the App check and is
+reconciled with the App merge proof before resolution. A supplied JSON claim,
+direct owner merge, or local spool cannot authorize repair.
 
 ## Pull requests
 

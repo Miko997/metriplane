@@ -38,7 +38,11 @@ sudo systemd-creds encrypt \
 The service reads the decrypted credentials only from
 `$CREDENTIALS_DIRECTORY/github-app-private-key.pem` and
 `$CREDENTIALS_DIRECTORY/github-ruleset-witness-private-key.pem`. The committed
-example uses systemd's stable absolute credential paths. The merge App grants
+example uses systemd's stable absolute credential paths. The signer accepts
+systemd's exact root-owned `0550` per-unit directory and root-owned `0440`
+regular credential files only when they are the direct, resolved children of
+`$CREDENTIALS_DIRECTORY`; ordinary credential files remain owner-only and
+symlinks are rejected. The merge App grants
 exactly Actions read, Checks write, Contents write, Pull requests read, and
 Metadata read; it has no Administration, Commit statuses, Workflows, or webhook
 permission. The witness App grants exactly Administration write and Metadata
@@ -71,9 +75,9 @@ python -m tools.main_health_broker validate-config \
 
 The host requires Python 3.12, Git, OpenSSL, and systemd credential support.
 Set `APPROVED_SHA` to the independently approved exact commit. Install that
-detached commit under `/opt/metriplane-main-health-broker`, create its stdlib-only
-virtual environment, create the dedicated non-login account, and keep mutable
-data on the large `/home` filesystem:
+detached commit in the root-owned `/home/metriplane-main-health-broker`, create
+its stdlib-only virtual environment, create the dedicated non-login account,
+and keep both immutable code and mutable state on the large `/home` filesystem:
 
 ~~~bash
 export APPROVED_SHA=<40hex-independently-approved-commit>
@@ -83,27 +87,44 @@ sudo install -d -o metriplane-health -g metriplane-health -m 0700 \
   /home/metriplane-health/state
 sudo git clone --filter=blob:none --no-checkout \
   https://github.com/Miko997/metriplane.git \
-  /opt/metriplane-main-health-broker
-sudo git -C /opt/metriplane-main-health-broker fetch --depth=1 origin \
+  /home/metriplane-main-health-broker
+sudo git -C /home/metriplane-main-health-broker fetch --depth=1 origin \
   "$APPROVED_SHA"
-sudo git -C /opt/metriplane-main-health-broker checkout --detach "$APPROVED_SHA"
-test "$(sudo git -C /opt/metriplane-main-health-broker rev-parse HEAD)" = \
+sudo git -C /home/metriplane-main-health-broker checkout --detach "$APPROVED_SHA"
+test "$(sudo git -C /home/metriplane-main-health-broker rev-parse HEAD)" = \
   "$APPROVED_SHA"
-sudo python3.12 -m venv /opt/metriplane-main-health-broker/.venv
+sudo python3.12 -m venv /home/metriplane-main-health-broker/.venv
 sudo install -d -o root -g metriplane-health -m 0750 /etc/metriplane
 sudo install -o root -g metriplane-health -m 0640 \
-  /opt/metriplane-main-health-broker/docs/status/examples/main-health-broker-config.json \
+  /home/metriplane-main-health-broker/docs/status/examples/main-health-broker-config.json \
   /etc/metriplane/main-health-broker.json
 sudoedit /etc/metriplane/main-health-broker.json
-sudo sh -c 'cd /opt/metriplane-main-health-broker && \
+sudo sh -c 'cd /home/metriplane-main-health-broker && \
   exec .venv/bin/python -m tools.main_health_broker validate-config \
   --config /etc/metriplane/main-health-broker.json'
 sudo install -D -m 0644 \
-  /opt/metriplane-main-health-broker/scripts/systemd/metriplane-main-health-broker.service \
+  /home/metriplane-main-health-broker/scripts/systemd/metriplane-main-health-broker.service \
   /etc/systemd/system/metriplane-main-health-broker.service
 sudo systemctl daemon-reload
-sudo systemctl enable metriplane-main-health-broker.service
-sudo systemctl start metriplane-main-health-broker.service
+sudo systemctl disable --now metriplane-main-health-broker.service
+if sudo systemctl is-enabled --quiet metriplane-main-health-broker.service; then
+  exit 1
+fi
+if sudo systemctl is-active --quiet metriplane-main-health-broker.service; then
+  exit 1
+fi
+~~~
+
+The host is now staged, but the broker must remain disabled and stopped. With
+the staged witness credential, apply and read back the exact core, admission,
+and state-writer ruleset bodies. Confirm that the main-update ruleset is exact
+except for disabled enforcement, activate it with the complete exact body, and
+then validate the complete active ruleset inventory plus all five governed
+ruleset details through the witness App. Only after that validation succeeds,
+enable and start the broker:
+
+~~~bash
+sudo systemctl enable --now metriplane-main-health-broker.service
 sudo systemctl is-active metriplane-main-health-broker.service
 sudo systemctl show metriplane-main-health-broker.service \
   --property=Type,ActiveState,SubState
@@ -148,6 +169,30 @@ metriplane-merge-approval:v1 <sha256-of-canonical-request>
 
 The approval body may end at the digest or include one terminal newline.
 
+For a personal repository with no other eligible `write` or `admin`
+collaborator and no pending invitation carrying that authority, the repository
+owner may instead submit this exact `COMMENTED` review on an owner-authored PR:
+
+~~~text
+metriplane-owner-merge-request:v1
+{"authorization_mode":"single-maintainer-owner-attestation","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","health_generation":1,"nonce":"<32hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>"},"schema_version":1,"state_commit":"<40hex>"}
+~~~
+
+This request is the explicit owner decision and has the same maximum ten-minute
+provider lease. The witness App reads the complete collaborator and pending
+invitation inventories twice and requires their canonical digest, every changed
+path, all five exact hosted-ruleset digests, and the protected state commit to
+match the request at every admission pass. Adding an eligible collaborator or
+invitation disables the single-maintainer path immediately. It does not create
+a human push, settings, required-check, or merge bypass.
+
+Provider reviews that carry an owner-request marker but are anchored to a prior
+head remain immutable audit history and cannot authorize the current head. The
+broker ignores those prior-head requests during current-head selection and
+retained post-merge evidence reconstruction, while a malformed review anchor or
+any marker review anchored to the current head must still pass the complete
+request and live-context validation.
+
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
 earlier approval. It re-reads the pull request, every commit actor, reviews,
@@ -160,7 +205,12 @@ CodeQL run attempts together. Provider update time determines the latest attempt
 across workflow-run IDs. Distinct identities tied at the latest provider time,
 or any repeated attempt identity, fail closed. A cached green state never skips
 a new companion rerun and an already retained aggregate never creates a
-freshness-only state commit. Before normal admission, the broker observes that
+freshness-only state commit. The six numeric protected-main records from the
+pre-App history predate run-attempt evidence and are allowlisted by exact run ID
+and canonical result digest. The broker preserves them as opaque history rather
+than inferring an attempt; new numeric records are rejected and legacy successes
+cannot satisfy current aggregate or repair evidence. Before normal admission,
+the broker observes that
 aggregate twice,
 requires every governed deep-health attempt in the complete provider inventory
 to be retained, observes every available latest current-main nightly or weekly
@@ -168,13 +218,21 @@ run and exact job twice, and rejects any change between observations. It then
 repeats the pull request, approval, state, main, core-check, and ruleset reads.
 Under one singleton lock,
 it records the request as in-flight, mutates one recorded App check-run ID to
-literal `success`, and immediately calls the synchronous merge endpoint with
-the exact head SHA. It never retries
+literal `success`, and waits only while GitHub is still computing whether the
+exact head can merge. A provider `blocked` state with `mergeable: true` is the
+expected steady state under the App-only main-update restriction, not a reason
+to wait forever; the broker accepts it only after repeating the exact core-check,
+ruleset, review, state, main, and lease validation. It then calls the synchronous
+merge endpoint with the exact head SHA, leaving the non-bypassed core and
+admission rulesets as the provider's final enforcement boundary. It never retries
 an ambiguous merge response; it reconciles the pull request, ref, two parents,
 and exact tree, then records either `merged` or terminal `uncertain`. An
 unproved interrupted transaction also closes the App check. The consumed
 request digest remains in the provider-owned check external ID, so a restored
 local spool reconstructs the no-retry decision from GitHub before admission.
+Protected-state Git smart HTTP uses the fixed `x-access-token` GitHub App
+username through a process-scoped Basic authorization header. The installation
+token is never embedded in the remote URL, and terminal prompts stay disabled.
 Pull requests above GitHub's complete 250-commit pull-inventory bound are not
 admitted; for every smaller pull request, the provider-reported count, unique
 commit SHAs, and final head SHA must exactly match the returned inventory. Every
@@ -239,6 +297,24 @@ an approval from the author, requester, or any commit actor fails closed. The
 broker uses the same serialized, single-use exact-head merge transaction as
 normal admission.
 
+If no eligible independent collaborator or pending invitation exists, the
+owner-authored repair PR may carry
+`docs/status/main-health-owner-emergency.json` and exactly one matching two-line
+marker in its body. The manifest binds the base, incident, issue, PR, complete
+changed-path inventory, collaborator digest, failing obligations, expiry, and
+incident-only policy amendment. After qualification, the owner submits:
+
+~~~text
+metriplane-owner-repair-request:v1
+{"authorization_mode":"single-maintainer-owner-emergency","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","incident_digest":"<64hex>","issue":"MET-77","manifest_digest":"<64hex>","nonce":"<32hex>","policy_amendment_digest":"<64hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>"},"schema_version":1,"state_commit":"<40hex>","state_generation":1}
+~~~
+
+The broker validates that request and manifest against live provider state on
+all three admission passes. The successful App check retains the canonical
+request digest in its external ID. After merge, the broker requires that exact
+check, App merge actor, merge parents and tree, unchanged single-maintainer and
+ruleset digests, and the manifest before constructing resolution evidence.
+
 Merging the repair does not clear red state. The latest retained observation
 for each cadence must pass; an older success cannot mask a newer failure. The
 read-only workflows must record passing protected-main, nightly, and weekly
@@ -252,9 +328,9 @@ gh api --method POST repos/Miko997/metriplane/dispatches \
   -f event_type=main-health-weekly
 ~~~
 
-The broker then re-fetches the closed pull request, retained request and
+The broker then re-fetches the closed pull request, retained request and any
 approval reviews, commits, merge parents and tree, current main, collaborator
-permission, and provider time. It captures the provider approval evidence and
-appends the governed repair resolution to the protected state branch with a
-normal fast-forward CAS push. There is no owner-emergency or local-spool
-recovery path.
+inventory, rulesets, exact App check, and provider time. It captures the
+provider authorization evidence and appends the governed repair resolution to
+the protected state branch with a normal fast-forward CAS push. There is no
+direct owner-emergency CLI, human bypass, or local-spool recovery path.
