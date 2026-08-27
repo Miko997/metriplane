@@ -98,10 +98,11 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     publish_names = [step.get("name") for step in publish["steps"]]
     assert request_names[-1] == "Revalidate release blockers at production dispatch"
     publish_index = publish_names.index("Publish the verified distributions to PyPI")
-    assert publish_names[publish_index - 3 : publish_index] == [
+    assert publish_names[publish_index - 4 : publish_index] == [
         "Wait for the App-owned main-update lease",
         "Revalidate release blockers while main updates are fenced",
         "Reassert the lease and exact main immediately before publish",
+        "Rehash the exact artifact set immediately before publish",
     ]
 
     required = (
@@ -165,7 +166,8 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     assert text.count("assert-publish-lease") == 1
     assert text.count("reconcile-publish-lease") == 1
     assert text.count("verify-registry") == 4
-    assert text.count("sha256sum --check ../SHA256SUMS") == 1
+    assert text.count("sha256sum --check ../SHA256SUMS") == 2
+    assert "find . -maxdepth 1 -type f -printf '%f\\n'" in text
 
 
 def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:

@@ -622,6 +622,16 @@ jobs:
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT"
 
+      - name: Rehash the exact artifact set immediately before publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
+
       - name: Publish the verified distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
