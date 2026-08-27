@@ -218,8 +218,13 @@ run and exact job twice, and rejects any change between observations. It then
 repeats the pull request, approval, state, main, core-check, and ruleset reads.
 Under one singleton lock,
 it records the request as in-flight, mutates one recorded App check-run ID to
-literal `success`, and immediately calls the synchronous merge endpoint with
-the exact head SHA. It never retries
+literal `success`, and waits only while GitHub is still computing whether the
+exact head can merge. A provider `blocked` state with `mergeable: true` is the
+expected steady state under the App-only main-update restriction, not a reason
+to wait forever; the broker accepts it only after repeating the exact core-check,
+ruleset, review, state, main, and lease validation. It then calls the synchronous
+merge endpoint with the exact head SHA, leaving the non-bypassed core and
+admission rulesets as the provider's final enforcement boundary. It never retries
 an ambiguous merge response; it reconciles the pull request, ref, two parents,
 and exact tree, then records either `merged` or terminal `uncertain`. An
 unproved interrupted transaction also closes the App check. The consumed

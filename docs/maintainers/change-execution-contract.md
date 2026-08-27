@@ -63,7 +63,9 @@ approved same-plan live proof is retained.
 The hosted required-check set must equal the four MP2-004 terminal names exactly;
 legacy, missing, or extra contexts fail offline validation. Each aggregate consumes
 the checked-out SHA reported by its dependency job rather than copying an expected
-event SHA into the result.
+event SHA into the result. Candidate CI runs only for the pull-request event;
+the push trigger is restricted to `main`, preventing duplicate exact-head CI
+terminals and readiness races on contributor branches.
 
 Files under `docs/status/examples/` are schema and fault-test fixtures, not claims
 about live provider state. Release or activation evidence must come from a fresh

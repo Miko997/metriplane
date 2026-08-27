@@ -2251,7 +2251,7 @@ def test_merge_waits_for_provider_readiness_before_final_seal(tmp_path: Path) ->
     class ReadinessChecks(FakeAdmissionChecks):
         def succeed(self, **kwargs: Any) -> dict[str, Any]:
             result = super().succeed(**kwargs)
-            api.mergeable_states = ["blocked", "clean"]
+            api.mergeable_states = ["unknown", "blocked"]
             return result
 
     def advance_provider(seconds: float) -> None:
@@ -2276,7 +2276,7 @@ def test_merge_waits_for_provider_readiness_before_final_seal(tmp_path: Path) ->
 
 def test_provider_readiness_wait_is_bounded_by_request_lease(tmp_path: Path) -> None:
     service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
-    api.mergeable_states = ["blocked"] * 31
+    api.mergeable_states = ["unknown"] * 31
 
     def advance_provider(seconds: float) -> None:
         api.current_now += timedelta(seconds=seconds)
@@ -2302,7 +2302,7 @@ def test_provider_readiness_wait_has_independent_attempt_bound(
     tmp_path: Path, provider_step_seconds: int
 ) -> None:
     service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
-    api.mergeable_states = ["blocked"] * broker.MERGE_READINESS_MAX_ATTEMPTS
+    api.mergeable_states = ["unknown"] * broker.MERGE_READINESS_MAX_ATTEMPTS
     sleeps: list[float] = []
 
     def skew_provider(seconds: float) -> None:
@@ -2344,6 +2344,19 @@ def test_provider_readiness_rejects_clean_after_lease_margin(tmp_path: Path) -> 
 
     assert api.merge_readiness_calls == 1
     assert api.merge_calls == 0
+
+
+@pytest.mark.parametrize("mergeable_state", ["blocked", "clean"])
+def test_provider_readiness_accepts_governed_mergeable_states(
+    mergeable_state: str,
+) -> None:
+    pull = _pull()
+    pull["mergeable_state"] = mergeable_state
+
+    assert broker.Broker._pull_is_merge_ready(
+        admission={"base_sha": BASE_SHA, "head_sha": HEAD_SHA, "pull_request": 81},
+        pull=pull,
+    )
 
 
 @pytest.mark.parametrize("malformed_number", [81.0, True, "81", 0])

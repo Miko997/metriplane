@@ -112,7 +112,9 @@ aggregate and every available latest current-main nightly or weekly attempt twic
 to retained protected-state identities, and rejects active, failed, missing, or
 changing evidence. It then repeats admission, state, main, core-check, and
 ruleset validation immediately before success can be published. The broker
-then changes the recorded merge-App check ID to literal success and immediately
+then changes the recorded merge-App check ID to literal success, accepts either
+provider `clean` or the expected `mergeable: true`/`blocked` state produced by
+the App-only update restriction, re-seals the complete admission context, and
 calls the synchronous merge endpoint with the exact head SHA. A definite
 rejection closes the check. An ambiguous response is never retried: the broker
 reconciles the pull request, main ref, merge parents, and exact tree and

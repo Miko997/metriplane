@@ -3795,7 +3795,8 @@ class Broker:
             raise BrokerError("provider merge-readiness pull identity changed")
         mergeable = pull.get("mergeable")
         mergeable_state = pull.get("mergeable_state")
-        if mergeable is True and mergeable_state == "clean":
+        # The App-only update rule keeps the provider state blocked for every other actor.
+        if mergeable is True and mergeable_state in {"blocked", "clean"}:
             return True
         if (
             (mergeable is None or mergeable is True)

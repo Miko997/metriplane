@@ -1,6 +1,7 @@
 {
   "authorization_mode": "single-maintainer-owner-emergency",
   "allowed_paths": [
+    ".github/workflows/ci.yml",
     ".github/workflows/main-health.yml",
     "docs/maintainers/change-execution-contract.md",
     "docs/maintainers/main-health-broker.md",
