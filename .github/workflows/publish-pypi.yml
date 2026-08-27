@@ -616,7 +616,7 @@ jobs:
               public_key = row["public_key_hex"]
               if not isinstance(actor_id, str) or not actor_id.strip():
                   raise SystemExit("provider attestation actor identity is missing")
-              if provider not in {"github", "linear"}:
+              if not isinstance(provider, str) or provider not in {"github", "linear"}:
                   raise SystemExit("provider attestation key names an unsupported provider")
               if not isinstance(public_key, str) or re.fullmatch(r"[0-9a-f]{64}", public_key) is None:
                   raise SystemExit("provider attestation public key is not canonical Ed25519 hex")
@@ -1078,7 +1078,7 @@ jobs:
               public_key = row["public_key_hex"]
               if not isinstance(actor_id, str) or not actor_id.strip():
                   raise SystemExit("provider attestation actor identity is missing")
-              if provider not in {"github", "linear"}:
+              if not isinstance(provider, str) or provider not in {"github", "linear"}:
                   raise SystemExit("provider attestation key names an unsupported provider")
               if not isinstance(public_key, str) or re.fullmatch(r"[0-9a-f]{64}", public_key) is None:
                   raise SystemExit("provider attestation public key is not canonical Ed25519 hex")

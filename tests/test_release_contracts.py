@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import os
 import subprocess
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from metriplane.release_control import (
     MILESTONES,
@@ -270,7 +270,12 @@ def _passing_qualification(*, status: str = "PASS") -> dict[str, Any]:
     )
 
 
-LIVE_PROVIDER_KEY = bytes.fromhex("ab" * 32)
+LIVE_PROVIDER_PRIVATE_KEY = bytes.fromhex(
+    "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+)
+LIVE_PROVIDER_PUBLIC_KEY = bytes.fromhex(
+    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+)
 
 
 def _signed_live_record(
@@ -289,17 +294,14 @@ def _signed_live_record(
         synthetic=False,
     )
     subject_digest = signature_subject_digest(unsigned)
-    signature = hmac.new(
-        LIVE_PROVIDER_KEY,
-        canonical_json(
-            {
-                "actor_id": actor_id,
-                "provider": provider,
-                "subject_digest": subject_digest,
-            }
-        ),
-        hashlib.sha256,
-    ).hexdigest()
+    message = canonical_json(
+        {
+            "actor_id": actor_id,
+            "provider": provider,
+            "subject_digest": subject_digest,
+        }
+    )
+    signature = Ed25519PrivateKey.from_private_bytes(LIVE_PROVIDER_PRIVATE_KEY).sign(message).hex()
     return make_record(
         record_type,
         data,
@@ -322,7 +324,39 @@ def _signed_live_record(
 def _live_verifier(
     *, actor_id: str = "executor", provider: str = "github"
 ) -> ProviderAttestationVerifier:
-    return ProviderAttestationVerifier(keys={(provider, actor_id): LIVE_PROVIDER_KEY})
+    return ProviderAttestationVerifier(keys={(provider, actor_id): LIVE_PROVIDER_PUBLIC_KEY})
+
+
+def test_provider_attestation_keyring_accepts_only_public_ed25519_keys(
+    tmp_path: Path,
+) -> None:
+    keyring_path = tmp_path / "provider-keyring.json"
+    keyring = {
+        "keys": [
+            {
+                "actor_id": "executor",
+                "provider": "github",
+                "public_key_hex": LIVE_PROVIDER_PUBLIC_KEY.hex(),
+            }
+        ],
+        "schema_version": "metriplane.provider-attestation-keyring.v1",
+    }
+    keyring_path.write_text(json.dumps(keyring), encoding="utf-8")
+    assert ProviderAttestationVerifier.from_keyring(keyring_path).keys == {
+        ("github", "executor"): LIVE_PROVIDER_PUBLIC_KEY
+    }
+
+    keyring["keys"][0]["key_hex"] = keyring["keys"][0].pop("public_key_hex")
+    keyring_path.write_text(json.dumps(keyring), encoding="utf-8")
+    with pytest.raises(ReleaseControlError, match="row shape is not closed"):
+        ProviderAttestationVerifier.from_keyring(keyring_path)
+
+    keyring_path.write_text(
+        '{"keys":[],"keys":[],"schema_version":"metriplane.provider-attestation-keyring.v1"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ReleaseControlError, match="repeats a key"):
+        ProviderAttestationVerifier.from_keyring(keyring_path)
 
 
 def test_live_signature_shape_and_forged_fixture_digest_are_not_authority() -> None:

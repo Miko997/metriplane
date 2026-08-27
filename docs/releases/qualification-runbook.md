@@ -77,6 +77,31 @@ No fixture identity, repository-owner check, tag, environment approval, or
 locally written signature can satisfy those predicates. Missing authority
 leaves the attempt `BLOCKED_NOT_READY` and cannot reach a publication job.
 
+## Hosted trust inputs
+
+Live validation reads its trust root independently of the candidate and the
+transported authority bundle. Configure these repository values before a live
+attempt:
+
+- `RELEASE_PROVIDER_ATTESTATION_KEYRING_B64`: strict base64 of canonical JSON
+  with schema version `metriplane.provider-attestation-keyring.v1` and an
+  ordered, unique `keys` list. Each row contains only `actor_id`, `provider`,
+  and a 32-byte Ed25519 `public_key_hex` value. Never place a private signing
+  key in this value, the repository, or a workflow secret.
+- `RELEASE_AUTHORITY_STORE_A_URL` and `RELEASE_AUTHORITY_STORE_B_URL`: distinct
+  HTTPS read-back endpoints for the same immutable authority bundle.
+- `RELEASE_AUTHORITY_RUN_ID`, `RELEASE_AUTHORITY_BUNDLE_SHA256`, and
+  `RELEASE_EVIDENCE_MANIFEST_SHA256`: the exact identities supplied by the
+  external authority run.
+
+Configure `RELEASE_AUTHORITY_STORE_A_TOKEN` and
+`RELEASE_AUTHORITY_STORE_B_TOKEN` as separate repository secrets. The release
+and publication workflows decode only the public keyring, compare the two
+store bundles byte for byte, and pass both observed readbacks into every deep
+live validator. `provider-attestation-v1` signatures are 64-byte Ed25519
+signatures encoded as 128 lowercase hexadecimal characters over the canonical
+provider, actor, and subject-digest message.
+
 ## Failure and recovery
 
 A partial target, digest mismatch, mutable observation, unknown terminal,

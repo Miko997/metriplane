@@ -164,18 +164,25 @@ def test_publication_consumes_qualification_and_does_not_create_authority() -> N
     assert inputs["evidence_manifest_sha256"]["required"] is True
     jobs = workflow["jobs"]
     request = jobs["validate-production-request"]
-    commands = "\n".join(step.get("run", "") for step in request["steps"])
-    assert "validate_release_qualification.py" in commands
-    assert "validate_release_role_assignments.py" in commands
-    assert "validate_release_approval.py" in commands
-    assert "validate_release_retention.py" not in commands
-    assert "check_release_readiness.py" in commands
-    assert "validate_release_artifact_manifest.py" in commands
-    assert "--mode live" not in commands
-    assert "--input release-authority/" not in commands
+    request_commands = "\n".join(step.get("run", "") for step in request["steps"])
+    authorization_commands = "\n".join(
+        step.get("run", "") for step in jobs["authorize-production"]["steps"]
+    )
+    assert "validate_release_qualification.py" not in request_commands
+    assert "validate_release_retention.py" not in request_commands
+    assert "validate_release_role_assignments.py" in request_commands
+    assert "validate_release_approval.py" in request_commands
+    assert "check_release_readiness.py" in request_commands
+    assert "validate_release_artifact_manifest.py" in request_commands
+    assert "validate_release_qualification.py" in authorization_commands
+    assert "validate_release_retention.py" in authorization_commands
+    assert "--attempt-store-readback" in authorization_commands
+    assert "--provider-attestation-keyring" in authorization_commands
+    assert "--mode live" not in request_commands
+    assert "--input release-authority/" not in request_commands
     assert "qualification_record_digest" in PUBLISH.read_text(encoding="utf-8")
-    assert "record_release_approval.py" not in commands
-    assert "record_release_role_assignments.py" not in commands
+    assert "record_release_approval.py" not in request_commands
+    assert "record_release_role_assignments.py" not in request_commands
 
 
 def test_production_request_uses_canonical_live_authority_contracts() -> None:
@@ -184,7 +191,6 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
     commands = "\n".join(step.get("run", "") for step in request["steps"])
     required = (
         "sha256sum release-authority/qualification.json",
-        "--record release-authority/qualification.json",
         "--record release-authority/role-assignments.json",
         'MILESTONE="v${RELEASE_VERSION%.*}"',
         "v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0",
@@ -197,6 +203,8 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         "--role-assignments release-authority/role-assignments.json",
         "--no-prepublication-rubric",
         "--record release-authority/prepublication/approval.json",
+        '--approval-decision "$APPROVAL_DECISION_PATH"',
+        '--provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"',
         "--candidate-identity release-authority/candidate-identity.json",
         "--predecessor release-authority/predecessor.json",
         "--linear-snapshot release-authority/linear-snapshot.json",
@@ -238,7 +246,7 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         "github-token": "${{ github.token }}",
     }
 
-    authority_index = commands.index("validate_release_qualification.py")
+    authority_index = commands.index("validate_release_approval.py")
     artifact_index = commands.index("validate_release_artifact_manifest.py")
     eligibility_index = commands.index('test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"')
     assert eligibility_index < authority_index < artifact_index
@@ -269,7 +277,8 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
     workflow_text = PUBLISH.read_text(encoding="utf-8")
     assert 'test "$tag_commit" = "$GITHUB_SHA"' not in workflow_text
     assert "AUTHORITY_SOURCE_SHA" not in workflow_text
-    assert "validate_release_retention.py" not in workflow_text
+    assert workflow_text.count("validate_release_retention.py") == 2
+    assert workflow_text.count("validate_publication_reconciliation.py") == 1
 
     authorization = workflow["jobs"]["authorize-production"]
     assert authorization["environment"] == {
@@ -305,9 +314,10 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
         'test "$store_a_sha256" = "$store_b_sha256"',
         'test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"',
         "external stores and GitHub artifact have different JSON inventories",
-        "external stores and GitHub artifact differ",
-        "retention receipt differs from observed store bytes",
-        "retention receipt-set digest mismatch",
+        "external authority stores differ after safe archive parsing",
+        "external stores and GitHub artifact contain digest-mismatched records",
+        "qualification attempt retention receipt digest",
+        "attempt-store-readbacks.txt",
     )
     assert all(fragment in store_command for fragment in store_requirements)
 
@@ -340,7 +350,11 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
         "--check-conflicts",
         "--check-freshness",
         "validate_release_qualification.py",
+        '"${attempt_store_readback_args[@]}"',
+        "validate_release_retention.py",
         "validate_release_approval.py",
+        '--approval-decision "$APPROVAL_DECISION_PATH"',
+        '--provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"',
         "--role-assignments release-authority/role-assignments.json",
         "check_release_readiness.py",
         "validate_release_artifact_manifest.py",

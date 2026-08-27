@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import hmac
 import json
 import os
 import re
@@ -78,7 +77,7 @@ class ReleaseControlError(ValueError):
 
 @dataclass(frozen=True)
 class ProviderAttestationVerifier:
-    """Verify provider attestations against an independently supplied trust root."""
+    """Verify Ed25519 provider attestations against a public trust root."""
 
     keys: Mapping[tuple[str, str], bytes]
 
@@ -92,7 +91,7 @@ class ProviderAttestationVerifier:
         rows = keyring["keys"]
         if not isinstance(rows, list) or not rows:
             raise ReleaseControlError("provider attestation keyring has no trusted keys")
-        expected_fields = {"actor_id", "key_hex", "provider"}
+        expected_fields = {"actor_id", "provider", "public_key_hex"}
         parsed: dict[tuple[str, str], bytes] = {}
         identities: list[tuple[str, str]] = []
         for row in rows:
@@ -100,20 +99,21 @@ class ProviderAttestationVerifier:
                 raise ReleaseControlError("provider attestation key row shape is not closed")
             provider = row["provider"]
             actor_id = row["actor_id"]
-            key_hex = row["key_hex"]
-            if provider not in {"github", "linear"}:
+            public_key_hex = row["public_key_hex"]
+            if not isinstance(provider, str) or provider not in {"github", "linear"}:
                 raise ReleaseControlError("provider attestation key names an unsupported provider")
             _require_nonempty_string(actor_id, "provider attestation key actor")
             if (
-                not isinstance(key_hex, str)
-                or re.fullmatch(r"[0-9a-f]{64,}", key_hex) is None
-                or len(key_hex) % 2 != 0
+                not isinstance(public_key_hex, str)
+                or re.fullmatch(r"[0-9a-f]{64}", public_key_hex) is None
             ):
-                raise ReleaseControlError("provider attestation key is not canonical hex")
+                raise ReleaseControlError(
+                    "provider attestation public key is not canonical Ed25519 hex"
+                )
             identity = (provider, actor_id)
             if identity in parsed:
                 raise ReleaseControlError("provider attestation key identity is duplicated")
-            parsed[identity] = bytes.fromhex(key_hex)
+            parsed[identity] = bytes.fromhex(public_key_hex)
             identities.append(identity)
         if identities != sorted(identities):
             raise ReleaseControlError("provider attestation keys are not canonically ordered")
@@ -126,7 +126,12 @@ class ProviderAttestationVerifier:
             return False
         key = self.keys.get((provider, actor_id))
         signature_value = signature.get("signature")
-        if key is None or not isinstance(signature_value, str):
+        if (
+            key is None
+            or len(key) != 32
+            or not isinstance(signature_value, str)
+            or re.fullmatch(r"[0-9a-f]{128}", signature_value) is None
+        ):
             return False
         message = canonical_json(
             {
@@ -135,8 +140,18 @@ class ProviderAttestationVerifier:
                 "subject_digest": subject_digest,
             }
         )
-        expected = hmac.new(key, message, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature_value, expected)
+        try:
+            from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
+        except ImportError:
+            return False
+        try:
+            Ed25519PublicKey.from_public_bytes(key).verify(bytes.fromhex(signature_value), message)
+        except (InvalidSignature, TypeError, ValueError):
+            return False
+        return True
 
 
 def canonical_json(value: object) -> bytes:
@@ -175,13 +190,22 @@ def _require_invocation(value: object) -> str:
     return value
 
 
+def _closed_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ReleaseControlError(f"JSON input repeats a key: {key}")
+        result[key] = value
+    return result
+
+
 def read_json(path: Path) -> dict[str, Any]:
     """Read one regular JSON object without following a symlink."""
 
     if not path.is_file() or path.is_symlink():
         raise ReleaseControlError(f"input is missing or not a regular file: {path}")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_closed_json_object)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ReleaseControlError(f"cannot read JSON input {path}: {exc}") from exc
     if not isinstance(value, dict):

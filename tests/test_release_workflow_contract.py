@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -116,7 +117,7 @@ def _live_retention_receipt(
             "actor_id": "retention-provider",
             "algorithm": "provider-attestation-v1",
             "provider": "github",
-            "signature": "provider-signature-proof",
+            "signature": "0" * 128,
             "subject_digest": subject_digest,
             "synthetic": False,
         }
@@ -412,6 +413,108 @@ def test_retention_receipts_bind_to_both_observed_store_bundles(tmp_path: Path) 
     assert "receipt-set digest mismatch" in wrong_receipt_set.stderr
 
 
+def test_public_trust_and_attempt_readbacks_are_materialized_from_both_stores(
+    tmp_path: Path,
+) -> None:
+    contracts = _workflow()["jobs"]["contracts"]
+    step = _named_step(contracts, "Materialize public trust and independent read-back inputs")
+    script = _embedded_python(step)
+    runner_temp = tmp_path / "runner-temp"
+    authority = tmp_path / ".release-authority"
+    runner_temp.mkdir()
+    authority.mkdir()
+
+    def record(record_type: str, data: dict[str, Any]) -> dict[str, Any]:
+        return {"data": data, "record_type": record_type}
+
+    approval_decision = record("release-approval-decision", {"decision": "APPROVED"})
+    approval_decision_digest = _sha256(_canonical_json(approval_decision))
+    attempt_manifest = record("release-evidence-manifest", {"scope": "attempt"})
+    attempt_manifest_digest = _sha256(_canonical_json(attempt_manifest))
+    attempt_retention = record(
+        "release-retention-receipts", {"input_digest": attempt_manifest_digest}
+    )
+    attempt_retention_digest = _sha256(_canonical_json(attempt_retention))
+    records = {
+        "decisions/approval-decision.json": approval_decision,
+        "attempts/evidence-manifest.json": attempt_manifest,
+        "attempts/retention-receipts.json": attempt_retention,
+        "evidence-manifest.json": record("release-evidence-manifest", {"scope": "release"}),
+        "prepublication/approval.json": record(
+            "release-approval",
+            {"approval_decision_digest": approval_decision_digest},
+        ),
+        "qualification.json": record(
+            "release-qualification",
+            {"attempt_retention_receipt_digests": [attempt_retention_digest]},
+        ),
+    }
+    entries: list[tuple[str, str, bytes]] = []
+    for relative, value in sorted(records.items()):
+        payload = _canonical_json(value)
+        target = authority / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        entries.append((relative, "file", payload))
+    store_a = runner_temp / "authority-store-a.tar"
+    store_b = runner_temp / "authority-store-b.tar"
+    _write_tar(store_a, entries)
+    store_b.write_bytes(store_a.read_bytes())
+
+    keyring = {
+        "keys": [
+            {
+                "actor_id": "release-authority",
+                "provider": "github",
+                "public_key_hex": "1" * 64,
+            }
+        ],
+        "schema_version": "metriplane.provider-attestation-keyring.v1",
+    }
+    github_env = tmp_path / "github-env"
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "AUTHORITY_BUNDLE_SHA256": _sha256(store_a.read_bytes()),
+            "GITHUB_ENV": str(github_env),
+            "PROVIDER_ATTESTATION_KEYRING_B64": base64.b64encode(_canonical_json(keyring)).decode(),
+            "RUNNER_TEMP": str(runner_temp),
+        },
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    environment = dict(
+        line.split("=", 1) for line in github_env.read_text(encoding="utf-8").splitlines()
+    )
+    assert set(environment) == {
+        "APPROVAL_DECISION_PATH",
+        "ATTEMPT_READBACK_ARGS_FILE",
+        "AUTHORITY_STORE_A_MANIFEST_READBACK",
+        "AUTHORITY_STORE_B_MANIFEST_READBACK",
+        "PROVIDER_ATTESTATION_KEYRING",
+    }
+    assert Path(environment["APPROVAL_DECISION_PATH"]).read_bytes() == _canonical_json(
+        approval_decision
+    )
+    assert json.loads(Path(environment["PROVIDER_ATTESTATION_KEYRING"]).read_bytes()) == keyring
+    assert Path(environment["ATTEMPT_READBACK_ARGS_FILE"]).read_text().splitlines() == [
+        "--attempt-store-readback",
+        (
+            f"{attempt_retention_digest}:payload-store-a="
+            f"{(authority / 'attempts/evidence-manifest.json').resolve()}"
+        ),
+        "--attempt-store-readback",
+        (
+            f"{attempt_retention_digest}:payload-store-b="
+            f"{(runner_temp / 'authority-store-b-readback/attempts/evidence-manifest.json').resolve()}"
+        ),
+    ]
+
+
 def test_event_mode_resolution_executes_against_provider_payloads(tmp_path: Path) -> None:
     source = "a" * 40
     base = "b" * 40
@@ -560,7 +663,11 @@ def test_live_modes_require_real_authority_and_exact_validators() -> None:
     assert "--check-freshness" in text
     assert "validate_release_approval.py" in text
     assert '--role-assignments "$root/role-assignments.json"' in text
-    assert "validate_release_retention.py" not in text
+    assert text.count("validate_release_retention.py") == 2
+    assert '--provider-attestation-keyring "$PROVIDER_ATTESTATION_KEYRING"' in text
+    assert '"${attempt_readback_args[@]}"' in text
+    assert '"payload-store-a=$AUTHORITY_STORE_A_MANIFEST_READBACK"' in text
+    assert '"payload-store-b=$AUTHORITY_STORE_B_MANIFEST_READBACK"' in text
     assert "Bind retention receipts to both exact store read-backs" in (
         WORKFLOW_PATH.read_text(encoding="utf-8")
     )

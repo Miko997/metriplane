@@ -224,7 +224,8 @@ The workflow performs this sequence:
 15. re-download that exact artifact set and compare it with TestPyPI before the
     `pypi` environment is entered;
 16. validate the downloaded qualification record, role assignment, approval,
-    retention receipts, and live readiness before entering `pypi`;
+    public-key provider attestations, both external-store readbacks, retention
+    receipts, and live readiness before entering `pypi`;
 17. publish the verified files to PyPI;
 18. compare production PyPI's hashes with the same manifest and verify a clean
     production installation.
