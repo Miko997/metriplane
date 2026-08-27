@@ -1107,6 +1107,127 @@ def test_run_context_generates_run_id_only_when_omitted(
     assert context.run_dir == tmp_path / "runs" / "generated_run"
 
 
+def test_unreserved_context_base_swap_cannot_redirect_directory_creation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    base.mkdir()
+    parked_base = tmp_path / "runs-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("outside must remain unchanged\n", encoding="utf-8")
+    original_mkdir = run_provenance.os.mkdir
+    swapped = False
+
+    def swap_base_before_child_mkdir(path, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        if not swapped and dir_fd is not None and path == "unreserved_run":
+            swapped = True
+            base.rename(parked_base)
+            base.symlink_to(outside, target_is_directory=True)
+        if dir_fd is None:
+            return original_mkdir(path, mode)
+        return original_mkdir(path, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(run_provenance.os, "mkdir", swap_base_before_child_mkdir)
+
+    with pytest.raises(PlatformPathError, match="identity changed during reservation"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="unreserved_run",
+            runs_dir=str(base),
+        )
+
+    assert base.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
+    created_run = parked_base / "unreserved_run"
+    assert (created_run / ".metriplane-run-reservation").is_file()
+    assert not (created_run / "config.yaml").exists()
+    assert not (created_run / "env.txt").exists()
+    assert not (created_run / "meta.json").exists()
+
+
+def test_unreserved_context_base_swap_cannot_redirect_artifact_writes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    base.mkdir()
+    parked_base = tmp_path / "runs-original"
+    outside = tmp_path / "outside"
+    outside_run = outside / "unreserved_run"
+    outside_run.mkdir(parents=True)
+    sentinel = outside_run / "sentinel.txt"
+    sentinel.write_text("outside must remain unchanged\n", encoding="utf-8")
+    original_writer = run_provenance._write_claimed_text
+    swapped = False
+
+    def swap_base_before_write(directory_fd: int, name: str, content: str) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            base.rename(parked_base)
+            base.symlink_to(outside, target_is_directory=True)
+        original_writer(directory_fd, name, content)
+
+    monkeypatch.setattr(run_provenance, "_write_claimed_text", swap_base_before_write)
+
+    with pytest.raises(PlatformPathError, match="identity changed"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="unreserved_run",
+            runs_dir=str(base),
+        )
+
+    assert base.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert sorted(path.name for path in outside_run.iterdir()) == ["sentinel.txt"]
+    assert (parked_base / "unreserved_run" / "config.yaml").is_file()
+    assert not (parked_base / "unreserved_run" / "meta.json").exists()
+
+
+def test_unreserved_session_writer_rejects_post_context_directory_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id="unreserved_run",
+        runs_dir=str(base),
+    )
+
+    parked_run_dir = base / "unreserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_session = outside / "session.jsonl"
+    outside_session.write_text("outside must remain unchanged\n", encoding="utf-8")
+    context.run_dir.rename(parked_run_dir)
+    context.run_dir.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(PlatformPathError, match="cannot be opened safely"):
+        open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+
+    assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert not (parked_run_dir / "session.jsonl").exists()
+
+
 def test_run_context_claims_exact_reserved_run_directory(
     tmp_path: Path,
     monkeypatch,

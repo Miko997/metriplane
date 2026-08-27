@@ -19,6 +19,7 @@ from metriplane.runner.command_center_api import (
     get_objects,
     get_traces,
 )
+from metriplane.runner.safe_reads import UnsafeReadPathError
 
 BUNDLE = "evidence/incidents/INC-DIST-001"
 
@@ -113,6 +114,25 @@ def test_nested_artifact_parent_symlink_outside_run_is_rejected(tmp_path: Path):
 
     assert find_run_artifact(run, ["incidents/incident.json"]) is None
     assert get_incidents(run) == []
+
+
+def test_path_artifact_pin_rejects_selected_run_parent_replacement(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    parked = tmp_path / "run-original"
+    outside = tmp_path / "outside"
+    run.mkdir()
+    outside.mkdir()
+    (run / "meta.json").write_text('{"run_id": "authorized"}\n', encoding="utf-8")
+    (outside / "meta.json").write_text('{"run_id": "outside"}\n', encoding="utf-8")
+
+    artifact = find_run_artifact(run, ["meta.json"])
+    assert artifact is not None
+    with artifact:
+        run.rename(parked)
+        run.symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(UnsafeReadPathError, match="changed during read"):
+            artifact.read_text()
 
 
 def test_symlink_loop_run_dir_degrades_without_error(tmp_path: Path):

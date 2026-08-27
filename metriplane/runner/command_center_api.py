@@ -14,16 +14,20 @@ A "run dir" may be:
 from __future__ import annotations
 
 import json
-import stat
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from metriplane.runner.safe_reads import PinnedDirectory, PinnedFile
+from metriplane.runner.safe_reads import (
+    PinnedDirectory,
+    PinnedFile,
+    UnsafeReadPathError,
+    pin_file,
+)
 
 RunSource = str | Path | PinnedDirectory
-RunArtifact = Path | PinnedFile
+RunArtifact = PinnedFile
 
 
 def _run_source(run_dir: RunSource) -> Path | PinnedDirectory:
@@ -34,27 +38,25 @@ def find_run_artifact(
     run_dir: Path | PinnedDirectory,
     names: list[str] | tuple[str, ...],
 ) -> RunArtifact | None:
-    """Return a contained, regular, non-symlink artifact from a selected run."""
+    """Return a pinned regular artifact from a selected run.
+
+    Results acquired from a path own their directory authority and must be closed.
+    Results acquired from a ``PinnedDirectory`` remain owned by that directory.
+    """
     if isinstance(run_dir, PinnedDirectory):
         return run_dir.find_file(names)
-    try:
-        root = run_dir.resolve(strict=True)
-    except (OSError, RuntimeError):
-        return None
-    if not root.is_dir():
-        return None
+    root = Path(run_dir)
     for name in names:
-        candidate = run_dir / name
         try:
-            info = candidate.lstat()
-            if not stat.S_ISREG(info.st_mode):
-                continue
-            resolved = candidate.resolve(strict=True)
-            resolved.relative_to(root)
-        except (OSError, RuntimeError, ValueError):
+            return pin_file([root], root / name)
+        except (OSError, UnsafeReadPathError):
             continue
-        return resolved
     return None
+
+
+def _release_artifact(artifact: RunArtifact | None) -> None:
+    if artifact is not None and artifact.owns_authority:
+        artifact.close()
 
 
 def _session(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
@@ -83,6 +85,8 @@ def _registry(run_dir: Path | PinnedDirectory) -> Any:
         return ObjectRegistryConfig.model_validate(yaml.safe_load(p.read_text()))
     except Exception:
         return None
+    finally:
+        _release_artifact(p)
 
 
 def get_workspace(run_dir: RunSource) -> dict[str, Any]:
@@ -94,6 +98,8 @@ def get_workspace(run_dir: RunSource) -> dict[str, Any]:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except Exception:
         return {"zones": [], "stations": []}
+    finally:
+        _release_artifact(path)
 
     zones = []
     for item in data.get("zones", []) or []:
@@ -140,6 +146,8 @@ def get_objects(run_dir: RunSource) -> list[dict[str, Any]]:
         frames = list(iter_frames_text(session.read_text(), source=str(session)))
     except Exception:
         return []
+    finally:
+        _release_artifact(session)
     if not frames:
         return []
     registry = _registry(run)
@@ -181,6 +189,8 @@ def get_incidents(run_dir: RunSource) -> list[dict[str, Any]]:
         return data if isinstance(data, list) else [data]
     except Exception:
         return []
+    finally:
+        _release_artifact(p)
 
 
 def get_events(run_dir: RunSource) -> list[dict[str, Any]]:
@@ -196,6 +206,8 @@ def get_events(run_dir: RunSource) -> list[dict[str, Any]]:
                 out.append(json.loads(line))
     except Exception:
         return []
+    finally:
+        _release_artifact(p)
     return out
 
 
@@ -212,6 +224,8 @@ def get_traces(run_dir: RunSource, object_id: str | None = None) -> list[dict[st
         summaries = store.summarize()
     except Exception:
         return []
+    finally:
+        _release_artifact(session)
     rows = []
     for s in summaries:
         if object_id is not None and s.object_id != object_id:
@@ -269,6 +283,8 @@ def get_frames(run_dir: RunSource, max_frames: int = 600) -> dict[str, Any]:
                 break
     except Exception:
         return {"frames": [], "incidents": [], "workspace": workspace}
+    finally:
+        _release_artifact(session)
 
     incidents = []
     for inc in get_incidents(run):

@@ -13,7 +13,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Never
+from typing import Never, Self
 
 
 class UnsafeReadPathError(ValueError):
@@ -203,6 +203,7 @@ class PinnedFile:
     _directory_fds: list[int]
     _links: tuple[_DirectoryLink, ...]
     _file_link: _FileLink
+    _owns_parent: bool = False
     _closed: bool = False
 
     @property
@@ -211,6 +212,18 @@ class PinnedFile:
 
     def __str__(self) -> str:
         return str(self.display_path)
+
+    @property
+    def owns_authority(self) -> bool:
+        """Whether closing this file also closes its pinned directory authority."""
+        return self._owns_parent
+
+    def __enter__(self) -> Self:
+        self.verify()
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+        self.close()
 
     def verify(self) -> None:
         if self._closed:
@@ -275,6 +288,8 @@ class PinnedFile:
                 os.close(self._directory_fds.pop())
             except OSError:
                 pass
+        if self._owns_parent:
+            self._parent.close()
 
 
 @dataclass(slots=True)
@@ -297,6 +312,13 @@ class PinnedDirectory:
 
     def __str__(self) -> str:
         return str(self.display_path)
+
+    def __enter__(self) -> Self:
+        self.verify()
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+        self.close()
 
     def verify(self) -> None:
         if self._closed:
@@ -421,40 +443,58 @@ class PinnedDirectory:
             self._parent.close()
 
 
-@contextmanager
-def open_pinned_directory(
-    allowed_roots: Iterable[Path], requested: str | Path
-) -> Iterator[PinnedDirectory]:
-    """Open a requested directory beneath one allowed root without following links."""
+def pin_directory(allowed_roots: Iterable[Path], requested: str | Path) -> PinnedDirectory:
+    """Acquire a pinned directory; the caller owns and must close the result."""
     root_path, relative, requested_path = _select_authority(allowed_roots, requested)
     root = _open_absolute_directory(root_path)
     if not relative.parts:
-        try:
-            yield root
-        finally:
-            root.close()
-        return
+        return root
 
     child: PinnedDirectory | None = None
     try:
         child = root.open_directory(relative)
         child.display_path = requested_path
         child._owns_parent = True
-        yield child
+        return child
+    except BaseException:
+        root.close()
+        raise
+
+
+@contextmanager
+def open_pinned_directory(
+    allowed_roots: Iterable[Path], requested: str | Path
+) -> Iterator[PinnedDirectory]:
+    """Open a requested directory beneath one allowed root without following links."""
+    directory = pin_directory(allowed_roots, requested)
+    try:
+        yield directory
     finally:
-        if child is not None:
-            child.close()
-        else:
-            root.close()
+        directory.close()
+
+
+def pin_file(allowed_roots: Iterable[Path], requested: str | Path) -> PinnedFile:
+    """Acquire a pinned regular file; the caller owns and must close the result."""
+    root_path, relative, requested_path = _select_authority(allowed_roots, requested)
+    root = _open_absolute_directory(root_path)
+    try:
+        artifact = root.open_file(relative)
+        artifact.display_path = requested_path
+        artifact._owns_parent = True
+        return artifact
+    except BaseException:
+        root.close()
+        raise
 
 
 @contextmanager
 def open_pinned_file(allowed_roots: Iterable[Path], requested: str | Path) -> Iterator[PinnedFile]:
     """Open a requested regular file beneath one allowed root and retain its chain."""
-    _root, _relative, requested_path = _select_authority(allowed_roots, requested)
-    with open_pinned_directory(allowed_roots, requested_path.parent) as directory:
-        artifact = directory.open_file(Path(requested_path.name))
+    artifact = pin_file(allowed_roots, requested)
+    try:
         yield artifact
+    finally:
+        artifact.close()
 
 
 def inherited_fd_path(file_fd: int) -> str:
