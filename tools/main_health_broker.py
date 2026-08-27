@@ -2903,31 +2903,43 @@ class Broker:
             token=token,
         )
         candidates = [pull for pull in pulls if pull.get("merge_commit_sha") == main_sha]
-        if len(candidates) != 1:
-            raise BrokerError("repaired main does not identify one provider pull request")
-        number = _require_positive_int(candidates[0].get("number"), "repaired pull request number")
-        pull, reviews, commits = _pull_snapshot(
-            self.api,
-            config=self.config,
-            number=number,
-            token=token,
-        )
-        reviewer_permissions = _provider_review_permissions(
-            self.api,
-            config=self.config,
-            reviews=reviews,
-            token=token,
-        )
         provider_now = self.api.provider_now(token)
-        binding = _merged_repair_binding(
-            commits=commits,
-            now=provider_now,
-            pull=pull,
-            repository=self.config.repository,
-            reviewer_permissions=reviewer_permissions,
-            reviews=reviews,
-            state=state,
-        )
+        governed: list[tuple[int, dict[str, Any]]] = []
+        for candidate in candidates:
+            number = _require_positive_int(candidate.get("number"), "repaired pull request number")
+            pull, reviews, commits = _pull_snapshot(
+                self.api,
+                config=self.config,
+                number=number,
+                token=token,
+            )
+            if not any(
+                isinstance(review.get("body"), str)
+                and review["body"].startswith(REPAIR_REQUEST_MARKER)
+                for review in reviews
+            ):
+                continue
+            reviewer_permissions = _provider_review_permissions(
+                self.api,
+                config=self.config,
+                reviews=reviews,
+                token=token,
+            )
+            binding = _merged_repair_binding(
+                commits=commits,
+                now=provider_now,
+                pull=pull,
+                repository=self.config.repository,
+                reviewer_permissions=reviewer_permissions,
+                reviews=reviews,
+                state=state,
+            )
+            governed.append((number, binding))
+        if not governed:
+            return state
+        if len(governed) != 1:
+            raise BrokerError("repaired main identifies multiple governed provider pull requests")
+        number, binding = governed[0]
         verify_merge_proof(
             admission=binding,
             api=self.api,

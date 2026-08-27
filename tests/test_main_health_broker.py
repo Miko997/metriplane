@@ -108,8 +108,9 @@ def _repair_request() -> dict[str, Any]:
     }
 
 
-def _repair_reviews() -> list[dict[str, Any]]:
+def _repair_reviews_for(pull_number: int) -> list[dict[str, Any]]:
     request = _repair_request()
+    request["pull_request"] = pull_number
     return [
         {
             "body": (
@@ -132,6 +133,10 @@ def _repair_reviews() -> list[dict[str, Any]]:
             "user": {"id": 40, "login": "reviewer"},
         },
     ]
+
+
+def _repair_reviews() -> list[dict[str, Any]]:
+    return _repair_reviews_for(81)
 
 
 def _reviews(*, approver_id: int = 40, approver_login: str = "reviewer") -> list[dict[str, Any]]:
@@ -2269,7 +2274,22 @@ class FakeRepairResolutionApi(FakeProofApi):
         if "/collaborators/reviewer/permission" in path:
             return broker.ApiResult({}, 200, {"permission": "write"})
         if "/pulls?state=closed" in path:
-            return broker.ApiResult({}, 200, [{"merge_commit_sha": MERGE_SHA, "number": 81}])
+            return broker.ApiResult(
+                {},
+                200,
+                [
+                    {"merge_commit_sha": MERGE_SHA, "number": 80},
+                    {"merge_commit_sha": MERGE_SHA, "number": 81},
+                ],
+            )
+        if "/pulls/80/reviews?" in path:
+            return broker.ApiResult({}, 200, [])
+        if "/pulls/80/commits?" in path:
+            return broker.ApiResult({}, 200, _commits())
+        if path.endswith("/pulls/80"):
+            pull = _merged_repair_pull()
+            pull["number"] = 80
+            return broker.ApiResult({}, 200, pull)
         if "/pulls/81/reviews?" in path:
             return broker.ApiResult({}, 200, _repair_reviews())
         if "/pulls/81/commits?" in path:
@@ -2362,6 +2382,86 @@ def test_repair_resolution_is_rebuilt_from_provider_and_protected_results(
     assert authorization["allowed_paths"] == evidence["changed_paths"]
     assert authorization["required_cadences"] == ["nightly", "weekly"]
     assert state_branch.resolution["repaired_main"] == state_branch.repaired_main
+
+
+def test_repair_resolution_waits_when_current_main_has_no_governed_merge(
+    tmp_path: Path,
+) -> None:
+    class UngovernedRepairApi(FakeRepairResolutionApi):
+        def request(
+            self,
+            path: str,
+            *,
+            token: str,
+            method: str = "GET",
+            payload: dict[str, Any] | None = None,
+            expected: tuple[int, ...] = (200,),
+        ) -> broker.ApiResult:
+            if "/pulls/81/reviews?" in path:
+                return broker.ApiResult({}, 200, [])
+            return super().request(
+                path,
+                token=token,
+                method=method,
+                payload=payload,
+                expected=expected,
+            )
+
+    config = _config(tmp_path)
+    api = UngovernedRepairApi()
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+    state_branch = FakeRepairResolutionState()
+
+    state = service._reconcile_repair(
+        state_branch=state_branch,  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert state["status"] == "red"
+    assert state["generation"] == 10
+    assert state_branch.resolution is None
+
+
+def test_repair_resolution_rejects_multiple_governed_merges(tmp_path: Path) -> None:
+    class DuplicateGovernedRepairApi(FakeRepairResolutionApi):
+        def request(
+            self,
+            path: str,
+            *,
+            token: str,
+            method: str = "GET",
+            payload: dict[str, Any] | None = None,
+            expected: tuple[int, ...] = (200,),
+        ) -> broker.ApiResult:
+            if "/pulls/80/reviews?" in path:
+                return broker.ApiResult({}, 200, _repair_reviews_for(80))
+            return super().request(
+                path,
+                token=token,
+                method=method,
+                payload=payload,
+                expected=expected,
+            )
+
+    config = _config(tmp_path)
+    api = DuplicateGovernedRepairApi()
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+
+    with pytest.raises(broker.BrokerError, match="multiple governed provider pull requests"):
+        service._reconcile_repair(
+            state_branch=FakeRepairResolutionState(),  # type: ignore[arg-type]
+            token="token",
+        )
 
 
 @pytest.mark.parametrize(
