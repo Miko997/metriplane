@@ -12,6 +12,7 @@ Example:
       --out evidence/experiments/physical_observability_bench_001.csv \\
       --report evidence/experiments/physical_observability_bench_001.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,8 +21,7 @@ import sys
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser("metriplane-bench")
-    p.add_argument("--scenario", default="all",
-                   help="'all' or a specific scenario id")
+    p.add_argument("--scenario", default="all", help="'all' or a specific scenario id")
     p.add_argument("--out", default=None, help="CSV output path")
     p.add_argument("--report", default=None, help="Markdown report path")
     args = p.parse_args(argv)

@@ -8,7 +8,12 @@ from typing import Any, Mapping, Sequence, Tuple
 
 import numpy as np
 
-from metriplane.compute.interface import FusionComputeBackend, normalize_method, obs_to_lite, weight_for
+from metriplane.compute.interface import (
+    FusionComputeBackend,
+    normalize_method,
+    obs_to_lite,
+    weight_for,
+)
 
 
 @dataclass(slots=True)
@@ -59,12 +64,12 @@ class CpuNumpyBackend(FusionComputeBackend):
         idx = np.asarray(obj_idx, dtype=np.int64)
         x = np.asarray(xs, dtype=np.float64)
         y = np.asarray(ys, dtype=np.float64)
-        w = np.asarray(ws, dtype=np.float64)
+        weights = np.asarray(ws, dtype=np.float64)
 
         n = int(len(oids))
-        sum_w = np.bincount(idx, weights=w, minlength=n).astype(np.float64)
-        sum_wx = np.bincount(idx, weights=(w * x), minlength=n).astype(np.float64)
-        sum_wy = np.bincount(idx, weights=(w * y), minlength=n).astype(np.float64)
+        sum_w = np.bincount(idx, weights=weights, minlength=n).astype(np.float64)
+        sum_wx = np.bincount(idx, weights=(weights * x), minlength=n).astype(np.float64)
+        sum_wy = np.bincount(idx, weights=(weights * y), minlength=n).astype(np.float64)
 
         out: dict[str, Tuple[float, float]] = {}
         for i, oid in enumerate(oids):

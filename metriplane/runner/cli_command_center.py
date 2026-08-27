@@ -13,7 +13,9 @@ def main_command_center(argv: list[str]) -> int:
 
     ex = sub.add_parser("export", help="Export command-center data JSON for the dashboard")
     ex.add_argument("run_dir", help="Run dir or incident bundle")
-    ex.add_argument("--out", default=None, help="Output JSON (default: <run_dir>/command_center_data.json)")
+    ex.add_argument(
+        "--out", default=None, help="Output JSON (default: <run_dir>/command_center_data.json)"
+    )
 
     sm = sub.add_parser("summary", help="Print live summary for a run dir")
     sm.add_argument("run_dir")
@@ -27,12 +29,15 @@ def main_command_center(argv: list[str]) -> int:
 
     if args.cmd == "export":
         from pathlib import Path
+
         out = args.out or str(Path(args.run_dir) / "command_center_data.json")
         payload = export_command_center(args.run_dir, out)
         print(f"wrote {out}")
-        print(f"objects={len(payload['objects'])} "
-              f"incidents={len(payload['incidents'])} "
-              f"events={len(payload['events'])}")
+        print(
+            f"objects={len(payload['objects'])} "
+            f"incidents={len(payload['incidents'])} "
+            f"events={len(payload['events'])}"
+        )
         return 0
 
     if args.cmd == "summary":

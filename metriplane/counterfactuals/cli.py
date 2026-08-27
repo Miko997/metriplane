@@ -10,12 +10,16 @@ from pathlib import Path
 def main_counterfactual(argv: list[str]) -> int:
     p = argparse.ArgumentParser("metriplane counterfactual")
     p.add_argument("bundle", help="Path to an incident evidence bundle")
-    p.add_argument("--sweep-rule", action="append", default=[],
-                   help="rule_id.field=start:stop:step (repeatable)")
-    p.add_argument("--slow-object", action="append", default=[],
-                   help="object_id=factor (repeatable)")
-    p.add_argument("--remove-object", action="append", default=[],
-                   help="object_id (repeatable)")
+    p.add_argument(
+        "--sweep-rule",
+        action="append",
+        default=[],
+        help="rule_id.field=start:stop:step (repeatable)",
+    )
+    p.add_argument(
+        "--slow-object", action="append", default=[], help="object_id=factor (repeatable)"
+    )
+    p.add_argument("--remove-object", action="append", default=[], help="object_id (repeatable)")
     p.add_argument("--max-cases", type=int, default=50)
     p.add_argument("--output", default=None, help="Write JSON report here")
     p.add_argument("--no-write-reports", action="store_true", default=False)
@@ -41,19 +45,20 @@ def main_counterfactual(argv: list[str]) -> int:
             print(f"error: --slow-object expects object_id=factor, got {spec!r}")
             return 2
         obj, factor = spec.split("=", 1)
-        transforms.append(CounterfactualTransform(
-            type="object_speed_scale", target=obj, params={"factor": float(factor)}))
+        transforms.append(
+            CounterfactualTransform(
+                type="object_speed_scale", target=obj, params={"factor": float(factor)}
+            )
+        )
     for obj in args.remove_object:
         transforms.append(CounterfactualTransform(type="object_remove", target=obj))
 
     if not transforms:
-        print("error: no transforms specified "
-              "(use --sweep-rule / --slow-object / --remove-object)")
+        print("error: no transforms specified (use --sweep-rule / --slow-object / --remove-object)")
         return 2
 
     try:
-        report = CounterfactualEvaluator(max_cases=args.max_cases).evaluate(
-            args.bundle, transforms)
+        report = CounterfactualEvaluator(max_cases=args.max_cases).evaluate(args.bundle, transforms)
     except CounterfactualError as e:
         print(f"counterfactual failed: {e}")
         return 1

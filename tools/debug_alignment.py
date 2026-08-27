@@ -13,6 +13,7 @@ import cv2  # type: ignore
 import numpy as np  # type: ignore
 import yaml
 
+
 # ----------------------------
 # Basic loaders
 # ----------------------------
@@ -24,10 +25,12 @@ def load_intrinsics(path: Path):
     ih = int(d.get("image_height", 0) or 0)
     return K, D, iw, ih
 
+
 def load_homography(path: Path):
     d = yaml.safe_load(path.read_text(encoding="utf-8"))
     H = np.array(d["homography"], dtype=np.float64)
     return H
+
 
 def load_anchors(path: Path) -> Dict[int, Tuple[float, float]]:
     d = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -35,6 +38,7 @@ def load_anchors(path: Path) -> Dict[int, Tuple[float, float]]:
     for a in d.get("anchors", []):
         out[int(a["id"])] = (float(a["world_xy"][0]), float(a["world_xy"][1]))
     return out
+
 
 # ----------------------------
 # Mapping pipelines
@@ -47,6 +51,7 @@ def undistort_points_px(pts: np.ndarray, K: np.ndarray, D: np.ndarray) -> np.nda
     u = cv2.undistortPoints(p, K, D, P=K).reshape(-1, 2)
     return u
 
+
 def apply_H(H: np.ndarray, pts: np.ndarray) -> np.ndarray:
     # pts: (N,2) -> (N,2)
     if pts.size == 0:
@@ -57,6 +62,7 @@ def apply_H(H: np.ndarray, pts: np.ndarray) -> np.ndarray:
     q = qh[:, :2] / qh[:, 2:3]
     return q
 
+
 @dataclass
 class PipelineResult:
     name: str
@@ -65,6 +71,7 @@ class PipelineResult:
     in_bounds_pct: float
     explode_pct: float
     notes: str
+
 
 def eval_pipeline(
     *,
@@ -134,6 +141,7 @@ def eval_pipeline(
 
     return PipelineResult(name, anchor_rmse, anchor_max, in_bounds_pct, explode_pct, notes)
 
+
 # ----------------------------
 # ArUco detection
 # ----------------------------
@@ -152,11 +160,14 @@ def detect_aruco_centers(bgr: np.ndarray) -> Dict[int, Tuple[float, float]]:
         out[int(mid)] = (cx, cy)
     return out
 
+
 # ----------------------------
 # Main diagnostic
 # ----------------------------
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Diagnose multi-cam alignment: mapping/intrinsics/double-undistort.")
+    ap = argparse.ArgumentParser(
+        description="Diagnose multi-cam alignment: mapping/intrinsics/double-undistort."
+    )
     ap.add_argument("--cam0", type=int, default=0)
     ap.add_argument("--cam1", type=int, default=2)
 
@@ -221,6 +232,7 @@ def main() -> int:
         if not sizes:
             return (0, 0)
         from collections import Counter
+
         c = Counter(sizes)
         return c.most_common(1)[0][0]
 
@@ -231,12 +243,16 @@ def main() -> int:
     print(f"  cam0 stream size = {sz0}, intrinsics size = ({iw0},{ih0})")
     print(f"  cam1 stream size = {sz1}, intrinsics size = ({iw1},{ih1})")
     if (iw0 and ih0) and (sz0 != (iw0, ih0)):
-        print("  !! cam0 intrinsics size DOES NOT match stream size -> HIGH suspicion (wrong intrinsics or different resolution)")
+        print(
+            "  !! cam0 intrinsics size DOES NOT match stream size -> HIGH suspicion (wrong intrinsics or different resolution)"
+        )
     if (iw1 and ih1) and (sz1 != (iw1, ih1)):
         print("  !! cam1 intrinsics size DOES NOT match stream size -> HIGH suspicion")
 
     # Merge detections across samples (take median pixel per id for stability)
-    def _median_dets(samples: List[Dict[int, Tuple[float, float]]]) -> Dict[int, Tuple[float, float]]:
+    def _median_dets(
+        samples: List[Dict[int, Tuple[float, float]]],
+    ) -> Dict[int, Tuple[float, float]]:
         acc: Dict[int, List[Tuple[float, float]]] = {}
         for s in samples:
             for mid, (cx, cy) in s.items():
@@ -252,8 +268,12 @@ def main() -> int:
     det1 = _median_dets(samples1)
 
     print("\n[debug] detections (median) count:")
-    print(f"  cam0 ids={len(det0)} sample={sorted(list(det0.keys()))[:12]}{'...' if len(det0)>12 else ''}")
-    print(f"  cam1 ids={len(det1)} sample={sorted(list(det1.keys()))[:12]}{'...' if len(det1)>12 else ''}")
+    print(
+        f"  cam0 ids={len(det0)} sample={sorted(list(det0.keys()))[:12]}{'...' if len(det0) > 12 else ''}"
+    )
+    print(
+        f"  cam1 ids={len(det1)} sample={sorted(list(det1.keys()))[:12]}{'...' if len(det1) > 12 else ''}"
+    )
 
     # Evaluate pipelines for each cam
     pipelines = []
@@ -312,7 +332,13 @@ def main() -> int:
     print(f"  best cam1 = {best1.name}")
 
     # Recompute world coords for bests
-    def _world_map(det: Dict[int, Tuple[float, float]], H: np.ndarray, K: Optional[np.ndarray], D: Optional[np.ndarray], mode: str) -> Dict[int, Tuple[float, float]]:
+    def _world_map(
+        det: Dict[int, Tuple[float, float]],
+        H: np.ndarray,
+        K: Optional[np.ndarray],
+        D: Optional[np.ndarray],
+        mode: str,
+    ) -> Dict[int, Tuple[float, float]]:
         ids = sorted(det.keys())
         pts = np.array([det[i] for i in ids], dtype=np.float64)
         if mode in ("once", "twice"):
@@ -364,9 +390,11 @@ def main() -> int:
 
         # Per-marker table
         print("\n=== PER-MARKER CROSS-CAMERA COMPARISON ===")
-        print(f"{'ID':<6} {'Cam0_X':>8} {'Cam0_Y':>8} {'Cam1_X':>8} {'Cam1_Y':>8} {'Dist_m':>8} {'Type':<10}")
+        print(
+            f"{'ID':<6} {'Cam0_X':>8} {'Cam0_Y':>8} {'Cam1_X':>8} {'Cam1_Y':>8} {'Dist_m':>8} {'Type':<10}"
+        )
         print("-" * 68)
-        
+
         # Anchors first
         anchor_ids = [i for i in overlap if i in anchors_gt]
         for mid in anchor_ids:
@@ -374,7 +402,7 @@ def main() -> int:
             x1, y1 = w1[mid]
             dist = _dist(w0[mid], w1[mid])
             print(f"{mid:<6} {x0:8.4f} {y0:8.4f} {x1:8.4f} {y1:8.4f} {dist:8.4f} {'ANCHOR':<10}")
-        
+
         # Non-anchors
         bad_markers = []
         for mid in overlap_nonanchors:
@@ -386,7 +414,7 @@ def main() -> int:
                 marker_type += " ⚠"
                 bad_markers.append((mid, dist))
             print(f"{mid:<6} {x0:8.4f} {y0:8.4f} {x1:8.4f} {y1:8.4f} {dist:8.4f} {marker_type:<10}")
-        
+
         # Warnings
         if bad_markers:
             print("\n⚠ WARNING: Large disagreement on non-anchor markers:")
@@ -395,7 +423,9 @@ def main() -> int:
 
         if overlap_nonanchors:
             d2 = [_dist(w0[i], w1[i]) for i in overlap_nonanchors]
-            print(f"\nnon-anchor summary: mean_dist={float(np.mean(d2)):.4f}m  max_dist={float(np.max(d2)):.4f}m")
+            print(
+                f"\nnon-anchor summary: mean_dist={float(np.mean(d2)):.4f}m  max_dist={float(np.max(d2)):.4f}m"
+            )
     else:
         print("\n[debug] No overlapping IDs between cams in the capture window.")
 
@@ -403,9 +433,13 @@ def main() -> int:
     print("\n=== VERDICT (heuristics) ===")
     # 1) Intrinsics mismatch
     if (iw0 and ih0) and (sz0 != (iw0, ih0)):
-        print("cam0: INTRINSICS SIZE MISMATCH -> calibrate intrinsics at the exact runtime resolution, or force camera to that resolution.")
+        print(
+            "cam0: INTRINSICS SIZE MISMATCH -> calibrate intrinsics at the exact runtime resolution, or force camera to that resolution."
+        )
     if (iw1 and ih1) and (sz1 != (iw1, ih1)):
-        print("cam1: INTRINSICS SIZE MISMATCH -> calibrate intrinsics at the exact runtime resolution, or force camera to that resolution.")
+        print(
+            "cam1: INTRINSICS SIZE MISMATCH -> calibrate intrinsics at the exact runtime resolution, or force camera to that resolution."
+        )
 
     # 2) Double-undistort suspicion: undistort2 beats undistort by a lot
     def _find(name: str) -> Optional[PipelineResult]:
@@ -416,30 +450,54 @@ def main() -> int:
 
     r0_u = _find("cam0/undistort->H0")
     r0_u2 = _find("cam0/undistort2->H0")
-    if r0_u and r0_u2 and (r0_u2.in_bounds_pct > (r0_u.in_bounds_pct + 15.0)) and (r0_u2.explode_pct < r0_u.explode_pct):
-        print("cam0: looks like DOUBLE-UNDISTORT in your normal pipeline (undistort twice performs much better).")
+    if (
+        r0_u
+        and r0_u2
+        and (r0_u2.in_bounds_pct > (r0_u.in_bounds_pct + 15.0))
+        and (r0_u2.explode_pct < r0_u.explode_pct)
+    ):
+        print(
+            "cam0: looks like DOUBLE-UNDISTORT in your normal pipeline (undistort twice performs much better)."
+        )
     r1_u = _find("cam1/undistort->H1")
     r1_u2 = _find("cam1/undistort2->H1")
-    if r1_u and r1_u2 and (r1_u2.in_bounds_pct > (r1_u.in_bounds_pct + 15.0)) and (r1_u2.explode_pct < r1_u.explode_pct):
+    if (
+        r1_u
+        and r1_u2
+        and (r1_u2.in_bounds_pct > (r1_u.in_bounds_pct + 15.0))
+        and (r1_u2.explode_pct < r1_u.explode_pct)
+    ):
         print("cam1: looks like DOUBLE-UNDISTORT in your normal pipeline.")
 
     # 3) Intrinsics swapped suspicion
     r0_swap = _find("cam0/undistort(cam1K)->H0")
     r1_swap = _find("cam1/undistort(cam0K)->H1")
     if r0_u and r0_swap and (r0_swap.in_bounds_pct > (r0_u.in_bounds_pct + 20.0)):
-        print("cam0: using cam1 intrinsics improves a lot -> your intrinsics files are likely swapped/mislabeled.")
+        print(
+            "cam0: using cam1 intrinsics improves a lot -> your intrinsics files are likely swapped/mislabeled."
+        )
     if r1_u and r1_swap and (r1_swap.in_bounds_pct > (r1_u.in_bounds_pct + 20.0)):
-        print("cam1: using cam0 intrinsics improves a lot -> your intrinsics files are likely swapped/mislabeled.")
+        print(
+            "cam1: using cam0 intrinsics improves a lot -> your intrinsics files are likely swapped/mislabeled."
+        )
 
     # 4) Ill-conditioned homography suspicion: anchors OK but non-anchor exploding
     # If anchors RMSE ~0 but explode% high or in-bounds low.
     for cam in ("cam0", "cam1"):
-        rr = _find(f"{cam}/undistort->{ 'H0' if cam=='cam0' else 'H1' }")
-        if rr and np.isfinite(rr.anchor_rmse_m) and rr.anchor_rmse_m < 1e-3 and (rr.explode_pct > 5.0 or rr.in_bounds_pct < 60.0):
-            print(f"{cam}: anchors fit perfectly but other points blow up -> homography is ill-conditioned OR undistortion is wrong for most of the image.")
+        rr = _find(f"{cam}/undistort->{'H0' if cam == 'cam0' else 'H1'}")
+        if (
+            rr
+            and np.isfinite(rr.anchor_rmse_m)
+            and rr.anchor_rmse_m < 1e-3
+            and (rr.explode_pct > 5.0 or rr.in_bounds_pct < 60.0)
+        ):
+            print(
+                f"{cam}: anchors fit perfectly but other points blow up -> homography is ill-conditioned OR undistortion is wrong for most of the image."
+            )
 
     print("\nDone.")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

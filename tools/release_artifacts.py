@@ -94,9 +94,7 @@ def _validate_artifact_names(names: Iterable[str], version: str) -> tuple[str, s
     _validate_version(version)
     names_tuple = tuple(sorted(names))
     wheel_names = [name for name in names_tuple if name.endswith(".whl")]
-    sdist_names = [
-        name for name in names_tuple if name.endswith((".tar.gz", ".zip"))
-    ]
+    sdist_names = [name for name in names_tuple if name.endswith((".tar.gz", ".zip"))]
     if len(names_tuple) != 2 or len(wheel_names) != 1 or len(sdist_names) != 1:
         raise ReleaseArtifactError(
             "Expected exactly one wheel and one source distribution; found: "
@@ -128,9 +126,7 @@ def release_artifacts(dist_dir: Path, version: str) -> tuple[Path, Path]:
         raise ReleaseArtifactError(
             "Distribution directory contains non-regular entries: " + ", ".join(invalid)
         )
-    wheel_name, sdist_name = _validate_artifact_names(
-        (path.name for path in entries), version
-    )
+    wheel_name, sdist_name = _validate_artifact_names((path.name for path in entries), version)
     return dist_dir / wheel_name, dist_dir / sdist_name
 
 
@@ -151,9 +147,7 @@ def create_manifest(dist_dir: Path, manifest_path: Path, version: str) -> dict[s
     }
     try:
         with manifest_path.open("x", encoding="utf-8") as manifest:
-            manifest.write(
-                "".join(f"{digest}  {name}\n" for name, digest in digests.items())
-            )
+            manifest.write("".join(f"{digest}  {name}\n" for name, digest in digests.items()))
     except OSError as exc:
         raise ReleaseArtifactError(f"Cannot create release manifest: {exc}") from exc
     return digests
@@ -183,14 +177,10 @@ def verify_manifest(dist_dir: Path, manifest_path: Path, version: str) -> dict[s
 
     wheel, sdist = release_artifacts(dist_dir, version)
     expected = read_manifest(manifest_path, version)
-    actual = {
-        path.name: sha256_file(path) for path in sorted((wheel, sdist), key=lambda p: p.name)
-    }
+    actual = {path.name: sha256_file(path) for path in sorted((wheel, sdist), key=lambda p: p.name)}
     if actual != expected:
         raise ReleaseArtifactError(
-            "Release artifact SHA-256 mismatch\n"
-            f"expected: {expected}\n"
-            f"actual:   {actual}"
+            f"Release artifact SHA-256 mismatch\nexpected: {expected}\nactual:   {actual}"
         )
     return actual
 
@@ -202,8 +192,7 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
     expected_root = f"{PROJECT_NAME}-{version}"
     if sdist_path.name != f"{expected_root}.tar.gz":
         raise ReleaseArtifactError(
-            "Only the canonical tar.gz source distribution is accepted: "
-            f"{sdist_path.name}"
+            f"Only the canonical tar.gz source distribution is accepted: {sdist_path.name}"
         )
 
     relative_files: set[str] = set()
@@ -212,9 +201,7 @@ def inspect_sdist(sdist_path: Path, version: str) -> None:
             for member in archive.getmembers():
                 member_path = PurePosixPath(member.name)
                 if member_path.is_absolute() or ".." in member_path.parts:
-                    raise ReleaseArtifactError(
-                        f"Unsafe source-distribution path: {member.name!r}"
-                    )
+                    raise ReleaseArtifactError(f"Unsafe source-distribution path: {member.name!r}")
                 if not member_path.parts or member_path.parts[0] != expected_root:
                     raise ReleaseArtifactError(
                         f"Unexpected source-distribution root: {member.name!r}"

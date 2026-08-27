@@ -2512,6 +2512,22 @@ def test_capture_validate_check_and_exact_source_census(
     )
 
 
+def test_unknown_help_identity_is_rejected(captured_value: dict[str, Any]) -> None:
+    candidate = copy.deepcopy(captured_value)
+    row = next(
+        item
+        for item in candidate["commands_and_help"]["entries"]
+        if item["command"] == "metriplane-run"
+    )
+    row["stdout"] = "unknown help identity\n"
+    row["stdout_sha256"] = _sha(row["stdout"].encode("utf-8"))
+
+    with pytest.raises(tool.SnapshotError) as raised:
+        tool._validate_snapshot_invariants(candidate)
+
+    assert raised.value.code == "SNAPSHOT_INVARIANT_FAILED"
+
+
 @obligation("MP2-000.OBL.CAPTURE_VALID")
 def test_check_validates_frozen_help_without_live_console_execution(
     _obligation: str,

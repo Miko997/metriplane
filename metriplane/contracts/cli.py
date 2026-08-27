@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "validate":
         from metriplane.contracts.validate import validate_contract
+
         ok, msgs = validate_contract(args.path)
         for m in msgs:
             print(m)
@@ -39,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     return 1
 
 
-def _test(args) -> int:
+def _test(args: argparse.Namespace) -> int:
     from metriplane.contracts.evaluate import evaluate_contract_session
     from metriplane.contracts.expectations import compare, load_expectations
     from metriplane.contracts.load import load_spatial_contract
@@ -62,21 +63,29 @@ def _test(args) -> int:
     if args.expect:
         expected = load_expectations(args.expect)
         res = compare(events, expected)
-        result_obj.update({
-            "expected_incidents": res.expected_incidents,
-            "false_positives": res.false_positives,
-            "missed": res.missed,
-            "pass": res.ok,
-        })
-        print(f"contract_id={package.contract_id} schema={package.schema_version} "
-              f"rules={len(package.rules)} result={'PASS' if res.ok else 'FAIL'}")
-        print(f"expected_incidents={res.expected_incidents} "
-              f"observed_incidents={res.observed_incidents} "
-              f"false_positives={res.false_positives} missed={res.missed}")
+        result_obj.update(
+            {
+                "expected_incidents": res.expected_incidents,
+                "false_positives": res.false_positives,
+                "missed": res.missed,
+                "pass": res.ok,
+            }
+        )
+        print(
+            f"contract_id={package.contract_id} schema={package.schema_version} "
+            f"rules={len(package.rules)} result={'PASS' if res.ok else 'FAIL'}"
+        )
+        print(
+            f"expected_incidents={res.expected_incidents} "
+            f"observed_incidents={res.observed_incidents} "
+            f"false_positives={res.false_positives} missed={res.missed}"
+        )
         rc = 0 if res.ok else 1
     else:
-        print(f"contract_id={package.contract_id} rules={len(package.rules)} "
-              f"observed_events={len(events)} observed_incidents={len(incidents)}")
+        print(
+            f"contract_id={package.contract_id} rules={len(package.rules)} "
+            f"observed_events={len(events)} observed_incidents={len(incidents)}"
+        )
         result_obj["pass"] = True
         rc = 0
 

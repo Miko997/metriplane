@@ -21,7 +21,9 @@ def _parse_bounds(s: str) -> tuple[float, float, float, float]:
     return (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
 
 
-def _world_to_px(x: float, y: float, *, xmin: float, xmax: float, ymin: float, ymax: float, scale: float) -> tuple[int, int]:
+def _world_to_px(
+    x: float, y: float, *, xmin: float, xmax: float, ymin: float, ymax: float, scale: float
+) -> tuple[int, int]:
     px = int((x - xmin) * scale)
     py = int((ymax - y) * scale)  # invert y for topdown
     return (px, py)
@@ -31,7 +33,15 @@ def _blank(h: int, w: int) -> np.ndarray:
     return np.zeros((h, w, 3), dtype=np.uint8)
 
 
-def _draw_grid(img: np.ndarray, xmin: float, xmax: float, ymin: float, ymax: float, scale: float, step_m: float = 0.1) -> None:
+def _draw_grid(
+    img: np.ndarray,
+    xmin: float,
+    xmax: float,
+    ymin: float,
+    ymax: float,
+    scale: float,
+    step_m: float = 0.1,
+) -> None:
     h, w = img.shape[:2]
     x = xmin
     while x <= xmax + 1e-9:
@@ -86,7 +96,9 @@ def _draw_cam_overlay(img: np.ndarray, cam_payload: Dict[str, Any], label: str) 
             if isinstance(px, (list, tuple)) and len(px) >= 2:
                 cx, cy = int(float(px[0])), int(float(px[1]))
                 cv2.circle(vis, (cx, cy), 6, (0, 255, 0), -1)
-                cv2.putText(vis, oid, (cx + 8, cy - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                cv2.putText(
+                    vis, oid, (cx + 8, cy - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+                )
     return vis
 
 
@@ -99,7 +111,9 @@ def _topdown_canvas(bounds: Tuple[float, float, float, float], scale: float) -> 
     return img
 
 
-def _draw_topdown(top: np.ndarray, frame: Dict[str, Any], bounds: Tuple[float, float, float, float], scale: float) -> np.ndarray:
+def _draw_topdown(
+    top: np.ndarray, frame: Dict[str, Any], bounds: Tuple[float, float, float, float], scale: float
+) -> np.ndarray:
     xmin, xmax, ymin, ymax = bounds
     vis = top.copy()
 
@@ -119,7 +133,9 @@ def _draw_topdown(top: np.ndarray, frame: Dict[str, Any], bounds: Tuple[float, f
             px, py = _world_to_px(x, y, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, scale=scale)
             if 0 <= px < vis.shape[1] and 0 <= py < vis.shape[0]:
                 cv2.circle(vis, (px, py), 6, (0, 200, 255), -1)  # yellow-ish
-                cv2.putText(vis, oid, (px + 7, py - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+                cv2.putText(
+                    vis, oid, (px + 7, py - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2
+                )
 
     # HUD (fps-ish)
     cv2.putText(vis, "TOPDOWN (fused)", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
@@ -168,7 +184,15 @@ async def main_async(url: str, bounds: Tuple[float, float, float, float], scale:
                 fps = None
 
             if fps is not None:
-                cv2.putText(top_vis, f"viewer_fps={fps:.1f}", (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
+                cv2.putText(
+                    top_vis,
+                    f"viewer_fps={fps:.1f}",
+                    (10, 55),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),
+                    2,
+                )
 
             cv2.imshow("cam0", cam0_vis)
             cv2.imshow("cam1", cam1_vis)
@@ -183,7 +207,9 @@ async def main_async(url: str, bounds: Tuple[float, float, float, float], scale:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="WS viewer: cam0/cam1 diagnostics + fused topdown (no camera access).")
+    ap = argparse.ArgumentParser(
+        description="WS viewer: cam0/cam1 diagnostics + fused topdown (no camera access)."
+    )
     ap.add_argument("--url", default="ws://127.0.0.1:8765")
     ap.add_argument("--bounds", default="-0.05,1.15,-0.05,0.45")
     ap.add_argument("--scale", type=float, default=700.0)

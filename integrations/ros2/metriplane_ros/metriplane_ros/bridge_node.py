@@ -12,6 +12,7 @@ Topics:
     /metriplane/alerts        std_msgs/String  (one msg per alert)
     /metriplane/incidents     std_msgs/String  (one msg per incident)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,24 +38,20 @@ def _build_node():  # pragma: no cover - requires rclpy
             super().__init__("metriplane_bridge")
             self.ws_url = self.declare_parameter("ws_url", "ws://127.0.0.1:8765").value
             self.frame_topic = self.declare_parameter(
-                "frame_topic", "/metriplane/frame_state").value
-            self.alerts_topic = self.declare_parameter(
-                "alerts_topic", "/metriplane/alerts").value
+                "frame_topic", "/metriplane/frame_state"
+            ).value
+            self.alerts_topic = self.declare_parameter("alerts_topic", "/metriplane/alerts").value
             self.incidents_topic = self.declare_parameter(
-                "incidents_topic", "/metriplane/incidents").value
-            self.reconnect_s = float(
-                self.declare_parameter("reconnect_s", 2.0).value)
-            self.publish_full_frame = bool(
-                self.declare_parameter("publish_full_frame", True).value)
-            self.publish_alerts = bool(
-                self.declare_parameter("publish_alerts", True).value)
-            self.publish_incidents = bool(
-                self.declare_parameter("publish_incidents", True).value)
+                "incidents_topic", "/metriplane/incidents"
+            ).value
+            self.reconnect_s = float(self.declare_parameter("reconnect_s", 2.0).value)
+            self.publish_full_frame = bool(self.declare_parameter("publish_full_frame", True).value)
+            self.publish_alerts = bool(self.declare_parameter("publish_alerts", True).value)
+            self.publish_incidents = bool(self.declare_parameter("publish_incidents", True).value)
 
             self.frame_pub = self.create_publisher(String, self.frame_topic, 10)
             self.alert_pub = self.create_publisher(String, self.alerts_topic, 10)
-            self.incident_pub = self.create_publisher(
-                String, self.incidents_topic, 10)
+            self.incident_pub = self.create_publisher(String, self.incidents_topic, 10)
 
             self._thread = threading.Thread(target=self._run_async_loop, daemon=True)
             self._thread.start()
@@ -64,6 +61,7 @@ def _build_node():  # pragma: no cover - requires rclpy
 
         async def _connect_loop(self) -> None:
             import websockets  # lazy
+
             while rclpy.ok():
                 try:
                     async with websockets.connect(self.ws_url) as ws:
@@ -110,6 +108,7 @@ def main(args=None) -> None:  # pragma: no cover - requires rclpy
         return
 
     import rclpy
+
     rclpy.init(args=args)
     node = _build_node()
     try:

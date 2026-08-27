@@ -24,10 +24,19 @@ def test_validate_returns_nonzero_for_invalid(tmp_path):
 
 
 def test_test_command_passes_against_expected(capsys):
-    rc = contracts_main([
-        "test", "--contract", CONTRACT, "--input", FIXTURE,
-        "--expect", EXPECTED, "--objects", OBJECTS,
-    ])
+    rc = contracts_main(
+        [
+            "test",
+            "--contract",
+            CONTRACT,
+            "--input",
+            FIXTURE,
+            "--expect",
+            EXPECTED,
+            "--objects",
+            OBJECTS,
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "result=PASS" in out
@@ -37,10 +46,21 @@ def test_test_command_passes_against_expected(capsys):
 
 def test_test_command_writes_json_output(tmp_path):
     out_path = tmp_path / "result.json"
-    rc = contracts_main([
-        "test", "--contract", CONTRACT, "--input", FIXTURE,
-        "--expect", EXPECTED, "--objects", OBJECTS, "--output", str(out_path),
-    ])
+    rc = contracts_main(
+        [
+            "test",
+            "--contract",
+            CONTRACT,
+            "--input",
+            FIXTURE,
+            "--expect",
+            EXPECTED,
+            "--objects",
+            OBJECTS,
+            "--output",
+            str(out_path),
+        ]
+    )
     assert rc == 0
     data = json.loads(out_path.read_text())
     assert data["phase"] == 16
@@ -52,9 +72,18 @@ def test_test_command_writes_json_output(tmp_path):
 def test_test_command_detects_mismatch(tmp_path, capsys):
     wrong = tmp_path / "wrong.yaml"
     wrong.write_text("expected_incidents: 1\nrules:\n  - nonexistent_rule\n")
-    rc = contracts_main([
-        "test", "--contract", CONTRACT, "--input", FIXTURE,
-        "--expect", str(wrong), "--objects", OBJECTS,
-    ])
+    rc = contracts_main(
+        [
+            "test",
+            "--contract",
+            CONTRACT,
+            "--input",
+            FIXTURE,
+            "--expect",
+            str(wrong),
+            "--objects",
+            OBJECTS,
+        ]
+    )
     assert rc == 1
     assert "result=FAIL" in capsys.readouterr().out

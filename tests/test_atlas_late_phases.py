@@ -45,11 +45,18 @@ def _after_session_with_tool_ready(path: Path) -> Path:
             rows.append(data)
             continue
         if data["frame_id"] in {3, 4}:
-            tool = {"id": "12", "pos_world": [2.6, 0.7, 0.0], "zone": "station_a_work", "confidence": 0.97}
+            tool = {
+                "id": "12",
+                "pos_world": [2.6, 0.7, 0.0],
+                "zone": "station_a_work",
+                "confidence": 0.97,
+            }
             data["objects"].append(tool)
             data["fused"].append(tool)
         rows.append(data)
-    out.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+    out.write_text(
+        "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n", encoding="utf-8"
+    )
     return out
 
 
@@ -89,7 +96,11 @@ def test_late_phase_default_run_artifacts(tmp_path: Path) -> None:
     assert privacy["video_free"] is True
     assert privacy["biometric_free"] is True
 
-    assert (run_dir / "connectors" / "events.csv").read_text(encoding="utf-8").startswith("run_id,event_id")
+    assert (
+        (run_dir / "connectors" / "events.csv")
+        .read_text(encoding="utf-8")
+        .startswith("run_id,event_id")
+    )
     rest = json.loads((run_dir / "connectors" / "rest_snapshot.json").read_text(encoding="utf-8"))
     assert "/events" in rest["endpoints"]
     for statement in ATLAS_LIMITATION_STATEMENTS:
@@ -161,7 +172,10 @@ def test_multicell_privacy_pilot_and_improvement(tmp_path: Path) -> None:
     run_atlas(ASSEMBLY_SESSION, pack_b, tmp_path / "cell_b", run_id="atlas_cell_b")
 
     comparison = compare_cells(tmp_path, tmp_path / "multicell.json", tmp_path / "multicell.md")
-    assert {cell["cell_id"] for cell in comparison["cells"]} == {"cell_assembly_a", "cell_assembly_b"}
+    assert {cell["cell_id"] for cell in comparison["cells"]} == {
+        "cell_assembly_a",
+        "cell_assembly_b",
+    }
 
     report = privacy_report(before, tmp_path / "privacy.json")
     assert report["video_free"] is True
@@ -192,9 +206,36 @@ def test_late_phase_cli_commands(tmp_path: Path, capsys) -> None:  # type: ignor
     assert "twinverify_replay.usda" in capsys.readouterr().out
     assert metriplane_main(["atlas", "connectors", "export", "--run-dir", str(run_dir)]) == 0
     assert "events.csv" in capsys.readouterr().out
-    assert metriplane_main(["atlas", "query", "saved", "--run-dir", str(run_dir), "--query-id", "delayed_steps", "--json"]) == 0
+    assert (
+        metriplane_main(
+            [
+                "atlas",
+                "query",
+                "saved",
+                "--run-dir",
+                str(run_dir),
+                "--query-id",
+                "delayed_steps",
+                "--json",
+            ]
+        )
+        == 0
+    )
     assert "step_delayed" in capsys.readouterr().out
-    assert metriplane_main(["atlas", "privacy", "report", "--run-dir", str(run_dir), "--out", str(tmp_path / "privacy_cli.json")]) == 0
+    assert (
+        metriplane_main(
+            [
+                "atlas",
+                "privacy",
+                "report",
+                "--run-dir",
+                str(run_dir),
+                "--out",
+                str(tmp_path / "privacy_cli.json"),
+            ]
+        )
+        == 0
+    )
     assert "video_free" in capsys.readouterr().out
     assert metriplane_main(["atlas", "pilot", "kit", "--out", str(tmp_path / "pilot_cli")]) == 0
     assert "pilot_checklist" in capsys.readouterr().out

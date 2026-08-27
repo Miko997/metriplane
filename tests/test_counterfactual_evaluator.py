@@ -37,13 +37,16 @@ def test_threshold_sweep_changes_detection(bundle_copy):
     report = CounterfactualEvaluator().evaluate(bundle_copy, transforms)
     presence = [c.original_incident_present for c in report.cases]
     # low thresholds prevent, high thresholds keep the incident
-    assert presence[0] is False   # 0.1
-    assert presence[-1] is True   # 0.6
+    assert presence[0] is False  # 0.1
+    assert presence[-1] is True  # 0.6
 
 
 def test_speed_scale_prevents_incident(bundle_copy):
-    t = [CounterfactualTransform(type="object_speed_scale",
-                                 target="human_proxy_01", params={"factor": 0.5})]
+    t = [
+        CounterfactualTransform(
+            type="object_speed_scale", target="human_proxy_01", params={"factor": 0.5}
+        )
+    ]
     report = CounterfactualEvaluator().evaluate(bundle_copy, t)
     assert report.cases[0].original_incident_present is False
 
@@ -70,9 +73,12 @@ def test_max_cases_enforced(bundle_copy):
 def test_original_bundle_not_mutated(bundle_copy):
     session = bundle_copy / "session_excerpt.jsonl"
     before = _digest(session)
-    t = [CounterfactualTransform(type="object_remove", target="human_proxy_01"),
-         CounterfactualTransform(type="object_speed_scale",
-                                 target="human_proxy_01", params={"factor": 0.5})]
+    t = [
+        CounterfactualTransform(type="object_remove", target="human_proxy_01"),
+        CounterfactualTransform(
+            type="object_speed_scale", target="human_proxy_01", params={"factor": 0.5}
+        ),
+    ]
     CounterfactualEvaluator().evaluate(bundle_copy, t)
     assert _digest(session) == before
 
@@ -84,17 +90,21 @@ def test_baseline_must_reproduce(tmp_path, bundle_copy):
     (bundle_copy / "incident.json").write_text(json.dumps(inc))
     with pytest.raises(CounterfactualError):
         CounterfactualEvaluator().evaluate(
-            bundle_copy, [CounterfactualTransform(type="object_remove",
-                                                  target="human_proxy_01")])
+            bundle_copy, [CounterfactualTransform(type="object_remove", target="human_proxy_01")]
+        )
 
 
 def test_cli_end_to_end(bundle_copy, capsys):
-    rc = main_counterfactual([
-        str(bundle_copy),
-        "--sweep-rule", "cart_person_distance.min_distance_m=0.2:0.6:0.2",
-        "--remove-object", "human_proxy_01",
-        "--no-write-reports",
-    ])
+    rc = main_counterfactual(
+        [
+            str(bundle_copy),
+            "--sweep-rule",
+            "cart_person_distance.min_distance_m=0.2:0.6:0.2",
+            "--remove-object",
+            "human_proxy_01",
+            "--no-write-reports",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "PREVENTED" in out
@@ -102,9 +112,13 @@ def test_cli_end_to_end(bundle_copy, capsys):
 
 
 def test_cli_writes_report(bundle_copy):
-    rc = main_counterfactual([
-        str(bundle_copy), "--remove-object", "human_proxy_01",
-    ])
+    rc = main_counterfactual(
+        [
+            str(bundle_copy),
+            "--remove-object",
+            "human_proxy_01",
+        ]
+    )
     assert rc == 0
     data = json.loads((bundle_copy / "counterfactual_report.json").read_text())
     assert data["incident_id"]

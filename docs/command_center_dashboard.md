@@ -57,7 +57,7 @@ Point at a different data file with `?data=...`:
 ## Live mode (no CLI needed for an operator)
 
 `command_center_live.html` talks to the runner's read-only `/operator/*` endpoints and
-auto-refreshes the **latest run** under `~/metriplane-runs` every 5 s — including an
+auto-refreshes the **latest run** under the active platform runs directory every 5 s — including an
 "Ask the operator assistant" box. A non-technical operator never touches the CLI:
 
 ```bash
@@ -69,7 +69,7 @@ python -m http.server 8088 --directory web/dashboard
 ```
 
 To populate a run, click **"Run Sentinel Demo"** in the operator dashboard (an allowlisted
-one-click command) or run `metriplane sentinel run ... --runs-dir ~/metriplane-runs`. A
+one-click command) or run `metriplane sentinel run ...` with an optional explicit `--runs-dir`. A
 Sentinel run now writes a self-describing run dir (`session.jsonl`, `incident.json`,
 `alerts.jsonl`, `objects.yaml`, `sentinel_summary.json`) that the dashboard reads directly.
 
@@ -85,7 +85,7 @@ Sentinel run now writes a self-describing run dir (`session.jsonl`, `incident.js
 | `POST /operator/ask` | grounded assistant answer + citations |
 
 GET endpoints auto-resolve the latest run; POST endpoints accept an optional `run_dir`
-(validated to live under `~/metriplane-runs` or the repo `evidence/` tree — path traversal
+(validated to live under the active platform runs directory or the repo `evidence/` tree — path traversal
 is rejected). The assistant uses **no external LLM**.
 
 ## Status

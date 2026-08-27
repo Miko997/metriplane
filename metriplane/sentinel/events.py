@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -42,7 +42,7 @@ class IncidentRecord(BaseModel):
     evidence: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _valid_timing(self):
+    def _valid_timing(self) -> Self:
         if self.closed_ts is not None and self.closed_ts < self.opened_ts:
             raise ValueError("closed_ts must be greater than or equal to opened_ts")
         if self.duration_s is not None and self.duration_s < 0:
@@ -67,23 +67,31 @@ class OperationalEvent(BaseModel):
 
     @classmethod
     def from_alert(cls, alert: RuleAlert) -> "OperationalEvent":
-        return cls(event_type="alert", ts=alert.ts, run_id=alert.run_id,
-                   payload=alert.model_dump())
+        return cls(event_type="alert", ts=alert.ts, run_id=alert.run_id, payload=alert.model_dump())
 
     @classmethod
     def from_incident_open(cls, inc: IncidentRecord) -> "OperationalEvent":
-        return cls(event_type="incident_open", ts=inc.opened_ts, run_id=inc.run_id,
-                   payload=inc.model_dump())
+        return cls(
+            event_type="incident_open",
+            ts=inc.opened_ts,
+            run_id=inc.run_id,
+            payload=inc.model_dump(),
+        )
 
     @classmethod
     def from_incident_close(cls, inc: IncidentRecord) -> "OperationalEvent":
         assert inc.closed_ts is not None
-        return cls(event_type="incident_close", ts=inc.closed_ts, run_id=inc.run_id,
-                   payload=inc.model_dump())
+        return cls(
+            event_type="incident_close",
+            ts=inc.closed_ts,
+            run_id=inc.run_id,
+            payload=inc.model_dump(),
+        )
 
 
 def write_alerts_jsonl(alerts: list[RuleAlert], path: Any) -> None:
     from pathlib import Path
+
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w") as f:
@@ -93,6 +101,7 @@ def write_alerts_jsonl(alerts: list[RuleAlert], path: Any) -> None:
 
 def read_alerts_jsonl(path: Any) -> list[RuleAlert]:
     from pathlib import Path
+
     result = []
     for line in Path(path).read_text().splitlines():
         line = line.strip()
@@ -104,6 +113,7 @@ def read_alerts_jsonl(path: Any) -> list[RuleAlert]:
 def write_incidents_json(incidents: list[IncidentRecord], path: Any) -> None:
     import json
     from pathlib import Path
+
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps([inc.model_dump() for inc in incidents], indent=2))
@@ -112,5 +122,6 @@ def write_incidents_json(incidents: list[IncidentRecord], path: Any) -> None:
 def read_incidents_json(path: Any) -> list[IncidentRecord]:
     import json
     from pathlib import Path
+
     data = json.loads(Path(path).read_text())
     return [IncidentRecord.model_validate(d) for d in data]

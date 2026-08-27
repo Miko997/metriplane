@@ -10,6 +10,7 @@ Composer / Create). Kept as a separate entry point for discoverability.
 Usage:
     python integrations/omniverse/metriplane_usd_replay.py --run-dir runs/<id> --out scene.usda
 """
+
 from __future__ import annotations
 
 import argparse

@@ -34,8 +34,10 @@ def main_traces(argv: list[str]) -> int:
     if args.cmd == "summarize":
         for s in store.summarize():
             zones = ",".join(s.zones_visited) if s.zones_visited else "-"
-            print(f"{s.object_id}  dur={s.duration_s}s  dist={s.total_distance_m}m"
-                  f"  zones={zones}  gaps={s.gap_count}")
+            print(
+                f"{s.object_id}  dur={s.duration_s}s  dist={s.total_distance_m}m"
+                f"  zones={zones}  gaps={s.gap_count}"
+            )
         return 0
 
     if args.cmd == "export":

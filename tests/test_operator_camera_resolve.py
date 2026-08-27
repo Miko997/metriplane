@@ -12,7 +12,6 @@ _resolve_cv2_index() in operator_api.py performs this conversion.
 These tests verify every supported and unsupported path format.
 """
 
-import pytest
 from metriplane.runner.operator_api import _resolve_cv2_index
 
 
@@ -104,11 +103,13 @@ class TestResolveCv2Index:
 
         _cv2_target = "metriplane.runner.operator_api._check_cv2_available"
         with patch(_cv2_target, return_value=(True, "4.9.0", True)):
-            status, resp = api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "/dev/v4l/by-id/usb-camera-001",
-            })
+            status, resp = api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "/dev/v4l/by-id/usb-camera-001",
+                }
+            )
 
         assert status == 400
         assert "error" in resp
@@ -144,11 +145,13 @@ class TestResolveCv2Index:
 
         _cv2_target = "metriplane.runner.operator_api._check_cv2_available"
         with patch(_cv2_target, return_value=(True, "4.9.0", True)):
-            status, resp = api._calibrate({
-                "profile": "local_test",
-                "cam": "cam0",
-                "camera": "/dev/video0",
-            })
+            status, resp = api._calibrate(
+                {
+                    "profile": "local_test",
+                    "cam": "cam0",
+                    "camera": "/dev/video0",
+                }
+            )
 
         assert status == 200
         # The command passed to executor must use '0', not '/dev/video0'
@@ -156,6 +159,5 @@ class TestResolveCv2Index:
         command = call_args[1]["command"] if call_args[1] else call_args[0][1]
         cam_idx = command.index("--cam")
         assert command[cam_idx + 1] == "0", (
-            f"Expected --cam 0 but got --cam {command[cam_idx + 1]!r}. "
-            f"Full command: {command}"
+            f"Expected --cam 0 but got --cam {command[cam_idx + 1]!r}. Full command: {command}"
         )

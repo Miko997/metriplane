@@ -38,13 +38,24 @@ def load_test_points(path: Path) -> tuple[int, list[tuple[str, float, float]]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="M5: mapping error benchmark (live, interactive).")
 
-    ap.add_argument("--profile", default=None, help="Profile name (defaults to calib/active_profile.yaml)")
-    ap.add_argument("--calib-root", type=Path, default=Path("calib"), help="Calibration root (default: ./calib)")
+    ap.add_argument(
+        "--profile", default=None, help="Profile name (defaults to calib/active_profile.yaml)"
+    )
+    ap.add_argument(
+        "--calib-root", type=Path, default=Path("calib"), help="Calibration root (default: ./calib)"
+    )
 
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--mapping", type=Path, default=None, help="mapping.yaml (overrides profile)")
-    ap.add_argument("--intrinsics", type=Path, default=None, help="Optional camera.yaml (overrides profile camera.yaml)")
-    ap.add_argument("--test-points", type=Path, default=None, help="test_points.yaml (overrides profile)")
+    ap.add_argument(
+        "--intrinsics",
+        type=Path,
+        default=None,
+        help="Optional camera.yaml (overrides profile camera.yaml)",
+    )
+    ap.add_argument(
+        "--test-points", type=Path, default=None, help="test_points.yaml (overrides profile)"
+    )
     ap.add_argument("--out", type=Path, default=Path("benchmarks/out/mapping_error_001.csv"))
     args = ap.parse_args()
 
@@ -80,7 +91,7 @@ def main() -> int:
 
     rows: list[dict[str, Any]] = []
     try:
-        for (name, gx, gy) in points:
+        for name, gx, gy in points:
             print(f"\n[mapping_error] Point '{name}' GT=({gx:.3f},{gy:.3f}) m")
             print("[mapping_error] Place marker and press SPACE...")
 
@@ -147,17 +158,30 @@ def main() -> int:
                     "px_v": cy,
                 }
                 rows.append(row)
-                print(f"[mapping_error] measured=({mx:.3f},{my:.3f}) err={err*100:.2f} cm")
+                print(f"[mapping_error] measured=({mx:.3f},{my:.3f}) err={err * 100:.2f} cm")
                 break
 
     finally:
         cam.close()
         cv2.destroyAllWindows()
 
-    fieldnames = list(rows[0].keys()) if rows else [
-        "ts_unix", "point", "gt_x_m", "gt_y_m", "meas_x_m", "meas_y_m",
-        "err_m", "err_cm", "marker_id", "px_u", "px_v"
-    ]
+    fieldnames = (
+        list(rows[0].keys())
+        if rows
+        else [
+            "ts_unix",
+            "point",
+            "gt_x_m",
+            "gt_y_m",
+            "meas_x_m",
+            "meas_y_m",
+            "err_m",
+            "err_cm",
+            "marker_id",
+            "px_u",
+            "px_v",
+        ]
+    )
     with args.out.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()

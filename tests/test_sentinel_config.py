@@ -20,12 +20,14 @@ def test_from_none_is_disabled():
 
 
 def test_parses_from_dict():
-    cfg = SentinelConfig.from_dict({
-        "enabled": True,
-        "mode": "shadow_auditor",
-        "contracts_file": "c.yaml",
-        "objects_file": "o.yaml",
-    })
+    cfg = SentinelConfig.from_dict(
+        {
+            "enabled": True,
+            "mode": "shadow_auditor",
+            "contracts_file": "c.yaml",
+            "objects_file": "o.yaml",
+        }
+    )
     assert cfg.enabled is True
     assert cfg.contracts_file == "c.yaml"
     assert cfg.objects_file == "o.yaml"

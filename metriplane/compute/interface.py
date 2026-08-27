@@ -99,8 +99,12 @@ def obs_to_lite(obs: Any) -> XYObsLite | None:
     # dict-like
     if isinstance(obs, dict):
         try:
-            x = float(obs.get("x"))
-            y = float(obs.get("y"))
+            x_raw = obs.get("x")
+            y_raw = obs.get("y")
+            if x_raw is None or y_raw is None:
+                return None
+            x = float(x_raw)
+            y = float(y_raw)
         except Exception:
             return None
         conf_raw = obs.get("confidence")

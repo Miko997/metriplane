@@ -3,15 +3,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from metriplane.schema import ObjectStateModel
 from metriplane.sentinel.config import SentinelConfig
-from metriplane.sentinel.events import RuleAlert
+from metriplane.sentinel.events import IncidentRecord, RuleAlert
 from metriplane.sentinel.incidents import build_incidents
 from metriplane.sentinel.status import SentinelModeStatus
+
+if TYPE_CHECKING:
+    from metriplane.camera_trust.analyzer import CameraTrustAnalyzer
+    from metriplane.contracts.engine import SpatialContractEngine
+    from metriplane.contracts.models import SpatialContractPackage
+    from metriplane.forecasting.engine import ForecastEngine
+    from metriplane.sentinel.registry import ObjectRegistryConfig
 
 
 @dataclass
@@ -35,19 +42,20 @@ class SentinelRuntime:
     shutdown. It never controls anything: control_enabled is always False.
     """
 
-    def __init__(self, config: SentinelConfig, run_dir: str | Path | None = None,
-                 run_id: str | None = None):
+    def __init__(
+        self, config: SentinelConfig, run_dir: str | Path | None = None, run_id: str | None = None
+    ):
         self.config = config
         self.run_dir = Path(run_dir) if run_dir else None
         self.run_id = run_id
         self.health = "OK"
-        self._engine = None
-        self._registry = None
+        self._engine: SpatialContractEngine | None = None
+        self._registry: ObjectRegistryConfig | None = None
         self._contract_id: str | None = None
-        self._package = None
-        self._forecast_engine = None
+        self._package: SpatialContractPackage | None = None
+        self._forecast_engine: ForecastEngine | None = None
         self._forecasts_total = 0
-        self._camera_trust = None
+        self._camera_trust: CameraTrustAnalyzer | None = None
         self._alerts: list[RuleAlert] = []
         self._objects_seen: set[str] = set()
         self._frames = 0
@@ -62,8 +70,11 @@ class SentinelRuntime:
         from metriplane.contracts.load import ContractLoadError, load_spatial_contract
         from metriplane.sentinel.registry import load_registry
 
+        contracts_file = self.config.contracts_file
+        if contracts_file is None:
+            return
         try:
-            package = load_spatial_contract(self.config.contracts_file)
+            package = load_spatial_contract(contracts_file)
         except ContractLoadError as e:
             if self.config.fail_fast_on_contract_error:
                 raise SentinelError(str(e)) from e
@@ -89,6 +100,7 @@ class SentinelRuntime:
         if self.config.zones_file:
             try:
                 from metriplane.zones import load_zones
+
                 zone_map = load_zones(Path(self.config.zones_file))
             except Exception:
                 self.health = "DEGRADED"
@@ -105,21 +117,28 @@ class SentinelRuntime:
         )
 
     @classmethod
-    def from_config(cls, sentinel_dict: dict[str, Any] | None,
-                    run_dir: str | Path | None = None,
-                    run_id: str | None = None) -> "SentinelRuntime":
+    def from_config(
+        cls,
+        sentinel_dict: dict[str, Any] | None,
+        run_dir: str | Path | None = None,
+        run_id: str | None = None,
+    ) -> "SentinelRuntime":
         return cls(SentinelConfig.from_dict(sentinel_dict), run_dir, run_id)
 
-    def update(self, ts: float, frame_id: int,
-               objects: list[ObjectStateModel], frame: Any = None) -> SentinelUpdate:
+    def update(
+        self, ts: float, frame_id: int, objects: list[ObjectStateModel], frame: Any = None
+    ) -> SentinelUpdate:
         self._frames += 1
         # Camera trust: analyze the full frame when it carries per-camera observations.
         if frame is not None and getattr(frame, "raw_per_camera", None):
             try:
-                if self._camera_trust is None:
+                camera_trust = self._camera_trust
+                if camera_trust is None:
                     from metriplane.camera_trust.analyzer import CameraTrustAnalyzer
-                    self._camera_trust = CameraTrustAnalyzer()
-                self._camera_trust.update(frame)
+
+                    camera_trust = CameraTrustAnalyzer()
+                    self._camera_trust = camera_trust
+                camera_trust.update(frame)
             except Exception:
                 self.health = "DEGRADED"
         frame_alerts: list[RuleAlert] = []
@@ -144,11 +163,13 @@ class SentinelRuntime:
             self._objects_seen.add(str(obj.id))
         incidents = build_incidents(self._alerts)
         return SentinelUpdate(
-            ts=ts, frame_id=frame_id, alerts=frame_alerts,
+            ts=ts,
+            frame_id=frame_id,
+            alerts=frame_alerts,
             open_incident_count=len(incidents),
         )
 
-    def incidents(self):
+    def incidents(self) -> list[IncidentRecord]:
         return build_incidents(self._alerts)
 
     def status(self) -> SentinelModeStatus:
@@ -165,8 +186,7 @@ class SentinelRuntime:
             risk_forecasts_enabled=self._forecast_engine is not None,
             last_event_ts=self._last_event_ts,
             health=self.health,
-            details={"frames_processed": self._frames,
-                     "forecasts_total": self._forecasts_total},
+            details={"frames_processed": self._frames, "forecasts_total": self._forecasts_total},
         )
 
     def summary(self) -> dict[str, Any]:
@@ -192,6 +212,7 @@ class SentinelRuntime:
             return
         try:
             from metriplane.fleet.agent import FleetAgent
+
             status = self.status()
             agent = FleetAgent.from_config_dict(
                 self.config.fleet,
@@ -218,6 +239,7 @@ class SentinelRuntime:
                 write_alerts_jsonl,
                 write_incidents_json,
             )
+
             self.run_dir.mkdir(parents=True, exist_ok=True)
             write_incidents_json(self.incidents(), self.run_dir / "incident.json")
             write_alerts_jsonl(self._alerts, self.run_dir / "alerts.jsonl")
@@ -232,6 +254,7 @@ class SentinelRuntime:
             if not report.camera_scores:
                 return
             from metriplane.camera_trust.export import export_camera_trust_report
+
             self.run_dir.mkdir(parents=True, exist_ok=True)
             export_camera_trust_report(self.run_dir / "camera_trust.json", report)
         except Exception:
@@ -244,6 +267,7 @@ class SentinelRuntime:
         if not (self.config.export_summary and self.run_dir):
             return None
         import json
+
         self.run_dir.mkdir(parents=True, exist_ok=True)
         out = self.run_dir / "sentinel_summary.json"
         out.write_text(json.dumps(self.summary(), indent=2))

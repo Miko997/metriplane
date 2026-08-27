@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 
+from metriplane.sentinel.events import IncidentRecord, RuleAlert
+
 
 def main_incidents(argv: list[str]) -> int:
     p = argparse.ArgumentParser("metriplane incidents")
@@ -51,7 +53,7 @@ def main_incidents(argv: list[str]) -> int:
     return 1
 
 
-def _detect(args):
+def _detect(args: argparse.Namespace) -> tuple[list[RuleAlert], list[IncidentRecord]]:
     from metriplane.sentinel.engine import evaluate_session
     from metriplane.sentinel.incidents import build_incidents
     from metriplane.sentinel.registry import load_registry
@@ -64,7 +66,7 @@ def _detect(args):
     return alerts, incidents
 
 
-def _run(args) -> int:
+def _run(args: argparse.Namespace) -> int:
     from metriplane.sentinel.events import write_incidents_json
 
     _, incidents = _detect(args)
@@ -73,22 +75,26 @@ def _run(args) -> int:
         print(f"Wrote {len(incidents)} incidents to {args.out}")
     else:
         for inc in incidents:
-            print(f"{inc.incident_id}  {inc.rule_id}  {inc.severity}  "
-                  f"dur={inc.duration_s}s  {inc.summary}")
+            print(
+                f"{inc.incident_id}  {inc.rule_id}  {inc.severity}  "
+                f"dur={inc.duration_s}s  {inc.summary}"
+            )
     return 0
 
 
-def _list(args) -> int:
+def _list(args: argparse.Namespace) -> int:
     from metriplane.sentinel.events import read_incidents_json
 
     incidents = read_incidents_json(args.incidents)
     for inc in incidents:
-        print(f"{inc.incident_id}  {inc.rule_id}  {inc.severity}  "
-              f"dur={inc.duration_s}s  objects={','.join(inc.object_ids)}")
+        print(
+            f"{inc.incident_id}  {inc.rule_id}  {inc.severity}  "
+            f"dur={inc.duration_s}s  objects={','.join(inc.object_ids)}"
+        )
     return 0
 
 
-def _show(args) -> int:
+def _show(args: argparse.Namespace) -> int:
     from metriplane.sentinel.events import read_incidents_json
 
     incidents = {i.incident_id: i for i in read_incidents_json(args.incidents)}
@@ -110,7 +116,7 @@ def _show(args) -> int:
     return 0
 
 
-def _bundle(args) -> int:
+def _bundle(args: argparse.Namespace) -> int:
     from metriplane.sentinel.bundles import create_bundle
 
     alerts, incidents = _detect(args)
@@ -134,7 +140,7 @@ def _bundle(args) -> int:
     return 0
 
 
-def _verify(args) -> int:
+def _verify(args: argparse.Namespace) -> int:
     from metriplane.sentinel.bundles import verify_bundle
 
     ok, messages = verify_bundle(args.bundle_dir)

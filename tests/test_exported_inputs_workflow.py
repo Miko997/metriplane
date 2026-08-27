@@ -9,9 +9,7 @@ from pathlib import Path
 from metriplane.cli import main as metriplane_main
 
 
-def test_exported_inputs_complete_own_data_command_path(
-    tmp_path: Path, capsys
-) -> None:
+def test_exported_inputs_complete_own_data_command_path(tmp_path: Path, capsys) -> None:
     inputs = tmp_path / "my-inputs"
     run_dir = tmp_path / "my-run"
     session = inputs / "session.jsonl"

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 """Runner-safe cleanup check for the localhost Settings page."""
+
 from __future__ import annotations
 
 import os

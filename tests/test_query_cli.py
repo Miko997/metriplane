@@ -17,14 +17,25 @@ CONFIG_RULES = "configs/rules.example.yaml"
 
 def make_frame(ts, frame_id, objects, run_id="query_test"):
     objs = [
-        {"id": str(o["id"]), "pos_world": o.get("pos"),
-         "vel_world": o.get("vel"), "zone": o.get("zone")}
+        {
+            "id": str(o["id"]),
+            "pos_world": o.get("pos"),
+            "vel_world": o.get("vel"),
+            "zone": o.get("zone"),
+        }
         for o in objects
     ]
-    return json.dumps({
-        "schema_version": "1.0", "source_backend": "dummy", "run_id": run_id,
-        "ts": ts, "frame_id": frame_id, "objects": objs, "events": [],
-    })
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "source_backend": "dummy",
+            "run_id": run_id,
+            "ts": ts,
+            "frame_id": frame_id,
+            "objects": objs,
+            "events": [],
+        }
+    )
 
 
 @pytest.fixture
@@ -42,10 +53,19 @@ def session(tmp_path):
 @pytest.fixture
 def incidents_json(tmp_path, session):
     out = tmp_path / "incidents.json"
-    rc = main_incidents([
-        "run", "--session", str(session), "--rules", CONFIG_RULES,
-        "--objects", CONFIG_OBJECTS, "--out", str(out),
-    ])
+    rc = main_incidents(
+        [
+            "run",
+            "--session",
+            str(session),
+            "--rules",
+            CONFIG_RULES,
+            "--objects",
+            CONFIG_OBJECTS,
+            "--out",
+            str(out),
+        ]
+    )
     assert rc == 0
     return out
 
@@ -53,10 +73,19 @@ def incidents_json(tmp_path, session):
 @pytest.fixture
 def alerts_jsonl(tmp_path, session):
     out = tmp_path / "alerts.jsonl"
-    rc = main_rules([
-        "run", "--session", str(session), "--rules", CONFIG_RULES,
-        "--objects", CONFIG_OBJECTS, "--out", str(out),
-    ])
+    rc = main_rules(
+        [
+            "run",
+            "--session",
+            str(session),
+            "--rules",
+            CONFIG_RULES,
+            "--objects",
+            CONFIG_OBJECTS,
+            "--out",
+            str(out),
+        ]
+    )
     assert rc == 0
     return out
 
@@ -97,62 +126,81 @@ def test_incidents_show_not_found(incidents_json, capsys):
 
 
 def test_query_incidents_filter_by_severity(incidents_json, capsys):
-    rc = main_query(["incidents", "--incidents", str(incidents_json),
-                     "--severity", "warning"])
+    rc = main_query(["incidents", "--incidents", str(incidents_json), "--severity", "warning"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "no_cart_in_exit_lane" in out
 
 
 def test_query_incidents_filter_excludes(incidents_json, capsys):
-    rc = main_query(["incidents", "--incidents", str(incidents_json),
-                     "--severity", "critical"])
+    rc = main_query(["incidents", "--incidents", str(incidents_json), "--severity", "critical"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "0 of" in out  # the warning incident is excluded
 
 
 def test_query_incidents_filter_by_object(incidents_json, capsys):
-    rc = main_query(["incidents", "--incidents", str(incidents_json),
-                     "--object", "cart_01"])
+    rc = main_query(["incidents", "--incidents", str(incidents_json), "--object", "cart_01"])
     assert rc == 0
     assert "no_cart_in_exit_lane" in capsys.readouterr().out
 
 
 def test_query_alerts_filter_by_rule(alerts_jsonl, capsys):
-    rc = main_query(["alerts", "--alerts", str(alerts_jsonl),
-                     "--rule", "no_cart_in_exit_lane"])
+    rc = main_query(["alerts", "--alerts", str(alerts_jsonl), "--rule", "no_cart_in_exit_lane"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "no_cart_in_exit_lane" in out
 
 
 def test_query_traces_filter_by_object(session, capsys):
-    rc = main_query(["traces", "--session", str(session),
-                     "--objects", CONFIG_OBJECTS, "--object", "cart_01"])
+    rc = main_query(
+        ["traces", "--session", str(session), "--objects", CONFIG_OBJECTS, "--object", "cart_01"]
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "cart_01" in out
 
 
 def test_query_traces_filter_by_zone(session, capsys):
-    rc = main_query(["traces", "--session", str(session),
-                     "--objects", CONFIG_OBJECTS, "--zone", "exit_lane"])
+    rc = main_query(
+        ["traces", "--session", str(session), "--objects", CONFIG_OBJECTS, "--zone", "exit_lane"]
+    )
     assert rc == 0
     assert "cart_01" in capsys.readouterr().out
 
 
 def test_bundle_and_verify_end_to_end(tmp_path, session, capsys):
     inc_out = tmp_path / "incidents.json"
-    main_incidents(["run", "--session", str(session), "--rules", CONFIG_RULES,
-                    "--objects", CONFIG_OBJECTS, "--out", str(inc_out)])
+    main_incidents(
+        [
+            "run",
+            "--session",
+            str(session),
+            "--rules",
+            CONFIG_RULES,
+            "--objects",
+            CONFIG_OBJECTS,
+            "--out",
+            str(inc_out),
+        ]
+    )
     inc_id = json.loads(inc_out.read_text())[0]["incident_id"]
 
     bundle_dir = tmp_path / "bundle"
-    rc = main_incidents([
-        "bundle", inc_id, "--session", str(session), "--rules", CONFIG_RULES,
-        "--objects", CONFIG_OBJECTS, "--out", str(bundle_dir),
-    ])
+    rc = main_incidents(
+        [
+            "bundle",
+            inc_id,
+            "--session",
+            str(session),
+            "--rules",
+            CONFIG_RULES,
+            "--objects",
+            CONFIG_OBJECTS,
+            "--out",
+            str(bundle_dir),
+        ]
+    )
     assert rc == 0
     assert (bundle_dir / "incident.json").exists()
 

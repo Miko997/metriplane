@@ -3,13 +3,952 @@
 
 from __future__ import annotations
 
+import gc
 import json
+import os
+import subprocess
+import sys
+import textwrap
+import weakref
 from pathlib import Path
 
 import pytest
 
 from metriplane.config import Config
-from metriplane.provenance.run_provenance import create_run_context, open_jsonl_writer
+from metriplane.paths import PlatformPathError, PlatformPaths
+from metriplane.provenance.run_provenance import (
+    create_run_context,
+    open_jsonl_writer,
+)
+from metriplane.run_ids import validate_portable_run_id
+
+
+def _platform_paths(root: Path) -> PlatformPaths:
+    return PlatformPaths(
+        config_dir=root / "config",
+        data_dir=root / "data",
+        cache_dir=root / "cache",
+        state_dir=root / "state",
+    )
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_provenance_uses_injected_platform_runs_dir(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 17
+
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", str(tmp_path / "environment"))
+    entrypoint = getattr(module, entrypoint_name)
+
+    assert entrypoint(Config(), paths=_platform_paths(tmp_path)) == 17
+    assert captured["runs_dir"] == str(tmp_path / "data" / "runs")
+
+
+def test_primary_runtime_injects_platform_default(tmp_path: Path, monkeypatch) -> None:
+    from metriplane import cli, run
+
+    paths = _platform_paths(tmp_path / "platform")
+    captured: dict[str, object] = {}
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(cli, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(
+        run,
+        "run_loop",
+        lambda _cfg, **kwargs: (captured.update(kwargs), 18)[1],
+    )
+
+    assert cli._main_run([]) == 18
+    assert captured["paths"] is paths
+
+
+def test_primary_runtime_preserves_shipping_docker_data_mount(monkeypatch) -> None:
+    from metriplane import cli, run
+    from metriplane.provenance import run_provenance
+
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", "/data")
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(
+        cli,
+        "resolve_platform_paths",
+        lambda: pytest.fail("the Docker data root must suppress platform-path injection"),
+    )
+    monkeypatch.setattr(
+        run,
+        "_run_loop_impl",
+        lambda _cfg, **kwargs: (captured.update(kwargs), 19)[1],
+    )
+
+    assert cli._main_run([]) == 19
+    assert captured["runs_dir"] is None
+    assert run_provenance.data_dir() / "runs" == Path("/data/runs")
+
+
+@pytest.mark.parametrize("override_source", ["cli", "config"])
+def test_primary_runtime_explicit_runs_dir_skips_platform_resolution(
+    override_source: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane import cli, run
+
+    explicit = tmp_path / "explicit-runs"
+    configured = str(explicit) if override_source == "config" else None
+    argv = ["--runs-dir", str(explicit)] if override_source == "cli" else []
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "metriplane.config.load_config",
+        lambda _path: Config(runs_dir=configured),
+    )
+    monkeypatch.setattr(
+        cli,
+        "resolve_platform_paths",
+        lambda: pytest.fail("an explicit run root must not require platform resolution"),
+    )
+
+    def fake_run_loop(cfg: Config, **kwargs) -> int:
+        captured["cfg"] = cfg
+        captured.update(kwargs)
+        return 20
+
+    monkeypatch.setattr(run, "run_loop", fake_run_loop)
+
+    assert cli._main_run(argv) == 20
+    assert captured["paths"] is None
+    if override_source == "cli":
+        assert captured["runs_dir"] == str(explicit)
+    else:
+        assert captured["runs_dir"] is None
+        assert isinstance(captured["cfg"], Config)
+        assert captured["cfg"].runs_dir == str(explicit)
+
+
+def test_legacy_runtime_preserves_docker_data_mount(monkeypatch) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.delenv("METRIPLANE_DATA_DIR", raising=False)
+    monkeypatch.setattr(run_provenance, "in_docker", lambda: True)
+
+    assert run_provenance.data_dir() == Path("/data")
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_provenance_preserves_data_dir_environment_precedence(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 19
+
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", str(tmp_path / "docker-data"))
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+
+    assert getattr(module, entrypoint_name)(Config()) == 19
+    assert captured["runs_dir"] is None
+
+
+def test_primary_runtime_path_resolution_failure_is_user_facing(
+    monkeypatch,
+    capsys,
+) -> None:
+    from metriplane import cli, run
+
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+    monkeypatch.setattr(
+        cli,
+        "resolve_platform_paths",
+        lambda: (_ for _ in ()).throw(PlatformPathError("home unavailable")),
+    )
+    monkeypatch.setattr(
+        run,
+        "run_loop",
+        lambda *_args, **_kwargs: pytest.fail("runtime must not start"),
+    )
+
+    assert cli._main_run([]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "platform path error: home unavailable\n"
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+def test_runtime_run_storage_permission_failure_is_clean(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    read_only = tmp_path / "read-only-data"
+    read_only.mkdir()
+    read_only.chmod(0o500)
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=read_only,
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+
+    try:
+        result = getattr(module, entrypoint_name)(
+            Config(source_mode="dummy"),
+            run_id="read_only_probe",
+            paths=paths,
+        )
+    finally:
+        read_only.chmod(0o700)
+
+    assert result == 2
+    assert "run storage unavailable:" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+@pytest.mark.parametrize("run_id", ["", " \t "])
+def test_runtime_rejects_explicit_blank_run_id(
+    module_name: str,
+    entrypoint_name: str,
+    run_id: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+
+    result = getattr(module, entrypoint_name)(
+        Config(source_mode="dummy"),
+        run_id=run_id,
+        paths=_platform_paths(tmp_path),
+    )
+
+    assert result == 2
+    assert "run storage unavailable:" in caplog.text
+    assert not (tmp_path / "data" / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+def test_runtime_symlink_loop_runs_dir_fails_cleanly(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+
+    result = getattr(module, entrypoint_name)(
+        Config(source_mode="dummy"),
+        run_id="loop_probe",
+        runs_dir=str(loop),
+        paths=_platform_paths(tmp_path / "injected"),
+    )
+
+    assert result == 2
+    assert "cannot resolve run-recording root" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name"),
+    [
+        ("metriplane.run", "run_loop"),
+        ("metriplane.run_fusion", "run_loop_fusion"),
+    ],
+)
+def test_runtime_child_symlink_loop_fails_cleanly(
+    module_name: str,
+    entrypoint_name: str,
+    tmp_path: Path,
+    caplog,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    child = runs_dir / "loop_probe"
+    child.symlink_to(child.name)
+
+    result = getattr(module, entrypoint_name)(
+        Config(source_mode="dummy"),
+        run_id="loop_probe",
+        runs_dir=str(runs_dir),
+    )
+
+    assert result == 2
+    assert "cannot resolve run-recording path" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_provenance_preserves_explicit_runs_dir_override(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 23
+
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+    entrypoint = getattr(module, entrypoint_name)
+    explicit = tmp_path / "explicit"
+
+    assert (
+        entrypoint(
+            Config(),
+            runs_dir=str(explicit),
+            paths=_platform_paths(tmp_path / "injected"),
+        )
+        == 23
+    )
+    assert captured["runs_dir"] == str(explicit)
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+@pytest.mark.parametrize("override_source", ["cli", "config"])
+def test_runtime_whitespace_runs_dir_uses_injected_root_without_writing_ambient(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    override_source: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+    ambient = tmp_path / "ambient"
+    injected = _platform_paths(tmp_path / "injected")
+    cfg = Config(runs_dir=" \t ") if override_source == "config" else Config()
+    direct_runs_dir = " \t " if override_source == "cli" else None
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 25
+
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", str(ambient))
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+
+    assert (
+        getattr(module, entrypoint_name)(
+            cfg,
+            runs_dir=direct_runs_dir,
+            paths=injected,
+        )
+        == 25
+    )
+    assert captured["runs_dir"] == str(injected.runs_dir)
+    assert not ambient.exists()
+    assert not injected.data_dir.exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_whitespace_data_environment_preserves_legacy_fallback(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("METRIPLANE_DATA_DIR", " \t ")
+    monkeypatch.setattr(
+        module,
+        implementation_name,
+        lambda _cfg, **kwargs: (captured.update(kwargs), 33)[1],
+    )
+
+    assert getattr(module, entrypoint_name)(Config()) == 33
+    assert captured["runs_dir"] is None
+    assert not (tmp_path / " \t ").exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+@pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+def test_runtime_public_entrypoints_reject_windows_device_run_ids_before_writing(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        module,
+        implementation_name,
+        lambda *_args, **_kwargs: pytest.fail("invalid run ID reached the runtime writer"),
+    )
+
+    assert (
+        getattr(module, entrypoint_name)(
+            Config(record_jsonl=str(tmp_path / "mirror" / "session.jsonl")),
+            run_id=run_id,
+            runs_dir=str(runs_dir),
+        )
+        == 2
+    )
+    assert not runs_dir.exists()
+    assert not (tmp_path / "mirror").exists()
+
+
+@pytest.mark.parametrize(
+    ("module_name", "entrypoint_name", "implementation_name"),
+    [
+        ("metriplane.run", "run_loop", "_run_loop_impl"),
+        ("metriplane.run_fusion", "run_loop_fusion", "_run_loop_fusion_impl"),
+    ],
+)
+def test_runtime_whitespace_direct_override_reveals_config_precedence(
+    module_name: str,
+    entrypoint_name: str,
+    implementation_name: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = __import__(module_name, fromlist=[entrypoint_name])
+    captured: dict[str, object] = {}
+    configured = tmp_path / "configured"
+
+    def fake_implementation(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 27
+
+    monkeypatch.setattr(module, implementation_name, fake_implementation)
+
+    assert (
+        getattr(module, entrypoint_name)(
+            Config(runs_dir=f"  {configured}  "),
+            runs_dir=" \t ",
+            paths=_platform_paths(tmp_path / "injected"),
+        )
+        == 27
+    )
+    assert captured["runs_dir"] == str(configured)
+    assert not configured.exists()
+
+
+def test_metriplane_run_cli_propagates_injected_platform_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane import cli
+
+    paths = _platform_paths(tmp_path)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr("metriplane.config.load_config", lambda _path: Config())
+
+    def fake_run_loop(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 29
+
+    monkeypatch.setattr("metriplane.run.run_loop", fake_run_loop)
+
+    assert cli.main(["run"], paths=paths) == 29
+    assert captured["paths"] is paths
+
+
+def test_ui_demo_replay_preserves_explicit_runs_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    runs_dir = tmp_path / "explicit-recordings"
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "resolve_platform_paths",
+        lambda: pytest.fail("explicit --runs-dir must not resolve ambient paths"),
+    )
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda _label, command: commands.append(command),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir)]) == 0
+    sentinel_command = commands[0]
+    assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(runs_dir.resolve())
+
+
+def test_ui_demo_replay_generates_a_unique_safe_run_id_each_time(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    commands: list[list[str]] = []
+    generated = iter(("metriplane_demo_001", "metriplane_demo_002"))
+    monkeypatch.setattr(run_ui_demo_replay, "generate_run_id", lambda _prefix: next(generated))
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda _label, command: commands.append(command),
+    )
+
+    for _ in range(2):
+        assert run_ui_demo_replay.main(["--runs-dir", str(tmp_path / "runs")]) == 0
+
+    sentinel_commands = commands[::3]
+    run_ids = [command[command.index("--run-id") + 1] for command in sentinel_commands]
+    assert run_ids == ["metriplane_demo_001", "metriplane_demo_002"]
+    assert len(set(run_ids)) == 2
+
+
+def test_ui_demo_replay_whitespace_runs_dir_uses_platform_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    paths = _platform_paths(tmp_path / "injected")
+    commands: list[list[str]] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_ui_demo_replay, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda _label, command: commands.append(command),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", " \t "]) == 0
+    sentinel_command = commands[0]
+    assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+@pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+def test_ui_demo_replay_rejects_windows_device_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda *_args: pytest.fail("invalid run ID reached a demo writer"),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir), "--run-id", run_id]) == 2
+    assert not runs_dir.exists()
+
+
+@pytest.mark.parametrize("run_id", ["", " \t "])
+def test_ui_demo_replay_rejects_explicit_blank_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from tools import run_ui_demo_replay
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_ui_demo_replay,
+        "run_step",
+        lambda *_args: pytest.fail("blank run ID reached a demo writer"),
+    )
+
+    assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir), "--run-id", run_id]) == 2
+    assert not runs_dir.exists()
+
+
+def test_latency_benchmark_whitespace_runs_dir_uses_platform_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    paths = _platform_paths(tmp_path / "injected")
+    run_id = "latency.valid-01"
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self, command: list[str], *, env: dict[str, str]) -> None:
+            captured["command"] = command
+            run_dir = Path(env["METRIPLANE_RESERVED_RUN_DIR"])
+            marker = run_dir / ".metriplane-run-reservation"
+            assert marker.read_text(encoding="utf-8") == env["METRIPLANE_RUN_RESERVATION_TOKEN"]
+            marker.unlink()
+            (run_dir / "latency.csv").write_text("stage,ms\nall,1\n", encoding="utf-8")
+
+        def send_signal(self, _signal: int) -> None:
+            return None
+
+        def wait(self, *, timeout: int) -> int:
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return None
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(run_latency_breakdown, "resolve_platform_paths", lambda: paths)
+    monkeypatch.setattr(run_latency_breakdown.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(run_latency_breakdown.time, "sleep", lambda _seconds: None)
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(tmp_path / "latency.csv"),
+                "--runs-dir",
+                " \t ",
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 0
+    )
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[command.index("--runs-dir") + 1] == str(paths.runs_dir)
+    assert not (tmp_path / " \t ").exists()
+
+
+def test_latency_benchmark_reserves_exact_collision_and_ignores_prefix_sibling(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    runs_dir = tmp_path / "runs"
+    stale = runs_dir / "sample"
+    unrelated = runs_dir / "sample_unrelated"
+    stale.mkdir(parents=True)
+    unrelated.mkdir()
+    (stale / "latency.csv").write_text("stale\n", encoding="utf-8")
+    (unrelated / "latency.csv").write_text("unrelated\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        def __init__(self, command: list[str], *, env: dict[str, str]) -> None:
+            selected_run_id = command[command.index("--run-id") + 1]
+            captured["run_id"] = selected_run_id
+            run_dir = Path(env["METRIPLANE_RESERVED_RUN_DIR"])
+            assert run_dir == runs_dir / selected_run_id
+            marker = run_dir / ".metriplane-run-reservation"
+            assert marker.read_text(encoding="utf-8") == env["METRIPLANE_RUN_RESERVATION_TOKEN"]
+            marker.unlink()
+            (run_dir / "latency.csv").write_text("fresh sample-1\n", encoding="utf-8")
+
+        def send_signal(self, _signal: int) -> None:
+            return None
+
+        def wait(self, *, timeout: int) -> int:
+            return 0
+
+        def poll(self) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return None
+
+    output = tmp_path / "latency.csv"
+    monkeypatch.setattr(run_latency_breakdown.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(run_latency_breakdown.time, "sleep", lambda _seconds: None)
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(output),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                "sample",
+            ]
+        )
+        == 0
+    )
+    assert captured["run_id"] == "sample-1"
+    assert output.read_text(encoding="utf-8") == "fresh sample-1\n"
+    assert (stale / "latency.csv").read_text(encoding="utf-8") == "stale\n"
+    assert (unrelated / "latency.csv").read_text(encoding="utf-8") == "unrelated\n"
+
+
+@pytest.mark.parametrize("run_id", ["CON", "nul.txt", "COM1.capture", "LPT9.log"])
+def test_latency_benchmark_rejects_windows_device_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_latency_breakdown.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("invalid run ID reached benchmark process"),
+    )
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(tmp_path / "latency.csv"),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 2
+    )
+    assert not runs_dir.exists()
+
+
+@pytest.mark.parametrize("run_id", ["", " \t "])
+def test_latency_benchmark_rejects_explicit_blank_run_ids_before_writing(
+    run_id: str,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    runs_dir = tmp_path / "runs"
+    monkeypatch.setattr(
+        run_latency_breakdown.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("blank run ID reached benchmark process"),
+    )
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(tmp_path / "latency.csv"),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                run_id,
+            ]
+        )
+        == 2
+    )
+    assert not runs_dir.exists()
+
+
+def test_latency_benchmark_rejects_output_symlink_loop_deterministically(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    output = tmp_path / "latency-loop.csv"
+    runs_dir = tmp_path / "runs"
+    output.symlink_to(output.name)
+    monkeypatch.setattr(
+        run_latency_breakdown.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("invalid output path reached benchmark process"),
+    )
+
+    assert (
+        run_latency_breakdown.main(
+            [
+                "--out",
+                str(output),
+                "--runs-dir",
+                str(runs_dir),
+                "--run-id",
+                "latency_loop",
+            ]
+        )
+        == 2
+    )
+    assert capsys.readouterr().err == (
+        f"output path error: cannot resolve latency output path {output}\n"
+    )
+    assert not runs_dir.exists()
+
+
+def test_latency_benchmark_generates_run_id_when_omitted(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from benchmarks import run_latency_breakdown
+
+    generated_prefixes: list[str] = []
+    monkeypatch.setattr(
+        run_latency_breakdown,
+        "generate_run_id",
+        lambda prefix: (generated_prefixes.append(prefix), "generated_latency")[1],
+    )
+    monkeypatch.setattr(
+        run_latency_breakdown,
+        "_resolve_output_path",
+        lambda _value: (_ for _ in ()).throw(PlatformPathError("stop after generation")),
+    )
+
+    assert run_latency_breakdown.main(["--out", str(tmp_path / "latency.csv")]) == 2
+    assert generated_prefixes == ["m95_latency"]
+
+
+def test_metriplane_run_help_retains_frozen_legacy_default(capsys) -> None:
+    from metriplane.run import main as run_main
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(["--help"])
+
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    normalized = " ".join(output.split())
+    assert "default: /data/runs in docker, ./runs on host" in normalized
+
+
+def test_primary_run_help_names_platform_runs_directory(capsys) -> None:
+    from metriplane import cli
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli._main_run(["--help"])
+
+    assert exc_info.value.code == 0
+    normalized = " ".join(capsys.readouterr().out.split())
+    assert "default: platform runs directory" in normalized
+    assert "default: platform data directory" not in normalized
+
+
+def test_direct_fusion_help_names_legacy_default(capsys) -> None:
+    from metriplane import run_fusion
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_fusion.main(["--help"])
+
+    assert exc_info.value.code == 0
+    normalized = " ".join(capsys.readouterr().out.split())
+    assert "default: /data/runs in docker, ./runs on host" in normalized
+    assert "default: platform runs directory" not in normalized
+
+
+@pytest.mark.parametrize(
+    ("argv", "configured_runs_dir"),
+    [
+        ([], None),
+        (["--runs-dir", " \t "], None),
+        ([], " \t "),
+    ],
+)
+def test_legacy_run_console_delegates_blank_overrides_to_legacy_fallback(
+    argv: list[str],
+    configured_runs_dir: str | None,
+    monkeypatch,
+) -> None:
+    from metriplane import run
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "metriplane.config.load_config",
+        lambda _path: Config(runs_dir=configured_runs_dir),
+    )
+
+    def fake_run_loop(_cfg, **kwargs):
+        captured.update(kwargs)
+        return 31
+
+    monkeypatch.setattr(run, "run_loop", fake_run_loop)
+
+    assert run.main(argv) == 31
+    assert captured["runs_dir"] is None
+    assert captured["paths"] is None
+
+
+def test_shell_run_writers_use_canonical_defaults_and_preserve_overrides() -> None:
+    root = Path(__file__).resolve().parents[1]
+    mp_script = (root / "tools" / "mp.sh").read_text(encoding="utf-8")
+    demo_script = (root / "scripts" / "DEMO_ALL.sh").read_text(encoding="utf-8")
+    vt_script = (root / "scripts" / "_vt_env.sh").read_text(encoding="utf-8")
+    sd4_script = (root / "scripts" / "sd4_demo.sh").read_text(encoding="utf-8")
+
+    assert 'RUNS="${RUNS:-$ROOT/runs}"' not in mp_script
+    assert "resolve_platform_paths().runs_dir" in mp_script
+    assert 'if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]' in mp_script
+    assert 'LOG_DIR="$ROOT/runs/$RUN_ID"' not in demo_script
+    assert 'if [[ "${RUNS:-}" =~ [^[:space:]] ]]' in demo_script
+    assert 'LOG_DIR="$RUNS_DIR/$RUN_ID"' in demo_script
+    assert 'if [[ ! "${RUNS:-}" =~ [^[:space:]] ]]' in vt_script
+    assert 'if [[ ! "${RUNS_DIR:-}" =~ [^[:space:]] ]]' in sd4_script
 
 
 def test_run_context_creates_expected_files(tmp_path: Path, monkeypatch) -> None:
@@ -68,8 +1007,7 @@ def test_run_context_redacts_credentials_from_persisted_config(
 ) -> None:
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
     secret_url = (
-        "rtsp://camera-user:super-secret@camera.local:8554/stream"
-        "?token=query-secret&quality=high"
+        "rtsp://camera-user:super-secret@camera.local:8554/stream?token=query-secret&quality=high"
     )
     cfg = Config(
         source_mode="camera",
@@ -98,10 +1036,9 @@ def test_run_context_redacts_credentials_from_persisted_config(
         run_id="redacted",
         runs_dir=str(tmp_path / "runs"),
     )
-    persisted = (
-        ctx.config_yaml.read_text(encoding="utf-8")
-        + ctx.config_canonical_json_path.read_text(encoding="utf-8")
-    )
+    persisted = ctx.config_yaml.read_text(
+        encoding="utf-8"
+    ) + ctx.config_canonical_json_path.read_text(encoding="utf-8")
 
     assert "super-secret" not in persisted
     assert "query-secret" not in persisted
@@ -118,7 +1055,21 @@ def test_run_context_redacts_credentials_from_persisted_config(
     assert "<redacted>" in persisted
 
 
-@pytest.mark.parametrize("run_id", ["../escape", "nested/run", "..", "bad id"])
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        "",
+        " \t ",
+        "../escape",
+        "nested/run",
+        "..",
+        "bad id",
+        "CON",
+        "nul.txt",
+        "COM1.capture",
+        "LPT9.log",
+    ],
+)
 def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: str) -> None:
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
     cfg = Config(source_mode="dummy", target_fps=5, runs_dir=str(tmp_path / "runs"))
@@ -133,3 +1084,685 @@ def test_run_context_rejects_unsafe_run_id(tmp_path: Path, monkeypatch, run_id: 
         )
 
     assert not (tmp_path / "escape").exists()
+
+
+def test_run_context_generates_run_id_only_when_omitted(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.delenv("METRIPLANE_RUN_ID", raising=False)
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    monkeypatch.setattr(run_provenance, "generate_run_id", lambda: "generated_run")
+
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=None,
+        runs_dir=str(tmp_path / "runs"),
+    )
+
+    assert context.run_id == "generated_run"
+    assert context.run_dir == tmp_path / "runs" / "generated_run"
+
+
+def test_unreserved_context_base_swap_cannot_redirect_directory_creation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    base.mkdir()
+    parked_base = tmp_path / "runs-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("outside must remain unchanged\n", encoding="utf-8")
+    original_mkdir = run_provenance.os.mkdir
+    swapped = False
+
+    def swap_base_before_child_mkdir(path, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        if not swapped and dir_fd is not None and path == "unreserved_run":
+            swapped = True
+            base.rename(parked_base)
+            base.symlink_to(outside, target_is_directory=True)
+        if dir_fd is None:
+            return original_mkdir(path, mode)
+        return original_mkdir(path, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(run_provenance.os, "mkdir", swap_base_before_child_mkdir)
+
+    with pytest.raises(PlatformPathError, match="identity changed during reservation"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="unreserved_run",
+            runs_dir=str(base),
+        )
+
+    assert base.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
+    created_run = parked_base / "unreserved_run"
+    assert (created_run / ".metriplane-run-reservation").is_file()
+    assert not (created_run / "config.yaml").exists()
+    assert not (created_run / "env.txt").exists()
+    assert not (created_run / "meta.json").exists()
+
+
+def test_unreserved_context_base_swap_cannot_redirect_artifact_writes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    base.mkdir()
+    parked_base = tmp_path / "runs-original"
+    outside = tmp_path / "outside"
+    outside_run = outside / "unreserved_run"
+    outside_run.mkdir(parents=True)
+    sentinel = outside_run / "sentinel.txt"
+    sentinel.write_text("outside must remain unchanged\n", encoding="utf-8")
+    original_writer = run_provenance._write_claimed_text
+    swapped = False
+
+    def swap_base_before_write(directory_fd: int, name: str, content: str) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            base.rename(parked_base)
+            base.symlink_to(outside, target_is_directory=True)
+        original_writer(directory_fd, name, content)
+
+    monkeypatch.setattr(run_provenance, "_write_claimed_text", swap_base_before_write)
+
+    with pytest.raises(PlatformPathError, match="identity changed"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="unreserved_run",
+            runs_dir=str(base),
+        )
+
+    assert base.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert sorted(path.name for path in outside_run.iterdir()) == ["sentinel.txt"]
+    assert (parked_base / "unreserved_run" / "config.yaml").is_file()
+    assert not (parked_base / "unreserved_run" / "meta.json").exists()
+
+
+def test_unreserved_session_writer_rejects_post_context_directory_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id="unreserved_run",
+        runs_dir=str(base),
+    )
+
+    parked_run_dir = base / "unreserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_session = outside / "session.jsonl"
+    outside_session.write_text("outside must remain unchanged\n", encoding="utf-8")
+    context.run_dir.rename(parked_run_dir)
+    context.run_dir.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(PlatformPathError, match="cannot be opened safely"):
+        open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+
+    assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert not (parked_run_dir / "session.jsonl").exists()
+
+
+def test_unreserved_session_authority_releases_with_context(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id="unreserved_run",
+        runs_dir=str(tmp_path / "runs"),
+    )
+    authority_key = run_provenance._authority_key(context.run_dir)
+    reference = weakref.ref(context)
+    assert authority_key in run_provenance._IN_PROCESS_RUN_CONTEXTS
+
+    del context
+    gc.collect()
+
+    assert reference() is None
+    assert authority_key not in run_provenance._IN_PROCESS_RUN_CONTEXTS
+
+
+def test_run_context_claims_exact_reserved_run_directory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance.run_provenance import reserve_run_directory
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    reservation = reserve_run_directory(tmp_path / "runs", "reserved_run")
+    child_environment = reservation.child_environment({})
+    assert child_environment["METRIPLANE_RUN_RESERVATION_DEVICE"] == str(reservation.device)
+    assert child_environment["METRIPLANE_RUN_RESERVATION_INODE"] == str(reservation.inode)
+    for name, value in child_environment.items():
+        monkeypatch.setenv(name, value)
+
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(tmp_path / "runs"),
+    )
+
+    assert context.run_id == "reserved_run"
+    assert context.run_dir == reservation.run_dir
+    assert reservation.claimed_run_dir() == context.run_dir
+    assert not reservation.marker_path.exists()
+    writer = open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+    writer.write(context.header_record())
+    writer.close()
+    session_header = json.loads(context.session_jsonl.read_text(encoding="utf-8"))
+    assert session_header["run_id"] == reservation.run_id
+
+
+def test_claimed_run_context_rejects_swap_before_directory_iteration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+
+    run_dir = reservation.run_dir
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_marker = outside / ".metriplane-run-reservation"
+    outside_marker.write_text(reservation.token, encoding="utf-8")
+    original_listdir = run_provenance.os.listdir
+    swapped = False
+
+    def swap_before_iteration(path):
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            run_dir.rename(parked_run_dir)
+            run_dir.symlink_to(outside, target_is_directory=True)
+        return original_listdir(path)
+
+    monkeypatch.setattr(run_provenance.os, "listdir", swap_before_iteration)
+
+    with pytest.raises(PlatformPathError, match="identity changed"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id=reservation.run_id,
+            runs_dir=str(base),
+        )
+
+    assert run_dir.is_symlink()
+    assert outside_marker.read_text(encoding="utf-8") == reservation.token
+    assert sorted(path.name for path in outside.iterdir()) == [".metriplane-run-reservation"]
+    assert (parked_run_dir / ".metriplane-run-reservation").exists()
+    assert not (parked_run_dir / "config.yaml").exists()
+    assert not (parked_run_dir / "meta.json").exists()
+
+
+def test_claimed_context_write_stays_on_opened_directory_after_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+
+    run_dir = reservation.run_dir
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("outside must remain unchanged\n", encoding="utf-8")
+    original_writer = run_provenance._write_claimed_text
+    swapped = False
+
+    def swap_before_write(directory_fd: int, name: str, content: str) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            run_dir.rename(parked_run_dir)
+            run_dir.symlink_to(outside, target_is_directory=True)
+        original_writer(directory_fd, name, content)
+
+    monkeypatch.setattr(run_provenance, "_write_claimed_text", swap_before_write)
+
+    with pytest.raises(PlatformPathError, match="identity changed"):
+        create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id=reservation.run_id,
+            runs_dir=str(base),
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
+    assert (parked_run_dir / "config.yaml").exists()
+    assert not (parked_run_dir / "meta.json").exists()
+
+
+def test_reserved_session_writer_rejects_post_context_directory_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(base),
+    )
+
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_session = outside / "session.jsonl"
+    outside_session.write_text("outside must remain unchanged\n", encoding="utf-8")
+    context.run_dir.rename(parked_run_dir)
+    context.run_dir.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(PlatformPathError, match="cannot be opened safely"):
+        open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+
+    assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+    assert not (parked_run_dir / "session.jsonl").exists()
+
+
+def test_reserved_session_writer_does_not_truncate_existing_hardlink(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(base),
+    )
+
+    outside_session = tmp_path / "outside-session.jsonl"
+    outside_session.write_text("outside must remain unchanged\n", encoding="utf-8")
+    context.session_jsonl.hardlink_to(outside_session)
+
+    with pytest.raises(PlatformPathError, match="cannot be opened safely"):
+        open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+
+    assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
+
+
+def test_reserved_session_writer_can_retry_after_mirror_open_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    for name, value in reservation.child_environment({}).items():
+        monkeypatch.setenv(name, value)
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id=reservation.run_id,
+        runs_dir=str(base),
+    )
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("blocked\n", encoding="utf-8")
+
+    with pytest.raises(OSError):
+        open_jsonl_writer(
+            primary_path=context.session_jsonl,
+            mirror_path=str(blocked_parent / "mirror.jsonl"),
+        )
+    assert not context.session_jsonl.exists()
+
+    writer = open_jsonl_writer(primary_path=context.session_jsonl, mirror_path=None)
+    writer.write(context.header_record())
+    writer.close()
+    assert context.session_jsonl.is_file()
+
+
+def test_reserve_run_directory_marker_cannot_follow_swapped_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    run_dir = base / "reserved_run"
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("unchanged\n", encoding="utf-8")
+    original_writer = run_provenance._write_run_reservation_marker
+
+    def swap_before_marker(directory_fd: int, token: str) -> None:
+        run_dir.rename(parked_run_dir)
+        run_dir.symlink_to(outside, target_is_directory=True)
+        original_writer(directory_fd, token)
+
+    monkeypatch.setattr(
+        run_provenance,
+        "_write_run_reservation_marker",
+        swap_before_marker,
+    )
+
+    with pytest.raises(PlatformPathError, match="identity changed during reservation"):
+        run_provenance.reserve_run_directory(base, "reserved_run")
+
+    assert run_dir.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == "unchanged\n"
+    assert not (outside / ".metriplane-run-reservation").exists()
+    assert (parked_run_dir / ".metriplane-run-reservation").exists()
+
+
+def test_cancel_pending_reservation_rejects_replaced_directory(tmp_path: Path) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_marker = outside / ".metriplane-run-reservation"
+    outside_marker.write_text(reservation.token, encoding="utf-8")
+    reservation.run_dir.rename(parked_run_dir)
+    reservation.run_dir.symlink_to(outside, target_is_directory=True)
+
+    assert reservation.cancel_if_pending() is False
+    assert outside_marker.read_text(encoding="utf-8") == reservation.token
+    assert (parked_run_dir / ".metriplane-run-reservation").read_text(
+        encoding="utf-8"
+    ) == reservation.token
+
+
+def test_cancel_pending_reservation_rejects_swap_after_open(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    parked_run_dir = base / "reserved_run-original"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_marker = outside / ".metriplane-run-reservation"
+    outside_marker.write_text(reservation.token, encoding="utf-8")
+    original_reader = run_provenance._read_reservation_marker
+
+    def swap_after_marker_read(directory_fd: int, path: Path) -> str:
+        marker_token = original_reader(directory_fd, path)
+        reservation.run_dir.rename(parked_run_dir)
+        reservation.run_dir.symlink_to(outside, target_is_directory=True)
+        return marker_token
+
+    monkeypatch.setattr(
+        run_provenance,
+        "_read_reservation_marker",
+        swap_after_marker_read,
+    )
+
+    assert reservation.cancel_if_pending() is False
+    assert outside_marker.read_text(encoding="utf-8") == reservation.token
+    assert (parked_run_dir / ".metriplane-run-reservation").read_text(
+        encoding="utf-8"
+    ) == reservation.token
+
+
+def test_cancel_pending_reservation_tombstones_exact_reserved_directory(tmp_path: Path) -> None:
+    from metriplane.provenance import run_provenance
+
+    reservation = run_provenance.reserve_run_directory(tmp_path / "runs", "reserved_run")
+
+    assert reservation.cancel_if_pending() is True
+    assert reservation.run_dir.is_dir()
+    assert sorted(path.name for path in reservation.run_dir.iterdir()) == [
+        ".metriplane-run-reservation-cancelled"
+    ]
+    with pytest.raises(PlatformPathError, match="was cancelled"):
+        reservation.claimed_run_dir()
+    assert reservation.cancel_if_pending() is False
+
+
+def test_cancel_pending_reservation_never_removes_final_path_replacement(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    base = tmp_path / "runs"
+    reservation = run_provenance.reserve_run_directory(base, "reserved_run")
+    parked_run_dir = base / "reserved_run-original"
+    replacement = base / "replacement"
+    replacement.mkdir()
+    (replacement / "sentinel.txt").write_text("unchanged\n", encoding="utf-8")
+    original_verify = run_provenance._ClaimedRunDirectory.verify_visible_path
+    verification_count = 0
+
+    def swap_after_final_verification(claimed) -> None:
+        nonlocal verification_count
+        original_verify(claimed)
+        verification_count += 1
+        if verification_count == 4:
+            reservation.run_dir.rename(parked_run_dir)
+            replacement.rename(reservation.run_dir)
+
+    monkeypatch.setattr(
+        run_provenance._ClaimedRunDirectory,
+        "verify_visible_path",
+        swap_after_final_verification,
+    )
+
+    assert reservation.cancel_if_pending() is True
+    assert (reservation.run_dir / "sentinel.txt").read_text(encoding="utf-8") == "unchanged\n"
+    assert (parked_run_dir / ".metriplane-run-reservation-cancelled").is_file()
+    assert not (parked_run_dir / ".metriplane-run-reservation").exists()
+
+
+@pytest.mark.parametrize(
+    ("run_id", "expected_collision_run_id"),
+    [
+        ("a" * 128, "a" * 126 + "-1"),
+        ("a" * 125 + ".bc", "a" * 125 + "-1"),
+    ],
+)
+def test_run_context_collision_suffix_remains_portable_and_matches_metadata(
+    tmp_path: Path,
+    monkeypatch,
+    run_id: str,
+    expected_collision_run_id: str,
+) -> None:
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    runs_dir = tmp_path / "runs"
+    config = Config(source_mode="dummy")
+
+    first = create_run_context(
+        config,
+        config_path=None,
+        argv=[],
+        run_id=run_id,
+        runs_dir=str(runs_dir),
+    )
+    collision = create_run_context(
+        config,
+        config_path=None,
+        argv=[],
+        run_id=run_id,
+        runs_dir=str(runs_dir),
+    )
+    metadata = json.loads(collision.meta_json.read_text(encoding="utf-8"))
+
+    assert first.run_id == run_id
+    assert collision.run_id == expected_collision_run_id
+    assert collision.run_dir.name == expected_collision_run_id
+    assert len(collision.run_id) <= 128
+    assert validate_portable_run_id(collision.run_id) == collision.run_id
+    assert metadata["run_id"] == collision.run_id
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    ["run", "CONSOLE", "nulled.txt", "COM10.capture", "LPT10.log", "a.b-c_d"],
+)
+def test_portable_run_id_validator_preserves_valid_names(run_id: str) -> None:
+    assert validate_portable_run_id(run_id) == run_id
+
+
+def test_run_provenance_artifacts_ignore_umask_zero(tmp_path: Path) -> None:
+    script = textwrap.dedent(
+        """
+        import json
+        import os
+        import stat
+        import sys
+        from pathlib import Path
+
+        from metriplane.config import Config
+        from metriplane.provenance.run_provenance import (
+            capture_env_txt,
+            create_run_context,
+            open_jsonl_writer,
+            reserve_run_directory,
+        )
+
+        root = Path(sys.argv[1])
+        os.umask(0)
+        unclaimed = create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="unclaimed",
+            runs_dir=str(root / "unclaimed-runs"),
+        )
+        mirror = root / "mirror" / "session.jsonl"
+        writer = open_jsonl_writer(
+            primary_path=unclaimed.session_jsonl,
+            mirror_path=str(mirror),
+        )
+        writer.write(unclaimed.header_record())
+        writer.close()
+
+        captured = root / "captured-env.txt"
+        capture_fd = os.open(captured, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        os.close(capture_fd)
+        capture_env_txt(captured)
+
+        reservation = reserve_run_directory(root / "reserved-runs", "claimed")
+        os.environ.update(reservation.child_environment(os.environ))
+        claimed = create_run_context(
+            Config(source_mode="dummy"),
+            config_path=None,
+            argv=[],
+            run_id="claimed",
+            runs_dir=str(root / "reserved-runs"),
+        )
+        claimed_writer = open_jsonl_writer(
+            primary_path=claimed.session_jsonl,
+            mirror_path=None,
+        )
+        claimed_writer.write(claimed.header_record())
+        claimed_writer.close()
+
+        paths = {
+            "created_root": root,
+            "unclaimed_base": root / "unclaimed-runs",
+            "unclaimed_dir": unclaimed.run_dir,
+            "unclaimed_config": unclaimed.config_yaml,
+            "unclaimed_canonical": unclaimed.config_canonical_json_path,
+            "unclaimed_env": unclaimed.env_txt,
+            "unclaimed_meta": unclaimed.meta_json,
+            "unclaimed_session": unclaimed.session_jsonl,
+            "mirror_dir": mirror.parent,
+            "mirror_session": mirror,
+            "captured_env": captured,
+            "reserved_base": root / "reserved-runs",
+            "claimed_dir": claimed.run_dir,
+            "claimed_config": claimed.config_yaml,
+            "claimed_canonical": claimed.config_canonical_json_path,
+            "claimed_env": claimed.env_txt,
+            "claimed_meta": claimed.meta_json,
+            "claimed_session": claimed.session_jsonl,
+        }
+        print(json.dumps({name: stat.S_IMODE(path.stat().st_mode) for name, path in paths.items()}))
+        """
+    )
+    environment = os.environ.copy()
+    environment["METRIPLANE_NO_PIP_FREEZE"] = "1"
+    environment["METRIPLANE_GIT_COMMIT"] = "a" * 40
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path / "mode-root")],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    modes = json.loads(result.stdout)
+
+    assert modes["created_root"] == 0o700
+    assert modes["unclaimed_base"] == 0o700
+    assert modes["unclaimed_dir"] == 0o700
+    assert modes["mirror_dir"] == 0o700
+    assert modes["reserved_base"] == 0o700
+    assert modes["claimed_dir"] == 0o700
+    for name, mode in modes.items():
+        if name.endswith(("_dir", "_base")) or name == "created_root":
+            continue
+        assert mode == 0o600, name

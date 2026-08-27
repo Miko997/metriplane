@@ -4,14 +4,30 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_operator_refreshes_run_root_when_runner_connects_late():
+    text = (ROOT / "web" / "dashboard" / "operator.js").read_text(encoding="utf-8")
+    match = re.search(
+        r"async function checkRunner\(\) \{(?P<body>.*?)\n\}\n\nfunction setRunnerDisconnected",
+        text,
+        re.DOTALL,
+    )
+
+    assert match is not None
+    body = match.group("body")
+    assert "const wasConnected = state.runnerConnected;" in body
+    assert "const previousRunnerSessionToken = runnerSessionToken;" in body
+    assert "d.session_token !== previousRunnerSessionToken" in body
+    assert "if (!wasConnected || runnerRestarted) await refreshLatestRun();" in body
 
 
 def test_operator_doctor_summary_chips_use_explicit_summary_counts():

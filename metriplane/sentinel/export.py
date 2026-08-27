@@ -18,4 +18,7 @@ def write_sentinel_summary(summary: dict[str, Any], run_dir: str | Path) -> Path
 
 
 def read_sentinel_summary(run_dir: str | Path) -> dict[str, Any]:
-    return json.loads((Path(run_dir) / "sentinel_summary.json").read_text())
+    value = json.loads((Path(run_dir) / "sentinel_summary.json").read_text())
+    if not isinstance(value, dict):
+        raise ValueError("sentinel summary must contain a JSON object")
+    return value

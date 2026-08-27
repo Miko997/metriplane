@@ -16,12 +16,10 @@ All tests mock hardware so they run on any CI machine.
 from __future__ import annotations
 
 import importlib.util
-import sys
 from pathlib import Path
-from typing import Dict, Optional
-from unittest.mock import MagicMock, patch
+from typing import Dict
+from unittest.mock import patch
 
-import pytest
 
 # ── import tools/list_cameras.py without requiring a package ──────────────────
 _TOOL_PATH = Path(__file__).parent.parent / "tools" / "list_cameras.py"
@@ -30,17 +28,18 @@ _mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
 _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 # Expose module-level names for convenience
-_is_capture_capable    = _mod._is_capture_capable
-_is_metadata_only      = _mod._is_metadata_only
-_extract_index         = _mod._extract_index
-probe_camera           = _mod.probe_camera
-scan_cameras           = _mod.scan_cameras
+_is_capture_capable = _mod._is_capture_capable
+_is_metadata_only = _mod._is_metadata_only
+_extract_index = _mod._extract_index
+probe_camera = _mod.probe_camera
+scan_cameras = _mod.scan_cameras
 V4L2_CAP_VIDEO_CAPTURE = _mod.V4L2_CAP_VIDEO_CAPTURE
 V4L2_CAP_VIDEO_CAPTURE_MPLANE = _mod.V4L2_CAP_VIDEO_CAPTURE_MPLANE
-V4L2_CAP_META_CAPTURE  = _mod.V4L2_CAP_META_CAPTURE
+V4L2_CAP_META_CAPTURE = _mod.V4L2_CAP_META_CAPTURE
 
 
 # ── v4l2 capability flag helpers ──────────────────────────────────────────────
+
 
 class TestIsCaptureCatpable:
     def test_video_capture_flag(self):
@@ -86,6 +85,7 @@ class TestIsMetadataOnly:
 
 # ── index extraction ──────────────────────────────────────────────────────────
 
+
 class TestExtractIndex:
     def test_video0(self):
         assert _extract_index("/dev/video0") == 0
@@ -105,6 +105,7 @@ class TestExtractIndex:
 
 # ── probe_camera: video0 — capture + readable → recommended ──────────────────
 
+
 class TestProbeCameraVideo0:
     """
     /dev/video0: V4L2_CAP_VIDEO_CAPTURE, cv2 index read succeeds.
@@ -115,7 +116,7 @@ class TestProbeCameraVideo0:
     def _make_result(self) -> Dict:
         with (
             patch.object(_mod, "_query_v4l2_caps", return_value=V4L2_CAP_VIDEO_CAPTURE),
-            patch.object(_mod, "_try_cv2_read",      return_value=(True, True, 640, 480)),
+            patch.object(_mod, "_try_cv2_read", return_value=(True, True, 640, 480)),
             patch.object(_mod, "_try_cv2_read_path", return_value=(True, True, 640, 480)),
         ):
             return probe_camera("/dev/video0", {})
@@ -152,6 +153,7 @@ class TestProbeCameraVideo0:
 
 # ── probe_camera: video1 — metadata-only → not recommended ───────────────────
 
+
 class TestProbeCameraVideo1:
     """
     /dev/video1: V4L2_CAP_META_CAPTURE only.
@@ -162,7 +164,7 @@ class TestProbeCameraVideo1:
     def _make_result(self) -> Dict:
         with (
             patch.object(_mod, "_query_v4l2_caps", return_value=V4L2_CAP_META_CAPTURE),
-            patch.object(_mod, "_try_cv2_read",      return_value=(False, False, None, None)),
+            patch.object(_mod, "_try_cv2_read", return_value=(False, False, None, None)),
             patch.object(_mod, "_try_cv2_read_path", return_value=(False, False, None, None)),
         ):
             return probe_camera("/dev/video1", {})
@@ -194,11 +196,12 @@ class TestProbeCameraVideo1:
 
 # ── probe_camera: video2 — same as video0 ────────────────────────────────────
 
+
 class TestProbeCameraVideo2:
     def _make_result(self) -> Dict:
         with (
             patch.object(_mod, "_query_v4l2_caps", return_value=V4L2_CAP_VIDEO_CAPTURE),
-            patch.object(_mod, "_try_cv2_read",      return_value=(True, True, 640, 480)),
+            patch.object(_mod, "_try_cv2_read", return_value=(True, True, 640, 480)),
             patch.object(_mod, "_try_cv2_read_path", return_value=(True, True, 640, 480)),
         ):
             return probe_camera("/dev/video2", {})
@@ -212,11 +215,12 @@ class TestProbeCameraVideo2:
 
 # ── probe_camera: video3 — metadata-only ────────────────────────────────────
 
+
 class TestProbeCameraVideo3:
     def _make_result(self) -> Dict:
         with (
             patch.object(_mod, "_query_v4l2_caps", return_value=V4L2_CAP_META_CAPTURE),
-            patch.object(_mod, "_try_cv2_read",      return_value=(False, False, None, None)),
+            patch.object(_mod, "_try_cv2_read", return_value=(False, False, None, None)),
             patch.object(_mod, "_try_cv2_read_path", return_value=(False, False, None, None)),
         ):
             return probe_camera("/dev/video3", {})
@@ -230,6 +234,7 @@ class TestProbeCameraVideo3:
 
 # ── path read failure + integer read success → still readable ─────────────────
 
+
 class TestReadableFromIntegerIndexOnly:
     """
     If integer-index read succeeds but path-based read fails,
@@ -239,7 +244,7 @@ class TestReadableFromIntegerIndexOnly:
     def _make_result(self) -> Dict:
         with (
             patch.object(_mod, "_query_v4l2_caps", return_value=V4L2_CAP_VIDEO_CAPTURE),
-            patch.object(_mod, "_try_cv2_read",      return_value=(True, True, 1280, 720)),
+            patch.object(_mod, "_try_cv2_read", return_value=(True, True, 1280, 720)),
             patch.object(_mod, "_try_cv2_read_path", return_value=(False, False, None, None)),
         ):
             return probe_camera("/dev/video0", {})
@@ -264,6 +269,7 @@ class TestReadableFromIntegerIndexOnly:
 
 # ── scan_cameras aggregate counts ─────────────────────────────────────────────
 
+
 class TestScanCamerasAggregate:
     """
     Simulate 4 devices: video0(capture), video1(meta), video2(capture), video3(meta).
@@ -285,9 +291,11 @@ class TestScanCamerasAggregate:
                 "cv2_read_path": True,
                 "readable": True,
                 "recommended_for_operator": True,
-                "width": 640, "height": 480,
+                "width": 640,
+                "height": 480,
                 "reason": None,
-                "cv2_open": True, "cv2_read": True,
+                "cv2_open": True,
+                "cv2_read": True,
             }
         else:  # video1, video3
             return {
@@ -302,9 +310,11 @@ class TestScanCamerasAggregate:
                 "cv2_read_path": None,
                 "readable": False,
                 "recommended_for_operator": False,
-                "width": None, "height": None,
+                "width": None,
+                "height": None,
                 "reason": "Metadata Capture only — not a video capture device",
-                "cv2_open": None, "cv2_read": None,
+                "cv2_open": None,
+                "cv2_read": None,
             }
 
     def _run_scan(self):
@@ -348,6 +358,7 @@ class TestScanCamerasAggregate:
 
 
 # ── operator.js UI rendering guard (static code check) ────────────────────────
+
 
 class TestOperatorJsRenderingGuard:
     """

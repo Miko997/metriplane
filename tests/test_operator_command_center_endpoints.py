@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from metriplane.paths import PlatformPaths
 from metriplane.runner.operator_api import OperatorAPI
 
 REPO = Path(__file__).resolve().parents[1]
@@ -17,8 +18,17 @@ DEMO = str((REPO / "evidence/experiments/assistant_demo").resolve())
 
 
 @pytest.fixture
-def api():
-    return OperatorAPI(executor=None, repo_root=REPO)
+def api(tmp_path):
+    return OperatorAPI(
+        executor=None,
+        repo_root=REPO,
+        paths=PlatformPaths(
+            config_dir=tmp_path / "config",
+            data_dir=tmp_path / "data",
+            cache_dir=tmp_path / "cache",
+            state_dir=tmp_path / "state",
+        ),
+    )
 
 
 def test_incidents_endpoint(api):
@@ -56,8 +66,11 @@ def test_camera_trust_endpoint(api):
 
 
 def test_ask_endpoint(api):
-    st, data = api.route("POST", "/operator/ask",
-                         {"run_dir": BUNDLE, "question": "which rule triggered this incident?"})
+    st, data = api.route(
+        "POST",
+        "/operator/ask",
+        {"run_dir": BUNDLE, "question": "which rule triggered this incident?"},
+    )
     assert st == 200
     assert data["intent"] == "rule_explanation"
     assert "min_distance" in data["answer"]
@@ -75,6 +88,82 @@ def test_path_traversal_rejected(api):
     assert data["incidents"] == []
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "live-summary",
+        "objects",
+        "incidents",
+        "traces",
+        "camera-trust",
+        "frames",
+        "ask",
+    ],
+)
+def test_command_center_endpoints_never_500_for_looped_run_dir(
+    api,
+    endpoint: str,
+    tmp_path: Path,
+) -> None:
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop.name)
+    body = {"run_dir": str(loop)}
+    if endpoint == "ask":
+        body["question"] = "what happened?"
+
+    status, data = api.route("POST", f"/operator/{endpoint}", body)
+
+    assert status == 200
+    assert "Internal error" not in str(data)
+
+
+@pytest.mark.parametrize("legacy_root", ["evidence", "runs"])
+def test_looped_legacy_root_does_not_break_valid_platform_run(
+    legacy_root: str,
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    repo_root.joinpath(legacy_root).symlink_to(legacy_root)
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    run_dir = paths.runs_dir / "valid"
+    run_dir.mkdir(parents=True)
+    api = OperatorAPI(executor=None, repo_root=repo_root, paths=paths)
+
+    status, data = api.route("POST", "/operator/incidents", {"run_dir": str(run_dir)})
+
+    assert status == 200
+    assert data["incidents"] == []
+    assert data["run_dir"] == str(run_dir.resolve())
+
+
+def test_looped_evidence_root_does_not_break_platform_checksum(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    repo_root.joinpath("evidence").symlink_to("evidence")
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    )
+    artifact = paths.runs_dir / "valid" / "artifact.txt"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("retained\n", encoding="utf-8")
+    api = OperatorAPI(executor=None, repo_root=repo_root, paths=paths)
+
+    status, data = api.route("POST", "/operator/checksum", {"path": str(artifact)})
+
+    assert status == 200
+    assert data["path"] == str(artifact)
+    assert data["size_bytes"] == len("retained\n")
+
+
 def test_frames_endpoint(api):
     st, data = api.route("POST", "/operator/frames", {"run_dir": BUNDLE})
     assert st == 200
@@ -89,15 +178,18 @@ def test_frames_endpoint_includes_workspace_zones(api, tmp_path, monkeypatch):
     run = tmp_path / "run"
     run.mkdir()
     run.joinpath("session.jsonl").write_text(
-        json.dumps({
-            "schema_version": "1.0",
-            "source_backend": "dummy",
-            "run_id": "workspace_test",
-            "ts": 0.0,
-            "frame_id": 1,
-            "objects": [{"id": "1", "pos_world": [0.2, 0.3, 0.0], "zone": "zone_a"}],
-            "events": [],
-        }) + "\n",
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "source_backend": "dummy",
+                "run_id": "workspace_test",
+                "ts": 0.0,
+                "frame_id": 1,
+                "objects": [{"id": "1", "pos_world": [0.2, 0.3, 0.0], "zone": "zone_a"}],
+                "events": [],
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     run.joinpath("zones.yaml").write_text(
@@ -121,38 +213,34 @@ def test_unknown_endpoint_still_404(api):
     assert st == 404
 
 
-def test_get_endpoints_no_data_safe(api, monkeypatch, tmp_path):
-    # point HOME at an empty dir so there is no ~/metriplane-runs latest run
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+def test_get_endpoints_no_data_safe(api):
     st, data = api.route("GET", "/operator/objects", {})
     assert st == 200
     assert data["objects"] == []
 
 
-def test_latest_command_center_run_prefers_incident_artifacts(api, monkeypatch, tmp_path):
-    runs_root = tmp_path / "metriplane-runs"
+def test_latest_command_center_run_prefers_incident_artifacts(api):
+    runs_root = api._runs_root()
     generic = runs_root / "new_generic_runtime"
     command_center = runs_root / "older_command_center"
     generic.mkdir(parents=True)
     command_center.mkdir(parents=True)
     generic.joinpath("session.jsonl").write_text('{"type":"run_header"}\n', encoding="utf-8")
     command_center.joinpath("incident.json").write_text(
-        json.dumps({
-            "incident_id": "INC-TEST",
-            "run_id": "command_center_run",
-            "status": "open",
-            "severity": "warning",
-            "title": "test incident",
-            "summary": "test incident",
-        }),
+        json.dumps(
+            {
+                "incident_id": "INC-TEST",
+                "run_id": "command_center_run",
+                "status": "open",
+                "severity": "warning",
+                "title": "test incident",
+                "summary": "test incident",
+            }
+        ),
         encoding="utf-8",
     )
     os.utime(command_center, (1000, 1000))
     os.utime(generic, (2000, 2000))
-
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 
     st, data = api.route("GET", "/operator/live-summary", {})
 

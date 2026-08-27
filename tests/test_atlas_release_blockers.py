@@ -28,16 +28,9 @@ from metriplane.testing.models import ExpectedEventSpec, ExpectedIncidentSpec
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSEMBLY_PACK = ROOT / "configs" / "domain_packs" / "assembly_cell"
-ASSEMBLY_SESSION = (
-    ROOT / "datasets" / "demo" / "atlas" / "assembly_cell_missing_tool.jsonl"
-)
+ASSEMBLY_SESSION = ROOT / "datasets" / "demo" / "atlas" / "assembly_cell_missing_tool.jsonl"
 FROZEN_ATLAS_BUNDLE = (
-    ROOT
-    / "evidence"
-    / "paper_v2_0"
-    / "atlas_run"
-    / "evidence_bundles"
-    / "INC-0001.zip"
+    ROOT / "evidence" / "paper_v2_0" / "atlas_run" / "evidence_bundles" / "INC-0001.zip"
 )
 
 
@@ -268,8 +261,7 @@ def test_atlas_verifier_requires_exact_incident_timeline_event_set(
 
     assert result["pass"] is False
     assert any(
-        "incident event IDs do not exactly match timeline" in error
-        and "evt_extra" in error
+        "incident event IDs do not exactly match timeline" in error and "evt_extra" in error
         for error in result["errors"]
     )
 
@@ -517,10 +509,7 @@ def test_anonymize_pseudonymizes_identity_and_asset_values_without_a_map(
                 "Person_ID": "Person-PRIVATE-9",
                 "faceId": "Face-PRIVATE-10",
                 "Objects": [{"ID": "Camera-Asset-3"}],
-                "note": (
-                    "worker-alice-42 handled pump-secret-7; "
-                    "ALICESECRET signed the record"
-                ),
+                "note": ("worker-alice-42 handled pump-secret-7; ALICESECRET signed the record"),
             },
         }
     )
@@ -543,9 +532,7 @@ def test_anonymize_pseudonymizes_identity_and_asset_values_without_a_map(
 
     pseudonymized = [
         json.loads(line)
-        for line in (output / "physical_event_log.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
+        for line in (output / "physical_event_log.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     first = pseudonymized[0]
     assert first["Worker-ID"].startswith("person_")
@@ -561,9 +548,7 @@ def test_anonymize_pseudonymizes_identity_and_asset_values_without_a_map(
     assert pseudonymized[2]["asset_id"] in pseudonymized[2]["message"]
 
     shareable_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in output.rglob("*")
-        if path.is_file()
+        path.read_text(encoding="utf-8") for path in output.rglob("*") if path.is_file()
     ).casefold()
     for original in (
         "Worker-ALICE-42",
@@ -791,21 +776,17 @@ def test_atlas_rejects_invalid_frame_times(
 def test_atlas_manifest_artifact_paths_remain_valid_after_atomic_move(
     atlas_run: Path,
 ) -> None:
-    manifest = json.loads(
-        (atlas_run / "atlas_manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((atlas_run / "atlas_manifest.json").read_text(encoding="utf-8"))
     assert manifest["source_session_jsonl"] == "state_segment.jsonl"
     assert manifest["domain_pack"] == "configs"
 
     for rel in manifest["artifacts"].values():
         assert not Path(rel).is_absolute()
         assert (atlas_run / rel).exists()
-    privacy = json.loads(
-        (atlas_run / "privacy_report.json").read_text(encoding="utf-8")
-    )
+    privacy = json.loads((atlas_run / "privacy_report.json").read_text(encoding="utf-8"))
     assert privacy["run_dir"] == "."
     dashboard = (atlas_run / "atlas_dashboard.html").read_text(encoding="utf-8")
-    assert 'run_dir&quot;: &quot;.&quot;' in dashboard
+    assert "run_dir&quot;: &quot;.&quot;" in dashboard
     assert f".{atlas_run.name}-" not in dashboard
 
 
@@ -826,31 +807,37 @@ def test_cli_exported_bundle_contains_replayable_state(
     bundle = tmp_path / "cli-export.zip"
     spec = tmp_path / "cli-export.yaml"
 
-    assert metriplane_main(
-        [
-            "atlas",
-            "bundle",
-            "export",
-            "--incident-id",
-            "INC-0001",
-            "--run-dir",
-            str(atlas_run),
-            "--out",
-            str(bundle),
-        ]
-    ) == 0
+    assert (
+        metriplane_main(
+            [
+                "atlas",
+                "bundle",
+                "export",
+                "--incident-id",
+                "INC-0001",
+                "--run-dir",
+                str(atlas_run),
+                "--out",
+                str(bundle),
+            ]
+        )
+        == 0
+    )
     assert verify_bundle(bundle)["pass"] is True
-    assert metriplane_main(
-        [
-            "atlas",
-            "regression",
-            "create",
-            "--bundle",
-            str(bundle),
-            "--out",
-            str(spec),
-        ]
-    ) == 0
+    assert (
+        metriplane_main(
+            [
+                "atlas",
+                "regression",
+                "create",
+                "--bundle",
+                str(bundle),
+                "--out",
+                str(spec),
+            ]
+        )
+        == 0
+    )
     assert run_regression(spec)["pass"] is True
 
 
@@ -859,9 +846,7 @@ def test_run_pack_requires_a_matching_session_for_other_domains(
 ) -> None:
     output = tmp_path / "wrong-demo"
 
-    assert metriplane_main(
-        ["atlas", "run-pack", "robot_cell", "--out", str(output)]
-    ) == 2
+    assert metriplane_main(["atlas", "run-pack", "robot_cell", "--out", str(output)]) == 2
     assert not output.exists()
 
 
@@ -965,18 +950,14 @@ def test_domain_pack_validation_rejects_empty_work_orders_and_process(
 ) -> None:
     pack = tmp_path / "pack"
     shutil.copytree(ASSEMBLY_PACK, pack)
-    (pack / "work_orders.csv").write_text(
-        "work_order_id,process_id,product\n", encoding="utf-8"
-    )
+    (pack / "work_orders.csv").write_text("work_order_id,process_id,product\n", encoding="utf-8")
     assert any("at least one work order" in error for error in validate_domain_pack(pack))
     with pytest.raises(ValueError, match="at least one work order"):
         run_atlas(ASSEMBLY_SESSION, pack, tmp_path / "run")
 
     process = yaml.safe_load((pack / "process.yaml").read_text(encoding="utf-8"))
     process["steps"] = []
-    (pack / "process.yaml").write_text(
-        yaml.safe_dump(process, sort_keys=True), encoding="utf-8"
-    )
+    (pack / "process.yaml").write_text(yaml.safe_dump(process, sort_keys=True), encoding="utf-8")
     assert any("at least one step" in error for error in validate_domain_pack(pack))
 
 
@@ -1024,8 +1005,9 @@ def test_domain_pack_validation_rejects_bad_work_order_and_contract(
         work_orders.replace("assembly_cell_missing_tool_demo", "wrong_process"),
         encoding="utf-8",
     )
-    assert any("expected assembly_cell_missing_tool_demo" in error
-               for error in validate_domain_pack(pack))
+    assert any(
+        "expected assembly_cell_missing_tool_demo" in error for error in validate_domain_pack(pack)
+    )
 
     shutil.rmtree(pack)
     shutil.copytree(ASSEMBLY_PACK, pack)
@@ -1062,9 +1044,7 @@ def test_domain_pack_validation_handles_unhashable_refs_and_nonfinite_waits(
     contracts = yaml.safe_load(contracts_path.read_text(encoding="utf-8"))
     contracts["contracts"][0]["station_id"] = ["station_a"]
     contracts["contracts"][0]["max_wait_s"] = float("inf")
-    contracts_path.write_text(
-        yaml.safe_dump(contracts, sort_keys=True), encoding="utf-8"
-    )
+    contracts_path.write_text(yaml.safe_dump(contracts, sort_keys=True), encoding="utf-8")
 
     errors = validate_domain_pack(pack)
 
@@ -1098,9 +1078,7 @@ def test_domain_pack_rejects_ambiguous_stations_and_step_location(
             "label": "Ambiguous station",
         }
     )
-    workspace_path.write_text(
-        yaml.safe_dump(workspace, sort_keys=True), encoding="utf-8"
-    )
+    workspace_path.write_text(yaml.safe_dump(workspace, sort_keys=True), encoding="utf-8")
     process_path = pack / "process.yaml"
     process = yaml.safe_load(process_path.read_text(encoding="utf-8"))
     process["steps"][1]["required_zone"] = "outbound_buffer"
@@ -1123,9 +1101,7 @@ def test_domain_pack_rejects_multiple_work_orders_until_selection_is_explicit(
     first[0] = "WO-ASM-002"
     work_orders.write_text(text + ",".join(first) + "\n", encoding="utf-8")
 
-    assert any(
-        "exactly one work order" in error for error in validate_domain_pack(pack)
-    )
+    assert any("exactly one work order" in error for error in validate_domain_pack(pack))
 
 
 def test_process_evaluator_reports_the_actually_missing_required_asset() -> None:
@@ -1183,15 +1159,9 @@ def test_process_evaluator_resets_missing_evidence_when_asset_changes() -> None:
             station_id="station_a",
         )
 
-    first = evaluator.update(
-        [observation("quality_gauge_1", 0.0, 1)], 0.0, 1
-    )
-    second = evaluator.update(
-        [observation("torque_driver_1", 0.5, 2)], 0.5, 2
-    )
-    delayed = evaluator.update(
-        [observation("torque_driver_1", 2.0, 3)], 2.0, 3
-    )
+    first = evaluator.update([observation("quality_gauge_1", 0.0, 1)], 0.0, 1)
+    second = evaluator.update([observation("torque_driver_1", 0.5, 2)], 0.5, 2)
+    delayed = evaluator.update([observation("torque_driver_1", 2.0, 3)], 2.0, 3)
 
     assert first[0].asset_id == "torque_driver_1"
     assert second[0].asset_id == "quality_gauge_1"
@@ -1238,9 +1208,7 @@ def test_domain_pack_validation_rejects_unknown_asset_type_and_work_order_refs(
     process_path = pack / "process.yaml"
     process = yaml.safe_load(process_path.read_text(encoding="utf-8"))
     process["steps"][0]["expected_asset_types"] = ["kit_bni_typo"]
-    process_path.write_text(
-        yaml.safe_dump(process, sort_keys=True), encoding="utf-8"
-    )
+    process_path.write_text(yaml.safe_dump(process, sort_keys=True), encoding="utf-8")
 
     assets_path = pack / "assets.yaml"
     assets = yaml.safe_load(assets_path.read_text(encoding="utf-8"))

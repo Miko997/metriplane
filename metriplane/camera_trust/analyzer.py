@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Literal
 
 from metriplane.camera_trust.models import (
     CameraTrustReportModel,
@@ -77,10 +79,10 @@ class CameraTrustAnalyzer:
                     agg.confidences.append(float(o.confidence))
                 # disagreement vs fused position of same object id
                 fo = fused.get(str(o.id))
-                if (fo is not None and fo.pos_world is not None
-                        and o.pos_world is not None):
-                    d = math.hypot(o.pos_world[0] - fo.pos_world[0],
-                                   o.pos_world[1] - fo.pos_world[1])
+                if fo is not None and fo.pos_world is not None and o.pos_world is not None:
+                    d = math.hypot(
+                        o.pos_world[0] - fo.pos_world[0], o.pos_world[1] - fo.pos_world[1]
+                    )
                     agg.disagreements.append(d)
                 # zone coverage per camera
                 if o.zone:
@@ -91,11 +93,9 @@ class CameraTrustAnalyzer:
         cfg = self.config
         total = max(1, self._total_frames)
         dropout = 1.0 - (agg.frames_with_detection / total)
-        mean_dis = (sum(agg.disagreements) / len(agg.disagreements)
-                    if agg.disagreements else None)
+        mean_dis = sum(agg.disagreements) / len(agg.disagreements) if agg.disagreements else None
         p95_dis = _p95(agg.disagreements) if agg.disagreements else None
-        mean_conf = (sum(agg.confidences) / len(agg.confidences)
-                     if agg.confidences else None)
+        mean_conf = sum(agg.confidences) / len(agg.confidences) if agg.confidences else None
 
         score = 1.0
         notes: list[str] = []
@@ -110,19 +110,23 @@ class CameraTrustAnalyzer:
         if mean_dis is not None:
             if mean_dis >= cfg.disagreement_fail_m:
                 score -= 0.4
-                notes.append(f"large disagreement {mean_dis*100:.1f}cm")
+                notes.append(f"large disagreement {mean_dis * 100:.1f}cm")
             elif mean_dis >= cfg.disagreement_warn_m:
                 score -= 0.15
-                notes.append(f"moderate disagreement {mean_dis*100:.1f}cm")
+                notes.append(f"moderate disagreement {mean_dis * 100:.1f}cm")
         # low confidence penalty
         if mean_conf is not None and mean_conf < 0.5:
             score -= 0.1
             notes.append(f"low mean confidence {mean_conf:.2f}")
 
         score = max(0.0, min(1.0, score))
-        status = "OK" if score >= 0.80 else ("DEGRADED" if score >= 0.50 else "FAILED")
+        status: Literal["OK", "DEGRADED", "FAILED"] = (
+            "OK" if score >= 0.80 else ("DEGRADED" if score >= 0.50 else "FAILED")
+        )
         return CameraTrustScoreModel(
-            camera_id=cid, score=round(score, 3), status=status,
+            camera_id=cid,
+            score=round(score, 3),
+            status=status,
             frames_seen=agg.frames_with_detection,
             detections_total=agg.detections_total,
             dropout_rate=round(dropout, 3),
@@ -135,23 +139,26 @@ class CameraTrustAnalyzer:
     def _score_zone(self, zone: str, agg: _ZoneAgg) -> ZoneCoverageScoreModel:
         n_cams = len(agg.camera_counts)
         score = 1.0 if n_cams >= 2 else (0.6 if n_cams == 1 else 0.2)
-        weak = sorted(c for c, n in agg.camera_counts.items()
-                      if n < max(agg.camera_counts.values(), default=1) * 0.5)
+        weak = sorted(
+            c
+            for c, n in agg.camera_counts.items()
+            if n < max(agg.camera_counts.values(), default=1) * 0.5
+        )
         notes = []
         if n_cams <= 1:
             notes.append("single-camera coverage (no redundancy)")
         return ZoneCoverageScoreModel(
-            zone=zone, score=round(score, 3),
+            zone=zone,
+            score=round(score, 3),
             frames_with_objects=agg.frames_with_objects,
             camera_observation_counts=dict(sorted(agg.camera_counts.items())),
-            weak_cameras=weak, notes=notes,
+            weak_cameras=weak,
+            notes=notes,
         )
 
     def report(self) -> CameraTrustReportModel:
-        cam_scores = {cid: self._score_camera(cid, agg)
-                      for cid, agg in sorted(self._cams.items())}
-        zone_scores = {z: self._score_zone(z, agg)
-                       for z, agg in sorted(self._zones.items())}
+        cam_scores = {cid: self._score_camera(cid, agg) for cid, agg in sorted(self._cams.items())}
+        zone_scores = {z: self._score_zone(z, agg) for z, agg in sorted(self._zones.items())}
         recs = build_recommendations(cam_scores, zone_scores, self.config)
         return CameraTrustReportModel(
             run_id=self.run_id,
@@ -168,9 +175,11 @@ def _p95(values: list[float]) -> float:
     return s[idx]
 
 
-def analyze_session(session_path, config: CameraTrustConfig | None = None
-                    ) -> CameraTrustReportModel:
+def analyze_session(
+    session_path: str | Path, config: CameraTrustConfig | None = None
+) -> CameraTrustReportModel:
     from metriplane.sentinel.engine import iter_frames
+
     analyzer = CameraTrustAnalyzer(config)
     for frame in iter_frames(session_path):
         analyzer.update(frame)

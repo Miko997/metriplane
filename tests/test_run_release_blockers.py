@@ -101,9 +101,10 @@ def test_replay_runtime_missing_and_header_only_inputs_fail(tmp_path: Path) -> N
         tmp_path / "header.jsonl",
         [{"type": "run_header", "run_id": "test"}],
     )
-    assert _run_replay(
-        Config(source_mode="replay", replay_input=str(header_only), replay_loop=False)
-    ) == 1
+    assert (
+        _run_replay(Config(source_mode="replay", replay_input=str(header_only), replay_loop=False))
+        == 1
+    )
 
 
 def test_replay_runtime_primary_recording_failure_is_fatal(tmp_path: Path) -> None:
@@ -141,14 +142,17 @@ def test_replay_runtime_rejects_nonmonotonic_authoritative_clock(tmp_path: Path)
         ],
     )
 
-    assert _run_replay(
-        Config(
-            source_mode="replay",
-            replay_input=str(session),
-            replay_speed=0.0,
-            replay_loop=False,
+    assert (
+        _run_replay(
+            Config(
+                source_mode="replay",
+                replay_input=str(session),
+                replay_speed=0.0,
+                replay_loop=False,
+            )
         )
-    ) == 1
+        == 1
+    )
 
 
 def test_replay_runtime_rejects_any_malformed_record(tmp_path: Path) -> None:
@@ -158,28 +162,34 @@ def test_replay_runtime_rejects_any_malformed_record(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    assert _run_replay(
-        Config(
-            source_mode="replay",
-            replay_input=str(session),
-            replay_speed=0.0,
-            replay_loop=False,
+    assert (
+        _run_replay(
+            Config(
+                source_mode="replay",
+                replay_input=str(session),
+                replay_speed=0.0,
+                replay_loop=False,
+            )
         )
-    ) == 1
+        == 1
+    )
 
 
 @pytest.mark.parametrize("speed", [float("nan"), float("inf"), -1.0])
 def test_replay_runtime_rejects_invalid_speed(tmp_path: Path, speed: float) -> None:
     session = _write_session(tmp_path / "session.jsonl", [_valid_frame(1, 1.0)])
 
-    assert _run_replay(
-        Config(
-            source_mode="replay",
-            replay_input=str(session),
-            replay_speed=speed,
-            replay_loop=False,
+    assert (
+        _run_replay(
+            Config(
+                source_mode="replay",
+                replay_input=str(session),
+                replay_speed=speed,
+                replay_loop=False,
+            )
         )
-    ) == 1
+        == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -196,14 +206,17 @@ def test_replay_runtime_rejects_invalid_timestamps(
 ) -> None:
     session = _write_session(tmp_path / "session.jsonl", [frame])
 
-    assert _run_replay(
-        Config(
-            source_mode="replay",
-            replay_input=str(session),
-            replay_speed=0.0,
-            replay_loop=False,
+    assert (
+        _run_replay(
+            Config(
+                source_mode="replay",
+                replay_input=str(session),
+                replay_speed=0.0,
+                replay_loop=False,
+            )
         )
-    ) == 1
+        == 1
+    )
 
 
 def test_replay_runtime_rejects_nonfinite_pacing_deadline(
@@ -223,14 +236,17 @@ def test_replay_runtime_rejects_nonfinite_pacing_deadline(
 
     monkeypatch.setattr(runtime, "_sleep_until_replay_deadline", record_target)
 
-    assert _run_replay(
-        Config(
-            source_mode="replay",
-            replay_input=str(session),
-            replay_speed=1e-300,
-            replay_loop=False,
+    assert (
+        _run_replay(
+            Config(
+                source_mode="replay",
+                replay_input=str(session),
+                replay_speed=1e-300,
+                replay_loop=False,
+            )
         )
-    ) == 1
+        == 1
+    )
     assert len(targets) == 1
 
 
@@ -255,9 +271,7 @@ def test_replay_deadline_waits_through_multiple_chunks(monkeypatch) -> None:
 
 
 def test_single_camera_resolver_honors_usb_device_and_rtsp_url() -> None:
-    usb = runtime._resolve_single_camera(
-        Config(camera_backend="usb", camera_device="/dev/video7")
-    )
+    usb = runtime._resolve_single_camera(Config(camera_backend="usb", camera_device="/dev/video7"))
     assert isinstance(usb.camera, USBCamera)
     assert usb.camera.index == "/dev/video7"
     assert usb.source_backend == "aruco_usb"
@@ -278,9 +292,7 @@ def test_single_camera_resolver_honors_usb_device_and_rtsp_url() -> None:
         (Config(camera_backend="rtsp", camera_device="/dev/video0"), "requires camera_device"),
     ],
 )
-def test_single_camera_resolver_rejects_ignored_combinations(
-    cfg: Config, match: str
-) -> None:
+def test_single_camera_resolver_rejects_ignored_combinations(cfg: Config, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         runtime._resolve_single_camera(cfg)
 
@@ -291,9 +303,12 @@ def test_optional_mapping_and_zones_are_only_optional_when_omitted(tmp_path: Pat
 
     with pytest.raises(ValueError, match="configured planar mapping"):
         runtime._maybe_load_mapper(Config(mapping_file=str(tmp_path / "missing.yaml")))
-    assert runtime.run_loop(
-        Config(mapping_file=str(tmp_path / "missing.yaml"), runs_dir=str(tmp_path / "runs"))
-    ) == 1
+    assert (
+        runtime.run_loop(
+            Config(mapping_file=str(tmp_path / "missing.yaml"), runs_dir=str(tmp_path / "runs"))
+        )
+        == 1
+    )
 
     malformed_zones = tmp_path / "zones.yaml"
     malformed_zones.write_text("zones: [not-a-zone]", encoding="utf-8")
@@ -306,14 +321,10 @@ def test_explicit_missing_profile_fails_but_implicit_profile_is_optional(
 ) -> None:
     calib = tmp_path / "calib"
     calib.mkdir()
-    (calib / "active_profile.yaml").write_text(
-        "profile: unavailable\n", encoding="utf-8"
-    )
+    (calib / "active_profile.yaml").write_text("profile: unavailable\n", encoding="utf-8")
 
     # A stale optional active-profile pointer must not make an unprofiled run fail.
-    assert runtime._apply_runtime_profile_defaults(
-        Config(), calib_root=calib
-    ) == Config()
+    assert runtime._apply_runtime_profile_defaults(Config(), calib_root=calib) == Config()
 
     monkeypatch.chdir(tmp_path)
     missing = Config(
@@ -370,9 +381,7 @@ def test_rtsp_credentials_are_not_written_to_runtime_logs(
         def release(self) -> None:
             return None
 
-    monkeypatch.setattr(
-        "metriplane.camera.rtsp.cv2.VideoCapture", lambda _url: Capture()
-    )
+    monkeypatch.setattr("metriplane.camera.rtsp.cv2.VideoCapture", lambda _url: Capture())
     with caplog.at_level(logging.INFO):
         camera = RTSPCamera(secret_url)
         camera.open()
@@ -397,9 +406,7 @@ def test_rtsp_credentials_are_not_written_to_runtime_logs(
     assert secret_url not in caplog.text
 
 
-def test_run_loop_propagates_ws_and_camera_startup_failures(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_run_loop_propagates_ws_and_camera_startup_failures(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
     session = _write_session(tmp_path / "session.jsonl", [_valid_frame(1, 0.0)])
 
@@ -429,9 +436,7 @@ def test_run_loop_propagates_ws_and_camera_startup_failures(
         "open",
         lambda _self: (_ for _ in ()).throw(RuntimeError("camera unavailable")),
     )
-    status = runtime.run_loop(
-        Config(source_mode="camera", runs_dir=str(tmp_path / "camera-runs"))
-    )
+    status = runtime.run_loop(Config(source_mode="camera", runs_dir=str(tmp_path / "camera-runs")))
     assert status == 1
 
 
@@ -550,9 +555,7 @@ def test_camera_open_oserror_releases_all_resources_even_when_close_fails(
         lambda **_kwargs: Observability(),
     )
 
-    assert runtime.run_loop(
-        Config(source_mode="camera", runs_dir=str(tmp_path / "runs"))
-    ) == 1
+    assert runtime.run_loop(Config(source_mode="camera", runs_dir=str(tmp_path / "runs"))) == 1
     assert closed == [
         "camera",
         "websocket",

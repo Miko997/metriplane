@@ -75,9 +75,7 @@ def test_not_recorded_and_coverage_fields() -> None:
     assert assistance == ["NO"] * 5
 
     confusion = [
-        row["first_confusion"]
-        for row in primary
-        if row["first_confusion"] != "NOT_RECORDED"
+        row["first_confusion"] for row in primary if row["first_confusion"] != "NOT_RECORDED"
     ]
     assert len(confusion) == 5
     assert confusion.count("NOT_APPLICABLE") == 4
