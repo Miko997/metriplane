@@ -28,12 +28,12 @@ PROFILES_PATH = ROOT / "docs" / "status" / "support-profiles.json"
 BASELINE_PATH = ROOT / "docs" / "status" / "baseline-snapshot.v1.json"
 BASELINE_TOOL_PATH = ROOT / "tools" / "baseline_snapshot.py"
 
-MATERIALIZATION_SHA256 = "ad9d1c9e33cb950cd96709e52019015a43188eb5fbdf0f0d51d9c1e389ecbb96"
+MATERIALIZATION_SHA256 = "0728cb9e29bebc79e498a127787a5854b013c8cf0668cc743a55ef67e2251513"
 BASELINE_SHA256 = "0753e370d8f61df201de98ac838cec9cb9e279f616bd10eab547a6f9511575b3"
 BASE_COMMIT = "2969636357140598d742bd0befed034a25463251"
 BASE_TREE = "09c4ccd6c418ba9a1b99f0f91c39d0162a544bfa"
-EVIDENCE_BASE_COMMIT = "0644a5dbd7fcdf4f9447b995a2baa5df17af8f75"
-EVIDENCE_BASE_TREE = "237bdb81688a153753245d8a03cfe19f7b177c75"
+EVIDENCE_BASE_COMMIT = "46a6c586ad4814089d39452ee4711c4c1b93d013"
+EVIDENCE_BASE_TREE = "c8e5213d8dacc67932f3a08ac7965ddb84d2959c"
 RETAINED_EVIDENCE_ROOT_ENV = "METRIPLANE_MP2_010_MATERIALIZATION_ROOT"
 
 CRITERION_EVIDENCE_PATHS = {
@@ -537,6 +537,10 @@ def _ordered_by_id(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(copy.deepcopy(list(items)), key=lambda item: item["id"])
 
 
+def _assert_canonical_id_set(values: list[str]) -> None:
+    assert values == sorted(set(values))
+
+
 def _baseline_rows(baseline: dict[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for identifier, spec in sorted(EXPECTED_ROWS.items()):
@@ -676,6 +680,28 @@ def _valid_extension_row(inventory: dict[str, Any]) -> dict[str, Any]:
     return extension
 
 
+def _valid_extension_profile() -> dict[str, Any]:
+    return {
+        "claim": {
+            "classification": "observed_not_supported",
+            "limitation_ids": [],
+            "statement": "Repository-backed downstream installed profile.",
+        },
+        "id": "linux.python312.installed",
+        "kind": "installed_environment",
+        "owner": "MP2-011",
+        "source": {
+            "digest_sha256": _sha256_file(_repository_file("uv.lock")),
+            "locator": "python:3.12",
+            "path": "uv.lock",
+            "type": "installed_discovery",
+        },
+        "status": "active",
+        "support_disposition": "not_measured",
+        "test": "MP2-011.OBL.PROFILE",
+    }
+
+
 def _with_extension_row(inventory: dict[str, Any], extension: dict[str, Any]) -> dict[str, Any]:
     extended = copy.deepcopy(inventory)
     extended["rows"].append(extension)
@@ -736,6 +762,13 @@ def _assert_registry_pair(
 
     profiles_by_id = {profile["id"]: profile for profile in profile_rows}
     for row in rows:
+        for values in (
+            row["claim"]["limitation_ids"],
+            row["consumer_task_ids"],
+            row["trace_criterion_ids"],
+            row["validator_ids"],
+        ):
+            _assert_canonical_id_set(values)
         profile_id = row["profile"]
         if profile_id:
             assert profile_id in profiles_by_id
@@ -765,6 +798,7 @@ def _assert_registry_pair(
             assert profiles_by_id[profile_id]["support_disposition"] == "measured"
 
     for profile in profile_rows:
+        _assert_canonical_id_set(profile["claim"]["limitation_ids"])
         if profile["owner"]:
             assert profile["owner"] in known_tasks
         if profile["test"]:
@@ -778,6 +812,8 @@ def _assert_registry_pair(
             assert profile["support_disposition"] == "measured"
 
     for trace in (inventory["trace"], profiles["trace"]):
+        for field in ("criterion_ids", "obligation_ids", "downstream_task_ids"):
+            _assert_canonical_id_set(trace[field])
         task = trace["task"]
         assert task in known_tasks
         assert all(_task_id(criterion) == task for criterion in trace["criterion_ids"])
@@ -1359,6 +1395,73 @@ def test_three_run_determinism(_obligation: str) -> None:
     assert profile_projections[0] == PROFILES_PATH.read_bytes()
     assert inventory["rows_sha256"] == _sha(inventory["rows"])
     assert profiles["profiles_sha256"] == _sha(profiles["profiles"])
+
+
+@pytest.mark.parametrize(
+    "field_path",
+    [
+        ("claim", "limitation_ids"),
+        ("consumer_task_ids",),
+        ("trace_criterion_ids",),
+        ("validator_ids",),
+    ],
+)
+@obligation("MP2-010.OBL.THREE_RUN_DETERMINISM")
+def test_row_set_valued_arrays_require_canonical_order(
+    _obligation: str, field_path: tuple[str, ...]
+) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    extension = _valid_extension_row(inventory)
+    extension["claim"]["limitation_ids"] = [
+        "CLI_ROOT_ONLY",
+        "RESOURCE_SEED_ONLY",
+    ]
+    extension["trace_criterion_ids"] = ["MP2-011.A01", "MP2-011.A02"]
+    extension["validator_ids"] = sorted(EXPECTED_VALIDATORS)[:2]
+    valid = _with_extension_row(inventory, extension)
+    _assert_registry_pair(schema, valid, profiles, baseline)
+
+    invalid = copy.deepcopy(valid)
+    value: Any = invalid["rows"][
+        next(index for index, row in enumerate(invalid["rows"]) if row["id"] == extension["id"])
+    ]
+    for key in field_path:
+        value = value[key]
+    value.reverse()
+    invalid["rows_sha256"] = _sha(invalid["rows"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid, profiles, baseline)
+
+
+@obligation("MP2-010.OBL.THREE_RUN_DETERMINISM")
+def test_profile_set_valued_arrays_require_canonical_order(_obligation: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    valid = copy.deepcopy(profiles)
+    extension = _valid_extension_profile()
+    extension["claim"]["limitation_ids"] = ["CLI_ROOT_ONLY", "RESOURCE_SEED_ONLY"]
+    valid["profiles"].append(extension)
+    valid["profiles"].sort(key=lambda profile: profile["id"])
+    valid["profiles_sha256"] = _sha(valid["profiles"])
+    _assert_registry_pair(schema, inventory, valid, baseline)
+
+    invalid = copy.deepcopy(valid)
+    invalid_extension = next(
+        profile for profile in invalid["profiles"] if profile["id"] == extension["id"]
+    )
+    invalid_extension["claim"]["limitation_ids"].reverse()
+    invalid["profiles_sha256"] = _sha(invalid["profiles"])
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, inventory, invalid, baseline)
+
+
+@pytest.mark.parametrize("field", ["criterion_ids", "obligation_ids", "downstream_task_ids"])
+@obligation("MP2-010.OBL.THREE_RUN_DETERMINISM")
+def test_trace_set_valued_arrays_require_canonical_order(_obligation: str, field: str) -> None:
+    schema, inventory, profiles, baseline = _documents()
+    invalid = copy.deepcopy(inventory)
+    invalid["trace"][field].reverse()
+    with pytest.raises(AssertionError):
+        _assert_registry_pair(schema, invalid, profiles, baseline)
 
 
 @obligation("MP2-010.OBL.TRACE_CLOSURE")
