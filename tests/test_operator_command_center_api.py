@@ -68,7 +68,11 @@ def test_get_frames_for_replay():
 
 
 def test_get_frames_missing_session(tmp_path):
-    assert get_frames(tmp_path) == {"frames": [], "incidents": [], "workspace": {"zones": [], "stations": []}}
+    assert get_frames(tmp_path) == {
+        "frames": [],
+        "incidents": [],
+        "workspace": {"zones": [], "stations": []},
+    }
 
 
 def test_live_summary():
@@ -107,9 +111,7 @@ def test_nested_artifact_parent_symlink_outside_run_is_rejected(tmp_path: Path):
     outside = tmp_path / "outside"
     run.mkdir()
     outside.mkdir()
-    (outside / "incident.json").write_text(
-        '{"incident_id": "outside"}\n', encoding="utf-8"
-    )
+    (outside / "incident.json").write_text('{"incident_id": "outside"}\n', encoding="utf-8")
     (run / "incidents").symlink_to(outside, target_is_directory=True)
 
     assert find_run_artifact(run, ["incidents/incident.json"]) is None

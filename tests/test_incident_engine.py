@@ -10,12 +10,15 @@ from metriplane.sentinel.incidents import (
 )
 
 
-def alert(ts, rule_id="r1", severity="warning", objects=("cart_01",), zone="exit_lane",
-          aid=None):
+def alert(ts, rule_id="r1", severity="warning", objects=("cart_01",), zone="exit_lane", aid=None):
     return RuleAlert(
-        alert_id=aid or f"a{int(ts*1000):07d}",
-        rule_id=rule_id, severity=severity, ts=ts,
-        object_ids=list(objects), zone=zone, run_id="test",
+        alert_id=aid or f"a{int(ts * 1000):07d}",
+        rule_id=rule_id,
+        severity=severity,
+        ts=ts,
+        object_ids=list(objects),
+        zone=zone,
+        run_id="test",
     )
 
 

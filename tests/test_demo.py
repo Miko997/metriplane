@@ -25,10 +25,7 @@ def test_demo_help_exposes_open_and_export_options(capsys) -> None:
     output = capsys.readouterr().out
     normalized = " ".join(output.split())
     assert "metriplane demo" in normalized
-    assert (
-        "from a recorded incident to a verified report and a repeatable check"
-        in normalized
-    )
+    assert "from a recorded incident to a verified report and a repeatable check" in normalized
     assert "No camera is needed" in normalized
     assert "Save the report, evidence, and repeatable check in DIR" in normalized
     assert "--open" in normalized
@@ -50,9 +47,7 @@ def test_demo_exports_exact_inspectable_inputs(tmp_path: Path, capsys) -> None:
         "domain-pack/work_orders.csv": "assets/assembly_cell/work_orders.csv",
     }
     exported_files = {
-        path.relative_to(export_dir).as_posix()
-        for path in export_dir.rglob("*")
-        if path.is_file()
+        path.relative_to(export_dir).as_posix() for path in export_dir.rglob("*") if path.is_file()
     }
     assert exported_files == set(expected_layout)
 
@@ -146,9 +141,7 @@ def test_demo_export_does_not_replace_destination_created_during_staging(
         ["--open"],
     ],
 )
-def test_demo_export_rejects_run_and_browser_options(
-    tmp_path: Path, extra_args: list[str]
-) -> None:
+def test_demo_export_rejects_run_and_browser_options(tmp_path: Path, extra_args: list[str]) -> None:
     with pytest.raises(SystemExit, match="2"):
         demo_main(["--export-inputs", str(tmp_path / "export"), *extra_args])
 
@@ -169,8 +162,7 @@ def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatc
     assert (
         "Scenario:\n"
         "A required torque driver is missing during an assembly step.\n"
-        "The fastening step is delayed by 35.0 seconds."
-        in output
+        "The fastening step is delayed by 35.0 seconds." in output
     )
     assert "Input:\nTimestamped object positions and process rules." in output
     assert "Result:\nPASS  Incident timeline: 6 events" in output
@@ -179,8 +171,7 @@ def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatc
     assert "PASS  Repeatable regression check: passed" in output
     assert f"Report:\n{out_dir / 'cell_truth_report.html'}" in output
     assert (
-        "The generated check can be run again after the software or process rules change."
-        in output
+        "The generated check can be run again after the software or process rules change." in output
     )
     assert "Demo complete." in output
 
@@ -203,9 +194,7 @@ def test_demo_runs_complete_verified_workflow(tmp_path: Path, capsys, monkeypatc
     assert (regression_path.parent / source_bundle).resolve() == bundle_path.resolve()
 
 
-def test_demo_refuses_existing_output_without_deleting_it(
-    tmp_path: Path, capsys
-) -> None:
+def test_demo_refuses_existing_output_without_deleting_it(tmp_path: Path, capsys) -> None:
     out_dir = tmp_path / "existing"
     out_dir.mkdir()
     sentinel = out_dir / "keep.txt"
@@ -217,9 +206,7 @@ def test_demo_refuses_existing_output_without_deleting_it(
     assert "Refusing to replace an existing output directory" in capsys.readouterr().err
 
 
-def test_demo_default_output_uses_a_fresh_directory(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_demo_default_output_uses_a_fresh_directory(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
     assert demo_main([]) == 0

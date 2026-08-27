@@ -16,8 +16,6 @@ from metriplane.sentinel.events import (
 )
 from metriplane.sentinel.rules import (
     ObjectFilter,
-    RuleDefinition,
-    RuleSet,
     load_rules,
     validate_rules,
 )
@@ -26,6 +24,7 @@ from metriplane.sentinel.rules import (
 # ---------------------------------------------------------------------------
 # RuleAlert
 # ---------------------------------------------------------------------------
+
 
 def test_rule_alert_fields():
     a = RuleAlert(rule_id="r1", severity="warning", ts=100.0, object_ids=["cart_01"])
@@ -58,6 +57,7 @@ def test_alerts_jsonl_roundtrip(tmp_path):
 # IncidentRecord
 # ---------------------------------------------------------------------------
 
+
 def test_incident_open():
     inc = IncidentRecord(
         rule_id="pallet_blocks_exit",
@@ -89,9 +89,7 @@ def test_incident_close():
 @pytest.mark.parametrize(
     "factory",
     [
-        lambda: RuleAlert(
-            rule_id="r", severity="warning", ts=float("nan"), object_ids=[]
-        ),
+        lambda: RuleAlert(rule_id="r", severity="warning", ts=float("nan"), object_ids=[]),
         lambda: IncidentRecord(
             rule_id="r",
             severity="warning",
@@ -111,12 +109,20 @@ def test_event_models_reject_invalid_timing(factory):
 
 def test_incidents_json_roundtrip(tmp_path):
     inc1 = IncidentRecord(
-        rule_id="r1", severity="warning", opened_ts=10.0,
-        object_ids=["cart_01"], zones=["zone_a"], summary="test1",
+        rule_id="r1",
+        severity="warning",
+        opened_ts=10.0,
+        object_ids=["cart_01"],
+        zones=["zone_a"],
+        summary="test1",
     )
     inc2 = IncidentRecord(
-        rule_id="r2", severity="critical", opened_ts=20.0,
-        object_ids=["pallet_01"], zones=["zone_b"], summary="test2",
+        rule_id="r2",
+        severity="critical",
+        opened_ts=20.0,
+        object_ids=["pallet_01"],
+        zones=["zone_b"],
+        summary="test2",
     )
     inc2.close(30.0)
     p = tmp_path / "incidents.json"
@@ -131,6 +137,7 @@ def test_incidents_json_roundtrip(tmp_path):
 # OperationalEvent
 # ---------------------------------------------------------------------------
 
+
 def test_event_from_alert():
     a = RuleAlert(rule_id="r1", severity="info", ts=5.0, object_ids=["cart_01"])
     ev = OperationalEvent.from_alert(a)
@@ -140,8 +147,12 @@ def test_event_from_alert():
 
 def test_event_from_incident_open():
     inc = IncidentRecord(
-        rule_id="r1", severity="warning", opened_ts=10.0,
-        object_ids=[], zones=[], summary="x",
+        rule_id="r1",
+        severity="warning",
+        opened_ts=10.0,
+        object_ids=[],
+        zones=[],
+        summary="x",
     )
     ev = OperationalEvent.from_incident_open(inc)
     assert ev.event_type == "incident_open"
@@ -150,8 +161,12 @@ def test_event_from_incident_open():
 
 def test_event_from_incident_close():
     inc = IncidentRecord(
-        rule_id="r1", severity="warning", opened_ts=10.0,
-        object_ids=[], zones=[], summary="x",
+        rule_id="r1",
+        severity="warning",
+        opened_ts=10.0,
+        object_ids=[],
+        zones=[],
+        summary="x",
     )
     inc.close(20.0)
     ev = OperationalEvent.from_incident_close(inc)
@@ -162,6 +177,7 @@ def test_event_from_incident_close():
 # ---------------------------------------------------------------------------
 # ObjectFilter
 # ---------------------------------------------------------------------------
+
 
 def test_filter_type_match():
     assert ObjectFilter(type="cart").matches(obj_type="cart") is True
@@ -178,6 +194,7 @@ def test_filter_none_matches_all():
 # ---------------------------------------------------------------------------
 # RuleSet
 # ---------------------------------------------------------------------------
+
 
 def test_load_rules_inline(tmp_path):
     yaml_text = """\

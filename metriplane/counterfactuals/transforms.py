@@ -9,7 +9,7 @@ from metriplane.schema import FrameStateModel, ObjectStateModel
 from metriplane.sentinel.rules import RuleSet
 
 
-def _first_pos(frames: list[FrameStateModel], marker_id: str):
+def _first_pos(frames: list[FrameStateModel], marker_id: str) -> tuple[float, float, float] | None:
     for f in frames:
         observed = f.fused if f.fused is not None else f.objects
         for o in observed:
@@ -18,8 +18,9 @@ def _first_pos(frames: list[FrameStateModel], marker_id: str):
     return None
 
 
-def scale_object_speed(frames: list[FrameStateModel], marker_id: str,
-                       factor: float) -> list[FrameStateModel]:
+def scale_object_speed(
+    frames: list[FrameStateModel], marker_id: str, factor: float
+) -> list[FrameStateModel]:
     """
     Scale a target object's displacement relative to its first observed position.
 
@@ -38,7 +39,12 @@ def scale_object_speed(frames: list[FrameStateModel], marker_id: str,
     return out
 
 
-def _scale_obj(o: ObjectStateModel, marker_id: str, first, factor: float):
+def _scale_obj(
+    o: ObjectStateModel,
+    marker_id: str,
+    first: tuple[float, float, float] | None,
+    factor: float,
+) -> ObjectStateModel:
     if str(o.id) != marker_id or o.pos_world is None or first is None:
         return o
     nx = first[0] + (o.pos_world[0] - first[0]) * factor
@@ -58,8 +64,7 @@ def remove_object(frames: list[FrameStateModel], marker_id: str) -> list[FrameSt
     return out
 
 
-def apply_rule_threshold(ruleset: RuleSet, rule_id: str, field: str,
-                         value: float) -> RuleSet:
+def apply_rule_threshold(ruleset: RuleSet, rule_id: str, field: str, value: float) -> RuleSet:
     new = copy.deepcopy(ruleset)
     found = False
     for r in new.rules:

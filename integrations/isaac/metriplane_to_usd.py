@@ -15,6 +15,7 @@ Example:
         --run-dir evidence/incidents/INC-0001 \\
         --out /tmp/metriplane_replay.usda
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,6 +48,7 @@ def _registry_map(run_dir: Path) -> dict[int, dict]:
         return {}
     try:
         import yaml
+
         data = yaml.safe_load(p.read_text())
         return {int(e["marker_id"]): e for e in data.get("objects", [])}
     except Exception:
@@ -65,8 +67,15 @@ def load_traces(run_dir: str | Path) -> tuple[list[ObjectTrack], str | None]:
     from metriplane.sentinel.engine import iter_frames
 
     run = Path(run_dir)
-    session = _find(run, ["session_excerpt.jsonl", "session.jsonl",
-                          "state_segment.jsonl", "traces/object_traces.jsonl"])
+    session = _find(
+        run,
+        [
+            "session_excerpt.jsonl",
+            "session.jsonl",
+            "state_segment.jsonl",
+            "traces/object_traces.jsonl",
+        ],
+    )
     if session is None:
         raise FileNotFoundError(f"no session JSONL found under {run}")
     reg = _registry_map(run)
@@ -115,8 +124,9 @@ def _sanitize(s: str) -> str:
     return s.replace("\\", "/").replace('"', "'")
 
 
-def write_usda_replay(*, run_dir: str | Path, output_path: str | Path,
-                      scale: float = 1.0, fps: float = 30.0) -> dict:
+def write_usda_replay(
+    *, run_dir: str | Path, output_path: str | Path, scale: float = 1.0, fps: float = 30.0
+) -> dict:
     run = Path(run_dir)
     tracks, run_id = load_traces(run)
     incidents = load_incidents(run)
@@ -134,7 +144,9 @@ def write_usda_replay(*, run_dir: str | Path, output_path: str | Path,
     lines.append("    customLayerData = {")
     lines.append(f'        string metriplane_run_id = "{_sanitize(run_id or "unknown")}"')
     lines.append(f'        string metriplane_source = "{_sanitize(str(run))}"')
-    lines.append('        string metriplane_coordinate_mapping = "USD_X=X, USD_Y=Y, USD_Z=0 (2D floor)"')
+    lines.append(
+        '        string metriplane_coordinate_mapping = "USD_X=X, USD_Y=Y, USD_Z=0 (2D floor)"'
+    )
     lines.append("    }")
     lines.append(")")
     lines.append("")
@@ -160,7 +172,9 @@ def write_usda_replay(*, run_dir: str | Path, output_path: str | Path,
         lines.append(f'        def Sphere "{name}"')
         lines.append("        {")
         lines.append("            double radius = 0.2")
-        lines.append(f'            custom string metriplane:object_id = "{_sanitize(tr.object_id)}"')
+        lines.append(
+            f'            custom string metriplane:object_id = "{_sanitize(tr.object_id)}"'
+        )
         lines.append(f'            custom string metriplane:type = "{_sanitize(tr.type)}"')
         lines.append(f"            color3f[] primvars:displayColor = [{color}]")
         lines.append("            double3 xformOp:translate.timeSamples = {")
@@ -228,11 +242,14 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     out = args.out or str(Path(args.run_dir) / "isaac" / "metriplane_replay.usda")
-    manifest = write_usda_replay(run_dir=args.run_dir, output_path=out,
-                                 scale=args.scale, fps=args.fps)
+    manifest = write_usda_replay(
+        run_dir=args.run_dir, output_path=out, scale=args.scale, fps=args.fps
+    )
     print(f"wrote USD replay: {out}")
-    print(f"objects: {len(manifest['object_ids'])}  "
-          f"incidents: {len(manifest['incident_ids'])}  frames: {manifest['frames']}")
+    print(
+        f"objects: {len(manifest['object_ids'])}  "
+        f"incidents: {len(manifest['incident_ids'])}  frames: {manifest['frames']}"
+    )
     return 0
 
 

@@ -43,6 +43,7 @@ class ObjectTraceSummary:
 def _load_registry_map(registry_path: str | Path) -> dict[int, str]:
     try:
         import yaml
+
         data = yaml.safe_load(Path(registry_path).read_text())
         return {int(e["marker_id"]): e["object_id"] for e in data.get("objects", [])}
     except Exception:
@@ -94,16 +95,18 @@ class TraceStore:
                 if obj.vel_world:
                     vx, vy = obj.vel_world[0], obj.vel_world[1]
                     speed = math.sqrt(vx * vx + vy * vy)
-                self._points.append(TracePoint(
-                    ts=frame_time_s(frame),
-                    object_id=self._resolve(obj.id),
-                    marker_id=obj.id,
-                    x_m=x_m,
-                    y_m=y_m,
-                    speed_mps=speed,
-                    zone=obj.zone,
-                    run_id=run_id,
-                ))
+                self._points.append(
+                    TracePoint(
+                        ts=frame_time_s(frame),
+                        object_id=self._resolve(obj.id),
+                        marker_id=obj.id,
+                        x_m=x_m,
+                        y_m=y_m,
+                        speed_mps=speed,
+                        zone=obj.zone,
+                        run_id=run_id,
+                    )
+                )
         self._points.sort(key=lambda p: (p.object_id, p.ts))
 
     def load_session(self, session_path: str | Path) -> None:
@@ -117,6 +120,7 @@ class TraceStore:
 
     def summarize(self) -> list[ObjectTraceSummary]:
         from itertools import groupby
+
         summaries = []
         for obj_id, group in groupby(self._points, key=lambda p: p.object_id):
             pts = list(group)
@@ -141,8 +145,12 @@ class TraceStore:
             current_zone: str | None = None
 
             for pt in pts:
-                if (prev_x is not None and prev_y is not None
-                        and pt.x_m is not None and pt.y_m is not None):
+                if (
+                    prev_x is not None
+                    and prev_y is not None
+                    and pt.x_m is not None
+                    and pt.y_m is not None
+                ):
                     dx = pt.x_m - prev_x
                     dy = pt.y_m - prev_y
                     total_dist += math.sqrt(dx * dx + dy * dy)
@@ -163,9 +171,7 @@ class TraceStore:
                 if z != current_zone:
                     if current_zone is not None:
                         elapsed = pt.ts - zone_start.get(current_zone, pt.ts)
-                        dwell_by_zone[current_zone] = (
-                            dwell_by_zone.get(current_zone, 0.0) + elapsed
-                        )
+                        dwell_by_zone[current_zone] = dwell_by_zone.get(current_zone, 0.0) + elapsed
                     current_zone = z
                     if z is not None:
                         if z not in zones_seen:
@@ -174,24 +180,24 @@ class TraceStore:
 
             if current_zone is not None and pts:
                 elapsed = pts[-1].ts - zone_start.get(current_zone, pts[-1].ts)
-                dwell_by_zone[current_zone] = (
-                    dwell_by_zone.get(current_zone, 0.0) + elapsed
-                )
+                dwell_by_zone[current_zone] = dwell_by_zone.get(current_zone, 0.0) + elapsed
 
-            summaries.append(ObjectTraceSummary(
-                object_id=obj_id,
-                marker_id=marker_id,
-                run_id=run_id,
-                first_ts=first_ts,
-                last_ts=last_ts,
-                duration_s=duration_s,
-                total_distance_m=round(total_dist, 4),
-                max_speed_mps=round(max_speed, 4),
-                zones_visited=[z for z in zones_seen if z is not None],
-                dwell_by_zone={k: round(v, 3) for k, v in dwell_by_zone.items()},
-                point_count=len(pts),
-                gap_count=gap_count,
-            ))
+            summaries.append(
+                ObjectTraceSummary(
+                    object_id=obj_id,
+                    marker_id=marker_id,
+                    run_id=run_id,
+                    first_ts=first_ts,
+                    last_ts=last_ts,
+                    duration_s=duration_s,
+                    total_distance_m=round(total_dist, 4),
+                    max_speed_mps=round(max_speed, 4),
+                    zones_visited=[z for z in zones_seen if z is not None],
+                    dwell_by_zone={k: round(v, 3) for k, v in dwell_by_zone.items()},
+                    point_count=len(pts),
+                    gap_count=gap_count,
+                )
+            )
         return summaries
 
     def export_csv(self, out_path: str | Path) -> None:
@@ -199,23 +205,56 @@ class TraceStore:
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["ts", "object_id", "marker_id", "x_m", "y_m",
-                        "speed_mps", "zone", "run_id"])
+            w.writerow(
+                ["ts", "object_id", "marker_id", "x_m", "y_m", "speed_mps", "zone", "run_id"]
+            )
             for pt in self._points:
-                w.writerow([pt.ts, pt.object_id, pt.marker_id, pt.x_m,
-                            pt.y_m, pt.speed_mps, pt.zone, pt.run_id])
+                w.writerow(
+                    [
+                        pt.ts,
+                        pt.object_id,
+                        pt.marker_id,
+                        pt.x_m,
+                        pt.y_m,
+                        pt.speed_mps,
+                        pt.zone,
+                        pt.run_id,
+                    ]
+                )
 
     def summary_csv(self, out_path: str | Path) -> None:
         p = Path(out_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["object_id", "marker_id", "run_id", "first_ts", "last_ts",
-                        "duration_s", "total_distance_m", "max_speed_mps",
-                        "zones_visited", "point_count", "gap_count"])
+            w.writerow(
+                [
+                    "object_id",
+                    "marker_id",
+                    "run_id",
+                    "first_ts",
+                    "last_ts",
+                    "duration_s",
+                    "total_distance_m",
+                    "max_speed_mps",
+                    "zones_visited",
+                    "point_count",
+                    "gap_count",
+                ]
+            )
             for s in self.summarize():
-                w.writerow([
-                    s.object_id, s.marker_id, s.run_id, s.first_ts, s.last_ts,
-                    s.duration_s, s.total_distance_m, s.max_speed_mps,
-                    "|".join(s.zones_visited), s.point_count, s.gap_count,
-                ])
+                w.writerow(
+                    [
+                        s.object_id,
+                        s.marker_id,
+                        s.run_id,
+                        s.first_ts,
+                        s.last_ts,
+                        s.duration_s,
+                        s.total_distance_m,
+                        s.max_speed_mps,
+                        "|".join(s.zones_visited),
+                        s.point_count,
+                        s.gap_count,
+                    ]
+                )

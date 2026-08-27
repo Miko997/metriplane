@@ -47,7 +47,7 @@ def main_sentinel(
     return 1
 
 
-def _run(args, *, paths: PlatformPaths | None = None) -> int:
+def _run(args: argparse.Namespace, *, paths: PlatformPaths | None = None) -> int:
     import yaml
 
     from metriplane.sentinel.config import SentinelConfig
@@ -67,9 +67,7 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
         return 1
 
     try:
-        requested_run_id = (
-            generate_run_id("sentinel") if args.run_id is None else args.run_id
-        )
+        requested_run_id = generate_run_id("sentinel") if args.run_id is None else args.run_id
         run_id = validate_portable_run_id(requested_run_id)
     except ValueError as exc:
         print(exc)
@@ -118,6 +116,7 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
     # assistant can read this run directly (objects, traces, names).
     try:
         import shutil
+
         run_dir.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(session_path, run_dir / "session.jsonl")
         if sentinel_cfg.objects_file and Path(sentinel_cfg.objects_file).exists():
@@ -131,17 +130,18 @@ def _run(args, *, paths: PlatformPaths | None = None) -> int:
 
     status = runtime.status()
 
-    print(f"mode={status.mode} control_enabled={status.control_enabled} "
-          f"run_id={status.run_id}")
-    print(f"objects_tracked={status.objects_tracked} "
-          f"active_alerts={status.active_alerts} "
-          f"open_incidents={status.open_incidents} health={status.health}")
+    print(f"mode={status.mode} control_enabled={status.control_enabled} run_id={status.run_id}")
+    print(
+        f"objects_tracked={status.objects_tracked} "
+        f"active_alerts={status.active_alerts} "
+        f"open_incidents={status.open_incidents} health={status.health}"
+    )
     if summary_path:
         print(f"summary: {summary_path}")
     return 0
 
 
-def _status(args) -> int:
+def _status(args: argparse.Namespace) -> int:
     summary_file = Path(args.run_dir)
     if summary_file.is_dir():
         summary_file = summary_file / "sentinel_summary.json"

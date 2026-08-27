@@ -5,6 +5,7 @@
 payloads published on ROS 2 topics. Kept free of rclpy so they are unit-testable in CI
 without a ROS 2 installation.
 """
+
 from __future__ import annotations
 
 import json
@@ -48,10 +49,12 @@ def extract_object_summary(frame: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(o, dict):
             continue
         pos = o.get("pos_world")
-        out.append({
-            "id": str(o.get("id")),
-            "x": pos[0] if isinstance(pos, (list, tuple)) and len(pos) >= 2 else None,
-            "y": pos[1] if isinstance(pos, (list, tuple)) and len(pos) >= 2 else None,
-            "zone": o.get("zone"),
-        })
+        out.append(
+            {
+                "id": str(o.get("id")),
+                "x": pos[0] if isinstance(pos, (list, tuple)) and len(pos) >= 2 else None,
+                "y": pos[1] if isinstance(pos, (list, tuple)) and len(pos) >= 2 else None,
+                "zone": o.get("zone"),
+            }
+        )
     return out

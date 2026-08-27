@@ -11,10 +11,10 @@ Covers:
 
 Uses start_metrics_server from metriplane/metrics.py (the live-fusion path).
 """
+
 from __future__ import annotations
 
 import socket
-import threading
 import urllib.request
 from typing import Callable
 
@@ -74,6 +74,7 @@ def _get_request_status_and_headers(url: str) -> tuple[int, dict[str, str]]:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def metrics_server():
     """Server with health endpoint enabled."""
@@ -96,6 +97,7 @@ def metrics_server_no_health():
 # ---------------------------------------------------------------------------
 # /metrics CORS
 # ---------------------------------------------------------------------------
+
 
 class TestMetricsEndpointCORS:
     def test_metrics_ok(self, metrics_server):
@@ -124,6 +126,7 @@ class TestMetricsEndpointCORS:
 # ---------------------------------------------------------------------------
 # /health CORS
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpointCORS:
     def test_health_ok(self, metrics_server):
@@ -158,6 +161,7 @@ class TestHealthEndpointCORS:
 # OPTIONS preflight CORS
 # ---------------------------------------------------------------------------
 
+
 class TestOptionsPreflightCORS:
     def test_options_metrics_204(self, metrics_server):
         port = metrics_server
@@ -184,6 +188,7 @@ class TestOptionsPreflightCORS:
 # 404 paths also include CORS headers
 # ---------------------------------------------------------------------------
 
+
 class TestNotFoundCORS:
     def test_notfound_404(self, metrics_server):
         port = metrics_server
@@ -199,6 +204,7 @@ class TestNotFoundCORS:
 # ---------------------------------------------------------------------------
 # Server without health: /health returns 404 but still has CORS
 # ---------------------------------------------------------------------------
+
 
 class TestNoHealthServerCORS:
     def test_health_404_when_no_get_health(self, metrics_server_no_health):

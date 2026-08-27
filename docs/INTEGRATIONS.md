@@ -211,23 +211,25 @@ import asyncio
 import websockets
 import json
 
+
 async def metriplane_client():
     uri = "ws://localhost:8765"
-    
+
     async with websockets.connect(uri) as websocket:
         print(f"Connected to {uri}")
-        
+
         while True:
             # Receive frame
             frame_json = await websocket.recv()
             frame = json.loads(frame_json)
-            
+
             # Process frame
             for obj in frame.get("objects", []):
                 print(f"Object {obj['id']}: ({obj['x_m']:.2f}, {obj['y_m']:.2f})")
-            
+
             for event in frame.get("events", []):
                 print(f"Event: {event['event_type']} - {event['zone_id']}")
+
 
 # Run
 asyncio.run(metriplane_client())

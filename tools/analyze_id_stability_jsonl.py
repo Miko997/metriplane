@@ -27,7 +27,7 @@ def analyze(session_jsonl: str, out_csv: str) -> None:
         sys.exit(1)
 
     # Per-object tracking: frame index → whether object was seen
-    obj_seen: dict[str, list[bool]] = {}   # id → per-frame presence
+    obj_seen: dict[str, list[bool]] = {}  # id → per-frame presence
     frame_idx = 0
     first_ts = None
     last_ts = None
@@ -63,7 +63,9 @@ def analyze(session_jsonl: str, out_csv: str) -> None:
     total_frames = frame_idx
     duration_s = (last_ts - first_ts) if (first_ts and last_ts) else 0.0
 
-    print(f"[id_stability] total_frames={total_frames}, duration={duration_s:.2f}s, unique_ids={len(obj_seen)}")
+    print(
+        f"[id_stability] total_frames={total_frames}, duration={duration_s:.2f}s, unique_ids={len(obj_seen)}"
+    )
 
     rows = []
     for oid, presence in sorted(obj_seen.items()):
@@ -91,17 +93,19 @@ def analyze(session_jsonl: str, out_csv: str) -> None:
         max_gap = max(gaps) if gaps else 0
         mean_gap = sum(gaps) / len(gaps) if gaps else 0.0
 
-        rows.append({
-            "object_id": oid,
-            "total_frames": total_frames,
-            "frames_seen": frames_seen,
-            "coverage_pct": round(coverage_pct, 2),
-            "continuous_full_session": full_session,
-            "n_missing_gaps": n_gaps,
-            "max_missing_gap_frames": max_gap,
-            "mean_missing_gap_frames": round(mean_gap, 2),
-            "session_duration_s": round(duration_s, 3),
-        })
+        rows.append(
+            {
+                "object_id": oid,
+                "total_frames": total_frames,
+                "frames_seen": frames_seen,
+                "coverage_pct": round(coverage_pct, 2),
+                "continuous_full_session": full_session,
+                "n_missing_gaps": n_gaps,
+                "max_missing_gap_frames": max_gap,
+                "mean_missing_gap_frames": round(mean_gap, 2),
+                "session_duration_s": round(duration_s, 3),
+            }
+        )
 
         print(
             f"  id={oid}: seen={frames_seen}/{total_frames} "
@@ -111,9 +115,15 @@ def analyze(session_jsonl: str, out_csv: str) -> None:
 
     Path(out_csv).parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
-        "object_id", "total_frames", "frames_seen", "coverage_pct",
-        "continuous_full_session", "n_missing_gaps", "max_missing_gap_frames",
-        "mean_missing_gap_frames", "session_duration_s",
+        "object_id",
+        "total_frames",
+        "frames_seen",
+        "coverage_pct",
+        "continuous_full_session",
+        "n_missing_gaps",
+        "max_missing_gap_frames",
+        "mean_missing_gap_frames",
+        "session_duration_s",
     ]
     with open(out_csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -126,7 +136,7 @@ def analyze(session_jsonl: str, out_csv: str) -> None:
 def main():
     parser = argparse.ArgumentParser(
         description="Analyze ID continuity from Metriplane session JSONL. "
-                    "Reports presence/absence per object, not true ID switch rate."
+        "Reports presence/absence per object, not true ID switch rate."
     )
     parser.add_argument("session_jsonl", help="Input session.jsonl file")
     parser.add_argument("--out", required=True, help="Output CSV path")

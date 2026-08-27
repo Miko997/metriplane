@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import subprocess
 import sys
 import textwrap
+import weakref
 from pathlib import Path
 
 import pytest
@@ -542,9 +544,7 @@ def test_ui_demo_replay_preserves_explicit_runs_dir(
 
     assert run_ui_demo_replay.main(["--runs-dir", str(runs_dir)]) == 0
     sentinel_command = commands[0]
-    assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(
-        runs_dir.resolve()
-    )
+    assert sentinel_command[sentinel_command.index("--runs-dir") + 1] == str(runs_dir.resolve())
 
 
 def test_ui_demo_replay_generates_a_unique_safe_run_id_each_time(
@@ -922,6 +922,7 @@ def test_legacy_run_console_delegates_blank_overrides_to_legacy_fallback(
         "metriplane.config.load_config",
         lambda _path: Config(runs_dir=configured_runs_dir),
     )
+
     def fake_run_loop(_cfg, **kwargs):
         captured.update(kwargs)
         return 31
@@ -1226,6 +1227,31 @@ def test_unreserved_session_writer_rejects_post_context_directory_swap(
 
     assert outside_session.read_text(encoding="utf-8") == "outside must remain unchanged\n"
     assert not (parked_run_dir / "session.jsonl").exists()
+
+
+def test_unreserved_session_authority_releases_with_context(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.provenance import run_provenance
+
+    monkeypatch.setenv("METRIPLANE_NO_PIP_FREEZE", "1")
+    context = create_run_context(
+        Config(source_mode="dummy"),
+        config_path=None,
+        argv=[],
+        run_id="unreserved_run",
+        runs_dir=str(tmp_path / "runs"),
+    )
+    authority_key = run_provenance._authority_key(context.run_dir)
+    reference = weakref.ref(context)
+    assert authority_key in run_provenance._IN_PROCESS_RUN_CONTEXTS
+
+    del context
+    gc.collect()
+
+    assert reference() is None
+    assert authority_key not in run_provenance._IN_PROCESS_RUN_CONTEXTS
 
 
 def test_run_context_claims_exact_reserved_run_directory(

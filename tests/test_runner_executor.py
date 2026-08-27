@@ -103,8 +103,9 @@ def test_injected_runner_paths_override_ambient_runs_for_subprocess(
     )
 
     assert _wait_until(
-        lambda: executor.get_job(job_id) is not None
-        and executor.get_job(job_id)["status"] != "running"  # type: ignore[index]
+        lambda: (
+            executor.get_job(job_id) is not None and executor.get_job(job_id)["status"] != "running"
+        )  # type: ignore[index]
     )
     job = executor.get_job(job_id)
     assert job is not None

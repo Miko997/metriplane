@@ -25,6 +25,7 @@ Integration test (TestStartStatusStop):
   - restart works immediately after stop
   - double start blocked
 """
+
 from __future__ import annotations
 
 import os
@@ -44,7 +45,6 @@ from metriplane.launcher import (
     _clear_state,
     _find_repo_root,
     _get_pgid,
-    _has_listener,
     _is_port_in_use,
     _is_running,
     _is_vt_safe_to_kill,
@@ -68,6 +68,7 @@ from metriplane.paths import PlatformPaths
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -98,6 +99,7 @@ def _test_platform_paths(root: Path) -> PlatformPaths:
 # ---------------------------------------------------------------------------
 # CLI --help smoke tests
 # ---------------------------------------------------------------------------
+
 
 class TestCLIHelp:
     def test_start_help_exits_zero(self, capsys):
@@ -185,6 +187,7 @@ class TestCLIHelp:
 # stop / status / cleanup with no state
 # ---------------------------------------------------------------------------
 
+
 class TestLauncherDefaults:
     def test_start_defaults_to_runtime_idle(self):
         assert cmd_start.__kwdefaults__["live"] is False
@@ -197,7 +200,10 @@ class TestLauncherDefaults:
         assert _runtime_module_for_config(_DEFAULT_FUSION_CONFIG, Path.cwd()) == "metriplane.run"
 
     def test_camera_config_uses_fusion_runtime(self):
-        assert _runtime_module_for_config("configs/fusion_health_300fps.yaml", Path.cwd()) == "metriplane.run_fusion"
+        assert (
+            _runtime_module_for_config("configs/fusion_health_300fps.yaml", Path.cwd())
+            == "metriplane.run_fusion"
+        )
 
     def test_launcher_sets_supported_compute_backend_env(self, monkeypatch, tmp_path):
         captured = {}
@@ -208,7 +214,10 @@ class TestLauncherDefaults:
             return object()
 
         monkeypatch.setattr("metriplane.launcher._launch", fake_launch)
-        monkeypatch.setattr("metriplane.launcher._runtime_module_for_config", lambda config, repo_root: "metriplane.run")
+        monkeypatch.setattr(
+            "metriplane.launcher._runtime_module_for_config",
+            lambda config, repo_root: "metriplane.run",
+        )
 
         _start_fusion(
             config="configs/local_demo_replay.yaml",
@@ -445,6 +454,7 @@ class TestLauncherDefaults:
                 repo_root=Path.cwd(),
             )
 
+
 class TestNoState:
     def setup_method(self):
         _clear_state()
@@ -486,8 +496,14 @@ class TestNoState:
 
     def test_status_without_home_or_xdg_paths_fails_cleanly(self, monkeypatch, capsys):
         for name in (
-            "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-            "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME",
+            "HOME",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_STATE_HOME",
         ):
             monkeypatch.delenv(name, raising=False)
 
@@ -530,6 +546,7 @@ class TestNoState:
 # State helpers
 # ---------------------------------------------------------------------------
 
+
 class TestStateHelpers:
     def test_load_empty_when_no_file(self, tmp_path):
         assert _load_state(_test_platform_paths(tmp_path)) == {}
@@ -559,6 +576,7 @@ class TestStateHelpers:
 # _is_running
 # ---------------------------------------------------------------------------
 
+
 class TestIsRunning:
     def test_current_process(self):
         assert _is_running(os.getpid()) is True
@@ -578,6 +596,7 @@ class TestIsRunning:
 # ---------------------------------------------------------------------------
 # _get_pgid
 # ---------------------------------------------------------------------------
+
 
 class TestGetPgid:
     def test_current_process_has_pgid(self):
@@ -803,6 +822,7 @@ class TestWindowsProcessLifecycle:
 # _make_proc_entry
 # ---------------------------------------------------------------------------
 
+
 class TestMakeProcEntry:
     def test_stores_pid_and_pgid(self):
         proc = subprocess.Popen(
@@ -821,6 +841,7 @@ class TestMakeProcEntry:
 # ---------------------------------------------------------------------------
 # _is_port_in_use / _wait_for_port_free
 # ---------------------------------------------------------------------------
+
 
 class TestPortHelpers:
     def test_free_port_not_in_use(self):
@@ -858,6 +879,7 @@ class TestPortHelpers:
             srv.close()
 
         import threading
+
         t = threading.Thread(target=_release)
         t.start()
         result = _wait_for_port_free(port, timeout=3.0)
@@ -869,6 +891,7 @@ class TestPortHelpers:
 # _is_vt_safe_to_kill
 # ---------------------------------------------------------------------------
 
+
 class TestIsVtSafeToKill:
     def test_runner_service_is_safe(self):
         assert _is_vt_safe_to_kill("python -m metriplane.runner.service --host 127.0.0.1") is True
@@ -877,7 +900,12 @@ class TestIsVtSafeToKill:
         assert _is_vt_safe_to_kill("/home/user/.venv/bin/python -m metriplane.run_fusion") is True
 
     def test_replay_runtime_is_safe(self):
-        assert _is_vt_safe_to_kill("/home/user/.venv/bin/python -m metriplane.run --config configs/local_demo_replay.yaml") is True
+        assert (
+            _is_vt_safe_to_kill(
+                "/home/user/.venv/bin/python -m metriplane.run --config configs/local_demo_replay.yaml"
+            )
+            is True
+        )
 
     def test_unknown_process_not_safe(self):
         assert _is_vt_safe_to_kill("nginx -g daemon off") is False
@@ -891,6 +919,7 @@ class TestIsVtSafeToKill:
 # ---------------------------------------------------------------------------
 # _read_cmdline
 # ---------------------------------------------------------------------------
+
 
 class TestReadCmdline:
     def test_current_process_cmdline_nonempty(self):
@@ -923,6 +952,7 @@ class TestReadCmdline:
 # _find_repo_root
 # ---------------------------------------------------------------------------
 
+
 class TestFindRepoRoot:
     def test_finds_pyproject_toml(self):
         root = _find_repo_root()
@@ -948,6 +978,7 @@ def test_print_log_tail_reports_only_requested_lines(tmp_path, capsys):
 # Integration: start → status → stop → port free (no-live, no-open, free ports)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def launcher_env(tmp_path, monkeypatch):
     """
@@ -957,6 +988,7 @@ def launcher_env(tmp_path, monkeypatch):
     dash_port = _free_port()
 
     import metriplane.launcher as lm
+
     paths = _test_platform_paths(tmp_path)
     monkeypatch.setattr(lm, "resolve_platform_paths", lambda: paths)
     original_launch = lm._launch
@@ -1016,7 +1048,11 @@ class TestStartStatusStop:
         import metriplane.launcher as lm
 
         processes = iter(
-            [types.SimpleNamespace(pid=101), types.SimpleNamespace(pid=102), types.SimpleNamespace(pid=103)]
+            [
+                types.SimpleNamespace(pid=101),
+                types.SimpleNamespace(pid=102),
+                types.SimpleNamespace(pid=103),
+            ]
         )
         paths = _test_platform_paths(tmp_path)
         monkeypatch.setattr(lm, "resolve_platform_paths", lambda: paths)
@@ -1031,7 +1067,9 @@ class TestStartStatusStop:
             "_wait_for_port",
             lambda host, port, timeout=8.0, interval=0.2: port not in {8000, 8765},
         )
-        monkeypatch.setattr(lm, "_wait_for_port_free", lambda port, timeout=8.0, interval=0.15: True)
+        monkeypatch.setattr(
+            lm, "_wait_for_port_free", lambda port, timeout=8.0, interval=0.15: True
+        )
         monkeypatch.setattr(lm, "_get_pgid", lambda pid: pid)
         stopped: list[int] = []
         monkeypatch.setattr(
@@ -1049,6 +1087,7 @@ class TestStartStatusStop:
 
     def test_start_returns_zero(self, launcher_env):
         from metriplane.launcher import cmd_start
+
         rc = cmd_start(
             live=False,
             dashboard_port=launcher_env["dash_port"],
@@ -1059,22 +1098,37 @@ class TestStartStatusStop:
 
     def test_runner_reachable_after_start(self, launcher_env):
         from metriplane.launcher import cmd_start
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
         assert _wait_for_port("127.0.0.1", launcher_env["runner_port"], timeout=10.0)
 
     def test_dashboard_reachable_after_start(self, launcher_env):
         from metriplane.launcher import cmd_start
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
         assert _wait_for_port("127.0.0.1", launcher_env["dash_port"], timeout=10.0)
 
     def test_state_has_pgid(self, launcher_env):
         """State must record pgid for each started process."""
         import metriplane.launcher as lm
         from metriplane.launcher import cmd_start
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
         state = lm._load_state()
         assert "pgid" in state["runner"], f"runner state missing pgid: {state['runner']}"
         assert "pgid" in state["dashboard"], f"dashboard state missing pgid: {state['dashboard']}"
@@ -1084,8 +1138,13 @@ class TestStartStatusStop:
 
     def test_status_shows_running(self, launcher_env, capsys):
         from metriplane.launcher import cmd_start, cmd_status
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
         capsys.readouterr()
         rc = cmd_status()
         assert rc == 0
@@ -1095,20 +1154,29 @@ class TestStartStatusStop:
     def test_stop_clears_state(self, launcher_env):
         import metriplane.launcher as lm
         from metriplane.launcher import cmd_start, cmd_stop
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
         assert lm._state_file(launcher_env["paths"]).exists()
         cmd_stop()
         assert not lm._state_file(launcher_env["paths"]).exists()
 
     def test_stop_releases_runner_port(self, launcher_env):
         """After stop, runner port must be free (PGID kill works correctly)."""
-        import metriplane.launcher as lm
         from metriplane.launcher import cmd_start, cmd_stop
+
         runner_port = launcher_env["runner_port"]
 
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=runner_port, open_browser=False)
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=runner_port,
+            open_browser=False,
+        )
         assert _wait_for_port("127.0.0.1", runner_port, timeout=5.0)
 
         cmd_stop()
@@ -1118,12 +1186,16 @@ class TestStartStatusStop:
 
     def test_stop_releases_dashboard_port(self, launcher_env):
         """After stop, dashboard port must be free."""
-        import metriplane.launcher as lm
         from metriplane.launcher import cmd_start, cmd_stop
+
         dash_port = launcher_env["dash_port"]
 
-        cmd_start(live=False, dashboard_port=dash_port,
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+        cmd_start(
+            live=False,
+            dashboard_port=dash_port,
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
         assert _wait_for_port("127.0.0.1", dash_port, timeout=5.0)
 
         cmd_stop()
@@ -1134,11 +1206,13 @@ class TestStartStatusStop:
     def test_restart_works_after_stop(self, launcher_env):
         """Restart must succeed immediately after stop (no port residue)."""
         from metriplane.launcher import cmd_start, cmd_stop
+
         runner_port = launcher_env["runner_port"]
         dash_port = launcher_env["dash_port"]
 
-        rc1 = cmd_start(live=False, dashboard_port=dash_port,
-                        runner_port=runner_port, open_browser=False)
+        rc1 = cmd_start(
+            live=False, dashboard_port=dash_port, runner_port=runner_port, open_browser=False
+        )
         assert rc1 == 0
 
         cmd_stop()
@@ -1147,23 +1221,27 @@ class TestStartStatusStop:
         _wait_for_port_free(runner_port, timeout=5.0)
         _wait_for_port_free(dash_port, timeout=5.0)
 
-        rc2 = cmd_start(live=False, dashboard_port=dash_port,
-                        runner_port=runner_port, open_browser=False)
+        rc2 = cmd_start(
+            live=False, dashboard_port=dash_port, runner_port=runner_port, open_browser=False
+        )
         assert rc2 == 0, "Second start should succeed after stop"
         assert _wait_for_port("127.0.0.1", runner_port, timeout=10.0)
 
     def test_double_start_blocked(self, launcher_env, capsys):
         from metriplane.launcher import cmd_start
+
         runner_port = launcher_env["runner_port"]
         dash_port = launcher_env["dash_port"]
 
-        rc1 = cmd_start(live=False, dashboard_port=dash_port,
-                        runner_port=runner_port, open_browser=False)
+        rc1 = cmd_start(
+            live=False, dashboard_port=dash_port, runner_port=runner_port, open_browser=False
+        )
         assert rc1 == 0
 
         capsys.readouterr()
-        rc2 = cmd_start(live=False, dashboard_port=dash_port,
-                        runner_port=runner_port, open_browser=False)
+        rc2 = cmd_start(
+            live=False, dashboard_port=dash_port, runner_port=runner_port, open_browser=False
+        )
         assert rc2 != 0
         out = capsys.readouterr().out
         assert "already running" in out.lower() or "in use" in out.lower()
@@ -1171,9 +1249,14 @@ class TestStartStatusStop:
     def test_status_shows_port_owners_without_state(self, launcher_env, capsys):
         """status must report port info even with no state file."""
         import metriplane.launcher as lm
-        from metriplane.launcher import cmd_start, cmd_stop
-        cmd_start(live=False, dashboard_port=launcher_env["dash_port"],
-                  runner_port=launcher_env["runner_port"], open_browser=False)
+        from metriplane.launcher import cmd_start
+
+        cmd_start(
+            live=False,
+            dashboard_port=launcher_env["dash_port"],
+            runner_port=launcher_env["runner_port"],
+            open_browser=False,
+        )
 
         # Remove state to simulate orphan scenario
         lm._clear_state()

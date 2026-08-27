@@ -62,9 +62,9 @@ def test_issue_forms_are_structured_and_do_not_invent_repository_state() -> None
         for item in body:
             if item.get("type") == "dropdown":
                 options = item.get("attributes", {}).get("options", [])
-                assert options and all(
-                    isinstance(option, str) and option for option in options
-                ), f"dropdown options must be non-empty strings in {name}"
+                assert options and all(isinstance(option, str) and option for option in options), (
+                    f"dropdown options must be non-empty strings in {name}"
+                )
 
         rendered = (FORMS_DIR / name).read_text(encoding="utf-8").lower()
         assert "private" in rendered

@@ -92,9 +92,7 @@ _PROHIBITED_SESSION_ANNOTATIONS = {
 _COMMIT_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _CONTENT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CONTAINER_DIGEST = re.compile(r"^(?:[^@\s]+@)?sha256:[0-9a-f]{64}$")
-_METRIPLANE_VERSION = re.compile(
-    r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
-)
+_METRIPLANE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$")
 
 
 def validate_safe_relative_path(value: str) -> str:
@@ -137,9 +135,7 @@ def _validate_uri(value: str) -> str:
         "signature",
         "token",
     }
-    compact_credential_names = {
-        re.sub(r"[^a-z0-9]", "", name) for name in credential_names
-    }
+    compact_credential_names = {re.sub(r"[^a-z0-9]", "", name) for name in credential_names}
 
     def _is_credential_name(name: str) -> bool:
         compact = re.sub(r"[^a-z0-9]", "", unquote_plus(name).lower())
@@ -419,16 +415,16 @@ class SourceSelection(ContractModel):
             name for name, value in populated.items() if value is not None and name not in allowed
         )
         if contradictory:
-            raise ValueError(
-                f"{self.method} selection cannot declare: {', '.join(contradictory)}"
-            )
+            raise ValueError(f"{self.method} selection cannot declare: {', '.join(contradictory)}")
         if self.method == "episode" and not self.episode_id:
             raise ValueError("episode selection requires episode_id")
         if self.method == "group" and not self.group_path:
             raise ValueError("group selection requires group_path")
         if self.method == "index_range":
             if self.start_index is None or self.end_index_exclusive is None:
-                raise ValueError("index_range selection requires start_index and end_index_exclusive")
+                raise ValueError(
+                    "index_range selection requires start_index and end_index_exclusive"
+                )
             if self.end_index_exclusive <= self.start_index:
                 raise ValueError("end_index_exclusive must be greater than start_index")
         if self.method == "time_range":
@@ -478,11 +474,17 @@ class SourceRightsDeclaration(ContractModel):
 
     @model_validator(mode="after")
     def _permission_states_are_coherent(self) -> SourceRightsDeclaration:
-        if self.source_access in ("proprietary", "private") and self.source_use_permission == "not_required":
+        if (
+            self.source_access in ("proprietary", "private")
+            and self.source_use_permission == "not_required"
+        ):
             raise ValueError(
                 f"{self.source_access} source access cannot claim source_use_permission=not_required"
             )
-        if self.redistribution == "permission_required" and self.redistribution_permission == "not_required":
+        if (
+            self.redistribution == "permission_required"
+            and self.redistribution_permission == "not_required"
+        ):
             raise ValueError(
                 "permission_required redistribution cannot claim redistribution_permission=not_required"
             )
@@ -503,7 +505,10 @@ class FixtureRightsDeclaration(ContractModel):
     def _distribution_is_coherent(self) -> FixtureRightsDeclaration:
         if self.redistribution == "allowed" and self.redistribution_permission == "unresolved":
             raise ValueError("allowed fixture redistribution requires resolved permission")
-        if self.redistribution == "permission_required" and self.redistribution_permission == "not_required":
+        if (
+            self.redistribution == "permission_required"
+            and self.redistribution_permission == "not_required"
+        ):
             raise ValueError(
                 "permission_required fixture redistribution cannot claim permission=not_required"
             )
@@ -612,7 +617,9 @@ class ClockMapping(ContractModel):
                     self.lookup,
                 )
             ):
-                raise ValueError("identity_seconds cannot declare fixed-step, affine, or lookup fields")
+                raise ValueError(
+                    "identity_seconds cannot declare fixed-step, affine, or lookup fields"
+                )
         elif self.mapping_method == "fixed_step":
             if (
                 self.fixed_step_ns is None
@@ -645,7 +652,9 @@ class ClockMapping(ContractModel):
                     self.offset,
                 )
             ):
-                raise ValueError("lookup_table clock mapping cannot declare fixed-step or affine fields")
+                raise ValueError(
+                    "lookup_table clock mapping cannot declare fixed-step or affine fields"
+                )
         return self
 
 
@@ -681,7 +690,11 @@ class ProjectionDeclaration(ContractModel):
     def _projection_is_explicit(self) -> ProjectionDeclaration:
         _require_known_semantic(self.implementation, label="projection implementation")
         if self.method == "identity_3d":
-            if self.dropped_axes or self.output_z_policy != "preserve" or self.parameters is not None:
+            if (
+                self.dropped_axes
+                or self.output_z_policy != "preserve"
+                or self.parameters is not None
+            ):
                 raise ValueError(
                     "identity_3d cannot drop axes or declare parameters and must preserve z"
                 )
@@ -716,16 +729,12 @@ class CoordinateMapping(ContractModel):
         if self.transform.method == "identity" and (
             self.source_frame != self.target_frame or self.source_units != self.target_units
         ):
-            raise ValueError(
-                "identity transform requires identical source/target frames and units"
-            )
-        if (
-            self.source_units != self.target_units
-            and self.transform.method not in ("affine_matrix", "custom")
+            raise ValueError("identity transform requires identical source/target frames and units")
+        if self.source_units != self.target_units and self.transform.method not in (
+            "affine_matrix",
+            "custom",
         ):
-            raise ValueError(
-                "unit conversion requires an affine_matrix or custom transform"
-            )
+            raise ValueError("unit conversion requires an affine_matrix or custom transform")
         if self.projection.method == "identity_3d" and self.information_loss:
             raise ValueError("identity_3d projection cannot declare information loss")
         if self.projection.method != "identity_3d" and not self.information_loss:
@@ -793,9 +802,7 @@ class FieldProvenance(ContractModel):
                 f"source fact {self.normalized_field} cannot declare derivation parameters"
             )
         if self.layer == "adapter_derived_fact" and not self.derivation:
-            raise ValueError(
-                f"adapter-derived field {self.normalized_field} requires derivation"
-            )
+            raise ValueError(f"adapter-derived field {self.normalized_field} requires derivation")
         if (
             self.layer == "adapter_derived_fact"
             and self.normalized_field not in ("schema_version", "source_backend")
@@ -839,7 +846,9 @@ class ZoneAssignment(ContractModel):
                 )
         elif self.method == "polygon":
             if self.parameters is not None:
-                raise ValueError("polygon zone assignment uses workspace definitions, not parameters")
+                raise ValueError(
+                    "polygon zone assignment uses workspace definitions, not parameters"
+                )
             if self.boundary_policy not in ("inclusive", "exclusive"):
                 raise ValueError(
                     "polygon zone assignment requires inclusive or exclusive boundary_policy"
@@ -907,9 +916,7 @@ class ResamplingPolicy(ContractModel):
     def _declared_resampling_is_bounded(self) -> ResamplingPolicy:
         _unique(self.fields, label="resampling field")
         if self.method == "fixed_rate" and (
-            not self.fields
-            or self.output_period_ns is None
-            or self.max_gap_ns is None
+            not self.fields or self.output_period_ns is None or self.max_gap_ns is None
         ):
             raise ValueError(
                 "fixed_rate resampling requires fields, output_period_ns, and max_gap_ns"
@@ -999,10 +1006,7 @@ class PartialUpdateMaterialization(ContractModel):
                 "bounded_last_observation materialization requires "
                 "carry_forward_dependency=declared_bounded_policy"
             )
-        if (
-            self.method != "bounded_last_observation"
-            and self.carry_forward_dependency != "none"
-        ):
+        if self.method != "bounded_last_observation" and self.carry_forward_dependency != "none":
             raise ValueError(
                 f"{self.method} materialization cannot conceal carry-forward behavior; "
                 "use bounded_last_observation with a bounded carry_forward policy"
@@ -1080,16 +1084,19 @@ class ConfidencePolicy(ContractModel):
         if self.mode == "source":
             if not self.source_field:
                 raise ValueError("source confidence requires source_field")
-            if any(
-                value is not None
-                for value in (
-                    self.algorithm,
-                    self.implementation,
-                    self.parameters,
-                    self.output_semantics,
-                    self.placeholder_or_invented_values,
+            if (
+                any(
+                    value is not None
+                    for value in (
+                        self.algorithm,
+                        self.implementation,
+                        self.parameters,
+                        self.output_semantics,
+                        self.placeholder_or_invented_values,
+                    )
                 )
-            ) or self.input_fields:
+                or self.input_fields
+            ):
                 raise ValueError("source confidence cannot declare algorithm fields")
         if self.mode == "documented_algorithm" and (
             not self.algorithm
@@ -1172,11 +1179,7 @@ class NormalizationDeclaration(ContractModel):
             [item.normalized_field for item in self.field_provenance],
             label="normalized field provenance declaration",
         )
-        prefix = (
-            "objects[*]."
-            if self.authoritative_object_collection == "objects"
-            else "fused[*]."
-        )
+        prefix = "objects[*]." if self.authoritative_object_collection == "objects" else "fused[*]."
         wrong_collection = sorted(
             item.normalized_field
             for item in self.field_provenance
@@ -1201,12 +1204,8 @@ class NormalizationDeclaration(ContractModel):
                     f"{required_derived_field} requires adapter_derived_fact provenance"
                 )
         evaluation_clock = provenance.get(self.clock.evaluation_field)
-        if (
-            self.clock.mapping_method != "identity_seconds"
-            and (
-                evaluation_clock is None
-                or evaluation_clock.layer != "adapter_derived_fact"
-            )
+        if self.clock.mapping_method != "identity_seconds" and (
+            evaluation_clock is None or evaluation_clock.layer != "adapter_derived_fact"
         ):
             raise ValueError(
                 f"{self.clock.mapping_method} clock output requires adapter-derived provenance"
@@ -1257,9 +1256,7 @@ class NormalizationDeclaration(ContractModel):
             or confidence.layer != "adapter_derived_fact"
             or confidence.confidence_origin != "documented_algorithm"
         ):
-            raise ValueError(
-                "algorithm confidence requires matching adapter-derived provenance"
-            )
+            raise ValueError("algorithm confidence requires matching adapter-derived provenance")
         if self.confidence.mode == "documented_algorithm":
             assert self.confidence.implementation is not None
             assert self.confidence.parameters is not None
@@ -1304,8 +1301,7 @@ class NormalizationDeclaration(ContractModel):
                     f"temporal operation on {field} requires adapter_derived_fact provenance"
                 )
         annotation_keys = [
-            f"{item.name}:{item.source_field}"
-            for item in self.source_annotations.annotations
+            f"{item.name}:{item.source_field}" for item in self.source_annotations.annotations
         ]
         _unique(annotation_keys, label="source annotation inventory entry")
         annotation_sources = {
@@ -1322,12 +1318,10 @@ class NormalizationDeclaration(ContractModel):
         prohibited_overlap = sorted(annotation_sources & semantic_sources)
         if prohibited_overlap:
             formatted = ", ".join(
-                f"{artifact_id}:{source_field}"
-                for artifact_id, source_field in prohibited_overlap
+                f"{artifact_id}:{source_field}" for artifact_id, source_field in prohibited_overlap
             )
             raise ValueError(
-                "source annotations cannot feed normalized Atlas semantic fields: "
-                + formatted
+                "source annotations cannot feed normalized Atlas semantic fields: " + formatted
             )
         return self
 
@@ -1342,6 +1336,7 @@ class DomainPackFiles(ContractModel):
     process: FileReference
     contracts: FileReference
     work_orders: FileReference
+
 
 class SessionReference(FileReference):
     frame_count: int = Field(gt=0)
@@ -1536,9 +1531,7 @@ class ExternalSourceManifestV1(ContractModel):
             self.fixture.distribution == "proprietary"
             and self.rights.fixture.access != "proprietary"
         ):
-            raise ValueError(
-                "proprietary fixture requires fixture rights access=proprietary"
-            )
+            raise ValueError("proprietary fixture requires fixture rights access=proprietary")
 
         if self.normalization.atlas_asset_mapping != self.domain_pack.assets:
             raise ValueError(
@@ -1607,8 +1600,7 @@ class ExternalSourceManifestV1(ContractModel):
         if conflicting_mapping_roles:
             raise ValueError(
                 f"generated entity-mapping path {mapping_path!r} cannot also serve as a "
-                "Stage 1 input role: "
-                + ", ".join(conflicting_mapping_roles)
+                "Stage 1 input role: " + ", ".join(conflicting_mapping_roles)
             )
         for namespace, value in self.extensions.items():
             if namespace.startswith("metriplane."):
@@ -1911,10 +1903,7 @@ def _verify_checksum_inventory(root: Path, checksum_relative_path: str) -> None:
         if path.is_dir():
             continue
         if not path.is_file():
-            raise ValueError(
-                "bundle entry is not a regular file or directory: "
-                f"{relative_path}"
-            )
+            raise ValueError(f"bundle entry is not a regular file or directory: {relative_path}")
         if relative_path != checksum_relative_path:
             inventory.add(relative_path)
     for relative_path in sorted(inventory - set(recorded)):
@@ -2087,8 +2076,7 @@ def _expected_polygon_zone(
     matches: list[str] = []
     for zone in pack.workspace.zones:
         if len(zone.polygon) < 3 or any(
-            len(point) != 2
-            or not all(math.isfinite(float(coordinate)) for coordinate in point)
+            len(point) != 2 or not all(math.isfinite(float(coordinate)) for coordinate in point)
             for point in zone.polygon
         ):
             raise ValueError(
@@ -2129,15 +2117,11 @@ def _load_and_validate_session(
 ) -> tuple[FrameStateModel, ...]:
     raw_lines = path.read_text(encoding="utf-8").splitlines()
     frames: list[FrameStateModel] = []
-    declared_fields = {
-        item.normalized_field for item in manifest.normalization.field_provenance
-    }
+    declared_fields = {item.normalized_field for item in manifest.normalization.field_provenance}
     observed_fields: set[str] = set()
     previous_time: float | None = None
     authoritative_name = manifest.normalization.authoritative_object_collection
-    relevant_ids = {
-        item.normalized_object_id for item in mapping.mappings if item.process_relevant
-    }
+    relevant_ids = {item.normalized_object_id for item in mapping.mappings if item.process_relevant}
     mapped_ids = {item.normalized_object_id for item in mapping.mappings}
     observed_object_ids: set[str] = set()
     workspace_zones = {zone.zone_id for zone in pack.workspace.zones}
@@ -2145,7 +2129,10 @@ def _load_and_validate_session(
     assignment = manifest.normalization.zone_assignment
     if outside_label in workspace_zones:
         raise ValueError("outside_zone_label must not collide with a declared workspace zone")
-    if assignment.overlap_policy == "priority_order" and set(assignment.zone_priority) != workspace_zones:
+    if (
+        assignment.overlap_policy == "priority_order"
+        and set(assignment.zone_priority) != workspace_zones
+    ):
         raise ValueError("zone_priority must list every workspace zone exactly once")
     confidence_values: list[float] = []
     authoritative_observation_count = 0
@@ -2183,7 +2170,9 @@ def _load_and_validate_session(
                 f"{', '.join(sorted(unknown_fields))}"
             )
         if raw.get("schema_version") != "1.0":
-            raise ValueError(f"session line {line_number} must explicitly declare schema_version 1.0")
+            raise ValueError(
+                f"session line {line_number} must explicitly declare schema_version 1.0"
+            )
         if any(raw.get(field) is not None for field in ("run_id", "config_hash", "git_commit")):
             raise ValueError(
                 f"session line {line_number} embeds Metriplane evaluation provenance; "
@@ -2218,7 +2207,9 @@ def _load_and_validate_session(
         try:
             frame = FrameStateModel.model_validate(raw)
         except Exception as exc:
-            raise ValueError(f"invalid FrameStateModel on session line {line_number}: {exc}") from exc
+            raise ValueError(
+                f"invalid FrameStateModel on session line {line_number}: {exc}"
+            ) from exc
         if frame.source_backend != manifest.normalization.source_backend:
             raise ValueError(
                 f"session line {line_number} source_backend {frame.source_backend!r} does not "
@@ -2263,10 +2254,7 @@ def _load_and_validate_session(
         if previous_time is not None:
             delta_ns = round((evaluation_time - previous_time) * 1_000_000_000)
             resampling = manifest.normalization.temporal_alignment.resampling
-            if (
-                resampling.method == "fixed_rate"
-                and delta_ns != resampling.output_period_ns
-            ):
+            if resampling.method == "fixed_rate" and delta_ns != resampling.output_period_ns:
                 raise ValueError(
                     f"session line {line_number} interval {delta_ns}ns violates fixed-rate "
                     f"period {resampling.output_period_ns}ns"
@@ -2385,9 +2373,7 @@ def _validate_mapping(
         process_relevant_assets.update(step.required_assets)
         expected_types.update(step.expected_asset_types)
     process_relevant_assets.update(
-        asset.asset_id
-        for asset in pack.assets.assets
-        if asset.asset_type in expected_types
+        asset.asset_id for asset in pack.assets.assets if asset.asset_type in expected_types
     )
 
     mapped_relevant: set[str] = set()
@@ -2445,9 +2431,7 @@ def _verify_mapping_file_references(
     declared_identity_parameters = {
         (reference.path, reference.sha256)
         for reference in (
-            identity_provenance.parameter_references
-            if identity_provenance is not None
-            else []
+            identity_provenance.parameter_references if identity_provenance is not None else []
         )
     }
     for entry in mapping.mappings:
@@ -2578,8 +2562,7 @@ def validate_external_fixture_bundle(root: str | Path) -> ValidatedExternalFixtu
         "zone_assignment": ("normalization.zone_assignment", True),
         "synchronization": (
             "normalization.temporal_alignment.synchronization",
-            manifest.normalization.temporal_alignment.synchronization.method
-            != "not_applicable",
+            manifest.normalization.temporal_alignment.synchronization.method != "not_applicable",
         ),
         "resampling": (
             "normalization.temporal_alignment.resampling",
@@ -2606,8 +2589,7 @@ def validate_external_fixture_bundle(root: str | Path) -> ValidatedExternalFixtu
         missing = sorted(set(expected_operation_state) - set(operations_by_kind))
         extra = sorted(set(operations_by_kind) - set(expected_operation_state))
         raise ValueError(
-            "normalization report operation coverage mismatch; "
-            f"missing={missing}, extra={extra}"
+            f"normalization report operation coverage mismatch; missing={missing}, extra={extra}"
         )
     for kind, (expected_declaration_path, expected_applied) in expected_operation_state.items():
         operation = operations_by_kind[kind]

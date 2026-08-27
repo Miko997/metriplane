@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import threading
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -84,7 +85,9 @@ def sha256_file(path: Path) -> str:
 
 
 def _utc_now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    )
 
 
 def in_docker() -> bool:
@@ -129,7 +132,9 @@ class GitInfo:
 
 def get_git_info(*, start: Path | None = None) -> GitInfo:
     # Explicit override for Docker/no-.git builds
-    env_commit = os.getenv("METRIPLANE_GIT_COMMIT") or os.getenv("GIT_COMMIT") or os.getenv("GITHUB_SHA")
+    env_commit = (
+        os.getenv("METRIPLANE_GIT_COMMIT") or os.getenv("GIT_COMMIT") or os.getenv("GITHUB_SHA")
+    )
     repo_root = _find_repo_root(start)
 
     if env_commit:
@@ -155,7 +160,13 @@ def get_git_info(*, start: Path | None = None) -> GitInfo:
 
     dirty: bool | None
     try:
-        p = subprocess.run(["git", "status", "--porcelain"], cwd=repo_root, check=True, capture_output=True, text=True)
+        p = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         dirty = bool(p.stdout.strip())
     except Exception:
         dirty = None
@@ -183,15 +194,19 @@ def _redact_url_secrets(value: str) -> str:
                 for key, item in parse_qsl(parsed.query, keep_blank_values=True)
             ]
         )
-        fragment = urlencode(
-            [
-                (
-                    key,
-                    _REDACTED if _is_sensitive_config_key(key) else item,
-                )
-                for key, item in parse_qsl(parsed.fragment, keep_blank_values=True)
-            ]
-        ) if "=" in parsed.fragment else parsed.fragment
+        fragment = (
+            urlencode(
+                [
+                    (
+                        key,
+                        _REDACTED if _is_sensitive_config_key(key) else item,
+                    )
+                    for key, item in parse_qsl(parsed.fragment, keep_blank_values=True)
+                ]
+            )
+            if "=" in parsed.fragment
+            else parsed.fragment
+        )
         return urlunsplit((parsed.scheme, netloc, parsed.path, query, fragment))
     except (TypeError, ValueError):
         # Invalid URL-like strings are validated elsewhere. Persisting the
@@ -221,9 +236,7 @@ def _is_sensitive_config_key(key: str) -> bool:
                 "token",
             }
         )
-        or normalized.endswith(
-            ("_api_key", "_private_key", "_access_key", "_secret_key")
-        )
+        or normalized.endswith(("_api_key", "_private_key", "_access_key", "_secret_key"))
     )
 
 
@@ -320,7 +333,9 @@ class _ReservationAuthority:
     inode: int
 
 
-_IN_PROCESS_RUN_AUTHORITIES: dict[str, _ReservationAuthority] = {}
+_IN_PROCESS_RUN_CONTEXTS: weakref.WeakValueDictionary[str, RunContext] = (
+    weakref.WeakValueDictionary()
+)
 _IN_PROCESS_RUN_AUTHORITIES_LOCK = threading.RLock()
 
 
@@ -328,14 +343,15 @@ def _authority_key(path: Path) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
-def _remember_run_authority(authority: _ReservationAuthority) -> None:
+def _remember_run_context(context: RunContext) -> None:
     with _IN_PROCESS_RUN_AUTHORITIES_LOCK:
-        _IN_PROCESS_RUN_AUTHORITIES[_authority_key(authority.run_dir)] = authority
+        _IN_PROCESS_RUN_CONTEXTS[_authority_key(context.run_dir)] = context
 
 
 def _in_process_run_authority(candidate: Path) -> _ReservationAuthority | None:
     with _IN_PROCESS_RUN_AUTHORITIES_LOCK:
-        return _IN_PROCESS_RUN_AUTHORITIES.get(_authority_key(candidate))
+        context = _IN_PROCESS_RUN_CONTEXTS.get(_authority_key(candidate))
+        return None if context is None else context._authority
 
 
 @dataclass(slots=True)
@@ -580,9 +596,7 @@ class RunDirectoryReservation:
                     f"run directory reservation was not claimed: {self.run_dir}"
                 )
             if _RUN_RESERVATION_CANCELLED_MARKER in entries:
-                raise PlatformPathError(
-                    f"run directory reservation was cancelled: {self.run_dir}"
-                )
+                raise PlatformPathError(f"run directory reservation was cancelled: {self.run_dir}")
             return self.run_dir
         finally:
             claimed.close()
@@ -729,7 +743,7 @@ def _create_unreserved_run_directory(base: Path, run_id: str) -> _ClaimedRunDire
     return _claim_authorized_run_directory(authority)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class RunContext:
     run_id: str
     run_dir: Path
@@ -748,6 +762,7 @@ class RunContext:
     config_yaml: Path
     config_canonical_json_path: Path
     session_jsonl: Path
+    _authority: _ReservationAuthority = dataclasses.field(repr=False, compare=False)
 
     def header_record(self) -> dict[str, Any]:
         return {
@@ -984,8 +999,9 @@ def create_run_context(
             config_yaml=config_yaml,
             config_canonical_json_path=cfg_canon_path,
             session_jsonl=session_jsonl,
+            _authority=claimed_directory.authority,
         )
-        _remember_run_authority(claimed_directory.authority)
+        _remember_run_context(context)
         return context
     finally:
         claimed_directory.close()

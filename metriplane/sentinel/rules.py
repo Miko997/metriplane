@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -58,7 +58,7 @@ class RuleDefinition(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _required_condition_fields(self):
+    def _required_condition_fields(self) -> Self:
         if not self.id.strip():
             raise ValueError("rule id must not be empty")
         required: dict[RuleType, tuple[str, ...]] = {
@@ -71,9 +71,7 @@ class RuleDefinition(BaseModel):
         }
         missing = [name for name in required[self.type] if getattr(self, name) is None]
         if missing:
-            raise ValueError(
-                f"{self.type} rule requires: {', '.join(missing)}"
-            )
+            raise ValueError(f"{self.type} rule requires: {', '.join(missing)}")
         return self
 
 
@@ -84,6 +82,7 @@ class RuleSet(BaseModel):
 def load_rules(path: Any) -> RuleSet:
     import yaml
     from pathlib import Path
+
     data = yaml.safe_load(Path(path).read_text())
     return RuleSet.model_validate(data)
 

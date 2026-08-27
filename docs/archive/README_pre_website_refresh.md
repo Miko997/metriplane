@@ -314,10 +314,12 @@ Connect any WebSocket client to `ws://host:8765`:
 ```python
 import asyncio, websockets, json
 
+
 async def main():
     async with websockets.connect("ws://localhost:8765") as ws:
         frame = json.loads(await ws.recv())
         print(frame["run_id"], len(frame["objects"]))
+
 
 asyncio.run(main())
 ```

@@ -11,7 +11,7 @@ from collections import Counter
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, Optional, Tuple
+from typing import Any, Iterable, Iterator
 
 from pydantic import ValidationError
 
@@ -188,15 +188,12 @@ def _duplicate_object_notes(
         ids = [
             obj["id"].strip()
             for obj in value
-            if isinstance(obj, dict)
-            and isinstance(obj.get("id"), str)
-            and obj["id"].strip()
+            if isinstance(obj, dict) and isinstance(obj.get("id"), str) and obj["id"].strip()
         ]
         for object_id, count in Counter(ids).items():
             if count > 1:
                 notes.append(
-                    f"duplicate_object_id:{side}:line={line_number}:"
-                    f"field={field}:id={object_id!r}"
+                    f"duplicate_object_id:{side}:line={line_number}:field={field}:id={object_id!r}"
                 )
 
     inspect(rec.get("objects"), "objects")
@@ -238,9 +235,7 @@ def _equivalence_structure_errors(
         return notes
 
     if len(live_records) != len(replay_records):
-        notes.append(
-            f"frame_count_mismatch:live={len(live_records)}:replay={len(replay_records)}"
-        )
+        notes.append(f"frame_count_mismatch:live={len(live_records)}:replay={len(replay_records)}")
 
     live_keys = [_equivalence_frame_key(rec, i) for i, rec in enumerate(live_records)]
     replay_keys = [_equivalence_frame_key(rec, i) for i, rec in enumerate(replay_records)]
@@ -327,7 +322,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser("metriplane.replay.compare_determinism")
     ap.add_argument("--input", required=True, help="Input session.jsonl")
     ap.add_argument("--clock", choices=["fixed", "replay"], default="fixed")
-    ap.add_argument("--dt-ms", type=int, default=50, help="Required for fixed clock; ignored for replay clock")
+    ap.add_argument(
+        "--dt-ms", type=int, default=50, help="Required for fixed clock; ignored for replay clock"
+    )
     ap.add_argument("--out-csv", required=True, help="Where to write the CSV report")
     ap.add_argument("--max-frames", type=int, default=None, help="Optional cap for quick runs")
 
@@ -402,11 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         sort_objects=True,
     )
 
-    passed = (
-        replay_mismatches == 0
-        and mism_sorted == 0
-        and not structure_errors
-    )
+    passed = replay_mismatches == 0 and mism_sorted == 0 and not structure_errors
 
     notes = str(tmp_dir)
     if structure_errors:
@@ -466,7 +459,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[determinism] replay sha2={sha2}")
     print(f"[determinism] replay_mismatches={replay_mismatches}")
     print(f"[equivalence] mismatches_exact={mism_exact} (ignoring ts_sim_ns only)")
-    print(f"[equivalence] mismatches_sorted={mism_sorted} (ignoring ts_sim_ns + sorting object lists)")
+    print(
+        f"[equivalence] mismatches_sorted={mism_sorted} (ignoring ts_sim_ns + sorting object lists)"
+    )
     for note in structure_errors:
         print(f"[equivalence] {note}")
     print(f"[result] PASS={str(passed).lower()}")

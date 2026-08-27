@@ -143,9 +143,7 @@ def test_start_fusion_generates_run_id_when_field_is_omitted(tmp_path: Path) -> 
     config.parent.mkdir()
     config.write_text("source_mode: dummy\n", encoding="utf-8")
 
-    status, payload = api._start_fusion(
-        {"config": "configs/safe.yaml", "duration_s": 30}
-    )
+    status, payload = api._start_fusion({"config": "configs/safe.yaml", "duration_s": 30})
 
     assert status == 200
     assert payload["run_id"].startswith("operator_run_")
@@ -669,9 +667,7 @@ def test_write_zones_rejects_external_profile_symlink(tmp_path: Path) -> None:
         "/operator/write-zones",
         {
             "profile": "local_escape",
-            "zones": [
-                {"name": "safe_zone", "polygon": [[0, 0], [1, 0], [0, 1]]}
-            ],
+            "zones": [{"name": "safe_zone", "polygon": [[0, 0], [1, 0], [0, 1]]}],
         },
     )
 

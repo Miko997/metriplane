@@ -9,9 +9,7 @@ import re
 
 MAX_PORTABLE_RUN_ID_LENGTH = 128
 
-_SAFE_RUN_ID = re.compile(
-    rf"^[A-Za-z0-9][A-Za-z0-9._-]{{0,{MAX_PORTABLE_RUN_ID_LENGTH - 1}}}$"
-)
+_SAFE_RUN_ID = re.compile(rf"^[A-Za-z0-9][A-Za-z0-9._-]{{0,{MAX_PORTABLE_RUN_ID_LENGTH - 1}}}$")
 _WINDOWS_RESERVED_BASENAMES = {
     "aux",
     "con",

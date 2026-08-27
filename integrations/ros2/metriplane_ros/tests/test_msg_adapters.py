@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 """ROS-free unit tests for the bridge message adapters."""
+
 import json
 import sys
 from pathlib import Path
@@ -46,8 +47,10 @@ def test_incidents():
 
 
 def test_object_summary_uses_fused_first():
-    frame = {"fused": [{"id": "7", "pos_world": [1.0, 2.0, 0.0], "zone": "main"}],
-             "objects": [{"id": "99", "pos_world": [9.0, 9.0, 0.0]}]}
+    frame = {
+        "fused": [{"id": "7", "pos_world": [1.0, 2.0, 0.0], "zone": "main"}],
+        "objects": [{"id": "99", "pos_world": [9.0, 9.0, 0.0]}],
+    }
     out = extract_object_summary(frame)
     assert out == [{"id": "7", "x": 1.0, "y": 2.0, "zone": "main"}]
 

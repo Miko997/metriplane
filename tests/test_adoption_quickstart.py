@@ -92,19 +92,15 @@ def test_active_readme_uses_current_product_wordmark() -> None:
 
 
 def test_release_gate_runs_the_exact_installed_wheel_quickstart() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(encoding="utf-8")
 
-    assert 'os: [ubuntu-latest, macos-latest]' in workflow
+    assert "os: [ubuntu-latest, macos-latest]" in workflow
     assert 'python-version: ["3.12", "3.13"]' in workflow
     assert '"demo",\n              "--open",' in workflow
     assert 'BROWSER="$browser_stub"' in workflow
     assert '"Browser: open request sent" not in completed.stdout' in workflow
     assert 'test "$(<"$browser_uri_file")" = "$expected_report_uri"' in workflow
     head_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
-    wheel_smoke = workflow.split("  wheel_smoke:", 1)[1].split(
-        "\n  package-smoke:", 1
-    )[0]
+    wheel_smoke = workflow.split("  wheel_smoke:", 1)[1].split("\n  package-smoke:", 1)[0]
     assert head_ref in wheel_smoke
     assert workflow.count(head_ref) == 1

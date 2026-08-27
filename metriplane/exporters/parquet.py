@@ -10,12 +10,15 @@ prints an install instruction and exits nonzero — it never crashes the runtime
 Usage:
     python -m metriplane.exporters.parquet --run-dir runs/<run_id>
 """
+
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("metriplane.exporters")
 
@@ -30,20 +33,22 @@ _SOURCES = [
 
 def parquet_available() -> tuple[bool, str]:
     try:
-        import pyarrow  # noqa: F401
+        importlib.import_module("pyarrow")
+
         return True, "pyarrow"
     except Exception:
         pass
     try:
-        import fastparquet  # noqa: F401
+        importlib.import_module("fastparquet")
+
         return True, "fastparquet"
     except Exception:
         pass
     return False, ""
 
 
-def _read_jsonl(path: Path) -> list[dict]:
-    rows = []
+def _read_jsonl(path: Path) -> list[Any]:
+    rows: list[Any] = []
     for line in path.read_text().splitlines():
         line = line.strip()
         if line:
@@ -54,13 +59,14 @@ def _read_jsonl(path: Path) -> list[dict]:
     return rows
 
 
-def export_run_dir(run_dir: str | Path, out_dir: str | Path | None = None) -> dict:
+def export_run_dir(run_dir: str | Path, out_dir: str | Path | None = None) -> dict[str, Any]:
     ok, engine = parquet_available()
     if not ok:
         raise RuntimeError(
             "Parquet export needs an engine. Install one of:\n"
-            "  pip install pyarrow\n  pip install fastparquet")
-    import pandas as pd
+            "  pip install pyarrow\n  pip install fastparquet"
+        )
+    pd: Any = importlib.import_module("pandas")
 
     run = Path(run_dir)
     out = Path(out_dir) if out_dir else run / "exports" / "parquet"
@@ -84,8 +90,7 @@ def export_run_dir(run_dir: str | Path, out_dir: str | Path | None = None) -> di
         try:
             data = json.loads(inc.read_text())
             if isinstance(data, list) and data:
-                pd.DataFrame(data).to_parquet(out / "incidents.parquet",
-                                              engine=engine, index=False)
+                pd.DataFrame(data).to_parquet(out / "incidents.parquet", engine=engine, index=False)
                 written["incidents.parquet"] = len(data)
         except Exception:
             pass

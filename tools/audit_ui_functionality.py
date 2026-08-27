@@ -325,7 +325,9 @@ def parse_script_actions(root: Path) -> list[Action]:
                     source=prefix,
                     source_path=rel_path(root, path),
                     command_or_endpoint=command,
-                    risk="P1" if name in {"list_cameras", "run_ui_demo_replay", "ui_safe_cleanup"} else "P2",
+                    risk="P1"
+                    if name in {"list_cameras", "run_ui_demo_replay", "ui_safe_cleanup"}
+                    else "P2",
                 )
             )
     return actions
@@ -379,7 +381,9 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
         for e in html_elements
         if e.get("onclick")
     ]
-    copy_commands = sorted(set(re.findall(r"copyCommand\([\"']([^\"']+)[\"']\)", html_text + js_text)))
+    copy_commands = sorted(
+        set(re.findall(r"copyCommand\([\"']([^\"']+)[\"']\)", html_text + js_text))
+    )
 
     endpoint_calls: set[str] = set()
     path_calls: set[str] = set()
@@ -398,7 +402,9 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
     for path in re.findall(r"postJSON\([\"']([^\"']+)[\"']", js_text + html_text):
         endpoint_calls.add(f"POST {path}")
         path_calls.add(path)
-    for path in re.findall(r"fetch\(\s*(?:RUNNER\s*\+\s*)?[`\"']([^`\"'$]+)[`\"']", js_text + html_text):
+    for path in re.findall(
+        r"fetch\(\s*(?:RUNNER\s*\+\s*)?[`\"']([^`\"'$]+)[`\"']", js_text + html_text
+    ):
         if path.startswith("http"):
             continue
         path_calls.add(path)
@@ -450,7 +456,11 @@ def endpoint_coverage_reason(endpoint: str, ui: dict[str, Any]) -> str | None:
         prefix = path.split("<id>", 1)[0]
         return "pattern" if any(call.startswith(prefix) for call in path_calls) else None
     if path.endswith("/<id>/cancel"):
-        return "pattern" if any("/jobs/" in call and "/cancel" in call for call in path_calls) else None
+        return (
+            "pattern"
+            if any("/jobs/" in call and "/cancel" in call for call in path_calls)
+            else None
+        )
     if path.endswith("/<id>"):
         prefix = path.rsplit("/<id>", 1)[0] + "/"
         return "pattern" if any(call.startswith(prefix) for call in path_calls) else None
@@ -613,7 +623,9 @@ def coverage_for_action(action: Action, ui: dict[str, Any]) -> None:
         reason = endpoint_coverage_reason(action.command_or_endpoint, ui)
         if reason:
             action.coverage_status = "ui_full"
-            action.ui_matches = [{"file": "web/dashboard/*.js", "label": action.command_or_endpoint, "kind": "api"}]
+            action.ui_matches = [
+                {"file": "web/dashboard/*.js", "label": action.command_or_endpoint, "kind": "api"}
+            ]
             if reason == "read_only_fallback":
                 action.notes = "Covered by read-only GET fallback for an observe-only endpoint."
         else:
@@ -670,27 +682,38 @@ def build_actions(root: Path) -> tuple[list[Action], dict[str, Any]]:
         coverage_for_action(action, ui)
         unique.append(action)
     allowlist_commands = "\n".join(
-        action.command_or_endpoint
-        for action in unique
-        if action.source == "allowlist"
+        action.command_or_endpoint for action in unique if action.source == "allowlist"
     )
     for action in unique:
         if action.coverage_status != "ui_missing":
             continue
         if action.source == "cli":
             subcommand = action.action_id.removeprefix("cli.")
-            if f"metriplane.cli {subcommand}" in allowlist_commands or f" {subcommand} " in allowlist_commands:
+            if (
+                f"metriplane.cli {subcommand}" in allowlist_commands
+                or f" {subcommand} " in allowlist_commands
+            ):
                 action.coverage_status = "ui_partial"
                 action.ui_matches = [
-                    {"file": "metriplane/runner/allowlist.py", "label": "runner action", "kind": "allowlist"}
+                    {
+                        "file": "metriplane/runner/allowlist.py",
+                        "label": "runner action",
+                        "kind": "allowlist",
+                    }
                 ]
-                action.notes = "Exposed through a runner allowlist action rather than a raw CLI button."
+                action.notes = (
+                    "Exposed through a runner allowlist action rather than a raw CLI button."
+                )
         elif action.source == "tool":
             rel = action.source_path
             if rel in allowlist_commands:
                 action.coverage_status = "ui_full"
                 action.ui_matches = [
-                    {"file": "metriplane/runner/allowlist.py", "label": "runner action", "kind": "allowlist"}
+                    {
+                        "file": "metriplane/runner/allowlist.py",
+                        "label": "runner action",
+                        "kind": "allowlist",
+                    }
                 ]
                 action.notes = "Covered by a runner allowlist command."
     ui["quality"]["read_only_fallback_endpoints"] = [
@@ -794,7 +817,9 @@ def write_matrix(path: Path, actions: list[Action], generated_at: str) -> None:
     path.write_text("\n".join(content), encoding="utf-8")
 
 
-def write_inventory(path: Path, actions: list[Action], ui: dict[str, Any], generated_at: str) -> None:
+def write_inventory(
+    path: Path, actions: list[Action], ui: dict[str, Any], generated_at: str
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     quality = ui.get("quality", {})
     command_rows = [
@@ -880,7 +905,9 @@ def write_inventory(path: Path, actions: list[Action], ui: dict[str, Any], gener
         "",
         "## Read-Only Endpoint Fallback Coverage",
         "",
-        markdown_table(quality.get("read_only_fallback_endpoints", []), ["action_id", "endpoint", "notes"])
+        markdown_table(
+            quality.get("read_only_fallback_endpoints", []), ["action_id", "endpoint", "notes"]
+        )
         if quality.get("read_only_fallback_endpoints")
         else "No endpoints were counted via read-only fallback coverage.",
         "",
@@ -908,7 +935,9 @@ def write_missing_report(path: Path, actions: list[Action], generated_at: str) -
         "",
         "## Missing Features",
         "",
-        markdown_table(rows, COVERAGE_COLUMNS) if rows else "No missing features found by the static audit.",
+        markdown_table(rows, COVERAGE_COLUMNS)
+        if rows
+        else "No missing features found by the static audit.",
         "",
         "## First-Pass Rule",
         "",
@@ -919,7 +948,9 @@ def write_missing_report(path: Path, actions: list[Action], generated_at: str) -
     path.write_text("\n".join(content), encoding="utf-8")
 
 
-def write_parity_report(path: Path, actions: list[Action], summary: dict[str, int], generated_at: str) -> None:
+def write_parity_report(
+    path: Path, actions: list[Action], summary: dict[str, int], generated_at: str
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     by_status: dict[str, list[Action]] = {}
     for action in actions:
@@ -976,7 +1007,10 @@ def write_parity_report(path: Path, actions: list[Action], summary: dict[str, in
         "## Stable Features Partially Available",
         "",
         markdown_table(
-            [a.row() for a in by_status.get("ui_partial", []) + by_status.get("ui_copy_command_only", [])],
+            [
+                a.row()
+                for a in by_status.get("ui_partial", []) + by_status.get("ui_copy_command_only", [])
+            ],
             COVERAGE_COLUMNS,
         ),
         "",
@@ -988,11 +1022,15 @@ def write_parity_report(path: Path, actions: list[Action], summary: dict[str, in
         "",
         "## CLI-Only Features With Documented Reason",
         "",
-        markdown_table([a.row() for a in by_status.get("cli_only_documented", [])], COVERAGE_COLUMNS),
+        markdown_table(
+            [a.row() for a in by_status.get("cli_only_documented", [])], COVERAGE_COLUMNS
+        ),
         "",
         "## Disabled Or Integration Features With Reasons",
         "",
-        markdown_table([a.row() for a in by_status.get("ui_disabled_with_reason", [])], COVERAGE_COLUMNS),
+        markdown_table(
+            [a.row() for a in by_status.get("ui_disabled_with_reason", [])], COVERAGE_COLUMNS
+        ),
         "",
         "## Broken Or Dead UI Actions",
         "",
@@ -1026,7 +1064,13 @@ def write_csv(path: Path, actions: list[Action]) -> None:
             writer.writerow(action.row())
 
 
-def write_json(path: Path, actions: list[Action], ui: dict[str, Any], summary: dict[str, int], generated_at: str) -> None:
+def write_json(
+    path: Path,
+    actions: list[Action],
+    ui: dict[str, Any],
+    summary: dict[str, int],
+    generated_at: str,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at": generated_at,

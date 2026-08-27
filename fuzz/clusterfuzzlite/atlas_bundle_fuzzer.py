@@ -83,8 +83,7 @@ def _baseline_files() -> dict[str, bytes]:
         "limitations.md": b"# Limitations\n\nSynthetic fuzz input.\n",
     }
     checksum_lines = [
-        f"{hashlib.sha256(content).hexdigest()}  {name}"
-        for name, content in sorted(files.items())
+        f"{hashlib.sha256(content).hexdigest()}  {name}" for name, content in sorted(files.items())
     ]
     files["checksums.sha256"] = ("\n".join(checksum_lines) + "\n").encode("utf-8")
     return files

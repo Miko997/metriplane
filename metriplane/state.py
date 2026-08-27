@@ -4,6 +4,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
+
 @dataclass(frozen=True)
 class ObjectState:
     id: str
@@ -12,12 +13,14 @@ class ObjectState:
     confidence: float | None = None
     extra: dict[str, Any] | None = None
 
+
 @dataclass(frozen=True)
 class ZoneEvent:
     type: Literal["zone_enter", "zone_exit"]
     object_id: str
     zone: str
     ts: float
+
 
 @dataclass(frozen=True)
 class FrameState:

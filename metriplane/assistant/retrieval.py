@@ -88,6 +88,7 @@ def retrieve_rule(
         return None, [], ["no rules/contract artifact found in run dir"]
     try:
         import yaml
+
         data = yaml.safe_load(p.read_text()) or {}
         rules = data.get("rules", [])
     except Exception:
@@ -155,11 +156,16 @@ def retrieve_traces(
     for s in summaries:
         if object_id is not None and s.object_id != object_id:
             continue
-        rows.append({
-            "object_id": s.object_id, "duration_s": s.duration_s,
-            "total_distance_m": s.total_distance_m, "zones_visited": s.zones_visited,
-            "dwell_by_zone": s.dwell_by_zone, "gap_count": s.gap_count,
-        })
+        rows.append(
+            {
+                "object_id": s.object_id,
+                "duration_s": s.duration_s,
+                "total_distance_m": s.total_distance_m,
+                "zones_visited": s.zones_visited,
+                "dwell_by_zone": s.dwell_by_zone,
+                "gap_count": s.gap_count,
+            }
+        )
     cite = [_citation(session, run, "session")]
     return rows, cite, []
 

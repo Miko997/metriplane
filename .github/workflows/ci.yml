@@ -46,6 +46,12 @@ jobs:
       - name: Sync locked test environment
         run: uv sync --locked --group dev
 
+      - name: Check maintained Python quality
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+          uv run --frozen mypy
+
       - name: Validate pull request contract
         if: github.event_name == 'pull_request'
         env:

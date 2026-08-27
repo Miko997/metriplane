@@ -35,35 +35,39 @@ def _resolve_output_path(value: str) -> Path:
         except FileNotFoundError:
             return expanded.resolve(strict=False)
     except (OSError, RuntimeError) as exc:
-        raise PlatformPathError(
-            f"cannot resolve latency output path {unresolved}"
-        ) from exc
+        raise PlatformPathError(f"cannot resolve latency output path {unresolved}") from exc
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="M9.5 latency breakdown runner")
-    ap.add_argument("--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)")
-    ap.add_argument("--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)")
+    ap.add_argument(
+        "--duration-s", type=float, default=15.0, help="How long to run before SIGINT (default: 15)"
+    )
+    ap.add_argument(
+        "--out", type=str, required=True, help="Output CSV path (copied from run_dir/latency.csv)"
+    )
     ap.add_argument(
         "--runs-dir",
         type=str,
         default=None,
         help="Runs base dir (default: platform runs directory)",
     )
-    ap.add_argument("--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path")
+    ap.add_argument(
+        "--config", "-c", type=str, default="configs/fusion_health.yaml", help="Config YAML path"
+    )
     ap.add_argument(
         "--runner",
         choices=["run", "fusion"],
         default="run",
         help="Which runner to benchmark: 'run' (metriplane.run) or 'fusion' (metriplane.run_fusion)",
     )
-    ap.add_argument("--run-id", type=str, default=None, help="Optional run id override (otherwise auto)")
+    ap.add_argument(
+        "--run-id", type=str, default=None, help="Optional run id override (otherwise auto)"
+    )
     args = ap.parse_args(argv)
 
     try:
-        requested_run_id = (
-            generate_run_id("m95_latency") if args.run_id is None else args.run_id
-        )
+        requested_run_id = generate_run_id("m95_latency") if args.run_id is None else args.run_id
         run_id = validate_portable_run_id(requested_run_id)
     except ValueError as exc:
         print(exc, file=sys.stderr)
@@ -98,9 +102,29 @@ def main(argv: list[str] | None = None) -> int:
     run_id = reservation.run_id
 
     if args.runner == "fusion":
-        cmd = [sys.executable, "-m", "metriplane.run_fusion", "--config", args.config, "--runs-dir", str(runs_dir), "--run-id", run_id]
+        cmd = [
+            sys.executable,
+            "-m",
+            "metriplane.run_fusion",
+            "--config",
+            args.config,
+            "--runs-dir",
+            str(runs_dir),
+            "--run-id",
+            run_id,
+        ]
     else:
-        cmd = [sys.executable, "-m", "metriplane.run", "--config", args.config, "--runs-dir", str(runs_dir), "--run-id", run_id]
+        cmd = [
+            sys.executable,
+            "-m",
+            "metriplane.run",
+            "--config",
+            args.config,
+            "--runs-dir",
+            str(runs_dir),
+            "--run-id",
+            run_id,
+        ]
 
     print("=== M9.5 latency breakdown ===")
     print("runner    :", args.runner)
@@ -142,7 +166,10 @@ def main(argv: list[str] | None = None) -> int:
 
     src = rd / "latency.csv"
     if not src.is_file():
-        print(f"ERROR: {src} not found. Did you patch run.py/run_fusion.py to write latency.csv?", file=sys.stderr)
+        print(
+            f"ERROR: {src} not found. Did you patch run.py/run_fusion.py to write latency.csv?",
+            file=sys.stderr,
+        )
         return 3
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

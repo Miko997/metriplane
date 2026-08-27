@@ -59,25 +59,35 @@ def test_summary_handles_no_alerts(tmp_path):
 
 
 def test_fail_fast_on_missing_contract():
-    cfg = SentinelConfig(enabled=True, contracts_file="does/not/exist.yaml",
-                         fail_fast_on_contract_error=True)
+    cfg = SentinelConfig(
+        enabled=True, contracts_file="does/not/exist.yaml", fail_fast_on_contract_error=True
+    )
     with pytest.raises(SentinelError):
         SentinelRuntime(cfg)
 
 
 def test_no_fail_fast_marks_degraded():
-    cfg = SentinelConfig(enabled=True, contracts_file="does/not/exist.yaml",
-                         fail_fast_on_contract_error=False)
+    cfg = SentinelConfig(
+        enabled=True, contracts_file="does/not/exist.yaml", fail_fast_on_contract_error=False
+    )
     rt = SentinelRuntime(cfg)
     assert rt.health == "DEGRADED"
 
 
 def test_cli_run_end_to_end(tmp_path, capsys):
     injected = _platform_paths(tmp_path / "injected")
-    rc = main_sentinel([
-        "run", "--config", "configs/sentinel_demo.yaml",
-        "--run-id", "sentinel_runtime_001", "--runs-dir", str(tmp_path),
-    ], paths=injected)
+    rc = main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            "sentinel_runtime_001",
+            "--runs-dir",
+            str(tmp_path),
+        ],
+        paths=injected,
+    )
     assert rc == 0
     out = capsys.readouterr().out
     assert "mode=shadow_auditor" in out
@@ -166,13 +176,18 @@ def test_cli_run_generates_unique_default_run_ids(tmp_path, capsys, monkeypatch)
     )
 
     for _ in range(2):
-        assert main_sentinel([
-            "run",
-            "--config",
-            "configs/sentinel_demo.yaml",
-            "--runs-dir",
-            str(tmp_path),
-        ]) == 0
+        assert (
+            main_sentinel(
+                [
+                    "run",
+                    "--config",
+                    "configs/sentinel_demo.yaml",
+                    "--runs-dir",
+                    str(tmp_path),
+                ]
+            )
+            == 0
+        )
 
     capsys.readouterr()
     assert (tmp_path / "sentinel_001" / "sentinel_summary.json").is_file()
@@ -185,13 +200,18 @@ def test_cli_run_reports_platform_path_failure_without_traceback(capsys, monkeyp
         lambda: (_ for _ in ()).throw(PlatformPathError("home unavailable")),
     )
 
-    assert main_sentinel([
-        "run",
-        "--config",
-        "configs/sentinel_demo.yaml",
-        "--run-id",
-        "sentinel_path_failure",
-    ]) == 2
+    assert (
+        main_sentinel(
+            [
+                "run",
+                "--config",
+                "configs/sentinel_demo.yaml",
+                "--run-id",
+                "sentinel_path_failure",
+            ]
+        )
+        == 2
+    )
     assert capsys.readouterr().out == "platform path error: home unavailable\n"
 
 
@@ -268,10 +288,17 @@ def test_cli_run_refuses_to_overwrite_existing_run_directory(tmp_path, capsys):
 
 
 def test_cli_status_prints_summary(tmp_path, capsys):
-    main_sentinel([
-        "run", "--config", "configs/sentinel_demo.yaml",
-        "--run-id", "r1", "--runs-dir", str(tmp_path),
-    ])
+    main_sentinel(
+        [
+            "run",
+            "--config",
+            "configs/sentinel_demo.yaml",
+            "--run-id",
+            "r1",
+            "--runs-dir",
+            str(tmp_path),
+        ]
+    )
     capsys.readouterr()
     rc = main_sentinel(["status", str(tmp_path / "r1")])
     assert rc == 0

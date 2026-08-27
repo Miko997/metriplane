@@ -11,13 +11,17 @@ A "run dir" may be:
   - an incident evidence bundle (session_excerpt.jsonl, incident.json, objects.yaml, ...)
   - any run dir containing session.jsonl (+ optional incident/alerts artifacts)
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from metriplane.sentinel.registry import ObjectRegistryConfig
 
 from metriplane.runner.safe_reads import (
     PinnedDirectory,
@@ -60,8 +64,9 @@ def _release_artifact(artifact: RunArtifact | None) -> None:
 
 
 def _session(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
-    return find_run_artifact(run_dir, ["session_excerpt.jsonl", "session.jsonl",
-                                       "traces/object_traces.jsonl"])
+    return find_run_artifact(
+        run_dir, ["session_excerpt.jsonl", "session.jsonl", "traces/object_traces.jsonl"]
+    )
 
 
 def _objects_yaml(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
@@ -75,7 +80,7 @@ def _workspace_yaml(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
     )
 
 
-def _registry(run_dir: Path | PinnedDirectory) -> Any:
+def _registry(run_dir: Path | PinnedDirectory) -> ObjectRegistryConfig | None:
     p = _objects_yaml(run_dir)
     if p is None:
         return None
@@ -107,23 +112,27 @@ def get_workspace(run_dir: RunSource) -> dict[str, Any]:
         polygon = item.get("polygon") or []
         if not zone_id or not polygon:
             continue
-        zones.append({
-            "zone_id": zone_id,
-            "label": item.get("label") or zone_id,
-            "zone_type": item.get("zone_type") or item.get("type") or "zone",
-            "polygon": polygon,
-        })
+        zones.append(
+            {
+                "zone_id": zone_id,
+                "label": item.get("label") or zone_id,
+                "zone_type": item.get("zone_type") or item.get("type") or "zone",
+                "polygon": polygon,
+            }
+        )
 
     stations = []
     for item in data.get("stations", []) or []:
         station_id = item.get("station_id") or item.get("id")
         if not station_id:
             continue
-        stations.append({
-            "station_id": station_id,
-            "zone_id": item.get("zone_id"),
-            "label": item.get("label") or station_id,
-        })
+        stations.append(
+            {
+                "station_id": station_id,
+                "zone_id": item.get("zone_id"),
+                "label": item.get("label") or station_id,
+            }
+        )
 
     return {
         "zones": zones,
@@ -166,16 +175,18 @@ def get_objects(run_dir: RunSource) -> list[dict[str, Any]]:
         speed = None
         if o.vel_world:
             speed = round((o.vel_world[0] ** 2 + o.vel_world[1] ** 2) ** 0.5, 3)
-        out.append({
-            "object_id": oid,
-            "marker_id": str(o.id),
-            "type": otype,
-            "zone": o.zone,
-            "x_m": o.pos_world[0] if o.pos_world else None,
-            "y_m": o.pos_world[1] if o.pos_world else None,
-            "speed_mps": speed,
-            "last_ts": last.ts,
-        })
+        out.append(
+            {
+                "object_id": oid,
+                "marker_id": str(o.id),
+                "type": otype,
+                "zone": o.zone,
+                "x_m": o.pos_world[0] if o.pos_world else None,
+                "y_m": o.pos_world[1] if o.pos_world else None,
+                "speed_mps": speed,
+                "last_ts": last.ts,
+            }
+        )
     return out
 
 
@@ -230,17 +241,19 @@ def get_traces(run_dir: RunSource, object_id: str | None = None) -> list[dict[st
     for s in summaries:
         if object_id is not None and s.object_id != object_id:
             continue
-        rows.append({
-            "object_id": s.object_id,
-            "marker_id": s.marker_id,
-            "duration_s": s.duration_s,
-            "total_distance_m": s.total_distance_m,
-            "max_speed_mps": s.max_speed_mps,
-            "zones_visited": s.zones_visited,
-            "dwell_by_zone": s.dwell_by_zone,
-            "point_count": s.point_count,
-            "gap_count": s.gap_count,
-        })
+        rows.append(
+            {
+                "object_id": s.object_id,
+                "marker_id": s.marker_id,
+                "duration_s": s.duration_s,
+                "total_distance_m": s.total_distance_m,
+                "max_speed_mps": s.max_speed_mps,
+                "zones_visited": s.zones_visited,
+                "dwell_by_zone": s.dwell_by_zone,
+                "point_count": s.point_count,
+                "gap_count": s.gap_count,
+            }
+        )
     return rows
 
 
@@ -272,13 +285,16 @@ def get_frames(run_dir: RunSource, max_frames: int = 600) -> dict[str, Any]:
                             oid, otype = entry.object_id, entry.type
                     except (TypeError, ValueError):
                         pass
-                objs.append({
-                    "object_id": oid, "type": otype, "zone": o.zone,
-                    "x_m": o.pos_world[0] if o.pos_world else None,
-                    "y_m": o.pos_world[1] if o.pos_world else None,
-                })
-            frames_out.append({"ts": frame.ts, "frame_id": frame.frame_id,
-                               "objects": objs})
+                objs.append(
+                    {
+                        "object_id": oid,
+                        "type": otype,
+                        "zone": o.zone,
+                        "x_m": o.pos_world[0] if o.pos_world else None,
+                        "y_m": o.pos_world[1] if o.pos_world else None,
+                    }
+                )
+            frames_out.append({"ts": frame.ts, "frame_id": frame.frame_id, "objects": objs})
             if len(frames_out) >= max_frames:
                 break
     except Exception:
@@ -288,14 +304,16 @@ def get_frames(run_dir: RunSource, max_frames: int = 600) -> dict[str, Any]:
 
     incidents = []
     for inc in get_incidents(run):
-        incidents.append({
-            "incident_id": inc.get("incident_id"),
-            "rule_id": inc.get("rule_id"),
-            "severity": inc.get("severity"),
-            "object_ids": inc.get("object_ids", []),
-            "opened_ts": inc.get("opened_ts"),
-            "closed_ts": inc.get("closed_ts"),
-        })
+        incidents.append(
+            {
+                "incident_id": inc.get("incident_id"),
+                "rule_id": inc.get("rule_id"),
+                "severity": inc.get("severity"),
+                "object_ids": inc.get("object_ids", []),
+                "opened_ts": inc.get("opened_ts"),
+                "closed_ts": inc.get("closed_ts"),
+            }
+        )
     return {"frames": frames_out, "incidents": incidents, "workspace": workspace}
 
 

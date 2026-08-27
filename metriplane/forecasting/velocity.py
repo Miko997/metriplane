@@ -16,8 +16,8 @@ class VelocityEstimate:
     vx: float
     vy: float
     speed: float
-    n_points: int          # number of valid trace points available
-    source: str            # "vel_world" | "trace" | "none"
+    n_points: int  # number of valid trace points available
+    source: str  # "vel_world" | "trace" | "none"
 
     @property
     def confidence(self) -> float:
@@ -34,11 +34,11 @@ class VelocityEstimate:
 @dataclass
 class VelocityEstimator:
     """Tracks recent world positions per object to estimate velocity."""
-    history_len: int = 5
-    _hist: dict[str, deque] = field(default_factory=dict)
 
-    def observe(self, object_id: str, ts: float,
-                pos: tuple[float, float] | None) -> None:
+    history_len: int = 5
+    _hist: dict[str, deque[tuple[float, float, float]]] = field(default_factory=dict)
+
+    def observe(self, object_id: str, ts: float, pos: tuple[float, float] | None) -> None:
         if pos is None:
             return
         dq = self._hist.get(object_id)
@@ -51,8 +51,7 @@ class VelocityEstimator:
         dq = self._hist.get(object_id)
         return len(dq) if dq else 0
 
-    def estimate(self, object_id: str,
-                 vel_world: tuple[float, float] | None) -> VelocityEstimate:
+    def estimate(self, object_id: str, vel_world: tuple[float, float] | None) -> VelocityEstimate:
         dq = self._hist.get(object_id)
         # Prefer trace-derived velocity when we have at least two points.
         if dq is not None and len(dq) >= 2:

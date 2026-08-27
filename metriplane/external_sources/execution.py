@@ -191,9 +191,7 @@ class RegressionResult(_ExecutionModel):
 class ExternalRunSummary(_ExecutionModel):
     """Stable machine-readable result for one external fixture evaluation."""
 
-    schema_version: Literal["metriplane.external_run_summary.v1"] = (
-        RUN_SUMMARY_SCHEMA_VERSION
-    )
+    schema_version: Literal["metriplane.external_run_summary.v1"] = RUN_SUMMARY_SCHEMA_VERSION
     passed: bool = Field(
         validation_alias=AliasChoices("passed", "pass"),
         serialization_alias="pass",
@@ -248,13 +246,8 @@ def _source_revision(manifest: ExternalSourceManifestV1) -> SourceRevisionSummar
 
 def _adapter_identity(manifest: ExternalSourceManifestV1) -> AdapterIdentitySummary:
     environment = manifest.adapter.environment
-    environment_identity = (
-        environment.container_image_digest
-        or (
-            environment.dependency_lock.sha256
-            if environment.dependency_lock is not None
-            else ""
-        )
+    environment_identity = environment.container_image_digest or (
+        environment.dependency_lock.sha256 if environment.dependency_lock is not None else ""
     )
     return AdapterIdentitySummary(
         adapter_id=manifest.adapter.adapter_id,
@@ -292,9 +285,7 @@ def _validated_summary(
         session_sha256=manifest.normalized_artifacts.session.sha256,
         domain_pack_file_hashes=_domain_pack_hashes(manifest),
         entity_mapping_sha256=manifest.normalization.entity_mapping.sha256,
-        normalization_report_sha256=(
-            manifest.normalized_artifacts.normalization_report.sha256
-        ),
+        normalization_report_sha256=(manifest.normalized_artifacts.normalization_report.sha256),
         source_identities=_source_identities(manifest),
         source_revision=_source_revision(manifest),
         adapter_identity=_adapter_identity(manifest),
@@ -338,9 +329,7 @@ def _validated_summary(
         warnings=list(fixture.normalization_report.warnings),
         errors=[],
         limitations=list(
-            dict.fromkeys(
-                [*manifest.limitations, *fixture.normalization_report.limitations]
-            )
+            dict.fromkeys([*manifest.limitations, *fixture.normalization_report.limitations])
         ),
     )
 
@@ -375,9 +364,7 @@ def _preflight_external_fixture(root: str | Path) -> _PreflightResult:
                 f"cannot resolve external fixture root {supplied_root}: {exc}"
             ) from exc
         if not resolved_root.is_dir():
-            raise ValueError(
-                f"external fixture root must be a regular directory: {supplied_root}"
-            )
+            raise ValueError(f"external fixture root must be a regular directory: {supplied_root}")
         fixture = validate_external_fixture_bundle(resolved_root)
         summary = _validated_summary(resolved_root, fixture)
         declared_version = fixture.manifest.evaluation.metriplane_version
@@ -462,9 +449,7 @@ def _select_operational_run_id(fixture_id: str, explicit_run_id: str | None) -> 
 
     slug = re.sub(r"[^A-Za-z0-9._-]+", "-", fixture_id).strip("._-")
     slug = slug[:72].rstrip("._-") or "fixture"
-    digest = hashlib.sha256(
-        fixture_id.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()[:12]
+    digest = hashlib.sha256(fixture_id.encode("utf-8", errors="surrogatepass")).hexdigest()[:12]
     return validate_portable_run_id(f"external_{slug}_{digest}")
 
 
@@ -525,9 +510,7 @@ def _external_provenance(
             command=command,
         ),
         limitations=list(
-            dict.fromkeys(
-                [*manifest.limitations, *fixture.normalization_report.limitations]
-            )
+            dict.fromkeys([*manifest.limitations, *fixture.normalization_report.limitations])
         ),
     )
 
@@ -647,8 +630,7 @@ def run_external_fixture(
         if not verified:
             if result_errors:
                 errors.extend(
-                    f"evidence bundle {bundle_path.name}: {item}"
-                    for item in result_errors
+                    f"evidence bundle {bundle_path.name}: {item}" for item in result_errors
                 )
             else:
                 errors.append(
@@ -670,13 +652,10 @@ def run_external_fixture(
         if not passed:
             if result_errors:
                 errors.extend(
-                    f"regression {regression_path.name}: {item}"
-                    for item in result_errors
+                    f"regression {regression_path.name}: {item}" for item in result_errors
                 )
             else:
-                errors.append(
-                    f"regression {regression_path.name}: replay failed without details"
-                )
+                errors.append(f"regression {regression_path.name}: replay failed without details")
 
     if len(evidence_results) != atlas_manifest.incident_count:
         errors.append(
