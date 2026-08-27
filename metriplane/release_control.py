@@ -15,6 +15,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -69,10 +71,58 @@ RELEASE_TARGETS_PATH: Final[Path] = (
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _INVOCATION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,127}")
+_NODE_ED25519_VERIFY = r"""
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const [publicKeyHex, signatureHex] = process.argv.slice(1);
+try {
+  if (!/^[0-9a-f]{64}$/.test(publicKeyHex) || !/^[0-9a-f]{128}$/.test(signatureHex)) {
+    process.exit(2);
+  }
+  const publicKeyDer = Buffer.concat([
+    Buffer.from("302a300506032b6570032100", "hex"),
+    Buffer.from(publicKeyHex, "hex"),
+  ]);
+  const publicKey = crypto.createPublicKey({key: publicKeyDer, format: "der", type: "spki"});
+  const valid = crypto.verify(
+    null,
+    fs.readFileSync(0),
+    publicKey,
+    Buffer.from(signatureHex, "hex"),
+  );
+  process.exit(valid ? 0 : 1);
+} catch {
+  process.exit(2);
+}
+"""
 
 
 class ReleaseControlError(ValueError):
     """A release operation cannot proceed without weakening its contract."""
+
+
+def _verify_ed25519_with_node(
+    public_key: bytes,
+    signature: bytes,
+    message: bytes,
+) -> bool:
+    """Use the GitHub runner's built-in Node crypto when Python crypto is absent."""
+
+    node = shutil.which("node")
+    if node is None:
+        return False
+    try:
+        completed = subprocess.run(
+            [node, "--eval", _NODE_ED25519_VERIFY, public_key.hex(), signature.hex()],
+            input=message,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5.0,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 @dataclass(frozen=True)
@@ -146,7 +196,11 @@ class ProviderAttestationVerifier:
                 Ed25519PublicKey,
             )
         except ImportError:
-            return False
+            return _verify_ed25519_with_node(
+                key,
+                bytes.fromhex(signature_value),
+                message,
+            )
         try:
             Ed25519PublicKey.from_public_bytes(key).verify(bytes.fromhex(signature_value), message)
         except (InvalidSignature, TypeError, ValueError):

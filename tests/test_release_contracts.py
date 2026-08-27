@@ -6,13 +6,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from metriplane.release_control import (
     MILESTONES,
@@ -20,6 +20,7 @@ from metriplane.release_control import (
     ProviderAttestationVerifier,
     ReleaseControlError,
     _validated_readiness_blockers,
+    _verify_ed25519_with_node,
     build_release_readiness_record,
     canonical_json,
     make_record,
@@ -276,6 +277,39 @@ LIVE_PROVIDER_PRIVATE_KEY = bytes.fromhex(
 LIVE_PROVIDER_PUBLIC_KEY = bytes.fromhex(
     "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
 )
+_NODE_ED25519_SIGN = r"""
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const privateKeyDer = Buffer.concat([
+  Buffer.from("302e020100300506032b657004220420", "hex"),
+  Buffer.from(process.argv[1], "hex"),
+]);
+const privateKey = crypto.createPrivateKey({key: privateKeyDer, format: "der", type: "pkcs8"});
+process.stdout.write(crypto.sign(null, fs.readFileSync(0), privateKey));
+"""
+
+
+def _sign_live_message(message: bytes) -> bytes:
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PrivateKey,
+        )
+    except ImportError:
+        node = shutil.which("node")
+        assert node is not None, "Node.js is required to exercise Ed25519 release contracts"
+        completed = subprocess.run(
+            [node, "--eval", _NODE_ED25519_SIGN, LIVE_PROVIDER_PRIVATE_KEY.hex()],
+            input=message,
+            capture_output=True,
+            check=False,
+            timeout=5.0,
+        )
+        assert completed.returncode == 0, completed.stderr.decode("utf-8", "replace")
+        signature = completed.stdout
+    else:
+        signature = Ed25519PrivateKey.from_private_bytes(LIVE_PROVIDER_PRIVATE_KEY).sign(message)
+    assert len(signature) == 64
+    return signature
 
 
 def _signed_live_record(
@@ -301,7 +335,7 @@ def _signed_live_record(
             "subject_digest": subject_digest,
         }
     )
-    signature = Ed25519PrivateKey.from_private_bytes(LIVE_PROVIDER_PRIVATE_KEY).sign(message).hex()
+    signature = _sign_live_message(message).hex()
     return make_record(
         record_type,
         data,
@@ -325,6 +359,48 @@ def _live_verifier(
     *, actor_id: str = "executor", provider: str = "github"
 ) -> ProviderAttestationVerifier:
     return ProviderAttestationVerifier(keys={(provider, actor_id): LIVE_PROVIDER_PUBLIC_KEY})
+
+
+def test_node_ed25519_fallback_verifies_and_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    message = b"metriplane-node-ed25519-fallback"
+    signature = _sign_live_message(message)
+    assert _verify_ed25519_with_node(LIVE_PROVIDER_PUBLIC_KEY, signature, message)
+    assert not _verify_ed25519_with_node(
+        LIVE_PROVIDER_PUBLIC_KEY,
+        bytes([signature[0] ^ 1]) + signature[1:],
+        message,
+    )
+
+    monkeypatch.setattr("metriplane.release_control.shutil.which", lambda _: None)
+    assert not _verify_ed25519_with_node(LIVE_PROVIDER_PUBLIC_KEY, signature, message)
+
+
+def test_provider_attestation_uses_node_when_python_crypto_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = _signed_live_record(
+        "release-role-assignments",
+        {
+            "author_id": "author",
+            "authorized_executor_id": "executor",
+            "non_author_reviewer_id": "reviewer",
+            "publisher_id": "publisher",
+            "task_id": "MP2-007",
+        },
+        invocation_id="node-fallback-provider-attestation",
+        actor_id="executor",
+    )
+    signature = record["signatures"][0]
+    monkeypatch.setitem(sys.modules, "cryptography.exceptions", None)
+    monkeypatch.setitem(
+        sys.modules,
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        None,
+    )
+    assert _live_verifier().verify(
+        signature,
+        subject_digest=signature["subject_digest"],
+    )
 
 
 def test_provider_attestation_keyring_accepts_only_public_ed25519_keys(

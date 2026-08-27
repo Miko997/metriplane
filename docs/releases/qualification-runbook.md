@@ -88,6 +88,8 @@ attempt:
   ordered, unique `keys` list. Each row contains only `actor_id`, `provider`,
   and a 32-byte Ed25519 `public_key_hex` value. Never place a private signing
   key in this value, the repository, or a workflow secret.
+  Verification uses Python cryptography when present and otherwise fails over
+  to the GitHub runner's Node.js built-in Ed25519 implementation.
 - `RELEASE_AUTHORITY_STORE_A_URL` and `RELEASE_AUTHORITY_STORE_B_URL`: distinct
   HTTPS read-back endpoints for the same immutable authority bundle.
 - `RELEASE_AUTHORITY_RUN_ID`, `RELEASE_AUTHORITY_BUNDLE_SHA256`, and
