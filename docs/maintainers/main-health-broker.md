@@ -186,6 +186,13 @@ match the request at every admission pass. Adding an eligible collaborator or
 invitation disables the single-maintainer path immediately. It does not create
 a human push, settings, required-check, or merge bypass.
 
+Provider reviews that carry an owner-request marker but are anchored to a prior
+head remain immutable audit history and cannot authorize the current head. The
+broker ignores those prior-head requests during current-head selection and
+retained post-merge evidence reconstruction, while a malformed review anchor or
+any marker review anchored to the current head must still pass the complete
+request and live-context validation.
+
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
 earlier approval. It re-reads the pull request, every commit actor, reviews,

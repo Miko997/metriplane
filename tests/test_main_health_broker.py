@@ -1227,6 +1227,62 @@ def test_single_maintainer_owner_requests_bind_exact_provider_context() -> None:
     assert repair["manifest_digest"] == "7" * 64
 
 
+@pytest.mark.parametrize("repair", [False, True])
+def test_single_maintainer_owner_requests_ignore_prior_head_reviews(repair: bool) -> None:
+    prior_head = "e" * 40
+    prior_request = _owner_request(repair=repair)
+    prior_request["head_sha"] = prior_head
+    marker = broker.OWNER_REPAIR_REQUEST_MARKER if repair else broker.OWNER_REQUEST_MARKER
+    prior_review = {
+        **_owner_reviews(repair=repair)[0],
+        "body": marker + "\n" + broker.canonical_bytes(prior_request).decode().rstrip("\n"),
+        "commit_id": prior_head,
+        "id": 300,
+    }
+    state = {"generation": 7, "incident_digest": "f" * 64, "status": "red"} if repair else None
+
+    admission = broker._select_owner_admission(
+        commits=_commits(),
+        now=NOW + timedelta(minutes=2),
+        owner_context=_owner_context(repair=repair),
+        pull=_owner_pull(),
+        repository=REPOSITORY,
+        repair=repair,
+        reviews=[prior_review, *_owner_reviews(repair=repair)],
+        state=state,
+    )
+    assert admission["request_review_id"] == 301
+    assert admission["head_sha"] == HEAD_SHA
+
+    with pytest.raises(broker.BrokerError, match="no exact single-maintainer owner request"):
+        broker._select_owner_admission(
+            commits=_commits(),
+            now=NOW + timedelta(minutes=2),
+            owner_context=_owner_context(repair=repair),
+            pull=_owner_pull(),
+            repository=REPOSITORY,
+            repair=repair,
+            reviews=[prior_review],
+            state=state,
+        )
+
+
+def test_single_maintainer_owner_request_rejects_malformed_review_head() -> None:
+    review = _owner_reviews()[0]
+    review["commit_id"] = 81.0
+
+    with pytest.raises(broker.BrokerError, match="owner request review commit SHA"):
+        broker._select_owner_admission(
+            commits=_commits(),
+            now=NOW + timedelta(minutes=2),
+            owner_context=_owner_context(),
+            pull=_owner_pull(),
+            repository=REPOSITORY,
+            repair=False,
+            reviews=[review],
+        )
+
+
 def test_single_maintainer_owner_request_fails_closed_on_context_drift() -> None:
     context = _owner_context(repair=True)
     context["pending_invitations"] = [{"id": "99", "invitee": "reviewer", "permission": "write"}]
@@ -2911,6 +2967,79 @@ def test_merged_owner_repair_binding_rejects_request_outliving_manifest() -> Non
             pull=pull,
             repository=REPOSITORY,
             reviews=[review],
+            state=state,
+        )
+
+
+def test_merged_owner_repair_binding_ignores_prior_head_requests() -> None:
+    policy_amendment = {"schema_version": 1}
+    manifest = {
+        "expires_at": "2026-08-26T12:10:00Z",
+        "policy_amendment": policy_amendment,
+    }
+    context = {
+        "changed_paths": ["metriplane/fix.py", "tests/test_fix.py"],
+        "collaborators": [{"id": "10", "login": "Miko997", "permission": "admin"}],
+        "manifest": manifest,
+        "owner_id": 10,
+        "owner_login": "Miko997",
+        "pending_invitations": [],
+        "ruleset_digests": _owner_ruleset_digests(),
+    }
+    current_request = _owner_request(repair=True)
+    current_request["manifest_digest"] = broker.digest(manifest)
+    current_request["policy_amendment_digest"] = broker.digest(policy_amendment)
+    current_review = {
+        **_owner_reviews(repair=True)[0],
+        "body": broker.OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + broker.canonical_bytes(current_request).decode().rstrip("\n"),
+    }
+    prior_head = "e" * 40
+    prior_request = {**current_request, "head_sha": prior_head}
+    prior_review = {
+        **current_review,
+        "body": broker.OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + broker.canonical_bytes(prior_request).decode().rstrip("\n"),
+        "commit_id": prior_head,
+        "id": 300,
+    }
+    pull = {**_merged_repair_pull(), "user": {"id": 10, "login": "Miko997"}}
+    state = {"generation": 10, "incident_digest": "f" * 64, "status": "red"}
+
+    binding = broker._merged_owner_repair_binding(
+        commits=_commits(),
+        context=context,
+        now=NOW + timedelta(minutes=4),
+        pull=pull,
+        repository=REPOSITORY,
+        reviews=[prior_review, current_review],
+        state=state,
+    )
+    assert binding["request_review_id"] == 301
+    assert binding["request_digest"] == broker.digest(current_request)
+
+    with pytest.raises(broker.BrokerError, match="no retained owner request"):
+        broker._merged_owner_repair_binding(
+            commits=_commits(),
+            context=context,
+            now=NOW + timedelta(minutes=4),
+            pull=pull,
+            repository=REPOSITORY,
+            reviews=[prior_review],
+            state=state,
+        )
+
+    malformed_review = {**prior_review, "commit_id": 81.0}
+    with pytest.raises(broker.BrokerError, match="merged owner request review commit SHA"):
+        broker._merged_owner_repair_binding(
+            commits=_commits(),
+            context=context,
+            now=NOW + timedelta(minutes=4),
+            pull=pull,
+            repository=REPOSITORY,
+            reviews=[malformed_review, current_review],
             state=state,
         )
 

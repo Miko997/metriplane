@@ -1381,6 +1381,9 @@ def _select_owner_admission(
         body = review.get("body")
         if not isinstance(body, str) or not body.startswith(marker):
             continue
+        review_head_sha = _require_sha(review.get("commit_id"), "owner request review commit SHA")
+        if review_head_sha != head_sha:
+            continue
         if review.get("state") != "COMMENTED":
             raise BrokerError("single-maintainer request must be a COMMENTED provider review")
         requester_id, requester_login = _review_actor(review)
@@ -1398,7 +1401,6 @@ def _select_owner_admission(
             or request["pull_request"] != pull_number
             or request["base_sha"] != base_sha
             or request["head_sha"] != head_sha
-            or review.get("commit_id") != head_sha
             or requester_id != owner_context["owner_id"]
             or requester_login != str(owner_context["owner_login"]).casefold()
             or request["changed_paths_digest"] != owner_context["changed_paths_digest"]
@@ -3524,6 +3526,11 @@ def _merged_owner_repair_binding(
         body = review.get("body")
         if not isinstance(body, str) or not body.startswith(OWNER_REPAIR_REQUEST_MARKER):
             continue
+        review_head_sha = _require_sha(
+            review.get("commit_id"), "merged owner request review commit SHA"
+        )
+        if review_head_sha != head_sha:
+            continue
         if review.get("state") != "COMMENTED":
             raise BrokerError("merged owner request is no longer COMMENTED")
         requester_id, requester_login = _review_actor(review)
@@ -3549,7 +3556,6 @@ def _merged_owner_repair_binding(
             or request["pull_request"] != pull_number
             or request["base_sha"] != base_sha
             or request["head_sha"] != head_sha
-            or review.get("commit_id") != head_sha
             or requester_id != author_id
             or requester_login != author_login.casefold()
             or request["incident_digest"] != state.get("incident_digest")
