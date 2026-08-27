@@ -4345,7 +4345,7 @@ class FakePublishLeaseApi(broker.GitHubApi):
             "html_url": f"https://github.com/{REPOSITORY}/actions/runs/{run_id}",
             "id": run_id,
             "name": broker.PUBLISH_WORKFLOW_NAME,
-            "path": broker.PUBLISH_WORKFLOW_RUN_PATH,
+            "path": ".github/workflows/publish-pypi.yml",
             "repository": {"full_name": REPOSITORY, "owner": self._actor()},
             "run_attempt": run_attempt,
             "run_started_at": "2026-08-26T11:55:00Z",
@@ -4693,6 +4693,25 @@ def test_publish_lease_activation_restart_and_successful_reconciliation(tmp_path
         if call == ("PATCH", f"repos/{REPOSITORY}/check-runs/7001")
     )
     assert delete_index < success_index
+
+
+def test_publish_lease_rejects_nonprovider_workflow_path_before_provider_write(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.runs[0]["path"] = ".github/workflows/publish-pypi.yml@main"
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="run identity is not canonical"):
+        _publish_controller(api, spool).reconcile(
+            provider_now=NOW,
+            settings_token="settings-token",
+        )
+
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is None
 
 
 def test_publish_lease_recovers_ambiguous_check_creation_after_restart(tmp_path: Path) -> None:

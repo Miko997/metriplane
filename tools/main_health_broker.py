@@ -51,7 +51,6 @@ PUBLISH_LEASE_REF_PREFIX = "refs/heads/release-leases/pypi-"
 PUBLISH_LEASE_REF_GLOB = "refs/heads/release-leases/**"
 PUBLISH_LEASE_EXTERNAL_PREFIX = "metriplane-publish-lease.v1"
 PUBLISH_WORKFLOW_PATH = ".github/workflows/publish-pypi.yml"
-PUBLISH_WORKFLOW_RUN_PATH = f"{PUBLISH_WORKFLOW_PATH}@{MAIN_BRANCH}"
 PUBLISH_WORKFLOW_NAME = "Publish Python distributions"
 PUBLISH_REQUEST_MAX_AGE = timedelta(hours=2)
 PUBLISH_AUTHORITY_PATHS = (
@@ -3047,7 +3046,7 @@ def _publish_run_identity(
     )
     if (
         run.get("name") != PUBLISH_WORKFLOW_NAME
-        or run.get("path") != PUBLISH_WORKFLOW_RUN_PATH
+        or run.get("path") != PUBLISH_WORKFLOW_PATH
         or run.get("workflow_id") != workflow_id
         or run.get("event") != "workflow_dispatch"
         or run.get("head_branch") != MAIN_BRANCH
