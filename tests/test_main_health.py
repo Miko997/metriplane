@@ -2854,6 +2854,37 @@ def test_identical_ingestion_is_byte_deterministic(tmp_path: Path) -> None:
     assert first_files == second_files
 
 
+def test_git_history_returns_complete_red_provider_state(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "test@example.invalid"], check=True
+    )
+    expected = ingest(
+        root,
+        scope="main",
+        summary=_summary(BAD_SHA, "failure"),
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+    subprocess.run(["git", "-C", str(root), "add", "--all"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "red generation"], check=True)
+    state_commit = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    validated = validate_git_history(root)
+
+    assert validated == {**expected, "state_commit": state_commit}
+    assert validated["incident_digest"] is not None
+    assert validated["first_bad_sha"] == BAD_SHA
+
+
 def test_git_history_rejects_a_fast_forward_whole_tree_replacement(tmp_path: Path) -> None:
     root = tmp_path / "state"
     replacement = tmp_path / "replacement"
