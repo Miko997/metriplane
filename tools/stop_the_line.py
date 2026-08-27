@@ -40,6 +40,13 @@ MAIN_HEALTH_PUBLISHER_SLUG = "metriplane-main-health-publisher"
 MAIN_HEALTH_BROKER_CHECK = "Main health / required"
 BROKER_OWNER_REPAIR_REQUEST_MARKER = "metriplane-owner-repair-request:v1"
 BROKER_OWNER_EMERGENCY_MODE = "single-maintainer-owner-emergency"
+BROKER_OWNER_RULESET_IDS = {
+    "20613848",
+    "21487681",
+    "21500579",
+    "21533351",
+    "21633569",
+}
 CORE_REQUIRED_CONTEXTS = {
     "Documentation / required",
     "Metriplane / required",
@@ -177,7 +184,7 @@ def _parse_broker_owner_repair_review(body: Any, *, reviewer_id: int) -> dict[st
     ruleset_digests = request["ruleset_digests"]
     if (
         not isinstance(ruleset_digests, dict)
-        or len(ruleset_digests) != 5
+        or set(ruleset_digests) != BROKER_OWNER_RULESET_IDS
         or not all(
             isinstance(identifier, str)
             and re.fullmatch(r"[1-9][0-9]*", identifier) is not None
@@ -1041,7 +1048,7 @@ def github_app_owner_emergency_evidence(
         or request["ruleset_digests"] != ruleset_digests
     ):
         raise HealthError("App-broker owner manifest or provider bindings changed")
-    if len(ruleset_digests) != 5 or not all(
+    if set(ruleset_digests) != BROKER_OWNER_RULESET_IDS or not all(
         re.fullmatch(r"[1-9][0-9]*", identifier) is not None
         and re.fullmatch(r"[0-9a-f]{64}", value) is not None
         for identifier, value in ruleset_digests.items()
@@ -1070,13 +1077,15 @@ def github_app_owner_emergency_evidence(
     merged_at = _timestamp(merged_at_value)
     captured = _timestamp(captured_at)
     request_expires = _timestamp(request["expires_at"])
+    manifest_expires = _timestamp(manifest["expires_at"])
     if (
         request_expires <= submitted_at
         or request_expires - submitted_at > timedelta(minutes=10)
+        or request_expires > manifest_expires
         or submitted_at > check_completed
         or check_completed > merged_at
         or merged_at >= request_expires
-        or merged_at > _timestamp(manifest["expires_at"])
+        or merged_at > manifest_expires
         or merged_at > captured
     ):
         raise HealthError("App-broker owner decision, check, and merge are not correctly ordered")
@@ -2708,7 +2717,7 @@ def _validate_app_broker_owner_repair_binding(
         or request["collaboration_digest"] != manifest["collaboration_digest"]
         or request["manifest_digest"] != manifest_digest
         or request["policy_amendment_digest"] != amendment_digest
-        or len(ruleset_digests) != 5
+        or set(ruleset_digests) != BROKER_OWNER_RULESET_IDS
     ):
         raise HealthError("App-broker owner request changed after admission")
     expected_external_id = f"mhb1:merge:{request_digest}"
@@ -2734,15 +2743,17 @@ def _validate_app_broker_owner_repair_binding(
     merged_at = _timestamp(merge_gate["merged_at"])
     captured_at = _timestamp(approval_evidence["captured_at"])
     request_expires = _timestamp(request["expires_at"])
+    manifest_expires = _timestamp(manifest["expires_at"])
     resolution_time = _timestamp(resolved_at)
     if (
         request_expires <= decision_at
         or request_expires - decision_at > timedelta(minutes=10)
+        or request_expires > manifest_expires
         or decision_at > checked_at
         or checked_at > merged_at
         or merged_at >= request_expires
         or merged_at > captured_at
-        or merged_at > _timestamp(manifest["expires_at"])
+        or merged_at > manifest_expires
         or resolution_time < captured_at
         or resolution_time > _timestamp(authorization["expires_at"])
     ):

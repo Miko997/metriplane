@@ -837,7 +837,10 @@ def _app_owner_repair_evidence(
         "required_cadences": ["nightly", "weekly"],
         "schema_version": 1,
     }
-    ruleset_digests = {str(index): str(index) * 64 for index in range(1, 6)}
+    ruleset_digests = {
+        identifier: str(index) * 64
+        for index, identifier in enumerate(sorted(stop_the_line.BROKER_OWNER_RULESET_IDS), start=1)
+    }
     request = {
         "authorization_mode": "single-maintainer-owner-emergency",
         "base_ref": "main",
@@ -1583,6 +1586,11 @@ def test_app_broker_owner_emergency_resolves_with_exact_provider_check(
         (STATUS / "schemas/main-health-provider-evidence.schema.json").read_text(encoding="utf-8")
     )
     _internal_validate(evidence, provider_schema)
+    extra_ruleset_evidence = copy.deepcopy(evidence)
+    extra_ruleset_digests = extra_ruleset_evidence["admission"]["request"]["ruleset_digests"]
+    extra_ruleset_digests["99999999"] = "f" * 64
+    with pytest.raises(SnapshotError):
+        _internal_validate(extra_ruleset_evidence, provider_schema)
     resolved = resolve(
         tmp_path,
         authorization=authorization,
@@ -1603,6 +1611,83 @@ def test_app_broker_owner_emergency_resolves_with_exact_provider_check(
     with pytest.raises(HealthError, match="check-run evidence"):
         stop_the_line.github_app_owner_emergency_evidence(
             **wrong_builder  # type: ignore[arg-type]
+        )
+
+    review = builder["review"]
+    assert isinstance(review, dict)
+    review_body = review["body"]
+    assert isinstance(review_body, str)
+    marker, request_json = review_body.splitlines()
+    malformed_request = json.loads(request_json)
+    malformed_request["ruleset_digests"]["99999999"] = "f" * 64
+    with pytest.raises(HealthError, match="ruleset digests"):
+        stop_the_line._parse_broker_owner_repair_review(
+            marker + "\n" + canonical_bytes(malformed_request).decode().rstrip("\n"),
+            reviewer_id=100,
+        )
+
+
+def test_app_broker_owner_emergency_rejects_request_outliving_manifest(
+    tmp_path: Path,
+) -> None:
+    repaired_main, authorization, evidence, builder = _app_owner_repair_evidence(tmp_path)
+    short_builder = copy.deepcopy(builder)
+    short_manifest = short_builder["manifest"]
+    short_review = short_builder["review"]
+    short_check_run = short_builder["check_run"]
+    assert isinstance(short_manifest, dict)
+    assert isinstance(short_review, dict)
+    assert isinstance(short_check_run, dict)
+    short_manifest["expires_at"] = "2026-08-25T21:47:00Z"
+    review_body = short_review["body"]
+    assert isinstance(review_body, str)
+    marker, request_json = review_body.splitlines()
+    short_request = json.loads(request_json)
+    short_request["manifest_digest"] = digest(short_manifest)
+    short_review["body"] = marker + "\n" + canonical_bytes(short_request).decode().rstrip("\n")
+    short_check_run["external_id"] = f"mhb1:merge:{digest(short_request)}"
+    with pytest.raises(HealthError, match="correctly ordered"):
+        stop_the_line.github_app_owner_emergency_evidence(
+            **short_builder  # type: ignore[arg-type]
+        )
+
+    historical_evidence = copy.deepcopy(evidence)
+    historical_manifest = historical_evidence["manifest"]
+    historical_admission = historical_evidence["admission"]
+    historical_merge_gate = historical_evidence["merge_gate"]
+    assert isinstance(historical_manifest, dict)
+    assert isinstance(historical_admission, dict)
+    assert isinstance(historical_merge_gate, dict)
+    historical_manifest["expires_at"] = "2026-08-25T21:47:00Z"
+    historical_request = historical_admission["request"]
+    assert isinstance(historical_request, dict)
+    historical_request["manifest_digest"] = digest(historical_manifest)
+    request_digest = digest(historical_request)
+    historical_admission["request_digest"] = request_digest
+    historical_admission["review_body"] = (
+        stop_the_line.BROKER_OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + canonical_bytes(historical_request).decode().rstrip("\n")
+    )
+    historical_evidence["admission_digest"] = digest(historical_admission)
+    historical_merge_gate["check_external_id"] = f"mhb1:merge:{request_digest}"
+    historical_merge_gate["request_digest"] = request_digest
+    historical_evidence["merge_gate_digest"] = digest(historical_merge_gate)
+    manifest_digest = digest(historical_manifest)
+    historical_evidence["manifest_digest"] = manifest_digest
+    historical_authorization = copy.deepcopy(authorization)
+    historical_authorization["approval_digest"] = digest(historical_evidence)
+    historical_authorization["expires_at"] = historical_manifest["expires_at"]
+    historical_authorization["manifest_digest"] = manifest_digest
+
+    with pytest.raises(HealthError, match="timestamps"):
+        resolve(
+            tmp_path,
+            authorization=historical_authorization,
+            approval_evidence=historical_evidence,
+            repaired_main=repaired_main,
+            resolved_at="2026-08-25T21:46:30Z",
+            expected_generation=4,
         )
 
 

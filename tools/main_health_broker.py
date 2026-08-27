@@ -121,6 +121,7 @@ OWNER_CONTEXT_FIELDS = {
     "state_commit",
 }
 OWNER_REPAIR_CONTEXT_FIELDS = OWNER_CONTEXT_FIELDS | {
+    "manifest_expires_at",
     "manifest_digest",
     "policy_amendment_digest",
 }
@@ -1327,6 +1328,10 @@ def _validate_owner_context(context: dict[str, Any], *, repair: bool) -> None:
     ):
         raise BrokerError("single-maintainer ruleset digests are invalid")
     if repair:
+        expires_at = context.get("manifest_expires_at")
+        if not isinstance(expires_at, str):
+            raise BrokerError("single-maintainer manifest expiry is invalid")
+        _timestamp(expires_at)
         for field in ("manifest_digest", "policy_amendment_digest"):
             if (
                 not isinstance(context.get(field), str)
@@ -1401,6 +1406,10 @@ def _select_owner_admission(
         if repair:
             if state is None:
                 raise BrokerError("owner repair request has no red-state context")
+            if _timestamp(request["expires_at"]) > _timestamp(
+                str(owner_context["manifest_expires_at"])
+            ):
+                raise BrokerError("owner repair request outlives the emergency manifest")
             if (
                 request["incident_digest"] != state.get("incident_digest")
                 or request["state_generation"] != state.get("generation")
@@ -1442,6 +1451,7 @@ def _select_owner_admission(
             {
                 "incident_digest": request["incident_digest"],
                 "issue": request["issue"],
+                "manifest_expires_at": owner_context["manifest_expires_at"],
                 "manifest_digest": request["manifest_digest"],
                 "policy_amendment_digest": request["policy_amendment_digest"],
                 "state_generation": request["state_generation"],
@@ -3175,6 +3185,7 @@ def _owner_provider_context(
             raise BrokerError("owner-emergency policy amendment is malformed")
         context.update(
             {
+                "manifest_expires_at": manifest["expires_at"],
                 "manifest_digest": digest(manifest),
                 "policy_amendment_digest": digest(policy_amendment),
             }
@@ -3524,6 +3535,7 @@ def _merged_owner_repair_binding(
         invitations = context.get("pending_invitations")
         if (
             not isinstance(manifest, dict)
+            or not isinstance(manifest.get("expires_at"), str)
             or not isinstance(collaborators, list)
             or not isinstance(invitations, list)
         ):
@@ -3546,6 +3558,7 @@ def _merged_owner_repair_binding(
             or request["ruleset_digests"] != context.get("ruleset_digests")
             or expires_at <= submitted_at
             or expires_at - submitted_at > timedelta(minutes=10)
+            or expires_at > _timestamp(manifest["expires_at"])
             or merged_at < submitted_at
             or merged_at >= expires_at
         ):
@@ -3569,6 +3582,102 @@ def _merged_owner_repair_binding(
         "request_review_id": request_review_id,
         "review": review,
     }
+
+
+def _capture_app_owner_repair_evidence(
+    api: GitHubApi,
+    *,
+    config: BrokerConfig,
+    number: int,
+    settings_token: str,
+    state: dict[str, Any],
+    token: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    pull, reviews, commits = _pull_snapshot(
+        api,
+        config=config,
+        number=number,
+        token=token,
+    )
+    context = _owner_repair_evidence_context(
+        api,
+        config=config,
+        pull=pull,
+        settings_token=settings_token,
+        token=token,
+    )
+    binding = _merged_owner_repair_binding(
+        commits=commits,
+        context=context,
+        now=api.provider_now(token),
+        pull=pull,
+        repository=config.repository,
+        reviews=reviews,
+        state=state,
+    )
+    verify_merge_proof(
+        admission=binding,
+        api=api,
+        config=config,
+        token=token,
+    )
+    matching_checks = [
+        check
+        for check in _check_runs(
+            api,
+            config=config,
+            head_sha=binding["head_sha"],
+            token=token,
+        )
+        if check.get("name") == MAIN_HEALTH_CHECK
+        and check.get("head_sha") == binding["head_sha"]
+        and check.get("external_id") == f"mhb1:merge:{binding['request_digest']}"
+        and check.get("status") == "completed"
+        and check.get("conclusion") == "success"
+        and isinstance(check.get("app"), dict)
+        and check["app"].get("id") == config.app_id
+        and check["app"].get("slug") == config.app_slug
+    ]
+    if len(matching_checks) != 1:
+        raise BrokerError("owner-repair merge check is not unique and exact")
+    merge_sha = _require_sha(pull.get("merge_commit_sha"), "owner merge commit SHA")
+    head_commit_result = api.request(
+        f"repos/{config.repository}/git/commits/{binding['head_sha']}",
+        token=token,
+    )
+    merge_commit_result = api.request(
+        f"repos/{config.repository}/git/commits/{merge_sha}",
+        token=token,
+    )
+    if not isinstance(head_commit_result.value, dict) or not isinstance(
+        merge_commit_result.value, dict
+    ):
+        raise BrokerError("owner-repair Git commit evidence is malformed")
+    try:
+        evidence = stop_the_line.github_app_owner_emergency_evidence(
+            captured_at=api.provider_now(token)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            check_run=matching_checks[0],
+            collaborators=context["raw_collaborators"],
+            files=context["files"],
+            head_commit=head_commit_result.value,
+            incident_digest=binding["incident_digest"],
+            invitations=context["raw_invitations"],
+            issue=binding["issue"],
+            manifest=context["manifest"],
+            merge_commit=merge_commit_result.value,
+            owner_permission=context["owner_permission"],
+            pull=pull,
+            pull_request=str(number),
+            repository=config.repository,
+            review=binding["review"],
+            ruleset_digests=context["ruleset_digests"],
+        )
+    except stop_the_line.HealthError as exc:
+        raise BrokerError(f"repair approval capture failed: {exc}") from exc
+    return binding, evidence
 
 
 def verify_merge_proof(
@@ -3793,64 +3902,43 @@ class Broker:
             config=self.config,
             token=token,
         )
-        try:
-            if binding.get("authorization_mode") == OWNER_EMERGENCY_MODE:
-                if owner_context is None:
-                    raise BrokerError("owner-repair resolution has no provider context")
-                matching_checks = [
-                    check
-                    for check in _check_runs(
-                        self.api,
-                        config=self.config,
-                        head_sha=binding["head_sha"],
-                        token=token,
-                    )
-                    if check.get("name") == MAIN_HEALTH_CHECK
-                    and check.get("head_sha") == binding["head_sha"]
-                    and check.get("external_id") == f"mhb1:merge:{binding['request_digest']}"
-                    and check.get("status") == "completed"
-                    and check.get("conclusion") == "success"
-                    and isinstance(check.get("app"), dict)
-                    and check["app"].get("id") == self.config.app_id
-                    and check["app"].get("slug") == self.config.app_slug
-                ]
-                if len(matching_checks) != 1:
-                    raise BrokerError("owner-repair merge check is not unique and exact")
-                merge_sha = _require_sha(pull.get("merge_commit_sha"), "owner merge commit SHA")
-                head_commit_result = self.api.request(
-                    f"repos/{self.config.repository}/git/commits/{binding['head_sha']}",
-                    token=token,
-                )
-                merge_commit_result = self.api.request(
-                    f"repos/{self.config.repository}/git/commits/{merge_sha}",
-                    token=token,
-                )
-                if not isinstance(head_commit_result.value, dict) or not isinstance(
-                    merge_commit_result.value, dict
-                ):
-                    raise BrokerError("owner-repair Git commit evidence is malformed")
-                approval_evidence = stop_the_line.github_app_owner_emergency_evidence(
-                    captured_at=self.api.provider_now(token)
-                    .replace(microsecond=0)
-                    .isoformat()
-                    .replace("+00:00", "Z"),
-                    check_run=matching_checks[0],
-                    collaborators=owner_context["raw_collaborators"],
-                    files=owner_context["files"],
-                    head_commit=head_commit_result.value,
-                    incident_digest=binding["incident_digest"],
-                    invitations=owner_context["raw_invitations"],
-                    issue=binding["issue"],
-                    manifest=owner_context["manifest"],
-                    merge_commit=merge_commit_result.value,
-                    owner_permission=owner_context["owner_permission"],
-                    pull=pull,
-                    pull_request=str(number),
-                    repository=self.config.repository,
-                    review=binding["review"],
-                    ruleset_digests=owner_context["ruleset_digests"],
-                )
-            else:
+        if binding.get("authorization_mode") == OWNER_EMERGENCY_MODE:
+            if owner_context is None or settings_token is None:
+                raise BrokerError("owner-repair resolution has no provider context")
+            first_binding, first_evidence = _capture_app_owner_repair_evidence(
+                self.api,
+                config=self.config,
+                number=number,
+                settings_token=settings_token,
+                state=state,
+                token=token,
+            )
+            second_binding, second_evidence = _capture_app_owner_repair_evidence(
+                self.api,
+                config=self.config,
+                number=number,
+                settings_token=settings_token,
+                state=state,
+                token=token,
+            )
+            first_stable = {
+                key: value for key, value in first_evidence.items() if key != "captured_at"
+            }
+            second_stable = {
+                key: value for key, value in second_evidence.items() if key != "captured_at"
+            }
+            if (
+                first_binding != binding
+                or second_binding != binding
+                or first_stable != second_stable
+                or _timestamp(second_evidence["captured_at"])
+                < _timestamp(first_evidence["captured_at"])
+            ):
+                raise BrokerError("owner-repair provider evidence changed during final capture")
+            binding = second_binding
+            approval_evidence = second_evidence
+        else:
+            try:
                 approval_evidence = stop_the_line.capture_github_approval(
                     repository=self.config.repository,
                     pull_request=str(number),
@@ -3859,14 +3947,22 @@ class Broker:
                     incident_digest=binding["incident_digest"],
                     token=token,
                 )
-        except stop_the_line.HealthError as exc:
-            raise BrokerError(f"repair approval capture failed: {exc}") from exc
+            except stop_the_line.HealthError as exc:
+                raise BrokerError(f"repair approval capture failed: {exc}") from exc
         if (
             approval_evidence.get("merge_commit_sha") != main_sha
             or approval_evidence.get("head_sha") != binding["head_sha"]
             or approval_evidence.get("incident_digest") != state.get("incident_digest")
         ):
             raise BrokerError("repair approval capture changed at the resolution boundary")
+        sealed_state, sealed_incident, sealed_passing = state_branch.repair_context()
+        if (
+            sealed_state != state
+            or sealed_incident != incident
+            or sealed_passing != passing
+            or not required <= set(sealed_passing)
+        ):
+            raise BrokerError("protected repair state changed during final evidence capture")
         resolved_at_dt = self.api.provider_now(token).replace(microsecond=0)
         resolved_at = resolved_at_dt.isoformat().replace("+00:00", "Z")
         manifest = approval_evidence.get("manifest")
@@ -4201,6 +4297,77 @@ class Broker:
             )
         if final_admission != admission:
             raise BrokerError("provider admission changed immediately before merge")
+        if final_admission["kind"] in {"owner-normal", "owner-repair"}:
+            sealed_pull, sealed_reviews, sealed_commits = _pull_snapshot(
+                self.api,
+                config=self.config,
+                number=number,
+                token=token,
+            )
+            sealed_state = state_branch.read()
+            if sealed_state.get("state_commit") != state.get("state_commit") or sealed_state.get(
+                "generation"
+            ) != state.get("generation"):
+                raise BrokerError("main-health state changed during owner admission seal")
+            sealed_permissions = _provider_review_permissions(
+                self.api,
+                config=self.config,
+                reviews=sealed_reviews,
+                token=token,
+            )
+            sealed_now = self.api.provider_now(token)
+            sealed_admission = self._select_provider_admission(
+                commits=sealed_commits,
+                provider_now=sealed_now,
+                pull=sealed_pull,
+                reviewer_permissions=sealed_permissions,
+                reviews=sealed_reviews,
+                settings_token=settings_token,
+                state=sealed_state,
+                state_branch=state_branch,
+                token=token,
+            )
+            if sealed_admission["kind"] == "owner-normal":
+                _validate_state_for_admission(
+                    admission=sealed_admission,
+                    config=self.config,
+                    provider_now=sealed_now,
+                    state=sealed_state,
+                )
+            if sealed_admission != admission:
+                raise BrokerError("owner provider context changed during admission seal")
+            validate_core_checks(
+                check_runs=_check_runs(
+                    self.api,
+                    config=self.config,
+                    head_sha=admission["head_sha"],
+                    token=token,
+                ),
+                head_sha=admission["head_sha"],
+            )
+            trailing_reviews = _provider_list(
+                self.api,
+                f"repos/{self.config.repository}/pulls/{number}/reviews",
+                token=token,
+            )
+            if _provider_review_snapshot(trailing_reviews) != _provider_review_snapshot(
+                sealed_reviews
+            ):
+                raise BrokerError("provider reviews changed during owner admission seal")
+            trailing_state = state_branch.read()
+            if trailing_state.get("state_commit") != state.get(
+                "state_commit"
+            ) or trailing_state.get("generation") != state.get("generation"):
+                raise BrokerError("main-health state changed after owner admission seal")
+            if _main_ref(self.api, config=self.config, token=token) != admission["base_sha"]:
+                raise BrokerError("main ref changed during owner admission seal")
+            final_provider_now = self.api.provider_now(token)
+            if final_provider_now >= _timestamp(admission["request"]["expires_at"]):
+                raise BrokerError("owner request expired during admission seal")
+            if final_admission["kind"] == "owner-repair" and final_provider_now >= _timestamp(
+                admission["manifest_expires_at"]
+            ):
+                raise BrokerError("owner emergency manifest expired during admission seal")
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],

@@ -199,7 +199,18 @@
         "pull_request": {"minimum": 1, "type": "integer"},
         "repository": {"pattern": "^[^/]+/[^/]+$", "type": "string"},
         "requester_id": {"minimum": 1, "type": "integer"},
-        "ruleset_digests": {"additionalProperties": {"pattern": "^[0-9a-f]{64}$", "type": "string"}, "minProperties": 5, "propertyNames": {"pattern": "^[1-9][0-9]*$"}, "type": "object"},
+        "ruleset_digests": {
+          "additionalProperties": false,
+          "properties": {
+            "20613848": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+            "21487681": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+            "21500579": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+            "21533351": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+            "21633569": {"pattern": "^[0-9a-f]{64}$", "type": "string"}
+          },
+          "required": ["20613848", "21487681", "21500579", "21533351", "21633569"],
+          "type": "object"
+        },
         "schema_version": {"const": 1},
         "state_commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
         "state_generation": {"minimum": 1, "type": "integer"}

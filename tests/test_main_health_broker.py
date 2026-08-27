@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import os
 import sqlite3
@@ -169,6 +170,7 @@ def _owner_context(*, repair: bool = False) -> dict[str, Any]:
     if repair:
         context.update(
             {
+                "manifest_expires_at": "2026-08-26T12:10:00Z",
                 "manifest_digest": "7" * 64,
                 "policy_amendment_digest": "8" * 64,
             }
@@ -1257,6 +1259,20 @@ def test_single_maintainer_owner_request_fails_closed_on_context_drift() -> None
             state={"generation": 7, "incident_digest": "f" * 64, "status": "red"},
         )
 
+    short_manifest = _owner_context(repair=True)
+    short_manifest["manifest_expires_at"] = "2026-08-26T12:04:00Z"
+    with pytest.raises(broker.BrokerError, match="outlives the emergency manifest"):
+        broker.select_repair_admission(
+            commits=_commits(),
+            now=NOW + timedelta(minutes=2),
+            owner_context=short_manifest,
+            pull=_owner_pull(),
+            repository=REPOSITORY,
+            reviewer_permissions={},
+            reviews=_owner_reviews(repair=True),
+            state={"generation": 7, "incident_digest": "f" * 64, "status": "red"},
+        )
+
 
 def test_core_checks_use_latest_exact_actions_identity() -> None:
     runs = []
@@ -1920,6 +1936,7 @@ class FakeOwnerTransactionApi(FakeTransactionApi):
         ]
         self.collaborator_inventory_calls = 0
         self.file_inventory_calls = 0
+        self.review_change_during_owner_seal = False
 
     def request(
         self,
@@ -1933,6 +1950,17 @@ class FakeOwnerTransactionApi(FakeTransactionApi):
         assert token == "token"
         if "/collaborators?affiliation=all&" in path:
             self.collaborator_inventory_calls += 1
+            if self.review_change_during_owner_seal and self.collaborator_inventory_calls == 7:
+                self.reviews.append(
+                    {
+                        "body": "owner request revoked during final context collection",
+                        "commit_id": HEAD_SHA,
+                        "id": 302,
+                        "state": "COMMENTED",
+                        "submitted_at": "2026-08-26T12:02:30Z",
+                        "user": {"id": 10, "login": "Miko997"},
+                    }
+                )
             return broker.ApiResult(
                 {},
                 200,
@@ -2172,11 +2200,46 @@ def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
     request_digest = broker.digest(api.owner_request)
     assert proof is not None and proof["merge_sha"] == MERGE_SHA
     assert api.merge_calls == 1
-    assert api.collaborator_inventory_calls == 6
-    assert api.file_inventory_calls == 3
+    assert api.collaborator_inventory_calls == 8
+    assert api.file_inventory_calls == 4
     assert checks.failed == []
     assert checks.succeeded == [(42, HEAD_SHA, request_digest)]
     assert spool.request_status(request_digest) == "merged"
+
+
+def test_single_maintainer_review_change_during_final_context_blocks_merge(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakeOwnerTransactionApi(config, "success")
+    api.review_change_during_owner_seal = True
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id="mhb1:closed:test",
+        updated_at="2026-08-26T12:00:00Z",
+    )
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=spool,
+    )
+    checks = FakeAdmissionChecks()
+
+    with pytest.raises(broker.BrokerError, match="reviews changed during owner admission seal"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
 
 
 def test_normal_merge_does_not_require_an_unscheduled_current_deep_run(tmp_path: Path) -> None:
@@ -2597,6 +2660,65 @@ def test_merged_repair_binding_reapplies_independent_actor_policy() -> None:
         )
 
 
+def test_merged_owner_repair_binding_rejects_request_outliving_manifest() -> None:
+    policy_amendment = {"schema_version": 1}
+    manifest = {
+        "expires_at": "2026-08-26T12:10:00Z",
+        "policy_amendment": policy_amendment,
+    }
+    context = {
+        "changed_paths": ["metriplane/fix.py", "tests/test_fix.py"],
+        "collaborators": [{"id": "10", "login": "Miko997", "permission": "admin"}],
+        "manifest": manifest,
+        "owner_id": 10,
+        "owner_login": "Miko997",
+        "pending_invitations": [],
+        "ruleset_digests": _owner_ruleset_digests(),
+    }
+    request = _owner_request(repair=True)
+    request["manifest_digest"] = broker.digest(manifest)
+    request["policy_amendment_digest"] = broker.digest(policy_amendment)
+    review = {
+        **_owner_reviews(repair=True)[0],
+        "body": (
+            broker.OWNER_REPAIR_REQUEST_MARKER
+            + "\n"
+            + broker.canonical_bytes(request).decode().rstrip("\n")
+        ),
+    }
+    pull = {**_merged_repair_pull(), "user": {"id": 10, "login": "Miko997"}}
+    state = {"generation": 10, "incident_digest": "f" * 64, "status": "red"}
+
+    binding = broker._merged_owner_repair_binding(
+        commits=_commits(),
+        context=context,
+        now=NOW + timedelta(minutes=4),
+        pull=pull,
+        repository=REPOSITORY,
+        reviews=[review],
+        state=state,
+    )
+    assert binding["request_digest"] == broker.digest(request)
+
+    manifest["expires_at"] = "2026-08-26T12:04:00Z"
+    request["manifest_digest"] = broker.digest(manifest)
+    review["body"] = (
+        broker.OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + broker.canonical_bytes(request).decode().rstrip("\n")
+    )
+    with pytest.raises(broker.BrokerError, match="not provider- and incident-bound"):
+        broker._merged_owner_repair_binding(
+            commits=_commits(),
+            context=context,
+            now=NOW + timedelta(minutes=4),
+            pull=pull,
+            repository=REPOSITORY,
+            reviews=[review],
+            state=state,
+        )
+
+
 class FakeRepairResolutionApi(FakeProofApi):
     def provider_now(self, token: str) -> datetime:
         assert token == "token"
@@ -2646,6 +2768,27 @@ class FakeRepairResolutionApi(FakeProofApi):
         )
 
 
+class FakeOwnerRepairResolutionApi(FakeRepairResolutionApi):
+    def request(
+        self,
+        path: str,
+        *,
+        token: str,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        expected: tuple[int, ...] = (200,),
+    ) -> broker.ApiResult:
+        if "/pulls/81/reviews?" in path:
+            return broker.ApiResult({}, 200, _owner_reviews(repair=True))
+        return super().request(
+            path,
+            token=token,
+            method=method,
+            payload=payload,
+            expected=expected,
+        )
+
+
 class FakeRepairResolutionState:
     def __init__(self) -> None:
         self.resolution: dict[str, Any] | None = None
@@ -2679,6 +2822,47 @@ class FakeRepairResolutionState:
     def resolve_repair(self, **values: Any) -> dict[str, Any]:
         self.resolution = values
         return {"generation": 11, "status": "green"}
+
+
+def _owner_resolution_binding() -> dict[str, Any]:
+    request = _owner_request(repair=True)
+    return {
+        "approval_review_id": 301,
+        "authorization_mode": broker.OWNER_EMERGENCY_MODE,
+        "base_sha": BASE_SHA,
+        "head_sha": HEAD_SHA,
+        "incident_digest": "f" * 64,
+        "issue": "MET-77",
+        "pull_request": 81,
+        "request": request,
+        "request_digest": broker.digest(request),
+        "request_review_id": 301,
+        "review": _owner_reviews(repair=True)[0],
+    }
+
+
+def _owner_resolution_evidence(*, captured_at: str) -> dict[str, Any]:
+    return {
+        "authorization_mode": broker.OWNER_EMERGENCY_MODE,
+        "approval_id": "301",
+        "approval_provider": "github-app-broker",
+        "author": "Miko997",
+        "author_id": "10",
+        "captured_at": captured_at,
+        "changed_paths": ["metriplane/fix.py", "tests/test_fix.py"],
+        "head_sha": HEAD_SHA,
+        "incident_digest": "f" * 64,
+        "issue": "MET-77",
+        "manifest": {
+            "expires_at": "2026-08-26T12:20:00Z",
+            "policy_amendment": {"schema_version": 1},
+        },
+        "merge_commit_sha": MERGE_SHA,
+        "pull_request": "81",
+        "reviewer": "Miko997",
+        "reviewer_id": "10",
+        "reviewer_permission": "admin",
+    }
 
 
 def test_repair_resolution_is_rebuilt_from_provider_and_protected_results(
@@ -2723,6 +2907,99 @@ def test_repair_resolution_is_rebuilt_from_provider_and_protected_results(
     assert authorization["allowed_paths"] == evidence["changed_paths"]
     assert authorization["required_cadences"] == ["nightly", "weekly"]
     assert state_branch.resolution["repaired_main"] == state_branch.repaired_main
+
+
+def test_owner_repair_resolution_uses_two_complete_provider_captures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binding = _owner_resolution_binding()
+    evidence = _owner_resolution_evidence(captured_at="2026-08-26T12:10:00Z")
+    capture_calls: list[int] = []
+
+    monkeypatch.setattr(
+        broker,
+        "_owner_repair_evidence_context",
+        lambda *_args, **_kwargs: {"captured": True},
+    )
+    monkeypatch.setattr(
+        broker,
+        "_merged_owner_repair_binding",
+        lambda **_kwargs: copy.deepcopy(binding),
+    )
+
+    def capture(*_args: Any, **_kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+        capture_calls.append(len(capture_calls) + 1)
+        captured = copy.deepcopy(evidence)
+        captured["captured_at"] = f"2026-08-26T12:1{len(capture_calls) - 1}:00Z"
+        return copy.deepcopy(binding), captured
+
+    monkeypatch.setattr(broker, "_capture_app_owner_repair_evidence", capture)
+    config = _config(tmp_path)
+    api = FakeOwnerRepairResolutionApi()
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+    state_branch = FakeRepairResolutionState()
+
+    assert service._reconcile_repair(
+        state_branch=state_branch,  # type: ignore[arg-type]
+        token="token",
+        settings_token="settings-token",
+    ) == {"generation": 11, "status": "green"}
+    assert capture_calls == [1, 2]
+    assert state_branch.resolution is not None
+    assert state_branch.resolution["approval_evidence"]["captured_at"] == ("2026-08-26T12:11:00Z")
+
+
+def test_owner_repair_resolution_rejects_second_provider_capture_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    binding = _owner_resolution_binding()
+    evidence = _owner_resolution_evidence(captured_at="2026-08-26T12:10:00Z")
+    capture_calls = 0
+
+    monkeypatch.setattr(
+        broker,
+        "_owner_repair_evidence_context",
+        lambda *_args, **_kwargs: {"captured": True},
+    )
+    monkeypatch.setattr(
+        broker,
+        "_merged_owner_repair_binding",
+        lambda **_kwargs: copy.deepcopy(binding),
+    )
+
+    def capture(*_args: Any, **_kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+        nonlocal capture_calls
+        capture_calls += 1
+        captured = copy.deepcopy(evidence)
+        captured["captured_at"] = f"2026-08-26T12:1{capture_calls - 1}:00Z"
+        if capture_calls == 2:
+            captured["reviewer"] = "changed-owner"
+        return copy.deepcopy(binding), captured
+
+    monkeypatch.setattr(broker, "_capture_app_owner_repair_evidence", capture)
+    config = _config(tmp_path)
+    api = FakeOwnerRepairResolutionApi()
+    service = broker.Broker(
+        api=api,
+        authenticator=broker.AppAuthenticator(api, config),
+        config=config,
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+    state_branch = FakeRepairResolutionState()
+
+    with pytest.raises(broker.BrokerError, match="provider evidence changed during final capture"):
+        service._reconcile_repair(
+            state_branch=state_branch,  # type: ignore[arg-type]
+            token="token",
+            settings_token="settings-token",
+        )
+    assert capture_calls == 2
+    assert state_branch.resolution is None
 
 
 def test_repair_resolution_waits_when_current_main_has_no_governed_merge(
