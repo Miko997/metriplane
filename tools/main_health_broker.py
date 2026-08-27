@@ -110,6 +110,34 @@ CONFIG_FIELDS = {
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 NONCE_RE = re.compile(r"[0-9a-f]{32}")
+LEGACY_PROTECTED_MAIN_RESULTS = frozenset(
+    {
+        (
+            "32883626832",
+            "e8d221751144df169000e6c50e9b7c08e118692826eabea4293ae23fee301b20",
+        ),
+        (
+            "32883626888",
+            "e8ea35891d51ac4321be2717cd43630197958a62ad202fb6a02b286c6de7a165",
+        ),
+        (
+            "32883626951",
+            "d022cc8f74c9f0c5a1c7d1ddd8dd559cbffce3d587fe45b9bb91d06d4ba2acab",
+        ),
+        (
+            "32890666879",
+            "9ba6352c9ef52662ac1dff37acfce0a144131dd049bf086f0812fcdf39ba1b70",
+        ),
+        (
+            "32893499507",
+            "83da378f0d804e10480282b49c1dada4573cfc6ead2ea9810de7c5d8057d4f7f",
+        ),
+        (
+            "32893499507",
+            "f0eb90f3ff235434304b71ffe1b4b52606537734453f0211063601424dc4c976",
+        ),
+    }
+)
 
 
 class BrokerError(ValueError):
@@ -1671,7 +1699,7 @@ def _protected_main_result_identity(value: Any) -> str:
         raise BrokerError("protected-main result run identity is malformed")
     if value.isdigit():
         run_id = _require_positive_int(int(value), "legacy protected-main run ID")
-        return f"github-actions:{run_id}:1"
+        return f"legacy-github-actions:{run_id}"
     if re.fullmatch(r"github-actions:[1-9][0-9]*:[1-9][0-9]*", value):
         return value
     if re.fullmatch(
@@ -1737,6 +1765,10 @@ def _repair_passing_results(root: Path) -> dict[tuple[str, str], dict[str, Any]]
             continue
         if not isinstance(sha, str):
             raise BrokerError("repair result SHA is malformed")
+        if cadence == "protected-main" and not _protected_main_result_identity(
+            result.get("run_id")
+        ).startswith("github-actions-set:v1:"):
+            continue
         latest[(sha, str(cadence))] = result
     return {key: result for key, result in latest.items() if result.get("conclusion") == "success"}
 
@@ -1831,7 +1863,11 @@ class StateBranch:
                     result_digest = digest(result)
                     if path.name != f"{result_digest}.json":
                         raise BrokerError("legacy protected-main result is not digest-bound")
-                    identity = f"legacy-result:{identity}:{result_digest}"
+                    if (run_identity, result_digest) not in LEGACY_PROTECTED_MAIN_RESULTS:
+                        raise BrokerError(
+                            "legacy protected-main result is not an approved immutable record"
+                        )
+                    identity = f"legacy-result:{run_identity}:{result_digest}"
             else:
                 run_id, attempt = _deep_result_identity(result.get("run_id"))
                 identity = f"github-actions:{run_id}:{attempt}"
@@ -1886,6 +1922,10 @@ class StateBranch:
         scope: str,
         summary: dict[str, Any],
     ) -> dict[str, Any]:
+        if scope == "main" and not _protected_main_result_identity(
+            summary.get("run_id")
+        ).startswith("github-actions-set:v1:"):
+            raise BrokerError("new protected-main result must use an aggregate identity")
         before = self.provider_ref()
         self.config.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.TemporaryDirectory(

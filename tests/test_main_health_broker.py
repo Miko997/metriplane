@@ -2794,10 +2794,21 @@ def test_protected_state_rejects_duplicate_aggregate_identity(tmp_path: Path) ->
         broker.StateBranch._result_identities(tmp_path)
 
 
-def test_protected_state_preserves_digest_bound_legacy_rerun_results(tmp_path: Path) -> None:
+def test_protected_state_rejects_duplicate_attempt_qualified_identity(tmp_path: Path) -> None:
     results = tmp_path / "results"
     results.mkdir()
-    legacy = [
+    run_id = "github-actions:501:1"
+    first = {"cadence": "protected-main", "recorded_at": "first", "run_id": run_id}
+    second = {"cadence": "protected-main", "recorded_at": "second", "run_id": run_id}
+    (results / "first.json").write_bytes(broker.canonical_bytes(first))
+    (results / "second.json").write_bytes(broker.canonical_bytes(second))
+
+    with pytest.raises(broker.BrokerError, match="repeats a result identity"):
+        broker.StateBranch._result_identities(tmp_path)
+
+
+def _legacy_protected_main_rerun_results() -> list[dict[str, Any]]:
+    return [
         {
             "cadence": "protected-main",
             "conclusion": "failure",
@@ -2825,6 +2836,12 @@ def test_protected_state_preserves_digest_bound_legacy_rerun_results(tmp_path: P
             "sha": "9d5b4ffa5236521423196a84acc6a613f7f13108",
         },
     ]
+
+
+def test_protected_state_preserves_digest_bound_legacy_rerun_results(tmp_path: Path) -> None:
+    results = tmp_path / "results"
+    results.mkdir()
+    legacy = _legacy_protected_main_rerun_results()
     digests = {broker.digest(result) for result in legacy}
     assert digests == {
         "83da378f0d804e10480282b49c1dada4573cfc6ead2ea9810de7c5d8057d4f7f",
@@ -2832,17 +2849,36 @@ def test_protected_state_preserves_digest_bound_legacy_rerun_results(tmp_path: P
     }
     for result in legacy:
         result_digest = broker.digest(result)
-        (results / f"{result_digest}.json").write_text(json.dumps(result), encoding="utf-8")
+        (results / f"{result_digest}.json").write_bytes(broker.canonical_bytes(result))
 
     identities = broker.StateBranch._result_identities(tmp_path)
 
     assert identities == {
         (
             "protected-main",
-            f"legacy-result:github-actions:32893499507:1:{result_digest}",
+            f"legacy-result:32893499507:{result_digest}",
         )
         for result_digest in digests
     }
+
+
+@pytest.mark.parametrize("run_id", ["32893499507", "99999999999"])
+def test_protected_state_rejects_unapproved_legacy_result(tmp_path: Path, run_id: str) -> None:
+    results = tmp_path / "results"
+    results.mkdir()
+    result = {
+        "cadence": "protected-main",
+        "conclusion": "success",
+        "recorded_at": "2026-08-25T20:22:00Z",
+        "run_id": run_id,
+    }
+    result_digest = broker.digest(result)
+    (results / f"{result_digest}.json").write_bytes(broker.canonical_bytes(result))
+
+    with pytest.raises(
+        broker.BrokerError, match="legacy protected-main result is not an approved immutable record"
+    ):
+        broker.StateBranch._result_identities(tmp_path)
 
 
 def test_protected_state_rejects_unbound_legacy_result_filename(tmp_path: Path) -> None:
@@ -2860,6 +2896,24 @@ def test_protected_state_rejects_unbound_legacy_result_filename(tmp_path: Path) 
         broker.BrokerError, match="legacy protected-main result is not digest-bound"
     ):
         broker.StateBranch._result_identities(tmp_path)
+
+
+@pytest.mark.parametrize("run_id", ["32893499507", "github-actions:501:1"])
+def test_state_branch_rejects_new_nonaggregate_protected_main_result(
+    tmp_path: Path, run_id: str
+) -> None:
+    class NoProviderApi(broker.GitHubApi):
+        def request(self, *_args: Any, **_kwargs: Any) -> broker.ApiResult:
+            raise AssertionError("provider must not be called for a rejected result identity")
+
+    state = broker.StateBranch(api=NoProviderApi(), config=_config(tmp_path), token="token")
+
+    with pytest.raises(broker.BrokerError, match="must use an aggregate identity"):
+        state.append(
+            expected_generation=7,
+            scope="main",
+            summary={"run_id": run_id},
+        )
 
 
 def test_current_ci_selects_a_later_active_rerun_of_an_older_id(tmp_path: Path) -> None:
@@ -3160,6 +3214,26 @@ def test_repair_results_require_latest_observation_to_pass(tmp_path: Path) -> No
         )
 
     assert (MERGE_SHA, "nightly") not in broker._repair_passing_results(tmp_path)
+
+
+def test_repair_results_exclude_legacy_protected_main_success(tmp_path: Path) -> None:
+    history = tmp_path / "history"
+    results = tmp_path / "results"
+    history.mkdir()
+    results.mkdir()
+    result = _legacy_protected_main_rerun_results()[1]
+    result_digest = broker.digest(result)
+    (results / f"{result_digest}.json").write_bytes(broker.canonical_bytes(result))
+    (history / "00000006.json").write_bytes(
+        broker.canonical_bytes(
+            {
+                "cadence": "protected-main",
+                "result_digest": result_digest,
+            }
+        )
+    )
+
+    assert (result["sha"], "protected-main") not in broker._repair_passing_results(tmp_path)
 
 
 def test_deep_reconciler_seeds_cursor_then_appends_every_new_run(tmp_path: Path) -> None:
