@@ -5,7 +5,9 @@ SPDX-License-Identifier: MIT
 
 # UI Missing Features Report
 
-Generated: `2026-06-14T18:38:28+00:00`
+Generated deterministically by `python tools/audit_ui_functionality.py --write`.
+
+Canonical projection SHA-256: `56ce13bff8d80c25f5dd2e3a170376a83579962b77aeee653960ce3960bae85c`
 
 - Missing features total: `0`
 - Missing P0/P1 features: `0`

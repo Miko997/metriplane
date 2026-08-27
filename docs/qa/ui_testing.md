@@ -5,26 +5,29 @@ SPDX-License-Identifier: MIT
 
 # UI Testing
 
-The core UI audit uses Python-only static analysis and runner/operator API
-tests. Playwright smoke coverage is optional for normal development because
-browser binaries are not a runtime dependency of MetriPlane, but a skipped
-Playwright run is not final browser release evidence.
+Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Install optional browser test dependencies:
+Canonical projection SHA-256: `56ce13bff8d80c25f5dd2e3a170376a83579962b77aeee653960ce3960bae85c`
+
+Check committed current status without writing:
 
 ```bash
-python -m pip install playwright pytest
+python tools/audit_ui_functionality.py --check
+```
+
+Regenerate the functional registry, support profile, and five QA documents:
+
+```bash
+python tools/audit_ui_functionality.py --write
+```
+
+Run the complete 12-page browser smoke:
+
+```bash
 python -m playwright install chromium
+python -m pytest -q tests/e2e/test_dashboard_playwright_smoke.py
 ```
 
-Run the optional smoke test with the local dashboard server already started:
+The static census does not establish runtime behavior or browser, platform, environment, ROS 2, simulator, or container support. A skipped browser test is an environment note, not final MP2-012 browser evidence.
 
-```bash
-python -m metriplane.cli start --no-open
-python -m pytest tests/e2e -q
-```
-
-If Playwright is not installed, `tests/e2e/test_dashboard_playwright_smoke.py`
-is skipped automatically. Use that as an environment note, then capture browser
-evidence from an environment with Playwright and Chromium installed before
-claiming browser E2E release coverage.
+The checksum-bound v0.2 files `evidence/experiments/ui_coverage_latest.csv` and `evidence/experiments/ui_coverage_latest.json` are historical evidence. The generator rejects them as output destinations and never updates their manifest or checksums.
