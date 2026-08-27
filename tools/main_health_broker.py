@@ -44,6 +44,7 @@ MAX_PULL_COMMITS = 250
 MERGE_READINESS_POLL_SECONDS = 2
 MERGE_READINESS_TIMEOUT_SECONDS = 60
 MERGE_READINESS_LEASE_MARGIN_SECONDS = 120
+MERGE_READINESS_MAX_ATTEMPTS = 31
 MAIN_HEALTH_CHECK = "Main health / required"
 CORE_CHECKS = (
     "Metriplane / required",
@@ -3773,8 +3774,11 @@ class Broker:
         head = pull.get("head")
         if not isinstance(base, dict) or not isinstance(head, dict):
             raise BrokerError("provider merge-readiness pull identity is malformed")
+        pull_number = _require_positive_int(
+            pull.get("number"), "provider merge-readiness pull request number"
+        )
         if (
-            pull.get("number") != admission["pull_request"]
+            pull_number != admission["pull_request"]
             or pull.get("state") != "open"
             or pull.get("merged") is not False
             or pull.get("draft") is not False
@@ -3807,26 +3811,31 @@ class Broker:
             started_at + timedelta(seconds=MERGE_READINESS_TIMEOUT_SECONDS),
             request_expires_at - timedelta(seconds=MERGE_READINESS_LEASE_MARGIN_SECONDS),
         )
-        while True:
+        for attempt in range(MERGE_READINESS_MAX_ATTEMPTS):
             result = self.api.request(
                 f"repos/{self.config.repository}/pulls/{admission['pull_request']}",
                 token=token,
             )
             if not isinstance(result.value, dict):
                 raise BrokerError("provider merge-readiness response is malformed")
-            if self._pull_is_merge_ready(admission=admission, pull=result.value):
-                return
             provider_now = self.api.provider_now(token)
             if provider_now >= deadline:
                 raise BrokerError(
                     "provider did not report the exact pull request merge-ready within its lease"
                 )
+            if self._pull_is_merge_ready(admission=admission, pull=result.value):
+                return
+            if attempt == MERGE_READINESS_MAX_ATTEMPTS - 1:
+                break
             self.sleep(
                 min(
                     float(MERGE_READINESS_POLL_SECONDS),
                     (deadline - provider_now).total_seconds(),
                 )
             )
+        raise BrokerError(
+            "provider did not report the exact pull request merge-ready within bounded polling"
+        )
 
     def _post_success_admission_seal(
         self,
@@ -3893,6 +3902,18 @@ class Broker:
             config=self.config,
             rulesets=_rulesets(self.api, config=self.config, token=settings_token),
         )
+        if sealed_admission["kind"] in {"normal", "owner-normal"}:
+            verified_state = HealthReconciler(
+                api=self.api,
+                config=self.config,
+                spool=self.spool,
+                state_branch=state_branch,
+                token=token,
+            ).verify_current_health(self.api.provider_now(token))
+            if verified_state.get("state_commit") != expected_state.get(
+                "state_commit"
+            ) or verified_state.get("generation") != expected_state.get("generation"):
+                raise BrokerError("main-health state changed during post-success verification")
         trailing_reviews = _provider_list(
             self.api,
             f"repos/{self.config.repository}/pulls/{admission['pull_request']}/reviews",

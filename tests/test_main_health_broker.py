@@ -1617,6 +1617,9 @@ class FakeTransactionApi(broker.GitHubApi):
         self.documentation_run_id = 502
         self.documentation_status = "completed"
         self.drift_default_on_final = False
+        self.nightly_conclusion: str | None = "success"
+        self.nightly_run_id = 601
+        self.nightly_status = "completed"
         self.weekly_conclusion: str | None = "success"
         self.weekly_run_id = 602
         self.weekly_status = "completed"
@@ -1857,7 +1860,12 @@ class FakeTransactionApi(broker.GitHubApi):
                     "updated_at": "2026-08-26T11:55:00Z",
                 }
                 for cadence, run_id, status, conclusion in (
-                    ("nightly", 601, "completed", "success"),
+                    (
+                        "nightly",
+                        self.nightly_run_id,
+                        self.nightly_status,
+                        self.nightly_conclusion,
+                    ),
                     (
                         "weekly",
                         self.weekly_run_id,
@@ -1873,10 +1881,12 @@ class FakeTransactionApi(broker.GitHubApi):
             assert key == "jobs"
             run_id = int(path.split("/runs/", 1)[1].split("/", 1)[0])
             attempt = int(path.split("/attempts/", 1)[1].split("/", 1)[0])
-            if run_id in {601, self.weekly_run_id}:
-                cadence = "nightly" if run_id == 601 else "weekly"
-                status = self.weekly_status if cadence == "weekly" else "completed"
-                conclusion = self.weekly_conclusion if cadence == "weekly" else "success"
+            if run_id in {self.nightly_run_id, self.weekly_run_id}:
+                cadence = "nightly" if run_id == self.nightly_run_id else "weekly"
+                status = self.weekly_status if cadence == "weekly" else self.nightly_status
+                conclusion = (
+                    self.weekly_conclusion if cadence == "weekly" else self.nightly_conclusion
+                )
                 return [
                     {
                         "conclusion": conclusion,
@@ -2231,6 +2241,67 @@ def test_provider_readiness_wait_is_bounded_by_request_lease(tmp_path: Path) -> 
     assert api.merge_calls == 0
 
 
+@pytest.mark.parametrize("provider_step_seconds", [0, -1])
+def test_provider_readiness_wait_has_independent_attempt_bound(
+    tmp_path: Path, provider_step_seconds: int
+) -> None:
+    service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.mergeable_states = ["blocked"] * broker.MERGE_READINESS_MAX_ATTEMPTS
+    sleeps: list[float] = []
+
+    def skew_provider(seconds: float) -> None:
+        sleeps.append(seconds)
+        api.current_now += timedelta(seconds=provider_step_seconds)
+
+    service.sleep = skew_provider
+    with pytest.raises(broker.BrokerError, match="bounded polling"):
+        service._wait_for_provider_merge_ready(
+            admission={
+                "base_sha": BASE_SHA,
+                "head_sha": HEAD_SHA,
+                "pull_request": 81,
+                "request": _request(),
+            },
+            token="token",
+        )
+
+    assert api.merge_readiness_calls == broker.MERGE_READINESS_MAX_ATTEMPTS
+    assert len(sleeps) == broker.MERGE_READINESS_MAX_ATTEMPTS - 1
+    assert api.merge_calls == 0
+
+
+def test_provider_readiness_rejects_clean_after_lease_margin(tmp_path: Path) -> None:
+    service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.current_now = NOW + timedelta(minutes=3)
+    api.mergeable_states = ["clean"]
+
+    with pytest.raises(broker.BrokerError, match="within its lease"):
+        service._wait_for_provider_merge_ready(
+            admission={
+                "base_sha": BASE_SHA,
+                "head_sha": HEAD_SHA,
+                "pull_request": 81,
+                "request": _request(),
+            },
+            token="token",
+        )
+
+    assert api.merge_readiness_calls == 1
+    assert api.merge_calls == 0
+
+
+@pytest.mark.parametrize("malformed_number", [81.0, True, "81", 0])
+def test_provider_readiness_rejects_noninteger_pull_number(malformed_number: Any) -> None:
+    pull = _pull()
+    pull["number"] = malformed_number
+
+    with pytest.raises(broker.BrokerError, match="must be a positive integer"):
+        broker.Broker._pull_is_merge_ready(
+            admission={"base_sha": BASE_SHA, "head_sha": HEAD_SHA, "pull_request": 81},
+            pull=pull,
+        )
+
+
 def test_review_change_after_success_publication_blocks_merge(tmp_path: Path) -> None:
     service, api, _checks, spool = _transaction_fixture(tmp_path, "success")
 
@@ -2252,6 +2323,42 @@ def test_review_change_after_success_publication_blocks_merge(tmp_path: Path) ->
 
     assert api.merge_calls == 0
     assert spool.request_status(broker.digest(_request())) == "merging"
+
+
+@pytest.mark.parametrize("drift", ["aggregate", "nightly", "weekly"])
+def test_health_attempt_after_success_publication_blocks_merge(tmp_path: Path, drift: str) -> None:
+    service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
+
+    class DriftingChecks(FakeAdmissionChecks):
+        def succeed(self, **kwargs: Any) -> dict[str, Any]:
+            result = super().succeed(**kwargs)
+            if drift == "aggregate":
+                api.documentation_run_id = 504
+                api.documentation_status = "in_progress"
+                api.documentation_conclusion = None
+            elif drift == "nightly":
+                api.nightly_run_id = 604
+                api.nightly_status = "in_progress"
+                api.nightly_conclusion = None
+            else:
+                api.weekly_run_id = 604
+                api.weekly_status = "in_progress"
+                api.weekly_conclusion = None
+            return result
+
+    checks = DriftingChecks()
+    with pytest.raises(broker.BrokerError):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert len(checks.succeeded) == 1
+    assert api.merge_calls == 0
 
 
 def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
@@ -2389,6 +2496,9 @@ def test_old_retained_state_requires_live_health_instead_of_heartbeat_commits(
     tmp_path: Path,
 ) -> None:
     service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    request = {**_request(), "expires_at": "2026-08-26T12:10:00Z"}
+    api.reviews[0]["body"] = _request_body(request)
+    api.reviews[1]["body"] = f"{broker.APPROVAL_MARKER} {broker.digest(request)}"
 
     class BoundaryState(FakeAdmissionState):
         def read(self) -> dict[str, Any]:
