@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `56ce13bff8d80c25f5dd2e3a170376a83579962b77aeee653960ce3960bae85c`
+Canonical projection SHA-256: `03515a6439949263d67d6783187ff0b435f004ac3aba2f6b70315eded3f47667`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -371,7 +371,6 @@ This is a static source census. It does not characterize runtime behavior or exp
 | --- |
 | GET /commands |
 | GET /jobs |
-| GET /jobs/ |
 | GET /jobs/<id> |
 | GET /operator/camera-trust |
 | GET /operator/cameras |
@@ -387,7 +386,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | GET /operator/traces |
 | GET /status |
 | POST /execute |
-| POST /jobs/ |
+| POST /jobs/<id>/cancel |
 | POST /operator/ask |
 | POST /operator/calibrate |
 | POST /operator/checksum |

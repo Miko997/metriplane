@@ -7,9 +7,9 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `56ce13bff8d80c25f5dd2e3a170376a83579962b77aeee653960ce3960bae85c`
+Canonical projection SHA-256: `03515a6439949263d67d6783187ff0b435f004ac3aba2f6b70315eded3f47667`
 
-Static inventory result: **PASS**
+Static inventory result: **FAIL**
 
 Browser rendering, runtime behavior, integration availability, and supported environments are not inferred by this static generator. The 12-page Playwright validator is separate retained evidence; MP2-015 owns behavior characterization and MP2-007 owns environment support.
 
@@ -18,12 +18,12 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | metric | value |
 | --- | --- |
 | total_discovered_features | 157 |
-| ui_full | 63 |
-| ui_partial | 19 |
+| ui_full | 66 |
+| ui_partial | 0 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
-| ui_missing | 0 |
-| cli_only_documented | 63 |
+| ui_missing | 8 |
+| cli_only_documented | 71 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -33,8 +33,8 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | buttons_with_duplicate_command_id_on_same_card | 0 |
 | data_needs_atlas_buttons_never_enabled | 0 |
 | read_only_fallback_endpoints | 6 |
-| critical_bugs | 0 |
-| high_bugs | 0 |
+| critical_bugs | 4 |
+| high_bugs | 7 |
 
 ## Stable Features Fully Available In UI
 
@@ -74,6 +74,9 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | api.runner.job_detail | Runner job detail | metriplane/runner/service.py | GET /jobs/<id> | web/dashboard/*.js | GET /jobs/<id> | ui_full | P0 |  |
 | api.runner.jobs | Recent runner jobs | metriplane/runner/service.py | GET /jobs | web/dashboard/*.js | GET /jobs | ui_full | P1 |  |
 | api.runner.status | Runner status | metriplane/runner/service.py | GET /status | web/dashboard/*.js | GET /status | ui_full | P0 |  |
+| cli.atlas | metriplane atlas | metriplane/cli.py | python -m metriplane.cli atlas | metriplane/runner/allowlist.py | runner action with dashboard coverage | ui_full | P1 | Exposed through a dashboard-covered runner allowlist action. |
+| cli.doctor | metriplane doctor | metriplane/cli.py | python -m metriplane.cli doctor | metriplane/runner/allowlist.py | runner action with dashboard coverage | ui_full | P0 | Exposed through a dashboard-covered runner allowlist action. |
+| cli.sentinel | metriplane sentinel | metriplane/cli.py | python -m metriplane.cli sentinel | metriplane/runner/allowlist.py | runner action with dashboard coverage | ui_full | P1 | Exposed through a dashboard-covered runner allowlist action. |
 | runner.atlas-demo | Build Evidence Sample | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out web/dashboard/atlas_run --run-id metriplane_sample | web/dashboard/atlas.html; web/dashboard/atlas.html | Build sample run; Run | ui_full | P1 | Run the Metriplane evidence workflow over the assembly-cell sample and publish local dashboard artifacts |
 | runner.atlas-edge-doctor | Run Edge Readiness | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas edge doctor --runs-root web/dashboard/atlas_run --min-free-mb 64 | web/dashboard/atlas.html | Run | ui_full | P2 | Check generated evidence storage and edge-appliance readiness signals |
 | runner.atlas-freeze-build | Build Audit Snapshot | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas freeze build --root . --out web/dashboard/atlas_run/evidence_freeze | web/dashboard/atlas.html | Run | ui_full | P2 | Build a local evidence audit and review-note snapshot |
@@ -108,26 +111,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| cli.ask | metriplane ask | metriplane/cli.py | python -m metriplane.cli ask | web/dashboard/* | python -m metriplane.cli ask | ui_partial | P1 |  |
-| cli.atlas | metriplane atlas | metriplane/cli.py | python -m metriplane.cli atlas | web/dashboard/* | python -m metriplane.cli atlas | ui_partial | P1 |  |
-| cli.camera-trust | metriplane camera-trust | metriplane/cli.py | python -m metriplane.cli camera-trust | web/dashboard/* | python -m metriplane.cli camera-trust | ui_partial | P1 |  |
-| cli.cleanup | metriplane cleanup | metriplane/cli.py | python -m metriplane.cli cleanup | web/dashboard/* | python -m metriplane.cli cleanup | ui_partial | P0 |  |
-| cli.command-center | metriplane command-center | metriplane/cli.py | python -m metriplane.cli command-center | web/dashboard/* | python -m metriplane.cli command-center | ui_partial | P1 |  |
-| cli.demo | metriplane demo | metriplane/cli.py | python -m metriplane.cli demo | web/dashboard/* | python -m metriplane.cli demo | ui_partial | P2 |  |
-| cli.external | metriplane external | metriplane/cli.py | python -m metriplane.cli external | web/dashboard/* | python -m metriplane.cli external | ui_partial | P2 |  |
-| cli.incidents | metriplane incidents | metriplane/cli.py | python -m metriplane.cli incidents | web/dashboard/* | python -m metriplane.cli incidents | ui_partial | P2 |  |
-| cli.objects | metriplane objects | metriplane/cli.py | python -m metriplane.cli objects | web/dashboard/* | python -m metriplane.cli objects | ui_partial | P2 |  |
-| cli.query | metriplane query | metriplane/cli.py | python -m metriplane.cli query | web/dashboard/* | python -m metriplane.cli query | ui_partial | P2 |  |
-| cli.replay | metriplane replay | metriplane/cli.py | python -m metriplane.cli replay | web/dashboard/* | python -m metriplane.cli replay | ui_partial | P1 |  |
-| cli.rules | metriplane rules | metriplane/cli.py | python -m metriplane.cli rules | web/dashboard/* | python -m metriplane.cli rules | ui_partial | P2 |  |
-| cli.run | metriplane run | metriplane/cli.py | python -m metriplane.cli run | web/dashboard/* | python -m metriplane.cli run | ui_partial | P2 |  |
-| cli.sentinel | metriplane sentinel | metriplane/cli.py | python -m metriplane.cli sentinel | web/dashboard/* | python -m metriplane.cli sentinel | ui_partial | P1 |  |
-| cli.start | metriplane start | metriplane/cli.py | python -m metriplane.cli start | web/dashboard/* | python -m metriplane.cli start | ui_partial | P0 |  |
-| cli.status | metriplane status | metriplane/cli.py | python -m metriplane.cli status | web/dashboard/* | python -m metriplane.cli status | ui_partial | P0 |  |
-| cli.stop | metriplane stop | metriplane/cli.py | python -m metriplane.cli stop | web/dashboard/* | python -m metriplane.cli stop | ui_partial | P0 |  |
-| cli.test | metriplane test | metriplane/cli.py | python -m metriplane.cli test | web/dashboard/* | python -m metriplane.cli test | ui_partial | P2 |  |
-| cli.traces | metriplane traces | metriplane/cli.py | python -m metriplane.cli traces | web/dashboard/* | python -m metriplane.cli traces | ui_partial | P1 |  |
-| cli.doctor | metriplane doctor | metriplane/cli.py | python -m metriplane.cli doctor | web/dashboard/* | cli.py | ui_copy_command_only | P0 |  |
+| cli.start | metriplane start | metriplane/cli.py | python -m metriplane.cli start | web/dashboard/* | python -m metriplane.cli start | ui_copy_command_only | P0 |  |
 | tool.analyze_id_stability_jsonl | Analyze Id Stability Jsonl | tools/analyze_id_stability_jsonl.py | python tools/analyze_id_stability_jsonl.py | web/dashboard/* | analyze_id_stability_jsonl.py | ui_copy_command_only | P2 |  |
 | tool.calibrate_intrinsics_chessboard | Calibrate Intrinsics Chessboard | tools/calibrate_intrinsics_chessboard.py | python tools/calibrate_intrinsics_chessboard.py | web/dashboard/* | calibrate_intrinsics_chessboard.py | ui_copy_command_only | P2 |  |
 | tool.calibrate_planar_homography | Calibrate Planar Homography | tools/calibrate_planar_homography.py | python tools/calibrate_planar_homography.py | web/dashboard/* | calibrate_planar_homography.py | ui_copy_command_only | P2 |  |
@@ -142,7 +126,16 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 ## Stable Features Missing From UI
 
-No missing stable features found.
+| action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| cli.ask | metriplane ask | metriplane/cli.py | python -m metriplane.cli ask | - | - | ui_missing | P1 |  |
+| cli.camera-trust | metriplane camera-trust | metriplane/cli.py | python -m metriplane.cli camera-trust | - | - | ui_missing | P1 |  |
+| cli.cleanup | metriplane cleanup | metriplane/cli.py | python -m metriplane.cli cleanup | - | - | ui_missing | P0 |  |
+| cli.command-center | metriplane command-center | metriplane/cli.py | python -m metriplane.cli command-center | - | - | ui_missing | P1 |  |
+| cli.replay | metriplane replay | metriplane/cli.py | python -m metriplane.cli replay | - | - | ui_missing | P1 |  |
+| cli.status | metriplane status | metriplane/cli.py | python -m metriplane.cli status | - | - | ui_missing | P0 |  |
+| cli.stop | metriplane stop | metriplane/cli.py | python -m metriplane.cli stop | - | - | ui_missing | P0 |  |
+| cli.traces | metriplane traces | metriplane/cli.py | python -m metriplane.cli traces | - | - | ui_missing | P1 |  |
 
 ## CLI-Only Features With Documented Reason
 
@@ -161,7 +154,15 @@ No missing stable features found.
 | benchmark.run_replay_determinism | Run Replay Determinism | benchmarks/run_replay_determinism.py | python benchmarks/run_replay_determinism.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | cli.contracts | metriplane contracts | metriplane/cli.py | python -m metriplane.cli contracts | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
 | cli.counterfactual | metriplane counterfactual | metriplane/cli.py | python -m metriplane.cli counterfactual | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.demo | metriplane demo | metriplane/cli.py | python -m metriplane.cli demo | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.external | metriplane external | metriplane/cli.py | python -m metriplane.cli external | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.incidents | metriplane incidents | metriplane/cli.py | python -m metriplane.cli incidents | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.objects | metriplane objects | metriplane/cli.py | python -m metriplane.cli objects | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.query | metriplane query | metriplane/cli.py | python -m metriplane.cli query | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
 | cli.restart | metriplane restart | metriplane/cli.py | python -m metriplane.cli restart | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.rules | metriplane rules | metriplane/cli.py | python -m metriplane.cli rules | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.run | metriplane run | metriplane/cli.py | python -m metriplane.cli run | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
+| cli.test | metriplane test | metriplane/cli.py | python -m metriplane.cli test | - | - | cli_only_documented | P2 | Lower-level CLI surface; keep in Help/advanced docs. |
 | runner.gpu-equivalence | GPU Equivalence Test | metriplane/runner/allowlist.py | ./tools/mp.sh gpu-equivalence | - | - | cli_only_documented | P1 | Requires visible ArUco markers in test session |
 | runner.health-degrade-cam1 | Health Degradation | metriplane/runner/allowlist.py | ./tools/mp.sh health-degrade-cam1 | - | - | cli_only_documented | P1 | Requires second capture-capable camera |
 | runner.run-fusion | Run Fusion | metriplane/runner/allowlist.py | ./tools/mp.sh run-fusion cpu 60 test | - | - | cli_only_documented | P1 | Hardware/configuration dependent - use CLI directly |

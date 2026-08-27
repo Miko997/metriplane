@@ -17,6 +17,7 @@ from collections import Counter
 import csv
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -60,6 +61,9 @@ FROZEN_UI_EVIDENCE = {
     Path("evidence/experiments/ui_coverage_latest.csv"),
     Path("evidence/experiments/ui_coverage_latest.json"),
 }
+PROTECTED_OPTIONAL_OUTPUTS = frozenset(
+    {BASELINE_PATH, INVENTORY_PATH, PROFILES_PATH, *QA_PATHS, *FROZEN_UI_EVIDENCE}
+)
 ROUTE_SOURCE_PATHS = {
     "metriplane/_local_http.py",
     "metriplane/metrics.py",
@@ -187,7 +191,15 @@ class Audit:
 
 
 def _canonical_bytes(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    try:
+        return json.dumps(
+            value,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise AuditError(f"value is not canonical JSON: {exc}") from exc
 
 
 def _document_bytes(value: object) -> bytes:
@@ -202,10 +214,35 @@ def _file_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _reject_json_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise AuditError(f"duplicate JSON key is forbidden: {key!r}")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise AuditError(f"non-finite JSON value is forbidden: {value}")
+
+
+def _parse_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise AuditError(f"non-finite JSON value is forbidden: {value}")
+    return parsed
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_json_pairs,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_json_float,
+        )
+    except (AuditError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AuditError(f"cannot read canonical JSON {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise AuditError(f"canonical JSON root must be an object: {path}")
@@ -236,6 +273,53 @@ def _parse_module(path: Path) -> ast.Module:
         return ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
     except (OSError, UnicodeDecodeError, SyntaxError) as exc:
         raise AuditError(f"cannot parse governed source {path}: {exc}") from exc
+
+
+class _ScopeCollector(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.nodes: list[ast.AST] = []
+        self.nested_scopes: list[ast.AST] = []
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self.nodes.append(node)
+        super().generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.nested_scopes.append(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.nested_scopes.append(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.nested_scopes.append(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self.nested_scopes.append(node)
+
+
+def _scope_nodes(statements: Sequence[ast.stmt]) -> tuple[tuple[ast.AST, ...], tuple[ast.AST, ...]]:
+    collector = _ScopeCollector()
+    for statement in statements:
+        collector.visit(statement)
+    return tuple(collector.nodes), tuple(collector.nested_scopes)
+
+
+def _assignment_value(module: ast.Module, name: str, *, source: Path) -> ast.expr:
+    values: list[ast.expr] = []
+    for statement in module.body:
+        if isinstance(statement, ast.AnnAssign) and (
+            isinstance(statement.target, ast.Name) and statement.target.id == name
+        ):
+            if statement.value is None:
+                raise AuditError(f"{name} has no value in {source}")
+            values.append(statement.value)
+        elif isinstance(statement, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == name for target in statement.targets
+        ):
+            values.append(statement.value)
+    if len(values) != 1:
+        raise AuditError(f"{name} must have exactly one module-level declaration in {source}")
+    return values[0]
 
 
 class DashboardHTMLParser(HTMLParser):
@@ -310,8 +394,6 @@ def literal(node: ast.AST, names: dict[str, Any] | None = None) -> Any:
     if isinstance(node, ast.Name):
         if node.id in values:
             return values[node.id]
-        if node.id.startswith("_"):
-            return node.id
         raise AuditError(f"unsupported unresolved name in declaration: {node.id}")
     if isinstance(node, ast.List):
         return [literal(item, values) for item in node.elts]
@@ -370,13 +452,16 @@ def parse_allowed_commands(root: Path) -> list[Action]:
     path = root / "metriplane" / "runner" / "allowlist.py"
     tree = _parse_module(path)
     constants = _module_constants(tree)
+    declaration = _assignment_value(tree, "ALLOWLIST", source=path)
+    if not isinstance(declaration, (ast.List, ast.Tuple)):
+        raise AuditError("runner ALLOWLIST must be one bounded literal list")
     actions: list[Action] = []
-    for node in ast.walk(tree):
+    for node in declaration.elts:
         if not isinstance(node, ast.Call):
-            continue
+            raise AuditError(f"unsupported ALLOWLIST entry at {path}:{node.lineno}")
         func = node.func
         if not isinstance(func, ast.Name) or func.id != "AllowedCommand":
-            continue
+            raise AuditError(f"unsupported ALLOWLIST entry at {path}:{node.lineno}")
         values: dict[str, Any] = {}
         field_names = [
             "id",
@@ -389,12 +474,19 @@ def parse_allowed_commands(root: Path) -> list[Action]:
             "requires_gpu",
             "requires_cameras",
         ]
+        if len(node.args) > len(field_names):
+            raise AuditError(f"AllowedCommand at {path}:{node.lineno} has excess arguments")
         for idx, arg in enumerate(node.args):
-            if idx < len(field_names):
-                values[field_names[idx]] = literal(arg, constants)
+            values[field_names[idx]] = literal(arg, constants)
         for kw in node.keywords:
             if kw.arg is None:
                 raise AuditError("AllowedCommand ** expansion is not governed")
+            if kw.arg not in field_names:
+                raise AuditError(
+                    f"AllowedCommand at {path}:{node.lineno} has unknown field {kw.arg!r}"
+                )
+            if kw.arg in values:
+                raise AuditError(f"AllowedCommand at {path}:{node.lineno} assigns {kw.arg!r} twice")
             values[kw.arg] = literal(kw.value, constants)
         required = {
             "id",
@@ -419,6 +511,10 @@ def parse_allowed_commands(root: Path) -> list[Action]:
             or any(not isinstance(part, str) or not part for part in command)
             or not isinstance(values["enabled"], bool)
             or not (values["disabled_reason"] is None or isinstance(values["disabled_reason"], str))
+            or type(values["timeout_s"]) is not int
+            or values["timeout_s"] <= 0
+            or not isinstance(values.get("requires_gpu", False), bool)
+            or not isinstance(values.get("requires_cameras", False), bool)
         ):
             raise AuditError(f"AllowedCommand at {path}:{node.lineno} has an unsupported shape")
         command_text = " ".join(command)
@@ -450,6 +546,26 @@ def parse_allowed_commands(root: Path) -> list[Action]:
     return sorted(actions, key=lambda action: action.action_id)
 
 
+def _root_dispatch_name(node: ast.AST, *, path: Path) -> str | None:
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1 or len(node.comparators) != 1:
+        return None
+    left = node.left
+    if not (
+        isinstance(left, ast.Subscript)
+        and isinstance(left.value, ast.Name)
+        and left.value.id == "argv"
+        and isinstance(left.slice, ast.Constant)
+        and left.slice.value == 0
+    ):
+        return None
+    value = node.comparators[0]
+    if not isinstance(node.ops[0], ast.Eq) or not (
+        isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value
+    ):
+        raise AuditError(f"unsupported root dispatch at {path}:{node.lineno}")
+    return value.value
+
+
 def parse_cli_subcommands(root: Path) -> list[Action]:
     path = root / "metriplane" / "cli.py"
     tree = _parse_module(path)
@@ -458,25 +574,18 @@ def parse_cli_subcommands(root: Path) -> list[Action]:
     ]
     if len(functions) != 1:
         raise AuditError("metriplane.cli must contain exactly one main dispatcher")
+    nodes, nested_scopes = _scope_nodes(functions[0].body)
+    for scope in nested_scopes:
+        if any(_root_dispatch_name(node, path=path) is not None for node in ast.walk(scope)):
+            raise AuditError(f"nested root CLI dispatch is forbidden at {path}:{scope.lineno}")
     declarations: list[tuple[str, int]] = []
-    for node in ast.walk(functions[0]):
-        if not isinstance(node, ast.Compare) or len(node.ops) != 1 or len(node.comparators) != 1:
+    for node in nodes:
+        name = _root_dispatch_name(node, path=path)
+        if name is None:
             continue
-        left = node.left
-        if not (
-            isinstance(left, ast.Subscript)
-            and isinstance(left.value, ast.Name)
-            and left.value.id == "argv"
-            and isinstance(left.slice, ast.Constant)
-            and left.slice.value == 0
-        ):
-            continue
-        value = node.comparators[0]
-        if not isinstance(node.ops[0], ast.Eq) or not (
-            isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value
-        ):
-            raise AuditError(f"unsupported root dispatch at {path}:{node.lineno}")
-        declarations.append((value.value, node.lineno))
+        declarations.append((name, node.lineno))
+    if not declarations:
+        raise AuditError("root CLI dispatcher has no governed actions")
     names = [name for name, _line in declarations]
     if len(names) != len(set(names)):
         raise AuditError("root CLI dispatcher contains duplicate actions")
@@ -500,16 +609,30 @@ def parse_cli_subcommands(root: Path) -> list[Action]:
 def parse_operator_endpoints(root: Path) -> list[Action]:
     path = root / "metriplane" / "runner" / "operator_api.py"
     tree = _parse_module(path)
+    classes = [
+        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "OperatorAPI"
+    ]
+    if len(classes) != 1:
+        raise AuditError("OperatorAPI class is missing or ambiguous")
     functions = [
         node
-        for node in ast.walk(tree)
+        for node in classes[0].body
         if isinstance(node, ast.FunctionDef) and node.name == "route"
     ]
     if len(functions) != 1:
         raise AuditError("OperatorAPI.route is missing or ambiguous")
+    route_nodes, nested_scopes = _scope_nodes(functions[0].body)
+    for scope in nested_scopes:
+        if any(
+            isinstance(candidate, ast.Compare)
+            and isinstance(candidate.left, ast.Name)
+            and candidate.left.id in {"method", "sub"}
+            for candidate in ast.walk(scope)
+        ):
+            raise AuditError(f"nested OperatorAPI route is forbidden at {path}:{scope.lineno}")
     actions: list[Action] = []
     method_branches: dict[str, ast.If] = {}
-    for node in ast.walk(functions[0]):
+    for node in route_nodes:
         if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
             continue
         test = node.test
@@ -529,8 +652,8 @@ def parse_operator_endpoints(root: Path) -> list[Action]:
     if set(method_branches) != {"GET", "POST"}:
         raise AuditError("OperatorAPI must expose explicit GET and POST branches")
     for method, branch in sorted(method_branches.items()):
-        scoped = ast.Module(body=branch.body, type_ignores=[])
-        for node in ast.walk(scoped):
+        branch_nodes, _nested_scopes = _scope_nodes(branch.body)
+        for node in branch_nodes:
             if not isinstance(node, ast.Compare) or not (
                 isinstance(node.left, ast.Name) and node.left.id == "sub"
             ):
@@ -602,7 +725,25 @@ def parse_runner_endpoints(root: Path) -> list[Action]:
         found[key] = line
 
     for method, function in methods.items():
-        for node in ast.walk(function):
+        function_nodes, nested_scopes = _scope_nodes(function.body)
+        for scope in nested_scopes:
+            if any(
+                (
+                    isinstance(candidate, ast.Compare)
+                    and isinstance(candidate.left, ast.Name)
+                    and candidate.left.id == "path"
+                )
+                or (
+                    isinstance(candidate, ast.Call)
+                    and isinstance(candidate.func, ast.Attribute)
+                    and isinstance(candidate.func.value, ast.Name)
+                    and candidate.func.value.id == "path"
+                    and candidate.func.attr in {"startswith", "endswith"}
+                )
+                for candidate in ast.walk(scope)
+            ):
+                raise AuditError(f"nested runner route is forbidden at {path}:{scope.lineno}")
+        for node in function_nodes:
             if not isinstance(node, ast.If):
                 continue
             tests = list(ast.walk(node.test))
@@ -919,24 +1060,30 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
         if e.get("onclick")
     ]
     copy_commands = sorted(
-        set(re.findall(r"copyCommand\([\"']([^\"']+)[\"']\)", html_text + js_text))
+        set(
+            re.findall(
+                r"copyCommand\([\"']([^\"']+)[\"']\)",
+                "\n".join(item["onclick"] for item in onclicks),
+            )
+        )
     )
 
     endpoint_calls: set[str] = set()
     path_calls: set[str] = set()
     for method, path in re.findall(
-        r"(?:opApi|runnerPost)\([\"'](GET|POST)[\"']\s*,\s*[\"']([^\"']+)[\"']",
+        r"(?:opApi|runnerPost)\([\"'](GET|POST)[\"']\s*,\s*"
+        r"[\"']([^\"']+)[\"']\s*(?=[,)])",
         js_text + html_text,
     ):
         endpoint_calls.add(f"{method} {path}")
         path_calls.add(path)
-    for path in re.findall(r"runnerPost\([\"']([^\"']+)[\"']", js_text + html_text):
+    for path in re.findall(r"runnerPost\([\"']([^\"']+)[\"']\s*(?=[,)])", js_text + html_text):
         endpoint_calls.add(f"POST {path}")
         path_calls.add(path)
-    for path in re.findall(r"getJSON\([\"']([^\"']+)[\"']", js_text + html_text):
+    for path in re.findall(r"getJSON\([\"']([^\"']+)[\"']\s*(?=[,)])", js_text + html_text):
         endpoint_calls.add(f"GET {path}")
         path_calls.add(path)
-    for path in re.findall(r"postJSON\([\"']([^\"']+)[\"']", js_text + html_text):
+    for path in re.findall(r"postJSON\([\"']([^\"']+)[\"']\s*(?=[,)])", js_text + html_text):
         endpoint_calls.add(f"POST {path}")
         path_calls.add(path)
     for path in re.findall(
@@ -946,13 +1093,20 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
             continue
         path_calls.add(path)
         endpoint_calls.add(f"GET {path}")
-    for match in re.finditer(r"\$\{RUNNER\}([^`]+)", js_text + html_text):
-        path = match.group(1)
+    source_text = js_text + "\n" + html_text
+    runner_template_call = re.compile(
+        r"(?:fetch|jsonFetch)\(\s*`\$\{RUNNER(?:_URL)?\}(?P<path>[^`]+)`"
+    )
+    for match in runner_template_call.finditer(source_text):
+        path = match.group("path")
         clean = path.split("?")[0]
         clean = re.sub(r"\$\{[^}]+\}", "<id>", clean)
         path_calls.add(clean)
-        window = js_text[match.start() : match.start() + 240]
-        method = "POST" if "method" in window and "POST" in window else "GET"
+        statement_end = source_text.find(";", match.end())
+        if statement_end < 0 or statement_end - match.start() > 1000:
+            statement_end = min(len(source_text), match.start() + 1000)
+        statement = source_text[match.start() : statement_end]
+        method = "POST" if re.search(r"\bmethod\s*:\s*[\"']POST[\"']", statement) else "GET"
         endpoint_calls.add(f"{method} {clean}")
 
     return {
@@ -967,6 +1121,7 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
         "script_refs": script_refs,
         "html_files": html_files,
         "js_files": js_files,
+        "html_text": html_text,
         "raw_text": html_text + "\n" + js_text,
     }
 
@@ -974,7 +1129,6 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
 def endpoint_coverage_reason(endpoint: str, ui: dict[str, Any]) -> str | None:
     method, path = endpoint.split(" ", 1)
     endpoint_calls = set(ui["endpoint_calls"])
-    path_calls = set(ui["path_calls"])
     read_only_operator = {
         "/operator/live-summary",
         "/operator/objects",
@@ -987,23 +1141,17 @@ def endpoint_coverage_reason(endpoint: str, ui: dict[str, Any]) -> str | None:
         return "direct"
     if method == "POST" and path in read_only_operator and f"GET {path}" in endpoint_calls:
         return "read_only_fallback"
-    if path in path_calls:
+    method_paths = {
+        call_path
+        for call in endpoint_calls
+        for call_method, separator, call_path in [call.partition(" ")]
+        if separator and call_method == method
+    }
+    if path in method_paths:
         return "direct"
     if "<id>" in path:
-        prefix = path.split("<id>", 1)[0]
-        return "pattern" if any(call.startswith(prefix) for call in path_calls) else None
-    if path.endswith("/<id>/cancel"):
-        return (
-            "pattern"
-            if any("/jobs/" in call and "/cancel" in call for call in path_calls)
-            else None
-        )
-    if path.endswith("/<id>"):
-        prefix = path.rsplit("/<id>", 1)[0] + "/"
-        return "pattern" if any(call.startswith(prefix) for call in path_calls) else None
-    # POST endpoints are sometimes wrapped by runnerPost(path, body).
-    if method == "POST" and f"POST {path}" in endpoint_calls:
-        return "direct"
+        pattern = re.compile("^" + re.escape(path).replace(re.escape("<id>"), r"[^/?#]+") + "$")
+        return "pattern" if any(pattern.fullmatch(call) for call in method_paths) else None
     return None
 
 
@@ -1120,6 +1268,33 @@ def atlas_buttons_never_enabled(ui: dict[str, Any]) -> list[dict[str, str]]:
     return stuck
 
 
+RELEASE_READY_COVERAGE = {
+    "ui_full",
+    "ui_disabled_with_reason",
+    "cli_only_documented",
+}
+
+
+def _cli_command_is_documented(action: Action, ui: dict[str, Any]) -> bool:
+    name = action.action_id.removeprefix("cli.")
+    if action.command_or_endpoint in ui["html_text"] or action.command_or_endpoint in set(
+        ui["copy_commands"]
+    ):
+        return True
+    installed_command = re.compile(
+        rf"(?<![A-Za-z0-9_.-])metriplane\s+{re.escape(name)}(?![A-Za-z0-9_-])"
+    )
+    return installed_command.search(ui["html_text"]) is not None
+
+
+def _allowlist_cli_root(command: str) -> str | None:
+    parts = command.split()
+    for index in range(len(parts) - 2):
+        if parts[index : index + 2] == ["-m", "metriplane.cli"]:
+            return parts[index + 2]
+    return None
+
+
 def coverage_for_action(action: Action, ui: dict[str, Any]) -> None:
     raw = ui["raw_text"]
     command_buttons = ui["command_buttons"]
@@ -1170,20 +1345,21 @@ def coverage_for_action(action: Action, ui: dict[str, Any]) -> None:
         return
 
     command = action.command_or_endpoint
-    source_name = Path(action.source_path).name
-    if source_name in raw or command in raw:
-        action.coverage_status = "ui_copy_command_only"
-        action.ui_matches = [{"file": "web/dashboard/*", "label": source_name, "kind": "link/copy"}]
-    elif action.source == "cli":
-        name = action.action_id.removeprefix("cli.")
-        if any(name in text for text in (raw, "\n".join(ui["copy_commands"]))):
-            action.coverage_status = "ui_partial"
+    if action.source == "cli":
+        if _cli_command_is_documented(action, ui):
+            action.coverage_status = "ui_copy_command_only"
             action.ui_matches = [{"file": "web/dashboard/*", "label": command, "kind": "copy/help"}]
         elif action.risk in {"P0", "P1"}:
             action.coverage_status = "ui_missing"
         else:
             action.coverage_status = "cli_only_documented"
             action.notes = "Lower-level CLI surface; keep in Help/advanced docs."
+        return
+
+    source_name = Path(action.source_path).name
+    if source_name in raw or command in raw:
+        action.coverage_status = "ui_copy_command_only"
+        action.ui_matches = [{"file": "web/dashboard/*", "label": source_name, "kind": "link/copy"}]
     elif action.source in {"tool", "benchmark"}:
         if action.risk == "P1":
             action.coverage_status = "ui_missing"
@@ -1220,27 +1396,38 @@ def build_actions(root: Path) -> tuple[list[Action], dict[str, Any]]:
     allowlist_commands = "\n".join(
         action.command_or_endpoint for action in unique if action.source == "allowlist"
     )
-    for action in unique:
-        if action.coverage_status != "ui_missing":
+    allowlist_by_cli_root: dict[str, list[Action]] = {}
+    for runner_action in unique:
+        if runner_action.source != "allowlist":
             continue
+        cli_root = _allowlist_cli_root(runner_action.command_or_endpoint)
+        if cli_root is not None:
+            allowlist_by_cli_root.setdefault(cli_root, []).append(runner_action)
+    for action in unique:
         if action.source == "cli":
             subcommand = action.action_id.removeprefix("cli.")
-            if (
-                f"metriplane.cli {subcommand}" in allowlist_commands
-                or f" {subcommand} " in allowlist_commands
-            ):
-                action.coverage_status = "ui_partial"
+            mapped = allowlist_by_cli_root.get(subcommand, [])
+            if any(item.coverage_status == "ui_full" for item in mapped):
+                action.coverage_status = "ui_full"
                 action.ui_matches = [
                     {
                         "file": "metriplane/runner/allowlist.py",
-                        "label": "runner action",
+                        "label": "runner action with dashboard coverage",
                         "kind": "allowlist",
                     }
                 ]
-                action.notes = (
-                    "Exposed through a runner allowlist action rather than a raw CLI button."
-                )
-        elif action.source == "tool":
+                action.notes = "Exposed through a dashboard-covered runner allowlist action."
+            elif any(item.coverage_status == "ui_disabled_with_reason" for item in mapped):
+                action.coverage_status = "ui_disabled_with_reason"
+                action.ui_matches = [
+                    {
+                        "file": "metriplane/runner/allowlist.py",
+                        "label": "disabled runner action",
+                        "kind": "allowlist",
+                    }
+                ]
+                action.notes = "Exposed through a disabled runner allowlist action with a reason."
+        elif action.source == "tool" and action.coverage_status == "ui_missing":
             rel = action.source_path
             if rel in allowlist_commands:
                 action.coverage_status = "ui_full"
@@ -1289,9 +1476,9 @@ def summarize(actions: Iterable[Action], ui: dict[str, Any]) -> dict[str, int]:
     counts["total_discovered_features"] = len(action_list)
     for action in action_list:
         counts[action.coverage_status] = counts.get(action.coverage_status, 0) + 1
-        if action.coverage_status == "ui_missing" and action.risk == "P0":
+        if action.risk == "P0" and action.coverage_status not in RELEASE_READY_COVERAGE:
             counts["critical_bugs"] += 1
-        elif action.coverage_status == "ui_missing" and action.risk == "P1":
+        elif action.risk == "P1" and action.coverage_status not in RELEASE_READY_COVERAGE:
             counts["high_bugs"] += 1
 
     known_command_ids = {
@@ -1899,9 +2086,14 @@ def write_inventory(path: Path, audit: Audit) -> None:
 def write_missing_report(path: Path, audit: Audit) -> None:
     actions = audit.actions
     missing = [a for a in actions if a.coverage_status == "ui_missing"]
-    p0p1 = [a for a in missing if a.risk in {"P0", "P1"}]
+    p0p1_not_ready = [
+        action
+        for action in actions
+        if action.risk in {"P0", "P1"} and action.coverage_status not in RELEASE_READY_COVERAGE
+    ]
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = [a.row() for a in missing]
+    blocker_rows = [action.row() for action in p0p1_not_ready]
     content = [
         "<!--",
         "SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen",
@@ -1913,7 +2105,13 @@ def write_missing_report(path: Path, audit: Audit) -> None:
         *_generated_preamble(audit),
         "",
         f"- Missing features total: `{len(missing)}`",
-        f"- Missing P0/P1 features: `{len(p0p1)}`",
+        f"- Release-blocking P0/P1 coverage rows: `{len(p0p1_not_ready)}`",
+        "",
+        "## Release-Blocking P0/P1 Coverage",
+        "",
+        markdown_table(blocker_rows, COVERAGE_COLUMNS)
+        if blocker_rows
+        else "No release-blocking P0/P1 coverage rows found.",
         "",
         "## Missing Features",
         "",
@@ -2129,7 +2327,8 @@ def _stage(path: Path, data: bytes) -> Path:
     descriptor, raw_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     staged = Path(raw_path)
     try:
-        os.fchmod(descriptor, stat.S_IMODE(path.stat().st_mode))
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as stream:
             descriptor = -1
             stream.write(data)
@@ -2143,27 +2342,64 @@ def _stage(path: Path, data: bytes) -> Path:
         raise
 
 
+def _fsync_parent_directories(paths: Iterable[Path]) -> None:
+    for directory in sorted({path.parent for path in paths}, key=lambda item: item.as_posix()):
+        descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
 def _replace_outputs(root: Path, outputs: dict[Path, bytes]) -> None:
     absolute = {root / relative: data for relative, data in outputs.items()}
-    before = {path: path.read_bytes() for path in absolute}
-    staged = {path: _stage(path, data) for path, data in absolute.items()}
+    invalid = [
+        path for path in absolute if path.is_symlink() or (path.exists() and not path.is_file())
+    ]
+    if invalid:
+        raise AuditError(
+            "generated output destination is not a regular file: "
+            + ", ".join(path.as_posix() for path in sorted(invalid))
+        )
+    before = {path: path.read_bytes() if path.is_file() else None for path in absolute}
+    staged: dict[Path, Path] = {}
+    try:
+        for path, data in absolute.items():
+            staged[path] = _stage(path, data)
+    except BaseException:
+        for staged_path in staged.values():
+            staged_path.unlink(missing_ok=True)
+        raise
     replaced: list[Path] = []
     try:
         for path in sorted(absolute, key=lambda item: item.as_posix()):
             os.replace(staged[path], path)
             replaced.append(path)
-        for directory in sorted(
-            {path.parent for path in absolute}, key=lambda item: item.as_posix()
-        ):
-            descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        _fsync_parent_directories(absolute)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for path in reversed(replaced):
+            rollback: Path | None = None
             try:
-                os.fsync(descriptor)
+                previous = before[path]
+                if previous is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    rollback = _stage(path, previous)
+                    os.replace(rollback, path)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"{path}: {rollback_exc}")
             finally:
-                os.close(descriptor)
-    except BaseException:
-        for path in replaced:
-            rollback = _stage(path, before[path])
-            os.replace(rollback, path)
+                if rollback is not None:
+                    rollback.unlink(missing_ok=True)
+        try:
+            _fsync_parent_directories(replaced)
+        except BaseException as rollback_exc:
+            rollback_errors.append(f"directory fsync: {rollback_exc}")
+        if rollback_errors:
+            raise AuditError(
+                "generated status rollback failed after write error: " + "; ".join(rollback_errors)
+            ) from exc
         raise
     finally:
         for path in staged.values():
@@ -2181,11 +2417,18 @@ def stale_output_paths(root: Path, outputs: dict[Path, bytes]) -> list[Path]:
     )
 
 
+def _paths_alias(left: Path, right: Path) -> bool:
+    return left == right or (left.exists() and right.exists() and os.path.samefile(left, right))
+
+
 def _resolve_optional_output(root: Path, value: Path) -> Path:
     path = value.resolve() if value.is_absolute() else (root / value).resolve()
-    for frozen in FROZEN_UI_EVIDENCE:
-        if path == (root / frozen).resolve():
-            raise AuditError(f"refusing to overwrite frozen v0.2 evidence: {frozen}")
+    for protected in PROTECTED_OPTIONAL_OUTPUTS:
+        if not _paths_alias(path, (root / protected).resolve()):
+            continue
+        if protected in FROZEN_UI_EVIDENCE:
+            raise AuditError(f"refusing to overwrite frozen v0.2 evidence: {protected}")
+        raise AuditError(f"refusing optional-output collision with governed path: {protected}")
     return path
 
 
@@ -2204,6 +2447,20 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(args.root).resolve(strict=True)
         if args.check and (args.csv_output is not None or args.json_output is not None):
             raise AuditError("--check is strictly no-write and rejects output paths")
+        csv_output = (
+            _resolve_optional_output(root, args.csv_output) if args.csv_output is not None else None
+        )
+        json_output = (
+            _resolve_optional_output(root, args.json_output)
+            if args.json_output is not None
+            else None
+        )
+        if (
+            csv_output is not None
+            and json_output is not None
+            and _paths_alias(csv_output, json_output)
+        ):
+            raise AuditError("CSV and JSON optional outputs must use different paths")
         audit = run_audit(root)
         if len(audit.actions) < args.minimum_action_rows:
             raise AuditError(
@@ -2225,10 +2482,10 @@ def main(argv: list[str] | None = None) -> int:
                 (root / relative).read_bytes() != expected for relative, expected in outputs.items()
             ):
                 raise AuditError("generated status readback differs from validated bytes")
-            if args.csv_output is not None:
-                write_csv(_resolve_optional_output(root, args.csv_output), audit.actions)
-            if args.json_output is not None:
-                write_json(_resolve_optional_output(root, args.json_output), audit)
+            if csv_output is not None:
+                write_csv(csv_output, audit.actions)
+            if json_output is not None:
+                write_json(json_output, audit)
         status = canonical_status(audit)
         print(
             json.dumps(
