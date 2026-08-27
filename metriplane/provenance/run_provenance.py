@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import threading
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -332,7 +333,9 @@ class _ReservationAuthority:
     inode: int
 
 
-_IN_PROCESS_RUN_AUTHORITIES: dict[str, _ReservationAuthority] = {}
+_IN_PROCESS_RUN_CONTEXTS: weakref.WeakValueDictionary[str, RunContext] = (
+    weakref.WeakValueDictionary()
+)
 _IN_PROCESS_RUN_AUTHORITIES_LOCK = threading.RLock()
 
 
@@ -340,14 +343,15 @@ def _authority_key(path: Path) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
-def _remember_run_authority(authority: _ReservationAuthority) -> None:
+def _remember_run_context(context: RunContext) -> None:
     with _IN_PROCESS_RUN_AUTHORITIES_LOCK:
-        _IN_PROCESS_RUN_AUTHORITIES[_authority_key(authority.run_dir)] = authority
+        _IN_PROCESS_RUN_CONTEXTS[_authority_key(context.run_dir)] = context
 
 
 def _in_process_run_authority(candidate: Path) -> _ReservationAuthority | None:
     with _IN_PROCESS_RUN_AUTHORITIES_LOCK:
-        return _IN_PROCESS_RUN_AUTHORITIES.get(_authority_key(candidate))
+        context = _IN_PROCESS_RUN_CONTEXTS.get(_authority_key(candidate))
+        return None if context is None else context._authority
 
 
 @dataclass(slots=True)
@@ -739,7 +743,7 @@ def _create_unreserved_run_directory(base: Path, run_id: str) -> _ClaimedRunDire
     return _claim_authorized_run_directory(authority)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class RunContext:
     run_id: str
     run_dir: Path
@@ -758,6 +762,7 @@ class RunContext:
     config_yaml: Path
     config_canonical_json_path: Path
     session_jsonl: Path
+    _authority: _ReservationAuthority = dataclasses.field(repr=False, compare=False)
 
     def header_record(self) -> dict[str, Any]:
         return {
@@ -994,8 +999,9 @@ def create_run_context(
             config_yaml=config_yaml,
             config_canonical_json_path=cfg_canon_path,
             session_jsonl=session_jsonl,
+            _authority=claimed_directory.authority,
         )
-        _remember_run_authority(claimed_directory.authority)
+        _remember_run_context(context)
         return context
     finally:
         claimed_directory.close()
