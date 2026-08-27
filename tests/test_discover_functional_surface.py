@@ -111,6 +111,21 @@ def _run(root: Path, command: str) -> int:
     )
 
 
+def _parser_fixture(tmp_path: Path, body: str) -> Path:
+    root = tmp_path / "parser-repo"
+    root.mkdir()
+    (root / "cli.py").write_text(
+        "import argparse\n\n"
+        "def main():\n"
+        "    parser = argparse.ArgumentParser()\n"
+        "    commands = parser.add_subparsers()\n"
+        f"{body}"
+        "    return parser\n",
+        encoding="utf-8",
+    )
+    return root
+
+
 def _generated_rows(document: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in document["rows"] if row["id"].startswith(scanner.ROW_PREFIX)]
 
@@ -272,6 +287,36 @@ def test_dynamic_alias_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(scanner.DiscoveryError, match="dynamic add_parser aliases"):
         scanner.discover(root)
+
+
+def test_expression_form_add_parser_is_discovered(tmp_path: Path) -> None:
+    root = _parser_fixture(tmp_path, '    commands.add_parser("hidden")\n')
+
+    commands = scanner._parser_commands(root, "cli.py", "main", ("tool",))
+
+    assert [(item.command, item.group) for item in commands] == [(("tool", "hidden"), False)]
+
+
+def test_dynamic_alias_kwargs_fail_closed(tmp_path: Path) -> None:
+    root = _parser_fixture(
+        tmp_path,
+        '    aliases = {"aliases": ["compat"]}\n    commands.add_parser("canonical", **aliases)\n',
+    )
+
+    with pytest.raises(scanner.DiscoveryError, match="dynamic add_parser aliases"):
+        scanner._parser_commands(root, "cli.py", "main", ("tool",))
+
+
+def test_nested_parser_builder_fails_closed(tmp_path: Path) -> None:
+    root = _parser_fixture(
+        tmp_path,
+        "    def unused():\n"
+        '        commands.add_parser("phantom")\n'
+        '    commands.add_parser("real")\n',
+    )
+
+    with pytest.raises(scanner.DiscoveryError, match="nested parser declarations"):
+        scanner._parser_commands(root, "cli.py", "main", ("tool",))
 
 
 def test_unresolved_entry_point_target_fails_closed(tmp_path: Path) -> None:

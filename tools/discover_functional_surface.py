@@ -286,9 +286,17 @@ def _line(node: ast.AST) -> int:
 
 def _literal_aliases(call: ast.Call, *, source: str) -> tuple[str, ...]:
     values: tuple[str, ...] = ()
+    aliases_seen = False
     for keyword in call.keywords:
+        if keyword.arg is None:
+            _fail(
+                f"dynamic add_parser aliases via **kwargs are forbidden in {source}:{call.lineno}"
+            )
         if keyword.arg != "aliases":
             continue
+        if aliases_seen:
+            _fail(f"duplicate add_parser aliases are forbidden in {source}:{call.lineno}")
+        aliases_seen = True
         if not isinstance(keyword.value, (ast.List, ast.Tuple)):
             _fail(f"dynamic add_parser aliases are forbidden in {source}:{call.lineno}")
         aliases: list[str] = []
@@ -300,6 +308,69 @@ def _literal_aliases(call: ast.Call, *, source: str) -> tuple[str, ...]:
             _fail(f"duplicate add_parser aliases are forbidden in {source}:{call.lineno}")
         values = tuple(sorted(aliases))
     return values
+
+
+class _ScopeCollector(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.nodes: list[ast.AST] = []
+        self.nested_scopes: list[ast.AST] = []
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self.nodes.append(node)
+        super().generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.nested_scopes.append(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.nested_scopes.append(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.nested_scopes.append(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self.nested_scopes.append(node)
+
+
+def _parser_api_attribute(call: ast.Call) -> tuple[str, str] | None:
+    attribute = _call_attribute(call)
+    if attribute is None:
+        return None
+    receiver, method = attribute
+    if method in {"add_parser", "add_subparsers"} or (
+        receiver == "argparse" and method == "ArgumentParser"
+    ):
+        return attribute
+    return None
+
+
+def _function_scope_nodes(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, *, source: str
+) -> tuple[ast.AST, ...]:
+    collector = _ScopeCollector()
+    for statement in function.body:
+        collector.visit(statement)
+    for scope in collector.nested_scopes:
+        if any(
+            isinstance(candidate, ast.Call) and _parser_api_attribute(candidate) is not None
+            for candidate in ast.walk(scope)
+        ):
+            _fail(f"nested parser declarations are forbidden in {source}:{_line(scope)}")
+    return tuple(
+        sorted(
+            collector.nodes,
+            key=lambda node: (_line(node), int(getattr(node, "col_offset", -1))),
+        )
+    )
+
+
+def _direct_call(node: ast.AST) -> tuple[str | None, ast.Call] | None:
+    assigned = _assignment(node)
+    if assigned is not None:
+        return assigned
+    if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+        return None, node.value
+    return None
 
 
 def _parser_commands(
@@ -314,14 +385,17 @@ def _parser_commands(
     _function(module, function_name, source=source)
     pending = [function_name]
     reachable: list[str] = []
+    scoped_nodes: dict[str, tuple[ast.AST, ...]] = {}
     while pending:
         current = pending.pop()
         if current in reachable:
             continue
         reachable.append(current)
+        nodes = _function_scope_nodes(functions[current], source=source)
+        scoped_nodes[current] = nodes
         called = {
             call.func.id
-            for call in ast.walk(functions[current])
+            for call in nodes
             if isinstance(call, ast.Call)
             and isinstance(call.func, ast.Name)
             and call.func.id in functions
@@ -329,26 +403,30 @@ def _parser_commands(
         pending.extend(sorted(called, reverse=True))
     declarations: list[tuple[CommandPath, tuple[str, ...]]] = []
     for reachable_name in reachable:
-        nodes = sorted(
-            ast.walk(functions[reachable_name]), key=lambda node: getattr(node, "lineno", -1)
-        )
+        nodes = scoped_nodes[reachable_name]
         parser_paths: dict[str, CommandPath] = {}
         subparser_paths: dict[str, CommandPath] = {}
+        handled_calls: set[int] = set()
         for node in nodes:
-            assigned = _assignment(node)
-            if assigned is None:
+            direct = _direct_call(node)
+            if direct is None:
                 continue
-            target, call = assigned
-            attribute = _call_attribute(call)
+            target, call = direct
+            attribute = _parser_api_attribute(call)
             if attribute is None:
                 continue
+            handled_calls.add(id(call))
             receiver, method = attribute
             if method == "ArgumentParser" and receiver == "argparse":
+                if target is None:
+                    _fail(f"ArgumentParser must be assigned in {source}:{_line(node)}")
                 if target in parser_paths or target in subparser_paths:
                     _fail(f"ambiguous parser variable {target!r} in {source}:{_line(node)}")
                 parser_paths[target] = prefix
                 continue
             if method == "add_subparsers":
+                if target is None:
+                    _fail(f"add_subparsers must be assigned in {source}:{_line(node)}")
                 if receiver not in parser_paths:
                     _fail(f"unresolved add_subparsers owner in {source}:{_line(node)}")
                 if target in parser_paths or target in subparser_paths:
@@ -372,9 +450,21 @@ def _parser_commands(
             if command in {item[0] for item in declarations}:
                 _fail(f"duplicate command path is forbidden: {' '.join(command)}")
             declarations.append((command, _literal_aliases(call, source=source)))
+            if target is None:
+                continue
             if target in parser_paths or target in subparser_paths:
                 _fail(f"ambiguous parser variable {target!r} in {source}:{_line(node)}")
             parser_paths[target] = command
+        for node in nodes:
+            if (
+                isinstance(node, ast.Call)
+                and _parser_api_attribute(node) is not None
+                and id(node) not in handled_calls
+            ):
+                _fail(
+                    "parser declarations must be direct assignments or expressions in "
+                    f"{source}:{_line(node)}"
+                )
     command_set = {item[0] for item in declarations}
     return tuple(
         ParserCommand(
