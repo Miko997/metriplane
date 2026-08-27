@@ -412,11 +412,15 @@ def test_current_governed_surface_has_exact_measured_counts():
         key: audit.summary[key]
         for key in ("ui_partial", "ui_missing", "critical_bugs", "high_bugs")
     } == {
-        "ui_partial": 0,
+        "ui_partial": 2,
         "ui_missing": 8,
         "critical_bugs": 4,
-        "high_bugs": 7,
+        "high_bugs": 9,
     }
+    by_id = {action.action_id: action for action in audit.actions}
+    assert by_id["cli.doctor"].coverage_status == "ui_full"
+    assert by_id["cli.atlas"].coverage_status == "ui_partial"
+    assert by_id["cli.sentinel"].coverage_status == "ui_partial"
 
 
 def test_frozen_baseline_has_complete_typed_crosswalk():
@@ -511,7 +515,7 @@ def test_committed_status_matches_current_governed_surface():
     assert stale_output_paths(ROOT, outputs) == []
     assert b"Static inventory result: **FAIL**" in outputs[Path("docs/qa/ui_parity_report.md")]
     assert (
-        b"Release-blocking P0/P1 coverage rows: `11`"
+        b"Release-blocking P0/P1 coverage rows: `13`"
         in outputs[Path("docs/qa/ui_missing_features_report.md")]
     )
     generated_rows = [

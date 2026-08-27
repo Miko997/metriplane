@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `03515a6439949263d67d6783187ff0b435f004ac3aba2f6b70315eded3f47667`
+Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918feaf87fd2451ff76`
 
 Static inventory result: **FAIL**
 
@@ -18,8 +18,8 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | metric | value |
 | --- | --- |
 | total_discovered_features | 157 |
-| ui_full | 66 |
-| ui_partial | 0 |
+| ui_full | 64 |
+| ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 8 |
@@ -34,7 +34,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | data_needs_atlas_buttons_never_enabled | 0 |
 | read_only_fallback_endpoints | 6 |
 | critical_bugs | 4 |
-| high_bugs | 7 |
+| high_bugs | 9 |
 
 ## Stable Features Fully Available In UI
 
@@ -74,9 +74,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | api.runner.job_detail | Runner job detail | metriplane/runner/service.py | GET /jobs/<id> | web/dashboard/*.js | GET /jobs/<id> | ui_full | P0 |  |
 | api.runner.jobs | Recent runner jobs | metriplane/runner/service.py | GET /jobs | web/dashboard/*.js | GET /jobs | ui_full | P1 |  |
 | api.runner.status | Runner status | metriplane/runner/service.py | GET /status | web/dashboard/*.js | GET /status | ui_full | P0 |  |
-| cli.atlas | metriplane atlas | metriplane/cli.py | python -m metriplane.cli atlas | metriplane/runner/allowlist.py | runner action with dashboard coverage | ui_full | P1 | Exposed through a dashboard-covered runner allowlist action. |
 | cli.doctor | metriplane doctor | metriplane/cli.py | python -m metriplane.cli doctor | metriplane/runner/allowlist.py | runner action with dashboard coverage | ui_full | P0 | Exposed through a dashboard-covered runner allowlist action. |
-| cli.sentinel | metriplane sentinel | metriplane/cli.py | python -m metriplane.cli sentinel | metriplane/runner/allowlist.py | runner action with dashboard coverage | ui_full | P1 | Exposed through a dashboard-covered runner allowlist action. |
 | runner.atlas-demo | Build Evidence Sample | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas run --session-jsonl datasets/demo/atlas/assembly_cell_missing_tool.jsonl --pack configs/domain_packs/assembly_cell --out web/dashboard/atlas_run --run-id metriplane_sample | web/dashboard/atlas.html; web/dashboard/atlas.html | Build sample run; Run | ui_full | P1 | Run the Metriplane evidence workflow over the assembly-cell sample and publish local dashboard artifacts |
 | runner.atlas-edge-doctor | Run Edge Readiness | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas edge doctor --runs-root web/dashboard/atlas_run --min-free-mb 64 | web/dashboard/atlas.html | Run | ui_full | P2 | Check generated evidence storage and edge-appliance readiness signals |
 | runner.atlas-freeze-build | Build Audit Snapshot | metriplane/runner/allowlist.py | _PYTHON -m metriplane.cli atlas freeze build --root . --out web/dashboard/atlas_run/evidence_freeze | web/dashboard/atlas.html | Run | ui_full | P2 | Build a local evidence audit and review-note snapshot |
@@ -111,6 +109,8 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| cli.atlas | metriplane atlas | metriplane/cli.py | python -m metriplane.cli atlas | metriplane/runner/allowlist.py | dashboard-covered CLI subcommand | ui_partial | P1 | One or more subcommands are exposed; the root command is not full UI coverage. |
+| cli.sentinel | metriplane sentinel | metriplane/cli.py | python -m metriplane.cli sentinel | metriplane/runner/allowlist.py | dashboard-covered CLI subcommand | ui_partial | P1 | One or more subcommands are exposed; the root command is not full UI coverage. |
 | cli.start | metriplane start | metriplane/cli.py | python -m metriplane.cli start | web/dashboard/* | python -m metriplane.cli start | ui_copy_command_only | P0 |  |
 | tool.analyze_id_stability_jsonl | Analyze Id Stability Jsonl | tools/analyze_id_stability_jsonl.py | python tools/analyze_id_stability_jsonl.py | web/dashboard/* | analyze_id_stability_jsonl.py | ui_copy_command_only | P2 |  |
 | tool.calibrate_intrinsics_chessboard | Calibrate Intrinsics Chessboard | tools/calibrate_intrinsics_chessboard.py | python tools/calibrate_intrinsics_chessboard.py | web/dashboard/* | calibrate_intrinsics_chessboard.py | ui_copy_command_only | P2 |  |

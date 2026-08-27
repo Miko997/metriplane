@@ -7,20 +7,22 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `03515a6439949263d67d6783187ff0b435f004ac3aba2f6b70315eded3f47667`
+Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918feaf87fd2451ff76`
 
 - Missing features total: `8`
-- Release-blocking P0/P1 coverage rows: `11`
+- Release-blocking P0/P1 coverage rows: `13`
 
 ## Release-Blocking P0/P1 Coverage
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | cli.ask | metriplane ask | metriplane/cli.py | python -m metriplane.cli ask | - | - | ui_missing | P1 |  |
+| cli.atlas | metriplane atlas | metriplane/cli.py | python -m metriplane.cli atlas | metriplane/runner/allowlist.py | dashboard-covered CLI subcommand | ui_partial | P1 | One or more subcommands are exposed; the root command is not full UI coverage. |
 | cli.camera-trust | metriplane camera-trust | metriplane/cli.py | python -m metriplane.cli camera-trust | - | - | ui_missing | P1 |  |
 | cli.cleanup | metriplane cleanup | metriplane/cli.py | python -m metriplane.cli cleanup | - | - | ui_missing | P0 |  |
 | cli.command-center | metriplane command-center | metriplane/cli.py | python -m metriplane.cli command-center | - | - | ui_missing | P1 |  |
 | cli.replay | metriplane replay | metriplane/cli.py | python -m metriplane.cli replay | - | - | ui_missing | P1 |  |
+| cli.sentinel | metriplane sentinel | metriplane/cli.py | python -m metriplane.cli sentinel | metriplane/runner/allowlist.py | dashboard-covered CLI subcommand | ui_partial | P1 | One or more subcommands are exposed; the root command is not full UI coverage. |
 | cli.start | metriplane start | metriplane/cli.py | python -m metriplane.cli start | web/dashboard/* | python -m metriplane.cli start | ui_copy_command_only | P0 |  |
 | cli.status | metriplane status | metriplane/cli.py | python -m metriplane.cli status | - | - | ui_missing | P0 |  |
 | cli.stop | metriplane stop | metriplane/cli.py | python -m metriplane.cli stop | - | - | ui_missing | P0 |  |

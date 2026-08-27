@@ -1287,11 +1287,12 @@ def _cli_command_is_documented(action: Action, ui: dict[str, Any]) -> bool:
     return installed_command.search(ui["html_text"]) is not None
 
 
-def _allowlist_cli_root(command: str) -> str | None:
+def _allowlist_cli_invocation(command: str) -> tuple[str, bool] | None:
     parts = command.split()
     for index in range(len(parts) - 2):
         if parts[index : index + 2] == ["-m", "metriplane.cli"]:
-            return parts[index + 2]
+            tail = parts[index + 2 :]
+            return tail[0], len(tail) == 1
     return None
 
 
@@ -1393,21 +1394,25 @@ def build_actions(root: Path) -> tuple[list[Action], dict[str, Any]]:
         seen.add(action.action_id)
         coverage_for_action(action, ui)
     unique = sorted(actions, key=lambda action: action.action_id)
-    allowlist_commands = "\n".join(
-        action.command_or_endpoint for action in unique if action.source == "allowlist"
-    )
-    allowlist_by_cli_root: dict[str, list[Action]] = {}
+    allowlist_tokens = {
+        token
+        for action in unique
+        if action.source == "allowlist"
+        for token in action.command_or_endpoint.split()
+    }
+    allowlist_by_cli_root: dict[str, list[tuple[Action, bool]]] = {}
     for runner_action in unique:
         if runner_action.source != "allowlist":
             continue
-        cli_root = _allowlist_cli_root(runner_action.command_or_endpoint)
-        if cli_root is not None:
-            allowlist_by_cli_root.setdefault(cli_root, []).append(runner_action)
+        invocation = _allowlist_cli_invocation(runner_action.command_or_endpoint)
+        if invocation is not None:
+            cli_root, exact = invocation
+            allowlist_by_cli_root.setdefault(cli_root, []).append((runner_action, exact))
     for action in unique:
         if action.source == "cli":
             subcommand = action.action_id.removeprefix("cli.")
             mapped = allowlist_by_cli_root.get(subcommand, [])
-            if any(item.coverage_status == "ui_full" for item in mapped):
+            if any(item.coverage_status == "ui_full" and exact for item, exact in mapped):
                 action.coverage_status = "ui_full"
                 action.ui_matches = [
                     {
@@ -1417,7 +1422,22 @@ def build_actions(root: Path) -> tuple[list[Action], dict[str, Any]]:
                     }
                 ]
                 action.notes = "Exposed through a dashboard-covered runner allowlist action."
-            elif any(item.coverage_status == "ui_disabled_with_reason" for item in mapped):
+            elif any(item.coverage_status == "ui_full" for item, _exact in mapped):
+                action.coverage_status = "ui_partial"
+                action.ui_matches = [
+                    {
+                        "file": "metriplane/runner/allowlist.py",
+                        "label": "dashboard-covered CLI subcommand",
+                        "kind": "allowlist",
+                    }
+                ]
+                action.notes = (
+                    "One or more subcommands are exposed; the root command is not full UI coverage."
+                )
+            elif any(
+                item.coverage_status == "ui_disabled_with_reason" and exact
+                for item, exact in mapped
+            ):
                 action.coverage_status = "ui_disabled_with_reason"
                 action.ui_matches = [
                     {
@@ -1429,7 +1449,7 @@ def build_actions(root: Path) -> tuple[list[Action], dict[str, Any]]:
                 action.notes = "Exposed through a disabled runner allowlist action with a reason."
         elif action.source == "tool" and action.coverage_status == "ui_missing":
             rel = action.source_path
-            if rel in allowlist_commands:
+            if rel in allowlist_tokens:
                 action.coverage_status = "ui_full"
                 action.ui_matches = [
                     {
