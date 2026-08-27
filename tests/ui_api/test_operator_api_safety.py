@@ -4,6 +4,13 @@
 from __future__ import annotations
 
 import errno
+import json
+import os
+import subprocess
+import sys
+import textwrap
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -180,6 +187,159 @@ def test_generate_report_rejects_runs_sibling_prefix(tmp_path: Path):
     assert "under the platform runs directory" in payload["error"]
 
 
+def test_checksum_fails_closed_when_authorized_parent_is_swapped(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import operator_api
+
+    api = make_api(tmp_path)
+    run = api._runs_root() / "authorized"
+    parked = run.with_name("authorized-original")
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    artifact = run / "artifact.txt"
+    artifact.write_text("authorized bytes\n", encoding="utf-8")
+    (outside / artifact.name).write_text("outside bytes\n", encoding="utf-8")
+    original_open = operator_api.open_pinned_file
+
+    @contextmanager
+    def swap_after_pin(allowed_roots, requested):
+        with original_open(allowed_roots, requested) as pinned:
+            run.rename(parked)
+            run.symlink_to(outside, target_is_directory=True)
+            yield pinned
+
+    monkeypatch.setattr(operator_api, "open_pinned_file", swap_after_pin)
+
+    status, payload = api._checksum({"path": str(artifact)})
+
+    assert status == 400
+    assert "regular files" in payload["error"]
+
+
+def test_generate_report_transfers_a_pinned_session_fd(
+    tmp_path: Path,
+) -> None:
+    class DeferredExecutor:
+        command: list[str]
+        pass_fds: tuple[int, ...]
+
+        def execute(self, *, command_id, command, timeout_s, pass_fds=()):
+            assert command_id == "generate-zones"
+            assert timeout_s == 120
+            self.command = command
+            self.pass_fds = pass_fds
+            return "job-pinned-report"
+
+    executor = DeferredExecutor()
+    api = make_api(tmp_path)
+    api.executor = executor
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "zones_report_jsonl.py").write_text("# pinned report fixture\n")
+    run = api._runs_root() / "authorized"
+    parked = run.with_name("authorized-original")
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    session = run / "session.jsonl"
+    session.write_text("authorized session\n", encoding="utf-8")
+    (outside / session.name).write_text("outside session\n", encoding="utf-8")
+
+    status, payload = api._generate_report(
+        {"type": "zones", "session": str(session), "prefix": "secure"}
+    )
+
+    assert status == 200
+    assert payload["job_id"] == "job-pinned-report"
+    assert str(session) in payload["command_preview"]
+    assert "/proc/self/fd/" not in payload["command_preview"]
+    assert len(executor.pass_fds) == 1
+    inherited_fd = executor.pass_fds[0]
+    try:
+        assert executor.command[2].endswith(f"/{inherited_fd}")
+        run.rename(parked)
+        run.symlink_to(outside, target_is_directory=True)
+        assert Path(executor.command[2]).read_text() == "authorized session\n"
+    finally:
+        os.close(inherited_fd)
+
+
+def test_generate_report_fails_closed_without_descriptor_backed_input(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import operator_api
+
+    api = make_api(tmp_path)
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "zones_report_jsonl.py").write_text("# report fixture\n")
+    session = api._runs_root() / "authorized" / "session.jsonl"
+    session.parent.mkdir(parents=True)
+    session.write_text("authorized session\n", encoding="utf-8")
+
+    def unsupported(_file_fd: int) -> str:
+        raise OSError(errno.ENOTSUP, "descriptor-backed input unavailable")
+
+    monkeypatch.setattr(operator_api, "inherited_fd_path", unsupported)
+
+    status, payload = api._generate_report(
+        {"type": "zones", "session": str(session), "prefix": "secure"}
+    )
+
+    assert status == 503
+    assert "cannot be opened safely" in payload["error"]
+    api.executor.execute.assert_not_called()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux /proc descriptor path")
+def test_generate_report_async_child_reads_pinned_inode_after_parent_swap(
+    tmp_path: Path,
+) -> None:
+    from metriplane.runner.executor import CommandExecutor
+
+    api = make_api(tmp_path)
+    executor = CommandExecutor()
+    executor.repo_root = tmp_path
+    api.executor = executor
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "zones_report_jsonl.py").write_text(
+        "import pathlib, sys, time\n"
+        "time.sleep(0.2)\n"
+        "print(pathlib.Path(sys.argv[1]).read_text(), end='')\n",
+        encoding="utf-8",
+    )
+    run = api._runs_root() / "authorized"
+    parked = run.with_name("authorized-original")
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    session = run / "session.jsonl"
+    session.write_text("authorized session\n", encoding="utf-8")
+    (outside / session.name).write_text("outside session\n", encoding="utf-8")
+
+    status, payload = api._generate_report(
+        {"type": "zones", "session": str(session), "prefix": "secure"}
+    )
+    assert status == 200
+    run.rename(parked)
+    run.symlink_to(outside, target_is_directory=True)
+
+    deadline = time.monotonic() + 5
+    job = executor.get_job(payload["job_id"])
+    while job is not None and job["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.02)
+        job = executor.get_job(payload["job_id"])
+
+    assert job is not None
+    assert job["status"] == "succeeded"
+    assert job["stdout"] == "authorized session\n"
+
+
 @pytest.mark.parametrize("endpoint", ["start-fusion", "generate-report", "save-config"])
 def test_operator_path_loops_are_deterministic_client_errors(
     tmp_path: Path,
@@ -302,6 +462,89 @@ def test_command_center_does_not_read_external_camera_trust_symlink(tmp_path: Pa
     assert status == 200
     assert payload["camera_trust"] is None
     assert payload["note"] == "no camera_trust.json in this run"
+
+
+def test_command_center_fails_closed_when_selected_run_parent_is_swapped(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from metriplane.runner import operator_api
+
+    api = make_api(tmp_path)
+    run = api._runs_root() / "authorized"
+    parked = run.with_name("authorized-original")
+    outside = tmp_path / "outside"
+    run.mkdir(parents=True)
+    outside.mkdir()
+    (run / "incident.json").write_text(
+        '{"incident_id": "authorized"}\n',
+        encoding="utf-8",
+    )
+    (outside / "incident.json").write_text(
+        '{"incident_id": "outside"}\n',
+        encoding="utf-8",
+    )
+    original_open = operator_api.open_pinned_directory
+
+    @contextmanager
+    def swap_after_pin(allowed_roots, requested):
+        with original_open(allowed_roots, requested) as pinned:
+            run.rename(parked)
+            run.symlink_to(outside, target_is_directory=True)
+            yield pinned
+
+    monkeypatch.setattr(operator_api, "open_pinned_directory", swap_after_pin)
+
+    status, payload = api._cc_incidents({"run_dir": str(run)})
+
+    assert status == 200
+    assert payload["incidents"] == []
+
+
+def test_secure_operator_writes_ignore_umask_zero(tmp_path: Path) -> None:
+    script = textwrap.dedent(
+        """
+        import json
+        import os
+        import stat
+        import sys
+        from pathlib import Path
+
+        from metriplane.runner.safe_writes import open_secure_directory
+
+        root = Path(sys.argv[1])
+        os.umask(0)
+        root.mkdir(mode=0o700)
+        with open_secure_directory(root, Path("configs/local"), create=True) as directory:
+            directory.atomic_write("new.yaml", b"new\\n", overwrite=False)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            existing_fd = os.open("existing.yaml", flags, 0o666, dir_fd=directory.fd)
+            os.write(existing_fd, b"old\\n")
+            os.close(existing_fd)
+            directory.atomic_write("existing.yaml", b"replacement\\n", overwrite=True)
+        paths = {
+            "configs": root / "configs",
+            "local": root / "configs" / "local",
+            "new": root / "configs" / "local" / "new.yaml",
+            "existing": root / "configs" / "local" / "existing.yaml",
+        }
+        print(json.dumps({name: stat.S_IMODE(path.stat().st_mode) for name, path in paths.items()}))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path / "repo")],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    assert json.loads(result.stdout) == {
+        "configs": 0o700,
+        "local": 0o700,
+        "new": 0o600,
+        "existing": 0o600,
+    }
 
 
 def _symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool) -> None:

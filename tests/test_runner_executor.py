@@ -110,3 +110,39 @@ def test_injected_runner_paths_override_ambient_runs_for_subprocess(
     assert job is not None
     assert job["status"] == "succeeded"
     assert job["stdout"].strip() == str(paths.runs_dir)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor inheritance")
+def test_executor_inherits_owned_descriptor_and_closes_parent_copy(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "session.jsonl"
+    artifact.write_text("pinned session\n", encoding="utf-8")
+    file_fd = os.open(artifact, os.O_RDONLY)
+    executor = CommandExecutor()
+    executor.repo_root = tmp_path
+    code = (
+        "import os, sys; "
+        "fd=int(sys.argv[1]); "
+        "os.lseek(fd, 0, os.SEEK_SET); "
+        "print(os.read(fd, 4096).decode(), end='')"
+    )
+
+    job_id = executor.execute(
+        "inherited-fd",
+        [sys.executable, "-c", code, str(file_fd)],
+        timeout_s=10,
+        pass_fds=(file_fd,),
+    )
+
+    assert _wait_until(
+        lambda: (
+            executor.get_job(job_id) is not None and executor.get_job(job_id)["status"] != "running"
+        )  # type: ignore[index]
+    )
+    job = executor.get_job(job_id)
+    assert job is not None
+    assert job["status"] == "succeeded"
+    assert job["stdout"] == "pinned session\n"
+    with pytest.raises(OSError):
+        os.fstat(file_fd)

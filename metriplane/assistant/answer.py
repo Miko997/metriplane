@@ -8,13 +8,18 @@ from pathlib import Path
 from metriplane.assistant import retrieval
 from metriplane.assistant.intents import classify, supported_questions
 from metriplane.assistant.models import AssistantAnswer, AssistantQuery
+from metriplane.runner.safe_reads import PinnedDirectory
 
 
-def answer_question(question: str, run_dir: str | Path) -> AssistantAnswer:
+def answer_question(
+    question: str,
+    run_dir: str | Path | PinnedDirectory,
+) -> AssistantAnswer:
     intent = classify(question)
     q = AssistantQuery(question=question, run_dir=str(run_dir), intent=intent)
     handler = _HANDLERS.get(intent, _unknown)
-    return handler(q, Path(run_dir))
+    run = run_dir if isinstance(run_dir, PinnedDirectory) else Path(run_dir)
+    return handler(q, run)
 
 
 def _incident_search(q, run) -> AssistantAnswer:

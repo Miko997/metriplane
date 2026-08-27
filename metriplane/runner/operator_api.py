@@ -19,6 +19,8 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -33,6 +35,13 @@ from metriplane.paths import (
 )
 from metriplane.run_ids import validate_portable_run_id
 from metriplane.runner.command_center_api import find_run_artifact
+from metriplane.runner.safe_reads import (
+    PinnedDirectory,
+    UnsafeReadPathError,
+    inherited_fd_path,
+    open_pinned_directory,
+    open_pinned_file,
+)
 from metriplane.runner.safe_writes import (
     UnsafeWritePathError,
     WriteConflictError,
@@ -1148,16 +1157,7 @@ class OperatorAPI:
         if report_type not in ("zones", "id-stability"):
             return 400, {"error": "type must be 'zones' or 'id-stability'"}
 
-        # Validate the session path against the active platform run root.
-        try:
-            session = Path(session_path).expanduser().resolve(strict=True)
-        except FileNotFoundError:
-            return 404, {"error": f"Session file not found: {session_path}"}
-        except (OSError, RuntimeError):
-            return 400, {"error": "session path cannot be resolved"}
         runs_root = self._runs_root()
-        if not _is_relative_to(session, runs_root):
-            return 400, {"error": "session must be under the platform runs directory"}
         # Validate prefix
         if not _valid_name(out_prefix):
             return 400, {"error": "prefix must be safe name"}
@@ -1168,54 +1168,80 @@ class OperatorAPI:
         except (OSError, RuntimeError):
             return 503, {"error": "Evidence output directory is unavailable"}
 
-        if report_type == "zones":
-            # Validate profile for zones report
-            if profile and not _valid_name(profile):
-                return 400, {"error": "Invalid profile name"}
-
-            script = self.repo_root / "tools" / "zones_report_jsonl.py"
-            if not script.exists():
-                return 500, {"error": "tools/zones_report_jsonl.py not found"}
-
-            command = [
-                self._python, str(script),
-                str(session),
-                "--out", str(evidence_dir),
-                "--prefix", out_prefix,
-            ]
-            if profile:
-                profile_dir = _profile_dir(self.repo_root, profile)
-                zones_yaml = profile_dir / "zones.yaml"
-                if zones_yaml.exists():
-                    command += ["--zones", str(zones_yaml)]
-
-        else:  # id-stability
-            script = self.repo_root / "tools" / "analyze_id_stability_jsonl.py"
-            if not script.exists():
-                return 500, {"error": "tools/analyze_id_stability_jsonl.py not found"}
-
-            out_csv = evidence_dir / f"{out_prefix}_id_stability.csv"
-            command = [
-                self._python, str(script),
-                str(session),
-                "--out", str(out_csv),
-            ]
-
-        command_display = " ".join(str(x) for x in command)
-
+        inherited_session_fd: int | None = None
         try:
-            job_id = self.executor.execute(
-                command_id=f"generate-{report_type}",
-                command=command,
-                timeout_s=120,
-            )
-        except ValueError as exc:
-            return 409, {"error": str(exc)}
+            with open_pinned_file([runs_root], session_path) as session:
+                inherited_session_fd = session.duplicate_fd()
+                session_argument = inherited_fd_path(inherited_session_fd)
+
+                if report_type == "zones":
+                    # Validate profile for zones report
+                    if profile and not _valid_name(profile):
+                        return 400, {"error": "Invalid profile name"}
+
+                    script = self.repo_root / "tools" / "zones_report_jsonl.py"
+                    if not script.exists():
+                        return 500, {"error": "tools/zones_report_jsonl.py not found"}
+
+                    command = [
+                        self._python,
+                        str(script),
+                        session_argument,
+                        "--out",
+                        str(evidence_dir),
+                        "--prefix",
+                        out_prefix,
+                    ]
+                    if profile:
+                        profile_dir = _profile_dir(self.repo_root, profile)
+                        zones_yaml = profile_dir / "zones.yaml"
+                        if zones_yaml.exists():
+                            command += ["--zones", str(zones_yaml)]
+
+                else:  # id-stability
+                    script = self.repo_root / "tools" / "analyze_id_stability_jsonl.py"
+                    if not script.exists():
+                        return 500, {"error": "tools/analyze_id_stability_jsonl.py not found"}
+
+                    out_csv = evidence_dir / f"{out_prefix}_id_stability.csv"
+                    command = [
+                        self._python,
+                        str(script),
+                        session_argument,
+                        "--out",
+                        str(out_csv),
+                    ]
+
+                display_command = command.copy()
+                display_command[2] = str(session.display_path)
+                command_display = " ".join(str(x) for x in display_command)
+                try:
+                    job_id = self.executor.execute(
+                        command_id=f"generate-{report_type}",
+                        command=command,
+                        timeout_s=120,
+                        pass_fds=(inherited_session_fd,),
+                    )
+                except ValueError as exc:
+                    return 409, {"error": str(exc)}
+                inherited_session_fd = None
+                response_session = str(session.display_path)
+        except FileNotFoundError:
+            return 404, {"error": f"Session file not found: {session_path}"}
+        except UnsafeReadPathError:
+            return 400, {
+                "error": ("session must be under the platform runs directory and be a regular file")
+            }
+        except OSError as exc:
+            return 503, {"error": f"Session file cannot be opened safely: {exc}"}
+        finally:
+            if inherited_session_fd is not None:
+                os.close(inherited_session_fd)
 
         return 200, {
             "job_id": job_id,
             "type": report_type,
-            "session": str(session),
+            "session": response_session,
             "out_dir": str(evidence_dir),
             "command_preview": command_display,
         }
@@ -1227,41 +1253,33 @@ class OperatorAPI:
         if not isinstance(requested, str) or not requested.strip():
             return 400, {"error": "Checksum path must be a non-empty string"}
         path = requested.strip()
+        runs_root = self._runs_root()
+        allowed_roots = [runs_root, self.repo_root / "evidence"]
+
         try:
-            file_path = Path(path).expanduser().resolve(strict=True)
+            with open_pinned_file(allowed_roots, path) as artifact:
+                artifact_stat = artifact.stat()
+                h = hashlib.sha256()
+                for chunk in artifact.iter_bytes():
+                    h.update(chunk)
+                sha256 = h.hexdigest()
+                size_bytes = artifact_stat.st_size
         except FileNotFoundError:
             return 404, {"error": f"File not found: {path}"}
-        except (OSError, RuntimeError):
-            return 400, {"error": "Checksum path cannot be resolved"}
-        runs_root = self._runs_root()
-        allowed_roots = [runs_root]
-        try:
-            allowed_roots.append((self.repo_root / "evidence").resolve())
-        except (OSError, RuntimeError):
-            pass
+        except UnsafeReadPathError:
+            return 400, {
+                "error": "Can only checksum regular files under platform runs or evidence/"
+            }
+        except OSError as exc:
+            return 503, {"error": f"Checksum path cannot be opened safely: {exc}"}
 
-        # Only checksum files in the platform run root or evidence/.
-        if not any(_is_relative_to(file_path, root) for root in allowed_roots):
-            return 400, {"error": "Can only checksum files under platform runs or evidence/"}
-
-        if not file_path.is_file():
-            return 400, {"error": "Path is not a file"}
-
-        stat = file_path.stat()
-        size_mb = round(stat.st_size / 1e6, 2)
-
-        # Stream hash for large files
-        h = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        sha256 = h.hexdigest()
+        size_mb = round(size_bytes / 1e6, 2)
 
         return 200, {
             "path": path,
             "sha256": sha256,
             "size_mb": size_mb,
-            "size_bytes": stat.st_size,
+            "size_bytes": size_bytes,
         }
 
     # ── Sentinel command-center (read-only views) ──────────────────────────────
@@ -1272,33 +1290,52 @@ class OperatorAPI:
     # tree); otherwise the latest platform run is used.
 
     def _cc_allowed_roots(self) -> list[Path]:
-        roots = [self._runs_root()]
-        for candidate in (self.repo_root / "evidence", self.repo_root / "runs"):
-            try:
-                roots.append(candidate.resolve())
-            except (OSError, RuntimeError):
-                # A malformed legacy root must not break valid platform run paths.
-                continue
-        return roots
+        return [
+            self._runs_root(),
+            self.repo_root / "evidence",
+            self.repo_root / "runs",
+        ]
 
-    def _cc_resolve_run_dir(self, body: Dict) -> Optional[Path]:
+    def _enter_cc_directory(
+        self,
+        allowed_roots: list[Path],
+        requested: str | Path,
+    ) -> tuple[Any, PinnedDirectory] | None:
+        manager = open_pinned_directory(allowed_roots, requested)
+        try:
+            return manager, manager.__enter__()
+        except (FileNotFoundError, OSError, UnsafeReadPathError):
+            return None
+
+    @contextmanager
+    def _cc_open_run_dir(
+        self,
+        body: dict[str, Any],
+    ) -> Iterator[PinnedDirectory | None]:
         requested = (body or {}).get("run_dir")
         if requested:
             if not isinstance(requested, str):
-                return None
+                yield None
+                return
+            opened = self._enter_cc_directory(self._cc_allowed_roots(), requested)
+            if opened is None:
+                yield None
+                return
+            manager, run = opened
             try:
-                p = Path(requested).expanduser().resolve(strict=True)
-            except (OSError, RuntimeError):
-                return None
-            if any(p == r or r in p.parents for r in self._cc_allowed_roots()) and p.is_dir():
-                return p
-            return None
-        # Fall back to the latest platform run. Prefer runs with
-        # Command Center/Sentinel artifacts so a generic runtime session does not
-        # hide the incident demo or an operator review run.
+                yield run
+            finally:
+                manager.__exit__(None, None, None)
+            return
+
         runs_root = self._runs_root()
-        if not runs_root.exists():
-            return None
+        opened_root = self._enter_cc_directory([runs_root], runs_root)
+        if opened_root is None:
+            yield None
+            return
+        root_manager, root = opened_root
+        selected: PinnedDirectory | None = None
+        selected_score: tuple[int, float] | None = None
         command_center_markers = (
             "incident.json",
             "sentinel_summary.json",
@@ -1307,92 +1344,131 @@ class OperatorAPI:
             "objects.yaml",
         )
         generic_runtime_markers = ("session_excerpt.jsonl", "session.jsonl")
-
-        def with_markers(markers: tuple[str, ...]) -> list[Path]:
-            candidates: list[Path] = []
-            for candidate in runs_root.iterdir():
-                if candidate.is_symlink():
-                    continue
+        try:
+            try:
+                names = root.listdir()
+            except (OSError, UnsafeReadPathError):
+                names = []
+            for name in names:
+                candidate: PinnedDirectory | None = None
                 try:
-                    resolved = candidate.resolve(strict=True)
-                except (OSError, RuntimeError):
-                    continue
-                if runs_root not in resolved.parents or not resolved.is_dir():
-                    continue
-                if find_run_artifact(resolved, markers) is not None:
-                    candidates.append(resolved)
-            return candidates
+                    candidate = root.open_directory(Path(name))
+                    rank = 0
+                    if candidate.find_file(command_center_markers) is not None:
+                        rank = 2
+                    elif candidate.find_file(generic_runtime_markers) is not None:
+                        rank = 1
+                    if rank == 0:
+                        candidate.close()
+                        continue
+                    score = (rank, candidate.stat().st_mtime)
+                    if selected_score is None or score > selected_score:
+                        if selected is not None:
+                            selected.close()
+                        selected = candidate
+                        selected_score = score
+                        candidate = None
+                except (FileNotFoundError, OSError, UnsafeReadPathError):
+                    pass
+                finally:
+                    if candidate is not None:
+                        candidate.close()
+            try:
+                yield selected
+            finally:
+                if selected is not None:
+                    selected.close()
+        finally:
+            root_manager.__exit__(None, None, None)
 
-        dirs = with_markers(command_center_markers) or with_markers(generic_runtime_markers)
-        if not dirs:
-            return None
-        dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
-        return dirs[0]
+    def _cc_resolve_run_dir(self, body: dict[str, Any]) -> Path | None:
+        # Compatibility helper for callers that only need discovery. Endpoints
+        # keep the pinned authority open through _cc_open_run_dir instead.
+        with self._cc_open_run_dir(body) as run:
+            return run.display_path if run is not None else None
 
     def _cc_live_summary(self, body: Dict) -> Tuple[int, Dict]:
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"run_dir": None, "objects_count": 0, "incidents_count": 0,
-                         "alerts_count": 0, "open_incidents_count": 0,
-                         "health": {"overall": "NO_DATA"}}
         from metriplane.runner.command_center_api import get_live_summary
-        return 200, get_live_summary(run)
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {
+                    "run_dir": None,
+                    "objects_count": 0,
+                    "incidents_count": 0,
+                    "alerts_count": 0,
+                    "open_incidents_count": 0,
+                    "health": {"overall": "NO_DATA"},
+                }
+            return 200, get_live_summary(run)
 
     def _cc_objects(self, body: Dict) -> Tuple[int, Dict]:
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"objects": []}
         from metriplane.runner.command_center_api import get_objects
-        return 200, {"objects": get_objects(run), "run_dir": str(run)}
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {"objects": []}
+            return 200, {"objects": get_objects(run), "run_dir": str(run)}
 
     def _cc_incidents(self, body: Dict) -> Tuple[int, Dict]:
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"incidents": []}
         from metriplane.runner.command_center_api import get_incidents
-        return 200, {"incidents": get_incidents(run), "run_dir": str(run)}
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {"incidents": []}
+            return 200, {"incidents": get_incidents(run), "run_dir": str(run)}
 
     def _cc_traces(self, body: Dict) -> Tuple[int, Dict]:
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"traces": []}
         from metriplane.runner.command_center_api import get_traces
-        object_id = (body or {}).get("object_id")
-        return 200, {"traces": get_traces(run, object_id), "run_dir": str(run)}
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {"traces": []}
+            object_id = (body or {}).get("object_id")
+            return 200, {"traces": get_traces(run, object_id), "run_dir": str(run)}
 
     def _cc_camera_trust(self, body: Dict) -> Tuple[int, Dict]:
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"camera_trust": None}
-        from metriplane.camera_trust.export import read_camera_trust_report
-        ct = find_run_artifact(run, ["camera_trust.json"])
-        if ct is None:
-            return 200, {"camera_trust": None, "run_dir": str(run),
-                         "note": "no camera_trust.json in this run"}
-        try:
-            return 200, {"camera_trust": read_camera_trust_report(ct).model_dump(),
-                         "run_dir": str(run)}
-        except Exception as exc:
-            return 200, {"camera_trust": None, "error": str(exc)}
+        from metriplane.camera_trust.models import CameraTrustReportModel
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {"camera_trust": None}
+            ct = find_run_artifact(run, ["camera_trust.json"])
+            if ct is None:
+                return 200, {
+                    "camera_trust": None,
+                    "run_dir": str(run),
+                    "note": "no camera_trust.json in this run",
+                }
+            try:
+                report = CameraTrustReportModel.model_validate_json(ct.read_text())
+                return 200, {"camera_trust": report.model_dump(), "run_dir": str(run)}
+            except (OSError, UnicodeError, ValueError, UnsafeReadPathError) as exc:
+                return 200, {"camera_trust": None, "error": str(exc)}
 
     def _cc_frames(self, body: Dict) -> Tuple[int, Dict]:
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"frames": [], "incidents": []}
         from metriplane.runner.command_center_api import get_frames
-        data = get_frames(run)
-        data["run_dir"] = str(run)
-        return 200, data
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {"frames": [], "incidents": []}
+            data = get_frames(run)
+            data["run_dir"] = str(run)
+            return 200, data
 
     def _cc_ask(self, body: Dict) -> Tuple[int, Dict]:
         question = (body or {}).get("question", "").strip()
         if not question:
             return 400, {"error": "missing 'question'"}
-        run = self._cc_resolve_run_dir(body)
-        if run is None:
-            return 200, {"answer": "No run data available to answer from.",
-                         "intent": "unknown", "citations": [], "limitations":
-                         ["no run dir resolved"]}
         from metriplane.assistant.answer import answer_question
-        ans = answer_question(question, run)
-        return 200, ans.model_dump()
+
+        with self._cc_open_run_dir(body) as run:
+            if run is None:
+                return 200, {
+                    "answer": "No run data available to answer from.",
+                    "intent": "unknown",
+                    "citations": [],
+                    "limitations": ["no run dir resolved"],
+                }
+            ans = answer_question(question, run)
+            return 200, ans.model_dump()

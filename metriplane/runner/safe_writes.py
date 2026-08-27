@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _DARWIN_O_EVTONLY = 0x00008000
+_PRIVATE_DIRECTORY_MODE = 0o700
+_PRIVATE_FILE_MODE = 0o600
 
 
 class UnsafeWritePathError(ValueError):
@@ -123,7 +125,7 @@ def _open_child_directory(
             if not create:
                 raise
             try:
-                os.mkdir(name, mode=0o777, dir_fd=parent_fd)
+                os.mkdir(name, mode=_PRIVATE_DIRECTORY_MODE, dir_fd=parent_fd)
                 created = True
             except FileExistsError:
                 pass
@@ -139,6 +141,8 @@ def _open_child_directory(
             raise UnsafeWritePathError(
                 f"Unsafe operator output path '{display_path}': expected a directory"
             )
+        if created:
+            os.fchmod(child_fd, _PRIVATE_DIRECTORY_MODE)
         return child_fd, created
 
     raise UnsafeWritePathError(
@@ -366,14 +370,25 @@ def _write_all(file_fd: int, content: bytes) -> None:
         remaining = remaining[written:]
 
 
-def _create_staged_file(directory_fd: int, name: str, mode: int) -> tuple[str, int]:
+def _create_staged_file(directory_fd: int, name: str, _mode: int) -> tuple[str, int]:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     for _attempt in range(10):
         staged_name = f".{name}.tmp-{secrets.token_hex(8)}"
         try:
-            return staged_name, os.open(staged_name, flags, mode, dir_fd=directory_fd)
+            staged_fd = os.open(
+                staged_name,
+                flags,
+                _PRIVATE_FILE_MODE,
+                dir_fd=directory_fd,
+            )
         except FileExistsError:
             continue
+        try:
+            os.fchmod(staged_fd, _PRIVATE_FILE_MODE)
+        except BaseException:
+            os.close(staged_fd)
+            raise
+        return staged_name, staged_fd
     raise OSError(errno.EEXIST, f"could not allocate staged file for {name}")
 
 
@@ -448,12 +463,15 @@ class SecureDirectory:
             else None
         )
 
-        mode = stat.S_IMODE(expected.mode) if expected is not None else 0o666
         staged_name: str | None = None
         staged_fd: int | None = None
         staged_identity: _EntryIdentity | None = None
         try:
-            staged_name, staged_fd = _create_staged_file(self.fd, destination, mode)
+            staged_name, staged_fd = _create_staged_file(
+                self.fd,
+                destination,
+                _PRIVATE_FILE_MODE,
+            )
             staged_identity = _identity(os.fstat(staged_fd))
             _write_all(staged_fd, content)
             os.fsync(staged_fd)

@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 from metriplane.schema import FrameStateModel, frame_time_s
 from metriplane.sentinel.events import RuleAlert
@@ -15,11 +15,13 @@ from metriplane.sentinel.registry import ObjectRegistryConfig
 from metriplane.sentinel.rules import ObjectFilter, RuleDefinition, RuleSet
 
 
-def iter_frames(session_path: str | Path) -> Iterator[FrameStateModel]:
-    """Yield validated frames, rejecting malformed non-header records."""
-    for line_number, line in enumerate(
-        Path(session_path).read_text().splitlines(), start=1
-    ):
+def iter_frames_text(
+    content: str,
+    *,
+    source: str = "<session>",
+) -> Iterator[FrameStateModel]:
+    """Yield validated frames from already-authorized session content."""
+    for line_number, line in enumerate(content.splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
@@ -29,10 +31,15 @@ def iter_frames(session_path: str | Path) -> Iterator[FrameStateModel]:
                 continue
             yield FrameStateModel.model_validate(record)
         except Exception as exc:
-            raise ValueError(
-                f"invalid frame record at {session_path}:{line_number}: {exc}"
-            ) from exc
-            continue
+            raise ValueError(f"invalid frame record at {source}:{line_number}: {exc}") from exc
+
+
+def iter_frames(session_path: str | Path) -> Iterator[FrameStateModel]:
+    """Yield validated frames, rejecting malformed non-header records."""
+    yield from iter_frames_text(
+        Path(session_path).read_text(),
+        source=str(session_path),
+    )
 
 
 @dataclass

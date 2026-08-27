@@ -20,9 +20,23 @@ from typing import Any
 
 import yaml
 
+from metriplane.runner.safe_reads import PinnedDirectory, PinnedFile
 
-def find_run_artifact(run_dir: Path, names: list[str] | tuple[str, ...]) -> Path | None:
+RunSource = str | Path | PinnedDirectory
+RunArtifact = Path | PinnedFile
+
+
+def _run_source(run_dir: RunSource) -> Path | PinnedDirectory:
+    return run_dir if isinstance(run_dir, PinnedDirectory) else Path(run_dir)
+
+
+def find_run_artifact(
+    run_dir: Path | PinnedDirectory,
+    names: list[str] | tuple[str, ...],
+) -> RunArtifact | None:
     """Return a contained, regular, non-symlink artifact from a selected run."""
+    if isinstance(run_dir, PinnedDirectory):
+        return run_dir.find_file(names)
     try:
         root = run_dir.resolve(strict=True)
     except (OSError, RuntimeError):
@@ -43,35 +57,36 @@ def find_run_artifact(run_dir: Path, names: list[str] | tuple[str, ...]) -> Path
     return None
 
 
-def _session(run_dir: Path) -> Path | None:
+def _session(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
     return find_run_artifact(run_dir, ["session_excerpt.jsonl", "session.jsonl",
                                        "traces/object_traces.jsonl"])
 
 
-def _objects_yaml(run_dir: Path) -> Path | None:
+def _objects_yaml(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
     return find_run_artifact(run_dir, ["objects.yaml", "object_registry.yaml"])
 
 
-def _workspace_yaml(run_dir: Path) -> Path | None:
+def _workspace_yaml(run_dir: Path | PinnedDirectory) -> RunArtifact | None:
     return find_run_artifact(
         run_dir,
         ["workspace.yaml", "zones.yaml", "configs/workspace.yaml", "configs/zones.yaml"],
     )
 
 
-def _registry(run_dir: Path):
+def _registry(run_dir: Path | PinnedDirectory) -> Any:
     p = _objects_yaml(run_dir)
     if p is None:
         return None
     try:
-        from metriplane.sentinel.registry import load_registry
-        return load_registry(p)
+        from metriplane.sentinel.registry import ObjectRegistryConfig
+
+        return ObjectRegistryConfig.model_validate(yaml.safe_load(p.read_text()))
     except Exception:
         return None
 
 
-def get_workspace(run_dir: str | Path) -> dict[str, Any]:
-    run = Path(run_dir)
+def get_workspace(run_dir: RunSource) -> dict[str, Any]:
+    run = _run_source(run_dir)
     path = _workspace_yaml(run)
     if path is None:
         return {"zones": [], "stations": []}
@@ -113,15 +128,16 @@ def get_workspace(run_dir: str | Path) -> dict[str, Any]:
     }
 
 
-def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
+def get_objects(run_dir: RunSource) -> list[dict[str, Any]]:
     """Latest object states from the last frame of the session."""
-    run = Path(run_dir)
+    run = _run_source(run_dir)
     session = _session(run)
     if session is None:
         return []
     try:
-        from metriplane.sentinel.engine import iter_frames
-        frames = list(iter_frames(session))
+        from metriplane.sentinel.engine import iter_frames_text
+
+        frames = list(iter_frames_text(session.read_text(), source=str(session)))
     except Exception:
         return []
     if not frames:
@@ -155,8 +171,8 @@ def get_objects(run_dir: str | Path) -> list[dict[str, Any]]:
     return out
 
 
-def get_incidents(run_dir: str | Path) -> list[dict[str, Any]]:
-    run = Path(run_dir)
+def get_incidents(run_dir: RunSource) -> list[dict[str, Any]]:
+    run = _run_source(run_dir)
     p = find_run_artifact(run, ["incident.json", "incidents/incidents.json", "incidents.json"])
     if p is None:
         return []
@@ -167,8 +183,8 @@ def get_incidents(run_dir: str | Path) -> list[dict[str, Any]]:
         return []
 
 
-def get_events(run_dir: str | Path) -> list[dict[str, Any]]:
-    run = Path(run_dir)
+def get_events(run_dir: RunSource) -> list[dict[str, Any]]:
+    run = _run_source(run_dir)
     p = find_run_artifact(run, ["alerts.jsonl", "events.jsonl"])
     if p is None:
         return []
@@ -183,15 +199,16 @@ def get_events(run_dir: str | Path) -> list[dict[str, Any]]:
     return out
 
 
-def get_traces(run_dir: str | Path, object_id: str | None = None) -> list[dict[str, Any]]:
-    run = Path(run_dir)
+def get_traces(run_dir: RunSource, object_id: str | None = None) -> list[dict[str, Any]]:
+    run = _run_source(run_dir)
     session = _session(run)
     if session is None:
         return []
     try:
         from metriplane.trace.store import TraceStore
-        store = TraceStore(registry_path=_objects_yaml(run))
-        store.load_session(session)
+
+        store = TraceStore(registry=_registry(run))
+        store.load_session_text(session.read_text())
         summaries = store.summarize()
     except Exception:
         return []
@@ -213,22 +230,23 @@ def get_traces(run_dir: str | Path, object_id: str | None = None) -> list[dict[s
     return rows
 
 
-def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
+def get_frames(run_dir: RunSource, max_frames: int = 600) -> dict[str, Any]:
     """Per-frame object positions for map replay, plus incident windows.
 
     Returns {"frames": [{ts, frame_id, objects:[{object_id, type, x, y, zone}]}],
              "incidents": [{rule_id, object_ids, opened_ts, closed_ts, severity}]}.
     """
-    run = Path(run_dir)
+    run = _run_source(run_dir)
     session = _session(run)
     workspace = get_workspace(run)
     if session is None:
         return {"frames": [], "incidents": [], "workspace": workspace}
     try:
-        from metriplane.sentinel.engine import iter_frames
+        from metriplane.sentinel.engine import iter_frames_text
+
         registry = _registry(run)
         frames_out: list[dict[str, Any]] = []
-        for frame in iter_frames(session):
+        for frame in iter_frames_text(session.read_text(), source=str(session)):
             observed = frame.fused if frame.fused is not None else frame.objects
             objs = []
             for o in observed:
@@ -265,8 +283,8 @@ def get_frames(run_dir: str | Path, max_frames: int = 600) -> dict[str, Any]:
     return {"frames": frames_out, "incidents": incidents, "workspace": workspace}
 
 
-def get_live_summary(run_dir: str | Path) -> dict[str, Any]:
-    run = Path(run_dir)
+def get_live_summary(run_dir: RunSource) -> dict[str, Any]:
+    run = _run_source(run_dir)
     objects = get_objects(run)
     events = get_events(run)
     incidents = get_incidents(run)
@@ -285,9 +303,9 @@ def get_live_summary(run_dir: str | Path) -> dict[str, Any]:
     }
 
 
-def export_command_center(run_dir: str | Path, out_path: str | Path) -> dict[str, Any]:
+def export_command_center(run_dir: RunSource, out_path: str | Path) -> dict[str, Any]:
     """Bundle all command-center data into one JSON the static page can load."""
-    run = Path(run_dir)
+    run = _run_source(run_dir)
     payload = {
         "summary": get_live_summary(run),
         "objects": get_objects(run),
