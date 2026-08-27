@@ -35,30 +35,15 @@ run is active, and appends every unrecorded governed attempt in provider update
 order. An unreconciled deep run for another SHA is an operator-visible stop
 rather than a silently skipped result.
 
-Until activation removes the legacy Actions-owned main-health context from the
-core ruleset, the same read-only workflow emits a pull-request compatibility
-terminal. This executable one-PR transition accepts only PR 86, canonical owner,
-actor, author, and head repository, `main` at exact base
-`9d5b4ffa5236521423196a84acc6a613f7f13108`, and an exact checkout. It then reads
-the complete exact-head check-run inventory with a checks-read `GITHUB_TOKEN` and
-requires the provider-ordered latest `Metriplane / required`,
-`Documentation / required`, and `Security / required` attempts from GitHub Actions
-integration 15368 to be completed successes. Missing or running checks are polled
-at most 90 times at ten-second intervals. Failed checks, malformed data, duplicate
-IDs, ambiguous or inverted attempt chronology, pagination drift, and exhausted
-polling all fail closed. Pull-request text is not an approval source.
-
-The repository Actions variable `MET77_APPROVED_HEAD_SHA` is the one-use provider
-approval. Keep it absent while the candidate changes or is under qualification.
-After independent review approves one fully qualified head, set the variable to
-that complete lowercase SHA before starting or rerunning the compatibility job.
-An absent, malformed, stale, or mismatched value cannot pass, and any head change
-requires full requalification before replacing the variable. Immediately after
-the governed merge and ruleset activation, delete the variable. Remove the
-transition metadata and compatibility job when the obsolete Actions-owned core
-requirement is removed. The fixed PR and base bindings make a retained value
-unusable for another pull request. The bridge cannot authorize the final App-owned
-topology and becomes redundant after activation.
+The one-use PR 86 Actions compatibility terminal is retired. Hosted rulesets now
+bind `Main health / required` exclusively to GitHub App integration 4722589, so
+the deep workflow has no pull-request trigger, required-check job, checks
+permission, or merge authority. Its only triggers are the governed nightly and
+weekly schedules and matching repository dispatches. Deep observations run one
+at a time with the bounded maximum queue, so an overlapping schedule or dispatch
+does not cancel an already pending observation. The historical transition
+validator remains covered as retained evidence, but no active workflow invokes
+it and the obsolete `MET77_APPROVED_HEAD_SHA` variable must remain absent.
 
 A failed global cadence turns the state red. Later successful observations do
 not clear red state. Normal pull requests stop; only a provider review request

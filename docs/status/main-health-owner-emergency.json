@@ -1,15 +1,19 @@
 {
   "authorization_mode": "single-maintainer-owner-emergency",
   "allowed_paths": [
+    ".github/workflows/main-health.yml",
     "docs/maintainers/change-execution-contract.md",
     "docs/maintainers/main-health-broker.md",
     "docs/maintainers/main-health.md",
     "docs/status/main-health-owner-emergency.json",
+    "docs/status/required-terminals.json",
     "docs/status/schemas/main-health-provider-evidence.schema.json",
     "scripts/systemd/metriplane-main-health-broker.service",
     "tests/test_fleet_agent.py",
     "tests/test_main_health.py",
     "tests/test_main_health_broker.py",
+    "tests/test_required_terminals.py",
+    "tools/check_required_terminal.py",
     "tools/main_health_broker.py",
     "tools/stop_the_line.py"
   ],
