@@ -2269,6 +2269,7 @@ def write_testing(path: Path, audit: Audit) -> None:
         "Run the complete 12-page browser smoke:",
         "",
         "```bash",
+        'export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"',
         "python -m playwright install chromium",
         "python -m pytest -q tests/e2e/test_dashboard_playwright_smoke.py",
         "```",

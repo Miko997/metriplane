@@ -518,6 +518,7 @@ def test_committed_status_matches_current_governed_surface():
         b"Release-blocking P0/P1 coverage rows: `13`"
         in outputs[Path("docs/qa/ui_missing_features_report.md")]
     )
+    assert b"export PLAYWRIGHT_BROWSERS_PATH=" in outputs[Path("docs/qa/ui_testing.md")]
     generated_rows = [
         row for row in audit.inventory["rows"] if str(row["id"]).startswith(ROW_PREFIX)
     ]
