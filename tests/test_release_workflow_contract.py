@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import os
 import subprocess
@@ -46,6 +47,84 @@ def _embedded_python(step: dict[str, Any]) -> str:
     marker = "python - <<'PY'\n"
     assert command.count(marker) == 1
     return command.split(marker, 1)[1].rsplit("\nPY", 1)[0]
+
+
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+
+
+def _sha256(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _live_retention_receipt(
+    manifest_digest: str,
+    *,
+    phase: str = "qualified-publication",
+    observed_digest: str | None = None,
+    receipt_set_digest: str | None = None,
+) -> dict[str, Any]:
+    content_digest = observed_digest or manifest_digest
+    stores = [
+        {
+            "content_digest": content_digest,
+            "hold_receipt_digest": hold,
+            "independence_group": group,
+            "namespace": f"release-{store_id[-1]}",
+            "object_key": "candidate/evidence-manifest.json",
+            "put_receipt_digest": put,
+            "read_back_digest": content_digest,
+            "store_id": store_id,
+        }
+        for store_id, group, hold, put in (
+            ("payload-store-a", "provider-a", "1" * 64, "2" * 64),
+            ("payload-store-b", "provider-b", "3" * 64, "4" * 64),
+        )
+    ]
+    data = {
+        "all_content_equal": True,
+        "input_digest": manifest_digest,
+        "phase": phase,
+        "receipt_set_digest": receipt_set_digest or _sha256(_canonical_json(stores)),
+        "retained_at": "2026-08-27T00:00:00Z",
+        "stores": stores,
+    }
+    record: dict[str, Any] = {
+        "data": data,
+        "invocation_id": "live-retention-readback",
+        "payload_digest": _sha256(_canonical_json(data)),
+        "record_type": "release-retention-receipts",
+        "schema_version": "metriplane.release-record.v1",
+        "sequence": 1,
+        "signatures": [],
+        "status": "PASS",
+        "synthetic": False,
+    }
+    signed_fields = (
+        "data",
+        "invocation_id",
+        "payload_digest",
+        "record_type",
+        "schema_version",
+        "sequence",
+        "status",
+        "synthetic",
+    )
+    subject_digest = _sha256(
+        _canonical_json({field: record[field] for field in signed_fields})
+    )
+    record["signatures"] = [
+        {
+            "actor_id": "retention-provider",
+            "algorithm": "provider-attestation-v1",
+            "provider": "github",
+            "signature": "provider-signature-proof",
+            "subject_digest": subject_digest,
+            "synthetic": False,
+        }
+    ]
+    record["record_id"] = _sha256(_canonical_json(record))
+    return record
 
 
 def _write_tar(path: Path, entries: list[tuple[str, str, bytes]]) -> None:
@@ -262,6 +341,81 @@ def test_authority_bundle_extraction_accepts_directories_and_rejects_unsafe_memb
         assert not (tmp_path / "escape.json").exists(), label
 
 
+def test_retention_receipts_bind_to_both_observed_store_bundles(tmp_path: Path) -> None:
+    contracts = _workflow()["jobs"]["contracts"]
+    step = _named_step(contracts, "Bind retention receipts to both exact store read-backs")
+    script = _embedded_python(step)
+    manifest_bytes = b'{"manifest":"exact-authority"}\n'
+    manifest_digest = _sha256(manifest_bytes)
+    bundle_bytes = b"exact-store-bundle-bytes"
+
+    def run_case(
+        label: str,
+        receipt: dict[str, Any],
+        *,
+        second_bundle: bytes = bundle_bytes,
+    ) -> subprocess.CompletedProcess[str]:
+        case_root = tmp_path / label
+        runner_temp = case_root / "runner-temp"
+        authority = case_root / ".release-authority"
+        receipts = authority / "prepublication"
+        receipts.mkdir(parents=True)
+        runner_temp.mkdir()
+        (runner_temp / "authority-store-a.tar").write_bytes(bundle_bytes)
+        (runner_temp / "authority-store-b.tar").write_bytes(second_bundle)
+        (authority / "evidence-manifest.json").write_bytes(manifest_bytes)
+        (receipts / "retention-receipts.json").write_text(
+            json.dumps(receipt), encoding="utf-8"
+        )
+        env = {
+            **os.environ,
+            "AUTHORITY_BUNDLE_SHA256": _sha256(bundle_bytes),
+            "EVIDENCE_MANIFEST_SHA256": manifest_digest,
+            "RELEASE_MODE": "release-qualification",
+            "RUNNER_TEMP": str(runner_temp),
+        }
+        return subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=case_root,
+            env=env,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+    valid = run_case("valid", _live_retention_receipt(manifest_digest))
+    assert valid.returncode == 0, valid.stderr
+
+    divergent_bundle = run_case(
+        "divergent-bundle",
+        _live_retention_receipt(manifest_digest),
+        second_bundle=b"different-store-bytes",
+    )
+    assert divergent_bundle.returncode != 0
+    assert "not exact-byte identical" in divergent_bundle.stderr
+
+    divergent_receipt = run_case(
+        "divergent-receipt",
+        _live_retention_receipt(manifest_digest, observed_digest="0" * 64),
+    )
+    assert divergent_receipt.returncode != 0
+    assert "differs from observed store bytes" in divergent_receipt.stderr
+
+    wrong_phase = run_case(
+        "wrong-phase",
+        _live_retention_receipt(manifest_digest, phase="prepublication"),
+    )
+    assert wrong_phase.returncode != 0
+    assert "transported manifest and phase" in wrong_phase.stderr
+
+    wrong_receipt_set = run_case(
+        "wrong-receipt-set",
+        _live_retention_receipt(manifest_digest, receipt_set_digest="f" * 64),
+    )
+    assert wrong_receipt_set.returncode != 0
+    assert "receipt-set digest mismatch" in wrong_receipt_set.stderr
+
+
 def test_event_mode_resolution_executes_against_provider_payloads(tmp_path: Path) -> None:
     source = "a" * 40
     base = "b" * 40
@@ -287,9 +441,10 @@ def test_event_mode_resolution_executes_against_provider_payloads(tmp_path: Path
                 "github_sha": source,
             },
             {
-                "main_health_sha": source,
+                "checkout_ref": "refs/tags/v0.4.0",
+                "main_health_sha": "",
                 "mode": "post-publication",
-                "source_sha": source,
+                "source_sha": "",
                 "tag": "v0.4.0",
             },
         ),
@@ -409,9 +564,12 @@ def test_live_modes_require_real_authority_and_exact_validators() -> None:
     assert "--check-freshness" in text
     assert "validate_release_approval.py" in text
     assert '--role-assignments "$root/role-assignments.json"' in text
-    assert "validate_release_retention.py" in text
+    assert "validate_release_retention.py" not in text
+    assert "Bind retention receipts to both exact store read-backs" in (
+        WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     assert "validate_publication_reconciliation.py" in text
-    assert "--read-back" in text
+    assert "authority store read-backs are not exact-byte identical" in text
     assert '--record "$root/prepublication/approval.json"' in text
     assert 'cmp --silent "$root/readiness.json"' in text
 

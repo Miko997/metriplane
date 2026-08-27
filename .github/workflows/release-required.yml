@@ -63,7 +63,7 @@ jobs:
       contents: read
     outputs:
       mode: ${{ steps.context.outputs.mode }}
-      source_sha: ${{ steps.context.outputs.source_sha }}
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - id: context
         name: Resolve one fail-closed terminal mode
@@ -88,35 +88,41 @@ jobs:
           source_sha = ""
           main_health_sha = ""
           tag = ""
+          checkout_ref = ""
           if event_name == "pull_request":
               mode = "pr-merge-control"
               source_sha = event["pull_request"]["head"]["sha"]
               main_health_sha = event["pull_request"]["base"]["sha"]
+              checkout_ref = source_sha
           elif event_name == "merge_group":
               mode = "pr-merge-control"
               source_sha = event["merge_group"]["head_sha"]
               main_health_sha = event["merge_group"]["base_sha"]
+              checkout_ref = source_sha
           elif event_name == "push":
               mode = "post-publication"
-              source_sha = os.environ["GITHUB_SHA"]
-              main_health_sha = source_sha
               tag = os.environ["GITHUB_REF_NAME"]
+              checkout_ref = f"refs/tags/{tag}"
           elif event_name == "workflow_dispatch":
               mode = os.environ["DISPATCH_MODE"]
               source_sha = os.environ["DISPATCH_CANDIDATE_SHA"]
               main_health_sha = os.environ["DISPATCH_MAIN_HEALTH_SHA"]
               tag = os.environ["DISPATCH_TAG"]
+              checkout_ref = source_sha
           else:
               raise SystemExit(f"unsupported release event: {event_name}")
 
           if mode not in {"pr-merge-control", "release-qualification", "post-publication"}:
               raise SystemExit(f"unsupported release mode: {mode!r}")
-          for label, value in (("source", source_sha), ("main-health", main_health_sha)):
+          identities = [("source", source_sha), ("main-health", main_health_sha)]
+          for label, value in identities:
+              if event_name == "push" and not value:
+                  continue
               if re.fullmatch(r"[0-9a-f]{40}", value) is None:
                   raise SystemExit(f"{label} SHA is not an exact commit identity")
-          if event_name in {"pull_request", "push"} and source_sha != os.environ["EVENT_SHA_FALLBACK"]:
+          if event_name == "pull_request" and source_sha != os.environ["EVENT_SHA_FALLBACK"]:
               raise SystemExit("provider event SHA fallback disagrees with the exact source")
-          if mode in {"release-qualification", "post-publication"} and source_sha != main_health_sha:
+          if mode == "release-qualification" and source_sha != main_health_sha:
               raise SystemExit("release candidate must equal the protected-main health identity")
           if mode == "post-publication":
               if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) is None:
@@ -130,6 +136,7 @@ jobs:
               stream.write(f"source_sha={source_sha}\n")
               stream.write(f"main_health_sha={main_health_sha}\n")
               stream.write(f"tag={tag}\n")
+              stream.write(f"checkout_ref={checkout_ref}\n")
           PY
 
       - name: Check out the exact candidate
@@ -138,24 +145,41 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
-          ref: ${{ steps.context.outputs.source_sha }}
+          ref: ${{ steps.context.outputs.checkout_ref }}
 
       - id: source
         name: Prove the checked-out commit
         env:
           EXPECTED_SHA: ${{ steps.context.outputs.source_sha }}
+          MAIN_HEALTH_SHA: ${{ steps.context.outputs.main_health_sha }}
+          PROVIDER_EVENT_SHA: ${{ github.sha }}
           RELEASE_MODE: ${{ steps.context.outputs.mode }}
           RELEASE_TAG: ${{ steps.context.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          source_sha="$(git rev-parse HEAD)"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          if [[ -n "$EXPECTED_SHA" ]]; then
+            test "$source_sha" = "$EXPECTED_SHA"
+          fi
           if [[ "$RELEASE_MODE" == "post-publication" ]]; then
             tag_ref="refs/tags/${RELEASE_TAG}"
             test "$(git cat-file -t "$tag_ref")" = "tag"
-            test "$(git rev-list -n 1 "$tag_ref")" = "$EXPECTED_SHA"
+            tag_object="$(git rev-parse "${tag_ref}^{tag}")"
+            tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
+            test "$tag_commit" = "$source_sha"
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              [[ "$PROVIDER_EVENT_SHA" == "$tag_object" || "$PROVIDER_EVENT_SHA" == "$tag_commit" ]]
+            fi
+            if [[ -n "$MAIN_HEALTH_SHA" ]]; then
+              git merge-base --is-ancestor "$tag_commit" "$MAIN_HEALTH_SHA"
+            else
+              MAIN_HEALTH_SHA="$tag_commit"
+            fi
           fi
-          echo "sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "main_health_sha=$MAIN_HEALTH_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Check out immutable main-health history read-only
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -177,7 +201,7 @@ jobs:
       - name: Consume persistent main health and retained repair decisions
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          MAIN_HEALTH_SHA: ${{ steps.context.outputs.main_health_sha }}
+          MAIN_HEALTH_SHA: ${{ steps.source.outputs.main_health_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -394,7 +418,7 @@ jobs:
         env:
           AUTHORITY_SOURCE_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}
           EVIDENCE_MANIFEST_SHA256: ${{ steps.authority-inputs.outputs.manifest_sha256 }}
-          EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}
+          EXPECTED_SOURCE_SHA: ${{ steps.source.outputs.sha }}
           RELEASE_MODE: ${{ steps.context.outputs.mode }}
         shell: bash
         run: |
@@ -459,6 +483,227 @@ jobs:
               raise SystemExit("evidence manifest transport digest mismatch")
           PY
 
+      - name: Bind retention receipts to both exact store read-backs
+        if: steps.context.outputs.mode != 'pr-merge-control'
+        env:
+          AUTHORITY_BUNDLE_SHA256: ${{ steps.authority-inputs.outputs.bundle_sha256 }}
+          EVIDENCE_MANIFEST_SHA256: ${{ steps.authority-inputs.outputs.manifest_sha256 }}
+          RELEASE_MODE: ${{ steps.context.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from datetime import datetime
+          from pathlib import Path
+
+          DIGEST = re.compile(r"[0-9a-f]{64}")
+          RECORD_FIELDS = {
+              "data",
+              "invocation_id",
+              "payload_digest",
+              "record_id",
+              "record_type",
+              "schema_version",
+              "sequence",
+              "signatures",
+              "status",
+              "synthetic",
+          }
+          SIGNED_FIELDS = (
+              "data",
+              "invocation_id",
+              "payload_digest",
+              "record_type",
+              "schema_version",
+              "sequence",
+              "status",
+              "synthetic",
+          )
+          STORE_FIELDS = {
+              "content_digest",
+              "hold_receipt_digest",
+              "independence_group",
+              "namespace",
+              "object_key",
+              "put_receipt_digest",
+              "read_back_digest",
+              "store_id",
+          }
+
+          def canonical(value: object) -> bytes:
+              return json.dumps(
+                  value, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+              ).encode("utf-8")
+
+          def sha256_bytes(value: bytes) -> str:
+              return hashlib.sha256(value).hexdigest()
+
+          def require_digest(value: object, label: str) -> str:
+              if not isinstance(value, str) or DIGEST.fullmatch(value) is None:
+                  raise SystemExit(f"{label} is not a canonical SHA-256 digest")
+              return value
+
+          runner_temp = Path(os.environ["RUNNER_TEMP"])
+          store_paths = [
+              runner_temp / "authority-store-a.tar",
+              runner_temp / "authority-store-b.tar",
+          ]
+          store_bytes = []
+          for path in store_paths:
+              if path.is_symlink() or not path.is_file():
+                  raise SystemExit(f"authority store read-back is missing or unsafe: {path.name}")
+              store_bytes.append(path.read_bytes())
+          if store_bytes[0] != store_bytes[1]:
+              raise SystemExit("authority store read-backs are not exact-byte identical")
+          if sha256_bytes(store_bytes[0]) != os.environ["AUTHORITY_BUNDLE_SHA256"]:
+              raise SystemExit("authority store read-back digest changed after comparison")
+
+          root = Path(".release-authority")
+          manifest_path = root / "evidence-manifest.json"
+          if manifest_path.is_symlink() or not manifest_path.is_file():
+              raise SystemExit("evidence manifest is missing or unsafe")
+          manifest_digest = sha256_bytes(manifest_path.read_bytes())
+          if manifest_digest != os.environ["EVIDENCE_MANIFEST_SHA256"]:
+              raise SystemExit("evidence manifest no longer matches the transported store bytes")
+
+          def validate_receipt(relative: str, expected_phase: str) -> None:
+              path = root / relative
+              if path.is_symlink() or not path.is_file():
+                  raise SystemExit(f"retention receipt is missing or unsafe: {relative}")
+              try:
+                  record = json.loads(path.read_bytes())
+              except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                  raise SystemExit(f"retention receipt is not canonical JSON: {relative}") from exc
+              if not isinstance(record, dict) or set(record) != RECORD_FIELDS:
+                  raise SystemExit(f"retention record envelope is not closed: {relative}")
+              if (
+                  record["schema_version"] != "metriplane.release-record.v1"
+                  or record["record_type"] != "release-retention-receipts"
+                  or record["status"] != "PASS"
+                  or record["synthetic"] is not False
+                  or isinstance(record["sequence"], bool)
+                  or not isinstance(record["sequence"], int)
+                  or record["sequence"] < 1
+                  or not isinstance(record["invocation_id"], str)
+                  or re.fullmatch(
+                      r"[A-Za-z0-9][A-Za-z0-9._-]{2,127}", record["invocation_id"]
+                  )
+                  is None
+              ):
+                  raise SystemExit(f"retention record envelope is invalid: {relative}")
+              data = record["data"]
+              data_fields = {
+                  "all_content_equal",
+                  "input_digest",
+                  "phase",
+                  "receipt_set_digest",
+                  "retained_at",
+                  "stores",
+              }
+              if not isinstance(data, dict) or set(data) != data_fields:
+                  raise SystemExit(f"retention data shape is not closed: {relative}")
+              if require_digest(record["payload_digest"], "retention payload") != sha256_bytes(
+                  canonical(data)
+              ):
+                  raise SystemExit(f"retention payload digest mismatch: {relative}")
+              unsigned = dict(record)
+              claimed_record_id = require_digest(unsigned.pop("record_id"), "retention record")
+              if claimed_record_id != sha256_bytes(canonical(unsigned)):
+                  raise SystemExit(f"retention record identity mismatch: {relative}")
+              if (
+                  data["all_content_equal"] is not True
+                  or data["phase"] != expected_phase
+                  or require_digest(data["input_digest"], "retained input")
+                  != manifest_digest
+              ):
+                  raise SystemExit(
+                      f"retention receipt does not bind the transported manifest and phase: {relative}"
+                  )
+              try:
+                  retained_at = datetime.fromisoformat(data["retained_at"].replace("Z", "+00:00"))
+              except (AttributeError, TypeError, ValueError) as exc:
+                  raise SystemExit(f"retention time is invalid: {relative}") from exc
+              if retained_at.utcoffset() is None:
+                  raise SystemExit(f"retention time is not timezone-aware: {relative}")
+
+              stores = data["stores"]
+              if not isinstance(stores, list) or len(stores) != 2:
+                  raise SystemExit(f"retention does not contain exactly two stores: {relative}")
+              groups = []
+              for index, store in enumerate(stores):
+                  expected_id = f"payload-store-{'a' if index == 0 else 'b'}"
+                  if not isinstance(store, dict) or set(store) != STORE_FIELDS:
+                      raise SystemExit(f"retention store shape is not closed: {relative}")
+                  if store["store_id"] != expected_id:
+                      raise SystemExit(f"retention stores are not canonically ordered: {relative}")
+                  group = store["independence_group"]
+                  if not isinstance(group, str) or not group.strip():
+                      raise SystemExit(f"retention independence group is missing: {relative}")
+                  groups.append(group)
+                  for field in ("namespace", "object_key"):
+                      if not isinstance(store[field], str) or not store[field].strip():
+                          raise SystemExit(f"retention {field} is missing: {relative}")
+                  for field in (
+                      "content_digest",
+                      "hold_receipt_digest",
+                      "put_receipt_digest",
+                      "read_back_digest",
+                  ):
+                      require_digest(store[field], f"retention {field}")
+                  if (
+                      store["content_digest"] != manifest_digest
+                      or store["read_back_digest"] != manifest_digest
+                  ):
+                      raise SystemExit(
+                          f"retention receipt differs from observed store bytes: {relative}"
+                      )
+              if len(set(groups)) != 2:
+                  raise SystemExit(f"retention stores are not independent: {relative}")
+              if require_digest(data["receipt_set_digest"], "retention receipt set") != (
+                  sha256_bytes(canonical(stores))
+              ):
+                  raise SystemExit(f"retention receipt-set digest mismatch: {relative}")
+
+              signatures = record["signatures"]
+              if not isinstance(signatures, list) or not signatures:
+                  raise SystemExit(f"live retention receipt has no signatures: {relative}")
+              subject_digest = sha256_bytes(
+                  canonical({field: record[field] for field in SIGNED_FIELDS})
+              )
+              signature_fields = {
+                  "actor_id",
+                  "algorithm",
+                  "provider",
+                  "signature",
+                  "subject_digest",
+                  "synthetic",
+              }
+              for signature in signatures:
+                  if not isinstance(signature, dict) or set(signature) != signature_fields:
+                      raise SystemExit(f"retention signature shape is not closed: {relative}")
+                  if (
+                      not isinstance(signature["actor_id"], str)
+                      or not signature["actor_id"].strip()
+                      or signature["algorithm"] != "provider-attestation-v1"
+                      or signature["provider"] not in {"github", "linear"}
+                      or not isinstance(signature["signature"], str)
+                      or len(signature["signature"]) < 16
+                      or signature["subject_digest"] != subject_digest
+                      or signature["synthetic"] is not False
+                  ):
+                      raise SystemExit(f"retention signature is not envelope-bound: {relative}")
+
+          validate_receipt(
+              "prepublication/retention-receipts.json", "qualified-publication"
+          )
+          if os.environ["RELEASE_MODE"] == "post-publication":
+              validate_receipt("final-retention-receipts.json", "final")
+          PY
+
       - name: Validate candidate qualification, non-author approval, and staged read-back
         if: steps.context.outputs.mode != 'pr-merge-control'
         env:
@@ -505,10 +750,6 @@ jobs:
             --role-assignments "$root/role-assignments.json" \
             --no-prepublication-rubric \
             --record "$root/prepublication/approval.json"
-          uv run python tools/validate_release_retention.py \
-            --manifest "$root/evidence-manifest.json" \
-            --receipts "$root/prepublication/retention-receipts.json" \
-            --read-back
 
       - name: Upload exact validated qualification authority
         if: steps.context.outputs.mode == 'release-qualification'
@@ -530,13 +771,6 @@ jobs:
           root=.release-authority
           uv run python tools/validate_publication_reconciliation.py \
             --record "$root/publication-reconciliation.json"
-          uv run python tools/validate_release_retention.py \
-            --input "$root/publication-reconciliation.json" \
-            --manifest "$root/evidence-manifest.json" \
-            --invocation-root "$root/invocations" \
-            --through-stage publication-reconciliation \
-            --receipts "$root/final-retention-receipts.json" \
-            --read-back
 
   matrix:
     name: Release matrix / ${{ matrix.environment }}
@@ -650,13 +884,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || inputs.candidate_sha || github.sha }}
+          ref: ${{ needs.contracts.outputs.source_sha }}
 
       - name: Aggregate exact same-SHA terminal results
         env:
           CONTRACTS_RESULT: ${{ needs.contracts.result }}
           CONTRACTS_SHA: ${{ needs.contracts.outputs.source_sha }}
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || inputs.candidate_sha || github.sha }}
+          EXPECTED_SHA: ${{ needs.contracts.outputs.source_sha }}
           FAKE_RELEASE_RESULT: ${{ needs.fake-release.result }}
           FAKE_RELEASE_SHA: ${{ needs.fake-release.outputs.source_sha }}
         shell: bash

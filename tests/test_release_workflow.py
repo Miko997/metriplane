@@ -122,7 +122,7 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
         "Extract the exact authority bundle safely",
         "if not is_directory and not member.isfile()",
         "authority bundle repeats a path",
-        "EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}",
+        "EXPECTED_SOURCE_SHA: ${{ steps.source.outputs.sha }}",
         "AUTHORITY_SOURCE_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}",
         '"delta.json": ("candidate_sha", os.environ["EXPECTED_SOURCE_SHA"])',
         '"gate-instance.json": ("frozen_source_sha", os.environ["EXPECTED_SOURCE_SHA"])',
@@ -142,9 +142,15 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
     download = next(
         step
         for step in publish["jobs"]["validate-production-request"]["steps"]
-        if step.get("with", {}).get("name") == "release-qualification-evidence"
+        if step.get("with", {}).get("path") == "release-authority/"
     )
-    assert upload["with"]["name"] == download["with"]["name"]
+    assert upload["with"]["name"] == "release-qualification-evidence"
+    assert download["with"] == {
+        "artifact-ids": "${{ steps.qualification.outputs.artifact_id }}",
+        "path": "release-authority/",
+        "run-id": "${{ inputs.qualification_run_id }}",
+        "github-token": "${{ github.token }}",
+    }
 
 
 def test_publication_consumes_qualification_and_does_not_create_authority() -> None:
@@ -153,13 +159,16 @@ def test_publication_consumes_qualification_and_does_not_create_authority() -> N
     inputs = workflow.get("on", workflow.get(True))["workflow_dispatch"]["inputs"]
     assert inputs["qualification_run_id"]["required"] is True
     assert inputs["qualification_record_digest"]["required"] is True
+    assert inputs["authority_bundle_sha256"]["required"] is True
+    assert inputs["authority_run_id"]["required"] is True
+    assert inputs["evidence_manifest_sha256"]["required"] is True
     jobs = workflow["jobs"]
     request = jobs["validate-production-request"]
     commands = "\n".join(step.get("run", "") for step in request["steps"])
     assert "validate_release_qualification.py" in commands
     assert "validate_release_role_assignments.py" in commands
     assert "validate_release_approval.py" in commands
-    assert "validate_release_retention.py" in commands
+    assert "validate_release_retention.py" not in commands
     assert "check_release_readiness.py" in commands
     assert "validate_release_artifact_manifest.py" in commands
     assert "--mode live" not in commands
@@ -180,8 +189,6 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         'MILESTONE="v${RELEASE_VERSION%.*}"',
         "v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0",
         '--milestone "$MILESTONE"',
-        'AUTHORITY_SOURCE_RUN_ID="$(python -c',
-        '["data"]["run_id"]',
         '--run-id "$AUTHORITY_SOURCE_RUN_ID"',
         "--check-conflicts",
         "--check-freshness",
@@ -190,9 +197,6 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         "--role-assignments release-authority/role-assignments.json",
         "--no-prepublication-rubric",
         "--record release-authority/prepublication/approval.json",
-        "--manifest release-authority/evidence-manifest.json",
-        "--receipts release-authority/prepublication/retention-receipts.json",
-        "--read-back",
         "--candidate-identity release-authority/candidate-identity.json",
         "--predecessor release-authority/predecessor.json",
         "--linear-snapshot release-authority/linear-snapshot.json",
@@ -206,14 +210,29 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         "--read-hash",
     )
     assert all(fragment in commands for fragment in required)
+    assert 'test "$tag_commit" = "$GITHUB_SHA"' not in commands
+    assert 'git merge-base --is-ancestor "$tag_commit" origin/main' in commands
+    candidate_checkout = next(
+        step
+        for step in request["steps"]
+        if step.get("name") == "Check out only the exact tagged candidate for validation"
+    )
+    assert candidate_checkout["with"]["ref"] == "${{ steps.request.outputs.commit }}"
+    authority_step = next(
+        step
+        for step in request["steps"]
+        if step.get("name") == "Require retained cumulative release authority"
+    )
+    assert authority_step["env"]["AUTHORITY_SOURCE_RUN_ID"] == "${{ inputs.authority_run_id }}"
+    assert authority_step["env"]["CANDIDATE_SHA"] == "${{ steps.request.outputs.commit }}"
 
     artifact_download = next(
         step
         for step in request["steps"]
-        if step.get("with", {}).get("name") == "python-package-distributions"
+        if step.get("with", {}).get("path") == "release-artifacts/"
     )
     assert artifact_download["with"] == {
-        "name": "python-package-distributions",
+        "artifact-ids": "${{ steps.request.outputs.artifact_id }}",
         "path": "release-artifacts/",
         "run-id": "${{ inputs.release_run_id }}",
         "github-token": "${{ github.token }}",
@@ -222,7 +241,7 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
     authority_index = commands.index("validate_release_qualification.py")
     artifact_index = commands.index("validate_release_artifact_manifest.py")
     eligibility_index = commands.index('test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"')
-    assert authority_index < artifact_index < eligibility_index
+    assert eligibility_index < authority_index < artifact_index
 
 
 def test_production_request_preserves_fail_closed_source_run_identity() -> None:
@@ -233,11 +252,11 @@ def test_production_request_preserves_fail_closed_source_run_identity() -> None:
         'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
         '"event": "push"',
         '"head_branch": f"v{os.environ[\'RELEASE_VERSION\']}"',
-        '"head_sha": os.environ["SOURCE_COMMIT"]',
+        '"head_sha": source_commit',
         '"path": ".github/workflows/publish-pypi.yml"',
         '"status": "completed"',
         '"conclusion": "success"',
-        'item.get("name") == "python-package-distributions"',
+        '"name": "python-package-distributions"',
         "source run must contain exactly one unexpired",
         'item.get("name")',
         '== "Verify TestPyPI artifact identity and installation"',
@@ -249,48 +268,66 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
     workflow = _workflow(PUBLISH)
     workflow_text = PUBLISH.read_text(encoding="utf-8")
     assert 'test "$tag_commit" = "$GITHUB_SHA"' not in workflow_text
+    assert "AUTHORITY_SOURCE_SHA" not in workflow_text
+    assert "validate_release_retention.py" not in workflow_text
 
-    publish = workflow["jobs"]["publish-pypi"]
-    assert publish["environment"] == {
+    authorization = workflow["jobs"]["authorize-production"]
+    assert authorization["environment"] == {
         "name": "pypi",
         "url": "https://pypi.org/p/metriplane",
     }
-    steps = publish["steps"]
-    authority_download_index = next(
+    assert authorization["permissions"] == {"actions": "read", "contents": "read"}
+    assert authorization["needs"] == [
+        "validate-production-request",
+        "verify-production-artifacts",
+    ]
+    authorization_steps = authorization["steps"]
+    store_index = next(
         index
-        for index, step in enumerate(steps)
-        if step.get("with", {}).get("name") == "release-qualification-evidence"
+        for index, step in enumerate(authorization_steps)
+        if step.get("name")
+        == "Read back and compare exact authority bytes from both external stores"
     )
     validation_index = next(
         index
-        for index, step in enumerate(steps)
+        for index, step in enumerate(authorization_steps)
         if step.get("name")
-        == "Revalidate exact authority and approved artifacts after the environment gate"
+        == "Revalidate exact authority and artifacts immediately before OIDC handoff"
     )
-    publication_index = next(
-        index
-        for index, step in enumerate(steps)
-        if step.get("name") == "Publish the verified distributions to PyPI"
-    )
-    assert authority_download_index < validation_index
-    assert validation_index + 1 == publication_index
-    assert steps[authority_download_index]["with"] == {
-        "name": "release-qualification-evidence",
-        "path": "release-authority/",
-        "run-id": "${{ inputs.qualification_run_id }}",
-        "github-token": "${{ github.token }}",
-    }
-    assert steps[validation_index]["env"]["AUTHORITY_SOURCE_SHA"] == "${{ github.sha }}"
+    assert store_index < validation_index
 
-    command = steps[validation_index]["run"]
-    required = (
+    store_command = authorization_steps[store_index]["run"]
+    store_requirements = (
+        "AUTHORITY_STORE_A_URL",
+        "AUTHORITY_STORE_B_URL",
+        "authority stores must use distinct HTTPS host identities",
+        "cmp --silent",
+        'test "$store_a_sha256" = "$store_b_sha256"',
+        'test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"',
+        "external stores and GitHub artifact have different JSON inventories",
+        "external stores and GitHub artifact differ",
+        "retention receipt differs from observed store bytes",
+        "retention receipt-set digest mismatch",
+    )
+    assert all(fragment in store_command for fragment in store_requirements)
+
+    validation = authorization_steps[validation_index]
+    assert validation["env"]["CANDIDATE_SHA"] == (
+        "${{ needs.validate-production-request.outputs.commit }}"
+    )
+    command = validation["run"]
+    validation_requirements = (
         "/actions/runs/${QUALIFICATION_RUN_ID}",
-        "/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100",
-        '"head_sha": source_sha',
+        "/actions/artifacts/${QUALIFICATION_ARTIFACT_ID}",
+        "/actions/runs/${RELEASE_RUN_ID}",
+        "/actions/artifacts/${RELEASE_ARTIFACT_ID}",
+        'test "$(git rev-parse "${tag_ref}^{commit}")" = "$CANDIDATE_SHA"',
+        'git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main',
+        '"head_sha": candidate_sha',
         '"path": ".github/workflows/release-required.yml"',
+        '"path": ".github/workflows/publish-pypi.yml"',
         '"status": "completed"',
         '"conclusion": "success"',
-        "fresh qualification authority is not exact and unique",
         '"delta.json": "candidate_sha"',
         '"gate-instance.json": "frozen_source_sha"',
         '"impact-manifest.json": "head_sha"',
@@ -305,11 +342,38 @@ def test_production_publish_refreshes_authority_after_environment_approval() -> 
         "validate_release_qualification.py",
         "validate_release_approval.py",
         "--role-assignments release-authority/role-assignments.json",
-        "validate_release_retention.py",
         "check_release_readiness.py",
         "validate_release_artifact_manifest.py",
+        'echo "release_artifact_id=$RELEASE_ARTIFACT_ID"',
     )
-    assert all(fragment in command for fragment in required)
+    assert all(fragment in command for fragment in validation_requirements)
+
+    publish = workflow["jobs"]["publish-pypi"]
+    assert publish["needs"] == "authorize-production"
+    assert publish["permissions"] == {"actions": "read", "id-token": "write"}
+    assert publish["environment"] == {
+        "name": "pypi",
+        "url": "https://pypi.org/p/metriplane",
+    }
+    assert [step.get("uses") for step in publish["steps"]] == [
+        "actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53",
+        "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+    ]
+    assert all("run" not in step for step in publish["steps"])
+    assert publish["steps"][0]["with"]["artifact-ids"] == (
+        "${{ needs.authorize-production.outputs.release_artifact_id }}"
+    )
+
+    for job in workflow["jobs"].values():
+        if job.get("permissions", {}).get("id-token") != "write":
+            continue
+        assert all(
+            not str(step.get("uses", "")).startswith("actions/checkout@")
+            for step in job["steps"]
+        )
+        commands = "\n".join(str(step.get("run", "")) for step in job["steps"])
+        assert "python tools/" not in commands
+        assert "./tools/" not in commands
 
 
 def test_qualification_provenance_precedes_authority_download() -> None:
@@ -323,7 +387,7 @@ def test_qualification_provenance_precedes_authority_download() -> None:
     download_index = next(
         index
         for index, step in enumerate(steps)
-        if step.get("with", {}).get("name") == "release-qualification-evidence"
+        if step.get("with", {}).get("path") == "release-authority/"
     )
     authority_index = next(
         index
@@ -334,13 +398,11 @@ def test_qualification_provenance_precedes_authority_download() -> None:
 
     command = steps[provenance_index]["run"]
     required = (
-        'test "$GITHUB_REF" = "refs/heads/main"',
-        'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"',
         "/actions/runs/${QUALIFICATION_RUN_ID}",
         "/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100",
         '"event": "workflow_dispatch"',
         '"head_branch": "main"',
-        '"head_sha": candidate_sha',
+        're.fullmatch(r"[0-9a-f]{40}", head_sha)',
         '"path": ".github/workflows/release-required.yml"',
         '"status": "completed"',
         '"conclusion": "success"',
@@ -348,6 +410,8 @@ def test_qualification_provenance_precedes_authority_download() -> None:
         '"expired": False',
         '"name": "release-qualification-evidence"',
         '"id": run_id',
+        'output.write(f"artifact_id={artifact[\'id\']}\\n")',
+        'git merge-base --is-ancestor "$qualification_head_sha" origin/main',
     )
     assert all(fragment in command for fragment in required)
 
@@ -380,9 +444,9 @@ def _run_qualification_validator(
         {
             "GITHUB_REPOSITORY": "Miko997/metriplane",
             "QUALIFICATION_ARTIFACTS_JSON": str(artifacts_path),
-            "QUALIFICATION_CANDIDATE_SHA": "a" * 40,
             "QUALIFICATION_RUN_ID": "1234",
             "QUALIFICATION_RUN_JSON": str(run_path),
+            "GITHUB_OUTPUT": str(root / "output.txt"),
         }
     )
     return subprocess.run(
@@ -424,7 +488,7 @@ def test_qualification_provider_payload_mutations_fail_closed(tmp_path: Path) ->
         ("event", {"event": "push"}),
         ("status", {"status": "in_progress"}),
         ("conclusion", {"conclusion": "failure"}),
-        ("candidate", {"head_sha": "b" * 40}),
+        ("malformed-head", {"head_sha": "not-a-commit"}),
         ("branch", {"head_branch": "release"}),
     )
     for label, mutation in run_mutations:
@@ -450,13 +514,27 @@ def test_qualification_provider_payload_mutations_fail_closed(tmp_path: Path) ->
     result = _run_qualification_validator(tmp_path / "duplicate", run, duplicate)
     assert result.returncode != 0
 
+    ancestor_run = {**run, "head_sha": "b" * 40}
+    ancestor_artifact = copy.deepcopy(artifact)
+    ancestor_artifact["workflow_run"] = {
+        "id": 1234,
+        "head_branch": "main",
+        "head_sha": "b" * 40,
+    }
+    ancestor = _run_qualification_validator(
+        tmp_path / "older-qualification-head",
+        ancestor_run,
+        {"total_count": 1, "artifacts": [ancestor_artifact]},
+    )
+    assert ancestor.returncode == 0, ancestor.stderr
+
 
 def test_tag_is_observed_but_never_accepted_as_release_authority() -> None:
     text = PUBLISH.read_text(encoding="utf-8")
     assert 'test "$(git cat-file -t "$tag_ref")" = "tag"' in text
     assert "release-qualification-evidence" in text
-    assert text.index("Require retained cumulative release authority") < text.index(
-        "Require owner confirmation and a successful artifact workflow"
+    assert text.index("Resolve the exact annotated candidate and source artifact") < text.index(
+        "Require retained cumulative release authority"
     )
     assert "tag_is_authority" not in text
 
