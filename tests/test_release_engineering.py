@@ -153,6 +153,7 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
         'git rev-parse "${tag_ref}^{commit}"',
         'test "$tag_commit" = "$(git rev-parse origin/main)"',
+        'git merge-base --is-ancestor "$tag_commit" origin/main',
         'test "$GITHUB_REF_NAME" = "v${package_version}"',
         "create-manifest",
         "verify-manifest",

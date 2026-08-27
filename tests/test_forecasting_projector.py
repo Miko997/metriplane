@@ -20,8 +20,7 @@ def test_respects_horizon_and_step():
 
 
 def test_caps_projected_points():
-    path = project_path((0.0, 0.0), (1.0, 0.0), horizon_s=100.0, step_s=0.1,
-                        max_points=5)
+    path = project_path((0.0, 0.0), (1.0, 0.0), horizon_s=100.0, step_s=0.1, max_points=5)
     assert len(path) == 5
 
 

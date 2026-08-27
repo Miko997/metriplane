@@ -16,12 +16,38 @@ Metriplane supports Python 3.12 and 3.13. Runtime dependency ranges remain in
 | Twine | `twine==6.2.0` |
 | PyYAML stubs | `types-PyYAML==6.0.12.20260724` |
 
+The matching pre-commit hooks use Ruff `v0.16.2` and mypy `v1.20.2`; local
+hooks and CI therefore evaluate the same tool identities.
+
 Use the exact uv executable and ignore user or system uv configuration:
 
 ```bash
 uv --no-config lock --check
 uv --no-config sync --frozen --all-groups
 ```
+
+## Maintained Python quality
+
+The root quality gate uses the pinned tools and stable, explicitly selected
+Ruff error families. Independently locked adapter packages run their own local
+quality gates. Historical evidence, retained proof trees, and the frozen Atlas
+proof implementation are byte-preserved, so the root gate excludes `adapters/`,
+`evidence/`, `metriplane/atlas/`, and `proofs/`:
+
+```bash
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen mypy
+```
+
+Strict mypy covers the maintained `metriplane` package outside the frozen Atlas
+proof implementation. New package modules join that gate automatically; tests,
+operational scripts, benchmarks, and isolated adapter packages remain exercised
+by their runtime and package-specific gates. Atlas remains covered by its
+functional, evidence-freeze, and release-blocker tests until that proof surface
+is explicitly reopened under its governing policy. Imports from that excluded
+namespace are treated as an external frozen boundary (`follow_imports = "skip"`),
+not silenced with `ignore_errors` or per-diagnostic ignores.
 
 ## Source profile
 
@@ -40,18 +66,20 @@ failures, and promotes warnings to errors. Neither pytest configuration nor a
 conftest adds the repository to `PYTHONPATH` or mutates `sys.path`; the synced
 environment must provide the source installation normally.
 
-Canonical collection is checked three times with:
+The policy test enforces canonical collection with:
 
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-Each ordered node-id stream must contain exactly 1,621 items and have the same
-SHA-256 digest. In the exact core environment above, without optional GPU
-extras and with the empty browser cache, a complete source run has 1,607 passed
-and 14 expected skips. Twelve result-schema cases run in the separate locked
+The ordered node-id stream must contain exactly 2,340 items. In the exact core
+environment above, without optional GPU extras and with the empty browser
+cache, the integrated source profile has 2,324 passed and 16 expected skips.
+Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
-Chromium binary, and one GPU-equivalence case requires an optional CuPy extra.
+Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and
+two functional-inventory cases require their governed retained-evidence and
+non-editable installed-package profiles.
 The frozen MP2-000 1,194-item snapshot is a historical artifact and is not
 updated by this policy.
 

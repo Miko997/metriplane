@@ -114,11 +114,16 @@ def mapping_points() -> str:
 
 def static_ids() -> str:
     rows = read_csv_rows("evidence/experiments/id_stability_001.csv")
-    return ",".join(str(int(row["object_id"])) for row in sorted(rows, key=lambda item: int(item["object_id"])))
+    return ",".join(
+        str(int(row["object_id"])) for row in sorted(rows, key=lambda item: int(item["object_id"]))
+    )
 
 
 def static_frames() -> str:
-    frames = {int(row["total_frames"]) for row in read_csv_rows("evidence/experiments/id_stability_001.csv")}
+    frames = {
+        int(row["total_frames"])
+        for row in read_csv_rows("evidence/experiments/id_stability_001.csv")
+    }
     if len(frames) != 1:
         raise ValueError(f"static total frame counts differ: {sorted(frames)}")
     return str(frames.pop())
@@ -130,14 +135,20 @@ def static_coverage() -> str:
 
 
 def movement_frames() -> str:
-    frames = {int(row["total_frames"]) for row in read_csv_rows("evidence/experiments/id_stability_movement_001.csv")}
+    frames = {
+        int(row["total_frames"])
+        for row in read_csv_rows("evidence/experiments/id_stability_movement_001.csv")
+    }
     if len(frames) != 1:
         raise ValueError(f"movement total frame counts differ: {sorted(frames)}")
     return str(frames.pop())
 
 
 def movement_coverage_range() -> str:
-    coverages = [float(row["coverage_pct"]) for row in read_csv_rows("evidence/experiments/id_stability_movement_001.csv")]
+    coverages = [
+        float(row["coverage_pct"])
+        for row in read_csv_rows("evidence/experiments/id_stability_movement_001.csv")
+    ]
     return f"{fmt(min(coverages), 2)}-{fmt(max(coverages), 2)}"
 
 
@@ -176,7 +187,9 @@ def compute_value(column: str) -> str:
 
 
 def zone_count() -> str:
-    return str(len(read_csv_rows("evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv")))
+    return str(
+        len(read_csv_rows("evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv"))
+    )
 
 
 def zone_dwell_total() -> str:
@@ -214,33 +227,87 @@ def gpu_relation() -> str:
 
 METRIC_SPECS: dict[str, tuple[str, Callable[[], str]]] = {
     "timing_samples": ("evidence/experiments/latency_summary.csv", latency_samples),
-    "detect.cam0_p95_ms": ("evidence/experiments/latency_summary.csv", lambda: latency_p95("detect.cam0")),
-    "detect.cam1_p95_ms": ("evidence/experiments/latency_summary.csv", lambda: latency_p95("detect.cam1")),
+    "detect.cam0_p95_ms": (
+        "evidence/experiments/latency_summary.csv",
+        lambda: latency_p95("detect.cam0"),
+    ),
+    "detect.cam1_p95_ms": (
+        "evidence/experiments/latency_summary.csv",
+        lambda: latency_p95("detect.cam1"),
+    ),
     "fuse_p95_ms": ("evidence/experiments/latency_summary.csv", lambda: latency_p95("fuse")),
     "summed_non_pacing_p95_ms": ("evidence/experiments/latency_summary.csv", non_pacing_p95),
     "mapping_mean_error_cm": ("evidence/experiments/mapping_error_001.csv", mapping_mean_error),
     "mapping_max_error_cm": ("evidence/experiments/mapping_error_001.csv", mapping_max_error),
     "mapping_points": ("evidence/experiments/mapping_error_001.csv", mapping_points),
     "static_continuity_ids": ("evidence/experiments/id_stability_001.csv", static_ids),
-    "static_continuity_coverage_pct": ("evidence/experiments/id_stability_001.csv", static_coverage),
+    "static_continuity_coverage_pct": (
+        "evidence/experiments/id_stability_001.csv",
+        static_coverage,
+    ),
     "static_continuity_frames": ("evidence/experiments/id_stability_001.csv", static_frames),
     "movement_frames": ("evidence/experiments/id_stability_movement_001.csv", movement_frames),
-    "movement_coverage_range_pct": ("evidence/experiments/id_stability_movement_001.csv", movement_coverage_range),
-    "movement_max_gap_frames": ("evidence/experiments/id_stability_movement_001.csv", movement_max_gap),
-    "replay_frames": ("evidence/experiments/replay_determinism.csv", lambda: replay_value("frames_compared")),
-    "replay_object_pairs": ("evidence/experiments/replay_determinism.csv", lambda: replay_value("object_pairs_compared")),
-    "replay_max_diff_cm": ("evidence/experiments/replay_determinism.csv", lambda: replay_value("max_pos_diff_cm")),
-    "replay_event_mismatches": ("evidence/experiments/replay_determinism.csv", lambda: replay_value("event_mismatch_count")),
-    "backpressure_published": ("evidence/experiments/backpressure_summary.csv", lambda: backpressure_value("published")),
-    "backpressure_dropped": ("evidence/experiments/backpressure_summary.csv", lambda: backpressure_value("drops_total")),
-    "queue_depth": ("evidence/experiments/backpressure_summary.csv", lambda: backpressure_value("max_queue_depth")),
-    "fusion_jitter_range_mm": ("evidence/experiments/fusion_jitter_001.csv", fusion_jitter_range_mm),
-    "cpu_gpu_equivalence_samples": ("evidence/experiments/compute_equivalence_001.csv", lambda: compute_value("samples")),
-    "cpu_gpu_rmse_diff_cm": ("evidence/experiments/compute_equivalence_001.csv", lambda: compute_value("rmse_diff_cm")),
-    "cpu_gpu_max_diff_cm": ("evidence/experiments/compute_equivalence_001.csv", lambda: compute_value("max_abs_diff_cm")),
+    "movement_coverage_range_pct": (
+        "evidence/experiments/id_stability_movement_001.csv",
+        movement_coverage_range,
+    ),
+    "movement_max_gap_frames": (
+        "evidence/experiments/id_stability_movement_001.csv",
+        movement_max_gap,
+    ),
+    "replay_frames": (
+        "evidence/experiments/replay_determinism.csv",
+        lambda: replay_value("frames_compared"),
+    ),
+    "replay_object_pairs": (
+        "evidence/experiments/replay_determinism.csv",
+        lambda: replay_value("object_pairs_compared"),
+    ),
+    "replay_max_diff_cm": (
+        "evidence/experiments/replay_determinism.csv",
+        lambda: replay_value("max_pos_diff_cm"),
+    ),
+    "replay_event_mismatches": (
+        "evidence/experiments/replay_determinism.csv",
+        lambda: replay_value("event_mismatch_count"),
+    ),
+    "backpressure_published": (
+        "evidence/experiments/backpressure_summary.csv",
+        lambda: backpressure_value("published"),
+    ),
+    "backpressure_dropped": (
+        "evidence/experiments/backpressure_summary.csv",
+        lambda: backpressure_value("drops_total"),
+    ),
+    "queue_depth": (
+        "evidence/experiments/backpressure_summary.csv",
+        lambda: backpressure_value("max_queue_depth"),
+    ),
+    "fusion_jitter_range_mm": (
+        "evidence/experiments/fusion_jitter_001.csv",
+        fusion_jitter_range_mm,
+    ),
+    "cpu_gpu_equivalence_samples": (
+        "evidence/experiments/compute_equivalence_001.csv",
+        lambda: compute_value("samples"),
+    ),
+    "cpu_gpu_rmse_diff_cm": (
+        "evidence/experiments/compute_equivalence_001.csv",
+        lambda: compute_value("rmse_diff_cm"),
+    ),
+    "cpu_gpu_max_diff_cm": (
+        "evidence/experiments/compute_equivalence_001.csv",
+        lambda: compute_value("max_abs_diff_cm"),
+    ),
     "zone_count": ("evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv", zone_count),
-    "zone_dwell_object_seconds": ("evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv", zone_dwell_total),
-    "zone_transitions": ("evidence/experiments/case_study_1_movement_zone_transitions.csv", zone_transitions),
+    "zone_dwell_object_seconds": (
+        "evidence/experiments/case_study_1_movement_zone_dwell_by_zone.csv",
+        zone_dwell_total,
+    ),
+    "zone_transitions": (
+        "evidence/experiments/case_study_1_movement_zone_transitions.csv",
+        zone_transitions,
+    ),
     "cpu_gpu_benchmark_scope": ("evidence/experiments/gpu_benchmark_001.csv", gpu_relation),
 }
 
@@ -258,9 +325,7 @@ STALE_VALUE_PATTERNS = {
     "old_zone_count": re.compile(r"\bzone_count=" + "2" + r"\b"),
 }
 OLD_TITLE = (
-    "Benchmarking Camera-First Planar Digital Twins: "
-    "A Reproducible "
-    "Evaluation of MetriPlane"
+    "Benchmarking Camera-First Planar Digital Twins: A Reproducible Evaluation of MetriPlane"
 )
 FORBIDDEN_CLAIMS = (
     "is a peer-reviewed publication",
@@ -293,7 +358,9 @@ def read_checksums(errors: list[str]) -> dict[str, str]:
         errors.append("missing evidence/CHECKSUMS.sha256")
         return {}
     checksums: dict[str, str] = {}
-    for line_number, line in enumerate(CHECKSUMS_PATH.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_number, line in enumerate(
+        CHECKSUMS_PATH.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         if not line.strip():
             continue
         parts = line.split(maxsplit=1)
@@ -350,7 +417,9 @@ def audit_manifest_and_checksums(
             errors.append(f"manifest artifact does not exist: {artifact_path}")
             continue
         if row["release_tag"] != RELEASE_TAG:
-            errors.append(f"{artifact_path}: release_tag is {row['release_tag']!r}, expected {RELEASE_TAG!r}")
+            errors.append(
+                f"{artifact_path}: release_tag is {row['release_tag']!r}, expected {RELEASE_TAG!r}"
+            )
 
         actual = sha256_file(path)
         if row["sha256"] != actual:

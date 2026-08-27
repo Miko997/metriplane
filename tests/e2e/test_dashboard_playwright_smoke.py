@@ -11,8 +11,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 playwright = pytest.importorskip("playwright.sync_api")
-
-from playwright.sync_api import sync_playwright
+sync_playwright = playwright.sync_playwright
 
 
 @contextmanager

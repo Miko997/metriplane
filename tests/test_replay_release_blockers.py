@@ -98,16 +98,19 @@ def test_replay_cli_keeps_speed_compatibility_with_explicit_warning(
     input_path = _write_jsonl(tmp_path / "input.jsonl", [_frame(1, 1.0)])
     output_path = tmp_path / "output.jsonl"
 
-    assert _main_replay(
-        [
-            "--input",
-            str(input_path),
-            "--output-file",
-            str(output_path),
-            "--speed",
-            "2",
-        ]
-    ) == 0
+    assert (
+        _main_replay(
+            [
+                "--input",
+                str(input_path),
+                "--output-file",
+                str(output_path),
+                "--speed",
+                "2",
+            ]
+        )
+        == 0
+    )
 
     assert output_path.is_file()
     assert "retained for compatibility" in capsys.readouterr().err

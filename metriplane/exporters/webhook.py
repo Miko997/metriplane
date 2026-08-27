@@ -22,7 +22,8 @@ class WebhookExporter:
     def _post(self, payload: dict[str, Any]) -> bool:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            self.url, data=data, headers={"Content-Type": "application/json"})
+            self.url, data=data, headers={"Content-Type": "application/json"}
+        )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                 return 200 <= getattr(resp, "status", 200) < 300

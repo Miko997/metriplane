@@ -96,10 +96,20 @@ required-version = "==0.12.0"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+exclude = ["adapters", "evidence", "metriplane/atlas", "proofs"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+files = ["metriplane"]
+exclude = "^metriplane/atlas/"
+
+[[tool.mypy.overrides]]
+module = ["metriplane.atlas", "metriplane.atlas.*"]
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

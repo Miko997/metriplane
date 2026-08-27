@@ -28,7 +28,9 @@ def _world_to_px(x: float, y: float, *, xmin: float, ymax: float, scale: float) 
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Preview: 2 cameras mapped into same world XY + topdown.")
+    ap = argparse.ArgumentParser(
+        description="Preview: 2 cameras mapped into same world XY + topdown."
+    )
     ap.add_argument("--cam0", type=str, default="0")
     ap.add_argument("--cam1", type=str, default="2")
 
@@ -37,7 +39,9 @@ def main() -> int:
     ap.add_argument("--intrinsics-cam0", type=Path, default=None)
     ap.add_argument("--intrinsics-cam1", type=Path, default=None)
 
-    ap.add_argument("--bounds", default="-0.05,0.60,-0.05,0.45", help="xmin,xmax,ymin,ymax (meters)")
+    ap.add_argument(
+        "--bounds", default="-0.05,0.60,-0.05,0.45", help="xmin,xmax,ymin,ymax (meters)"
+    )
     ap.add_argument("--scale", type=float, default=700.0, help="pixels per meter")
     args = ap.parse_args()
 
@@ -101,22 +105,30 @@ def main() -> int:
                 dets = backend.detect(fr)
 
                 vis = fr.image.copy()
-                for (mid, cx, cy) in dets:
+                for mid, cx, cy in dets:
                     xy = mm.pixel_to_world_xy(cid, cx, cy)
                     cv2.circle(vis, (int(cx), int(cy)), 6, (0, 255, 0), -1)
 
                     if xy is not None:
                         xw, yw = xy
                         txt = f"id={mid} x={xw:.2f} y={yw:.2f}"
-                        cv2.putText(vis, txt, (int(cx) + 8, int(cy) - 8),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.putText(
+                            vis,
+                            txt,
+                            (int(cx) + 8, int(cy) - 8),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 255, 0),
+                            2,
+                        )
 
                         px, py = _world_to_px(xw, yw, xmin=xmin, ymax=ymax, scale=scale)
 
                         col = (0, 255, 255) if cid == "cam1" else (0, 255, 0)
                         cv2.circle(top, (px, py), 6, col, -1)
-                        cv2.putText(top, f"{mid}", (px + 6, py - 6),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1)
+                        cv2.putText(
+                            top, f"{mid}", (px + 6, py - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1
+                        )
 
                 cv2.imshow(f"cam_{cid}", vis)
 

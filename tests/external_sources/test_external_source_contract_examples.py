@@ -21,11 +21,7 @@ from metriplane.zones import point_in_polygon
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 BUNDLE = REPOSITORY_ROOT / "examples" / "external_sources" / "minimal"
-SCHEMA = (
-    REPOSITORY_ROOT
-    / "schemas"
-    / "metriplane.external_source_contract.v1.schema.json"
-)
+SCHEMA = REPOSITORY_ROOT / "schemas" / "metriplane.external_source_contract.v1.schema.json"
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -99,15 +95,17 @@ def _reference_conversion(bundle: Path) -> tuple[str, str]:
             }
         )
     session = "".join(
-        json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n"
-        for row in rows
+        json.dumps(row, separators=(",", ":"), ensure_ascii=False) + "\n" for row in rows
     )
-    mapping_output = json.dumps(
-        mapping_document,
-        indent=2,
-        sort_keys=True,
-        ensure_ascii=False,
-    ) + "\n"
+    mapping_output = (
+        json.dumps(
+            mapping_document,
+            indent=2,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
     return session, mapping_output
 
 
@@ -164,9 +162,7 @@ def test_stage_2_atlas_evaluation_is_reproducible(tmp_path: Path) -> None:
         assert (first_out / name).read_bytes() == (second_out / name).read_bytes()
 
     event_types = [row["event_type"] for row in _read_jsonl(first_out / "physical_event_log.jsonl")]
-    incident_types = [
-        row["incident_type"] for row in _read_jsonl(first_out / "incidents.jsonl")
-    ]
+    incident_types = [row["incident_type"] for row in _read_jsonl(first_out / "incidents.jsonl")]
     assert event_types == expected["event_types"]
     assert incident_types == expected["incident_types"]
 

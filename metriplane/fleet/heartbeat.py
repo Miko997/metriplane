@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +22,7 @@ class FleetHeartbeat:
     frames_total: int | None
     frames_dropped_total: int | None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     def to_json(self) -> str:

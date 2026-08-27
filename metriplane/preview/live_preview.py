@@ -47,16 +47,27 @@ class LivePreview:
             return u, v
 
         # colors (BGR)
-        col_cam0 = (0, 255, 0)      # green
-        col_cam1 = (0, 255, 255)    # yellow
-        col_fused = (255, 255, 0)   # cyan-ish
+        col_cam0 = (0, 255, 0)  # green
+        col_cam1 = (0, 255, 255)  # yellow
+        col_fused = (255, 255, 0)  # cyan-ish
 
-        def draw_pts(pts: Iterable[Tuple[str, float, float]], col: Tuple[int, int, int], r: int) -> None:
+        def draw_pts(
+            pts: Iterable[Tuple[str, float, float]], col: Tuple[int, int, int], r: int
+        ) -> None:
             for oid, x, y in pts:
                 u, v = to_px(float(x), float(y))
                 if 0 <= u < w and 0 <= v < h:
                     cv2.circle(img, (u, v), r, col, -1)
-                    cv2.putText(img, str(oid), (u + 7, v - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
+                    cv2.putText(
+                        img,
+                        str(oid),
+                        (u + 7, v - 7),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        col,
+                        1,
+                        cv2.LINE_AA,
+                    )
 
         # draw raw first, fused on top
         draw_pts(cam0_pts, col_cam0, 5)
@@ -64,9 +75,15 @@ class LivePreview:
         draw_pts(fused_pts, col_fused, 7)
 
         # legend
-        cv2.putText(img, "cam0(raw)", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col_cam0, 2, cv2.LINE_AA)
-        cv2.putText(img, "cam1(raw)", (120, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col_cam1, 2, cv2.LINE_AA)
-        cv2.putText(img, "fused", (230, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col_fused, 2, cv2.LINE_AA)
+        cv2.putText(
+            img, "cam0(raw)", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col_cam0, 2, cv2.LINE_AA
+        )
+        cv2.putText(
+            img, "cam1(raw)", (120, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col_cam1, 2, cv2.LINE_AA
+        )
+        cv2.putText(
+            img, "fused", (230, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.6, col_fused, 2, cv2.LINE_AA
+        )
 
         cv2.imshow(name, img)
 

@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -15,13 +16,21 @@ from dataclasses import dataclass, field
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Optional
-from metriplane.observability.timing import StageTiming
+from typing import Any, Callable, Optional, cast
 
-import cv2  # type: ignore
+import cv2
 
-
+from metriplane.backends.aruco_backend import ArUcoBackend
+from metriplane.camera.rtsp import RTSPCamera
+from metriplane.camera.usb import USBCamera
 from metriplane.config import Config, apply_profile_defaults, maybe_get_calib_paths
+from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
+from metriplane.metrics import MetricsRegistry, start_metrics_server
+from metriplane.observability.timing import StageTiming
+from metriplane.paths import (
+    PlatformPaths,
+    normalize_runs_dir,
+)
 from metriplane.provenance.run_provenance import (
     JsonlWriter,
     RunContext,
@@ -29,18 +38,12 @@ from metriplane.provenance.run_provenance import (
     is_header_record,
     open_jsonl_writer,
 )
-
-
-from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
-from metriplane.backends.aruco_backend import ArUcoBackend
-from metriplane.camera.rtsp import RTSPCamera
-from metriplane.camera.usb import USBCamera
-from metriplane.metrics import MetricsRegistry, start_metrics_server
-from metriplane.mapping.planar import PlanarMapper, load_planar_mapper
+from metriplane.run_ids import validate_portable_run_id
 from metriplane.schema import FrameStateModel, ObjectStateModel
 from metriplane.streaming.ws_server import client_count
 from metriplane.streaming.ws_thread import WsServerThread
 from metriplane.tracking import ObjectRegistry
+from metriplane.video_overlay import OverlayConfig, draw_overlay_bgr
 from metriplane.zone_analytics import ZoneAnalytics
 from metriplane.zones import ZoneMap, load_zones
 
@@ -50,6 +53,7 @@ log = logging.getLogger("metriplane.run")
 # =============================================================================
 # M9.3: Health + graceful degradation (self-contained; no other files needed)
 # =============================================================================
+
 
 class HealthStatus(str, Enum):
     OK = "OK"
@@ -158,7 +162,9 @@ class HealthRegistry:
     def snapshot_json(self) -> dict[str, Any]:
         now = time.monotonic_ns()
         with self._lock:
-            comps = {k: v.to_json() for k, v in sorted(self._components.items(), key=lambda kv: kv[0])}
+            comps = {
+                k: v.to_json() for k, v in sorted(self._components.items(), key=lambda kv: kv[0])
+            }
         return {
             "enabled": self._enabled,
             "ts_ns": now,
@@ -191,7 +197,7 @@ def _parse_faults(*, cfg: Config, cli_faults: list[str] | None) -> dict[str, Any
     faults.update(_cfg_section(cfg, "faults"))
 
     # from CLI: --fault k=v
-    for item in (cli_faults or []):
+    for item in cli_faults or []:
         s = str(item).strip()
         if not s:
             continue
@@ -205,7 +211,7 @@ def _parse_faults(*, cfg: Config, cli_faults: list[str] | None) -> dict[str, Any
         # type coercion
         vl: Any = v
         if v.lower() in ("true", "false"):
-            vl = (v.lower() == "true")
+            vl = v.lower() == "true"
         else:
             try:
                 if "." in v:
@@ -225,7 +231,9 @@ def _parse_faults(*, cfg: Config, cli_faults: list[str] | None) -> dict[str, Any
         except Exception:
             pass
 
-    env_ws = os.getenv("METRIPLANE_FAULT_WS_SEND_FAIL_AFTER_S") or os.getenv("METRIPLANE_FAULT_WS_FAIL_AFTER_S")
+    env_ws = os.getenv("METRIPLANE_FAULT_WS_SEND_FAIL_AFTER_S") or os.getenv(
+        "METRIPLANE_FAULT_WS_FAIL_AFTER_S"
+    )
     if env_ws is not None:
         try:
             faults["ws_send_fail_after_s"] = float(env_ws)
@@ -252,7 +260,8 @@ def _start_observability_server(
     try:
         sig = inspect.signature(start_metrics_server)
         if "get_health" in sig.parameters:
-            return start_metrics_server(  # type: ignore[call-arg]
+            native_start = cast(Callable[..., ThreadingHTTPServer], start_metrics_server)
+            return native_start(
                 host=host,
                 port=port,
                 registry=registry,
@@ -263,8 +272,8 @@ def _start_observability_server(
         pass
 
     # Fallback: combined server implemented here.
-    from metriplane.metrics import CONTENT_TYPE as _METRICS_CT  # type: ignore
-    from metriplane.metrics import _render_prometheus as _render  # type: ignore
+    from metriplane.metrics import CONTENT_TYPE as _METRICS_CT
+    from metriplane.metrics import _render_prometheus as _render
 
     def _prom_label(v: str) -> str:
         return str(v).replace("\\", "\\\\").replace('"', '\\"')
@@ -275,7 +284,9 @@ def _start_observability_server(
             "# TYPE metriplane_component_health gauge",
         ]
         for name, score in health.prometheus_samples():
-            lines.append(f'metriplane_component_health{{component="{_prom_label(name)}"}} {int(score)}')
+            lines.append(
+                f'metriplane_component_health{{component="{_prom_label(name)}"}} {int(score)}'
+            )
         lines.append("")
         return "\n".join(lines) + "\n"
 
@@ -329,6 +340,7 @@ def _start_observability_server(
 # Existing helpers (unchanged)
 # -----------------------------
 
+
 def _looks_like_default_calib_file(p: Path, filename: str) -> bool:
     """
     True for:
@@ -380,8 +392,8 @@ def _in_docker() -> bool:
 
 
 def _data_dir() -> Path:
-    env = os.getenv("METRIPLANE_DATA_DIR")
-    if env:
+    env = normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR"))
+    if env is not None:
         return Path(env)
     return Path("/data") if _in_docker() else Path(".")
 
@@ -392,7 +404,7 @@ def _resolve_output_path(p: str | None) -> Path | None:
     pp = Path(p)
     if pp.is_absolute():
         return pp
-    if _in_docker() or os.getenv("METRIPLANE_DATA_DIR"):
+    if _in_docker() or normalize_runs_dir(os.getenv("METRIPLANE_DATA_DIR")) is not None:
         return _data_dir() / pp
     return pp
 
@@ -438,7 +450,9 @@ def _resolve_single_camera(cfg: Config) -> ResolvedSingleCamera:
         else:
             source = 0 if camera_index is None else camera_index
             if not isinstance(source, int) or isinstance(source, bool) or source < 0:
-                raise ValueError(f"Invalid USB camera_index={source!r}; expected a non-negative integer")
+                raise ValueError(
+                    f"Invalid USB camera_index={source!r}; expected a non-negative integer"
+                )
         return ResolvedSingleCamera(
             camera=USBCamera(index=source),
             camera_backend="usb",
@@ -473,7 +487,9 @@ def _maybe_load_mapper(cfg: Config, *, required: bool | None = None) -> PlanarMa
         log.info("profile: DISABLED (no --profile and no calib/active_profile.yaml)")
 
     mapping_path: Path | None = Path(str(cfg.mapping_file)) if cfg.mapping_file else None
-    intr_path: Path | None = Path(str(cfg.intrinsics_file)) if getattr(cfg, "intrinsics_file", None) else None
+    intr_path: Path | None = (
+        Path(str(cfg.intrinsics_file)) if getattr(cfg, "intrinsics_file", None) else None
+    )
 
     if calib is not None:
         if mapping_path is None or _looks_like_default_calib_file(mapping_path, "mapping.yaml"):
@@ -486,7 +502,9 @@ def _maybe_load_mapper(cfg: Config, *, required: bool | None = None) -> PlanarMa
 
     try:
         mapper = load_planar_mapper(mapping_path, intr_path)
-        log.info("planar mapping: ENABLED mapping=%s intrinsics=%s", mapping_path, intr_path or "(none)")
+        log.info(
+            "planar mapping: ENABLED mapping=%s intrinsics=%s", mapping_path, intr_path or "(none)"
+        )
         return mapper
     except Exception as e:
         if required:
@@ -519,27 +537,22 @@ def _maybe_load_zones(cfg: Config, *, required: bool | None = None) -> ZoneMap |
         return None
 
 
-def _apply_runtime_profile_defaults(
-    cfg: Config, *, calib_root: Path = Path("calib")
-) -> Config:
+def _apply_runtime_profile_defaults(cfg: Config, *, calib_root: Path = Path("calib")) -> Config:
     """Resolve profile defaults, failing only for an explicitly selected profile."""
     explicit_profile = str(cfg.profile or "").strip()
     if explicit_profile:
         calib = maybe_get_calib_paths(explicit_profile, calib_root=calib_root)
         if calib is None:
             raise ValueError(
-                f"Configured profile not found: "
-                f"{calib_root / 'profiles' / explicit_profile}"
+                f"Configured profile not found: {calib_root / 'profiles' / explicit_profile}"
             )
         if cfg.mapping_file is None and not calib.mapping.is_file():
             raise ValueError(
-                f"Configured profile {explicit_profile!r} has no planar mapping: "
-                f"{calib.mapping}"
+                f"Configured profile {explicit_profile!r} has no planar mapping: {calib.mapping}"
             )
         if cfg.zones_file is None and not calib.zones.is_file():
             raise ValueError(
-                f"Configured profile {explicit_profile!r} has no zones file: "
-                f"{calib.zones}"
+                f"Configured profile {explicit_profile!r} has no zones file: {calib.zones}"
             )
     return apply_profile_defaults(cfg, calib_root=calib_root)
 
@@ -568,24 +581,24 @@ def _detection_to_object(
     if isinstance(det, (tuple, list)) and len(det) >= 3:
         oid = str(det[0])
         try:
-            cx = float(det[1])
-            cy = float(det[2])
+            tuple_cx = float(det[1])
+            tuple_cy = float(det[2])
         except Exception:
             return ObjectStateModel(id=oid)
 
-        extra = {"px": (cx, cy)}
-        pos_world = None
+        tuple_extra = {"px": (tuple_cx, tuple_cy)}
+        tuple_pos_world = None
         if mapper is not None:
-            xy = mapper.pixel_to_world_xy(cx, cy)
+            xy = mapper.pixel_to_world_xy(tuple_cx, tuple_cy)
             if xy is not None:
                 wx, wy = xy
-                pos_world = (float(wx), float(wy), float(z_world))
+                tuple_pos_world = (float(wx), float(wy), float(z_world))
 
         return ObjectStateModel(
             id=oid,
-            pos_world=pos_world,
+            pos_world=tuple_pos_world,
             confidence=1.0,
-            extra=extra,
+            extra=tuple_extra,
         )
 
     if isinstance(det, dict):
@@ -666,7 +679,23 @@ def run_loop(
     argv: list[str] | None = None,
     run_id: str | None = None,
     runs_dir: str | None = None,
+    paths: PlatformPaths | None = None,
 ) -> int:
+    configured_run_id = run_id if run_id is not None else os.getenv("METRIPLANE_RUN_ID")
+    if configured_run_id is not None:
+        try:
+            validate_portable_run_id(str(configured_run_id))
+        except ValueError as exc:
+            log.error("run storage unavailable: %s", exc)
+            return 2
+
+    effective_runs_dir = normalize_runs_dir(runs_dir)
+    configured_runs_dir = normalize_runs_dir(cfg.runs_dir)
+    if effective_runs_dir is None:
+        effective_runs_dir = configured_runs_dir
+    if effective_runs_dir is None:
+        if paths is not None:
+            effective_runs_dir = str(paths.runs_dir)
     resources = _RunResources()
     try:
         return _run_loop_impl(
@@ -675,7 +704,7 @@ def run_loop(
             config_path=config_path,
             argv=argv,
             run_id=run_id,
-            runs_dir=runs_dir,
+            runs_dir=effective_runs_dir,
             _resources=resources,
         )
     finally:
@@ -703,9 +732,7 @@ def _run_loop_impl(
         # Explicit file/profile selections fail closed. An omitted profile (including
         # a best-effort active profile) remains optional for backwards compatibility.
         explicit_profile = bool(str(cfg.profile or "").strip())
-        mapping_required = bool(
-            cfg.mapping_file or cfg.intrinsics_file or explicit_profile
-        )
+        mapping_required = bool(cfg.mapping_file or cfg.intrinsics_file or explicit_profile)
         zones_required = bool(cfg.zones_file or explicit_profile)
         cfg = _apply_runtime_profile_defaults(cfg)
 
@@ -743,13 +770,17 @@ def _run_loop_impl(
         except Exception:
             pass
 
-    ctx: RunContext = create_run_context(
-        cfg,
-        config_path=config_path,
-        argv=argv,
-        run_id=run_id,
-        runs_dir=runs_dir,
-    )
+    try:
+        ctx: RunContext = create_run_context(
+            cfg,
+            config_path=config_path,
+            argv=argv,
+            run_id=run_id,
+            runs_dir=runs_dir,
+        )
+    except (OSError, ValueError) as exc:
+        log.error("run storage unavailable: %s", exc)
+        return 2
 
     mirror_enabled = bool(mirror_path)
     try:
@@ -771,13 +802,17 @@ def _run_loop_impl(
     _resources.recorder = recorder
 
     recorder.write(ctx.header_record())
-    log.info("M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash)
+    log.info(
+        "M9.4 provenance: run_id=%s dir=%s config_hash=%s", ctx.run_id, ctx.run_dir, ctx.config_hash
+    )
     log.info("M9.4 recorder paths: %s", ", ".join(str(p) for p in recorder.paths))
 
     # M9.5: per-stage timing (CSV artifacts in run_dir)
     tcfg = _cfg_section(cfg, "timing")
     env_timing = os.getenv("METRIPLANE_TIMING") or os.getenv("METRIPLANE_TIMING")
-    timing_enabled = bool(tcfg.get("enabled", tcfg.get("enable", False))) or (str(env_timing).strip() in ("1", "true", "True", "yes", "on"))
+    timing_enabled = bool(tcfg.get("enabled", tcfg.get("enable", False))) or (
+        str(env_timing).strip() in ("1", "true", "True", "yes", "on")
+    )
     timing = StageTiming(
         enabled=timing_enabled,
         stages=[
@@ -800,7 +835,11 @@ def _run_loop_impl(
     )
     _resources.timing = timing
     if timing_enabled:
-        log.info("M9.5 timing: ENABLED frames_csv=%s summary_csv=%s", ctx.run_dir / "latency_frames.csv", ctx.run_dir / "latency_summary.csv")
+        log.info(
+            "M9.5 timing: ENABLED frames_csv=%s summary_csv=%s",
+            ctx.run_dir / "latency_frames.csv",
+            ctx.run_dir / "latency_summary.csv",
+        )
     else:
         log.info("M9.5 timing: DISABLED (set METRIPLANE_TIMING=1 or timing.enabled=true)")
 
@@ -818,7 +857,11 @@ def _run_loop_impl(
 
     health.mark_ok(
         "recording.jsonl",
-        details={"enabled": True, "paths": [str(p) for p in recorder.paths], "mirror_enabled": bool(mirror_enabled)},
+        details={
+            "enabled": True,
+            "paths": [str(p) for p in recorder.paths],
+            "mirror_enabled": bool(mirror_enabled),
+        },
     )
     if (not mirror_enabled) and mirror_path:
         health.mark_degraded("recording.jsonl", f"mirror_disabled: {mirror_path}")
@@ -834,7 +877,9 @@ def _run_loop_impl(
 
     # Faults (mainly used for WS send fail in single-cam runner)
     faults = _parse_faults(cfg=cfg, cli_faults=cli_faults)
-    ws_fail_after_s = float(faults.get("ws_send_fail_after_s") or faults.get("ws_fail_after_s") or 0.0)
+    ws_fail_after_s = float(
+        faults.get("ws_send_fail_after_s") or faults.get("ws_fail_after_s") or 0.0
+    )
     t0 = time.monotonic()
 
     ws = WsServerThread(host=cfg.ws_host, port=cfg.ws_port)
@@ -883,6 +928,7 @@ def _run_loop_impl(
     zone_analytics = ZoneAnalytics(zone_map) if zone_map is not None else None
     if zone_analytics is not None:
         log.info("zone analytics: ENABLED")
+        assert zone_map is not None
         health.mark_ok("zones", details={"enabled": True, "units": zone_map.units})
     else:
         log.info("zone analytics: DISABLED (zones unavailable)")
@@ -1009,7 +1055,7 @@ def _run_loop_impl(
             ):
                 try:
                     h, w = frame_bgr.shape[:2]
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fourcc = getattr(cv2, "VideoWriter_fourcc")(*"mp4v")
                     video_writer = cv2.VideoWriter(
                         str(record_video_path), fourcc, float(video_fps), (int(w), int(h))
                     )
@@ -1090,7 +1136,12 @@ def _run_loop_impl(
                     tracked_out, events = zone_analytics.update(ts_frame, tracked)
                     if events:
                         for ev in events:
-                            log.info("zone_event type=%s object=%s zone=%s", ev.type, ev.object_id, ev.zone)
+                            log.info(
+                                "zone_event type=%s object=%s zone=%s",
+                                ev.type,
+                                ev.object_id,
+                                ev.zone,
+                            )
                 else:
                     tracked_out = tracked
                     events = []
@@ -1130,7 +1181,11 @@ def _run_loop_impl(
             # ---- ws.send ----
             with timing.stage("ws.send"):
                 try:
-                    if not ws_disabled and ws_fail_after_s > 0 and (time.monotonic() - t0) >= ws_fail_after_s:
+                    if (
+                        not ws_disabled
+                        and ws_fail_after_s > 0
+                        and (time.monotonic() - t0) >= ws_fail_after_s
+                    ):
                         raise RuntimeError(f"FAULT: ws_send_fail_after_s={ws_fail_after_s}")
 
                     if not ws_disabled:
@@ -1139,7 +1194,9 @@ def _run_loop_impl(
                 except Exception as e:
                     ws_disabled = True
                     health.mark_degraded("ws", f"send_failed: {e}")
-                    log.warning("ws send failed -> entering degraded mode (publishing disabled): %s", e)
+                    log.warning(
+                        "ws send failed -> entering degraded mode (publishing disabled): %s", e
+                    )
 
             # ---- overlay ----
             if video_writer is not None and frame_bgr is not None and hasattr(frame_bgr, "shape"):
@@ -1195,7 +1252,9 @@ def _run_loop_impl(
     finally:
         # Export analytics
         if zone_analytics is not None and cfg.analytics_out_dir:
-            out_dir = _resolve_output_path(str(cfg.analytics_out_dir)) or Path(str(cfg.analytics_out_dir))
+            out_dir = _resolve_output_path(str(cfg.analytics_out_dir)) or Path(
+                str(cfg.analytics_out_dir)
+            )
             try:
                 zone_analytics.finalize(last_ts_frame)
                 paths = zone_analytics.export_csv(out_dir, prefix="m6")
@@ -1235,7 +1294,9 @@ def _run_replay_mode(
     p = Path(str(inp))
     if not p.is_file():
         log.error("replay input not found: %s", p)
-        health.mark_failed("camera", "replay_input_not_found", details={"mode": "replay", "path": str(p)})
+        health.mark_failed(
+            "camera", "replay_input_not_found", details={"mode": "replay", "path": str(p)}
+        )
         return 1
 
     health.mark_ok("camera", details={"mode": "replay", "path": str(p)})
@@ -1283,7 +1344,7 @@ def _run_replay_mode(
 
                         msg = FrameStateModel.model_validate(data)
 
-                        upd = {}
+                        upd: dict[str, Any] = {}
                         if getattr(msg, "run_id", None) in (None, ""):
                             upd["run_id"] = ctx.run_id
                         if getattr(msg, "config_hash", None) in (None, ""):
@@ -1295,10 +1356,7 @@ def _run_replay_mode(
                             msg = msg.model_copy(update=upd)
 
                     except Exception as exc:
-                        err = (
-                            f"invalid_jsonl_line:{line_number}:"
-                            f"{type(exc).__name__}: {exc}"
-                        )
+                        err = f"invalid_jsonl_line:{line_number}:{type(exc).__name__}: {exc}"
                         log.error("replay: %s", err)
                         health.mark_failed(
                             "camera",
@@ -1317,8 +1375,7 @@ def _run_replay_mode(
                         return 1
                     if msg.ts_sim_ns is not None and msg.ts_sim_ns < 0:
                         err = (
-                            f"invalid_timestamp: line {line_number} "
-                            "ts_sim_ns must be non-negative"
+                            f"invalid_timestamp: line {line_number} ts_sim_ns must be non-negative"
                         )
                         log.error("replay: %s", err)
                         health.mark_failed("camera", err)
@@ -1366,11 +1423,7 @@ def _run_replay_mode(
                         except OverflowError:
                             dt = float("inf")
                             target = float("inf")
-                        if (
-                            not math.isfinite(target)
-                            or dt < 0
-                            or dt > _MAX_REPLAY_PACING_DELAY_S
-                        ):
+                        if not math.isfinite(target) or dt < 0 or dt > _MAX_REPLAY_PACING_DELAY_S:
                             err = (
                                 f"invalid_replay_deadline: line {line_number} "
                                 "produced a non-finite, negative, or longer than "
@@ -1393,7 +1446,9 @@ def _run_replay_mode(
                         if dtw > 1e-6:
                             fps = float(len(frame_times) - 1) / dtw
 
-                    metrics.update(frames_total=frames_total, fps=fps, objects_tracked=len(msg.objects))
+                    metrics.update(
+                        frames_total=frames_total, fps=fps, objects_tracked=len(msg.objects)
+                    )
 
                     with timing.stage("record.jsonl"):
                         try:
@@ -1404,7 +1459,11 @@ def _run_replay_mode(
 
                     with timing.stage("ws.send"):
                         try:
-                            if not ws_disabled and ws_fail_after_s > 0 and (time.monotonic() - t0) >= ws_fail_after_s:
+                            if (
+                                not ws_disabled
+                                and ws_fail_after_s > 0
+                                and (time.monotonic() - t0) >= ws_fail_after_s
+                            ):
                                 raise RuntimeError(f"FAULT: ws_send_fail_after_s={ws_fail_after_s}")
                             if not ws_disabled:
                                 ws.send_frame(msg)
@@ -1412,7 +1471,9 @@ def _run_replay_mode(
                         except Exception as e:
                             ws_disabled = True
                             health.mark_degraded("ws", f"send_failed: {e}")
-                            log.warning("ws send failed -> degraded mode (publishing disabled): %s", e)
+                            log.warning(
+                                "ws send failed -> degraded mode (publishing disabled): %s", e
+                            )
 
                     timing.end_frame()
 
@@ -1538,7 +1599,11 @@ def _run_dummy_mode(
 
             with timing.stage("ws.send"):
                 try:
-                    if not ws_disabled and ws_fail_after_s > 0 and (time.monotonic() - t0) >= ws_fail_after_s:
+                    if (
+                        not ws_disabled
+                        and ws_fail_after_s > 0
+                        and (time.monotonic() - t0) >= ws_fail_after_s
+                    ):
                         raise RuntimeError(f"FAULT: ws_send_fail_after_s={ws_fail_after_s}")
 
                     if not ws_disabled:
@@ -1564,11 +1629,8 @@ def _run_dummy_mode(
         return 0
 
 
-
-
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None, *, paths: PlatformPaths | None = None) -> int:
     import argparse
-    import sys
     from pathlib import Path
 
     from metriplane.config import load_config
@@ -1595,6 +1657,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv_in)
 
     cfg = load_config(Path(args.config))
+    runs_dir = normalize_runs_dir(args.runs_dir)
 
     return run_loop(
         cfg,
@@ -1602,7 +1665,8 @@ def main(argv=None) -> int:
         config_path=Path(args.config),
         argv=["metriplane", *argv_in],
         run_id=args.run_id,
-        runs_dir=args.runs_dir,
+        runs_dir=runs_dir,
+        paths=paths,
     )
 
 

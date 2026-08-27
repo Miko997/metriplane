@@ -6,9 +6,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from metriplane.fleet.exporters import JsonlHeartbeatExporter
 from metriplane.fleet.heartbeat import FleetHeartbeat
@@ -35,9 +35,12 @@ class FleetAgent:
     runtime (exceptions are caught and logged).
     """
 
-    def __init__(self, config: FleetAgentConfig,
-                 metrics_provider: Callable[[], dict] | None = None,
-                 exporter: JsonlHeartbeatExporter | None = None):
+    def __init__(
+        self,
+        config: FleetAgentConfig,
+        metrics_provider: Callable[[], dict[str, Any]] | None = None,
+        exporter: JsonlHeartbeatExporter | None = None,
+    ):
         self.config = config
         self._metrics_provider = metrics_provider or (lambda: {})
         self._exporter = exporter
@@ -84,8 +87,7 @@ class FleetAgent:
         if self._thread is not None:
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, name="fleet-agent",
-                                        daemon=True)
+        self._thread = threading.Thread(target=self._loop, name="fleet-agent", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -97,12 +99,15 @@ class FleetAgent:
             self._exporter.close()
 
     @classmethod
-    def from_config_dict(cls, data: dict | None,
-                         metrics_provider: Callable[[], dict] | None = None,
-                         run_dir: str | Path | None = None,
-                         run_id: str | None = None,
-                         git_commit: str | None = None,
-                         config_hash: str | None = None) -> "FleetAgent | None":
+    def from_config_dict(
+        cls,
+        data: dict[str, Any] | None,
+        metrics_provider: Callable[[], dict[str, Any]] | None = None,
+        run_dir: str | Path | None = None,
+        run_id: str | None = None,
+        git_commit: str | None = None,
+        config_hash: str | None = None,
+    ) -> "FleetAgent | None":
         if not data or not data.get("enabled"):
             return None
         out = data.get("output_file", "fleet_heartbeat.jsonl")

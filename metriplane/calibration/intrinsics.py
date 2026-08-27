@@ -7,10 +7,10 @@ import argparse
 import datetime as _dt
 import logging
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, Sequence, Tuple
 
-import cv2  # type: ignore
-import numpy as np  # type: ignore
+import cv2
+import numpy as np
 import yaml
 
 log = logging.getLogger("metriplane.calibration.intrinsics")
@@ -49,7 +49,7 @@ def _find_chessboard(gray: np.ndarray, pattern_size: Tuple[int, int]) -> tuple[b
         pass
 
     flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_FAST_CHECK | cv2.CALIB_CB_NORMALIZE_IMAGE
-    found, corners = cv2.findChessboardCorners(gray, (cols, rows), flags)
+    found, corners = cv2.findChessboardCorners(gray, (cols, rows), flags=flags)
     return bool(found), corners
 
 
@@ -95,14 +95,16 @@ def _save_intrinsics(
 def _compute_reprojection_errors(
     objpoints: list[np.ndarray],
     imgpoints: list[np.ndarray],
-    rvecs: list[np.ndarray],
-    tvecs: list[np.ndarray],
+    rvecs: Sequence[Any],
+    tvecs: Sequence[Any],
     camera_matrix: np.ndarray,
     dist_coeffs: np.ndarray,
 ) -> list[float]:
     errs: list[float] = []
     for i in range(len(objpoints)):
-        imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], camera_matrix, dist_coeffs)
+        imgpoints2, _ = cv2.projectPoints(
+            objpoints[i], rvecs[i], tvecs[i], camera_matrix, dist_coeffs
+        )
         imgpoints2 = imgpoints2.reshape(-1, 2)
         imgp = imgpoints[i].reshape(-1, 2)
         err = cv2.norm(imgp, imgpoints2, cv2.NORM_L2) / max(len(imgpoints2), 1)
@@ -114,17 +116,27 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="M5: Camera intrinsics calibration (chessboard).")
     src = ap.add_mutually_exclusive_group(required=False)
     src.add_argument("--camera", type=int, default=0, help="USB camera index (default: 0)")
-    src.add_argument("--video", type=Path, help="Optional: calibrate from a video file instead of live camera")
+    src.add_argument(
+        "--video", type=Path, help="Optional: calibrate from a video file instead of live camera"
+    )
     ap.add_argument("--cols", type=int, default=9, help="Chessboard inner corners (columns)")
     ap.add_argument("--rows", type=int, default=6, help="Chessboard inner corners (rows)")
-    ap.add_argument("--square-size-m", type=float, default=0.024, help="Chessboard square size in meters")
-    ap.add_argument("--min-samples", type=int, default=15, help="Minimum captures before allowing save")
+    ap.add_argument(
+        "--square-size-m", type=float, default=0.024, help="Chessboard square size in meters"
+    )
+    ap.add_argument(
+        "--min-samples", type=int, default=15, help="Minimum captures before allowing save"
+    )
     ap.add_argument("--out", type=Path, default=Path("calib/camera.yaml"), help="Output YAML path")
-    ap.add_argument("--no-preview", action="store_true", help="Do not open OpenCV window (headless)")
+    ap.add_argument(
+        "--no-preview", action="store_true", help="Do not open OpenCV window (headless)"
+    )
     ap.add_argument("--print-every", type=int, default=5, help="Print status every N captures")
     args = ap.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    )
 
     pattern_size = (int(args.cols), int(args.rows))
     square_size_m = float(args.square_size_m)
@@ -150,7 +162,10 @@ def main() -> int:
     log.info("Controls: SPACE=capture sample, r=reset, q=calibrate+write, ESC=quit")
     log.info(
         "Chessboard: cols=%d rows=%d square=%.4fm min_samples=%d",
-        args.cols, args.rows, square_size_m, args.min_samples
+        args.cols,
+        args.rows,
+        square_size_m,
+        args.min_samples,
     )
 
     image_size: tuple[int, int] | None = None
@@ -221,7 +236,9 @@ def main() -> int:
                     log.error("no image size detected; cannot calibrate")
                     return 2
                 if len(imgpoints) < int(args.min_samples):
-                    log.warning("need at least %d samples (have %d)", args.min_samples, len(imgpoints))
+                    log.warning(
+                        "need at least %d samples (have %d)", args.min_samples, len(imgpoints)
+                    )
                     continue
 
                 log.info("calibrating... samples=%d image_size=%s", len(imgpoints), image_size)
@@ -233,7 +250,9 @@ def main() -> int:
                     None,
                 )
                 rms = float(ret)
-                per_view = _compute_reprojection_errors(objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs)
+                per_view = _compute_reprojection_errors(
+                    objpoints, imgpoints, rvecs, tvecs, camera_matrix, dist_coeffs
+                )
 
                 log.info("done. RMS reprojection error: %.4f px", rms)
                 log.info("saving -> %s", args.out)

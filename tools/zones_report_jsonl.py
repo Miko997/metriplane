@@ -34,7 +34,9 @@ def _load_active_profile(calib_dir: Path) -> str | None:
     return str(prof).strip() or None
 
 
-def _resolve_zones_path(*, repo_root: Path, profile: str | None, zones_arg: Path | None) -> tuple[Path, str | None]:
+def _resolve_zones_path(
+    *, repo_root: Path, profile: str | None, zones_arg: Path | None
+) -> tuple[Path, str | None]:
     """
     Returns: (zones_path, resolved_profile_name_or_none)
 
@@ -59,7 +61,9 @@ def _resolve_zones_path(*, repo_root: Path, profile: str | None, zones_arg: Path
 
     zones_path = calib_dir / "profiles" / prof / "zones.yaml"
     if not zones_path.is_file():
-        raise SystemExit(f"[zones_report] ERROR: zones.yaml not found for profile '{prof}': {zones_path}")
+        raise SystemExit(
+            f"[zones_report] ERROR: zones.yaml not found for profile '{prof}': {zones_path}"
+        )
 
     return zones_path, prof
 
@@ -81,7 +85,9 @@ def _file_stats(path: Path) -> tuple[int, int]:
     return size, nonempty
 
 
-def _iter_frames_loose(jsonl_path: Path) -> tuple[Iterator[tuple[float, list[ObjectStateModel]]], dict[str, int]]:
+def _iter_frames_loose(
+    jsonl_path: Path,
+) -> tuple[Iterator[tuple[float, list[ObjectStateModel]]], dict[str, int]]:
     """
     Loose JSONL reader:
       - parses each line via json.loads
@@ -162,11 +168,22 @@ def _iter_frames_loose(jsonl_path: Path) -> tuple[Iterator[tuple[float, list[Obj
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="M6: compute zone dwell/transitions from a recorded Metriplane JSONL.")
+    ap = argparse.ArgumentParser(
+        description="M6: compute zone dwell/transitions from a recorded Metriplane JSONL."
+    )
     ap.add_argument("jsonl", type=Path, help="Recorded session JSONL")
 
-    ap.add_argument("--profile", default=None, help="Calibration profile name (defaults to calib/active_profile.yaml).")
-    ap.add_argument("--zones", type=Path, default=None, help="zones.yaml/json (world coords). Overrides --profile.")
+    ap.add_argument(
+        "--profile",
+        default=None,
+        help="Calibration profile name (defaults to calib/active_profile.yaml).",
+    )
+    ap.add_argument(
+        "--zones",
+        type=Path,
+        default=None,
+        help="zones.yaml/json (world coords). Overrides --profile.",
+    )
 
     ap.add_argument("--out", type=Path, default=Path("evidence/analytics/offline_report"))
     ap.add_argument("--prefix", default="m6_offline")
@@ -238,7 +255,9 @@ def main() -> int:
 
     if yielded == 0 or last_ts is None:
         print("[zones_report] no frames found (strict=0, loose=0).")
-        print("[zones_report] ACTION: open the JSONL and confirm it contains JSON objects per line.")
+        print(
+            "[zones_report] ACTION: open the JSONL and confirm it contains JSON objects per line."
+        )
         print(f"[zones_report] HINT: head -n 2 {jsonl_path}")
         return 2
 

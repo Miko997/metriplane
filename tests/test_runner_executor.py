@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from metriplane.paths import PlatformPaths
 from metriplane.runner.executor import CommandExecutor
 
 
@@ -79,3 +80,70 @@ def test_cancel_terminates_child_process_group(tmp_path: Path) -> None:
     assert executor.cancel(job_id) is True
     assert _wait_until(lambda: _process_is_gone_or_zombie(child_pid))
     assert executor.get_job(job_id)["status"] == "cancelled"  # type: ignore[index]
+
+
+def test_injected_runner_paths_override_ambient_runs_for_subprocess(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    paths = PlatformPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        cache_dir=tmp_path / "cache",
+        state_dir=tmp_path / "state",
+    ).with_runs_dir(tmp_path / "launcher-recordings")
+    monkeypatch.setenv("RUNS", str(tmp_path / "ambient-recordings"))
+    executor = CommandExecutor(paths=paths)
+    executor.repo_root = tmp_path
+
+    job_id = executor.execute(
+        "print-runs",
+        [sys.executable, "-c", "import os; print(os.environ['RUNS'])"],
+        timeout_s=10,
+    )
+
+    assert _wait_until(
+        lambda: (
+            executor.get_job(job_id) is not None and executor.get_job(job_id)["status"] != "running"
+        )  # type: ignore[index]
+    )
+    job = executor.get_job(job_id)
+    assert job is not None
+    assert job["status"] == "succeeded"
+    assert job["stdout"].strip() == str(paths.runs_dir)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX descriptor inheritance")
+def test_executor_inherits_owned_descriptor_and_closes_parent_copy(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "session.jsonl"
+    artifact.write_text("pinned session\n", encoding="utf-8")
+    file_fd = os.open(artifact, os.O_RDONLY)
+    executor = CommandExecutor()
+    executor.repo_root = tmp_path
+    code = (
+        "import os, sys; "
+        "fd=int(sys.argv[1]); "
+        "os.lseek(fd, 0, os.SEEK_SET); "
+        "print(os.read(fd, 4096).decode(), end='')"
+    )
+
+    job_id = executor.execute(
+        "inherited-fd",
+        [sys.executable, "-c", code, str(file_fd)],
+        timeout_s=10,
+        pass_fds=(file_fd,),
+    )
+
+    assert _wait_until(
+        lambda: (
+            executor.get_job(job_id) is not None and executor.get_job(job_id)["status"] != "running"
+        )  # type: ignore[index]
+    )
+    job = executor.get_job(job_id)
+    assert job is not None
+    assert job["status"] == "succeeded"
+    assert job["stdout"] == "pinned session\n"
+    with pytest.raises(OSError):
+        os.fstat(file_fd)

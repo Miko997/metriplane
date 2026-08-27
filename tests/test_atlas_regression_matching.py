@@ -16,12 +16,8 @@ from metriplane.atlas.regression import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FROZEN_SPEC = (
-    ROOT / "evidence" / "paper_v2_0" / "atlas_run" / "regression_tests" / "INC-0001.yaml"
-)
-FROZEN_BUNDLE = (
-    ROOT / "evidence" / "paper_v2_0" / "atlas_run" / "evidence_bundles" / "INC-0001.zip"
-)
+FROZEN_SPEC = ROOT / "evidence" / "paper_v2_0" / "atlas_run" / "regression_tests" / "INC-0001.yaml"
+FROZEN_BUNDLE = ROOT / "evidence" / "paper_v2_0" / "atlas_run" / "evidence_bundles" / "INC-0001.zip"
 
 
 def _write_spec(tmp_path: Path, *, duplicate_key: str | None = None) -> Path:

@@ -15,8 +15,13 @@ CFG = CameraTrustConfig()
 
 def _cam(cid, dropout=0.0, dis=None, conf=None):
     return CameraTrustScoreModel(
-        camera_id=cid, score=0.5, status="DEGRADED",
-        dropout_rate=dropout, mean_disagreement_m=dis, mean_confidence=conf)
+        camera_id=cid,
+        score=0.5,
+        status="DEGRADED",
+        dropout_rate=dropout,
+        mean_disagreement_m=dis,
+        mean_confidence=conf,
+    )
 
 
 def test_high_dropout_recommendation():
@@ -35,9 +40,9 @@ def test_low_confidence_recommendation():
 
 
 def test_weak_zone_recommendation():
-    zone = ZoneCoverageScoreModel(zone="exit_lane", score=0.6,
-                                  camera_observation_counts={"cam1": 3},
-                                  weak_cameras=[])
+    zone = ZoneCoverageScoreModel(
+        zone="exit_lane", score=0.6, camera_observation_counts={"cam1": 3}, weak_cameras=[]
+    )
     recs = build_recommendations({}, {"exit_lane": zone}, CFG)
     assert any("exit_lane" in r for r in recs)
 

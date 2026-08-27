@@ -6,7 +6,6 @@ from __future__ import annotations
 import csv
 import json
 
-import pytest
 
 from metriplane.trace.store import TraceStore
 
@@ -21,31 +20,47 @@ def make_frame(ts: float, frame_id: int, objects: list[dict], run_id: str = "tes
         }
         for o in objects
     ]
-    return json.dumps({
-        "schema_version": "1.0",
-        "source_backend": "dummy",
-        "run_id": run_id,
-        "ts": ts,
-        "frame_id": frame_id,
-        "objects": objs,
-        "events": [],
-    })
+    return json.dumps(
+        {
+            "schema_version": "1.0",
+            "source_backend": "dummy",
+            "run_id": run_id,
+            "ts": ts,
+            "frame_id": frame_id,
+            "objects": objs,
+            "events": [],
+        }
+    )
 
 
-BASIC_JSONL = "\n".join([
-    make_frame(0.0, 0, [
-        {"id": 7, "pos": [1.0, 0.0, 0.0]},
-        {"id": 12, "pos": [0.5, 0.5, 0.0], "zone": "entry_lane"},
-    ]),
-    make_frame(1.0, 1, [
-        {"id": 7, "pos": [2.0, 0.0, 0.0]},
-        {"id": 12, "pos": [0.5, 0.5, 0.0], "zone": "entry_lane"},
-    ]),
-    make_frame(2.0, 2, [
-        {"id": 7, "pos": [3.0, 0.0, 0.0]},
-        {"id": 12, "pos": [0.5, 0.5, 0.0], "zone": "entry_lane"},
-    ]),
-])
+BASIC_JSONL = "\n".join(
+    [
+        make_frame(
+            0.0,
+            0,
+            [
+                {"id": 7, "pos": [1.0, 0.0, 0.0]},
+                {"id": 12, "pos": [0.5, 0.5, 0.0], "zone": "entry_lane"},
+            ],
+        ),
+        make_frame(
+            1.0,
+            1,
+            [
+                {"id": 7, "pos": [2.0, 0.0, 0.0]},
+                {"id": 12, "pos": [0.5, 0.5, 0.0], "zone": "entry_lane"},
+            ],
+        ),
+        make_frame(
+            2.0,
+            2,
+            [
+                {"id": 7, "pos": [3.0, 0.0, 0.0]},
+                {"id": 12, "pos": [0.5, 0.5, 0.0], "zone": "entry_lane"},
+            ],
+        ),
+    ]
+)
 
 
 def test_load_session_point_count():
@@ -119,11 +134,13 @@ def test_resolve_fallback():
 
 
 def test_gap_detection():
-    gap_jsonl = "\n".join([
-        make_frame(0.0, 0, [{"id": 7, "pos": [1.0, 0.0, 0.0]}]),
-        make_frame(1.0, 1, [{"id": 7, "pos": [2.0, 0.0, 0.0]}]),
-        make_frame(5.0, 2, [{"id": 7, "pos": [3.0, 0.0, 0.0]}]),
-    ])
+    gap_jsonl = "\n".join(
+        [
+            make_frame(0.0, 0, [{"id": 7, "pos": [1.0, 0.0, 0.0]}]),
+            make_frame(1.0, 1, [{"id": 7, "pos": [2.0, 0.0, 0.0]}]),
+            make_frame(5.0, 2, [{"id": 7, "pos": [3.0, 0.0, 0.0]}]),
+        ]
+    )
     store = TraceStore()
     store.load_session_text(gap_jsonl)
     summaries = {s.object_id: s for s in store.summarize()}

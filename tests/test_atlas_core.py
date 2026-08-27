@@ -33,14 +33,22 @@ def _sha256(path: Path) -> str:
 
 def _rewrite_bundle_checksums(bundle_dir: Path) -> None:
     checksum_path = bundle_dir / "checksums.sha256"
-    paths = [path for path in sorted(bundle_dir.rglob("*")) if path.is_file() and path != checksum_path]
+    paths = [
+        path for path in sorted(bundle_dir.rglob("*")) if path.is_file() and path != checksum_path
+    ]
     with checksum_path.open("w", encoding="utf-8") as handle:
         for path in paths:
             handle.write(f"{_sha256(path)}  {path.relative_to(bundle_dir).as_posix()}\n")
 
 
 def test_atlas_domain_packs_validate() -> None:
-    for pack_name in ("assembly_cell", "robot_cell", "warehouse_lane", "line_clearance", "training_lab"):
+    for pack_name in (
+        "assembly_cell",
+        "robot_cell",
+        "warehouse_lane",
+        "line_clearance",
+        "training_lab",
+    ):
         assert validate_domain_pack(PACK_ROOT / pack_name) == []
 
 
@@ -196,8 +204,16 @@ def test_atlas_outputs_are_deterministic_for_same_run_id(tmp_path: Path) -> None
     run_atlas(ASSEMBLY_SESSION, ASSEMBLY_PACK, run_a, run_id="atlas_deterministic")
     run_atlas(ASSEMBLY_SESSION, ASSEMBLY_PACK, run_b, run_id="atlas_deterministic")
 
-    for artifact in ("physical_event_log.jsonl", "deviations.jsonl", "incidents.jsonl", "reality_graph.json", "process_trace.json"):
-        assert (run_a / artifact).read_text(encoding="utf-8") == (run_b / artifact).read_text(encoding="utf-8")
+    for artifact in (
+        "physical_event_log.jsonl",
+        "deviations.jsonl",
+        "incidents.jsonl",
+        "reality_graph.json",
+        "process_trace.json",
+    ):
+        assert (run_a / artifact).read_text(encoding="utf-8") == (run_b / artifact).read_text(
+            encoding="utf-8"
+        )
 
 
 def test_atlas_bundle_verifier_detects_corruption(tmp_path: Path) -> None:
@@ -242,18 +258,23 @@ def test_atlas_query_index_bench_and_cli(tmp_path: Path, capsys) -> None:  # typ
     assert "PASS" in validate_output
 
     cli_out = tmp_path / "cli_run"
-    assert metriplane_main([
-        "atlas",
-        "run",
-        "--session-jsonl",
-        str(ASSEMBLY_SESSION),
-        "--pack",
-        str(ASSEMBLY_PACK),
-        "--out",
-        str(cli_out),
-        "--run-id",
-        "atlas_cli",
-    ]) == 0
+    assert (
+        metriplane_main(
+            [
+                "atlas",
+                "run",
+                "--session-jsonl",
+                str(ASSEMBLY_SESSION),
+                "--pack",
+                str(ASSEMBLY_PACK),
+                "--out",
+                str(cli_out),
+                "--run-id",
+                "atlas_cli",
+            ]
+        )
+        == 0
+    )
     run_output = capsys.readouterr().out
     assert "events=6" in run_output
     assert (cli_out / "cell_truth_report.html").exists()

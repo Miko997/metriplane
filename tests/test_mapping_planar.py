@@ -11,9 +11,7 @@ from metriplane.mapping.planar_multi import load_multi_planar_mapper
 
 def test_homography_identity_pixel_to_world() -> None:
     m = HomographyMapping(
-        H=((1.0, 0.0, 0.0),
-           (0.0, 1.0, 0.0),
-           (0.0, 0.0, 1.0)),
+        H=((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
         units="meters",
     )
     assert m.pixel_to_world_xy(10.0, 20.0) == (10.0, 20.0)

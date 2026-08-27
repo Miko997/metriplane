@@ -14,8 +14,12 @@ def main_test(argv: list[str]) -> int:
     p.add_argument("--strict-extra-incidents", action="store_true", default=False)
     p.add_argument("--strict-extra-events", action="store_true", default=False)
     p.add_argument("--skip-checksums", action="store_true", default=False)
-    p.add_argument("--no-write-reports", action="store_true", default=False,
-                   help="Do not write test_result.json/md into the bundle")
+    p.add_argument(
+        "--no-write-reports",
+        action="store_true",
+        default=False,
+        help="Do not write test_result.json/md into the bundle",
+    )
     args = p.parse_args(argv)
 
     from metriplane.testing.report import print_summary, write_json, write_md
