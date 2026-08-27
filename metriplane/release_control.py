@@ -941,7 +941,9 @@ def _evidence_record_index(root: Path) -> dict[str, list[tuple[Path, dict[str, A
             if parent.is_symlink():
                 raise ReleaseControlError(f"release evidence traverses a symlink: {path}")
         digest = _regular_file_digest(path)
-        indexed.setdefault(digest, []).append((path, read_json(path)))
+        record = read_json(path)
+        validate_record(record)
+        indexed.setdefault(digest, []).append((path, record))
     return indexed
 
 
@@ -986,18 +988,547 @@ def _candidate_record_for_digest(
     return matches[0]
 
 
+def _role_assignment_record_for_gate(
+    indexed: Mapping[str, Sequence[tuple[Path, dict[str, Any]]]],
+    gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    milestone = gate.get("milestone")
+    run_id = gate.get("run_id")
+    if not isinstance(milestone, str) or milestone not in MILESTONES:
+        raise ReleaseControlError("approval gate milestone is invalid")
+    _require_nonempty_string(run_id, "approval gate run id")
+    matches: list[dict[str, Any]] = []
+    for entries in indexed.values():
+        for _path, record in entries:
+            if record.get("record_type") != "release-role-assignments":
+                continue
+            role_data = record.get("data")
+            if (
+                isinstance(role_data, dict)
+                and role_data.get("milestone") == milestone
+                and role_data.get("run_id") == run_id
+            ):
+                matches.append(record)
+    if len(matches) != 1:
+        raise ReleaseControlError(
+            "approval role assignments do not resolve exactly once for the gate run"
+        )
+    return matches[0]
+
+
+def _require_nonempty_string(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ReleaseControlError(f"{label} must be a nonempty string")
+    return value
+
+
+def _require_canonical_string_inventory(
+    value: object, label: str, *, nonempty: bool = True
+) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or (nonempty and not value)
+        or any(not isinstance(item, str) or not item.strip() for item in value)
+        or value != sorted(set(value))
+    ):
+        raise ReleaseControlError(f"{label} is not a canonical string inventory")
+    return value
+
+
+def _validate_candidate_identity_payload(
+    candidate: Mapping[str, Any], *, expected_digest: str, expected_milestone: str
+) -> None:
+    expected_fields = {
+        "artifact_manifest_digest",
+        "artifact_set_digest",
+        "build_invocation_id",
+        "candidate_digest",
+        "evaluation_adoption_digest",
+        "evaluation_adoption_mode",
+        "gate_input_digest",
+        "milestone",
+        "package_version",
+        "predecessor_digest",
+        "release_tag",
+        "source_freeze_digest",
+    }
+    if set(candidate) != expected_fields:
+        raise ReleaseControlError("qualification candidate identity data shape is not closed")
+    for field in expected_fields - {
+        "build_invocation_id",
+        "evaluation_adoption_digest",
+        "evaluation_adoption_mode",
+        "milestone",
+        "package_version",
+        "release_tag",
+    }:
+        _require_digest(candidate[field], f"qualification candidate {field}")
+    adoption_digest = candidate["evaluation_adoption_digest"]
+    if adoption_digest is not None:
+        _require_digest(adoption_digest, "qualification candidate evaluation adoption")
+    if (
+        candidate["candidate_digest"] != expected_digest
+        or candidate["milestone"] != expected_milestone
+        or candidate["milestone"] not in MILESTONES
+        or candidate["release_tag"] != candidate["package_version"]
+        or not isinstance(candidate["package_version"], str)
+        or re.fullmatch(r"v(?:0\.[3-9]|1\.0)\.[0-9]+", candidate["package_version"]) is None
+        or not candidate["package_version"].startswith(f"{expected_milestone}.")
+        or not isinstance(candidate["evaluation_adoption_mode"], str)
+        or candidate["evaluation_adoption_mode"] not in {"none", "adopted"}
+        or (candidate["evaluation_adoption_mode"] == "none")
+        != (candidate["evaluation_adoption_digest"] is None)
+    ):
+        raise ReleaseControlError("qualification candidate identity bindings are invalid")
+    _require_invocation(candidate["build_invocation_id"])
+
+
+def _validate_qualification_plan_payload(
+    plan: Mapping[str, Any], *, candidate: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    expected_fields = {
+        "attempt_count",
+        "candidate_digest",
+        "candidate_manifest_digest",
+        "cells",
+        "delta_digest",
+        "delta_test_map_digest",
+        "expected_terminal_result",
+        "gate_instance_digest",
+        "milestone",
+        "plan_digest",
+        "predecessor_digest",
+        "readiness_digest",
+        "scenario_catalog_digest",
+    }
+    if set(plan) != expected_fields:
+        raise ReleaseControlError("release qualification plan data shape is not closed")
+    for field in expected_fields - {
+        "attempt_count",
+        "cells",
+        "expected_terminal_result",
+        "milestone",
+    }:
+        _require_digest(plan[field], f"release qualification plan {field}")
+    attempt_count = plan["attempt_count"]
+    if isinstance(attempt_count, bool) or not isinstance(attempt_count, int) or attempt_count < 1:
+        raise ReleaseControlError("release qualification plan attempt count is invalid")
+    unsigned_plan = dict(plan)
+    claimed_plan_digest = unsigned_plan.pop("plan_digest")
+    if claimed_plan_digest != sha256_json(unsigned_plan):
+        raise ReleaseControlError("release qualification plan digest mismatch")
+    if (
+        plan["expected_terminal_result"] != "PASS"
+        or plan["candidate_digest"] != candidate["candidate_digest"]
+        or plan["candidate_manifest_digest"] != candidate["artifact_manifest_digest"]
+        or plan["predecessor_digest"] != candidate["predecessor_digest"]
+        or plan["milestone"] != candidate["milestone"]
+    ):
+        raise ReleaseControlError("release qualification plan candidate binding mismatch")
+    cells = plan["cells"]
+    if not isinstance(cells, list) or not cells:
+        raise ReleaseControlError("release qualification plan cells are malformed")
+    expected_cell_fields = {
+        "cell_id",
+        "environment_id",
+        "obligation_ids",
+        "profile_id",
+        "scenario_ids",
+    }
+    cell_index: dict[str, dict[str, Any]] = {}
+    for cell in cells:
+        if not isinstance(cell, dict) or set(cell) != expected_cell_fields:
+            raise ReleaseControlError("release qualification plan cell shape is not closed")
+        cell_id = _require_nonempty_string(cell["cell_id"], "qualification plan cell id")
+        if cell_id in cell_index:
+            raise ReleaseControlError("release qualification plan cell ids are not unique")
+        _require_nonempty_string(cell["environment_id"], "qualification plan environment")
+        _require_nonempty_string(cell["profile_id"], "qualification plan profile")
+        _require_canonical_string_inventory(
+            cell["obligation_ids"], "qualification plan obligations"
+        )
+        _require_canonical_string_inventory(cell["scenario_ids"], "qualification plan scenarios")
+        cell_index[cell_id] = cell
+    if list(cell_index) != sorted(cell_index):
+        raise ReleaseControlError("release qualification plan cells are not canonical")
+    return cell_index
+
+
+def _validate_cell_result_payload(
+    record: Mapping[str, Any],
+    *,
+    plan_cell: Mapping[str, Any],
+    attempt_id: str,
+    candidate_digest: str,
+    plan_digest: str,
+    live: bool,
+) -> dict[str, Any]:
+    cell = _passing_record(record, "release-cell-result", live=live)
+    expected_fields = {
+        "artifact_digest",
+        "attempt_id",
+        "candidate_digest",
+        "cell_id",
+        "completed_at",
+        "counts",
+        "environment_id",
+        "junit_digest",
+        "obligation_ids",
+        "plan_digest",
+        "profile_id",
+        "result",
+        "runner_identity",
+        "scenario_ids",
+        "started_at",
+        "stderr_digest",
+        "stdout_digest",
+        "unexpected_outcomes",
+    }
+    if set(cell) != expected_fields:
+        raise ReleaseControlError("release qualification cell result data shape is not closed")
+    if (
+        cell["attempt_id"] != attempt_id
+        or cell["candidate_digest"] != candidate_digest
+        or cell["cell_id"] != plan_cell["cell_id"]
+        or cell["environment_id"] != plan_cell["environment_id"]
+        or cell["obligation_ids"] != plan_cell["obligation_ids"]
+        or cell["plan_digest"] != plan_digest
+        or cell["profile_id"] != plan_cell["profile_id"]
+        or cell["scenario_ids"] != plan_cell["scenario_ids"]
+        or cell["result"] != "PASS"
+        or cell["unexpected_outcomes"] != []
+    ):
+        raise ReleaseControlError("release qualification cell result binding mismatch")
+    for field in (
+        "artifact_digest",
+        "junit_digest",
+        "plan_digest",
+        "stderr_digest",
+        "stdout_digest",
+    ):
+        _require_digest(cell[field], f"release qualification cell {field}")
+    _require_nonempty_string(cell["runner_identity"], "release qualification cell runner")
+    _require_canonical_string_inventory(cell["obligation_ids"], "release cell obligations")
+    _require_canonical_string_inventory(cell["scenario_ids"], "release cell scenarios")
+    counts = cell["counts"]
+    count_fields = {
+        "deselected",
+        "failed",
+        "passed",
+        "retried",
+        "skipped",
+        "xfailed",
+        "xpassed",
+    }
+    if (
+        not isinstance(counts, dict)
+        or set(counts) != count_fields
+        or any(type(counts[field]) is not int or counts[field] < 0 for field in count_fields)
+        or counts["passed"] < 1
+        or any(counts[field] != 0 for field in count_fields - {"passed"})
+    ):
+        raise ReleaseControlError("release qualification cell counts are not a clean PASS")
+    started_at = _parse_utc_timestamp(cell["started_at"], "release cell start")
+    completed_at = _parse_utc_timestamp(cell["completed_at"], "release cell completion")
+    if completed_at < started_at:
+        raise ReleaseControlError("release qualification cell completion precedes its start")
+    return cell
+
+
+def _validate_retention_payload(
+    retention: Mapping[str, Any], *, expected_input_digest: str, expected_phase: str, label: str
+) -> None:
+    expected_fields = {
+        "all_content_equal",
+        "input_digest",
+        "phase",
+        "receipt_set_digest",
+        "retained_at",
+        "stores",
+    }
+    if set(retention) != expected_fields:
+        raise ReleaseControlError(f"{label} data shape is not closed")
+    if (
+        retention["all_content_equal"] is not True
+        or retention["input_digest"] != expected_input_digest
+        or retention["phase"] != expected_phase
+    ):
+        raise ReleaseControlError(f"{label} does not bind the canonical input and phase")
+    _require_digest(retention["input_digest"], f"{label} input")
+    _require_digest(retention["receipt_set_digest"], f"{label} receipt set")
+    _parse_utc_timestamp(retention["retained_at"], f"{label} retention time")
+    stores = retention["stores"]
+    if not isinstance(stores, list) or len(stores) != 2:
+        raise ReleaseControlError(f"{label} requires exactly two store receipts")
+    expected_store_fields = {
+        "content_digest",
+        "hold_receipt_digest",
+        "independence_group",
+        "namespace",
+        "object_key",
+        "put_receipt_digest",
+        "read_back_digest",
+        "store_id",
+    }
+    store_ids: list[str] = []
+    independence_groups: list[str] = []
+    for store in stores:
+        if not isinstance(store, dict) or set(store) != expected_store_fields:
+            raise ReleaseControlError(f"{label} store shape is not closed")
+        for field in (
+            "content_digest",
+            "hold_receipt_digest",
+            "put_receipt_digest",
+            "read_back_digest",
+        ):
+            _require_digest(store[field], f"{label} {field}")
+        if (
+            store["content_digest"] != expected_input_digest
+            or store["read_back_digest"] != expected_input_digest
+        ):
+            raise ReleaseControlError(f"{label} store read-back differs from the canonical input")
+        store_ids.append(_require_nonempty_string(store["store_id"], f"{label} store id"))
+        independence_groups.append(
+            _require_nonempty_string(store["independence_group"], f"{label} independence group")
+        )
+        _require_nonempty_string(store["namespace"], f"{label} namespace")
+        _require_nonempty_string(store["object_key"], f"{label} object key")
+    if store_ids != ["payload-store-a", "payload-store-b"]:
+        raise ReleaseControlError(f"{label} stores are missing or not canonical")
+    if len(set(independence_groups)) != 2:
+        raise ReleaseControlError(f"{label} stores are not independently administered")
+    if retention["receipt_set_digest"] != sha256_json(stores):
+        raise ReleaseControlError(f"{label} receipt-set digest mismatch")
+
+
+def _validate_attempt_coordination(
+    record: Mapping[str, Any],
+    *,
+    indexed: Mapping[str, Sequence[tuple[Path, dict[str, Any]]]],
+    attempt: Mapping[str, Any],
+    expected_cell_ids: list[str],
+    live: bool,
+) -> set[str]:
+    coordination = _passing_record(record, "release-attempt-coordination", live=live)
+    expected_fields = {
+        "attempt_id",
+        "candidate_digest",
+        "cells",
+        "coordination_result",
+        "hard_runner_losses",
+        "milestone",
+        "provider",
+        "qualification_plan_digest",
+    }
+    if set(coordination) != expected_fields:
+        raise ReleaseControlError("release attempt coordination data shape is not closed")
+    if (
+        coordination["attempt_id"] != attempt["attempt_id"]
+        or coordination["candidate_digest"] != attempt["candidate_digest"]
+        or coordination["milestone"] != attempt["milestone"]
+        or coordination["qualification_plan_digest"] != attempt["qualification_plan_digest"]
+        or coordination["coordination_result"] != "PASS"
+        or coordination["hard_runner_losses"] != []
+        or coordination["provider"] != "github"
+    ):
+        raise ReleaseControlError("release attempt coordination binding mismatch")
+    cells = coordination["cells"]
+    if not isinstance(cells, list) or len(cells) != len(expected_cell_ids):
+        raise ReleaseControlError("release attempt coordination cell matrix is incomplete")
+    observed_cell_ids: list[str] = []
+    job_ids: set[str] = set()
+    provider_run_ids: set[str] = set()
+    termination_digests: set[str] = set()
+    expected_cell_fields = {
+        "cell_id",
+        "job_id",
+        "provider_run_id",
+        "provider_termination_digest",
+        "status",
+    }
+    for cell in cells:
+        if not isinstance(cell, dict) or set(cell) != expected_cell_fields:
+            raise ReleaseControlError("release attempt coordination cell shape is not closed")
+        cell_id = _require_nonempty_string(cell["cell_id"], "coordination cell id")
+        job_id = _require_nonempty_string(cell["job_id"], "coordination job id")
+        provider_run_id = _require_nonempty_string(
+            cell["provider_run_id"], "coordination provider run id"
+        )
+        if job_id in job_ids or provider_run_id in provider_run_ids or cell["status"] != "terminal":
+            raise ReleaseControlError("release attempt coordination is not uniquely terminal")
+        observed_cell_ids.append(cell_id)
+        job_ids.add(job_id)
+        provider_run_ids.add(provider_run_id)
+        termination_digest = _require_digest(
+            cell["provider_termination_digest"], "release attempt provider termination"
+        )
+        if termination_digest in termination_digests:
+            raise ReleaseControlError("release attempt provider terminations are not unique")
+        termination_digests.add(termination_digest)
+        termination = _resolved_evidence_record(
+            indexed,
+            termination_digest,
+            "provider-run-termination",
+            "release attempt provider termination",
+            live=live,
+        )
+        termination_data = _passing_record(termination, "provider-run-termination", live=live)
+        if (
+            set(termination_data) != {"state", "tool"}
+            or termination_data["state"] != "success"
+            or not isinstance(termination_data["tool"], str)
+            or re.fullmatch(
+                r"[A-Za-z0-9._-]*(?:[Pp]rovider|[Gg]it[Hh]ub)[A-Za-z0-9._-]*",
+                termination_data["tool"],
+            )
+            is None
+        ):
+            raise ReleaseControlError("release attempt provider termination is not successful")
+    if observed_cell_ids != expected_cell_ids:
+        raise ReleaseControlError("release attempt coordination cell inventory mismatch")
+    return termination_digests
+
+
+def _validate_attempt_evidence_manifest(
+    record: Mapping[str, Any],
+    *,
+    attempt: Mapping[str, Any],
+    required_digests: set[str],
+    live: bool,
+) -> None:
+    manifest = _passing_record(record, "release-evidence-manifest", live=live)
+    expected_fields = {
+        "candidate_digest",
+        "entries",
+        "invocation_journal_digests",
+        "manifest_digest",
+        "phase",
+        "scope_id",
+        "scope_kind",
+    }
+    if set(manifest) != expected_fields:
+        raise ReleaseControlError("release attempt evidence manifest data shape is not closed")
+    if (
+        manifest["candidate_digest"] != attempt["candidate_digest"]
+        or manifest["phase"] != "attempt"
+        or manifest["scope_id"] != attempt["attempt_id"]
+        or manifest["scope_kind"] != "release-attempt"
+    ):
+        raise ReleaseControlError("release attempt evidence manifest binding mismatch")
+    _require_digest(manifest["manifest_digest"], "release attempt evidence manifest")
+    journals = manifest["invocation_journal_digests"]
+    if (
+        not isinstance(journals, list)
+        or not journals
+        or any(not isinstance(digest, str) for digest in journals)
+        or journals != sorted(set(journals))
+    ):
+        raise ReleaseControlError("release attempt invocation journals are not canonical")
+    for digest in journals:
+        _require_digest(digest, "release attempt invocation journal")
+    entries = manifest["entries"]
+    if not isinstance(entries, list) or not entries:
+        raise ReleaseControlError("release attempt evidence manifest has no entries")
+    expected_entry_fields = {"media_type", "path", "role", "sha256", "size"}
+    paths: list[str] = []
+    observed_digests: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != expected_entry_fields:
+            raise ReleaseControlError("release attempt evidence manifest entry is malformed")
+        path = _require_nonempty_string(entry["path"], "release attempt evidence path")
+        relative = Path(path)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ReleaseControlError("release attempt evidence path is unsafe")
+        _require_nonempty_string(entry["media_type"], "release attempt evidence media type")
+        _require_nonempty_string(entry["role"], "release attempt evidence role")
+        size = entry["size"]
+        if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+            raise ReleaseControlError("release attempt evidence size is invalid")
+        paths.append(path)
+        observed_digests.append(_require_digest(entry["sha256"], "release attempt evidence entry"))
+    if paths != sorted(set(paths)):
+        raise ReleaseControlError("release attempt evidence paths are not canonical")
+    if any(observed_digests.count(digest) != 1 for digest in required_digests):
+        raise ReleaseControlError(
+            "release attempt evidence manifest does not close required inputs"
+        )
+
+
+def _validate_attempt_index_payload(
+    record: Mapping[str, Any],
+    *,
+    attempt: Mapping[str, Any],
+    expected_manifest_digest: str,
+    retention_digest: str,
+    live: bool,
+) -> None:
+    index = _passing_record(record, "release-attempt-index", live=live)
+    expected_fields = {
+        "backend_id",
+        "committed_head",
+        "disposition",
+        "entry_manifest_digest",
+        "entry_receipts_digest",
+        "generation",
+        "milestone",
+        "operation_id",
+        "previous_head",
+        "read_back_digest",
+        "scope_id",
+        "scope_kind",
+        "sequence",
+        "stage",
+        "token",
+    }
+    if set(index) != expected_fields:
+        raise ReleaseControlError("release attempt index data shape is not closed")
+    for field in (
+        "committed_head",
+        "entry_manifest_digest",
+        "entry_receipts_digest",
+        "read_back_digest",
+    ):
+        _require_digest(index[field], f"release attempt index {field}")
+    if index["previous_head"] is not None:
+        _require_digest(index["previous_head"], "release attempt index previous head")
+    for field in ("generation", "sequence"):
+        if isinstance(index[field], bool) or not isinstance(index[field], int) or index[field] < 1:
+            raise ReleaseControlError(f"release attempt index {field} is invalid")
+    if (
+        index["backend_id"] != "attempt-index"
+        or index["committed_head"] != index["read_back_digest"]
+        or not isinstance(index["disposition"], str)
+        or index["disposition"] not in {"committed", "idempotent"}
+        or index["entry_manifest_digest"] != expected_manifest_digest
+        or index["entry_receipts_digest"] != retention_digest
+        or index["milestone"] != attempt["milestone"]
+        or index["operation_id"] != attempt["attempt_id"]
+        or index["scope_id"] != attempt["candidate_digest"]
+        or index["scope_kind"] != "release_candidate"
+        or index["sequence"] != record["sequence"]
+        or index["stage"] != "qualification-attempt"
+    ):
+        raise ReleaseControlError("release attempt index semantic binding mismatch")
+    _require_nonempty_string(index["token"], "release attempt index token")
+
+
 def _validate_clean_warning_summary(
-    record: Mapping[str, Any], *, candidate_digest: str, label: str, live: bool
+    record: Mapping[str, Any],
+    *,
+    candidate_digest: str,
+    expected_subject_digest: str,
+    label: str,
+    live: bool,
 ) -> None:
     warning = _passing_record(record, "release-warning-summary", live=live)
     expected_fields = {
-        "attempt_digest",
         "candidate_digest",
         "deselection_count",
         "policy_digest",
         "result",
         "retry_count",
         "skip_count",
+        "subject_digest",
         "summary_digest",
         "unexpected_warning_count",
         "warnings",
@@ -1006,7 +1537,7 @@ def _validate_clean_warning_summary(
     }
     if set(warning) != expected_fields:
         raise ReleaseControlError(f"{label} data shape is not closed")
-    for field in ("attempt_digest", "policy_digest", "summary_digest"):
+    for field in ("policy_digest", "subject_digest", "summary_digest"):
         _require_digest(warning[field], f"{label} {field}")
     count_fields = (
         "deselection_count",
@@ -1018,6 +1549,7 @@ def _validate_clean_warning_summary(
     )
     if (
         warning["candidate_digest"] != candidate_digest
+        or warning["subject_digest"] != expected_subject_digest
         or warning["result"] != "PASS"
         or any(type(warning[field]) is not int or warning[field] != 0 for field in count_fields)
     ):
@@ -1108,15 +1640,19 @@ def validate_release_qualification_record(
         live=live,
     )
     plan = _passing_record(plan_record, "release-qualification-plan", live=live)
-    if plan.get("candidate_digest") != data["candidate_digest"]:
-        raise ReleaseControlError("release qualification plan candidate binding mismatch")
-    plan_cells = plan.get("cells")
-    if not isinstance(plan_cells, list) or any(not isinstance(cell, dict) for cell in plan_cells):
-        raise ReleaseControlError("release qualification plan cells are malformed")
-    plan_cell_ids = [cell.get("cell_id") for cell in plan_cells]
-    if plan_cell_ids != expected_cells:
+    milestone = plan.get("milestone")
+    if not isinstance(milestone, str) or milestone not in MILESTONES:
+        raise ReleaseControlError("release qualification plan milestone is invalid")
+    candidate_record = _candidate_record_for_digest(indexed, data["candidate_digest"], live=live)
+    candidate = _passing_record(candidate_record, "release-candidate-identity", live=live)
+    _validate_candidate_identity_payload(
+        candidate,
+        expected_digest=data["candidate_digest"],
+        expected_milestone=milestone,
+    )
+    plan_cells = _validate_qualification_plan_payload(plan, candidate=candidate)
+    if list(plan_cells) != expected_cells:
         raise ReleaseControlError("release qualification plan cell inventory mismatch")
-    _candidate_record_for_digest(indexed, data["candidate_digest"], live=live)
 
     attempts = [
         _resolved_evidence_record(
@@ -1128,17 +1664,12 @@ def validate_release_qualification_record(
         )
         for digest in data["attempt_digests"]
     ]
-    attempt_count = plan.get("attempt_count")
-    if (
-        isinstance(attempt_count, bool)
-        or not isinstance(attempt_count, int)
-        or attempt_count != len(attempts)
-    ):
+    if plan["attempt_count"] != len(attempts):
         raise ReleaseControlError("release qualification attempt count mismatch")
-    observed_result_digests: set[str] = set()
     observed_attempt_ids: list[str] = []
     observed_index_receipts: list[str] = []
     observed_retention_receipts: list[str] = []
+    latest_cells: list[dict[str, Any]] | None = None
     for attempt_record in attempts:
         attempt = _release_data(
             attempt_record,
@@ -1160,56 +1691,148 @@ def validate_release_qualification_record(
             attempt["result"] != "PASS"
             or attempt["candidate_digest"] != data["candidate_digest"]
             or attempt["qualification_plan_digest"] != data["plan_digest"]
-            or attempt["milestone"] != plan.get("milestone")
+            or attempt["milestone"] != milestone
         ):
             raise ReleaseControlError("release qualification attempt binding mismatch")
-        attempt_id = attempt["attempt_id"]
-        if not isinstance(attempt_id, str) or not attempt_id:
-            raise ReleaseControlError("release qualification attempt id is missing")
+        attempt_id = _require_nonempty_string(attempt["attempt_id"], "release attempt id")
         observed_attempt_ids.append(attempt_id)
-        _require_digest(attempt["coordination_digest"], "release attempt coordination")
         attempt_cells = attempt["cells"]
         if not isinstance(attempt_cells, list) or len(attempt_cells) != len(expected_cells):
             raise ReleaseControlError("release qualification attempt cell matrix is incomplete")
-        attempt_cell_ids: list[str] = []
-        for cell in attempt_cells:
-            if not isinstance(cell, dict) or set(cell) != {"cell_id", "result", "result_digest"}:
+        observed_cell_ids: list[str] = []
+        observed_cell_digests: set[str] = set()
+        validated_attempt_cells: list[dict[str, Any]] = []
+        for cell_row in attempt_cells:
+            if not isinstance(cell_row, dict) or set(cell_row) != {
+                "cell_id",
+                "result",
+                "result_digest",
+            }:
                 raise ReleaseControlError("release qualification attempt cell is malformed")
-            if cell["result"] != "PASS":
-                raise ReleaseControlError("release qualification attempt cell is not passing")
-            cell_id = cell["cell_id"]
-            if not isinstance(cell_id, str) or not cell_id:
-                raise ReleaseControlError("release qualification attempt cell id is invalid")
-            attempt_cell_ids.append(cell_id)
-            observed_result_digests.add(
-                _require_digest(cell["result_digest"], "release qualification attempt cell")
+            cell_id = _require_nonempty_string(
+                cell_row["cell_id"], "release qualification attempt cell id"
             )
-        if attempt_cell_ids != expected_cells:
+            result_digest = _require_digest(
+                cell_row["result_digest"], "release qualification attempt cell"
+            )
+            if cell_row["result"] != "PASS" or result_digest in observed_cell_digests:
+                raise ReleaseControlError("release qualification attempt cell is not a unique PASS")
+            observed_cell_ids.append(cell_id)
+            observed_cell_digests.add(result_digest)
+            plan_cell = plan_cells.get(cell_id)
+            if plan_cell is None:
+                raise ReleaseControlError("release qualification attempt names an unknown cell")
+            cell_record = _resolved_evidence_record(
+                indexed,
+                result_digest,
+                "release-cell-result",
+                "release qualification cell result",
+                live=live,
+            )
+            _validate_cell_result_payload(
+                cell_record,
+                plan_cell=plan_cell,
+                attempt_id=attempt_id,
+                candidate_digest=data["candidate_digest"],
+                plan_digest=data["plan_digest"],
+                live=live,
+            )
+            validated_attempt_cells.append(cell_row)
+        if observed_cell_ids != expected_cells:
             raise ReleaseControlError("release qualification attempt cell inventory mismatch")
-        observed_index_receipts.append(
-            _require_digest(attempt["index_receipt_digest"], "release attempt index receipt")
+
+        coordination_digest = _require_digest(
+            attempt["coordination_digest"], "release attempt coordination"
         )
-        observed_retention_receipts.append(
-            _require_digest(
-                attempt["retention_receipts_digest"], "release attempt retention receipt"
-            )
+        coordination_record = _resolved_evidence_record(
+            indexed,
+            coordination_digest,
+            "release-attempt-coordination",
+            "release attempt coordination",
+            live=live,
         )
-        attempt_warning_digest = _require_digest(
-            attempt["warning_summary_digest"], "release attempt warning summary"
+        termination_digests = _validate_attempt_coordination(
+            coordination_record,
+            indexed=indexed,
+            attempt=attempt,
+            expected_cell_ids=expected_cells,
+            live=live,
+        )
+        retention_digest = _require_digest(
+            attempt["retention_receipts_digest"], "release attempt retention receipt"
+        )
+        retention_record = _resolved_evidence_record(
+            indexed,
+            retention_digest,
+            "release-retention-receipts",
+            "release qualification retention receipt",
+            live=live,
+        )
+        retention = _passing_record(retention_record, "release-retention-receipts", live=live)
+        index_digest = _require_digest(
+            attempt["index_receipt_digest"], "release attempt index receipt"
+        )
+        index_record = _resolved_evidence_record(
+            indexed,
+            index_digest,
+            "release-attempt-index",
+            "release qualification index receipt",
+            live=live,
+        )
+        index = _passing_record(index_record, "release-attempt-index", live=live)
+        manifest_digest = _require_digest(
+            index.get("entry_manifest_digest"), "release attempt evidence manifest"
+        )
+        manifest_record = _resolved_evidence_record(
+            indexed,
+            manifest_digest,
+            "release-evidence-manifest",
+            "release attempt evidence manifest",
+            live=live,
+        )
+        _validate_attempt_evidence_manifest(
+            manifest_record,
+            attempt=attempt,
+            required_digests={
+                data["plan_digest"],
+                coordination_digest,
+                *observed_cell_digests,
+                *termination_digests,
+            },
+            live=live,
+        )
+        _validate_retention_payload(
+            retention,
+            expected_input_digest=manifest_digest,
+            expected_phase="attempt",
+            label="release qualification retention receipt",
+        )
+        _validate_attempt_index_payload(
+            index_record,
+            attempt=attempt,
+            expected_manifest_digest=manifest_digest,
+            retention_digest=retention_digest,
+            live=live,
         )
         attempt_warning = _resolved_evidence_record(
             indexed,
-            attempt_warning_digest,
+            attempt["warning_summary_digest"],
             "release-warning-summary",
             "release attempt warning summary",
             live=live,
         )
+        attempt_subject = dict(attempt)
+        del attempt_subject["warning_summary_digest"]
         _validate_clean_warning_summary(
             attempt_warning,
             candidate_digest=data["candidate_digest"],
+            expected_subject_digest=sha256_json(attempt_subject),
             label="release attempt warning summary",
             live=live,
         )
+        observed_index_receipts.append(index_digest)
+        observed_retention_receipts.append(retention_digest)
+        latest_cells = validated_attempt_cells
 
     if observed_attempt_ids != sorted(set(observed_attempt_ids)):
         raise ReleaseControlError("release qualification attempt ids are not canonical")
@@ -1217,43 +1840,8 @@ def validate_release_qualification_record(
         raise ReleaseControlError("release qualification index receipt bindings mismatch")
     if observed_retention_receipts != data["attempt_retention_receipt_digests"]:
         raise ReleaseControlError("release qualification retention receipt bindings mismatch")
-
-    for digest in data["attempt_index_receipt_digests"]:
-        _resolved_evidence_record(
-            indexed,
-            digest,
-            "release-attempt-index",
-            "release qualification index receipt",
-            live=live,
-        )
-    for digest in data["attempt_retention_receipt_digests"]:
-        _resolved_evidence_record(
-            indexed,
-            digest,
-            "release-retention-receipts",
-            "release qualification retention receipt",
-            live=live,
-        )
-    for terminal in terminals:
-        digest = terminal["result_digest"]
-        if digest not in observed_result_digests:
-            raise ReleaseControlError("release qualification terminal is absent from attempts")
-        cell_record = _resolved_evidence_record(
-            indexed,
-            digest,
-            "release-cell-result",
-            "release qualification terminal result",
-            live=live,
-        )
-        cell = _passing_record(cell_record, "release-cell-result", live=live)
-        if (
-            cell.get("cell_id") != terminal["cell_id"]
-            or cell.get("candidate_digest") != data["candidate_digest"]
-            or cell.get("plan_digest") != data["plan_digest"]
-            or cell.get("result") != "PASS"
-            or cell.get("unexpected_outcomes") != []
-        ):
-            raise ReleaseControlError("release qualification terminal result binding mismatch")
+    if latest_cells is None or latest_cells != terminals:
+        raise ReleaseControlError("release qualification terminals are not the final attempt")
     warning_record = _resolved_evidence_record(
         indexed,
         data["warning_summary_digest"],
@@ -1261,9 +1849,12 @@ def validate_release_qualification_record(
         "release qualification warning summary",
         live=live,
     )
+    qualification_subject = dict(data)
+    del qualification_subject["warning_summary_digest"]
     _validate_clean_warning_summary(
         warning_record,
         candidate_digest=data["candidate_digest"],
+        expected_subject_digest=sha256_json(qualification_subject),
         label="release qualification warning summary",
         live=live,
     )
@@ -1416,7 +2007,27 @@ def validate_publication_reconciliation_record(
         )
         for field, record_type in dependency_types.items()
     }
+    validate_release_qualification_record(
+        dependencies["qualification_digest"], evidence_root=evidence_root, live=live
+    )
     approval = _passing_record(dependencies["approval_digest"], "release-approval", live=live)
+    gate_instance = _resolved_evidence_record(
+        indexed,
+        approval.get("gate_instance_digest"),
+        "release-gate-instance",
+        "publication reconciliation approval gate instance",
+        live=live,
+    )
+    gate = _passing_record(gate_instance, "release-gate-instance", live=live)
+    role_assignments = _role_assignment_record_for_gate(indexed, gate)
+    validate_release_approval_record(
+        dependencies["approval_digest"],
+        gate_instance=gate_instance,
+        qualification=dependencies["qualification_digest"],
+        role_assignments=role_assignments,
+        no_prepublication_rubric=True,
+        live=live,
+    )
     evidence_manifest = _passing_record(
         dependencies["evidence_manifest_digest"],
         "release-evidence-manifest",
@@ -1437,97 +2048,6 @@ def validate_publication_reconciliation_record(
         "release-retention-receipts",
         live=live,
     )
-    approval_basic = {"author_id", "candidate_digest", "conflicts", "decision", "reviewer_id"}
-    approval_extended = {
-        "approval_decision_digest",
-        "gate_instance_digest",
-        "qualification_digest",
-        "rubric_result_digest",
-    }
-    if not approval_basic <= set(approval) <= approval_basic | approval_extended or (
-        live and set(approval) != approval_basic | approval_extended
-    ):
-        raise ReleaseControlError("publication reconciliation approval shape is not closed")
-    if (
-        approval["decision"] != "APPROVED"
-        or approval["conflicts"] != []
-        or not isinstance(approval["author_id"], str)
-        or not isinstance(approval["reviewer_id"], str)
-        or approval["author_id"] == approval["reviewer_id"]
-    ):
-        raise ReleaseControlError("publication reconciliation approval is not independent")
-    qualification_fields = {
-        "attempt_digests",
-        "attempt_index_receipt_digests",
-        "attempt_retention_receipt_digests",
-        "candidate_digest",
-        "executed_cell_ids",
-        "expected_cell_ids",
-        "plan_digest",
-        "qualification_digest",
-        "result",
-        "terminal_results",
-        "unexpected_outcomes",
-        "warning_summary_digest",
-    }
-    if set(qualification) != qualification_fields:
-        raise ReleaseControlError("publication reconciliation qualification shape is not closed")
-    expected_cell_ids = qualification["expected_cell_ids"]
-    executed_cell_ids = qualification["executed_cell_ids"]
-    if (
-        qualification["result"] != "PASS"
-        or qualification["unexpected_outcomes"] != []
-        or not isinstance(expected_cell_ids, list)
-        or not expected_cell_ids
-        or any(not isinstance(cell_id, str) or not cell_id for cell_id in expected_cell_ids)
-        or expected_cell_ids != sorted(set(expected_cell_ids))
-        or executed_cell_ids != expected_cell_ids
-    ):
-        raise ReleaseControlError("publication reconciliation qualification is not complete")
-    for field in (
-        "attempt_digests",
-        "attempt_index_receipt_digests",
-        "attempt_retention_receipt_digests",
-    ):
-        values = qualification[field]
-        if not isinstance(values, list) or not values:
-            raise ReleaseControlError(
-                f"publication reconciliation qualification {field} is incomplete"
-            )
-        for digest in values:
-            _require_digest(digest, f"publication reconciliation qualification {field}")
-    for field in ("plan_digest", "qualification_digest", "warning_summary_digest"):
-        _require_digest(qualification[field], f"publication reconciliation qualification {field}")
-    terminal_results = qualification["terminal_results"]
-    if not isinstance(terminal_results, list) or len(terminal_results) != len(expected_cell_ids):
-        raise ReleaseControlError(
-            "publication reconciliation qualification terminals are incomplete"
-        )
-    terminal_ids: list[str] = []
-    for terminal in terminal_results:
-        if not isinstance(terminal, dict) or set(terminal) != {
-            "cell_id",
-            "result",
-            "result_digest",
-        }:
-            raise ReleaseControlError(
-                "publication reconciliation qualification terminal is malformed"
-            )
-        if terminal["result"] != "PASS":
-            raise ReleaseControlError(
-                "publication reconciliation qualification terminal is not passing"
-            )
-        cell_id = terminal["cell_id"]
-        if not isinstance(cell_id, str) or not cell_id:
-            raise ReleaseControlError(
-                "publication reconciliation qualification terminal id is invalid"
-            )
-        terminal_ids.append(cell_id)
-        _require_digest(
-            terminal["result_digest"], "publication reconciliation qualification terminal"
-        )
-    if terminal_ids != expected_cell_ids:
-        raise ReleaseControlError("publication reconciliation qualification terminals disagree")
     manifest_fields = {
         "candidate_digest",
         "entries",
@@ -1614,8 +2134,15 @@ def validate_publication_reconciliation_record(
         "target_state_digest",
     ):
         _require_digest(lock[field], f"publication reconciliation promotion lock {field}")
-    _parse_utc_timestamp(lock["lease_started_at"], "promotion lock lease start")
-    _parse_utc_timestamp(lock["lease_expires_at"], "promotion lock lease expiry")
+    lock_started_at = _parse_utc_timestamp(lock["lease_started_at"], "promotion lock lease start")
+    lock_expires_at = _parse_utc_timestamp(lock["lease_expires_at"], "promotion lock lease expiry")
+    if lock_expires_at <= lock_started_at:
+        raise ReleaseControlError("publication reconciliation promotion lock lease is invalid")
+    for field in ("lock_token", "operation_id", "owner"):
+        _require_nonempty_string(lock[field], f"publication reconciliation promotion lock {field}")
+    for field in ("dead_owner_proof_digest", "recovery_authorization_digest"):
+        if lock[field] is not None:
+            _require_digest(lock[field], f"publication reconciliation promotion lock {field}")
     promotion_fields = {
         "actions",
         "candidate_digest",
@@ -1640,8 +2167,14 @@ def validate_publication_reconciliation_record(
         or not promotion["actions"]
     ):
         raise ReleaseControlError("publication reconciliation promotion is malformed")
-    _parse_utc_timestamp(promotion["started_at"], "promotion start")
-    _parse_utc_timestamp(promotion["completed_at"], "promotion completion")
+    promotion_started_at = _parse_utc_timestamp(promotion["started_at"], "promotion start")
+    promotion_completed_at = _parse_utc_timestamp(promotion["completed_at"], "promotion completion")
+    if (
+        promotion_started_at < lock_started_at
+        or promotion_completed_at < promotion_started_at
+        or promotion_completed_at > lock_expires_at
+    ):
+        raise ReleaseControlError("publication reconciliation promotion timing is invalid")
     promotion_target_ids: list[str] = []
     for action in promotion["actions"]:
         if not isinstance(action, dict) or set(action) != {
@@ -1683,62 +2216,12 @@ def validate_publication_reconciliation_record(
     ):
         _require_digest(observations[field], f"publication reconciliation observation {field}")
     _parse_utc_timestamp(observations["observed_at"], "publication observation time")
-    retention_fields = {
-        "all_content_equal",
-        "input_digest",
-        "phase",
-        "receipt_set_digest",
-        "retained_at",
-        "stores",
-    }
-    if set(retention) != retention_fields:
-        raise ReleaseControlError("publication reconciliation retention shape is not closed")
-    if retention["all_content_equal"] is not True:
-        raise ReleaseControlError("publication reconciliation retention is not exact")
-    for field in ("input_digest", "receipt_set_digest"):
-        _require_digest(retention[field], f"publication reconciliation retention {field}")
-    _parse_utc_timestamp(retention["retained_at"], "publication retention time")
-    stores = retention["stores"]
-    if not isinstance(stores, list) or len(stores) != 2:
-        raise ReleaseControlError("publication reconciliation retention stores are incomplete")
-    store_ids: list[str] = []
-    independence_groups: list[str] = []
-    for store in stores:
-        if not isinstance(store, dict) or set(store) != {
-            "content_digest",
-            "hold_receipt_digest",
-            "independence_group",
-            "namespace",
-            "object_key",
-            "put_receipt_digest",
-            "read_back_digest",
-            "store_id",
-        }:
-            raise ReleaseControlError("publication reconciliation retention store is malformed")
-        for field in (
-            "content_digest",
-            "hold_receipt_digest",
-            "put_receipt_digest",
-            "read_back_digest",
-        ):
-            _require_digest(store[field], f"publication retention store {field}")
-        if store["content_digest"] != store["read_back_digest"]:
-            raise ReleaseControlError("publication reconciliation retention read-back differs")
-        store_id = store["store_id"]
-        group = store["independence_group"]
-        if (
-            not isinstance(store_id, str)
-            or store_id not in {"payload-store-a", "payload-store-b"}
-            or not isinstance(group, str)
-            or not group
-        ):
-            raise ReleaseControlError(
-                "publication reconciliation retention store identity is invalid"
-            )
-        store_ids.append(store_id)
-        independence_groups.append(group)
-    if store_ids != ["payload-store-a", "payload-store-b"] or len(set(independence_groups)) != 2:
-        raise ReleaseControlError("publication reconciliation retention stores are not independent")
+    _validate_retention_payload(
+        retention,
+        expected_input_digest=data["evidence_manifest_digest"],
+        expected_phase="qualified-publication",
+        label="publication reconciliation retention",
+    )
     candidate_digest = data["candidate_digest"]
     candidate_bindings = {
         "approval": approval.get("candidate_digest"),
@@ -1758,6 +2241,10 @@ def validate_publication_reconciliation_record(
         or promotion.get("lock_receipt_digest") != data["lock_receipt_digest"]
         or observations.get("lock_receipt_digest") != data["lock_receipt_digest"]
         or observations.get("promotion_digest") != data["promotion_digest"]
+        or promotion.get("operation_id") != lock.get("operation_id")
+        or promotion.get("promotion_plan_digest") != lock.get("promotion_plan_digest")
+        or promotion.get("target_state_digest") != lock.get("target_state_digest")
+        or promotion.get("publisher_id") != lock.get("owner")
     ):
         raise ReleaseControlError("publication reconciliation control binding mismatch")
     if (
@@ -1937,6 +2424,7 @@ def validate_release_approval_record(
     *,
     gate_instance: Mapping[str, Any],
     qualification: Mapping[str, Any],
+    role_assignments: Mapping[str, Any],
     no_prepublication_rubric: bool,
     live: bool,
 ) -> None:
@@ -1950,32 +2438,42 @@ def validate_release_approval_record(
         "qualification_digest",
         "rubric_result_digest",
     }
-    if not basic <= set(approval) or not set(approval) <= basic | extended:
+    if set(approval) != basic | extended:
         raise ReleaseControlError("release approval data shape is not closed")
-    if live and set(approval) != basic | extended:
-        raise ReleaseControlError("live release approval lacks required authority bindings")
     if approval["decision"] != "APPROVED" or approval["conflicts"] != []:
         raise ReleaseControlError("release approval is not conflict-free and approved")
+    milestone = gate.get("milestone")
+    run_id = gate.get("run_id")
+    if not isinstance(milestone, str) or milestone not in MILESTONES:
+        raise ReleaseControlError("release approval gate milestone is invalid")
+    run_id = _require_nonempty_string(run_id, "release approval gate run id")
+    roles = validate_role_assignments(
+        role_assignments,
+        live=live,
+        expected_milestone=milestone,
+        expected_run_id=run_id,
+        check_conflicts=True,
+        check_freshness=live,
+    )
     author = approval["author_id"]
     reviewer = approval["reviewer_id"]
-    if not isinstance(author, str) or not isinstance(reviewer, str) or author == reviewer:
-        raise ReleaseControlError("release approval is not from a distinct non-author")
+    if author != roles["author_id"]:
+        raise ReleaseControlError("release approval author does not match assigned roles")
+    if reviewer == author or reviewer != roles["non_author_reviewer_id"]:
+        raise ReleaseControlError("release approval is not from the assigned non-author reviewer")
     if approval["candidate_digest"] != gate.get("candidate_digest") or approval[
         "candidate_digest"
     ] != qualification_data.get("candidate_digest"):
         raise ReleaseControlError("release approval candidate binding mismatch")
-    if "gate_instance_digest" in approval and approval["gate_instance_digest"] != sha256_json(
-        gate_instance
-    ):
+    if approval["gate_instance_digest"] != sha256_json(gate_instance):
         raise ReleaseControlError("release approval gate-instance binding mismatch")
-    if "qualification_digest" in approval and approval["qualification_digest"] != sha256_json(
-        qualification
-    ):
+    if approval["qualification_digest"] != sha256_json(qualification):
         raise ReleaseControlError("release approval qualification binding mismatch")
     if no_prepublication_rubric and approval.get("rubric_result_digest") is not None:
         raise ReleaseControlError("prepublication approval unexpectedly names a rubric result")
-    if "approval_decision_digest" in approval:
-        _require_digest(approval["approval_decision_digest"], "approval decision")
+    if not no_prepublication_rubric:
+        _require_digest(approval["rubric_result_digest"], "approval rubric result")
+    _require_digest(approval["approval_decision_digest"], "approval decision")
     signers = {
         _validated_signature(
             signature,
@@ -2746,7 +3244,7 @@ def build_release_readiness_record(
     for label, (observed, expected) in bindings.items():
         if observed != expected:
             raise ReleaseControlError(f"readiness {label} binding mismatch")
-    milestones = {
+    milestone_values = (
         gate_input_data.get("milestone"),
         gate.get("milestone"),
         candidate.get("milestone"),
@@ -2756,10 +3254,13 @@ def build_release_readiness_record(
         delta_data.get("milestone"),
         mapping.get("milestone"),
         predecessor_data.get("candidate_milestone"),
-    }
-    if len(milestones) != 1 or next(iter(milestones)) not in MILESTONES:
+    )
+    if (
+        any(not isinstance(value, str) or value not in MILESTONES for value in milestone_values)
+        or len(set(milestone_values)) != 1
+    ):
         raise ReleaseControlError("readiness milestone bindings disagree")
-    milestone = next(iter(milestones))
+    milestone = milestone_values[0]
     package_version = candidate.get("package_version")
     if (
         not isinstance(package_version, str)
@@ -3424,7 +3925,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "record", output_flag=None, fixture_producer=False, record_flag="record"
     ),
     "validate_release_approval.py": _tool_contract(
-        "gate-instance qualification no-prepublication-rubric record",
+        "gate-instance qualification role-assignments no-prepublication-rubric record",
         boolean="no-prepublication-rubric",
         output_flag=None,
         fixture_producer=False,
@@ -3803,6 +4304,7 @@ def tool_main(tool: str, argv: Sequence[str] | None = None) -> int:
                 result,
                 gate_instance=read_json(Path(args.gate_instance)),
                 qualification=read_json(Path(args.qualification)),
+                role_assignments=read_json(Path(args.role_assignments)),
                 no_prepublication_rubric=bool(args.no_prepublication_rubric),
                 live=not fixture_mode,
             )

@@ -514,6 +514,7 @@ jobs:
           python tools/validate_release_approval.py \
             --gate-instance release-authority/gate-instance.json \
             --qualification release-authority/qualification.json \
+            --role-assignments release-authority/role-assignments.json \
             --no-prepublication-rubric \
             --record release-authority/prepublication/approval.json
           python tools/validate_release_retention.py \
@@ -721,14 +722,184 @@ jobs:
           run-id: ${{ inputs.release_run_id }}
           github-token: ${{ github.token }}
 
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-qualification-evidence
+          path: release-authority/
+          run-id: ${{ inputs.qualification_run_id }}
+          github-token: ${{ github.token }}
+
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
-      - name: Reverify the approved artifact set
+      - name: Revalidate exact authority and approved artifacts after the environment gate
         env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHORITY_SOURCE_SHA: ${{ github.sha }}
+          QUALIFICATION_RECORD_DIGEST: ${{ inputs.qualification_record_digest }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
           RELEASE_VERSION: ${{ needs.validate-production-request.outputs.version }}
+        shell: bash
         run: |
+          set -euo pipefail
+          [[ "$QUALIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$QUALIFICATION_RECORD_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$AUTHORITY_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}" \
+            > "${RUNNER_TEMP}/fresh-qualification-run.json"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100" \
+            > "${RUNNER_TEMP}/fresh-qualification-artifacts.json"
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run_id = int(os.environ["QUALIFICATION_RUN_ID"])
+          source_sha = os.environ["AUTHORITY_SOURCE_SHA"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          runner_temp = Path(os.environ["RUNNER_TEMP"])
+          run = json.loads(
+              (runner_temp / "fresh-qualification-run.json").read_text(encoding="utf-8")
+          )
+          expected_run = {
+              "conclusion": "success",
+              "event": "workflow_dispatch",
+              "head_branch": "main",
+              "head_sha": source_sha,
+              "id": run_id,
+              "path": ".github/workflows/release-required.yml",
+              "status": "completed",
+          }
+          mismatches = {
+              key: (run.get(key), expected)
+              for key, expected in expected_run.items()
+              if run.get(key) != expected
+          }
+          if run.get("repository", {}).get("full_name") != repository:
+              mismatches["repository.full_name"] = (
+                  run.get("repository", {}).get("full_name"),
+                  repository,
+              )
+          if mismatches:
+              raise SystemExit(f"fresh qualification workflow mismatch: {mismatches}")
+
+          payload = json.loads(
+              (runner_temp / "fresh-qualification-artifacts.json").read_text(encoding="utf-8")
+          )
+          artifacts = payload.get("artifacts")
+          if payload.get("total_count") != 1 or not isinstance(artifacts, list) or len(artifacts) != 1:
+              raise SystemExit("fresh qualification authority is not exact and unique")
+          artifact = artifacts[0]
+          workflow_run = artifact.get("workflow_run")
+          if not isinstance(workflow_run, dict):
+              raise SystemExit("fresh qualification artifact has no workflow identity")
+          expected_artifact = {
+              "expired": False,
+              "name": "release-qualification-evidence",
+          }
+          artifact_mismatches = {
+              key: (artifact.get(key), expected)
+              for key, expected in expected_artifact.items()
+              if artifact.get(key) != expected
+          }
+          expected_artifact_run = {
+              "head_branch": "main",
+              "head_sha": source_sha,
+              "id": run_id,
+          }
+          artifact_mismatches.update(
+              {
+                  f"workflow_run.{key}": (workflow_run.get(key), expected)
+                  for key, expected in expected_artifact_run.items()
+                  if workflow_run.get(key) != expected
+              }
+          )
+          if type(artifact.get("id")) is not int or artifact["id"] <= 0:
+              artifact_mismatches["id"] = (artifact.get("id"), "positive integer")
+          if artifact_mismatches:
+              raise SystemExit(f"fresh qualification artifact mismatch: {artifact_mismatches}")
+
+          root = Path("release-authority")
+          bound_sources = {
+              "delta.json": "candidate_sha",
+              "gate-instance.json": "frozen_source_sha",
+              "impact-manifest.json": "head_sha",
+              "source-freeze.json": "source_sha",
+          }
+          for relative, field in bound_sources.items():
+              record = json.loads((root / relative).read_text(encoding="utf-8"))
+              if record.get("data", {}).get(field) != source_sha:
+                  raise SystemExit(f"fresh authority source mismatch: {relative}")
+          gate = json.loads((root / "gate-instance.json").read_text(encoding="utf-8"))
+          roles = json.loads((root / "role-assignments.json").read_text(encoding="utf-8"))
+          authority_run_id = gate.get("data", {}).get("run_id")
+          if (
+              not isinstance(authority_run_id, str)
+              or not authority_run_id.isascii()
+              or not authority_run_id.isdigit()
+              or authority_run_id.startswith("0")
+              or roles.get("data", {}).get("run_id") != authority_run_id
+          ):
+              raise SystemExit("fresh authority external run binding mismatch")
+          PY
+
+          test "$(sha256sum release-authority/qualification.json | awk '{print $1}')" = \
+            "$QUALIFICATION_RECORD_DIGEST"
+          milestone="v${RELEASE_VERSION%.*}"
+          case "$milestone" in
+            v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0) ;;
+            *) echo "unsupported cumulative release milestone: $milestone" >&2; exit 1 ;;
+          esac
+          authority_run_id="$(python -c \
+            'import json; print(json.load(open("release-authority/gate-instance.json"))["data"]["run_id"])')"
+          python tools/validate_release_gate_instance.py \
+            --record release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --task-state-policy docs/status/release-task-state-policy.json
+          python tools/validate_release_role_assignments.py \
+            --record release-authority/role-assignments.json \
+            --milestone "$milestone" \
+            --run-id "$authority_run_id" \
+            --check-conflicts \
+            --check-freshness
+          python tools/validate_release_qualification_plan.py \
+            --record release-authority/qualification-plan.json \
+            --gate-instance release-authority/gate-instance.json
+          python tools/validate_release_qualification.py \
+            --record release-authority/qualification.json
+          python tools/validate_release_approval.py \
+            --gate-instance release-authority/gate-instance.json \
+            --qualification release-authority/qualification.json \
+            --role-assignments release-authority/role-assignments.json \
+            --no-prepublication-rubric \
+            --record release-authority/prepublication/approval.json
+          python tools/validate_release_retention.py \
+            --manifest release-authority/evidence-manifest.json \
+            --receipts release-authority/prepublication/retention-receipts.json \
+            --read-back
+          python tools/check_release_readiness.py \
+            --gate-instance release-authority/gate-instance.json \
+            --candidate-identity release-authority/candidate-identity.json \
+            --predecessor release-authority/predecessor.json \
+            --linear-snapshot release-authority/linear-snapshot.json \
+            --artifact-manifest release-authority/artifact-manifest.json \
+            --delta release-authority/delta.json \
+            --delta-test-map release-authority/delta-test-map.json \
+            --out "${RUNNER_TEMP}/fresh-readiness.json"
+          cmp --silent release-authority/readiness.json "${RUNNER_TEMP}/fresh-readiness.json"
           python tools/release_artifacts.py verify-manifest \
             --dist release-artifacts/dist \
             --manifest release-artifacts/SHA256SUMS \
@@ -737,6 +908,10 @@ jobs:
             --repository https://test.pypi.org \
             --version "$RELEASE_VERSION" \
             --manifest release-artifacts/SHA256SUMS
+          python tools/validate_release_artifact_manifest.py \
+            --record release-authority/artifact-manifest.json \
+            --artifacts release-artifacts/dist \
+            --read-hash
 
       - name: Publish the verified distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

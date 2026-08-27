@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
+import sys
+import tarfile
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +33,46 @@ def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
 
 def _run_text(job: dict[str, Any]) -> str:
     return "\n".join(str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict))
+
+
+def _named_step(job: dict[str, Any], name: str) -> dict[str, Any]:
+    step = next(step for step in job["steps"] if step.get("name") == name)
+    assert isinstance(step, dict)
+    return step
+
+
+def _embedded_python(step: dict[str, Any]) -> str:
+    command = str(step["run"])
+    marker = "python - <<'PY'\n"
+    assert command.count(marker) == 1
+    return command.split(marker, 1)[1].rsplit("\nPY", 1)[0]
+
+
+def _write_tar(path: Path, entries: list[tuple[str, str, bytes]]) -> None:
+    with tarfile.open(path, mode="w") as archive:
+        for name, kind, payload in entries:
+            member = tarfile.TarInfo(name)
+            if kind == "file":
+                member.size = len(payload)
+                archive.addfile(member, io.BytesIO(payload))
+            elif kind == "directory":
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            elif kind == "symlink":
+                member.type = tarfile.SYMTYPE
+                member.linkname = "qualification.json"
+                archive.addfile(member)
+            elif kind == "hardlink":
+                member.type = tarfile.LNKTYPE
+                member.linkname = "qualification.json"
+                archive.addfile(member)
+            elif kind == "device":
+                member.type = tarfile.CHRTYPE
+                member.devmajor = 1
+                member.devminor = 3
+                archive.addfile(member)
+            else:  # pragma: no cover - test helper misuse
+                raise AssertionError(f"unknown tar member kind: {kind}")
 
 
 def _resolve_context(
@@ -85,13 +128,15 @@ def test_release_terminal_routes_all_three_modes_fail_closed() -> None:
     inputs = triggers["workflow_dispatch"]["inputs"]
     assert inputs["mode"]["options"] == ["release-qualification", "post-publication"]
     assert {
-        "authority_artifact",
+        "authority_bundle_sha256",
         "authority_run_id",
         "candidate_sha",
         "evidence_manifest_sha256",
         "main_health_sha",
         "mode",
     } <= set(inputs)
+    assert "authority_artifact" not in inputs
+    assert inputs["authority_bundle_sha256"]["required"] is True
 
     contracts = workflow["jobs"]["contracts"]
     text = _run_text(contracts)
@@ -101,6 +146,120 @@ def test_release_terminal_routes_all_three_modes_fail_closed() -> None:
     assert "source_sha != main_health_sha" in text
     assert 'git cat-file -t "$tag_ref"' in text
     assert "unsupported release mode" in text
+
+
+def test_authority_store_urls_require_distinct_https_hosts() -> None:
+    contracts = _workflow()["jobs"]["contracts"]
+    step = _named_step(contracts, "Download and compare independent authority-store bundles")
+    assert step["env"] == {
+        "AUTHORITY_BUNDLE_SHA256": "${{ steps.authority-inputs.outputs.bundle_sha256 }}",
+        "AUTHORITY_STORE_A_TOKEN": "${{ secrets.RELEASE_AUTHORITY_STORE_A_TOKEN }}",
+        "AUTHORITY_STORE_A_URL": "${{ vars.RELEASE_AUTHORITY_STORE_A_URL }}",
+        "AUTHORITY_STORE_B_TOKEN": "${{ secrets.RELEASE_AUTHORITY_STORE_B_TOKEN }}",
+        "AUTHORITY_STORE_B_URL": "${{ vars.RELEASE_AUTHORITY_STORE_B_URL }}",
+    }
+    command = str(step["run"])
+    assert command.count("curl --proto '=https'") == 2
+    assert "--location" not in command
+    assert command.count("--max-filesize 536870912") == 2
+    assert "cmp --silent" in command
+    assert 'test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"' in command
+
+    script = _embedded_python(step)
+    base_env = {
+        **os.environ,
+        "AUTHORITY_STORE_A_URL": "https://authority-a.example/bundle.tar",
+        "AUTHORITY_STORE_B_URL": "https://authority-b.example/bundle.tar",
+    }
+    valid = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        check=False,
+        env=base_env,
+        text=True,
+    )
+    assert valid.returncode == 0, valid.stderr
+
+    same_host_env = {
+        **base_env,
+        "AUTHORITY_STORE_B_URL": "https://AUTHORITY-A.EXAMPLE./other-bundle.tar",
+    }
+    same_host = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        check=False,
+        env=same_host_env,
+        text=True,
+    )
+    assert same_host.returncode != 0
+    assert "distinct HTTPS host identities" in same_host.stderr
+
+
+def test_authority_bundle_extraction_accepts_directories_and_rejects_unsafe_members(
+    tmp_path: Path,
+) -> None:
+    contracts = _workflow()["jobs"]["contracts"]
+    script = _embedded_python(_named_step(contracts, "Extract the exact authority bundle safely"))
+
+    valid_root = tmp_path / "valid"
+    valid_root.mkdir()
+    valid_archive = valid_root / "bundle.tar"
+    _write_tar(
+        valid_archive,
+        [
+            (".", "directory", b""),
+            ("prepublication/", "directory", b""),
+            ("qualification.json", "file", b'{"status":"PASS"}'),
+            ("prepublication/approval.json", "file", b'{"decision":"APPROVED"}'),
+        ],
+    )
+    valid = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=valid_root,
+        env={**os.environ, "AUTHORITY_BUNDLE": str(valid_archive)},
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert valid.returncode == 0, valid.stderr
+    assert (
+        valid_root / ".release-authority/qualification.json"
+    ).read_bytes() == b'{"status":"PASS"}'
+    assert (valid_root / ".release-authority/prepublication").is_dir()
+    assert (valid_root / ".release-authority/prepublication/approval.json").read_bytes() == (
+        b'{"decision":"APPROVED"}'
+    )
+
+    mutations: dict[str, list[tuple[str, str, bytes]]] = {
+        "absolute": [("/escape.json", "file", b"escape")],
+        "traversal": [("../escape.json", "file", b"escape")],
+        "duplicate": [
+            ("qualification.json", "file", b"first"),
+            ("qualification.json", "file", b"second"),
+        ],
+        "collision": [
+            ("prepublication", "file", b"not-a-directory"),
+            ("prepublication/approval.json", "file", b"approval"),
+        ],
+        "symlink": [("qualification.json", "symlink", b"")],
+        "hardlink": [("qualification.json", "hardlink", b"")],
+        "device": [("qualification.json", "device", b"")],
+    }
+    for label, entries in mutations.items():
+        case_root = tmp_path / label
+        case_root.mkdir()
+        archive = case_root / "bundle.tar"
+        _write_tar(archive, entries)
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=case_root,
+            env={**os.environ, "AUTHORITY_BUNDLE": str(archive)},
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert result.returncode != 0, label
+        assert not (tmp_path / "escape.json").exists(), label
 
 
 def test_event_mode_resolution_executes_against_provider_payloads(tmp_path: Path) -> None:
@@ -245,7 +404,11 @@ def test_live_modes_require_real_authority_and_exact_validators() -> None:
     assert "check_release_readiness.py" in text
     assert "validate_release_qualification_plan.py" in text
     assert "validate_release_qualification.py" in text
+    assert "validate_release_role_assignments.py" in text
+    assert "--check-conflicts" in text
+    assert "--check-freshness" in text
     assert "validate_release_approval.py" in text
+    assert '--role-assignments "$root/role-assignments.json"' in text
     assert "validate_release_retention.py" in text
     assert "validate_publication_reconciliation.py" in text
     assert "--read-back" in text

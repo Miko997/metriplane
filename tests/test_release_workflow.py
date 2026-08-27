@@ -66,6 +66,16 @@ def test_release_required_is_read_only_and_runs_on_ordinary_prs() -> None:
 def test_release_required_produces_exact_validated_qualification_authority() -> None:
     required = _workflow(REQUIRED)
     contract_steps = required["jobs"]["contracts"]["steps"]
+    download_index = next(
+        index
+        for index, step in enumerate(contract_steps)
+        if step.get("name") == "Download and compare independent authority-store bundles"
+    )
+    extraction_index = next(
+        index
+        for index, step in enumerate(contract_steps)
+        if step.get("name") == "Extract the exact authority bundle safely"
+    )
     validation_index = next(
         index
         for index, step in enumerate(contract_steps)
@@ -79,7 +89,11 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
     )
     upload = contract_steps[upload_index]
 
-    assert validation_index < upload_index
+    assert download_index < extraction_index < validation_index < upload_index
+    assert not any(
+        str(step.get("uses", "")).startswith("actions/download-artifact@")
+        for step in contract_steps
+    )
     assert upload["if"] == "steps.context.outputs.mode == 'release-qualification'"
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["with"]["path"].splitlines() == [".release-authority/**/*.json"]
@@ -92,14 +106,22 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
     }
     required_text = REQUIRED.read_text(encoding="utf-8")
     for fragment in (
-        "Require exact authority source provenance",
-        '"${api_root}/actions/runs/${AUTHORITY_RUN_ID}"',
-        '"${api_root}/actions/runs/${AUTHORITY_RUN_ID}/artifacts?name=${AUTHORITY_ARTIFACT}&per_page=100"',
-        '"head_sha": source_sha',
-        '"path": ".github/workflows/release-required.yml"',
-        '"status": "completed"',
-        '"conclusion": "success"',
-        '"repository.full_name"',
+        "authority_bundle_sha256",
+        "vars.RELEASE_AUTHORITY_STORE_A_URL",
+        "vars.RELEASE_AUTHORITY_STORE_B_URL",
+        "secrets.RELEASE_AUTHORITY_STORE_A_TOKEN",
+        "secrets.RELEASE_AUTHORITY_STORE_B_TOKEN",
+        "curl --proto '=https'",
+        "--max-filesize 536870912",
+        "authority stores must use distinct HTTPS host identities",
+        '"${RUNNER_TEMP}/authority-store-a.tar"',
+        '"${RUNNER_TEMP}/authority-store-b.tar"',
+        "cmp --silent",
+        'test "$store_a_sha256" = "$store_b_sha256"',
+        'test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"',
+        "Extract the exact authority bundle safely",
+        "if not is_directory and not member.isfile()",
+        "authority bundle repeats a path",
         "EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}",
         "AUTHORITY_SOURCE_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}",
         '"delta.json": ("candidate_sha", os.environ["EXPECTED_SOURCE_SHA"])',
@@ -108,8 +130,13 @@ def test_release_required_produces_exact_validated_qualification_authority() -> 
         '"source-freeze.json": ("source_sha", os.environ["EXPECTED_SOURCE_SHA"])',
         '("gate-instance.json", "role-assignments.json")',
         'value.get("data", {}).get("run_id") != os.environ["AUTHORITY_SOURCE_RUN_ID"]',
+        "validate_release_role_assignments.py",
+        '--run-id "$AUTHORITY_SOURCE_RUN_ID"',
+        '--role-assignments "$root/role-assignments.json"',
     ):
         assert fragment in required_text
+    assert "authority_artifact" not in required_text
+    assert "/actions/runs/${AUTHORITY_RUN_ID}" not in required_text
 
     publish = _workflow(PUBLISH)
     download = next(
@@ -160,6 +187,7 @@ def test_production_request_uses_canonical_live_authority_contracts() -> None:
         "--check-freshness",
         "--gate-instance release-authority/gate-instance.json",
         "--qualification release-authority/qualification.json",
+        "--role-assignments release-authority/role-assignments.json",
         "--no-prepublication-rubric",
         "--record release-authority/prepublication/approval.json",
         "--manifest release-authority/evidence-manifest.json",
@@ -215,6 +243,73 @@ def test_production_request_preserves_fail_closed_source_run_identity() -> None:
         '== "Verify TestPyPI artifact identity and installation"',
     )
     assert all(fragment in commands for fragment in required)
+
+
+def test_production_publish_refreshes_authority_after_environment_approval() -> None:
+    workflow = _workflow(PUBLISH)
+    workflow_text = PUBLISH.read_text(encoding="utf-8")
+    assert 'test "$tag_commit" = "$GITHUB_SHA"' not in workflow_text
+
+    publish = workflow["jobs"]["publish-pypi"]
+    assert publish["environment"] == {
+        "name": "pypi",
+        "url": "https://pypi.org/p/metriplane",
+    }
+    steps = publish["steps"]
+    authority_download_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("with", {}).get("name") == "release-qualification-evidence"
+    )
+    validation_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name")
+        == "Revalidate exact authority and approved artifacts after the environment gate"
+    )
+    publication_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Publish the verified distributions to PyPI"
+    )
+    assert authority_download_index < validation_index
+    assert validation_index + 1 == publication_index
+    assert steps[authority_download_index]["with"] == {
+        "name": "release-qualification-evidence",
+        "path": "release-authority/",
+        "run-id": "${{ inputs.qualification_run_id }}",
+        "github-token": "${{ github.token }}",
+    }
+    assert steps[validation_index]["env"]["AUTHORITY_SOURCE_SHA"] == "${{ github.sha }}"
+
+    command = steps[validation_index]["run"]
+    required = (
+        "/actions/runs/${QUALIFICATION_RUN_ID}",
+        "/actions/runs/${QUALIFICATION_RUN_ID}/artifacts?name=release-qualification-evidence&per_page=100",
+        '"head_sha": source_sha',
+        '"path": ".github/workflows/release-required.yml"',
+        '"status": "completed"',
+        '"conclusion": "success"',
+        "fresh qualification authority is not exact and unique",
+        '"delta.json": "candidate_sha"',
+        '"gate-instance.json": "frozen_source_sha"',
+        '"impact-manifest.json": "head_sha"',
+        '"source-freeze.json": "source_sha"',
+        "fresh authority external run binding mismatch",
+        "sha256sum release-authority/qualification.json",
+        "validate_release_gate_instance.py",
+        "validate_release_role_assignments.py",
+        '--run-id "$authority_run_id"',
+        "--check-conflicts",
+        "--check-freshness",
+        "validate_release_qualification.py",
+        "validate_release_approval.py",
+        "--role-assignments release-authority/role-assignments.json",
+        "validate_release_retention.py",
+        "check_release_readiness.py",
+        "validate_release_artifact_manifest.py",
+    )
+    assert all(fragment in command for fragment in required)
 
 
 def test_qualification_provenance_precedes_authority_download() -> None:

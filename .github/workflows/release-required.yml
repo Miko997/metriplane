@@ -33,13 +33,12 @@ on:
         description: Existing annotated canonical tag; required only post-publication
         required: false
         type: string
-      authority_run_id:
-        description: Run containing the immutable authority transport artifact
+      authority_bundle_sha256:
+        description: SHA-256 of the exact authority bundle retained in both external stores
         required: true
         type: string
-      authority_artifact:
-        default: release-qualification-evidence
-        description: Artifact transporting externally retained authority records
+      authority_run_id:
+        description: External authority production run identity bound into retained records
         required: true
         type: string
       evidence_manifest_sha256:
@@ -206,125 +205,189 @@ jobs:
           tests/release/test_local_fake_release.py
 
       - id: authority-inputs
-        name: Require immutable authority transport identifiers
+        name: Require immutable external authority identifiers
         if: steps.context.outputs.mode != 'pr-merge-control'
         env:
-          AUTHORITY_ARTIFACT: ${{ inputs.authority_artifact || vars.RELEASE_AUTHORITY_ARTIFACT }}
+          AUTHORITY_BUNDLE_SHA256: ${{ inputs.authority_bundle_sha256 || vars.RELEASE_AUTHORITY_BUNDLE_SHA256 }}
           AUTHORITY_RUN_ID: ${{ inputs.authority_run_id || vars.RELEASE_AUTHORITY_RUN_ID }}
           EVIDENCE_MANIFEST_SHA256: ${{ inputs.evidence_manifest_sha256 || vars.RELEASE_EVIDENCE_MANIFEST_SHA256 }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$AUTHORITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          [[ "$AUTHORITY_ARTIFACT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$ ]]
+          [[ "$AUTHORITY_BUNDLE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$EVIDENCE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          echo "artifact=$AUTHORITY_ARTIFACT" >> "$GITHUB_OUTPUT"
+          echo "bundle_sha256=$AUTHORITY_BUNDLE_SHA256" >> "$GITHUB_OUTPUT"
           echo "manifest_sha256=$EVIDENCE_MANIFEST_SHA256" >> "$GITHUB_OUTPUT"
           echo "run_id=$AUTHORITY_RUN_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Require exact authority source provenance
+      - name: Download and compare independent authority-store bundles
         if: steps.context.outputs.mode != 'pr-merge-control'
         env:
-          AUTHORITY_ARTIFACT: ${{ steps.authority-inputs.outputs.artifact }}
-          AUTHORITY_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}
-          EXPECTED_SOURCE_SHA: ${{ steps.context.outputs.source_sha }}
-          GH_TOKEN: ${{ github.token }}
+          AUTHORITY_BUNDLE_SHA256: ${{ steps.authority-inputs.outputs.bundle_sha256 }}
+          AUTHORITY_STORE_A_TOKEN: ${{ secrets.RELEASE_AUTHORITY_STORE_A_TOKEN }}
+          AUTHORITY_STORE_A_URL: ${{ vars.RELEASE_AUTHORITY_STORE_A_URL }}
+          AUTHORITY_STORE_B_TOKEN: ${{ secrets.RELEASE_AUTHORITY_STORE_B_TOKEN }}
+          AUTHORITY_STORE_B_URL: ${{ vars.RELEASE_AUTHORITY_STORE_B_URL }}
         shell: bash
         run: |
           set -euo pipefail
-          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          curl --fail-with-body --silent --show-error \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "${api_root}/actions/runs/${AUTHORITY_RUN_ID}" \
-            > "${RUNNER_TEMP}/authority-run.json"
-          curl --fail-with-body --silent --show-error \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "${api_root}/actions/runs/${AUTHORITY_RUN_ID}/artifacts?name=${AUTHORITY_ARTIFACT}&per_page=100" \
-            > "${RUNNER_TEMP}/authority-artifacts.json"
+          test -n "$AUTHORITY_STORE_A_TOKEN"
+          test -n "$AUTHORITY_STORE_B_TOKEN"
           python - <<'PY'
-          import json
           import os
-          from pathlib import Path
+          from urllib.parse import urlsplit
 
-          run_id = int(os.environ["AUTHORITY_RUN_ID"])
-          source_sha = os.environ["EXPECTED_SOURCE_SHA"]
-          repository = os.environ["GITHUB_REPOSITORY"]
-          run = json.loads(
-              Path(os.environ["RUNNER_TEMP"], "authority-run.json").read_text(encoding="utf-8")
-          )
-          expected_run = {
-              "conclusion": "success",
-              "event": "workflow_dispatch",
-              "head_branch": "main",
-              "head_sha": source_sha,
-              "id": run_id,
-              "path": ".github/workflows/release-required.yml",
-              "status": "completed",
-          }
-          mismatches = {
-              key: (run.get(key), expected)
-              for key, expected in expected_run.items()
-              if run.get(key) != expected
-          }
-          if run.get("repository", {}).get("full_name") != repository:
-              mismatches["repository.full_name"] = (
-                  run.get("repository", {}).get("full_name"),
-                  repository,
-              )
-          if mismatches:
-              raise SystemExit(f"authority source run mismatch: {mismatches}")
-
-          payload = json.loads(
-              Path(os.environ["RUNNER_TEMP"], "authority-artifacts.json").read_text(
-                  encoding="utf-8"
-              )
-          )
-          artifacts = payload.get("artifacts")
-          if payload.get("total_count") != 1 or not isinstance(artifacts, list) or len(artifacts) != 1:
-              raise SystemExit("authority source run must contain exactly one named artifact")
-          artifact = artifacts[0]
-          workflow_run = artifact.get("workflow_run")
-          if not isinstance(workflow_run, dict):
-              raise SystemExit("authority artifact has no workflow identity")
-          expected_artifact = {
-              "expired": False,
-              "name": os.environ["AUTHORITY_ARTIFACT"],
-          }
-          artifact_mismatches = {
-              key: (artifact.get(key), expected)
-              for key, expected in expected_artifact.items()
-              if artifact.get(key) != expected
-          }
-          expected_artifact_run = {
-              "head_branch": "main",
-              "head_sha": source_sha,
-              "id": run_id,
-          }
-          artifact_mismatches.update(
-              {
-                  f"workflow_run.{key}": (workflow_run.get(key), expected)
-                  for key, expected in expected_artifact_run.items()
-                  if workflow_run.get(key) != expected
-              }
-          )
-          if type(artifact.get("id")) is not int or artifact["id"] <= 0:
-              artifact_mismatches["id"] = (artifact.get("id"), "positive integer")
-          if artifact_mismatches:
-              raise SystemExit(f"authority artifact mismatch: {artifact_mismatches}")
+          urls = [
+              os.environ["AUTHORITY_STORE_A_URL"],
+              os.environ["AUTHORITY_STORE_B_URL"],
+          ]
+          hosts = []
+          for url in urls:
+              parsed = urlsplit(url)
+              host = parsed.hostname.rstrip(".").casefold() if parsed.hostname else ""
+              if (
+                  parsed.scheme != "https"
+                  or not host
+                  or parsed.username is not None
+                  or parsed.password is not None
+                  or parsed.fragment
+              ):
+                  raise SystemExit("authority store URL is not a closed HTTPS identity")
+              hosts.append(host)
+          if hosts[0] == hosts[1]:
+              raise SystemExit("authority stores must use distinct HTTPS host identities")
           PY
+          curl --proto '=https' \
+            --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-filesize 536870912 --max-time 300 \
+            --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer ${AUTHORITY_STORE_A_TOKEN}" \
+            --output "${RUNNER_TEMP}/authority-store-a.tar" \
+            "$AUTHORITY_STORE_A_URL"
+          curl --proto '=https' \
+            --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-filesize 536870912 --max-time 300 \
+            --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer ${AUTHORITY_STORE_B_TOKEN}" \
+            --output "${RUNNER_TEMP}/authority-store-b.tar" \
+            "$AUTHORITY_STORE_B_URL"
+          cmp --silent \
+            "${RUNNER_TEMP}/authority-store-a.tar" \
+            "${RUNNER_TEMP}/authority-store-b.tar"
+          store_a_sha256="$(sha256sum "${RUNNER_TEMP}/authority-store-a.tar" | awk '{print $1}')"
+          store_b_sha256="$(sha256sum "${RUNNER_TEMP}/authority-store-b.tar" | awk '{print $1}')"
+          test "$store_a_sha256" = "$store_b_sha256"
+          test "$store_a_sha256" = "$AUTHORITY_BUNDLE_SHA256"
 
-      - name: Download authority transport without treating it as durable evidence
+      - name: Extract the exact authority bundle safely
         if: steps.context.outputs.mode != 'pr-merge-control'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
-        with:
-          github-token: ${{ github.token }}
-          name: ${{ steps.authority-inputs.outputs.artifact }}
-          path: .release-authority
-          run-id: ${{ steps.authority-inputs.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTHORITY_BUNDLE="${RUNNER_TEMP}/authority-store-a.tar" python - <<'PY'
+          import os
+          import re
+          import shutil
+          import tarfile
+          from pathlib import Path, PurePosixPath
+
+          archive_path = Path(os.environ["AUTHORITY_BUNDLE"])
+          destination = Path(".release-authority")
+          if destination.exists() or destination.is_symlink():
+              raise SystemExit("authority extraction destination already exists")
+
+          checked: list[tuple[tarfile.TarInfo, PurePosixPath, bool]] = []
+          names: dict[str, str] = {}
+          expanded_size = 0
+          root_directory_seen = False
+          with tarfile.open(archive_path, mode="r:*") as archive:
+              members = archive.getmembers()
+              if not members or len(members) > 10_000:
+                  raise SystemExit("authority bundle has an invalid member count")
+              for member in members:
+                  raw_name = member.name
+                  is_directory = member.isdir()
+                  if not is_directory and not member.isfile():
+                      raise SystemExit(
+                          f"authority bundle member is not a regular file or directory: {raw_name}"
+                      )
+                  path_name = raw_name[:-1] if is_directory and raw_name.endswith("/") else raw_name
+                  raw_parts = path_name.split("/")
+                  if (
+                      not path_name
+                      or "\\" in path_name
+                      or any(part in {"", ".."} for part in raw_parts)
+                  ):
+                      raise SystemExit(f"authority bundle has an unsafe path: {raw_name!r}")
+                  if raw_parts[0] == ".":
+                      raw_parts = raw_parts[1:]
+                  if not raw_parts:
+                      if not is_directory or root_directory_seen:
+                          raise SystemExit("authority bundle repeats or misuses its root directory")
+                      root_directory_seen = True
+                      continue
+                  if any(part in {"", ".", ".."} for part in raw_parts):
+                      raise SystemExit(f"authority bundle has an unsafe path: {raw_name!r}")
+                  if re.fullmatch(r"[A-Za-z]:", raw_parts[0]) is not None:
+                      raise SystemExit(f"authority bundle has an unsafe drive path: {raw_name!r}")
+                  relative = PurePosixPath(*raw_parts)
+                  if relative.is_absolute():
+                      raise SystemExit(f"authority bundle has an absolute path: {raw_name!r}")
+                  normalized = relative.as_posix()
+                  if normalized in names:
+                      raise SystemExit(f"authority bundle repeats a path: {normalized}")
+                  if member.size < 0:
+                      raise SystemExit(f"authority bundle member has invalid size: {normalized}")
+                  if is_directory and member.size != 0:
+                      raise SystemExit(
+                          f"authority bundle directory has unexpected bytes: {normalized}"
+                      )
+                  names[normalized] = "directory" if is_directory else "file"
+                  checked.append((member, relative, is_directory))
+                  if not is_directory:
+                      expanded_size += member.size
+              if expanded_size > 512 * 1024 * 1024:
+                  raise SystemExit("authority bundle expands beyond the allowed size")
+              for normalized in names:
+                  for parent in PurePosixPath(normalized).parents:
+                      if parent == PurePosixPath("."):
+                          break
+                      if names.get(parent.as_posix()) == "file":
+                          raise SystemExit(
+                              f"authority bundle has a file/path collision: {normalized}"
+                          )
+
+              destination.mkdir(mode=0o700)
+              root = destination.resolve()
+              directories = sorted(
+                  (relative for _member, relative, is_directory in checked if is_directory),
+                  key=lambda item: len(item.parts),
+              )
+              for relative in directories:
+                  directory = destination.joinpath(*relative.parts)
+                  directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+              for member, relative, is_directory in checked:
+                  if is_directory:
+                      continue
+                  target = destination.joinpath(*relative.parts)
+                  target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                  if not target.resolve().is_relative_to(root):
+                      raise SystemExit(f"authority bundle escapes extraction root: {relative}")
+                  source = archive.extractfile(member)
+                  if source is None:
+                      raise SystemExit(f"authority bundle member has no bytes: {relative}")
+                  flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                  if hasattr(os, "O_NOFOLLOW"):
+                      flags |= os.O_NOFOLLOW
+                  descriptor = os.open(target, flags, 0o400)
+                  with source, os.fdopen(descriptor, "wb") as output:
+                      shutil.copyfileobj(source, output)
+                      output.flush()
+                      os.fsync(output.fileno())
+                  if target.lstat().st_size != member.size:
+                      raise SystemExit(f"authority bundle member size changed: {relative}")
+          PY
 
       - name: Reject missing, synthetic, mutable, or digest-mismatched authority
         if: steps.context.outputs.mode != 'pr-merge-control'
@@ -398,15 +461,29 @@ jobs:
 
       - name: Validate candidate qualification, non-author approval, and staged read-back
         if: steps.context.outputs.mode != 'pr-merge-control'
+        env:
+          AUTHORITY_SOURCE_RUN_ID: ${{ steps.authority-inputs.outputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
           root=.release-authority
+          milestone="$(python -c \
+            'import json; print(json.load(open(".release-authority/gate-instance.json"))["data"]["milestone"])')"
+          case "$milestone" in
+            v0.4|v0.5|v0.6|v0.7|v0.8|v0.9|v1.0) ;;
+            *) echo "unsupported cumulative release milestone: $milestone" >&2; exit 1 ;;
+          esac
           uv run python tools/validate_release_gate_instance.py \
             --record "$root/gate-instance.json" \
             --candidate-identity "$root/candidate-identity.json" \
             --predecessor "$root/predecessor.json" \
             --task-state-policy docs/status/release-task-state-policy.json
+          uv run python tools/validate_release_role_assignments.py \
+            --record "$root/role-assignments.json" \
+            --milestone "$milestone" \
+            --run-id "$AUTHORITY_SOURCE_RUN_ID" \
+            --check-conflicts \
+            --check-freshness
           uv run python tools/check_release_readiness.py \
             --gate-instance "$root/gate-instance.json" \
             --candidate-identity "$root/candidate-identity.json" \
@@ -425,6 +502,7 @@ jobs:
           uv run python tools/validate_release_approval.py \
             --gate-instance "$root/gate-instance.json" \
             --qualification "$root/qualification.json" \
+            --role-assignments "$root/role-assignments.json" \
             --no-prepublication-rubric \
             --record "$root/prepublication/approval.json"
           uv run python tools/validate_release_retention.py \
