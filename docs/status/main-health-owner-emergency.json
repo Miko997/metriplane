@@ -7,6 +7,7 @@
     "docs/status/main-health-owner-emergency.json",
     "docs/status/schemas/main-health-provider-evidence.schema.json",
     "scripts/systemd/metriplane-main-health-broker.service",
+    "tests/test_fleet_agent.py",
     "tests/test_main_health.py",
     "tests/test_main_health_broker.py",
     "tools/main_health_broker.py",
