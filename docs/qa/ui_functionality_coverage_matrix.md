@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918feaf87fd2451ff76`
+Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -25,17 +25,17 @@ Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918f
 | api.operator.get.traces | Operator GET /traces | metriplane/runner/operator_api.py | GET /operator/traces | web/dashboard/*.js | GET /operator/traces | ui_full | P1 |  |
 | api.operator.post.ask | Operator POST /ask | metriplane/runner/operator_api.py | POST /operator/ask | web/dashboard/*.js | POST /operator/ask | ui_full | P1 |  |
 | api.operator.post.calibrate | Operator POST /calibrate | metriplane/runner/operator_api.py | POST /operator/calibrate | web/dashboard/*.js | POST /operator/calibrate | ui_full | P1 |  |
-| api.operator.post.camera_trust | Operator POST /camera-trust | metriplane/runner/operator_api.py | POST /operator/camera-trust | web/dashboard/*.js | POST /operator/camera-trust | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
+| api.operator.post.camera_trust | Operator POST /camera-trust | metriplane/runner/operator_api.py | POST /operator/camera-trust | - | - | ui_missing | P1 |  |
 | api.operator.post.checksum | Operator POST /checksum | metriplane/runner/operator_api.py | POST /operator/checksum | web/dashboard/*.js | POST /operator/checksum | ui_full | P1 |  |
 | api.operator.post.create_profile | Operator POST /create-profile | metriplane/runner/operator_api.py | POST /operator/create-profile | web/dashboard/*.js | POST /operator/create-profile | ui_full | P1 |  |
-| api.operator.post.frames | Operator POST /frames | metriplane/runner/operator_api.py | POST /operator/frames | web/dashboard/*.js | POST /operator/frames | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
+| api.operator.post.frames | Operator POST /frames | metriplane/runner/operator_api.py | POST /operator/frames | - | - | ui_missing | P1 |  |
 | api.operator.post.generate_report | Operator POST /generate-report | metriplane/runner/operator_api.py | POST /operator/generate-report | web/dashboard/*.js | POST /operator/generate-report | ui_full | P1 |  |
-| api.operator.post.incidents | Operator POST /incidents | metriplane/runner/operator_api.py | POST /operator/incidents | web/dashboard/*.js | POST /operator/incidents | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.live_summary | Operator POST /live-summary | metriplane/runner/operator_api.py | POST /operator/live-summary | web/dashboard/*.js | POST /operator/live-summary | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.objects | Operator POST /objects | metriplane/runner/operator_api.py | POST /operator/objects | web/dashboard/*.js | POST /operator/objects | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
+| api.operator.post.incidents | Operator POST /incidents | metriplane/runner/operator_api.py | POST /operator/incidents | - | - | ui_missing | P1 |  |
+| api.operator.post.live_summary | Operator POST /live-summary | metriplane/runner/operator_api.py | POST /operator/live-summary | - | - | ui_missing | P1 |  |
+| api.operator.post.objects | Operator POST /objects | metriplane/runner/operator_api.py | POST /operator/objects | - | - | ui_missing | P1 |  |
 | api.operator.post.save_config | Operator POST /save-config | metriplane/runner/operator_api.py | POST /operator/save-config | web/dashboard/*.js | POST /operator/save-config | ui_full | P1 |  |
 | api.operator.post.start_fusion | Operator POST /start-fusion | metriplane/runner/operator_api.py | POST /operator/start-fusion | web/dashboard/*.js | POST /operator/start-fusion | ui_full | P0 |  |
-| api.operator.post.traces | Operator POST /traces | metriplane/runner/operator_api.py | POST /operator/traces | web/dashboard/*.js | POST /operator/traces | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
+| api.operator.post.traces | Operator POST /traces | metriplane/runner/operator_api.py | POST /operator/traces | - | - | ui_missing | P1 |  |
 | api.operator.post.validate_alignment | Operator POST /validate-alignment | metriplane/runner/operator_api.py | POST /operator/validate-alignment | web/dashboard/*.js | POST /operator/validate-alignment | ui_full | P1 |  |
 | api.operator.post.validate_alignment_full | Operator POST /validate-alignment-full | metriplane/runner/operator_api.py | POST /operator/validate-alignment-full | web/dashboard/*.js | POST /operator/validate-alignment-full | ui_full | P1 |  |
 | api.operator.post.write_zones | Operator POST /write-zones | metriplane/runner/operator_api.py | POST /operator/write-zones | web/dashboard/*.js | POST /operator/write-zones | ui_full | P1 |  |

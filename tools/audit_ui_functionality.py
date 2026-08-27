@@ -284,6 +284,26 @@ class _ScopeCollector(ast.NodeVisitor):
         self.nodes.append(node)
         super().generic_visit(node)
 
+    def _visit_conditional(self, node: ast.If | ast.While) -> None:
+        self.nodes.append(node)
+        self.visit(node.test)
+        truth = _static_truth(node.test)
+        branches = (
+            node.body
+            if truth is True
+            else node.orelse
+            if truth is False
+            else (*node.body, *node.orelse)
+        )
+        for statement in branches:
+            self.visit(statement)
+
+    def visit_If(self, node: ast.If) -> None:
+        self._visit_conditional(node)
+
+    def visit_While(self, node: ast.While) -> None:
+        self._visit_conditional(node)
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.nested_scopes.append(node)
 
@@ -295,6 +315,48 @@ class _ScopeCollector(ast.NodeVisitor):
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self.nested_scopes.append(node)
+
+
+def _static_truth(node: ast.AST) -> bool | None:
+    try:
+        return bool(ast.literal_eval(node))
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return None
+
+
+class _ReachableCollector(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.nodes: list[ast.AST] = []
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self.nodes.append(node)
+        super().generic_visit(node)
+
+    def _visit_conditional(self, node: ast.If | ast.While) -> None:
+        self.nodes.append(node)
+        self.visit(node.test)
+        truth = _static_truth(node.test)
+        branches = (
+            node.body
+            if truth is True
+            else node.orelse
+            if truth is False
+            else (*node.body, *node.orelse)
+        )
+        for statement in branches:
+            self.visit(statement)
+
+    def visit_If(self, node: ast.If) -> None:
+        self._visit_conditional(node)
+
+    def visit_While(self, node: ast.While) -> None:
+        self._visit_conditional(node)
+
+
+def _reachable_nodes(node: ast.AST) -> tuple[ast.AST, ...]:
+    collector = _ReachableCollector()
+    collector.visit(node)
+    return tuple(collector.nodes)
 
 
 def _scope_nodes(statements: Sequence[ast.stmt]) -> tuple[tuple[ast.AST, ...], tuple[ast.AST, ...]]:
@@ -576,7 +638,9 @@ def parse_cli_subcommands(root: Path) -> list[Action]:
         raise AuditError("metriplane.cli must contain exactly one main dispatcher")
     nodes, nested_scopes = _scope_nodes(functions[0].body)
     for scope in nested_scopes:
-        if any(_root_dispatch_name(node, path=path) is not None for node in ast.walk(scope)):
+        if any(
+            _root_dispatch_name(node, path=path) is not None for node in _reachable_nodes(scope)
+        ):
             raise AuditError(f"nested root CLI dispatch is forbidden at {path}:{scope.lineno}")
     declarations: list[tuple[str, int]] = []
     for node in nodes:
@@ -627,7 +691,7 @@ def parse_operator_endpoints(root: Path) -> list[Action]:
             isinstance(candidate, ast.Compare)
             and isinstance(candidate.left, ast.Name)
             and candidate.left.id in {"method", "sub"}
-            for candidate in ast.walk(scope)
+            for candidate in _reachable_nodes(scope)
         ):
             raise AuditError(f"nested OperatorAPI route is forbidden at {path}:{scope.lineno}")
     actions: list[Action] = []
@@ -740,7 +804,7 @@ def parse_runner_endpoints(root: Path) -> list[Action]:
                     and candidate.func.value.id == "path"
                     and candidate.func.attr in {"startswith", "endswith"}
                 )
-                for candidate in ast.walk(scope)
+                for candidate in _reachable_nodes(scope)
             ):
                 raise AuditError(f"nested runner route is forbidden at {path}:{scope.lineno}")
         for node in function_nodes:
@@ -891,7 +955,7 @@ def discover_services(root: Path) -> list[Service]:
     for path in sorted((root / "metriplane").rglob("*.py")):
         relative = rel_path(root, path)
         tree = _parse_module(path)
-        for node in ast.walk(tree):
+        for node in _reachable_nodes(tree):
             if not isinstance(node, ast.Call):
                 continue
             name = _call_name(node)
@@ -946,7 +1010,7 @@ def discover_topics(root: Path) -> list[Topic]:
     )
     launch = _parse_module(launch_path)
     defaults: dict[str, tuple[str, int]] = {}
-    for node in ast.walk(launch):
+    for node in _reachable_nodes(launch):
         if not isinstance(node, ast.Call) or _call_name(node) != "DeclareLaunchArgument":
             continue
         if not node.args or not (
@@ -969,7 +1033,7 @@ def discover_topics(root: Path) -> list[Topic]:
     bridge = _parse_module(bridge_path)
     bridge_defaults: dict[str, str] = {}
     publisher_parameters: set[str] = set()
-    for node in ast.walk(bridge):
+    for node in _reachable_nodes(bridge):
         if not isinstance(node, ast.Call):
             continue
         name = _call_name(node)
@@ -1009,6 +1073,340 @@ def discover_topics(root: Path) -> list[Topic]:
     if len({topic.topic_id for topic in topics}) != len(topics):
         raise AuditError("ROS topics produce duplicate stable IDs")
     return topics
+
+
+@dataclass(frozen=True)
+class _JSToken:
+    kind: str
+    value: str
+    offset: int
+
+
+def _regex_can_start(tokens: Sequence[_JSToken]) -> bool:
+    if not tokens:
+        return True
+    previous = tokens[-1]
+    if previous.value in {"(", "[", "{", ",", ":", ";", "=", "!", "&", "|", "?"}:
+        return True
+    return previous.kind == "identifier" and previous.value in {
+        "case",
+        "delete",
+        "return",
+        "throw",
+        "typeof",
+        "void",
+        "yield",
+    }
+
+
+def _tokenize_javascript(source: str) -> tuple[_JSToken, ...]:
+    tokens: list[_JSToken] = []
+    index = 0
+    length = len(source)
+    escapes = {
+        "0": "\0",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "v": "\v",
+    }
+    while index < length:
+        char = source[index]
+        if char.isspace():
+            index += 1
+            continue
+        if source.startswith("//", index):
+            newline = source.find("\n", index + 2)
+            index = length if newline < 0 else newline + 1
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            if end < 0:
+                raise AuditError("unterminated JavaScript block comment")
+            index = end + 2
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+            start = index
+            index += 1
+            value: list[str] = []
+            while index < length:
+                char = source[index]
+                if char == quote:
+                    index += 1
+                    tokens.append(
+                        _JSToken("template" if quote == "`" else "string", "".join(value), start)
+                    )
+                    break
+                if char == "\\":
+                    index += 1
+                    if index >= length:
+                        raise AuditError("unterminated JavaScript string escape")
+                    escaped = source[index]
+                    if escaped in {"\n", "\r"}:
+                        if escaped == "\r" and index + 1 < length and source[index + 1] == "\n":
+                            index += 1
+                    elif escaped == "x" and index + 2 < length:
+                        digits = source[index + 1 : index + 3]
+                        if all(item in "0123456789abcdefABCDEF" for item in digits):
+                            value.append(chr(int(digits, 16)))
+                            index += 2
+                        else:
+                            value.append(escaped)
+                    elif escaped == "u" and index + 4 < length:
+                        digits = source[index + 1 : index + 5]
+                        if all(item in "0123456789abcdefABCDEF" for item in digits):
+                            value.append(chr(int(digits, 16)))
+                            index += 4
+                        else:
+                            value.append(escaped)
+                    else:
+                        value.append(escapes.get(escaped, escaped))
+                    index += 1
+                    continue
+                if quote != "`" and char in {"\n", "\r"}:
+                    raise AuditError("unterminated JavaScript string literal")
+                value.append(char)
+                index += 1
+            else:
+                raise AuditError("unterminated JavaScript string literal")
+            continue
+        if char == "/" and _regex_can_start(tokens):
+            start = index
+            index += 1
+            escaped = False
+            in_class = False
+            while index < length:
+                char = source[index]
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == "[":
+                    in_class = True
+                elif char == "]":
+                    in_class = False
+                elif char == "/" and not in_class:
+                    index += 1
+                    while index < length and source[index].isalpha():
+                        index += 1
+                    tokens.append(_JSToken("regex", source[start:index], start))
+                    break
+                elif char in {"\n", "\r"}:
+                    raise AuditError("unterminated JavaScript regular expression")
+                index += 1
+            else:
+                raise AuditError("unterminated JavaScript regular expression")
+            continue
+        if char.isalpha() or char in {"_", "$"}:
+            start = index
+            index += 1
+            while index < length and (source[index].isalnum() or source[index] in {"_", "$"}):
+                index += 1
+            tokens.append(_JSToken("identifier", source[start:index], start))
+            continue
+        if char.isdigit():
+            start = index
+            index += 1
+            while index < length and (source[index].isalnum() or source[index] in {".", "_"}):
+                index += 1
+            tokens.append(_JSToken("number", source[start:index], start))
+            continue
+        tokens.append(_JSToken("punctuation", char, index))
+        index += 1
+    return tuple(tokens)
+
+
+def _call_arguments(
+    tokens: Sequence[_JSToken], open_index: int
+) -> tuple[tuple[tuple[_JSToken, ...], ...], int]:
+    if tokens[open_index].value != "(":
+        raise AuditError("JavaScript call parser did not start on an opening parenthesis")
+    stack = [")"]
+    current: list[_JSToken] = []
+    arguments: list[tuple[_JSToken, ...]] = []
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    for index in range(open_index + 1, len(tokens)):
+        token = tokens[index]
+        if token.value in pairs:
+            stack.append(pairs[token.value])
+            current.append(token)
+            continue
+        if token.value in {")", "]", "}"}:
+            if token.value != stack[-1]:
+                raise AuditError(f"unbalanced JavaScript call near offset {token.offset}")
+            if len(stack) == 1:
+                if current:
+                    arguments.append(tuple(current))
+                elif arguments:
+                    raise AuditError(f"empty JavaScript call argument near offset {token.offset}")
+                return tuple(arguments), index
+            stack.pop()
+            current.append(token)
+            continue
+        if token.value == "," and len(stack) == 1:
+            if not current:
+                raise AuditError(f"empty JavaScript call argument near offset {token.offset}")
+            arguments.append(tuple(current))
+            current = []
+            continue
+        current.append(token)
+    raise AuditError(f"unterminated JavaScript call near offset {tokens[open_index].offset}")
+
+
+def _strip_wrapping_parentheses(tokens: Sequence[_JSToken]) -> tuple[_JSToken, ...]:
+    result = tuple(tokens)
+    while len(result) >= 2 and result[0].value == "(" and result[-1].value == ")":
+        depth = 0
+        closes_at_end = False
+        for index, token in enumerate(result):
+            if token.value == "(":
+                depth += 1
+            elif token.value == ")":
+                depth -= 1
+                if depth == 0:
+                    closes_at_end = index == len(result) - 1
+                    break
+        if not closes_at_end:
+            break
+        result = result[1:-1]
+    return result
+
+
+def _split_top_level(
+    tokens: Sequence[_JSToken], separator: str
+) -> tuple[tuple[_JSToken, ...], ...]:
+    parts: list[tuple[_JSToken, ...]] = []
+    current: list[_JSToken] = []
+    stack: list[str] = []
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    for token in tokens:
+        if token.value in pairs:
+            stack.append(pairs[token.value])
+        elif token.value in {")", "]", "}"}:
+            if not stack or token.value != stack.pop():
+                raise AuditError(f"unbalanced JavaScript expression near offset {token.offset}")
+        if token.value == separator and not stack:
+            parts.append(tuple(current))
+            current = []
+        else:
+            current.append(token)
+    if stack:
+        raise AuditError("unbalanced JavaScript expression")
+    parts.append(tuple(current))
+    return tuple(parts)
+
+
+def _js_string(tokens: Sequence[_JSToken]) -> str | None:
+    value = _strip_wrapping_parentheses(tokens)
+    if len(value) == 1 and value[0].kind == "string":
+        return value[0].value
+    return None
+
+
+def _normalize_js_path(tokens: Sequence[_JSToken]) -> str | None:
+    terms = _split_top_level(_strip_wrapping_parentheses(tokens), "+")
+    fragments: list[str] = []
+    for raw_term in terms:
+        term = _strip_wrapping_parentheses(raw_term)
+        if len(term) == 1 and term[0].kind == "string":
+            fragments.append(term[0].value)
+        elif len(term) == 1 and term[0].kind == "template":
+            template = re.sub(r"^\$\{RUNNER(?:_URL)?\}", "", term[0].value)
+            fragments.append(re.sub(r"\$\{[^{}]+\}", "<id>", template))
+        elif (
+            len(term) == 1
+            and term[0].kind == "identifier"
+            and term[0].value
+            in {
+                "RUNNER",
+                "RUNNER_URL",
+            }
+        ):
+            continue
+        elif term:
+            fragments.append("<id>")
+    path = re.sub(r"(?:<id>)+", "<id>", "".join(fragments))
+    path = path.split("?", 1)[0].split("#", 1)[0]
+    if not path.startswith("/") or path.startswith("//"):
+        return None
+    return path
+
+
+def _fetch_method(arguments: Sequence[Sequence[_JSToken]]) -> str | None:
+    if len(arguments) < 2:
+        return "GET"
+    options = _strip_wrapping_parentheses(arguments[1])
+    if len(options) < 2 or options[0].value != "{" or options[-1].value != "}":
+        return None
+    properties = _split_top_level(options[1:-1], ",")
+    methods: list[str] = []
+    for property_tokens in properties:
+        if any(
+            [token.value for token in property_tokens[index : index + 3]] == [".", ".", "."]
+            for index in range(len(property_tokens) - 2)
+        ):
+            return None
+        fields = _split_top_level(property_tokens, ":")
+        if len(fields) < 2:
+            continue
+        key_tokens = _strip_wrapping_parentheses(fields[0])
+        key = (
+            key_tokens[0].value
+            if len(key_tokens) == 1 and key_tokens[0].kind in {"identifier", "string"}
+            else None
+        )
+        if key != "method":
+            continue
+        method = _js_string(fields[1])
+        if method is None or method.upper() not in {"GET", "POST"}:
+            return None
+        methods.append(method.upper())
+    if len(set(methods)) > 1 or len(methods) > 1:
+        return None
+    return methods[0] if methods else "GET"
+
+
+def _scan_dashboard_endpoint_calls(source: str) -> tuple[set[str], set[str]]:
+    tokens = _tokenize_javascript(source)
+    endpoint_calls: set[str] = set()
+    path_calls: set[str] = set()
+    call_names = {"fetch", "getJSON", "jsonFetch", "opApi", "postJSON", "runnerPost"}
+    for index, token in enumerate(tokens[:-1]):
+        if token.kind != "identifier" or token.value not in call_names:
+            continue
+        if index > 0 and tokens[index - 1].value == ".":
+            continue
+        if tokens[index + 1].value != "(":
+            continue
+        arguments, _end_index = _call_arguments(tokens, index + 1)
+        method: str | None = None
+        path: str | None = None
+        if token.value == "opApi" and len(arguments) >= 2:
+            raw_method = _js_string(arguments[0])
+            method = raw_method.upper() if raw_method else None
+            path = _normalize_js_path(arguments[1])
+        elif token.value == "runnerPost" and arguments:
+            raw_method = _js_string(arguments[0])
+            if raw_method and raw_method.upper() in {"GET", "POST"} and len(arguments) >= 2:
+                method = raw_method.upper()
+                path = _normalize_js_path(arguments[1])
+            else:
+                method = "POST"
+                path = _normalize_js_path(arguments[0])
+        elif token.value in {"getJSON", "postJSON"} and arguments:
+            method = "GET" if token.value == "getJSON" else "POST"
+            path = _normalize_js_path(arguments[0])
+        elif token.value in {"fetch", "jsonFetch"} and arguments:
+            method = _fetch_method(arguments)
+            path = _normalize_js_path(arguments[0])
+        if method not in {"GET", "POST"} or path is None:
+            continue
+        endpoint_calls.add(f"{method} {path}")
+        path_calls.add(path)
+    return endpoint_calls, path_calls
 
 
 def parse_dashboard_ui(root: Path) -> dict[str, Any]:
@@ -1070,44 +1468,11 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
 
     endpoint_calls: set[str] = set()
     path_calls: set[str] = set()
-    for method, path in re.findall(
-        r"(?:opApi|runnerPost)\([\"'](GET|POST)[\"']\s*,\s*"
-        r"[\"']([^\"']+)[\"']\s*(?=[,)])",
-        js_text + html_text,
-    ):
-        endpoint_calls.add(f"{method} {path}")
-        path_calls.add(path)
-    for path in re.findall(r"runnerPost\([\"']([^\"']+)[\"']\s*(?=[,)])", js_text + html_text):
-        endpoint_calls.add(f"POST {path}")
-        path_calls.add(path)
-    for path in re.findall(r"getJSON\([\"']([^\"']+)[\"']\s*(?=[,)])", js_text + html_text):
-        endpoint_calls.add(f"GET {path}")
-        path_calls.add(path)
-    for path in re.findall(r"postJSON\([\"']([^\"']+)[\"']\s*(?=[,)])", js_text + html_text):
-        endpoint_calls.add(f"POST {path}")
-        path_calls.add(path)
-    for path in re.findall(
-        r"fetch\(\s*(?:RUNNER\s*\+\s*)?[`\"']([^`\"'$]+)[`\"']", js_text + html_text
-    ):
-        if path.startswith("http"):
-            continue
-        path_calls.add(path)
-        endpoint_calls.add(f"GET {path}")
-    source_text = js_text + "\n" + html_text
-    runner_template_call = re.compile(
-        r"(?:fetch|jsonFetch)\(\s*`\$\{RUNNER(?:_URL)?\}(?P<path>[^`]+)`"
-    )
-    for match in runner_template_call.finditer(source_text):
-        path = match.group("path")
-        clean = path.split("?")[0]
-        clean = re.sub(r"\$\{[^}]+\}", "<id>", clean)
-        path_calls.add(clean)
-        statement_end = source_text.find(";", match.end())
-        if statement_end < 0 or statement_end - match.start() > 1000:
-            statement_end = min(len(source_text), match.start() + 1000)
-        statement = source_text[match.start() : statement_end]
-        method = "POST" if re.search(r"\bmethod\s*:\s*[\"']POST[\"']", statement) else "GET"
-        endpoint_calls.add(f"{method} {clean}")
+    sources = [*js_files.values(), *(item["onclick"] for item in onclicks)]
+    for source in sources:
+        source_endpoints, source_paths = _scan_dashboard_endpoint_calls(source)
+        endpoint_calls.update(source_endpoints)
+        path_calls.update(source_paths)
 
     return {
         "html_elements": html_elements,
@@ -1129,18 +1494,8 @@ def parse_dashboard_ui(root: Path) -> dict[str, Any]:
 def endpoint_coverage_reason(endpoint: str, ui: dict[str, Any]) -> str | None:
     method, path = endpoint.split(" ", 1)
     endpoint_calls = set(ui["endpoint_calls"])
-    read_only_operator = {
-        "/operator/live-summary",
-        "/operator/objects",
-        "/operator/incidents",
-        "/operator/traces",
-        "/operator/camera-trust",
-        "/operator/frames",
-    }
     if endpoint in endpoint_calls:
         return "direct"
-    if method == "POST" and path in read_only_operator and f"GET {path}" in endpoint_calls:
-        return "read_only_fallback"
     method_paths = {
         call_path
         for call in endpoint_calls
@@ -1339,8 +1694,6 @@ def coverage_for_action(action: Action, ui: dict[str, Any]) -> None:
             action.ui_matches = [
                 {"file": "web/dashboard/*.js", "label": action.command_or_endpoint, "kind": "api"}
             ]
-            if reason == "read_only_fallback":
-                action.notes = "Covered by read-only GET fallback for an observe-only endpoint."
         else:
             action.coverage_status = "ui_missing"
         return
@@ -1459,15 +1812,6 @@ def build_actions(root: Path) -> tuple[list[Action], dict[str, Any]]:
                     }
                 ]
                 action.notes = "Covered by a runner allowlist command."
-    ui["quality"]["read_only_fallback_endpoints"] = [
-        {
-            "action_id": action.action_id,
-            "endpoint": action.command_or_endpoint,
-            "notes": action.notes,
-        }
-        for action in unique
-        if action.notes == "Covered by read-only GET fallback for an observe-only endpoint."
-    ]
     return unique, ui
 
 
@@ -2091,13 +2435,9 @@ def write_inventory(path: Path, audit: Audit) -> None:
         if quality.get("data_needs_atlas_buttons_never_enabled")
         else "All `data-needs-atlas` buttons are wired to the Atlas artifact enable path.",
         "",
-        "## Read-Only Endpoint Fallback Coverage",
+        "## Endpoint Method Separation",
         "",
-        markdown_table(
-            quality.get("read_only_fallback_endpoints", []), ["action_id", "endpoint", "notes"]
-        )
-        if quality.get("read_only_fallback_endpoints")
-        else "No endpoints were counted via read-only fallback coverage.",
+        "GET and POST calls are inventoried independently; one method never certifies the other.",
         "",
     ]
     path.write_text("\n".join(content), encoding="utf-8")
@@ -2231,13 +2571,14 @@ def write_parity_report(path: Path, audit: Audit) -> None:
         "- `js_syntax_errors` comes from `node --check` over dashboard JavaScript files.",
         "- `buttons_with_duplicate_command_id_on_same_card` flags accidental duplicate run buttons in one card.",
         "- `data_needs_atlas_buttons_never_enabled` flags Atlas-gated buttons missing the enable path.",
-        "- `read_only_fallback_endpoints` reports observe-only POST endpoints considered covered by GET UI calls.",
+        "- Endpoint coverage is method-exact: a GET call never certifies a POST route.",
         "",
         "## Recommendations",
         "",
         "- Keep all runnable dashboard buttons backed by `metriplane/runner/allowlist.py`.",
         "- Keep hardware-dependent workflows visible, but gated with dependency checks and clear reasons.",
-        "- Treat unresolved P0/P1 `ui_missing` rows as release blockers.",
+        "- Treat every P0/P1 row outside `ui_full`, `ui_disabled_with_reason`, and "
+        "`cli_only_documented` as a release blocker.",
         "",
     ]
     path.write_text("\n".join(content), encoding="utf-8")
@@ -2372,16 +2713,56 @@ def _fsync_parent_directories(paths: Iterable[Path]) -> None:
             os.close(descriptor)
 
 
+def _validated_output_destinations(root: Path, outputs: dict[Path, bytes]) -> dict[Path, Path]:
+    try:
+        repository = root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise AuditError(f"generated output root cannot be resolved: {root}: {exc}") from exc
+    if not repository.is_dir():
+        raise AuditError(f"generated output root is not a directory: {repository}")
+
+    destinations: dict[Path, Path] = {}
+    for relative in outputs:
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            raise AuditError(f"generated output path escapes repository root: {relative}")
+        destination = repository.joinpath(relative)
+        try:
+            destination.relative_to(repository)
+        except ValueError as exc:
+            raise AuditError(f"generated output path escapes repository root: {relative}") from exc
+
+        parent = repository
+        for component in relative.parts[:-1]:
+            parent /= component
+            try:
+                mode = os.lstat(parent).st_mode
+            except OSError as exc:
+                raise AuditError(
+                    f"generated output parent is unavailable: {parent}: {exc}"
+                ) from exc
+            if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+                raise AuditError(f"generated output parent is not a real directory: {parent}")
+
+        try:
+            mode = os.lstat(destination).st_mode
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise AuditError(
+                f"generated output destination is unavailable: {destination}: {exc}"
+            ) from exc
+        else:
+            if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+                raise AuditError(
+                    f"generated output destination is not a regular file: {destination}"
+                )
+        destinations[relative] = destination
+    return destinations
+
+
 def _replace_outputs(root: Path, outputs: dict[Path, bytes]) -> None:
-    absolute = {root / relative: data for relative, data in outputs.items()}
-    invalid = [
-        path for path in absolute if path.is_symlink() or (path.exists() and not path.is_file())
-    ]
-    if invalid:
-        raise AuditError(
-            "generated output destination is not a regular file: "
-            + ", ".join(path.as_posix() for path in sorted(invalid))
-        )
+    destinations = _validated_output_destinations(root, outputs)
+    absolute = {destinations[relative]: data for relative, data in outputs.items()}
     before = {path: path.read_bytes() if path.is_file() else None for path in absolute}
     staged: dict[Path, Path] = {}
     try:
@@ -2428,11 +2809,13 @@ def _replace_outputs(root: Path, outputs: dict[Path, bytes]) -> None:
 
 
 def stale_output_paths(root: Path, outputs: dict[Path, bytes]) -> list[Path]:
+    destinations = _validated_output_destinations(root, outputs)
     return sorted(
         [
             relative
             for relative, expected in outputs.items()
-            if not (root / relative).is_file() or (root / relative).read_bytes() != expected
+            if not destinations[relative].is_file()
+            or destinations[relative].read_bytes() != expected
         ],
         key=lambda path: path.as_posix(),
     )

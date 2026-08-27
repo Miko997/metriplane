@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918feaf87fd2451ff76`
+Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
 
 Static inventory result: **FAIL**
 
@@ -18,11 +18,11 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | metric | value |
 | --- | --- |
 | total_discovered_features | 157 |
-| ui_full | 64 |
+| ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
-| ui_missing | 8 |
+| ui_missing | 14 |
 | cli_only_documented | 71 |
 | planned_only | 0 |
 | broken_buttons | 0 |
@@ -32,9 +32,9 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | js_syntax_check_unavailable | 0 |
 | buttons_with_duplicate_command_id_on_same_card | 0 |
 | data_needs_atlas_buttons_never_enabled | 0 |
-| read_only_fallback_endpoints | 6 |
+| read_only_fallback_endpoints | 0 |
 | critical_bugs | 4 |
-| high_bugs | 9 |
+| high_bugs | 15 |
 
 ## Stable Features Fully Available In UI
 
@@ -54,17 +54,11 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | api.operator.get.traces | Operator GET /traces | metriplane/runner/operator_api.py | GET /operator/traces | web/dashboard/*.js | GET /operator/traces | ui_full | P1 |  |
 | api.operator.post.ask | Operator POST /ask | metriplane/runner/operator_api.py | POST /operator/ask | web/dashboard/*.js | POST /operator/ask | ui_full | P1 |  |
 | api.operator.post.calibrate | Operator POST /calibrate | metriplane/runner/operator_api.py | POST /operator/calibrate | web/dashboard/*.js | POST /operator/calibrate | ui_full | P1 |  |
-| api.operator.post.camera_trust | Operator POST /camera-trust | metriplane/runner/operator_api.py | POST /operator/camera-trust | web/dashboard/*.js | POST /operator/camera-trust | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
 | api.operator.post.checksum | Operator POST /checksum | metriplane/runner/operator_api.py | POST /operator/checksum | web/dashboard/*.js | POST /operator/checksum | ui_full | P1 |  |
 | api.operator.post.create_profile | Operator POST /create-profile | metriplane/runner/operator_api.py | POST /operator/create-profile | web/dashboard/*.js | POST /operator/create-profile | ui_full | P1 |  |
-| api.operator.post.frames | Operator POST /frames | metriplane/runner/operator_api.py | POST /operator/frames | web/dashboard/*.js | POST /operator/frames | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
 | api.operator.post.generate_report | Operator POST /generate-report | metriplane/runner/operator_api.py | POST /operator/generate-report | web/dashboard/*.js | POST /operator/generate-report | ui_full | P1 |  |
-| api.operator.post.incidents | Operator POST /incidents | metriplane/runner/operator_api.py | POST /operator/incidents | web/dashboard/*.js | POST /operator/incidents | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.live_summary | Operator POST /live-summary | metriplane/runner/operator_api.py | POST /operator/live-summary | web/dashboard/*.js | POST /operator/live-summary | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.objects | Operator POST /objects | metriplane/runner/operator_api.py | POST /operator/objects | web/dashboard/*.js | POST /operator/objects | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
 | api.operator.post.save_config | Operator POST /save-config | metriplane/runner/operator_api.py | POST /operator/save-config | web/dashboard/*.js | POST /operator/save-config | ui_full | P1 |  |
 | api.operator.post.start_fusion | Operator POST /start-fusion | metriplane/runner/operator_api.py | POST /operator/start-fusion | web/dashboard/*.js | POST /operator/start-fusion | ui_full | P0 |  |
-| api.operator.post.traces | Operator POST /traces | metriplane/runner/operator_api.py | POST /operator/traces | web/dashboard/*.js | POST /operator/traces | ui_full | P1 | Covered by read-only GET fallback for an observe-only endpoint. |
 | api.operator.post.validate_alignment | Operator POST /validate-alignment | metriplane/runner/operator_api.py | POST /operator/validate-alignment | web/dashboard/*.js | POST /operator/validate-alignment | ui_full | P1 |  |
 | api.operator.post.validate_alignment_full | Operator POST /validate-alignment-full | metriplane/runner/operator_api.py | POST /operator/validate-alignment-full | web/dashboard/*.js | POST /operator/validate-alignment-full | ui_full | P1 |  |
 | api.operator.post.write_zones | Operator POST /write-zones | metriplane/runner/operator_api.py | POST /operator/write-zones | web/dashboard/*.js | POST /operator/write-zones | ui_full | P1 |  |
@@ -128,6 +122,12 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| api.operator.post.camera_trust | Operator POST /camera-trust | metriplane/runner/operator_api.py | POST /operator/camera-trust | - | - | ui_missing | P1 |  |
+| api.operator.post.frames | Operator POST /frames | metriplane/runner/operator_api.py | POST /operator/frames | - | - | ui_missing | P1 |  |
+| api.operator.post.incidents | Operator POST /incidents | metriplane/runner/operator_api.py | POST /operator/incidents | - | - | ui_missing | P1 |  |
+| api.operator.post.live_summary | Operator POST /live-summary | metriplane/runner/operator_api.py | POST /operator/live-summary | - | - | ui_missing | P1 |  |
+| api.operator.post.objects | Operator POST /objects | metriplane/runner/operator_api.py | POST /operator/objects | - | - | ui_missing | P1 |  |
+| api.operator.post.traces | Operator POST /traces | metriplane/runner/operator_api.py | POST /operator/traces | - | - | ui_missing | P1 |  |
 | cli.ask | metriplane ask | metriplane/cli.py | python -m metriplane.cli ask | - | - | ui_missing | P1 |  |
 | cli.camera-trust | metriplane camera-trust | metriplane/cli.py | python -m metriplane.cli camera-trust | - | - | ui_missing | P1 |  |
 | cli.cleanup | metriplane cleanup | metriplane/cli.py | python -m metriplane.cli cleanup | - | - | ui_missing | P0 |  |
@@ -228,10 +228,10 @@ Broken button count is reported in the summary. A broken button is any `data-com
 - `js_syntax_errors` comes from `node --check` over dashboard JavaScript files.
 - `buttons_with_duplicate_command_id_on_same_card` flags accidental duplicate run buttons in one card.
 - `data_needs_atlas_buttons_never_enabled` flags Atlas-gated buttons missing the enable path.
-- `read_only_fallback_endpoints` reports observe-only POST endpoints considered covered by GET UI calls.
+- Endpoint coverage is method-exact: a GET call never certifies a POST route.
 
 ## Recommendations
 
 - Keep all runnable dashboard buttons backed by `metriplane/runner/allowlist.py`.
 - Keep hardware-dependent workflows visible, but gated with dependency checks and clear reasons.
-- Treat unresolved P0/P1 `ui_missing` rows as release blockers.
+- Treat every P0/P1 row outside `ui_full`, `ui_disabled_with_reason`, and `cli_only_documented` as a release blocker.

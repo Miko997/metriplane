@@ -7,15 +7,21 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918feaf87fd2451ff76`
+Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
 
-- Missing features total: `8`
-- Release-blocking P0/P1 coverage rows: `13`
+- Missing features total: `14`
+- Release-blocking P0/P1 coverage rows: `19`
 
 ## Release-Blocking P0/P1 Coverage
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| api.operator.post.camera_trust | Operator POST /camera-trust | metriplane/runner/operator_api.py | POST /operator/camera-trust | - | - | ui_missing | P1 |  |
+| api.operator.post.frames | Operator POST /frames | metriplane/runner/operator_api.py | POST /operator/frames | - | - | ui_missing | P1 |  |
+| api.operator.post.incidents | Operator POST /incidents | metriplane/runner/operator_api.py | POST /operator/incidents | - | - | ui_missing | P1 |  |
+| api.operator.post.live_summary | Operator POST /live-summary | metriplane/runner/operator_api.py | POST /operator/live-summary | - | - | ui_missing | P1 |  |
+| api.operator.post.objects | Operator POST /objects | metriplane/runner/operator_api.py | POST /operator/objects | - | - | ui_missing | P1 |  |
+| api.operator.post.traces | Operator POST /traces | metriplane/runner/operator_api.py | POST /operator/traces | - | - | ui_missing | P1 |  |
 | cli.ask | metriplane ask | metriplane/cli.py | python -m metriplane.cli ask | - | - | ui_missing | P1 |  |
 | cli.atlas | metriplane atlas | metriplane/cli.py | python -m metriplane.cli atlas | metriplane/runner/allowlist.py | dashboard-covered CLI subcommand | ui_partial | P1 | One or more subcommands are exposed; the root command is not full UI coverage. |
 | cli.camera-trust | metriplane camera-trust | metriplane/cli.py | python -m metriplane.cli camera-trust | - | - | ui_missing | P1 |  |
@@ -34,6 +40,12 @@ Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918f
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| api.operator.post.camera_trust | Operator POST /camera-trust | metriplane/runner/operator_api.py | POST /operator/camera-trust | - | - | ui_missing | P1 |  |
+| api.operator.post.frames | Operator POST /frames | metriplane/runner/operator_api.py | POST /operator/frames | - | - | ui_missing | P1 |  |
+| api.operator.post.incidents | Operator POST /incidents | metriplane/runner/operator_api.py | POST /operator/incidents | - | - | ui_missing | P1 |  |
+| api.operator.post.live_summary | Operator POST /live-summary | metriplane/runner/operator_api.py | POST /operator/live-summary | - | - | ui_missing | P1 |  |
+| api.operator.post.objects | Operator POST /objects | metriplane/runner/operator_api.py | POST /operator/objects | - | - | ui_missing | P1 |  |
+| api.operator.post.traces | Operator POST /traces | metriplane/runner/operator_api.py | POST /operator/traces | - | - | ui_missing | P1 |  |
 | cli.ask | metriplane ask | metriplane/cli.py | python -m metriplane.cli ask | - | - | ui_missing | P1 |  |
 | cli.camera-trust | metriplane camera-trust | metriplane/cli.py | python -m metriplane.cli camera-trust | - | - | ui_missing | P1 |  |
 | cli.cleanup | metriplane cleanup | metriplane/cli.py | python -m metriplane.cli cleanup | - | - | ui_missing | P0 |  |

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 from collections import Counter
 import json
 from pathlib import Path
@@ -230,15 +231,29 @@ def test_endpoint_coverage_for_job_patterns(tmp_path: Path):
         script.read_text(encoding="utf-8")
         + "\nconsole.log(`${RUNNER}/execute`);\n"
         + "opApi('GET', '/jobs/' + jobId);\n"
-        + "runnerPost('POST', '/jobs/' + jobId + '/cancel');\n",
+        + "runnerPost('POST', '/jobs/' + jobId + '/cancel');\n"
+        + "// opApi('POST', '/operator/comment-only');\n"
+        + "/* runnerPost('/jobs/' + ghostId + '/cancel'); */\n"
+        + "fetch(`${RUNNER}/status`)\n"
+        + "fetch(`${RUNNER}/execute`, { method: 'POST' })\n",
         encoding="utf-8",
     )
     ui = parse_dashboard_ui(root)
     assert "GET /execute" not in ui["endpoint_calls"]
-    assert "GET /jobs/" not in ui["endpoint_calls"]
-    assert "POST /jobs/" not in ui["endpoint_calls"]
-    ui["endpoint_calls"].append("GET /jobs/abc123")
-    ui["endpoint_calls"].append("POST /jobs/abc123/cancel")
+    assert "POST /status" not in ui["endpoint_calls"]
+    assert "POST /operator/comment-only" not in ui["endpoint_calls"]
+    assert audit_tool._scan_dashboard_endpoint_calls(
+        "// opApi('POST', '/operator/start-fusion')\n"
+        "/* runnerPost('/jobs/' + ghostId + '/cancel') */\n"
+    ) == (set(), set())
+    assert audit_tool._scan_dashboard_endpoint_calls(
+        "fetch(`${RUNNER}/status`)\nfetch(`${RUNNER}/execute`, { method: 'POST' })\n"
+    ) == (
+        {"GET /status", "POST /execute"},
+        {"/execute", "/status"},
+    )
+    assert "GET /jobs/<id>" in ui["endpoint_calls"]
+    assert "POST /jobs/<id>/cancel" in ui["endpoint_calls"]
     assert endpoint_covered("GET /jobs/<id>", ui)
     assert endpoint_covered("POST /jobs/<id>/cancel", ui)
     assert not endpoint_covered(
@@ -251,12 +266,12 @@ def test_endpoint_coverage_for_job_patterns(tmp_path: Path):
     )
 
 
-def test_read_only_fallback_endpoint_reason_is_reported(tmp_path: Path):
+def test_get_coverage_never_certifies_post(tmp_path: Path):
     root = make_min_repo(tmp_path)
     ui = parse_dashboard_ui(root)
     ui["endpoint_calls"].append("GET /operator/frames")
     ui["path_calls"].append("/operator/frames")
-    assert endpoint_coverage_reason("POST /operator/frames", ui) == "read_only_fallback"
+    assert endpoint_coverage_reason("POST /operator/frames", ui) is None
 
 
 def test_dashboard_quality_helpers_report_hardening_gaps(tmp_path: Path):
@@ -326,6 +341,37 @@ def unreachable():
 
 
 def test_dynamic_operator_route_fails_closed(tmp_path: Path):
+    dead_root = make_min_repo(tmp_path / "dead-branches")
+    dead_cli = dead_root / "metriplane" / "cli.py"
+    dead_cli.write_text(
+        dead_cli.read_text(encoding="utf-8").replace(
+            "def main(argv):",
+            "def main(argv):\n    if False:\n        if argv[0] == 'ghost':\n            return 0",
+        ),
+        encoding="utf-8",
+    )
+    dead_operator = dead_root / "metriplane" / "runner" / "operator_api.py"
+    dead_operator.write_text(
+        dead_operator.read_text(encoding="utf-8").replace(
+            "    def route(self, method, path, body):\n",
+            "    def route(self, method, path, body):\n"
+            "        if False:\n"
+            "            if sub == '/ghost':\n"
+            "                return None\n",
+        ),
+        encoding="utf-8",
+    )
+    assert "cli.ghost" not in {action.action_id for action in parse_cli_subcommands(dead_root)}
+    assert "/operator/ghost" not in {
+        action.route_path for action in parse_operator_endpoints(dead_root)
+    }
+    reachable = audit_tool._reachable_nodes(
+        ast.parse("if False:\n    dead()\nif True:\n    live()\n")
+    )
+    assert {audit_tool._call_name(node) for node in reachable if isinstance(node, ast.Call)} == {
+        "live"
+    }
+
     cli_root = make_min_repo(tmp_path / "nested-cli")
     cli = cli_root / "metriplane" / "cli.py"
     cli.write_text(
@@ -365,6 +411,27 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
 
 
 def test_unknown_runner_route_fails_closed(tmp_path: Path):
+    dead_root = make_min_repo(tmp_path / "dead")
+    dead_service = dead_root / "metriplane" / "runner" / "service.py"
+    dead_service.write_text(
+        dead_service.read_text(encoding="utf-8").replace(
+            "    def do_GET(self):\n",
+            "    def do_GET(self):\n"
+            "        if False:\n"
+            "            if path == '/debug':\n"
+            "                return\n",
+        ),
+        encoding="utf-8",
+    )
+    assert {action.route_path for action in audit_tool.parse_runner_endpoints(dead_root)} == {
+        "/commands",
+        "/execute",
+        "/jobs",
+        "/jobs/{job_id}",
+        "/jobs/{job_id}/cancel",
+        "/status",
+    }
+
     nested_root = make_min_repo(tmp_path / "nested")
     nested_service = nested_root / "metriplane" / "runner" / "service.py"
     nested_service.write_text(
@@ -413,9 +480,9 @@ def test_current_governed_surface_has_exact_measured_counts():
         for key in ("ui_partial", "ui_missing", "critical_bugs", "high_bugs")
     } == {
         "ui_partial": 2,
-        "ui_missing": 8,
+        "ui_missing": 14,
         "critical_bugs": 4,
-        "high_bugs": 9,
+        "high_bugs": 15,
     }
     by_id = {action.action_id: action for action in audit.actions}
     assert by_id["cli.doctor"].coverage_status == "ui_full"
@@ -490,6 +557,18 @@ def test_stale_generated_status_is_rejected(tmp_path: Path, monkeypatch: pytest.
         audit_tool._replace_outputs(tmp_path, {Path("linked.txt"): b"replacement"})
     assert external.read_bytes() == b"external"
 
+    escape_root = tmp_path / "escape-root"
+    outside = tmp_path / "outside"
+    escape_root.mkdir()
+    outside.mkdir()
+    (escape_root / "docs").symlink_to(outside, target_is_directory=True)
+    escaped = {Path("docs/escaped.txt"): b"escaped"}
+    with pytest.raises(AuditError, match="parent is not a real directory"):
+        audit_tool._replace_outputs(escape_root, escaped)
+    with pytest.raises(AuditError, match="parent is not a real directory"):
+        stale_output_paths(escape_root, escaped)
+    assert not (outside / "escaped.txt").exists()
+
     real_replace = audit_tool.os.replace
     replace_calls = 0
 
@@ -515,7 +594,7 @@ def test_committed_status_matches_current_governed_surface():
     assert stale_output_paths(ROOT, outputs) == []
     assert b"Static inventory result: **FAIL**" in outputs[Path("docs/qa/ui_parity_report.md")]
     assert (
-        b"Release-blocking P0/P1 coverage rows: `13`"
+        b"Release-blocking P0/P1 coverage rows: `19`"
         in outputs[Path("docs/qa/ui_missing_features_report.md")]
     )
     assert b"export PLAYWRIGHT_BROWSERS_PATH=" in outputs[Path("docs/qa/ui_testing.md")]

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `599b8d03e68dc6f6c3027e7544951f4eee0aff67bc916918feaf87fd2451ff76`
+Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -606,13 +606,6 @@ No duplicate command IDs found on the same card.
 
 All `data-needs-atlas` buttons are wired to the Atlas artifact enable path.
 
-## Read-Only Endpoint Fallback Coverage
+## Endpoint Method Separation
 
-| action_id | endpoint | notes |
-| --- | --- | --- |
-| api.operator.post.camera_trust | POST /operator/camera-trust | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.frames | POST /operator/frames | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.incidents | POST /operator/incidents | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.live_summary | POST /operator/live-summary | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.objects | POST /operator/objects | Covered by read-only GET fallback for an observe-only endpoint. |
-| api.operator.post.traces | POST /operator/traces | Covered by read-only GET fallback for an observe-only endpoint. |
+GET and POST calls are inventoried independently; one method never certifies the other.
