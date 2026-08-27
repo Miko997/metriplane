@@ -41,6 +41,9 @@ REPOSITORY = f"{REPOSITORY_OWNER}/{REPOSITORY_NAME}"
 MAIN_BRANCH = "main"
 MAIN_REF = f"refs/heads/{MAIN_BRANCH}"
 MAX_PULL_COMMITS = 250
+MERGE_READINESS_POLL_SECONDS = 2
+MERGE_READINESS_TIMEOUT_SECONDS = 60
+MERGE_READINESS_LEASE_MARGIN_SECONDS = 120
 MAIN_HEALTH_CHECK = "Main health / required"
 CORE_CHECKS = (
     "Metriplane / required",
@@ -3752,6 +3755,7 @@ class Broker:
         authenticator: AppAuthenticator,
         config: BrokerConfig,
         settings_authenticator: AppAuthenticator | None = None,
+        sleep: Callable[[float], None] = time.sleep,
         spool: DurableSpool,
     ) -> None:
         self.api = api
@@ -3760,7 +3764,164 @@ class Broker:
         self.settings_authenticator = settings_authenticator or AppAuthenticator(
             api, config, purpose="settings"
         )
+        self.sleep = sleep
         self.spool = spool
+
+    @staticmethod
+    def _pull_is_merge_ready(*, admission: dict[str, Any], pull: dict[str, Any]) -> bool:
+        base = pull.get("base")
+        head = pull.get("head")
+        if not isinstance(base, dict) or not isinstance(head, dict):
+            raise BrokerError("provider merge-readiness pull identity is malformed")
+        if (
+            pull.get("number") != admission["pull_request"]
+            or pull.get("state") != "open"
+            or pull.get("merged") is not False
+            or pull.get("draft") is not False
+            or base.get("ref") != "main"
+            or base.get("sha") != admission["base_sha"]
+            or head.get("sha") != admission["head_sha"]
+        ):
+            raise BrokerError("provider merge-readiness pull identity changed")
+        mergeable = pull.get("mergeable")
+        mergeable_state = pull.get("mergeable_state")
+        if mergeable is True and mergeable_state == "clean":
+            return True
+        if (
+            (mergeable is None or mergeable is True)
+            and isinstance(mergeable_state, str)
+            and mergeable_state in {"blocked", "unknown", "unstable"}
+        ):
+            return False
+        raise BrokerError("provider reports the exact pull request is not merge-ready")
+
+    def _wait_for_provider_merge_ready(
+        self,
+        *,
+        admission: dict[str, Any],
+        token: str,
+    ) -> None:
+        started_at = self.api.provider_now(token)
+        request_expires_at = _timestamp(admission["request"]["expires_at"])
+        deadline = min(
+            started_at + timedelta(seconds=MERGE_READINESS_TIMEOUT_SECONDS),
+            request_expires_at - timedelta(seconds=MERGE_READINESS_LEASE_MARGIN_SECONDS),
+        )
+        while True:
+            result = self.api.request(
+                f"repos/{self.config.repository}/pulls/{admission['pull_request']}",
+                token=token,
+            )
+            if not isinstance(result.value, dict):
+                raise BrokerError("provider merge-readiness response is malformed")
+            if self._pull_is_merge_ready(admission=admission, pull=result.value):
+                return
+            provider_now = self.api.provider_now(token)
+            if provider_now >= deadline:
+                raise BrokerError(
+                    "provider did not report the exact pull request merge-ready within its lease"
+                )
+            self.sleep(
+                min(
+                    float(MERGE_READINESS_POLL_SECONDS),
+                    (deadline - provider_now).total_seconds(),
+                )
+            )
+
+    def _post_success_admission_seal(
+        self,
+        *,
+        admission: dict[str, Any],
+        expected_reviews: list[dict[str, Any]],
+        expected_state: dict[str, Any],
+        settings_token: str,
+        state_branch: StateBranch,
+        token: str,
+    ) -> None:
+        pull, reviews, commits = _pull_snapshot(
+            self.api,
+            config=self.config,
+            number=admission["pull_request"],
+            token=token,
+        )
+        if not self._pull_is_merge_ready(admission=admission, pull=pull):
+            raise BrokerError("provider merge readiness changed before the post-success seal")
+        if _provider_review_snapshot(reviews) != _provider_review_snapshot(expected_reviews):
+            raise BrokerError("provider reviews changed after success publication")
+        state = state_branch.read()
+        if state.get("state_commit") != expected_state.get("state_commit") or state.get(
+            "generation"
+        ) != expected_state.get("generation"):
+            raise BrokerError("main-health state changed after success publication")
+        reviewer_permissions = _provider_review_permissions(
+            self.api,
+            config=self.config,
+            reviews=reviews,
+            token=token,
+        )
+        provider_now = self.api.provider_now(token)
+        sealed_admission = self._select_provider_admission(
+            commits=commits,
+            provider_now=provider_now,
+            pull=pull,
+            reviewer_permissions=reviewer_permissions,
+            reviews=reviews,
+            settings_token=settings_token,
+            state=state,
+            state_branch=state_branch,
+            token=token,
+        )
+        if sealed_admission["kind"] in {"normal", "owner-normal"}:
+            _validate_state_for_admission(
+                admission=sealed_admission,
+                config=self.config,
+                provider_now=provider_now,
+                state=state,
+            )
+        if sealed_admission != admission:
+            raise BrokerError("provider admission changed after success publication")
+        validate_core_checks(
+            check_runs=_check_runs(
+                self.api,
+                config=self.config,
+                head_sha=admission["head_sha"],
+                token=token,
+            ),
+            head_sha=admission["head_sha"],
+        )
+        validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=settings_token),
+        )
+        trailing_reviews = _provider_list(
+            self.api,
+            f"repos/{self.config.repository}/pulls/{admission['pull_request']}/reviews",
+            token=token,
+        )
+        if _provider_review_snapshot(trailing_reviews) != _provider_review_snapshot(reviews):
+            raise BrokerError("provider reviews changed during the post-success seal")
+        trailing_state = state_branch.read()
+        if trailing_state.get("state_commit") != expected_state.get(
+            "state_commit"
+        ) or trailing_state.get("generation") != expected_state.get("generation"):
+            raise BrokerError("main-health state changed during the post-success seal")
+        if _main_ref(self.api, config=self.config, token=token) != admission["base_sha"]:
+            raise BrokerError("main ref changed during the post-success seal")
+        final_pull = self.api.request(
+            f"repos/{self.config.repository}/pulls/{admission['pull_request']}",
+            token=token,
+        )
+        if not isinstance(final_pull.value, dict) or not self._pull_is_merge_ready(
+            admission=admission, pull=final_pull.value
+        ):
+            raise BrokerError("provider merge readiness changed during the post-success seal")
+        provider_now = self.api.provider_now(token)
+        if provider_now >= _timestamp(admission["request"]["expires_at"]):
+            raise BrokerError("merge request expired during the post-success seal")
+        if admission["kind"] == "owner-repair" and provider_now >= _timestamp(
+            admission["manifest_expires_at"]
+        ):
+            raise BrokerError("owner emergency manifest expired during the post-success seal")
 
     def _reconcile_orphans(self, token: str) -> list[dict[str, Any]]:
         proofs: list[dict[str, Any]] = []
@@ -4385,6 +4546,15 @@ class Broker:
                 f"Exact-head {admission['kind']} merge admission for PR {number}; state "
                 f"generation {state['generation']}."
             ),
+        )
+        self._wait_for_provider_merge_ready(admission=admission, token=token)
+        self._post_success_admission_seal(
+            admission=admission,
+            expected_reviews=stable_reviews,
+            expected_state=state,
+            settings_token=settings_token,
+            state_branch=state_branch,
+            token=token,
         )
         merge_result: ApiResult | None = None
         ambiguous_response = False

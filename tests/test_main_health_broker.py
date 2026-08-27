@@ -260,6 +260,9 @@ def _pull() -> dict[str, Any]:
         "commits": 1,
         "draft": False,
         "head": {"repo": {"full_name": REPOSITORY}, "sha": HEAD_SHA},
+        "mergeable": True,
+        "mergeable_state": "clean",
+        "merged": False,
         "number": 81,
         "state": "open",
         "user": {"id": 10, "login": "author"},
@@ -1628,6 +1631,8 @@ class FakeTransactionApi(broker.GitHubApi):
         self.reviewer_permission_calls = 0
         self.merged = False
         self.merge_calls = 0
+        self.mergeable_states: list[str] = []
+        self.merge_readiness_calls = 0
         self.reported_commits = 1
         self.repository_identity_calls = 0
         self.ruleset_inventory_calls = 0
@@ -1691,6 +1696,11 @@ class FakeTransactionApi(broker.GitHubApi):
         if path.endswith("/pulls/81"):
             value = _pull()
             value["commits"] = self.reported_commits
+            if self.mergeable_states:
+                self.merge_readiness_calls += 1
+                mergeable_state = self.mergeable_states.pop(0)
+                value["mergeable"] = None if mergeable_state == "unknown" else True
+                value["mergeable_state"] = mergeable_state
             if self.merged:
                 value = {**value, "merge_commit_sha": MERGE_SHA, "merged": True, "state": "closed"}
             return broker.ApiResult({}, 200, value)
@@ -2168,6 +2178,82 @@ def test_exact_merge_transaction_proves_success(tmp_path: Path, behavior: str) -
     assert spool.request_status(broker.digest(_request())) == "merged"
 
 
+def test_merge_waits_for_provider_readiness_before_final_seal(tmp_path: Path) -> None:
+    service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
+    sleeps: list[float] = []
+
+    class ReadinessChecks(FakeAdmissionChecks):
+        def succeed(self, **kwargs: Any) -> dict[str, Any]:
+            result = super().succeed(**kwargs)
+            api.mergeable_states = ["blocked", "clean"]
+            return result
+
+    def advance_provider(seconds: float) -> None:
+        sleeps.append(seconds)
+        api.current_now += timedelta(seconds=seconds)
+
+    service.sleep = advance_provider
+    proof = service._process_pull(
+        check_controller=ReadinessChecks(),  # type: ignore[arg-type]
+        number=81,
+        provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
+        state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+        token="token",
+    )
+
+    assert proof is not None and proof["merge_sha"] == MERGE_SHA
+    assert api.merge_readiness_calls == 2
+    assert sleeps == [2.0]
+    assert api.merge_calls == 1
+
+
+def test_provider_readiness_wait_is_bounded_by_request_lease(tmp_path: Path) -> None:
+    service, api, _checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.mergeable_states = ["blocked"] * 31
+
+    def advance_provider(seconds: float) -> None:
+        api.current_now += timedelta(seconds=seconds)
+
+    service.sleep = advance_provider
+    with pytest.raises(broker.BrokerError, match="did not report.*merge-ready"):
+        service._wait_for_provider_merge_ready(
+            admission={
+                "base_sha": BASE_SHA,
+                "head_sha": HEAD_SHA,
+                "pull_request": 81,
+                "request": _request(),
+            },
+            token="token",
+        )
+
+    assert api.merge_readiness_calls == 31
+    assert api.merge_calls == 0
+
+
+def test_review_change_after_success_publication_blocks_merge(tmp_path: Path) -> None:
+    service, api, _checks, spool = _transaction_fixture(tmp_path, "success")
+
+    class DriftingChecks(FakeAdmissionChecks):
+        def succeed(self, **kwargs: Any) -> dict[str, Any]:
+            result = super().succeed(**kwargs)
+            api.reviews[1]["state"] = "DISMISSED"
+            return result
+
+    with pytest.raises(broker.BrokerError, match="reviews changed after success publication"):
+        service._process_pull(
+            check_controller=DriftingChecks(),  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.merge_calls == 0
+    assert spool.request_status(broker.digest(_request())) == "merging"
+
+
 def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
     tmp_path: Path,
 ) -> None:
@@ -2200,8 +2286,8 @@ def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
     request_digest = broker.digest(api.owner_request)
     assert proof is not None and proof["merge_sha"] == MERGE_SHA
     assert api.merge_calls == 1
-    assert api.collaborator_inventory_calls == 8
-    assert api.file_inventory_calls == 4
+    assert api.collaborator_inventory_calls == 10
+    assert api.file_inventory_calls == 5
     assert checks.failed == []
     assert checks.succeeded == [(42, HEAD_SHA, request_digest)]
     assert spool.request_status(request_digest) == "merged"
