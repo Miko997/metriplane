@@ -15,6 +15,7 @@ import os
 import re
 import socket
 import sqlite3
+import stat
 import subprocess
 import tempfile
 import time
@@ -399,11 +400,11 @@ class OpenSslSigner:
 
     def __call__(self, value: bytes) -> bytes:
         try:
-            mode = self.credential_path.stat().st_mode & 0o777
+            private = _credential_is_private(self.credential_path)
         except OSError as exc:
             raise BrokerError(f"cannot stat App credential: {exc}") from exc
-        if mode & 0o077:
-            raise BrokerError("App credential must not be group- or world-accessible")
+        if not private:
+            raise BrokerError("App credential is outside the private credential boundary")
         completed = subprocess.run(
             ["openssl", "dgst", "-sha256", "-sign", str(self.credential_path)],
             input=value,
@@ -413,6 +414,39 @@ class OpenSslSigner:
         if completed.returncode != 0 or not completed.stdout:
             raise BrokerError("OpenSSL could not sign the App JWT")
         return completed.stdout
+
+
+def _credential_is_private(credential_path: Path) -> bool:
+    credential = credential_path.lstat()
+    credential_mode = stat.S_IMODE(credential.st_mode)
+    if not stat.S_ISREG(credential.st_mode):
+        return False
+    if credential_mode & 0o077 == 0:
+        return True
+
+    directory_value = os.environ.get("CREDENTIALS_DIRECTORY")
+    if directory_value is None:
+        return False
+    directory = Path(directory_value)
+    if not directory.is_absolute() or credential_path.parent != directory:
+        return False
+    directory_stat = directory.lstat()
+    try:
+        resolved_directory = directory.resolve(strict=True)
+        resolved_credential = credential_path.resolve(strict=True)
+    except OSError:
+        return False
+    return (
+        resolved_directory == directory
+        and resolved_credential == credential_path
+        and stat.S_ISDIR(directory_stat.st_mode)
+        and stat.S_IMODE(directory_stat.st_mode) == 0o550
+        and directory_stat.st_uid == 0
+        and directory_stat.st_gid == 0
+        and credential_mode == 0o440
+        and credential.st_uid == 0
+        and credential.st_gid == 0
+    )
 
 
 @dataclass(frozen=True)

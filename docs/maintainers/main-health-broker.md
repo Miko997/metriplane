@@ -38,7 +38,11 @@ sudo systemd-creds encrypt \
 The service reads the decrypted credentials only from
 `$CREDENTIALS_DIRECTORY/github-app-private-key.pem` and
 `$CREDENTIALS_DIRECTORY/github-ruleset-witness-private-key.pem`. The committed
-example uses systemd's stable absolute credential paths. The merge App grants
+example uses systemd's stable absolute credential paths. The signer accepts
+systemd's exact root-owned `0550` per-unit directory and root-owned `0440`
+regular credential files only when they are the direct, resolved children of
+`$CREDENTIALS_DIRECTORY`; ordinary credential files remain owner-only and
+symlinks are rejected. The merge App grants
 exactly Actions read, Checks write, Contents write, Pull requests read, and
 Metadata read; it has no Administration, Commit statuses, Workflows, or webhook
 permission. The witness App grants exactly Administration write and Metadata

@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import sqlite3
+import stat
 import subprocess
 import sys
 import urllib.error
@@ -319,6 +321,52 @@ def _authenticator(tmp_path: Path, api: FakeTokenApi) -> broker.AppAuthenticator
     authenticator = broker.AppAuthenticator(api, _config(tmp_path), clock=lambda: NOW)
     authenticator.signer = lambda _value: b"signature"
     return authenticator
+
+
+def _root_owned_stat(value: os.stat_result, *, mode: int) -> os.stat_result:
+    fields = list(value)
+    fields[0] = stat.S_IFMT(value.st_mode) | mode
+    fields[4] = 0
+    fields[5] = 0
+    return os.stat_result(fields)
+
+
+def test_openssl_signer_accepts_only_private_credential_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    credential = tmp_path / "app.pem"
+    credential.write_text("key", encoding="utf-8")
+    credential.chmod(0o600)
+    assert broker._credential_is_private(credential)
+
+    credential.chmod(0o640)
+    assert not broker._credential_is_private(credential)
+    link = tmp_path / "link.pem"
+    link.symlink_to(credential)
+    assert not broker._credential_is_private(link)
+
+    directory = tmp_path / "systemd-credentials"
+    directory.mkdir(mode=0o700)
+    systemd_credential = directory / "app.pem"
+    systemd_credential.write_text("key", encoding="utf-8")
+    systemd_credential.chmod(0o440)
+    directory.chmod(0o550)
+    original_lstat = Path.lstat
+
+    def root_owned_lstat(path: Path) -> os.stat_result:
+        value = original_lstat(path)
+        if path == directory:
+            return _root_owned_stat(value, mode=0o550)
+        if path == systemd_credential:
+            return _root_owned_stat(value, mode=0o440)
+        return value
+
+    monkeypatch.setattr(Path, "lstat", root_owned_lstat)
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(directory))
+    assert broker._credential_is_private(systemd_credential)
+
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
+    assert not broker._credential_is_private(systemd_credential)
 
 
 def test_ruleset_witness_uses_a_distinct_repository_scoped_authority(tmp_path: Path) -> None:
