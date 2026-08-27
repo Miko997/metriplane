@@ -71,9 +71,9 @@ python -m tools.main_health_broker validate-config \
 
 The host requires Python 3.12, Git, OpenSSL, and systemd credential support.
 Set `APPROVED_SHA` to the independently approved exact commit. Install that
-detached commit under `/opt/metriplane-main-health-broker`, create its stdlib-only
-virtual environment, create the dedicated non-login account, and keep mutable
-data on the large `/home` filesystem:
+detached commit in the root-owned `/home/metriplane-main-health-broker`, create
+its stdlib-only virtual environment, create the dedicated non-login account,
+and keep both immutable code and mutable state on the large `/home` filesystem:
 
 ~~~bash
 export APPROVED_SHA=<40hex-independently-approved-commit>
@@ -83,27 +83,44 @@ sudo install -d -o metriplane-health -g metriplane-health -m 0700 \
   /home/metriplane-health/state
 sudo git clone --filter=blob:none --no-checkout \
   https://github.com/Miko997/metriplane.git \
-  /opt/metriplane-main-health-broker
-sudo git -C /opt/metriplane-main-health-broker fetch --depth=1 origin \
+  /home/metriplane-main-health-broker
+sudo git -C /home/metriplane-main-health-broker fetch --depth=1 origin \
   "$APPROVED_SHA"
-sudo git -C /opt/metriplane-main-health-broker checkout --detach "$APPROVED_SHA"
-test "$(sudo git -C /opt/metriplane-main-health-broker rev-parse HEAD)" = \
+sudo git -C /home/metriplane-main-health-broker checkout --detach "$APPROVED_SHA"
+test "$(sudo git -C /home/metriplane-main-health-broker rev-parse HEAD)" = \
   "$APPROVED_SHA"
-sudo python3.12 -m venv /opt/metriplane-main-health-broker/.venv
+sudo python3.12 -m venv /home/metriplane-main-health-broker/.venv
 sudo install -d -o root -g metriplane-health -m 0750 /etc/metriplane
 sudo install -o root -g metriplane-health -m 0640 \
-  /opt/metriplane-main-health-broker/docs/status/examples/main-health-broker-config.json \
+  /home/metriplane-main-health-broker/docs/status/examples/main-health-broker-config.json \
   /etc/metriplane/main-health-broker.json
 sudoedit /etc/metriplane/main-health-broker.json
-sudo sh -c 'cd /opt/metriplane-main-health-broker && \
+sudo sh -c 'cd /home/metriplane-main-health-broker && \
   exec .venv/bin/python -m tools.main_health_broker validate-config \
   --config /etc/metriplane/main-health-broker.json'
 sudo install -D -m 0644 \
-  /opt/metriplane-main-health-broker/scripts/systemd/metriplane-main-health-broker.service \
+  /home/metriplane-main-health-broker/scripts/systemd/metriplane-main-health-broker.service \
   /etc/systemd/system/metriplane-main-health-broker.service
 sudo systemctl daemon-reload
-sudo systemctl enable metriplane-main-health-broker.service
-sudo systemctl start metriplane-main-health-broker.service
+sudo systemctl disable --now metriplane-main-health-broker.service
+if sudo systemctl is-enabled --quiet metriplane-main-health-broker.service; then
+  exit 1
+fi
+if sudo systemctl is-active --quiet metriplane-main-health-broker.service; then
+  exit 1
+fi
+~~~
+
+The host is now staged, but the broker must remain disabled and stopped. With
+the staged witness credential, apply and read back the exact core, admission,
+and state-writer ruleset bodies. Confirm that the main-update ruleset is exact
+except for disabled enforcement, activate it with the complete exact body, and
+then validate the complete active ruleset inventory plus all five governed
+ruleset details through the witness App. Only after that validation succeeds,
+enable and start the broker:
+
+~~~bash
+sudo systemctl enable --now metriplane-main-health-broker.service
 sudo systemctl is-active metriplane-main-health-broker.service
 sudo systemctl show metriplane-main-health-broker.service \
   --property=Type,ActiveState,SubState

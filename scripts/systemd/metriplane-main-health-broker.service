@@ -8,8 +8,8 @@ Type=notify
 NotifyAccess=main
 User=metriplane-health
 Group=metriplane-health
-WorkingDirectory=/opt/metriplane-main-health-broker
-ExecStart=/opt/metriplane-main-health-broker/.venv/bin/python -m tools.main_health_broker run --config /etc/metriplane/main-health-broker.json
+WorkingDirectory=/home/metriplane-main-health-broker
+ExecStart=/home/metriplane-main-health-broker/.venv/bin/python -m tools.main_health_broker run --config /etc/metriplane/main-health-broker.json
 LoadCredentialEncrypted=github-app-private-key.pem:/etc/credstore.encrypted/metriplane-main-health-app-key
 LoadCredentialEncrypted=github-ruleset-witness-private-key.pem:/etc/credstore.encrypted/metriplane-ruleset-witness-app-key
 Environment=PYTHONDONTWRITEBYTECODE=1
@@ -42,7 +42,7 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=
 AmbientCapabilities=
 ReadWritePaths=/home/metriplane-health/state
-ReadOnlyPaths=/etc/metriplane /opt/metriplane-main-health-broker
+ReadOnlyPaths=/etc/metriplane /home/metriplane-main-health-broker
 
 [Install]
 WantedBy=multi-user.target
