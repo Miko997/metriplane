@@ -319,6 +319,24 @@ def test_nested_parser_builder_fails_closed(tmp_path: Path) -> None:
         scanner._parser_commands(root, "cli.py", "main", ("tool",))
 
 
+def test_nested_parser_builder_indirection_fails_closed(tmp_path: Path) -> None:
+    root = _parser_fixture(
+        tmp_path,
+        "    def nested():\n        build_parser()\n    nested()\n",
+    )
+    path = root / "cli.py"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\ndef build_parser():\n"
+        + "    parser = argparse.ArgumentParser()\n"
+        + "    parser.add_subparsers()\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(scanner.DiscoveryError, match="nested parser-builder calls"):
+        scanner._parser_commands(root, "cli.py", "main", ("tool",))
+
+
 def test_unresolved_entry_point_target_fails_closed(tmp_path: Path) -> None:
     root = _repository_fixture(tmp_path)
     path = root / "pyproject.toml"

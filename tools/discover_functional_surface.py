@@ -344,18 +344,52 @@ def _parser_api_attribute(call: ast.Call) -> tuple[str, str] | None:
     return None
 
 
+def _parser_builder_functions(
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+) -> frozenset[str]:
+    calls: dict[str, set[str]] = {}
+    builders: set[str] = set()
+    for name, function in functions.items():
+        nodes = tuple(ast.walk(function))
+        calls[name] = {
+            node.func.id
+            for node in nodes
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in functions
+        }
+        if any(
+            isinstance(node, ast.Call) and _parser_api_attribute(node) is not None for node in nodes
+        ):
+            builders.add(name)
+
+    changed = True
+    while changed:
+        changed = False
+        for name, callees in calls.items():
+            if name not in builders and callees & builders:
+                builders.add(name)
+                changed = True
+    return frozenset(builders)
+
+
 def _function_scope_nodes(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, *, source: str
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    source: str,
+    parser_builders: frozenset[str],
 ) -> tuple[ast.AST, ...]:
     collector = _ScopeCollector()
     for statement in function.body:
         collector.visit(statement)
     for scope in collector.nested_scopes:
-        if any(
-            isinstance(candidate, ast.Call) and _parser_api_attribute(candidate) is not None
-            for candidate in ast.walk(scope)
-        ):
-            _fail(f"nested parser declarations are forbidden in {source}:{_line(scope)}")
+        for candidate in ast.walk(scope):
+            if not isinstance(candidate, ast.Call):
+                continue
+            if _parser_api_attribute(candidate) is not None:
+                _fail(f"nested parser declarations are forbidden in {source}:{_line(scope)}")
+            if isinstance(candidate.func, ast.Name) and candidate.func.id in parser_builders:
+                _fail(f"nested parser-builder calls are forbidden in {source}:{_line(scope)}")
     return tuple(
         sorted(
             collector.nodes,
@@ -383,6 +417,7 @@ def _parser_commands(
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     _function(module, function_name, source=source)
+    parser_builders = _parser_builder_functions(functions)
     pending = [function_name]
     reachable: list[str] = []
     scoped_nodes: dict[str, tuple[ast.AST, ...]] = {}
@@ -391,7 +426,9 @@ def _parser_commands(
         if current in reachable:
             continue
         reachable.append(current)
-        nodes = _function_scope_nodes(functions[current], source=source)
+        nodes = _function_scope_nodes(
+            functions[current], source=source, parser_builders=parser_builders
+        )
         scoped_nodes[current] = nodes
         called = {
             call.func.id
