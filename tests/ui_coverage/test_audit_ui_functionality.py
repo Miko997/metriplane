@@ -569,7 +569,7 @@ def test_staged_outputs_start_private_and_preserve_the_destination_mode(
     creation_modes: list[int] = []
     staged = ""
 
-    def capture_open(path: str, flags: int, mode: int = 0o600, *, dir_fd: int | None = None) -> int:
+    def capture_open(path: str, flags: int, mode: int, *, dir_fd: int | None = None) -> int:
         creation_modes.append(mode)
         return real_open(path, flags, mode, dir_fd=dir_fd)
 
