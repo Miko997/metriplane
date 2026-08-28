@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
+Canonical projection SHA-256: `93e323615c7dc46a8c4726ac7a753b21164aa72f52a91fdf0cf6f271d3f5131d`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 157 |
+| actions | 158 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -273,6 +273,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.debug_alignment | tool | Debug Alignment | python tools/debug_alignment.py |
 | tool.demo4_everything | tool | Demo4 Everything | tools/demo4_everything.sh |
 | tool.discover_functional_surface | tool | Discover Functional Surface | python tools/discover_functional_surface.py |
+| tool.discover_public_surface | tool | Discover Public Surface | python tools/discover_public_surface.py |
 | tool.docker_clean | tool | Docker Clean | tools/docker_clean.sh |
 | tool.docker_demo_up | tool | Docker Demo Up | tools/docker_demo_up.sh |
 | tool.docker_dummy_up | tool | Docker Dummy Up | tools/docker_dummy_up.sh |
