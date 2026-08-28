@@ -427,15 +427,16 @@ def _static_truth(node: ast.AST) -> bool | None:
         return body if body is not None and body == alternative else None
     if isinstance(node, ast.Compare):
         left = _static_literal(node.left)
+        unknown = False
         for operation, comparator in zip(node.ops, node.comparators, strict=True):
             right = _static_literal(comparator)
             result = _static_comparison(operation, left, right)
             if result is False:
                 return False
             if result is None:
-                return None
+                unknown = True
             left = right
-        return True
+        return None if unknown else True
     try:
         return bool(ast.literal_eval(node))
     except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
