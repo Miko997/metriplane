@@ -119,11 +119,7 @@ jobs:
           for f in web/dashboard/*.js; do node --check "$f"; done
 
       - name: Run static UI audit
-        run: |
-          uv run python tools/audit_ui_functionality.py \
-            --out /tmp/metriplane_ui_coverage_latest.csv \
-            --json /tmp/metriplane_ui_coverage_latest.json \
-            --no-docs
+        run: uv run python tools/audit_ui_functionality.py --check
 
       - name: Run UI API and static integrity tests
         run: |

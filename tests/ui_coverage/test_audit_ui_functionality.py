@@ -774,3 +774,8 @@ def test_canonical_json_has_no_wall_clock_field(tmp_path: Path):
 
 def test_check_mode_is_no_write_and_current():
     assert main(["--check", "--root", str(ROOT)]) == 0
+    release_gates = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "uv run python tools/audit_ui_functionality.py --check" in release_gates
+    assert "--no-docs" not in release_gates
