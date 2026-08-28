@@ -252,6 +252,11 @@ def test_endpoint_coverage_for_job_patterns(tmp_path: Path):
         {"GET /status", "POST /execute"},
         {"/execute", "/status"},
     )
+    assert audit_tool._scan_dashboard_endpoint_calls(
+        "const pattern = () => /postJSON('\\/operator\\/frames')/;\n"
+        "if (enabled) /runnerPost('\\/operator\\/objects')/.test(value);\n"
+        "if (enabled) {} /opApi('POST','\\/operator\\/traces')/.test(value);\n"
+    ) == (set(), set())
     assert "GET /jobs/<id>" in ui["endpoint_calls"]
     assert "POST /jobs/<id>/cancel" in ui["endpoint_calls"]
     assert endpoint_covered("GET /jobs/<id>", ui)
@@ -346,7 +351,12 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
     dead_cli.write_text(
         dead_cli.read_text(encoding="utf-8").replace(
             "def main(argv):",
-            "def main(argv):\n    if False:\n        if argv[0] == 'ghost':\n            return 0",
+            "def main(argv):\n"
+            "    if 1 == 2:\n"
+            "        if argv[0] == 'ghost':\n"
+            "            return 0\n"
+            "    if False and argv[0] == 'ghost-and':\n"
+            "        return 0",
         ),
         encoding="utf-8",
     )
@@ -355,9 +365,11 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
         dead_operator.read_text(encoding="utf-8").replace(
             "    def route(self, method, path, body):\n",
             "    def route(self, method, path, body):\n"
-            "        if False:\n"
+            "        if 1 == 2:\n"
             "            if sub == '/ghost':\n"
-            "                return None\n",
+            "                return None\n"
+            "        if False and sub == '/ghost-and':\n"
+            "            return None\n",
         ),
         encoding="utf-8",
     )
@@ -366,7 +378,16 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
         action.route_path for action in parse_operator_endpoints(dead_root)
     }
     reachable = audit_tool._reachable_nodes(
-        ast.parse("if False:\n    dead()\nif True:\n    live()\n")
+        ast.parse(
+            "if 1 == 2:\n"
+            "    dead_compare()\n"
+            "if not True:\n"
+            "    dead_not()\n"
+            "if False and dead_and():\n"
+            "    dead_and_body()\n"
+            "if True or dead_or():\n"
+            "    live()\n"
+        )
     )
     assert {audit_tool._call_name(node) for node in reachable if isinstance(node, ast.Call)} == {
         "live"
@@ -417,9 +438,11 @@ def test_unknown_runner_route_fails_closed(tmp_path: Path):
         dead_service.read_text(encoding="utf-8").replace(
             "    def do_GET(self):\n",
             "    def do_GET(self):\n"
-            "        if False:\n"
+            "        if 1 == 2:\n"
             "            if path == '/debug':\n"
-            "                return\n",
+            "                return\n"
+            "        if False and path == '/debug-and':\n"
+            "            return\n",
         ),
         encoding="utf-8",
     )
@@ -531,18 +554,20 @@ def test_stale_generated_status_is_rejected(tmp_path: Path, monkeypatch: pytest.
     second.write_bytes(b"old-second")
     replacement = {Path("first.txt"): b"new-first", Path("second.txt"): b"new-second"}
 
-    real_stage = audit_tool._stage
+    real_stage = audit_tool._stage_pinned
     stage_calls = 0
 
-    def fail_second_stage(path: Path, data: bytes) -> Path:
+    def fail_second_stage(
+        destination: audit_tool._PinnedDestination, data: bytes, mode: int
+    ) -> str:
         nonlocal stage_calls
         stage_calls += 1
         if stage_calls == 2:
             raise OSError("injected staging failure")
-        return real_stage(path, data)
+        return real_stage(destination, data, mode)
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(audit_tool, "_stage", fail_second_stage)
+        scoped.setattr(audit_tool, "_stage_pinned", fail_second_stage)
         with pytest.raises(OSError, match="injected staging failure"):
             audit_tool._replace_outputs(tmp_path, replacement)
     assert first.read_bytes() == b"old-first"
@@ -569,15 +594,77 @@ def test_stale_generated_status_is_rejected(tmp_path: Path, monkeypatch: pytest.
         stale_output_paths(escape_root, escaped)
     assert not (outside / "escaped.txt").exists()
 
+    race_write_root = tmp_path / "race-write-root"
+    race_write_docs = race_write_root / "docs"
+    race_write_outside = tmp_path / "race-write-outside"
+    race_write_docs.mkdir(parents=True)
+    race_write_outside.mkdir()
+    real_pin = audit_tool._pin_output_destinations
+    write_swapped = False
+
+    def pin_then_swap_write(
+        root: Path, pending: dict[Path, bytes]
+    ) -> dict[Path, audit_tool._PinnedDestination]:
+        nonlocal write_swapped
+        pinned = real_pin(root, pending)
+        if not write_swapped:
+            write_swapped = True
+            race_write_docs.rename(race_write_root / "docs-real")
+            race_write_docs.symlink_to(race_write_outside, target_is_directory=True)
+        return pinned
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(audit_tool, "_pin_output_destinations", pin_then_swap_write)
+        with pytest.raises(AuditError, match="parent is not a real directory"):
+            audit_tool._replace_outputs(race_write_root, escaped)
+    assert not (race_write_outside / "escaped.txt").exists()
+    assert not (race_write_root / "docs-real" / "escaped.txt").exists()
+
+    race_check_root = tmp_path / "race-check-root"
+    race_check_docs = race_check_root / "docs"
+    race_check_outside = tmp_path / "race-check-outside"
+    race_check_docs.mkdir(parents=True)
+    race_check_outside.mkdir()
+    (race_check_docs / "escaped.txt").write_bytes(b"stale-inside")
+    (race_check_outside / "escaped.txt").write_bytes(b"escaped")
+    check_swapped = False
+
+    def pin_then_swap_check(
+        root: Path, pending: dict[Path, bytes]
+    ) -> dict[Path, audit_tool._PinnedDestination]:
+        nonlocal check_swapped
+        pinned = real_pin(root, pending)
+        if not check_swapped:
+            check_swapped = True
+            race_check_docs.rename(race_check_root / "docs-real")
+            race_check_docs.symlink_to(race_check_outside, target_is_directory=True)
+        return pinned
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(audit_tool, "_pin_output_destinations", pin_then_swap_check)
+        with pytest.raises(AuditError, match="parent is not a real directory"):
+            stale_output_paths(race_check_root, escaped)
+
     real_replace = audit_tool.os.replace
     replace_calls = 0
 
-    def fail_second_replace(source: Path, destination: Path) -> None:
+    def fail_second_replace(
+        source: str,
+        destination: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
         nonlocal replace_calls
         replace_calls += 1
         if replace_calls == 2:
             raise OSError("injected replacement failure")
-        real_replace(source, destination)
+        real_replace(
+            source,
+            destination,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
 
     with monkeypatch.context() as scoped:
         scoped.setattr(audit_tool.os, "replace", fail_second_replace)

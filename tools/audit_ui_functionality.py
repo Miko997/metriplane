@@ -20,6 +20,7 @@ import json
 import math
 import os
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -304,6 +305,28 @@ class _ScopeCollector(ast.NodeVisitor):
     def visit_While(self, node: ast.While) -> None:
         self._visit_conditional(node)
 
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        self.nodes.append(node)
+        for value in node.values:
+            self.visit(value)
+            truth = _static_truth(value)
+            if (isinstance(node.op, ast.And) and truth is False) or (
+                isinstance(node.op, ast.Or) and truth is True
+            ):
+                break
+
+    def visit_IfExp(self, node: ast.IfExp) -> None:
+        self.nodes.append(node)
+        self.visit(node.test)
+        truth = _static_truth(node.test)
+        if truth is True:
+            self.visit(node.body)
+        elif truth is False:
+            self.visit(node.orelse)
+        else:
+            self.visit(node.body)
+            self.visit(node.orelse)
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.nested_scopes.append(node)
 
@@ -318,6 +341,54 @@ class _ScopeCollector(ast.NodeVisitor):
 
 
 def _static_truth(node: ast.AST) -> bool | None:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        value = _static_truth(node.operand)
+        return None if value is None else not value
+    if isinstance(node, ast.BoolOp):
+        values = [_static_truth(value) for value in node.values]
+        if isinstance(node.op, ast.And):
+            if False in values:
+                return False
+            return True if all(value is True for value in values) else None
+        if True in values:
+            return True
+        return False if all(value is False for value in values) else None
+    if isinstance(node, ast.Compare):
+        try:
+            values: list[Any] = [ast.literal_eval(node.left)] + [
+                ast.literal_eval(item) for item in node.comparators
+            ]
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            return None
+        results: list[bool] = []
+        for operation, left, right in zip(node.ops, values[:-1], values[1:], strict=True):
+            try:
+                if isinstance(operation, ast.Eq):
+                    result = left == right
+                elif isinstance(operation, ast.NotEq):
+                    result = left != right
+                elif isinstance(operation, ast.Is):
+                    result = left is right
+                elif isinstance(operation, ast.IsNot):
+                    result = left is not right
+                elif isinstance(operation, ast.Lt):
+                    result = left < right
+                elif isinstance(operation, ast.LtE):
+                    result = left <= right
+                elif isinstance(operation, ast.Gt):
+                    result = left > right
+                elif isinstance(operation, ast.GtE):
+                    result = left >= right
+                elif isinstance(operation, ast.In):
+                    result = left in right
+                elif isinstance(operation, ast.NotIn):
+                    result = left not in right
+                else:
+                    return None
+            except (TypeError, ValueError):
+                return None
+            results.append(bool(result))
+        return all(results)
     try:
         return bool(ast.literal_eval(node))
     except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
@@ -351,6 +422,28 @@ class _ReachableCollector(ast.NodeVisitor):
 
     def visit_While(self, node: ast.While) -> None:
         self._visit_conditional(node)
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        self.nodes.append(node)
+        for value in node.values:
+            self.visit(value)
+            truth = _static_truth(value)
+            if (isinstance(node.op, ast.And) and truth is False) or (
+                isinstance(node.op, ast.Or) and truth is True
+            ):
+                break
+
+    def visit_IfExp(self, node: ast.IfExp) -> None:
+        self.nodes.append(node)
+        self.visit(node.test)
+        truth = _static_truth(node.test)
+        if truth is True:
+            self.visit(node.body)
+        elif truth is False:
+            self.visit(node.orelse)
+        else:
+            self.visit(node.body)
+            self.visit(node.orelse)
 
 
 def _reachable_nodes(node: ast.AST) -> tuple[ast.AST, ...]:
@@ -810,7 +903,7 @@ def parse_runner_endpoints(root: Path) -> list[Action]:
         for node in function_nodes:
             if not isinstance(node, ast.If):
                 continue
-            tests = list(ast.walk(node.test))
+            tests = list(_reachable_nodes(node.test))
             for compare in tests:
                 if not isinstance(compare, ast.Compare) or not (
                     isinstance(compare.left, ast.Name) and compare.left.id == "path"
@@ -1086,8 +1179,43 @@ def _regex_can_start(tokens: Sequence[_JSToken]) -> bool:
     if not tokens:
         return True
     previous = tokens[-1]
-    if previous.value in {"(", "[", "{", ",", ":", ";", "=", "!", "&", "|", "?"}:
+    if previous.value in {
+        "(",
+        "[",
+        "{",
+        ",",
+        ":",
+        ";",
+        "=",
+        "!",
+        "&",
+        "|",
+        "?",
+        "+",
+        "-",
+        "*",
+        "%",
+        "^",
+        "~",
+        "<",
+        ">",
+    }:
         return True
+    if previous.value == ")":
+        depth = 0
+        for index in range(len(tokens) - 1, -1, -1):
+            value = tokens[index].value
+            if value == ")":
+                depth += 1
+            elif value == "(":
+                depth -= 1
+                if depth == 0:
+                    return (
+                        index > 0
+                        and tokens[index - 1].kind == "identifier"
+                        and tokens[index - 1].value
+                        in {"catch", "for", "if", "switch", "while", "with"}
+                    )
     return previous.kind == "identifier" and previous.value in {
         "case",
         "delete",
@@ -1097,6 +1225,88 @@ def _regex_can_start(tokens: Sequence[_JSToken]) -> bool:
         "void",
         "yield",
     }
+
+
+def _scan_template_expression(source: str, index: int) -> int:
+    depth = 1
+    while index < len(source):
+        char = source[index]
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            while index < len(source):
+                if source[index] == "\\":
+                    index += 2
+                elif source[index] == quote:
+                    index += 1
+                    break
+                else:
+                    index += 1
+            else:
+                raise AuditError("unterminated string in JavaScript template expression")
+            continue
+        if char == "`":
+            index = _scan_template_literal(source, index)
+            continue
+        if source.startswith("//", index):
+            newline = source.find("\n", index + 2)
+            index = len(source) if newline < 0 else newline + 1
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            if end < 0:
+                raise AuditError("unterminated comment in JavaScript template expression")
+            index = end + 2
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    raise AuditError("unterminated JavaScript template expression")
+
+
+def _scan_template_literal(source: str, index: int) -> int:
+    index += 1
+    while index < len(source):
+        char = source[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == "`":
+            return index + 1
+        if source.startswith("${", index):
+            index = _scan_template_expression(source, index + 2)
+            continue
+        index += 1
+    raise AuditError("unterminated JavaScript template literal")
+
+
+def _regex_literal_end(source: str, start: int) -> int | None:
+    index = start + 1
+    escaped = False
+    in_class = False
+    while index < len(source):
+        char = source[index]
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "[":
+            in_class = True
+        elif char == "]":
+            in_class = False
+        elif char == "/" and not in_class:
+            index += 1
+            while index < len(source) and source[index].isalpha():
+                index += 1
+            return index
+        elif char in {"\n", "\r"}:
+            return None
+        index += 1
+    return None
 
 
 def _tokenize_javascript(source: str) -> tuple[_JSToken, ...]:
@@ -1127,7 +1337,12 @@ def _tokenize_javascript(source: str) -> tuple[_JSToken, ...]:
                 raise AuditError("unterminated JavaScript block comment")
             index = end + 2
             continue
-        if char in {"'", '"', "`"}:
+        if char == "`":
+            start = index
+            index = _scan_template_literal(source, index)
+            tokens.append(_JSToken("template", source[start + 1 : index - 1], start))
+            continue
+        if char in {"'", '"'}:
             quote = char
             start = index
             index += 1
@@ -1136,9 +1351,7 @@ def _tokenize_javascript(source: str) -> tuple[_JSToken, ...]:
                 char = source[index]
                 if char == quote:
                     index += 1
-                    tokens.append(
-                        _JSToken("template" if quote == "`" else "string", "".join(value), start)
-                    )
+                    tokens.append(_JSToken("string", "".join(value), start))
                     break
                 if char == "\\":
                     index += 1
@@ -1166,39 +1379,33 @@ def _tokenize_javascript(source: str) -> tuple[_JSToken, ...]:
                         value.append(escapes.get(escaped, escaped))
                     index += 1
                     continue
-                if quote != "`" and char in {"\n", "\r"}:
+                if char in {"\n", "\r"}:
                     raise AuditError("unterminated JavaScript string literal")
                 value.append(char)
                 index += 1
             else:
                 raise AuditError("unterminated JavaScript string literal")
             continue
-        if char == "/" and _regex_can_start(tokens):
+        if char == "/":
             start = index
-            index += 1
-            escaped = False
-            in_class = False
-            while index < length:
-                char = source[index]
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == "[":
-                    in_class = True
-                elif char == "]":
-                    in_class = False
-                elif char == "/" and not in_class:
-                    index += 1
-                    while index < length and source[index].isalpha():
-                        index += 1
-                    tokens.append(_JSToken("regex", source[start:index], start))
-                    break
-                elif char in {"\n", "\r"}:
-                    raise AuditError("unterminated JavaScript regular expression")
+            regex_end = _regex_literal_end(source, start)
+            expression_start = _regex_can_start(tokens)
+            governed_call_pattern = (
+                regex_end is not None
+                and re.search(
+                    r"\b(?:fetch|getJSON|jsonFetch|opApi|postJSON|runnerPost)\s*\(",
+                    source[start + 1 : regex_end - 1],
+                )
+                is not None
+            )
+            if not expression_start and not governed_call_pattern:
+                tokens.append(_JSToken("punctuation", char, index))
                 index += 1
-            else:
-                raise AuditError("unterminated JavaScript regular expression")
+                continue
+            if regex_end is None:
+                raise AuditError(f"unterminated JavaScript regular expression near offset {start}")
+            index = regex_end
+            tokens.append(_JSToken("regex", source[start:index], start))
             continue
         if char.isalpha() or char in {"_", "$"}:
             start = index
@@ -2685,11 +2892,160 @@ def _render_outputs(audit: Audit) -> dict[Path, bytes]:
     return rendered
 
 
-def _stage(path: Path, data: bytes) -> Path:
-    descriptor, raw_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    staged = Path(raw_path)
+@dataclass(frozen=True)
+class _PinnedDestination:
+    relative: Path
+    parent_fd: int
+    name: str
+    display: Path
+
+
+def _close_pinned_destinations(destinations: Iterable[_PinnedDestination]) -> None:
+    for destination in destinations:
+        os.close(destination.parent_fd)
+
+
+def _pinned_destination_stat(destination: _PinnedDestination) -> os.stat_result | None:
     try:
-        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+        result = os.stat(
+            destination.name,
+            dir_fd=destination.parent_fd,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise AuditError(
+            f"generated output destination is unavailable: {destination.display}: {exc}"
+        ) from exc
+    if stat.S_ISLNK(result.st_mode) or not stat.S_ISREG(result.st_mode):
+        raise AuditError(
+            f"generated output destination is not a regular file: {destination.display}"
+        )
+    return result
+
+
+def _pin_output_destinations(
+    root: Path, outputs: dict[Path, bytes]
+) -> dict[Path, _PinnedDestination]:
+    try:
+        repository = root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise AuditError(f"generated output root cannot be resolved: {root}: {exc}") from exc
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        repository_fd = os.open(repository, directory_flags)
+    except OSError as exc:
+        raise AuditError(f"generated output root is not a real directory: {repository}") from exc
+
+    destinations: dict[Path, _PinnedDestination] = {}
+    try:
+        if not stat.S_ISDIR(os.fstat(repository_fd).st_mode):
+            raise AuditError(f"generated output root is not a directory: {repository}")
+        for relative in sorted(outputs, key=lambda item: item.as_posix()):
+            if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+                raise AuditError(f"generated output path escapes repository root: {relative}")
+            parent_fd = os.dup(repository_fd)
+            parent = repository
+            try:
+                for component in relative.parts[:-1]:
+                    parent /= component
+                    try:
+                        child_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                    except OSError as exc:
+                        raise AuditError(
+                            f"generated output parent is not a real directory: {parent}"
+                        ) from exc
+                    os.close(parent_fd)
+                    parent_fd = child_fd
+                    if not stat.S_ISDIR(os.fstat(parent_fd).st_mode):
+                        raise AuditError(
+                            f"generated output parent is not a real directory: {parent}"
+                        )
+                destination = _PinnedDestination(
+                    relative=relative,
+                    parent_fd=parent_fd,
+                    name=relative.name,
+                    display=repository / relative,
+                )
+                _pinned_destination_stat(destination)
+                destinations[relative] = destination
+                parent_fd = -1
+            finally:
+                if parent_fd >= 0:
+                    os.close(parent_fd)
+    except BaseException:
+        _close_pinned_destinations(destinations.values())
+        raise
+    finally:
+        os.close(repository_fd)
+    return destinations
+
+
+def _read_pinned_destination(
+    destination: _PinnedDestination,
+) -> tuple[bytes, int] | None:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(destination.name, flags, dir_fd=destination.parent_fd)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise AuditError(
+            f"generated output destination is not a regular file: {destination.display}"
+        ) from exc
+    try:
+        result = os.fstat(descriptor)
+        if not stat.S_ISREG(result.st_mode):
+            raise AuditError(
+                f"generated output destination is not a regular file: {destination.display}"
+            )
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = -1
+            return stream.read(), stat.S_IMODE(result.st_mode)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _unlink_pinned_name(destination: _PinnedDestination, name: str, *, missing_ok: bool) -> None:
+    try:
+        os.unlink(name, dir_fd=destination.parent_fd)
+    except FileNotFoundError:
+        if not missing_ok:
+            raise
+
+
+def _stage_pinned(destination: _PinnedDestination, data: bytes, mode: int) -> str:
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = -1
+    staged = ""
+    for _attempt in range(100):
+        staged = f".{destination.name}.{secrets.token_hex(8)}.tmp"
+        try:
+            descriptor = os.open(staged, flags, mode, dir_fd=destination.parent_fd)
+        except FileExistsError:
+            continue
+        break
+    else:
+        raise AuditError(f"cannot allocate staged output beside {destination.display}")
+    try:
         os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as stream:
             descriptor = -1
@@ -2700,125 +3056,120 @@ def _stage(path: Path, data: bytes) -> Path:
     except BaseException:
         if descriptor >= 0:
             os.close(descriptor)
-        staged.unlink(missing_ok=True)
+        _unlink_pinned_name(destination, staged, missing_ok=True)
         raise
 
 
-def _fsync_parent_directories(paths: Iterable[Path]) -> None:
-    for directory in sorted({path.parent for path in paths}, key=lambda item: item.as_posix()):
-        descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+def _replace_pinned_name(destination: _PinnedDestination, staged: str) -> None:
+    os.replace(
+        staged,
+        destination.name,
+        src_dir_fd=destination.parent_fd,
+        dst_dir_fd=destination.parent_fd,
+    )
 
 
-def _validated_output_destinations(root: Path, outputs: dict[Path, bytes]) -> dict[Path, Path]:
+def _fsync_pinned_parents(destinations: Iterable[_PinnedDestination]) -> None:
+    for descriptor in sorted({destination.parent_fd for destination in destinations}):
+        os.fsync(descriptor)
+
+
+def _verify_pinned_topology(root: Path, destinations: dict[Path, _PinnedDestination]) -> None:
+    current = _pin_output_destinations(
+        root,
+        {relative: b"" for relative in destinations},
+    )
     try:
-        repository = root.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise AuditError(f"generated output root cannot be resolved: {root}: {exc}") from exc
-    if not repository.is_dir():
-        raise AuditError(f"generated output root is not a directory: {repository}")
-
-    destinations: dict[Path, Path] = {}
-    for relative in outputs:
-        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
-            raise AuditError(f"generated output path escapes repository root: {relative}")
-        destination = repository.joinpath(relative)
-        try:
-            destination.relative_to(repository)
-        except ValueError as exc:
-            raise AuditError(f"generated output path escapes repository root: {relative}") from exc
-
-        parent = repository
-        for component in relative.parts[:-1]:
-            parent /= component
-            try:
-                mode = os.lstat(parent).st_mode
-            except OSError as exc:
+        for relative, destination in destinations.items():
+            pinned_stat = os.fstat(destination.parent_fd)
+            current_stat = os.fstat(current[relative].parent_fd)
+            if (pinned_stat.st_dev, pinned_stat.st_ino) != (
+                current_stat.st_dev,
+                current_stat.st_ino,
+            ):
                 raise AuditError(
-                    f"generated output parent is unavailable: {parent}: {exc}"
-                ) from exc
-            if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
-                raise AuditError(f"generated output parent is not a real directory: {parent}")
-
-        try:
-            mode = os.lstat(destination).st_mode
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            raise AuditError(
-                f"generated output destination is unavailable: {destination}: {exc}"
-            ) from exc
-        else:
-            if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
-                raise AuditError(
-                    f"generated output destination is not a regular file: {destination}"
+                    f"generated output parent changed during operation: {destination.display.parent}"
                 )
-        destinations[relative] = destination
-    return destinations
+    finally:
+        _close_pinned_destinations(current.values())
 
 
 def _replace_outputs(root: Path, outputs: dict[Path, bytes]) -> None:
-    destinations = _validated_output_destinations(root, outputs)
-    absolute = {destinations[relative]: data for relative, data in outputs.items()}
-    before = {path: path.read_bytes() if path.is_file() else None for path in absolute}
-    staged: dict[Path, Path] = {}
+    destinations = _pin_output_destinations(root, outputs)
+    before: dict[Path, tuple[bytes, int] | None] = {}
+    staged: dict[Path, str] = {}
     try:
-        for path, data in absolute.items():
-            staged[path] = _stage(path, data)
-    except BaseException:
-        for staged_path in staged.values():
-            staged_path.unlink(missing_ok=True)
-        raise
-    replaced: list[Path] = []
-    try:
-        for path in sorted(absolute, key=lambda item: item.as_posix()):
-            os.replace(staged[path], path)
-            replaced.append(path)
-        _fsync_parent_directories(absolute)
-    except BaseException as exc:
-        rollback_errors: list[str] = []
-        for path in reversed(replaced):
-            rollback: Path | None = None
-            try:
-                previous = before[path]
-                if previous is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    rollback = _stage(path, previous)
-                    os.replace(rollback, path)
-            except BaseException as rollback_exc:
-                rollback_errors.append(f"{path}: {rollback_exc}")
-            finally:
-                if rollback is not None:
-                    rollback.unlink(missing_ok=True)
+        before = {
+            relative: _read_pinned_destination(destination)
+            for relative, destination in destinations.items()
+        }
         try:
-            _fsync_parent_directories(replaced)
-        except BaseException as rollback_exc:
-            rollback_errors.append(f"directory fsync: {rollback_exc}")
-        if rollback_errors:
-            raise AuditError(
-                "generated status rollback failed after write error: " + "; ".join(rollback_errors)
-            ) from exc
-        raise
+            for relative, data in outputs.items():
+                previous = before[relative]
+                mode = previous[1] if previous is not None else 0o644
+                staged[relative] = _stage_pinned(destinations[relative], data, mode)
+        except BaseException:
+            for relative, staged_name in staged.items():
+                _unlink_pinned_name(destinations[relative], staged_name, missing_ok=True)
+            raise
+        replaced: list[Path] = []
+        try:
+            for relative in sorted(outputs, key=lambda item: item.as_posix()):
+                _replace_pinned_name(destinations[relative], staged[relative])
+                replaced.append(relative)
+            _fsync_pinned_parents(destinations.values())
+            _verify_pinned_topology(root, destinations)
+        except BaseException as exc:
+            rollback_errors: list[str] = []
+            for relative in reversed(replaced):
+                destination = destinations[relative]
+                rollback: str | None = None
+                try:
+                    previous = before[relative]
+                    if previous is None:
+                        _unlink_pinned_name(destination, destination.name, missing_ok=True)
+                    else:
+                        previous_bytes, previous_mode = previous
+                        rollback = _stage_pinned(
+                            destination,
+                            previous_bytes,
+                            previous_mode,
+                        )
+                        _replace_pinned_name(destination, rollback)
+                except BaseException as rollback_exc:
+                    rollback_errors.append(f"{destination.display}: {rollback_exc}")
+                finally:
+                    if rollback is not None:
+                        _unlink_pinned_name(destination, rollback, missing_ok=True)
+            try:
+                _fsync_pinned_parents(destinations[relative] for relative in replaced)
+            except BaseException as rollback_exc:
+                rollback_errors.append(f"directory fsync: {rollback_exc}")
+            if rollback_errors:
+                raise AuditError(
+                    "generated status rollback failed after write error: "
+                    + "; ".join(rollback_errors)
+                ) from exc
+            raise
+        finally:
+            for relative, staged_name in staged.items():
+                _unlink_pinned_name(destinations[relative], staged_name, missing_ok=True)
     finally:
-        for path in staged.values():
-            path.unlink(missing_ok=True)
+        _close_pinned_destinations(destinations.values())
 
 
 def stale_output_paths(root: Path, outputs: dict[Path, bytes]) -> list[Path]:
-    destinations = _validated_output_destinations(root, outputs)
-    return sorted(
-        [
-            relative
-            for relative, expected in outputs.items()
-            if not destinations[relative].is_file()
-            or destinations[relative].read_bytes() != expected
-        ],
-        key=lambda path: path.as_posix(),
-    )
+    destinations = _pin_output_destinations(root, outputs)
+    try:
+        stale: list[Path] = []
+        for relative, expected in outputs.items():
+            current = _read_pinned_destination(destinations[relative])
+            if current is None or current[0] != expected:
+                stale.append(relative)
+        _verify_pinned_topology(root, destinations)
+        return sorted(stale, key=lambda path: path.as_posix())
+    finally:
+        _close_pinned_destinations(destinations.values())
 
 
 def _paths_alias(left: Path, right: Path) -> bool:
@@ -2882,9 +3233,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         else:
             _replace_outputs(root, outputs)
-            if any(
-                (root / relative).read_bytes() != expected for relative, expected in outputs.items()
-            ):
+            if stale_output_paths(root, outputs):
                 raise AuditError("generated status readback differs from validated bytes")
             if csv_output is not None:
                 write_csv(csv_output, audit.actions)
