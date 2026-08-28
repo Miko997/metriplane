@@ -327,6 +327,18 @@ class _ScopeCollector(ast.NodeVisitor):
             self.visit(node.body)
             self.visit(node.orelse)
 
+    def visit_Compare(self, node: ast.Compare) -> None:
+        self.nodes.append(node)
+        self.visit(node.left)
+        left = _static_literal(node.left)
+        for operation, comparator in zip(node.ops, node.comparators, strict=True):
+            self.visit(comparator)
+            right = _static_literal(comparator)
+            result = _static_comparison(operation, left, right)
+            if result is False:
+                break
+            left = right
+
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self.nested_scopes.append(node)
 
@@ -338,6 +350,57 @@ class _ScopeCollector(ast.NodeVisitor):
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self.nested_scopes.append(node)
+
+
+_STATIC_UNKNOWN = object()
+
+
+def _static_literal(node: ast.AST) -> Any:
+    if isinstance(node, ast.IfExp):
+        truth = _static_truth(node.test)
+        if truth is True:
+            return _static_literal(node.body)
+        if truth is False:
+            return _static_literal(node.orelse)
+        return _STATIC_UNKNOWN
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        truth = _static_truth(node.operand)
+        return _STATIC_UNKNOWN if truth is None else not truth
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return _STATIC_UNKNOWN
+
+
+def _static_comparison(operation: ast.cmpop, left: Any, right: Any) -> bool | None:
+    if left is _STATIC_UNKNOWN or right is _STATIC_UNKNOWN:
+        return None
+    try:
+        if isinstance(operation, ast.Eq):
+            result = left == right
+        elif isinstance(operation, ast.NotEq):
+            result = left != right
+        elif isinstance(operation, ast.Is):
+            result = left is right
+        elif isinstance(operation, ast.IsNot):
+            result = left is not right
+        elif isinstance(operation, ast.Lt):
+            result = left < right
+        elif isinstance(operation, ast.LtE):
+            result = left <= right
+        elif isinstance(operation, ast.Gt):
+            result = left > right
+        elif isinstance(operation, ast.GtE):
+            result = left >= right
+        elif isinstance(operation, ast.In):
+            result = left in right
+        elif isinstance(operation, ast.NotIn):
+            result = left not in right
+        else:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return bool(result)
 
 
 def _static_truth(node: ast.AST) -> bool | None:
@@ -353,42 +416,26 @@ def _static_truth(node: ast.AST) -> bool | None:
         if True in values:
             return True
         return False if all(value is False for value in values) else None
+    if isinstance(node, ast.IfExp):
+        condition = _static_truth(node.test)
+        if condition is True:
+            return _static_truth(node.body)
+        if condition is False:
+            return _static_truth(node.orelse)
+        body = _static_truth(node.body)
+        alternative = _static_truth(node.orelse)
+        return body if body is not None and body == alternative else None
     if isinstance(node, ast.Compare):
-        try:
-            values: list[Any] = [ast.literal_eval(node.left)] + [
-                ast.literal_eval(item) for item in node.comparators
-            ]
-        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
-            return None
-        results: list[bool] = []
-        for operation, left, right in zip(node.ops, values[:-1], values[1:], strict=True):
-            try:
-                if isinstance(operation, ast.Eq):
-                    result = left == right
-                elif isinstance(operation, ast.NotEq):
-                    result = left != right
-                elif isinstance(operation, ast.Is):
-                    result = left is right
-                elif isinstance(operation, ast.IsNot):
-                    result = left is not right
-                elif isinstance(operation, ast.Lt):
-                    result = left < right
-                elif isinstance(operation, ast.LtE):
-                    result = left <= right
-                elif isinstance(operation, ast.Gt):
-                    result = left > right
-                elif isinstance(operation, ast.GtE):
-                    result = left >= right
-                elif isinstance(operation, ast.In):
-                    result = left in right
-                elif isinstance(operation, ast.NotIn):
-                    result = left not in right
-                else:
-                    return None
-            except (TypeError, ValueError):
+        left = _static_literal(node.left)
+        for operation, comparator in zip(node.ops, node.comparators, strict=True):
+            right = _static_literal(comparator)
+            result = _static_comparison(operation, left, right)
+            if result is False:
+                return False
+            if result is None:
                 return None
-            results.append(bool(result))
-        return all(results)
+            left = right
+        return True
     try:
         return bool(ast.literal_eval(node))
     except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
@@ -444,6 +491,18 @@ class _ReachableCollector(ast.NodeVisitor):
         else:
             self.visit(node.body)
             self.visit(node.orelse)
+
+    def visit_Compare(self, node: ast.Compare) -> None:
+        self.nodes.append(node)
+        self.visit(node.left)
+        left = _static_literal(node.left)
+        for operation, comparator in zip(node.ops, node.comparators, strict=True):
+            self.visit(comparator)
+            right = _static_literal(comparator)
+            result = _static_comparison(operation, left, right)
+            if result is False:
+                break
+            left = right
 
 
 def _reachable_nodes(node: ast.AST) -> tuple[ast.AST, ...]:

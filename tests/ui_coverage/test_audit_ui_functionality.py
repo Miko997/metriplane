@@ -352,11 +352,14 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
         dead_cli.read_text(encoding="utf-8").replace(
             "def main(argv):",
             "def main(argv):\n"
-            "    if 1 == 2:\n"
+            "    if 1 == 2 < dynamic:\n"
             "        if argv[0] == 'ghost':\n"
             "            return 0\n"
             "    if False and argv[0] == 'ghost-and':\n"
-            "        return 0",
+            "        return 0\n"
+            "    if (False if True else dynamic):\n"
+            "        if argv[0] == 'ghost-ifexp':\n"
+            "            return 0",
         ),
         encoding="utf-8",
     )
@@ -365,11 +368,14 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
         dead_operator.read_text(encoding="utf-8").replace(
             "    def route(self, method, path, body):\n",
             "    def route(self, method, path, body):\n"
-            "        if 1 == 2:\n"
+            "        if 1 == 2 < dynamic:\n"
             "            if sub == '/ghost':\n"
             "                return None\n"
             "        if False and sub == '/ghost-and':\n"
-            "            return None\n",
+            "            return None\n"
+            "        if (False if True else dynamic):\n"
+            "            if sub == '/ghost-ifexp':\n"
+            "                return None\n",
         ),
         encoding="utf-8",
     )
@@ -385,6 +391,10 @@ def test_dynamic_operator_route_fails_closed(tmp_path: Path):
             "    dead_not()\n"
             "if False and dead_and():\n"
             "    dead_and_body()\n"
+            "if 1 == 2 < dead_chain():\n"
+            "    dead_chain_body()\n"
+            "if (False if True else dead_ifexp()):\n"
+            "    dead_ifexp_body()\n"
             "if True or dead_or():\n"
             "    live()\n"
         )
@@ -438,11 +448,14 @@ def test_unknown_runner_route_fails_closed(tmp_path: Path):
         dead_service.read_text(encoding="utf-8").replace(
             "    def do_GET(self):\n",
             "    def do_GET(self):\n"
-            "        if 1 == 2:\n"
+            "        if 1 == 2 < dynamic:\n"
             "            if path == '/debug':\n"
             "                return\n"
             "        if False and path == '/debug-and':\n"
-            "            return\n",
+            "            return\n"
+            "        if (False if True else dynamic):\n"
+            "            if path == '/debug-ifexp':\n"
+            "                return\n",
         ),
         encoding="utf-8",
     )
