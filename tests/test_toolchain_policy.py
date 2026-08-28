@@ -393,7 +393,7 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
 def test_canonical_collection_contract_is_documented() -> None:
     text = POLICY_DOC_PATH.read_text(encoding="utf-8")
     assert f"{EXPECTED_COLLECTION:,} items" in text
-    assert "2,456 passed" in text
+    assert "2,457 passed" in text
     assert "16 expected skips" in text
     assert "Twelve result-schema cases" in text
     assert "one browser smoke case" in text
