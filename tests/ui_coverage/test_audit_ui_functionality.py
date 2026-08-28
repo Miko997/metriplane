@@ -558,6 +558,37 @@ def test_three_runs_are_byte_deterministic():
     assert _render_outputs(first) == _render_outputs(second) == _render_outputs(third)
 
 
+def test_staged_outputs_start_private_and_preserve_the_destination_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    destinations = audit_tool._pin_output_destinations(
+        tmp_path, {Path("generated.txt"): b"replacement"}
+    )
+    destination = destinations[Path("generated.txt")]
+    real_open = audit_tool.os.open
+    creation_modes: list[int] = []
+    staged = ""
+
+    def capture_open(path: str, flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+        creation_modes.append(mode)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    try:
+        with monkeypatch.context() as scoped:
+            scoped.setattr(audit_tool.os, "open", capture_open)
+            staged = audit_tool._stage_pinned(destination, b"replacement", 0o644)
+        staged_stat = audit_tool.os.stat(
+            staged, dir_fd=destination.parent_fd, follow_symlinks=False
+        )
+        assert creation_modes == [0o600]
+        assert audit_tool.stat.S_IMODE(staged_stat.st_mode) == 0o644
+        assert (tmp_path / staged).read_bytes() == b"replacement"
+    finally:
+        if staged:
+            audit_tool._unlink_pinned_name(destination, staged, missing_ok=True)
+        audit_tool._close_pinned_destinations(destinations.values())
+
+
 def test_stale_generated_status_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     outputs = _render_outputs(run_audit(ROOT))
     for relative, payload in outputs.items():

@@ -3099,18 +3099,18 @@ def _stage_pinned(destination: _PinnedDestination, data: bytes, mode: int) -> st
     for _attempt in range(100):
         staged = f".{destination.name}.{secrets.token_hex(8)}.tmp"
         try:
-            descriptor = os.open(staged, flags, mode, dir_fd=destination.parent_fd)
+            descriptor = os.open(staged, flags, 0o600, dir_fd=destination.parent_fd)
         except FileExistsError:
             continue
         break
     else:
         raise AuditError(f"cannot allocate staged output beside {destination.display}")
     try:
-        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as stream:
             descriptor = -1
             stream.write(data)
             stream.flush()
+            os.fchmod(stream.fileno(), mode)
             os.fsync(stream.fileno())
         return staged
     except BaseException:
