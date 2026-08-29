@@ -364,6 +364,8 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         '    return "package.owner"\n\n'
         "def unknown_namespace():\n"
         "    return reflect(marker)\n\n"
+        "def known_namespace():\n"
+        "    return getattr(marker, '__globals__')\n\n"
         "def unknown_callable():\n"
         "    return reflect\n\n"
         "def local_lookup(name):\n"
@@ -385,6 +387,7 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         "KNOWN_SPREAD_NAME = {**NAMESPACE, 'pick': exact_module_name}['pick']()\n"
         "IRRELEVANT_NAME = 42\n"
         'KNOWN_NS = getattr(marker, "__globals__")\n'
+        "KNOWN_HELPER_NS = known_namespace()\n"
         "ACCESS = getattr\n"
         'KNOWN_ALIAS_NS = ACCESS(marker, "__globals__")\n'
         "BOUND = marker.__getattribute__\n"
@@ -408,6 +411,7 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         "{'pick': exact_module_name, 'pick': module_name}['pick']()\n"
         "UNKNOWN_SPREAD_NAME = {'pick': exact_module_name, **NAMESPACE}['pick']()\n"
         "UNKNOWN_NS = reflect(marker)\n"
+        "UNKNOWN_ZERO_ARG_NS = reflect()\n"
         "UNKNOWN_HELPER_NS = unknown_namespace()\n"
         "UNKNOWN_CONTAINER_NS = [reflect(marker)][0]\n"
         "UNKNOWN_QUALIFIED_NS = bridge.UNKNOWN_NAMESPACE\n"
@@ -474,7 +478,7 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         result = scanner._qualified_module_name_values(
             expressions[name], probe_assignments, assignments
         )
-        assert result.state is scanner._ProvenanceState.UNRESOLVED
+        assert result.state is scanner._ProvenanceState.UNRESOLVED, name
 
     known_callable = scanner._qualified_callable_provenance(
         expressions["KNOWN_CALLABLE"], probe_assignments, assignments
@@ -501,6 +505,7 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
 
     for name in (
         "KNOWN_NS",
+        "KNOWN_HELPER_NS",
         "KNOWN_ALIAS_NS",
         "KNOWN_BOUND_NS",
         "KNOWN_CONTAINER_NS",
@@ -514,6 +519,7 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         assert result.values == {"package.owner"}
     for name in (
         "UNKNOWN_NS",
+        "UNKNOWN_ZERO_ARG_NS",
         "UNKNOWN_HELPER_NS",
         "UNKNOWN_CONTAINER_NS",
         "UNKNOWN_QUALIFIED_NS",
@@ -528,6 +534,8 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         assert result.state is scanner._ProvenanceState.UNRESOLVED
 
     for name in (
+        "UNKNOWN_ZERO_ARG_NS",
+        "UNKNOWN_HELPER_NS",
         "UNKNOWN_CALL_NS",
         "UNKNOWN_DYNAMIC_CALL_NS",
         "UNKNOWN_UNBOUND_NS",
@@ -539,7 +547,15 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
             probe_assignments,
             assignments,
         )
-        assert result.state is scanner._ProvenanceState.UNRESOLVED
+        assert result.state is scanner._ProvenanceState.UNRESOLVED, name
+    helper_reflection = scanner._qualified_reflected_object_provenance(
+        expressions["KNOWN_HELPER_NS"],
+        "__globals__",
+        probe_assignments,
+        assignments,
+    )
+    assert helper_reflection.state is scanner._ProvenanceState.KNOWN
+    assert helper_reflection.values == {"package.owner"}
     local_nonreflection = scanner._qualified_reflected_object_provenance(
         expressions["LOCAL_DYNAMIC_NONREFLECTION"],
         "__globals__",
@@ -985,6 +1001,45 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         provenance = scanner._callback_keyword_provenance(call, "key", state)
         assert provenance.state is expected_state, source
 
+    callback_options = module(
+        "from external import OPTIONS\n\n"
+        "def known():\n"
+        "    return {'key': lambda value: value}\n\n"
+        "def irrelevant():\n"
+        "    return {'key': None}\n\n"
+        "def empty():\n"
+        "    return {}\n\n"
+        "def unresolved():\n"
+        "    return OPTIONS\n\n"
+        "KNOWN_ALIAS = known\n"
+        "KNOWN_FACTORIES = (known,)\n"
+        "IRRELEVANT_ALIAS = irrelevant\n"
+        "UNRESOLVED_ALIAS = unresolved\n",
+        "package.callback_options",
+    )
+    callback_option_registry = scanner._module_assignment_registry((callback_options,))
+    callback_option_state = callback_option_registry[callback_options.module]
+    qualified_callback_states = (
+        ("known()", scanner._ProvenanceState.KNOWN),
+        ("KNOWN_ALIAS()", scanner._ProvenanceState.KNOWN),
+        ("KNOWN_FACTORIES[0]()", scanner._ProvenanceState.KNOWN),
+        ("irrelevant()", scanner._ProvenanceState.IRRELEVANT),
+        ("IRRELEVANT_ALIAS()", scanner._ProvenanceState.IRRELEVANT),
+        ("empty()", scanner._ProvenanceState.IRRELEVANT),
+        ("unresolved()", scanner._ProvenanceState.UNRESOLVED),
+        ("UNRESOLVED_ALIAS()", scanner._ProvenanceState.UNRESOLVED),
+    )
+    for expression, expected_state in qualified_callback_states:
+        call = ast.parse(f"items.sort(**{expression})").body[0].value
+        assert isinstance(call, ast.Call)
+        provenance = scanner._qualified_callback_keyword_provenance(
+            call,
+            "key",
+            callback_option_state,
+            callback_option_registry,
+        )
+        assert provenance.state is expected_state, expression
+
     rooted_callback_mapping_sources = (
         "import package.owner as target\n"
         "items = [2, 1]\n"
@@ -1300,6 +1355,100 @@ def test_nested_manifest_aliases_helpers_and_sequences_are_complete() -> None:
         "function:build_manifest/selected/path",
         "function:build_manifest/selected/sha256",
     }
+
+    closed_callback_options = (
+        "def options():\n"
+        "    return {}\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**options())\n"
+        "    return payload\n",
+        "def options():\n"
+        "    return {'reverse': True}\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**options())\n"
+        "    return payload\n",
+        "def options():\n"
+        "    return {'key': None}\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**options())\n"
+        "    return payload\n",
+        "def options():\n"
+        "    return {'key': None}\n\n"
+        "OPTIONS = options\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**OPTIONS())\n"
+        "    return payload\n",
+        "def options():\n"
+        "    return {'key': None}\n\n"
+        "OPTION_FACTORIES = (options,)\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**OPTION_FACTORIES[0]())\n"
+        "    return payload\n",
+        "def options():\n"
+        "    return {'key': lambda value: value}\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**options())\n"
+        "    return payload\n",
+    )
+    for source in closed_callback_options:
+        assert scanner._manifest_ast_pointers(_python_module(source), {}) == {
+            "function:build_manifest/known"
+        }, source
+
+    callback_helper_mutation = _python_module(
+        "def options(callback):\n"
+        "    return {'key': callback}\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**options(\n"
+        "        lambda _: payload.update({'hidden': {'child': 1}})\n"
+        "    ))\n"
+        "    return payload\n"
+    )
+    container_callback_helper_mutation = _python_module(
+        "def options(callback):\n"
+        "    return {'key': callback}\n\n"
+        "OPTION_FACTORIES = (options,)\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**OPTION_FACTORIES[0](\n"
+        "        lambda _: payload.update({'hidden': {'child': 1}})\n"
+        "    ))\n"
+        "    return payload\n"
+    )
+    container_lambda_mutation = _python_module(
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    callbacks = (\n"
+        "        lambda: payload.update({'hidden': {'child': 1}}),\n"
+        "    )\n"
+        "    callbacks[0]()\n"
+        "    return payload\n"
+    )
+    unresolved_callback_options = _python_module(
+        "from external import OPTIONS\n\n"
+        "def options():\n"
+        "    return OPTIONS\n\n"
+        "def build_manifest():\n"
+        "    payload = {'known': 1}\n"
+        "    values = [0]\n"
+        "    values.sort(**options())\n"
+        "    return payload\n"
+    )
 
     alias_mutation = _python_module(
         "def build_manifest() -> dict[str, object]:\n"
@@ -2051,6 +2200,10 @@ def test_nested_manifest_aliases_helpers_and_sequences_are_complete() -> None:
         unbound_mutator,
         unpacked_alias,
         wrapped_helper_mutation,
+        callback_helper_mutation,
+        container_callback_helper_mutation,
+        container_lambda_mutation,
+        unresolved_callback_options,
         *callback_provenance_mutations,
         *dispatcher_provenance_mutations,
         *implicit_decorator_mutations,

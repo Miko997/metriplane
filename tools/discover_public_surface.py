@@ -2614,6 +2614,31 @@ def _callback_keyword_provenance(
     return _callback_value_provenance(_merge_provenance(results))
 
 
+def _qualified_callback_keyword_provenance(
+    node: ast.Call,
+    name: str,
+    assignments: AssignmentMap,
+    qualified_assignments: dict[str, AssignmentMap],
+) -> _Provenance[ast.expr]:
+    def select_mapping(mapping: ast.expr, key: str) -> _Provenance[ast.AST]:
+        return _qualified_selected_reference_expressions(
+            ast.Subscript(
+                value=mapping,
+                slice=ast.Constant(key),
+                ctx=ast.Load(),
+            ),
+            assignments,
+            qualified_assignments,
+        )
+
+    return _callback_keyword_provenance(
+        node,
+        name,
+        assignments,
+        select_mapping=select_mapping,
+    )
+
+
 def _executed_callback(
     node: ast.Call,
     assignments: AssignmentMap,
@@ -2837,9 +2862,15 @@ def _default_mutation_roots(
 def _mutated_callback_parameter_names(
     function: FunctionNode | ast.Lambda,
     inherited_assignments: AssignmentMap,
+    *,
+    qualified_assignments: dict[str, AssignmentMap] | None = None,
 ) -> set[str]:
     parameters = set(_function_parameter_annotations(function))
-    assignments = _assignment_map(function, inherited_assignments)
+    assignments = _assignment_map(
+        function,
+        inherited_assignments,
+        qualified_assignments=qualified_assignments,
+    )
     return (_direct_mutation_roots(function) & parameters) | {
         name
         for name in parameters
@@ -2942,6 +2973,9 @@ def _closed_mutation_expression(
 def _assignment_map(
     scope: ast.AST,
     inherited_assignments: AssignmentMap | None = None,
+    *,
+    qualified_assignments: dict[str, AssignmentMap] | None = None,
+    deferred_callable_ids: frozenset[int] = frozenset(),
 ) -> AssignmentMap:
     nodes = tuple(_lexical_nodes(scope))
     alias_graph = _assignment_alias_graph(nodes)
@@ -3016,7 +3050,11 @@ def _assignment_map(
         if marker in seen:
             return set()
         parameters = set(_function_parameter_annotations(function))
-        mutated = _mutated_callback_parameter_names(function, current)
+        mutated = _mutated_callback_parameter_names(
+            function,
+            current,
+            qualified_assignments=qualified_assignments,
+        )
         for callback_call in _lexical_nodes(function):
             if not isinstance(callback_call, ast.Call) or not isinstance(
                 callback_call.func, ast.Name
@@ -3044,8 +3082,27 @@ def _assignment_map(
             **(inherited_assignments or {}),
             **{name: tuple(values) for name, values in grouped.items()},
         }
+
+        def resolve_keyword(
+            call: ast.Call,
+            name: str,
+            state: AssignmentMap,
+        ) -> _Provenance[ast.expr]:
+            if qualified_assignments is None:
+                return _callback_keyword_provenance(call, name, state)
+            return _qualified_callback_keyword_provenance(
+                call,
+                name,
+                state,
+                qualified_assignments,
+            )
+
         callback_provenance, iterables, supplied_positional_count, executes_protocol = (
-            _executed_callback(node, current)
+            _executed_callback(
+                node,
+                current,
+                resolve_keyword=resolve_keyword,
+            )
         )
         if callback_provenance.state is _ProvenanceState.UNRESOLVED:
             record_all_current_with_contents()
@@ -3111,7 +3168,11 @@ def _assignment_map(
                     **(inherited_assignments or {}),
                     **{name: tuple(values) for name, values in grouped.items()},
                 }
-                for captured_root in _mutated_free_bindings(delegated, delegated_inherited):
+                for captured_root in _mutated_free_bindings(
+                    delegated,
+                    delegated_inherited,
+                    qualified_assignments=qualified_assignments,
+                ):
                     record_unknown_with_contents(captured_root)
                 bound = _bound_function_call_arguments(callback_call, delegated)
                 if bound is not None:
@@ -3138,7 +3199,11 @@ def _assignment_map(
                 **(inherited_assignments or {}),
                 **{name: tuple(values) for name, values in grouped.items()},
             }
-            for captured_root in _mutated_free_bindings(nested, nested_inherited):
+            for captured_root in _mutated_free_bindings(
+                nested,
+                nested_inherited,
+                qualified_assignments=qualified_assignments,
+            ):
                 record_unknown_with_contents(captured_root)
             mutated_parameters = resolved_callback_mutated_parameters(nested, nested_inherited)
             for root in _default_mutation_roots(
@@ -3274,7 +3339,11 @@ def _assignment_map(
             }
             if _class_construction_may_execute_user_code(node, nested_inherited):
                 record_all_current_with_contents()
-            for captured_root in _mutated_free_bindings(node, nested_inherited):
+            for captured_root in _mutated_free_bindings(
+                node,
+                nested_inherited,
+                qualified_assignments=qualified_assignments,
+            ):
                 record_unknown_name(captured_root)
             grouped.setdefault(node.name, []).append(_UnknownBinding())
         elif isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)):
@@ -3353,7 +3422,11 @@ def _assignment_map(
                         **(inherited_assignments or {}),
                         **{name: tuple(values) for name, values in grouped.items()},
                     }
-                    for captured_root in _mutated_free_bindings(nested, nested_inherited):
+                    for captured_root in _mutated_free_bindings(
+                        nested,
+                        nested_inherited,
+                        qualified_assignments=qualified_assignments,
+                    ):
                         record_unknown_name(captured_root)
                     bound = _bound_function_call_arguments(node, nested)
                     if bound is not None:
@@ -3397,30 +3470,56 @@ def _assignment_map(
                             if bound_root is not None:
                                 record_unknown_name(bound_root)
             elif not isinstance(node.func, ast.Attribute):
-                if not node.args and not node.keywords:
-                    record_all_current_with_contents()
-                for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
-                    for argument_root in _loaded_root_names(argument):
-                        record_unknown_name(argument_root)
                 current = {
                     **(inherited_assignments or {}),
                     **{name: tuple(values) for name, values in grouped.items()},
                 }
-                for captured_root in _reachable_assignment_roots(
-                    node.func,
-                    current,
-                    follow_identity=True,
+                callable_provenance = (
+                    _qualified_callable_provenance(
+                        node.func,
+                        current,
+                        qualified_assignments,
+                    )
+                    if qualified_assignments is not None
+                    else _unresolved_provenance()
+                )
+                if not (
+                    callable_provenance.values
+                    and callable_provenance.state is _ProvenanceState.KNOWN
+                    and all(
+                        id(called) in deferred_callable_ids
+                        for called, _module, _implicit_count in callable_provenance.values
+                    )
                 ):
-                    record_unknown_with_contents(captured_root)
+                    if not node.args and not node.keywords:
+                        record_all_current_with_contents()
+                    for argument in (
+                        *node.args,
+                        *(keyword.value for keyword in node.keywords),
+                    ):
+                        for argument_root in _loaded_root_names(argument):
+                            record_unknown_name(argument_root)
+                    for captured_root in _reachable_assignment_roots(
+                        node.func,
+                        current,
+                        follow_identity=True,
+                    ):
+                        record_unknown_with_contents(captured_root)
     return {name: tuple(values) for name, values in grouped.items()}
 
 
 def _mutated_free_bindings(
     scope: FunctionNode | ast.ClassDef,
     inherited_assignments: AssignmentMap | None = None,
+    *,
+    qualified_assignments: dict[str, AssignmentMap] | None = None,
 ) -> set[str]:
     if isinstance(scope, ast.ClassDef):
-        assignments = _assignment_map(scope, inherited_assignments)
+        assignments = _assignment_map(
+            scope,
+            inherited_assignments,
+            qualified_assignments=qualified_assignments,
+        )
         unknown = {
             name
             for name, candidates in assignments.items()
@@ -3510,7 +3609,11 @@ def _mutated_free_bindings(
         local_names.update(_statement_bound_names(statement))
     return {
         name
-        for name, candidates in _assignment_map(scope, inherited_assignments).items()
+        for name, candidates in _assignment_map(
+            scope,
+            inherited_assignments,
+            qualified_assignments=qualified_assignments,
+        ).items()
         if name not in local_names
         and any(isinstance(candidate, _UnknownBinding) for candidate in candidates)
     }
@@ -4184,12 +4287,26 @@ def _helper_call_context(
         bound[parameter.arg] = (default, False)
 
     helper_assignments = dict(function.module_assignments)
-    helper_assignments.update(_assignment_map(function.node, function.module_assignments))
+    helper_assignments.update(
+        _assignment_map(
+            function.node,
+            function.module_assignments,
+            qualified_assignments=function.qualified_assignments,
+            deferred_callable_ids=frozenset(
+                id(context.node)
+                for context in (
+                    *function.functions.values(),
+                    *function.qualified_functions.values(),
+                )
+            ),
+        )
+    )
     _apply_helper_mutations(
         function.node,
         helper_assignments,
         function.functions,
         qualified_functions=function.qualified_functions,
+        qualified_assignments=function.qualified_assignments,
     )
     helper_parameters = _function_parameter_annotations(function.node)
     function_id = f"{function.source}:{function.node.name}"
@@ -4315,7 +4432,11 @@ def _mutated_function_parameters(
     if function_id in seen:
         return set()
     parameters = set(_function_parameter_annotations(function.node))
-    assignments = _assignment_map(function.node, function.module_assignments)
+    assignments = _assignment_map(
+        function.node,
+        function.module_assignments,
+        qualified_assignments=function.qualified_assignments,
+    )
     mutated = {
         name
         for name in parameters
@@ -5447,27 +5568,25 @@ def _qualified_reflected_object_provenance(
                 qualified_assignments,
                 seen=seen,
             )
-            if accessor.state is _ProvenanceState.IRRELEVANT:
-                return _irrelevant_provenance()
-            reflected_name = node.args[0]
-            names = _qualified_static_string_values(
-                reflected_name,
-                assignments,
-                qualified_assignments,
-                seen=seen,
-            )
-            if attribute not in names.values:
-                return (
-                    _unresolved_provenance()
-                    if names.state is _ProvenanceState.UNRESOLVED
-                    else _irrelevant_provenance()
+            if accessor.state is _ProvenanceState.KNOWN:
+                reflected_name = node.args[0]
+                names = _qualified_static_string_values(
+                    reflected_name,
+                    assignments,
+                    qualified_assignments,
+                    seen=seen,
                 )
-            return (
-                _unresolved_provenance(accessor.values)
-                if names.state is _ProvenanceState.UNRESOLVED
-                or accessor.state is _ProvenanceState.UNRESOLVED
-                else accessor
-            )
+                if attribute not in names.values:
+                    return (
+                        _unresolved_provenance()
+                        if names.state is _ProvenanceState.UNRESOLVED
+                        else _irrelevant_provenance()
+                    )
+                return (
+                    _unresolved_provenance(accessor.values)
+                    if names.state is _ProvenanceState.UNRESOLVED
+                    else accessor
+                )
         if len(node.args) == 2 and _exact_builtin_bound_attribute_accessor(
             node.func,
             "object",
@@ -5478,26 +5597,26 @@ def _qualified_reflected_object_provenance(
             reflected_object, reflected_name = node.args
     if reflected_object is None or reflected_name is None:
         if isinstance(node, ast.Call):
-            possible_names = _merge_provenance(
-                _qualified_static_string_values(
-                    argument,
-                    assignments,
-                    qualified_assignments,
-                    seen=seen,
-                )
-                for argument in (*node.args, *(keyword.value for keyword in node.keywords))
-            )
-            callable_provenance = _qualified_callable_provenance(
-                node.func,
+            returned = _closed_call_returns(
+                node,
                 assignments,
                 qualified_assignments,
                 seen=seen,
             )
-            if callable_provenance.state is _ProvenanceState.UNRESOLVED and (
-                possible_names.state is _ProvenanceState.UNRESOLVED
-                or attribute in possible_names.values
-            ):
-                return _unresolved_provenance()
+            reflected_returns = _merge_provenance(
+                _qualified_reflected_object_provenance(
+                    value,
+                    attribute,
+                    value_assignments,
+                    qualified_assignments,
+                    seen=seen,
+                )
+                for value, value_assignments, _module in returned.values
+            )
+            if returned.state is _ProvenanceState.UNRESOLVED:
+                return _unresolved_provenance(reflected_returns.values)
+            if reflected_returns.state is not _ProvenanceState.IRRELEVANT:
+                return reflected_returns
         return _irrelevant_provenance()
     names = _qualified_static_string_values(
         reflected_name,
@@ -6152,16 +6271,14 @@ def _qualified_namespace_modules(
             )
             for branch in branches
         )
-    reflected = _qualified_reflected_object_provenance(
-        node,
-        "__globals__",
-        assignments,
-        qualified_assignments,
-        seen=seen,
-    )
-    if reflected.state is not _ProvenanceState.IRRELEVANT:
-        return reflected
     if isinstance(node, ast.Call):
+        reflected = _qualified_reflected_object_provenance(
+            node,
+            "__globals__",
+            assignments,
+            qualified_assignments,
+            seen=seen,
+        )
         returned = _closed_call_returns(
             node,
             assignments,
@@ -6187,9 +6304,26 @@ def _qualified_namespace_modules(
             for argument in (*node.args, *(keyword.value for keyword in node.keywords))
         )
         result = _merge_provenance(results)
-        if returned.state is _ProvenanceState.UNRESOLVED:
-            return _unresolved_provenance(result.values)
-        return result
+        if reflected.state is _ProvenanceState.KNOWN:
+            return reflected
+        if result.state is _ProvenanceState.KNOWN:
+            return result
+        if (
+            reflected.state is _ProvenanceState.UNRESOLVED
+            or returned.state is _ProvenanceState.UNRESOLVED
+            or result.state is _ProvenanceState.UNRESOLVED
+        ):
+            return _unresolved_provenance((*reflected.values, *result.values))
+        return _irrelevant_provenance()
+    reflected = _qualified_reflected_object_provenance(
+        node,
+        "__globals__",
+        assignments,
+        qualified_assignments,
+        seen=seen,
+    )
+    if reflected.state is not _ProvenanceState.IRRELEVANT:
+        return reflected
     if isinstance(
         node,
         (
@@ -7210,7 +7344,11 @@ def _mutated_function_free_bindings(
         return set()
     if function.direct_mutated_free_bindings is None:
         function.direct_mutated_free_bindings = frozenset(
-            _mutated_free_bindings(function.node, function.module_assignments)
+            _mutated_free_bindings(
+                function.node,
+                function.module_assignments,
+                qualified_assignments=function.qualified_assignments,
+            )
         )
     mutated = set(function.direct_mutated_free_bindings)
     identity_aliases: dict[int, set[str]] | None = None
@@ -7278,69 +7416,104 @@ def _apply_helper_mutations(
     functions: dict[str, FunctionContext],
     *,
     qualified_functions: ExternalFunctions | None = None,
+    qualified_assignments: dict[str, AssignmentMap] | None = None,
 ) -> None:
     qualified_functions = qualified_functions or {}
+    qualified_assignments = qualified_assignments or {}
+    contexts_by_node = {
+        id(context.node): context
+        for context in (*functions.values(), *qualified_functions.values())
+    }
     identity_aliases: dict[int, set[str]] | None = None
     for node in _lexical_nodes(scope):
         if not isinstance(node, ast.Call):
             continue
-        function: FunctionContext | None = None
+        resolved_calls: list[tuple[FunctionContext, ast.Call]] = []
         if isinstance(node.func, ast.Name):
             function = functions.get(node.func.id)
+            if function is not None:
+                resolved_calls.append((function, node))
         elif isinstance(node.func, ast.Attribute):
             imported_module = _imported_module_expression(node.func.value, assignments)
             if imported_module is not None:
                 function = qualified_functions.get((imported_module, node.func.attr))
-        if function is None:
-            continue
-        bound = _bound_call_arguments(node, function)
-        if bound is None:
-            continue
-        for captured_root in _mutated_function_free_bindings(function):
-            if identity_aliases is None:
-                identity_aliases = _assignment_identity_aliases(assignments)
-            for alias in _origin_binding_aliases(
-                captured_root,
+                if function is not None:
+                    resolved_calls.append((function, node))
+        if qualified_assignments:
+            provenance = _qualified_callable_provenance(
+                node.func,
                 assignments,
-                function.module_assignments,
-                identity_aliases,
-            ):
-                candidates = assignments.get(alias, ())
-                if not any(isinstance(candidate, _UnknownBinding) for candidate in candidates):
-                    assignments[alias] = (*candidates, _UnknownBinding())
-        for name in _mutated_function_parameters(function):
-            actual = bound.get(name)
-            if actual is None:
+                qualified_assignments,
+            )
+            for called, _module, implicit_positional_count in provenance.values:
+                function = contexts_by_node.get(id(called))
+                if function is None or any(
+                    existing is function for existing, _call in resolved_calls
+                ):
+                    continue
+                expanded = (
+                    node
+                    if not implicit_positional_count
+                    else ast.Call(
+                        func=node.func,
+                        args=[
+                            *(ast.Constant(value=None) for _ in range(implicit_positional_count)),
+                            *node.args,
+                        ],
+                        keywords=node.keywords,
+                    )
+                )
+                resolved_calls.append((function, expanded))
+        for function, resolved_call in resolved_calls:
+            bound = _bound_call_arguments(resolved_call, function)
+            if bound is None:
                 continue
-            value, from_caller = actual
-            if not from_caller and identity_aliases is None:
-                identity_aliases = _assignment_identity_aliases(assignments)
-            aliases = (
-                {
-                    alias
-                    for root_name in _reachable_assignment_roots(
+            for captured_root in _mutated_function_free_bindings(function):
+                if identity_aliases is None:
+                    identity_aliases = _assignment_identity_aliases(assignments)
+                for alias in _origin_binding_aliases(
+                    captured_root,
+                    assignments,
+                    function.module_assignments,
+                    identity_aliases,
+                ):
+                    candidates = assignments.get(alias, ())
+                    if not any(isinstance(candidate, _UnknownBinding) for candidate in candidates):
+                        assignments[alias] = (*candidates, _UnknownBinding())
+            for name in _mutated_function_parameters(function):
+                actual = bound.get(name)
+                if actual is None:
+                    continue
+                value, from_caller = actual
+                if not from_caller and identity_aliases is None:
+                    identity_aliases = _assignment_identity_aliases(assignments)
+                aliases = (
+                    {
+                        alias
+                        for root_name in _reachable_assignment_roots(
+                            value,
+                            assignments,
+                            follow_identity=True,
+                        )
+                        for alias in _current_alias_component(root_name, assignments)
+                    }
+                    if from_caller
+                    else _origin_expression_aliases(
                         value,
                         assignments,
-                        follow_identity=True,
+                        function.default_assignments,
+                        identity_aliases,
+                        function.qualified_assignments,
+                        frozenset(function.functions) | frozenset(function.classes),
+                        frozenset(function.qualified_functions)
+                        | frozenset(function.qualified_classes),
+                        function.qualified_class_assignments,
                     )
-                    for alias in _current_alias_component(root_name, assignments)
-                }
-                if from_caller
-                else _origin_expression_aliases(
-                    value,
-                    assignments,
-                    function.default_assignments,
-                    identity_aliases,
-                    function.qualified_assignments,
-                    frozenset(function.functions) | frozenset(function.classes),
-                    frozenset(function.qualified_functions) | frozenset(function.qualified_classes),
-                    function.qualified_class_assignments,
                 )
-            )
-            for alias in aliases:
-                candidates = assignments.get(alias, ())
-                if not any(isinstance(candidate, _UnknownBinding) for candidate in candidates):
-                    assignments[alias] = (*candidates, _UnknownBinding())
+                for alias in aliases:
+                    candidates = assignments.get(alias, ())
+                    if not any(isinstance(candidate, _UnknownBinding) for candidate in candidates):
+                        assignments[alias] = (*candidates, _UnknownBinding())
 
 
 def _manifest_expression_shape(
@@ -9376,7 +9549,14 @@ def _module_assignment_registry(
                 return set()
             function_module, function_state = callback_state(function, state)
             parameters = set(_function_parameter_annotations(function))
-            mutated = _mutated_callback_parameter_names(function, function_state)
+            mutated = _mutated_callback_parameter_names(
+                function,
+                function_state,
+                qualified_assignments=expression_qualified_assignments(
+                    function,
+                    function_state,
+                ),
+            )
             for callback_call in _lexical_nodes(function):
                 if not isinstance(callback_call, ast.Call):
                     continue
@@ -9400,29 +9580,16 @@ def _module_assignment_registry(
                             mutated.update(_loaded_root_names(actual[0]) & parameters)
             return mutated
 
-        def qualified_callback_keyword_provenance(
+        def resolve_qualified_callback_keyword(
             node: ast.Call,
             name: str,
             state: AssignmentMap,
         ) -> _Provenance[ast.expr]:
-            qualified_assignments = expression_qualified_assignments(node, state)
-
-            def select_mapping(mapping: ast.expr, key: str) -> _Provenance[ast.AST]:
-                return _qualified_selected_reference_expressions(
-                    ast.Subscript(
-                        value=mapping,
-                        slice=ast.Constant(key),
-                        ctx=ast.Load(),
-                    ),
-                    state,
-                    qualified_assignments,
-                )
-
-            return _callback_keyword_provenance(
+            return _qualified_callback_keyword_provenance(
                 node,
                 name,
                 state,
-                select_mapping=select_mapping,
+                expression_qualified_assignments(node, state),
             )
 
         def apply_callback_mutations(
@@ -9435,7 +9602,7 @@ def _module_assignment_registry(
                 _executed_callback(
                     node,
                     state,
-                    resolve_keyword=qualified_callback_keyword_provenance,
+                    resolve_keyword=resolve_qualified_callback_keyword,
                 )
             )
             recognized_callback = callback_provenance.state is not _ProvenanceState.IRRELEVANT
@@ -9500,7 +9667,14 @@ def _module_assignment_registry(
                             callback_assignments,
                         )
                         captured_roots = (
-                            _mutated_free_bindings(delegated, delegated_assignments)
+                            _mutated_free_bindings(
+                                delegated,
+                                delegated_assignments,
+                                qualified_assignments=expression_qualified_assignments(
+                                    delegated,
+                                    delegated_assignments,
+                                ),
+                            )
                             if isinstance(
                                 delegated,
                                 (ast.AsyncFunctionDef, ast.FunctionDef),
@@ -9557,7 +9731,14 @@ def _module_assignment_registry(
                     mutates_inputs = False
                     for called, _origin, implicit_positional_count in resolved_callbacks:
                         _, called_assignments = callback_state(called, state)
-                        for captured_root in _mutated_free_bindings(called, called_assignments):
+                        for captured_root in _mutated_free_bindings(
+                            called,
+                            called_assignments,
+                            qualified_assignments=expression_qualified_assignments(
+                                called,
+                                called_assignments,
+                            ),
+                        ):
                             if captured_root in called_assignments:
                                 bind_unknown_with_contents(captured_root, called_assignments)
                         mutated_parameters = resolved_module_callback_mutated_parameters(
@@ -9948,7 +10129,14 @@ def _module_assignment_registry(
                             called_node, _called_module, _implicit_count = called_callback
                             _, called_assignments = callback_state(called_node, state)
                             captured_roots = (
-                                _mutated_free_bindings(called_node, called_assignments)
+                                _mutated_free_bindings(
+                                    called_node,
+                                    called_assignments,
+                                    qualified_assignments=expression_qualified_assignments(
+                                        called_node,
+                                        called_assignments,
+                                    ),
+                                )
                                 if isinstance(
                                     called_node,
                                     (ast.AsyncFunctionDef, ast.FunctionDef),
@@ -10124,7 +10312,11 @@ def _module_assignment_registry(
                     CLASS_DEFINITION_ASSIGNMENTS_ATTRIBUTE,
                     dict(class_state),
                 )
-                for captured_root in _mutated_free_bindings(node, state):
+                for captured_root in _mutated_free_bindings(
+                    node,
+                    state,
+                    qualified_assignments=expression_qualified_assignments(node, state),
+                ):
                     if captured_root in state:
                         bind_unknown(captured_root, state)
                 class_binding = (
@@ -10320,7 +10512,10 @@ def _function_context_registry(
             CLASS_DEFINITION_ASSIGNMENTS_ATTRIBUTE,
             {
                 **module_assignments[module.module],
-                **_assignment_map(node),
+                **_assignment_map(
+                    node,
+                    qualified_assignments=module_assignments,
+                ),
             },
         )
         for module in modules
@@ -10419,9 +10614,12 @@ def _manifest_ast_pointers(
     effective_assignment_registry = module_assignments_by_name or _module_assignment_registry(
         (module,)
     )
-    module_assignments = effective_assignment_registry.get(
-        module.module, _assignment_map(module.tree)
-    )
+    module_assignments = effective_assignment_registry.get(module.module)
+    if module_assignments is None:
+        module_assignments = _assignment_map(
+            module.tree,
+            qualified_assignments=effective_assignment_registry,
+        )
     effective_classes = dict(
         external_classes or _class_field_registry((module,), {module.module: module_assignments})
     )
@@ -10450,7 +10648,11 @@ def _manifest_ast_pointers(
                     CLASS_DEFINITION_ASSIGNMENTS_ATTRIBUTE,
                     {
                         **module_assignments,
-                        **_assignment_map(node),
+                        **_assignment_map(
+                            node,
+                            module_assignments,
+                            qualified_assignments=effective_assignment_registry,
+                        ),
                     },
                 )
             else:
@@ -10487,7 +10689,9 @@ def _manifest_ast_pointers(
         context.qualified_functions.update(effective_functions)
         context.qualified_classes.update(effective_classes)
         context.qualified_class_assignments.update(effective_class_assignments)
+        context.qualified_assignments.update(effective_assignment_registry)
     functions = _function_bindings(module, effective_functions)
+    deferred_callable_ids = frozenset(id(context.node) for context in effective_functions.values())
     for context in local_functions.values():
         context.functions.update(functions)
         context.classes.update(classes)
@@ -10497,6 +10701,7 @@ def _manifest_ast_pointers(
         module_assignments,
         functions,
         qualified_functions=effective_functions,
+        qualified_assignments=effective_assignment_registry,
     )
     for node in module.tree.body:
         named_values: tuple[tuple[ast.Name, ast.expr], ...] = ()
@@ -10549,12 +10754,20 @@ def _manifest_ast_pointers(
             )
         if manifest_assignments:
             assignments = dict(module_assignments)
-            assignments.update(_assignment_map(scope, module_assignments))
+            assignments.update(
+                _assignment_map(
+                    scope,
+                    module_assignments,
+                    qualified_assignments=effective_assignment_registry,
+                    deferred_callable_ids=deferred_callable_ids,
+                )
+            )
             _apply_helper_mutations(
                 scope,
                 assignments,
                 functions,
                 qualified_functions=effective_functions,
+                qualified_assignments=effective_assignment_registry,
             )
             parameters = _function_parameter_annotations(context.node)
             for target_name, _value in manifest_assignments:
@@ -10572,12 +10785,20 @@ def _manifest_ast_pointers(
         if not _artifact_manifest_function_name(function.name):
             continue
         assignments = dict(module_assignments)
-        assignments.update(_assignment_map(function, module_assignments))
+        assignments.update(
+            _assignment_map(
+                function,
+                module_assignments,
+                qualified_assignments=effective_assignment_registry,
+                deferred_callable_ids=deferred_callable_ids,
+            )
+        )
         _apply_helper_mutations(
             function,
             assignments,
             functions,
             qualified_functions=effective_functions,
+            qualified_assignments=effective_assignment_registry,
         )
         parameters = _function_parameter_annotations(function)
         return_values = _return_values(
