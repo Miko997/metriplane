@@ -1198,6 +1198,102 @@ def _target_root_name(target: ast.AST) -> str | None:
     return current.id if isinstance(current, ast.Name) else None
 
 
+def _static_sequence_elements(
+    node: ast.AST,
+    definitions: dict[str, tuple[ast.AST, ...]],
+    *,
+    seen: frozenset[str] = frozenset(),
+) -> tuple[ast.AST, ...] | None:
+    current = node
+    while isinstance(current, ast.Name):
+        candidates = definitions.get(current.id, ())
+        if current.id in seen or len(candidates) != 1:
+            return None
+        seen = seen | {current.id}
+        current = candidates[0]
+    if not isinstance(current, (ast.List, ast.Tuple)):
+        return None
+    elements: list[ast.AST] = []
+    for element in current.elts:
+        if not isinstance(element, ast.Starred):
+            elements.append(element)
+            continue
+        nested = _static_sequence_elements(
+            element.value,
+            definitions,
+            seen=seen,
+        )
+        if nested is None:
+            return None
+        elements.extend(nested)
+    return tuple(elements)
+
+
+def _static_mapping_entries(
+    node: ast.AST,
+    definitions: dict[str, tuple[ast.AST, ...]],
+    *,
+    seen: frozenset[str] = frozenset(),
+) -> tuple[tuple[ast.expr, ast.expr], ...] | None:
+    current = node
+    while isinstance(current, ast.Name):
+        candidates = definitions.get(current.id, ())
+        if current.id in seen or len(candidates) != 1:
+            return None
+        seen = seen | {current.id}
+        current = candidates[0]
+    if not isinstance(current, ast.Dict):
+        return None
+    entries: list[tuple[ast.expr, ast.expr]] = []
+    for key, value in zip(current.keys, current.values, strict=True):
+        if key is not None:
+            entries.append((key, value))
+            continue
+        nested = _static_mapping_entries(
+            value,
+            definitions,
+            seen=seen,
+        )
+        if nested is None:
+            return None
+        entries.extend(nested)
+    return tuple(entries)
+
+
+def _static_mapping_selection(
+    node: ast.AST,
+    key_value: object,
+    definitions: dict[str, tuple[ast.AST, ...]],
+    *,
+    seen: frozenset[str] = frozenset(),
+) -> _Provenance[ast.AST]:
+    current = node
+    while isinstance(current, ast.Name):
+        candidates = definitions.get(current.id, ())
+        if current.id in seen or len(candidates) != 1:
+            return _unresolved_provenance()
+        seen = seen | {current.id}
+        current = candidates[0]
+    if not isinstance(current, ast.Dict):
+        return _unresolved_provenance()
+    for key, value in reversed(tuple(zip(current.keys, current.values, strict=True))):
+        if key is None:
+            nested = _static_mapping_selection(
+                value,
+                key_value,
+                definitions,
+                seen=seen,
+            )
+            if nested.state is not _ProvenanceState.IRRELEVANT:
+                return nested
+            continue
+        if not isinstance(key, ast.Constant):
+            return _unresolved_provenance()
+        if key.value == key_value:
+            return _known_provenance((value,))
+    return _irrelevant_provenance()
+
+
 def _selected_reference_expression(
     node: ast.Subscript,
     definitions: dict[str, tuple[ast.AST, ...]],
@@ -1223,19 +1319,22 @@ def _selected_reference_expression(
     if isinstance(container, ast.Dict):
         if not isinstance(node.slice, ast.Constant):
             return None
-        entries = tuple(zip(container.keys, container.values, strict=True))
-        for key, value in reversed(entries):
-            if not isinstance(key, ast.Constant):
-                return None
-            if key.value == node.slice.value:
-                return value
+        selection = _static_mapping_selection(
+            container,
+            node.slice.value,
+            definitions,
+            seen=seen,
+        )
+        if selection.state is _ProvenanceState.KNOWN and len(selection.values) == 1:
+            return next(iter(selection.values))
         return None
-    if isinstance(container, (ast.List, ast.Tuple)):
+    sequence_elements = _static_sequence_elements(container, definitions, seen=seen)
+    if sequence_elements is not None:
         if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
             return None
         index = node.slice.value
-        if -len(container.elts) <= index < len(container.elts):
-            return container.elts[index]
+        if -len(sequence_elements) <= index < len(sequence_elements):
+            return sequence_elements[index]
     return None
 
 
@@ -2689,7 +2788,12 @@ def _replace_ast_identity(
     return updated_node
 
 
-def _closed_mutation_expression(node: ast.Call, previous: ast.expr) -> ast.expr | None:
+def _closed_mutation_expression(
+    node: ast.Call,
+    previous: ast.expr,
+    definitions: AssignmentMap | None = None,
+) -> ast.expr | None:
+    definitions = {} if definitions is None else definitions
     if not isinstance(node.func, ast.Attribute):
         return None
     method = node.func.attr
@@ -2697,11 +2801,24 @@ def _closed_mutation_expression(node: ast.Call, previous: ast.expr) -> ast.expr 
         if len(node.args) != 1 or node.keywords or isinstance(node.args[0], ast.Starred):
             return None
         added = node.args[0]
+        previous_elements = _static_sequence_elements(previous, definitions)
+        elements = (
+            list(previous_elements)
+            if previous_elements is not None
+            else [ast.Starred(value=previous, ctx=ast.Load())]
+        )
+        added_elements = (
+            _static_sequence_elements(added, definitions) if method == "extend" else None
+        )
+        elements.extend(
+            added_elements
+            if added_elements is not None
+            else [ast.Starred(value=added, ctx=ast.Load())]
+            if method == "extend"
+            else [added]
+        )
         return ast.List(
-            elts=[
-                ast.Starred(value=previous, ctx=ast.Load()),
-                (ast.Starred(value=added, ctx=ast.Load()) if method == "extend" else added),
-            ],
+            elts=elements,
             ctx=ast.Load(),
         )
     if method != "update" or len(node.args) > 1:
@@ -2710,11 +2827,21 @@ def _closed_mutation_expression(node: ast.Call, previous: ast.expr) -> ast.expr 
         keyword.arg is None for keyword in node.keywords
     ):
         return None
-    keys: list[ast.expr | None] = [None]
-    values: list[ast.expr] = [previous]
+    previous_entries = _static_mapping_entries(previous, definitions)
+    keys: list[ast.expr | None] = (
+        [key for key, _value in previous_entries] if previous_entries is not None else [None]
+    )
+    values: list[ast.expr] = (
+        [value for _key, value in previous_entries] if previous_entries is not None else [previous]
+    )
     if node.args:
-        keys.append(None)
-        values.append(node.args[0])
+        added_entries = _static_mapping_entries(node.args[0], definitions)
+        if added_entries is None:
+            keys.append(None)
+            values.append(node.args[0])
+        else:
+            keys.extend(key for key, _value in added_entries)
+            values.extend(value for _key, value in added_entries)
     for keyword in node.keywords:
         if keyword.arg is None:
             return None
@@ -2942,7 +3069,11 @@ def _assignment_map(
             record_unknown_with_contents(root_name)
             return
         if len(aliases) == 1 and len(previous) == 1 and isinstance(previous[0], ast.expr):
-            replacement = _closed_mutation_expression(node, previous[0])
+            current: AssignmentMap = {
+                **(inherited_assignments or {}),
+                **{name: tuple(values) for name, values in grouped.items()},
+            }
+            replacement = _closed_mutation_expression(node, previous[0], current)
             if replacement is not None:
                 for name, candidates in tuple(grouped.items()):
                     grouped[name] = [
@@ -6685,7 +6816,24 @@ def _qualified_assignment_references(
                 qualified_assignments,
             )
     if isinstance(node, ast.Subscript):
-        return _qualified_reference_provenance(
+        selected = _qualified_selected_reference_expressions(
+            node,
+            assignments,
+            qualified_assignments,
+            seen=seen,
+        )
+        selected_references = _merge_provenance(
+            _qualified_assignment_references(
+                candidate,
+                assignments,
+                qualified_assignments,
+                seen=seen,
+            )
+            for candidate in selected.values
+        )
+        if selected.state is _ProvenanceState.KNOWN:
+            return selected_references
+        namespace_reference = _qualified_reference_provenance(
             _qualified_namespace_modules(
                 node.value,
                 assignments,
@@ -6697,6 +6845,13 @@ def _qualified_assignment_references(
                 qualified_assignments,
             ),
             qualified_assignments,
+        )
+        if namespace_reference.state is not _ProvenanceState.IRRELEVANT:
+            return namespace_reference
+        return (
+            _unresolved_provenance(selected_references.values)
+            if selected.state is _ProvenanceState.UNRESOLVED
+            else selected_references
         )
     if isinstance(node, ast.Call) and len(node.args) in {1, 2} and not node.keywords:
         getter_reference = _qualified_reference_provenance(
@@ -9143,11 +9298,17 @@ def _module_assignment_registry(
                             mutated.update(_loaded_root_names(actual[0]) & parameters)
             return mutated
 
-        def apply_callback_mutations(node: ast.Call, state: AssignmentMap) -> None:
+        def apply_callback_mutations(
+            node: ast.Call,
+            state: AssignmentMap,
+            *,
+            infer_unrecognized: bool,
+        ) -> None:
             callback, iterables, supplied_positional_count, executes_protocol = _executed_callback(
                 node, state
             )
-            if callback is None:
+            recognized_callback = callback is not None
+            if callback is None and infer_unrecognized:
                 callback = next(
                     (
                         argument
@@ -9166,7 +9327,7 @@ def _module_assignment_registry(
                     )
                     supplied_positional_count = 0
                     executes_protocol = True
-            protocol_values = (*iterables, *((callback,) if callback is not None else ()))
+            protocol_values = iterables
             if executes_protocol and any(
                 not _known_protocol_inert_expression(value, state) for value in protocol_values
             ):
@@ -9237,28 +9398,39 @@ def _module_assignment_registry(
                 ):
                     bind_unknown_with_contents(root, callback_assignments)
                 mutates_inputs = bool(mutated_parameters)
-            elif (
-                isinstance(callback, ast.Name)
-                and (called := resolve_module_callback(callback.id, state)) is not None
-            ):
-                _, called_assignments = callback_state(called, state)
-                for captured_root in _mutated_free_bindings(called, called_assignments):
-                    if captured_root in called_assignments:
-                        bind_unknown_with_contents(captured_root, called_assignments)
-                mutated_parameters = resolved_module_callback_mutated_parameters(
-                    called,
-                    called_assignments,
-                )
-                for root in _default_mutation_roots(
-                    called,
-                    mutated_parameters,
-                    supplied_positional_count,
-                    called_assignments,
-                ):
-                    bind_unknown_with_contents(root, called_assignments)
-                mutates_inputs = bool(mutated_parameters)
             else:
-                bind_all_current_objects(state)
+                resolved_callbacks = callback_bindings_for_expression(callback, state)
+                if recognized_callback:
+                    callable_provenance = _qualified_callable_provenance(
+                        callback,
+                        state,
+                        expression_qualified_assignments(callback, state),
+                        inherited_module=module_name,
+                    )
+                    if callable_provenance.state is _ProvenanceState.UNRESOLVED:
+                        invalidate_class_references(callback, state)
+                        bind_all_current_objects(state)
+                if not resolved_callbacks:
+                    bind_all_current_objects(state)
+                else:
+                    mutates_inputs = False
+                    for called, _origin, implicit_positional_count in resolved_callbacks:
+                        _, called_assignments = callback_state(called, state)
+                        for captured_root in _mutated_free_bindings(called, called_assignments):
+                            if captured_root in called_assignments:
+                                bind_unknown_with_contents(captured_root, called_assignments)
+                        mutated_parameters = resolved_module_callback_mutated_parameters(
+                            called,
+                            called_assignments,
+                        )
+                        for root in _default_mutation_roots(
+                            called,
+                            mutated_parameters,
+                            supplied_positional_count + implicit_positional_count,
+                            called_assignments,
+                        ):
+                            bind_unknown_with_contents(root, called_assignments)
+                        mutates_inputs = mutates_inputs or bool(mutated_parameters)
             if mutates_inputs:
                 for iterable in iterables:
                     for root in _reachable_assignment_roots(iterable, state):
@@ -9275,7 +9447,7 @@ def _module_assignment_registry(
                 bind_unknown_with_contents(root_name, state)
                 return
             if len(aliases) == 1 and len(previous) == 1 and isinstance(previous[0], ast.expr):
-                replacement = _closed_mutation_expression(node, previous[0])
+                replacement = _closed_mutation_expression(node, previous[0], state)
                 if replacement is not None:
                     for name, candidates in tuple(state.items()):
                         state[name] = tuple(
@@ -9462,13 +9634,12 @@ def _module_assignment_registry(
                                 *(keyword.value for keyword in candidate.keywords),
                             ):
                                 invalidate_class_references(argument, state)
-                        if (
-                            root_name is None
-                            and not exact_assignment_accessor
-                            and not exact_assignment_lookup
-                            and not known_local_container_receiver
-                        ):
-                            apply_callback_mutations(candidate, state)
+                        if not exact_assignment_accessor and not exact_assignment_lookup:
+                            apply_callback_mutations(
+                                candidate,
+                                state,
+                                infer_unrecognized=not known_local_container_receiver,
+                            )
                         resolved_constructor = resolve_module_class(candidate.func, state)
                         local_method_owner = (
                             resolve_module_class(candidate.func.value, state)

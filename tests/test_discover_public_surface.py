@@ -836,14 +836,31 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
     )
     reference_state: scanner.AssignmentMap = {
         "refs": (scanner._ImportBinding(module="package.refs"),),
+        "target": (scanner._ImportBinding(module="package.owner"),),
     }
-    reference_registry = {"package.refs": scanner._module_assignment_registry((refs,))[refs.module]}
+    reference_registry = scanner._module_assignment_registry((refs, owner))
+    known_selected_reference_expressions = (
+        "[refs.MISSING_ITEMS, target.Holder][1]",
+        "{**refs.MISSING_ITEMS, 'x': target.Holder}['x']",
+    )
+    for source in known_selected_reference_expressions:
+        expression = ast.parse(source, mode="eval").body
+        provenance = scanner._qualified_assignment_references(
+            expression,
+            reference_state,
+            reference_registry,
+        )
+        assert provenance.state is scanner._ProvenanceState.KNOWN, source
+        assert provenance.values == {("package.owner", "Holder")}, source
     unresolved_reference_expressions = (
         "getattr(refs, 'MISSING')",
         "vars(refs)['MISSING']",
         "refs.__getattribute__('MISSING')",
         "refs.MISSING_CALLBACK()",
         "[refs.MISSING_CALLBACK][0]()",
+        "[*refs.MISSING_ITEMS][0]",
+        "{**refs.MISSING_ITEMS}['x']",
+        "{'x': target.Holder, **refs.MISSING_ITEMS}['x']",
     )
     for source in unresolved_reference_expressions:
         expression = ast.parse(source, mode="eval").body
@@ -890,6 +907,92 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         mutator = module(source, "package.m_mutator")
         registry = scanner._module_assignment_registry((mutator, late, owner, early))
         assert invalidation_flags(registry, *broad_keys) == (False, False, False, False), source
+
+    rooted_callback_sources = (
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "items.sort(key=mutate)\n",
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "callback = mutate\n"
+        "items.sort(key=callback)\n",
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "def callback():\n"
+        "    return mutate\n"
+        "items.sort(key=callback())\n",
+    )
+    for source in rooted_callback_sources:
+        mutator = module(source, "package.m_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (False, True, True, False), source
+
+    unresolved_callback_source = (
+        "from external import callback as unknown_callback\n"
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "callback = mutate if target.Holder else unknown_callback\n"
+        "items.sort(key=callback)\n"
+    )
+    mutator = module(unresolved_callback_source, "package.m_mutator")
+    registry = scanner._module_assignment_registry((mutator, late, owner, early))
+    assert invalidation_flags(registry, *broad_keys) == (True, True, True, True)
+
+    closed_container_selection_sources = (
+        "import package.owner as target\n"
+        "items = []\n"
+        "items.append(target.Holder)\n"
+        "items[0].changed = 1\n",
+        "import package.owner as target\n"
+        "items = []\n"
+        "items.extend([target.Holder])\n"
+        "items[0].changed = 1\n",
+        "import package.owner as target\n"
+        "added = [target.Holder]\n"
+        "items = []\n"
+        "items.extend(added)\n"
+        "alias = items\n"
+        "alias[0].changed = 1\n",
+        "import package.owner as target\nitems = [*[], target.Holder]\nitems[0].changed = 1\n",
+        "import package.owner as target\n"
+        "items = {}\n"
+        "items.update({'x': target.Holder})\n"
+        "items['x'].changed = 1\n",
+        "import package.owner as target\n"
+        "added = {'x': target.Holder}\n"
+        "items = {}\n"
+        "items.update(added)\n"
+        "alias = items\n"
+        "alias['x'].changed = 1\n",
+        "import package.owner as target\n"
+        "items = {**{}, 'x': target.Holder}\n"
+        "items['x'].changed = 1\n",
+    )
+    for source in closed_container_selection_sources:
+        mutator = module(source, "package.m_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (False, True, False, False), source
+
+    unresolved_container_selection_sources = (
+        "import package.refs as refs\nitems = [*refs.MISSING_ITEMS]\nitems[0].changed = 1\n",
+        "import package.refs as refs\nitems = {**refs.MISSING_ITEMS}\nitems['x'].changed = 1\n",
+    )
+    for source in unresolved_container_selection_sources:
+        mutator = module(source, "package.m_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, refs, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (True, True, True, True), source
 
     closed_helper_source = (
         "import package.helper as helper\n"
