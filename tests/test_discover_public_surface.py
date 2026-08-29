@@ -418,6 +418,8 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         'UNKNOWN_IMPORTED_NAMESPACE_CLASS = NAMESPACE["Holder"]\n'
         'UNKNOWN_IMPORTED_CONTAINER_CLASS = [NAMESPACE][0]["Holder"]\n'
         "UNKNOWN_QUALIFIED_CLASS = bridge.UNKNOWN_CLASSES[0]\n"
+        "KNOWN_QUALIFIED_REFERENCE = bridge.Holder\n"
+        "MISSING_QUALIFIED_REFERENCE = bridge.MISSING\n"
         'UNKNOWN_IMPORTED_GETTER_CLASS = lookup("Holder")\n'
         'UNKNOWN_IMPORTED_ACCESSOR_CLASS = EXTERNAL_ACCESS("__globals__")["Holder"]\n'
         'UNKNOWN_CALL_NS = EXTERNAL_ACCESS(marker, "__globals__")\n'
@@ -569,6 +571,39 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         assignments,
     )
     assert qualified_selection.state is scanner._ProvenanceState.UNRESOLVED
+    known_reference = scanner._qualified_assignment_references(
+        expressions["KNOWN_QUALIFIED_REFERENCE"],
+        probe_assignments,
+        assignments,
+    )
+    assert known_reference.state is scanner._ProvenanceState.KNOWN
+    assert known_reference.values == {("package.bridge", "Holder")}
+    missing_reference = scanner._qualified_assignment_references(
+        expressions["MISSING_QUALIFIED_REFERENCE"],
+        probe_assignments,
+        assignments,
+    )
+    assert missing_reference.state is scanner._ProvenanceState.UNRESOLVED
+    assert missing_reference.values == {("package.bridge", "MISSING")}
+    external_state: scanner.AssignmentMap = {
+        "time": (scanner._ImportBinding(module="time"),),
+    }
+    external_reference = scanner._qualified_assignment_references(
+        ast.parse("time.sleep", mode="eval").body,
+        external_state,
+        {},
+    )
+    assert external_reference.state is scanner._ProvenanceState.UNRESOLVED
+    assert scanner._qualified_references_are_governed_callables(
+        external_reference,
+        {},
+        frozenset(),
+    )
+    assert not scanner._qualified_references_are_governed_callables(
+        missing_reference,
+        assignments,
+        frozenset(),
+    )
 
     _assert_provenance_scope_survives_qualified_aliases_and_wrappers()
 
@@ -649,6 +684,19 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         "ACCESS = FIRST\n"
         "Alias = ACCESS(marker, '__globals__')['Holder']\n"
         "Alias.changed = 1\n",
+        "import builtins as b\n"
+        "import package.owner as target\n\n"
+        "ACCESSORS = [b.setattr]\n"
+        "ACCESSORS[0](target.Holder, 'changed', 1)\n",
+        "import builtins as b\n"
+        "import package.owner as target\n\n"
+        "def accessor():\n"
+        "    return b.setattr\n\n"
+        "accessor()(target.Holder, 'changed', 1)\n",
+        "from package.owner import marker\n"
+        "ACCESSORS = [object.__getattribute__]\n"
+        "Alias = ACCESSORS[0](marker, '__globals__')['Holder']\n"
+        "Alias.changed = 1\n",
     )
     owner_orders = (
         lambda mutator: (owner, bridge, mutator),
@@ -689,6 +737,46 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
             registry = scanner._module_assignment_registry(order(mutator))
             assert invalidation_flags(registry, *owner_keys) == (True, False, False), source
 
+    shadowed_reflection_sources = (
+        "import package.owner as target\n\n"
+        "def getattr(value, name):\n"
+        "    return value\n\n"
+        "Alias = getattr(vars(target), 'not_reflection')['Holder']\n"
+        "Alias.changed = 1\n",
+        "import package.owner as target\n\n"
+        "def getattr(value, name):\n"
+        "    return value\n\n"
+        "ACCESS = getattr\n"
+        "Alias = ACCESS(vars(target), 'not_reflection')['Holder']\n"
+        "Alias.changed = 1\n",
+    )
+    for source in shadowed_reflection_sources:
+        for order in owner_orders:
+            mutator = module(source, "package.mutator")
+            registry = scanner._module_assignment_registry(order(mutator))
+            assert invalidation_flags(registry, *owner_keys) == (True, False, False), source
+
+    accessors = module(
+        "import builtins as b\n"
+        "from builtins import setattr as ACCESS\n\n"
+        "ACCESSORS = (b.setattr,)\n\n"
+        "def accessor():\n"
+        "    return b.setattr\n",
+        "package.accessors",
+    )
+    reexported_accessor_sources = (
+        "accessors.ACCESS(target.Holder, 'changed', 1)\n",
+        "accessors.ACCESSORS[0](target.Holder, 'changed', 1)\n",
+        "accessors.accessor()(target.Holder, 'changed', 1)\n",
+    )
+    for invocation in reexported_accessor_sources:
+        mutator = module(
+            f"import package.accessors as accessors\nimport package.owner as target\n{invocation}",
+            "package.mutator",
+        )
+        registry = scanner._module_assignment_registry((mutator, accessors, bridge, owner))
+        assert invalidation_flags(registry, *owner_keys) == (True, False, False), invocation
+
     helper = module(
         "def change(cls):\n    cls.changed = 1\nCALLBACKS = (change,)\n",
         "package.helper",
@@ -716,6 +804,70 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         mutator = module(source, "package.mutator")
         registry = scanner._module_assignment_registry((mutator, reexport, helper, bridge, owner))
         assert invalidation_flags(registry, *owner_keys) == (True, False, False), source
+
+    early = module("class Early:\n    ITEMS = []\n", "package._victim")
+    late = module("class Late:\n    ITEMS = []\n", "package.z_victim")
+    refs = module("KNOWN = 1\n", "package.refs")
+    broad_keys = (
+        ("package._victim", "Early"),
+        ("package.owner", "Holder"),
+        ("package.owner", "Sibling"),
+        ("package.z_victim", "Late"),
+    )
+    reference_state: scanner.AssignmentMap = {
+        "refs": (scanner._ImportBinding(module="package.refs"),),
+    }
+    reference_registry = {"package.refs": scanner._module_assignment_registry((refs,))[refs.module]}
+    unresolved_reference_expressions = (
+        "getattr(refs, 'MISSING')",
+        "vars(refs)['MISSING']",
+        "refs.__getattribute__('MISSING')",
+        "refs.MISSING_CALLBACK()",
+        "[refs.MISSING_CALLBACK][0]()",
+    )
+    for source in unresolved_reference_expressions:
+        expression = ast.parse(source, mode="eval").body
+        provenance = scanner._qualified_assignment_references(
+            expression,
+            reference_state,
+            reference_registry,
+        )
+        assert provenance.state is scanner._ProvenanceState.UNRESOLVED, source
+
+    unresolved_receiver_sources = (
+        "import package.refs as refs\ngetattr(refs, 'MISSING').append(1)\n",
+        "import package.refs as refs\nACCESS = getattr\nACCESS(refs, 'MISSING').append(1)\n",
+        "import package.refs as refs\n"
+        "def missing_name():\n"
+        "    return 'MISSING'\n"
+        "getattr(refs, missing_name()).append(1)\n",
+        "import package.refs as refs\nvars(refs)['MISSING'].append(1)\n",
+        "import package.refs as refs\n"
+        "ACCESS = refs.__getattribute__\n"
+        "ACCESS('MISSING').append(1)\n",
+        "import package.refs as refs\nrefs.MISSING_CALLBACK().append(1)\n",
+        "import package.refs as refs\nCALLBACK = refs.MISSING_CALLBACK\nCALLBACK().append(1)\n",
+        "import package.refs as refs\n[refs.MISSING_CALLBACK][0]().append(1)\n",
+        "import package.refs as refs\n"
+        "def missing_value():\n"
+        "    return refs.MISSING\n"
+        "missing_value().append(1)\n",
+    )
+    for source in unresolved_receiver_sources:
+        mutator = module(source, "package.a_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, refs, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (True, True, True, True), source
+
+    closed_helper_source = (
+        "import package.helper as helper\n"
+        "import package.owner as target\n\n"
+        "def callbacks():\n"
+        "    return helper.CALLBACKS\n\n"
+        "callbacks()[0](target.Holder)\n"
+    )
+    mutator = module(closed_helper_source, "package.a_mutator")
+    registry = scanner._module_assignment_registry((mutator, late, helper, owner, early))
+    assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
 
     box = module(
         "from .owner import Holder\nBOX = [Holder]\n",
@@ -767,6 +919,18 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         result = scanner._qualified_module_name_values(expressions[name], state, assignments)
         assert result.state is scanner._ProvenanceState.KNOWN, name
         assert result.values == {"package.owner"}, name
+
+    module_name_helper = module(
+        "from importlib import import_module\n"
+        "import package.names as names\n\n"
+        "def module_name():\n"
+        "    return names.MODULE_NAME\n\n"
+        "Alias = vars(import_module(module_name()))['Holder']\n"
+        "Alias.changed = 1\n",
+        "package.a_mutator",
+    )
+    registry = scanner._module_assignment_registry((module_name_helper, late, names, owner, early))
+    assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
 
 
 def test_nested_manifest_aliases_helpers_and_sequences_are_complete() -> None:

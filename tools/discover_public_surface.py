@@ -4166,6 +4166,11 @@ def _qualified_selected_reference_expressions(
     seen = seen | {marker}
     selected = _selected_reference_expression(node, assignments)
     if selected is not None:
+        setattr(
+            selected,
+            ASSIGNMENT_ORIGIN_SCOPE_ATTRIBUTE,
+            dict(assignments),
+        )
         return _known_provenance((selected,))
 
     def select_candidate(
@@ -4314,27 +4319,115 @@ def _exact_assignment_accessor(
     if marker in seen:
         return False
     seen = seen | {marker}
+    if isinstance(node, _ImportBinding):
+        return node.module == module and node.symbol == name
     if isinstance(node, ast.Name):
         candidates = assignments.get(node.id, ())
         if not candidates:
             return module == "builtins" and node.id == name
         if len(candidates) != 1:
             return False
-        candidate = candidates[0]
-        if isinstance(candidate, _ImportBinding):
-            return candidate.module == module and candidate.symbol == name
         return _exact_assignment_accessor(
-            candidate,
+            candidates[0],
             module,
             name,
             assignments,
             qualified_assignments,
             seen=seen,
         )
-    return (
-        isinstance(node, ast.Attribute)
-        and node.attr == name
-        and _imported_module_expression(node.value, assignments) == module
+    if isinstance(node, ast.Attribute):
+        if node.attr == name and _imported_module_expression(node.value, assignments) == module:
+            return True
+        owners = _qualified_imported_modules(
+            node.value,
+            assignments,
+            qualified_assignments,
+            seen=seen,
+        )
+        if owners.state is not _ProvenanceState.KNOWN or not owners.values:
+            return False
+        candidates: list[tuple[ast.AST, AssignmentMap]] = []
+        for owner in owners.values:
+            owner_state = qualified_assignments.get(owner)
+            if owner_state is None:
+                return False
+            owner_candidates = owner_state.get(node.attr, ())
+            if not owner_candidates:
+                return False
+            candidates.extend((candidate, owner_state) for candidate in owner_candidates)
+        return bool(candidates) and all(
+            _exact_assignment_accessor(
+                candidate,
+                module,
+                name,
+                candidate_assignments,
+                qualified_assignments,
+                seen=seen,
+            )
+            for candidate, candidate_assignments in candidates
+        )
+    if isinstance(node, ast.Subscript):
+        selected = _qualified_selected_reference_expressions(
+            node,
+            assignments,
+            qualified_assignments,
+            seen=seen,
+        )
+        return (
+            selected.state is _ProvenanceState.KNOWN
+            and bool(selected.values)
+            and all(
+                _exact_assignment_accessor(
+                    candidate,
+                    module,
+                    name,
+                    assignments,
+                    qualified_assignments,
+                    seen=seen,
+                )
+                for candidate in selected.values
+            )
+        )
+    if isinstance(node, ast.Call):
+        returned = _closed_call_returns(
+            node,
+            assignments,
+            qualified_assignments,
+            seen=seen,
+        )
+        return (
+            returned.state is _ProvenanceState.KNOWN
+            and bool(returned.values)
+            and all(
+                _exact_assignment_accessor(
+                    value,
+                    module,
+                    name,
+                    value_assignments,
+                    qualified_assignments,
+                    seen=seen,
+                )
+                for value, value_assignments, _module in returned.values
+            )
+        )
+    if isinstance(node, ast.IfExp):
+        branches = (node.body, node.orelse)
+    elif isinstance(node, ast.BoolOp):
+        branches = tuple(node.values)
+    elif isinstance(node, ast.NamedExpr):
+        branches = (node.value,)
+    else:
+        branches = ()
+    return bool(branches) and all(
+        _exact_assignment_accessor(
+            branch,
+            module,
+            name,
+            assignments,
+            qualified_assignments,
+            seen=seen,
+        )
+        for branch in branches
     )
 
 
@@ -4343,6 +4436,8 @@ def _exact_builtin_assignment_accessor(
     name: str,
     assignments: AssignmentMap,
     qualified_assignments: dict[str, AssignmentMap],
+    *,
+    seen: frozenset[tuple[int, int]] = frozenset(),
 ) -> bool:
     return _exact_assignment_accessor(
         node,
@@ -4350,6 +4445,7 @@ def _exact_builtin_assignment_accessor(
         name,
         assignments,
         qualified_assignments,
+        seen=seen,
     )
 
 
@@ -4383,6 +4479,7 @@ def _exact_builtin_bound_attribute_accessor(
             owner,
             assignments,
             qualified_assignments,
+            seen=seen,
         )
     if isinstance(node, ast.Subscript):
         selected = _qualified_selected_reference_expressions(
@@ -5141,10 +5238,7 @@ def _qualified_reflected_object_provenance(
                 qualified_assignments,
                 seen=seen,
             )
-            reflection_syntax = (
-                isinstance(node.func, ast.Attribute) and node.func.attr == "__getattribute__"
-            ) or (isinstance(node.func, ast.Name) and node.func.id == "getattr")
-            if reflection_syntax or (
+            if (
                 callable_provenance.state is _ProvenanceState.UNRESOLVED
                 and attribute in possible_names.values
             ):
@@ -5320,6 +5414,7 @@ def _qualified_imported_modules(
             "import_module",
             assignments,
             qualified_assignments,
+            seen=seen,
         )
     ):
         package = (
@@ -5344,6 +5439,7 @@ def _qualified_imported_modules(
             "__import__",
             assignments,
             qualified_assignments,
+            seen=seen,
         )
     ):
         return _resolved_module_names(
@@ -5362,6 +5458,7 @@ def _qualified_imported_modules(
             "getmodule",
             assignments,
             qualified_assignments,
+            seen=seen,
         )
     ):
         return _qualified_bound_object_provenance(
@@ -5405,6 +5502,7 @@ def _qualified_imported_modules(
             "getitem",
             assignments,
             qualified_assignments,
+            seen=seen,
         )
         and _module_registry_expression(
             node.args[0],
@@ -6315,21 +6413,10 @@ def _known_non_aliasing_default_value(
             assignments,
             qualified_assignments,
         )
-        if (
-            references.state is _ProvenanceState.KNOWN
-            and references.values
-            and references.values <= known_qualified_callables | KNOWN_EXTERNAL_CALLABLE_OBJECTS
-            and all(
-                module not in qualified_assignments
-                or (
-                    bool(qualified_assignments[module].get(symbol, ()))
-                    and all(
-                        isinstance(candidate, (_ImportBinding, _UnknownBinding))
-                        for candidate in qualified_assignments[module].get(symbol, ())
-                    )
-                )
-                for module, symbol in references.values
-            )
+        if _qualified_references_are_governed_callables(
+            references,
+            qualified_assignments,
+            known_qualified_callables,
         ):
             return True
         qualified_candidates = qualified_values(node)
@@ -6419,13 +6506,44 @@ def _known_non_aliasing_default_value(
 def _qualified_reference_provenance(
     modules: _Provenance[str],
     symbols: _Provenance[str],
+    qualified_assignments: dict[str, AssignmentMap],
 ) -> _Provenance[tuple[str, str]]:
     if modules.state is _ProvenanceState.IRRELEVANT or symbols.state is _ProvenanceState.IRRELEVANT:
         return _irrelevant_provenance()
     references = {(module, symbol) for module in modules.values for symbol in symbols.values}
-    if modules.state is _ProvenanceState.UNRESOLVED or symbols.state is _ProvenanceState.UNRESOLVED:
+    if (
+        modules.state is _ProvenanceState.UNRESOLVED
+        or symbols.state is _ProvenanceState.UNRESOLVED
+        or any(
+            module not in qualified_assignments or symbol not in qualified_assignments[module]
+            for module, symbol in references
+        )
+    ):
         return _unresolved_provenance(references)
     return _known_provenance(references)
+
+
+def _qualified_references_are_governed_callables(
+    references: _Provenance[tuple[str, str]],
+    qualified_assignments: dict[str, AssignmentMap],
+    known_qualified_callables: frozenset[tuple[str, str]],
+) -> bool:
+    return (
+        references.state is not _ProvenanceState.IRRELEVANT
+        and bool(references.values)
+        and references.values <= known_qualified_callables | KNOWN_EXTERNAL_CALLABLE_OBJECTS
+        and all(
+            module not in qualified_assignments
+            or (
+                bool(qualified_assignments[module].get(symbol, ()))
+                and all(
+                    isinstance(candidate, (_ImportBinding, _UnknownBinding))
+                    for candidate in qualified_assignments[module].get(symbol, ())
+                )
+            )
+            for module, symbol in references.values
+        )
+    )
 
 
 def _qualified_assignment_references(
@@ -6448,6 +6566,7 @@ def _qualified_assignment_references(
                 qualified_assignments,
             ),
             _known_provenance((node.attr,)),
+            qualified_assignments,
         )
     if (
         isinstance(node, ast.Call)
@@ -6471,6 +6590,7 @@ def _qualified_assignment_references(
                 assignments,
                 qualified_assignments,
             ),
+            qualified_assignments,
         )
     if (
         isinstance(node, ast.Call)
@@ -6495,6 +6615,7 @@ def _qualified_assignment_references(
                 assignments,
                 qualified_assignments,
             ),
+            qualified_assignments,
         )
     if (
         isinstance(node, ast.Call)
@@ -6539,6 +6660,7 @@ def _qualified_assignment_references(
                     qualified_assignments,
                 ),
                 _known_provenance(selected_names),
+                qualified_assignments,
             )
     if isinstance(node, ast.Subscript):
         return _qualified_reference_provenance(
@@ -6552,6 +6674,7 @@ def _qualified_assignment_references(
                 assignments,
                 qualified_assignments,
             ),
+            qualified_assignments,
         )
     if isinstance(node, ast.Call) and len(node.args) in {1, 2} and not node.keywords:
         getter_reference = _qualified_reference_provenance(
@@ -6565,6 +6688,7 @@ def _qualified_assignment_references(
                 assignments,
                 qualified_assignments,
             ),
+            qualified_assignments,
         )
         if getter_reference.state is not _ProvenanceState.IRRELEVANT:
             return getter_reference
@@ -6724,7 +6848,13 @@ def _origin_expression_aliases(
                 candidate_scope,
                 qualified_origin_assignments,
             )
-            if references.state is _ProvenanceState.UNRESOLVED:
+            if references.state is _ProvenanceState.UNRESOLVED and not (
+                _qualified_references_are_governed_callables(
+                    references,
+                    qualified_origin_assignments,
+                    known_qualified_callables,
+                )
+            ):
                 _fail(
                     "mutated omitted function default has unresolved qualified "
                     f"provenance: {ast.unparse(candidate)}"
@@ -7819,18 +7949,57 @@ def _module_assignment_registry(
             state: AssignmentMap,
         ) -> dict[str, AssignmentMap]:
             qualified = {**resolved, **resolving}
-            scoped_state = _assignment_origin_scope(value, state, qualified)
-            for root in _loaded_root_names(value):
-                for binding in scoped_state.get(root, ()):
-                    if (
-                        isinstance(binding, _ImportBinding)
-                        and binding.module in modules_by_name
-                        and binding.module not in qualified
-                    ):
-                        qualified[binding.module] = resolve(
-                            binding.module,
-                            seen | {module_name},
-                        )
+            pending: list[tuple[ast.AST, AssignmentMap]] = [(value, state)]
+            traversed: set[tuple[int, int]] = set()
+            while pending:
+                candidate, inherited_state = pending.pop()
+                scoped_state = _assignment_origin_scope(
+                    candidate,
+                    inherited_state,
+                    qualified,
+                )
+                marker = (id(candidate), id(scoped_state))
+                if marker in traversed:
+                    continue
+                traversed.add(marker)
+                for root in _loaded_root_names(candidate):
+                    for binding in scoped_state.get(root, ()):
+                        if isinstance(binding, _ImportBinding):
+                            if binding.module not in modules_by_name:
+                                continue
+                            imported_state = qualified.get(binding.module)
+                            if imported_state is None:
+                                imported_state = resolve(
+                                    binding.module,
+                                    seen | {module_name},
+                                )
+                                qualified[binding.module] = imported_state
+                            if binding.symbol is not None:
+                                pending.extend(
+                                    (imported, imported_state)
+                                    for imported in imported_state.get(binding.symbol, ())
+                                )
+                            continue
+                        if isinstance(binding, _FunctionBinding):
+                            called_state = getattr(
+                                binding.node,
+                                FUNCTION_DEFINITION_ASSIGNMENTS_ATTRIBUTE,
+                                scoped_state,
+                            )
+                            returned_values = (
+                                (binding.node.body,)
+                                if isinstance(binding.node, ast.Lambda)
+                                else tuple(
+                                    returned.value
+                                    for returned in _lexical_nodes(binding.node)
+                                    if isinstance(returned, ast.Return)
+                                    and returned.value is not None
+                                )
+                            )
+                            pending.extend((returned, called_state) for returned in returned_values)
+                            continue
+                        if isinstance(binding, ast.expr):
+                            pending.append((binding, scoped_state))
             return qualified
 
         def callback_call_arguments(
@@ -9173,6 +9342,11 @@ def _module_assignment_registry(
                             state,
                             candidate_qualified_assignments,
                         )
+                        imported_module_provenance = _qualified_imported_modules(
+                            candidate,
+                            state,
+                            candidate_qualified_assignments,
+                        )
                         exact_assignment_accessor = any(
                             _exact_builtin_assignment_accessor(
                                 candidate.func,
@@ -9188,8 +9362,14 @@ def _module_assignment_registry(
                                 "vars",
                             )
                         ) or (
-                            namespace_provenance.state is _ProvenanceState.KNOWN
-                            and bool(namespace_provenance.values)
+                            any(
+                                provenance.state is _ProvenanceState.KNOWN
+                                and bool(provenance.values)
+                                for provenance in (
+                                    namespace_provenance,
+                                    imported_module_provenance,
+                                )
+                            )
                         )
                         assignment_references = _qualified_assignment_references(
                             candidate,
@@ -9206,7 +9386,10 @@ def _module_assignment_registry(
                         )
                         root_name = _mutating_call_root(candidate)
                         exact_class_receiver = False
-                        if root_name is not None and isinstance(candidate.func, ast.Attribute):
+                        if (
+                            isinstance(candidate.func, ast.Attribute)
+                            and candidate.func.attr in MUTATING_CONTAINER_METHODS
+                        ):
                             receiver = candidate.func.value
                             if isinstance(receiver, ast.Attribute):
                                 exact_class_receiver = exact_class_provenance(
@@ -9463,7 +9646,12 @@ def _module_assignment_registry(
                                         bound_root = _target_root_name(binding.value)
                                         if bound_root is not None:
                                             bind_unknown(bound_root, state)
-                        elif not isinstance(candidate.func, ast.Attribute) and not called_callbacks:
+                        elif (
+                            not isinstance(candidate.func, ast.Attribute)
+                            and not called_callbacks
+                            and not exact_assignment_accessor
+                            and not exact_assignment_lookup
+                        ):
                             for argument in (
                                 *candidate.args,
                                 *(keyword.value for keyword in candidate.keywords),
