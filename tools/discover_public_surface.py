@@ -1585,6 +1585,26 @@ def _known_builtin_container_expression(
         ),
     ):
         return True
+    if isinstance(node, ast.Subscript):
+        selected = _selected_reference_expression(node, definitions)
+        return selected is not None and _known_builtin_container_expression(
+            selected,
+            definitions,
+            seen=seen,
+        )
+    if isinstance(node, ast.IfExp):
+        branches = (node.body, node.orelse)
+    elif isinstance(node, ast.BoolOp):
+        branches = tuple(node.values)
+    elif isinstance(node, ast.NamedExpr):
+        branches = (node.value,)
+    else:
+        branches = ()
+    if branches:
+        return all(
+            _known_builtin_container_expression(branch, definitions, seen=seen)
+            for branch in branches
+        )
     if isinstance(node, ast.Name):
         if node.id in seen:
             return False
@@ -4743,8 +4763,10 @@ def _closed_call_returns(
                 assignments,
             )
         )
-        for parameter, (actual, _supplied) in bound.items():
-            called_state[parameter] = (_snapshot_bound_expression(actual, assignments),)
+        definition_state = dict(called_state)
+        for parameter, (actual, supplied) in bound.items():
+            actual_state = assignments if supplied else definition_state
+            called_state[parameter] = (_snapshot_bound_expression(actual, actual_state),)
         returned_values = (
             (called.body,)
             if isinstance(called, ast.Lambda)
@@ -5238,9 +5260,9 @@ def _qualified_reflected_object_provenance(
                 qualified_assignments,
                 seen=seen,
             )
-            if (
-                callable_provenance.state is _ProvenanceState.UNRESOLVED
-                and attribute in possible_names.values
+            if callable_provenance.state is _ProvenanceState.UNRESOLVED and (
+                possible_names.state is _ProvenanceState.UNRESOLVED
+                or attribute in possible_names.values
             ):
                 return _unresolved_provenance()
         return _irrelevant_provenance()
@@ -7986,6 +8008,14 @@ def _module_assignment_registry(
                                 FUNCTION_DEFINITION_ASSIGNMENTS_ATTRIBUTE,
                                 scoped_state,
                             )
+                            default_values = (
+                                *binding.node.args.defaults,
+                                *(
+                                    default
+                                    for default in binding.node.args.kw_defaults
+                                    if default is not None
+                                ),
+                            )
                             returned_values = (
                                 (binding.node.body,)
                                 if isinstance(binding.node, ast.Lambda)
@@ -7996,6 +8026,7 @@ def _module_assignment_registry(
                                     and returned.value is not None
                                 )
                             )
+                            pending.extend((default, called_state) for default in default_values)
                             pending.extend((returned, called_state) for returned in returned_values)
                             continue
                         if isinstance(binding, ast.expr):
@@ -9385,28 +9416,46 @@ def _module_assignment_registry(
                             state,
                         )
                         root_name = _mutating_call_root(candidate)
+                        mutating_receiver_provenance: _Provenance[_ClassBinding] = (
+                            _irrelevant_provenance()
+                        )
                         exact_class_receiver = False
-                        if (
+                        mutating_container_call = (
                             isinstance(candidate.func, ast.Attribute)
                             and candidate.func.attr in MUTATING_CONTAINER_METHODS
+                        )
+                        if mutating_container_call and isinstance(
+                            candidate.func,
+                            ast.Attribute,
                         ):
                             receiver = candidate.func.value
                             if isinstance(receiver, ast.Attribute):
+                                mutating_receiver_provenance = invalidate_class_references(
+                                    receiver.value,
+                                    state,
+                                )
                                 exact_class_receiver = exact_class_provenance(
-                                    invalidate_class_references(
-                                        receiver.value,
-                                        state,
-                                    )
+                                    mutating_receiver_provenance
                                 )
                             if not exact_class_receiver:
-                                exact_class_receiver = exact_class_provenance(
-                                    invalidate_class_references(
-                                        receiver,
-                                        state,
-                                    )
+                                mutating_receiver_provenance = invalidate_class_references(
+                                    receiver,
+                                    state,
                                 )
+                                exact_class_receiver = exact_class_provenance(
+                                    mutating_receiver_provenance
+                                )
+                        known_local_container_receiver = (
+                            mutating_container_call
+                            and mutating_receiver_provenance.state is _ProvenanceState.IRRELEVANT
+                            and isinstance(candidate.func, ast.Attribute)
+                            and _known_builtin_container_expression(candidate.func.value, state)
+                        )
                         if not (
-                            called_callbacks or exact_assignment_accessor or exact_assignment_lookup
+                            called_callbacks
+                            or exact_assignment_accessor
+                            or exact_assignment_lookup
+                            or known_local_container_receiver
                         ):
                             for argument in (
                                 *candidate.args,
@@ -9417,6 +9466,7 @@ def _module_assignment_registry(
                             root_name is None
                             and not exact_assignment_accessor
                             and not exact_assignment_lookup
+                            and not known_local_container_receiver
                         ):
                             apply_callback_mutations(candidate, state)
                         resolved_constructor = resolve_module_class(candidate.func, state)
@@ -9443,6 +9493,7 @@ def _module_assignment_registry(
                             and not exact_assignment_lookup
                             and not called_callbacks
                             and not known_inert_callable
+                            and not known_local_container_receiver
                         )
                         unresolved_local_callable = unresolved_callable and any(
                             any(
@@ -9495,6 +9546,7 @@ def _module_assignment_registry(
                             and not exact_assignment_lookup
                             and not called_callbacks
                             and not exact_class_receiver
+                            and not known_local_container_receiver
                         ):
                             bind_current_mutable_literals(state)
                             for value in (
@@ -9507,8 +9559,9 @@ def _module_assignment_registry(
                             if not exact_class_receiver:
                                 apply_mutating_call(candidate, root_name, state)
                         elif (
-                            isinstance(candidate.func, ast.Attribute)
-                            and candidate.func.attr in MUTATING_CONTAINER_METHODS
+                            mutating_container_call
+                            and mutating_receiver_provenance.state
+                            is not _ProvenanceState.IRRELEVANT
                         ):
                             for bound_name in tuple(state):
                                 bind_unknown(bound_name, state)
@@ -9543,6 +9596,7 @@ def _module_assignment_registry(
                             and not called_callbacks
                             and not exact_assignment_accessor
                             and not exact_assignment_lookup
+                            and not known_local_container_receiver
                         ):
                             definitions = {
                                 name: tuple(value for value in values if isinstance(value, ast.AST))

@@ -368,6 +368,8 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         "    return reflect\n\n"
         "def local_lookup(name):\n"
         "    return getattr(marker, '__globals__')[name]\n\n"
+        "def passthrough(value, name):\n"
+        "    return value\n\n"
         "KNOWN_CALLABLE = exact_module_name\n"
         "UNKNOWN_CALLABLE = reflect\n"
         "UNKNOWN_ATTRIBUTE_CALLABLE = EXTERNAL_ACCESS.lookup\n"
@@ -423,9 +425,13 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         'UNKNOWN_IMPORTED_GETTER_CLASS = lookup("Holder")\n'
         'UNKNOWN_IMPORTED_ACCESSOR_CLASS = EXTERNAL_ACCESS("__globals__")["Holder"]\n'
         'UNKNOWN_CALL_NS = EXTERNAL_ACCESS(marker, "__globals__")\n'
+        "UNKNOWN_DYNAMIC_CALL_NS = EXTERNAL_ACCESS(marker, attribute_name())\n"
         "UNKNOWN_ATTRIBUTE_ACCESSOR = EXTERNAL_ACCESS.lookup\n"
         "UNKNOWN_UNBOUND_NS = "
         "EXTERNAL_ACCESS.__getattribute__(marker, '__globals__')\n"
+        "UNKNOWN_DYNAMIC_UNBOUND_NS = "
+        "EXTERNAL_ACCESS.__getattribute__(marker, attribute_name())\n"
+        "LOCAL_DYNAMIC_NONREFLECTION = passthrough(marker, attribute_name())\n"
         'UNKNOWN_UNBOUND_CLASS = UNKNOWN_UNBOUND_NS["Holder"]\n',
         path="package/probe.py",
         module="package.probe",
@@ -512,14 +518,21 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
         "UNKNOWN_CONTAINER_NS",
         "UNKNOWN_QUALIFIED_NS",
         "UNKNOWN_CALL_NS",
+        "UNKNOWN_DYNAMIC_CALL_NS",
         "UNKNOWN_UNBOUND_NS",
+        "UNKNOWN_DYNAMIC_UNBOUND_NS",
     ):
         result = scanner._qualified_namespace_modules(
             expressions[name], probe_assignments, assignments
         )
         assert result.state is scanner._ProvenanceState.UNRESOLVED
 
-    for name in ("UNKNOWN_CALL_NS", "UNKNOWN_UNBOUND_NS"):
+    for name in (
+        "UNKNOWN_CALL_NS",
+        "UNKNOWN_DYNAMIC_CALL_NS",
+        "UNKNOWN_UNBOUND_NS",
+        "UNKNOWN_DYNAMIC_UNBOUND_NS",
+    ):
         result = scanner._qualified_reflected_object_provenance(
             expressions[name],
             "__globals__",
@@ -527,6 +540,13 @@ def test_reflection_provenance_has_three_explicit_states() -> None:
             assignments,
         )
         assert result.state is scanner._ProvenanceState.UNRESOLVED
+    local_nonreflection = scanner._qualified_reflected_object_provenance(
+        expressions["LOCAL_DYNAMIC_NONREFLECTION"],
+        "__globals__",
+        probe_assignments,
+        assignments,
+    )
+    assert local_nonreflection.state is scanner._ProvenanceState.IRRELEVANT
     attribute_accessor = scanner._qualified_bound_attribute_accessor_provenance(
         expressions["UNKNOWN_ATTRIBUTE_ACCESSOR"],
         "__getattribute__",
@@ -858,6 +878,19 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         registry = scanner._module_assignment_registry((mutator, late, refs, owner, early))
         assert invalidation_flags(registry, *broad_keys) == (True, True, True, True), source
 
+    local_container_sources = (
+        "items = []\nitems.append(1)\n",
+        "items = []\nalias = items\nalias.append(1)\n",
+        "boxes = [[]]\nboxes[0].append(1)\n",
+        "items = [] if True else []\nitems.append(1)\n",
+        "[].append(1)\n",
+        "import package.owner as target\nitems = []\nitems.append(target.Holder)\n",
+    )
+    for source in local_container_sources:
+        mutator = module(source, "package.m_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (False, False, False, False), source
+
     closed_helper_source = (
         "import package.helper as helper\n"
         "import package.owner as target\n\n"
@@ -867,6 +900,65 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
     )
     mutator = module(closed_helper_source, "package.a_mutator")
     registry = scanner._module_assignment_registry((mutator, late, helper, owner, early))
+    assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
+
+    default_callback_definitions = (
+        "def callbacks(value=helper.CALLBACKS):\n    return value\n",
+        "def callbacks(*, value=helper.CALLBACKS):\n    return value\n",
+        "callbacks = lambda value=helper.CALLBACKS: value\n",
+        "DEFAULTS = [helper.CALLBACKS]\ndef callbacks(value=DEFAULTS[0]):\n    return value\n",
+    )
+    for provider_name in ("package._helper", "package.y_helper"):
+        provider = module(
+            "def change(cls):\n    cls.changed = 1\nCALLBACKS = (change,)\n",
+            provider_name,
+        )
+        for definition in default_callback_definitions:
+            mutator = module(
+                f"import {provider_name} as helper\n"
+                "import package.owner as target\n\n"
+                f"{definition}\n"
+                "callbacks()[0](target.Holder)\n",
+                "package.m_mutator",
+            )
+            registry = scanner._module_assignment_registry((mutator, late, provider, owner, early))
+            assert invalidation_flags(registry, *broad_keys) == (
+                False,
+                True,
+                False,
+                False,
+            ), (provider_name, definition)
+
+    supplied_callback = module(
+        "import package.y_helper as helper\n"
+        "import package.owner as target\n\n"
+        "def callbacks(value):\n"
+        "    return value\n\n"
+        "callbacks(helper.CALLBACKS)[0](target.Holder)\n",
+        "package.m_mutator",
+    )
+    supplied_provider = module(
+        "def change(cls):\n    cls.changed = 1\nCALLBACKS = (change,)\n",
+        "package.y_helper",
+    )
+    registry = scanner._module_assignment_registry(
+        (supplied_callback, late, supplied_provider, owner, early)
+    )
+    assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
+
+    default_accessors = module(
+        "from builtins import setattr as ACCESS\n",
+        "package.y_accessors",
+    )
+    mutator = module(
+        "import package.y_accessors as accessors\n"
+        "import package.owner as target\n\n"
+        "def accessor(value=accessors.ACCESS):\n"
+        "    return value\n\n"
+        "accessor()(target.Holder, 'changed', 1)\n",
+        "package.m_mutator",
+    )
+    registry = scanner._module_assignment_registry((mutator, late, default_accessors, owner, early))
     assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
 
     box = module(
@@ -930,6 +1022,24 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         "package.a_mutator",
     )
     registry = scanner._module_assignment_registry((module_name_helper, late, names, owner, early))
+    assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
+
+    default_names = module(
+        "MODULE_NAME = 'package.owner'\n",
+        "package.y_names",
+    )
+    module_name_default_helper = module(
+        "from importlib import import_module\n"
+        "import package.y_names as names\n\n"
+        "def module_name(value=names.MODULE_NAME):\n"
+        "    return value\n\n"
+        "Alias = vars(import_module(module_name()))['Holder']\n"
+        "Alias.changed = 1\n",
+        "package.m_mutator",
+    )
+    registry = scanner._module_assignment_registry(
+        (module_name_default_helper, late, default_names, owner, early)
+    )
     assert invalidation_flags(registry, *broad_keys) == (False, True, False, False)
 
 

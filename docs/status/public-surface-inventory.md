@@ -9,18 +9,18 @@ hosted-provider, safety, or support claim.
 - Task: `MP2-013` / `MET-78`
 - Materialization: `c60407ff3f8cd4f6f67cfab644425ea88e6fa735439c285bdb4315561df7e471`
 - Owned rows: `10073`
-- Owned rows SHA-256: `821fdf39647133d392c8c56a04a4ffc583a5aef1d9b2e8fadabd93ecf0a12a7e`
-- Functional rows SHA-256: `712a31cee659c0333ef977e581d8e737764df2863978b029891b80be5cf9e55e`
-- Owned profile SHA-256: `2d2938eba05cfebbf9c2a38327590e6e850dd63ea1627081051781ec5420346f`
-- Support profiles SHA-256: `ffc71f38abec00984698f6bab6f2c2265ab74579c64dfa9d38d9d45e2c56fe1d`
+- Owned rows SHA-256: `d0926866ae5811a76d31ca0e49ec361d35c2d91aae9bbc997fa7df9c5a458611`
+- Functional rows SHA-256: `d45ecaa9ae322153b7a5a2ada815baefa490161a847bf39c971193e2c50b991e`
+- Owned profile SHA-256: `bd5a50da6565d08747ff8af21cfc837d3ae5165d4b26ba15518f50fa1a8f97fa`
+- Support profiles SHA-256: `8a0c86592ce360039badf4613dfba5eac86a31b5f3a5833b0e6a5b341fa49e3f`
 - Support disposition: `not_measured`
 
 ## Discovery families
 
 | Family | Rows | Canonical row SHA-256 |
 | --- | ---: | --- |
-| `configs` | 167 | `bcdd85b5d01bb9de51540f3b2510cb323a86c418f48dff796d7f83926fe515f2` |
-| `current_claims` | 309 | `5a955177ef0417ef57988290c053694d79664014c34e8dd742fb633fccb3de21` |
+| `configs` | 167 | `7f9c1ae7118085e7e813639d42839ba3bd13c0a84f9f718e669f66bf170575b0` |
+| `current_claims` | 309 | `f7d1fad97eed595451e00369fc1d8ecd3aa9bf394f37351cd057e907dd0b54f1` |
 | `examples` | 172 | `a048635863f52f43235c227c9cda8e59d005f6f8bf5642ada08fb1f8d0aed594` |
 | `jobs` | 55 | `01d36d91b4128a949daeee308ff4429ec0196e7df516fec4b72e3ab0624ebd9b` |
 | `manifest_keys` | 3580 | `6d8cf4e59ffccd2c1e7e95c2f4bfdda57ab191695b3e4bbec1fbad154db63ae0` |
@@ -28,7 +28,7 @@ hosted-provider, safety, or support claim.
 | `models` | 229 | `5bb6813f69acd7fff5fe6c0e996dec376f3c13cbfeb1640deceabb8cbd6a7f5a` |
 | `proofs` | 322 | `53f3c0ca2b79820cabe475e3cebf757a8ce7cb891c4c65741a0d88a1af28ee2c` |
 | `public_api` | 2286 | `d3325c6496b21dbdcfcc8ebb2791a9a11ebef72e140b074cb962b3ffa8b6d955` |
-| `resources` | 1548 | `314a334727316d9c0ca2db0b2cf458f492a1f9e94f41d9ab5e06979987146c68` |
+| `resources` | 1548 | `37e7bff1f8009c2b8643dc33838d67cebf7847890650eb5ba089936f2d08ec75` |
 | `workflows` | 16 | `63f5a5b3dd308f0263e04a59a485a7bc721eb5bf1ed2d1b1ea5a7ee0784cad03` |
 
 ## Resource facets
