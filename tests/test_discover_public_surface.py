@@ -936,6 +936,129 @@ def _assert_provenance_scope_survives_qualified_aliases_and_wrappers() -> None:
         registry = scanner._module_assignment_registry((mutator, late, owner, early))
         assert invalidation_flags(registry, *broad_keys) == (False, True, True, False), source
 
+    callback_keyword_states: tuple[
+        tuple[str, scanner.AssignmentMap, scanner._ProvenanceState], ...
+    ] = (
+        (
+            "items.sort(**OPTIONS)",
+            {"OPTIONS": (ast.parse("{'key': mutate}", mode="eval").body,)},
+            scanner._ProvenanceState.KNOWN,
+        ),
+        (
+            "items.sort(**OPTIONS)",
+            {"OPTIONS": (ast.parse("{'reverse': True}", mode="eval").body,)},
+            scanner._ProvenanceState.IRRELEVANT,
+        ),
+        (
+            "items.sort(**OPTIONS)",
+            {"OPTIONS": (scanner._UnknownBinding(),)},
+            scanner._ProvenanceState.UNRESOLVED,
+        ),
+        (
+            "items.sort(**OPTIONS)",
+            {
+                "UNKNOWN": (scanner._UnknownBinding(),),
+                "OPTIONS": (ast.parse("{**UNKNOWN, 'key': mutate}", mode="eval").body,),
+            },
+            scanner._ProvenanceState.KNOWN,
+        ),
+        (
+            "items.sort(**OPTIONS)",
+            {
+                "UNKNOWN": (scanner._UnknownBinding(),),
+                "OPTIONS": (ast.parse("{'key': mutate, **UNKNOWN}", mode="eval").body,),
+            },
+            scanner._ProvenanceState.UNRESOLVED,
+        ),
+        (
+            "items.sort(**OPTIONS)",
+            {
+                "BASE": (ast.parse("{'key': mutate}", mode="eval").body,),
+                "OPTIONS": (ast.parse("{**BASE}", mode="eval").body,),
+            },
+            scanner._ProvenanceState.KNOWN,
+        ),
+    )
+    for source, state, expected_state in callback_keyword_states:
+        call = ast.parse(source).body[0].value
+        assert isinstance(call, ast.Call)
+        provenance = scanner._callback_keyword_provenance(call, "key", state)
+        assert provenance.state is expected_state, source
+
+    rooted_callback_mapping_sources = (
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "items.sort(**{'key': mutate})\n",
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "OPTIONS = {'key': mutate}\n"
+        "items.sort(**OPTIONS)\n",
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "def options():\n"
+        "    return {'key': mutate}\n"
+        "items.sort(**options())\n",
+        "import package.owner as target\n"
+        "items = [2, 1]\n"
+        "def mutate(value):\n"
+        "    target.Holder.changed = value\n"
+        "    return value\n"
+        "def callback():\n"
+        "    return mutate\n"
+        "OPTIONS = {'key': callback()}\n"
+        "items.sort(**OPTIONS)\n",
+    )
+    callback_mapping_orders = (
+        lambda mutator: (mutator, late, owner, early),
+        lambda mutator: (early, owner, late, mutator),
+    )
+    for source in rooted_callback_mapping_sources:
+        for order in callback_mapping_orders:
+            mutator = module(source, "package.m_mutator")
+            registry = scanner._module_assignment_registry(order(mutator))
+            assert invalidation_flags(registry, *broad_keys) == (
+                False,
+                True,
+                True,
+                False,
+            ), source
+
+    irrelevant_callback_mapping_sources = (
+        "items = [2, 1]\nitems.sort(**{'reverse': True})\n",
+        "items = [2, 1]\nOPTIONS = {}\nitems.sort(**OPTIONS)\n",
+        "items = [2, 1]\ndef options():\n    return {'key': None}\nitems.sort(**options())\n",
+    )
+    for source in irrelevant_callback_mapping_sources:
+        mutator = module(source, "package.m_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (False, False, False, False), source
+
+    unresolved_callback_mapping_sources = (
+        "from external import OPTIONS\nitems = [2, 1]\nitems.sort(**OPTIONS)\n",
+        "from external import OPTIONS as RAW\n"
+        "items = [2, 1]\n"
+        "OPTIONS = RAW\n"
+        "items.sort(**OPTIONS)\n",
+        "from external import OPTIONS\n"
+        "items = [2, 1]\n"
+        "def options():\n"
+        "    return OPTIONS\n"
+        "items.sort(**options())\n",
+    )
+    for source in unresolved_callback_mapping_sources:
+        mutator = module(source, "package.m_mutator")
+        registry = scanner._module_assignment_registry((mutator, late, owner, early))
+        assert invalidation_flags(registry, *broad_keys) == (True, True, True, True), source
+
     unresolved_callback_source = (
         "from external import callback as unknown_callback\n"
         "import package.owner as target\n"
@@ -1345,6 +1468,8 @@ def test_nested_manifest_aliases_helpers_and_sequences_are_complete() -> None:
             'max([0], key=lambda _: payload.update({"hidden": {"child": 1}}))',
             'min([0], key=lambda _: payload.update({"hidden": {"child": 1}}))',
             'values = [0]; values.sort(key=lambda _: payload.update({"hidden": {"child": 1}}))',
+            'values = [0]; values.sort(**{"key": lambda _: payload.update({"hidden": {"child": 1}})})',
+            'values = [0]; options = {"key": lambda _: payload.update({"hidden": {"child": 1}})}; values.sort(**options)',
             'list(iter(lambda: payload.update({"hidden": {"child": 1}}), None))',
         )
     )

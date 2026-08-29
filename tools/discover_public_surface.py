@@ -24,7 +24,7 @@ import sys
 import tempfile
 import tomllib
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field as dataclass_field
 from enum import Enum
@@ -1294,47 +1294,61 @@ def _static_mapping_selection(
     return _irrelevant_provenance()
 
 
+def _selected_reference_provenance(
+    node: ast.Subscript,
+    definitions: dict[str, tuple[ast.AST, ...]],
+    *,
+    seen: frozenset[str] = frozenset(),
+) -> _Provenance[ast.AST]:
+    container: ast.AST = node.value
+    if isinstance(container, ast.Subscript):
+        selected_container = _selected_reference_provenance(
+            container,
+            definitions,
+            seen=seen,
+        )
+        if selected_container.state is not _ProvenanceState.KNOWN:
+            return selected_container
+        if len(selected_container.values) != 1:
+            return _unresolved_provenance(selected_container.values)
+        container = next(iter(selected_container.values))
+    while isinstance(container, ast.Name):
+        candidates = definitions.get(container.id, ())
+        if container.id in seen or len(candidates) != 1:
+            return _unresolved_provenance()
+        seen = seen | {container.id}
+        container = candidates[0]
+    if isinstance(container, ast.Dict):
+        if not isinstance(node.slice, ast.Constant):
+            return _unresolved_provenance()
+        return _static_mapping_selection(
+            container,
+            node.slice.value,
+            definitions,
+            seen=seen,
+        )
+    sequence_elements = _static_sequence_elements(container, definitions, seen=seen)
+    if sequence_elements is not None:
+        if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
+            return _unresolved_provenance()
+        index = node.slice.value
+        if -len(sequence_elements) <= index < len(sequence_elements):
+            return _known_provenance((sequence_elements[index],))
+        return _irrelevant_provenance()
+    if isinstance(container, (ast.Constant, ast.Set)):
+        return _irrelevant_provenance()
+    return _unresolved_provenance()
+
+
 def _selected_reference_expression(
     node: ast.Subscript,
     definitions: dict[str, tuple[ast.AST, ...]],
     *,
     seen: frozenset[str] = frozenset(),
 ) -> ast.AST | None:
-    container: ast.AST = node.value
-    if isinstance(container, ast.Subscript):
-        selected_container = _selected_reference_expression(
-            container,
-            definitions,
-            seen=seen,
-        )
-        if selected_container is None:
-            return None
-        container = selected_container
-    while isinstance(container, ast.Name):
-        candidates = definitions.get(container.id, ())
-        if container.id in seen or len(candidates) != 1:
-            return None
-        seen = seen | {container.id}
-        container = candidates[0]
-    if isinstance(container, ast.Dict):
-        if not isinstance(node.slice, ast.Constant):
-            return None
-        selection = _static_mapping_selection(
-            container,
-            node.slice.value,
-            definitions,
-            seen=seen,
-        )
-        if selection.state is _ProvenanceState.KNOWN and len(selection.values) == 1:
-            return next(iter(selection.values))
-        return None
-    sequence_elements = _static_sequence_elements(container, definitions, seen=seen)
-    if sequence_elements is not None:
-        if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
-            return None
-        index = node.slice.value
-        if -len(sequence_elements) <= index < len(sequence_elements):
-            return sequence_elements[index]
+    selected = _selected_reference_provenance(node, definitions, seen=seen)
+    if selected.state is _ProvenanceState.KNOWN and len(selected.values) == 1:
+        return next(iter(selected.values))
     return None
 
 
@@ -2557,22 +2571,67 @@ def _may_reference_mutable_literal(
     )
 
 
-def _callback_keyword(node: ast.Call, name: str) -> ast.expr | None:
-    value = next((keyword.value for keyword in node.keywords if keyword.arg == name), None)
-    if isinstance(value, ast.Constant) and value.value is None:
-        return None
-    return value
+def _callback_value_provenance(
+    provenance: _Provenance[ast.AST],
+) -> _Provenance[ast.expr]:
+    values = frozenset(
+        value
+        for value in provenance.values
+        if isinstance(value, ast.expr)
+        and not (isinstance(value, ast.Constant) and value.value is None)
+    )
+    unresolved = provenance.state is _ProvenanceState.UNRESOLVED or any(
+        not isinstance(value, ast.expr) for value in provenance.values
+    )
+    return _unresolved_provenance(values) if unresolved else _known_provenance(values)
+
+
+def _callback_keyword_provenance(
+    node: ast.Call,
+    name: str,
+    assignments: AssignmentMap,
+    *,
+    select_mapping: Callable[[ast.expr, str], _Provenance[ast.AST]] | None = None,
+) -> _Provenance[ast.expr]:
+    results: list[_Provenance[ast.AST]] = [
+        _known_provenance((keyword.value,)) for keyword in node.keywords if keyword.arg == name
+    ]
+    for keyword in node.keywords:
+        if keyword.arg is not None:
+            continue
+        if select_mapping is None:
+            selected = _selected_reference_provenance(
+                ast.Subscript(
+                    value=keyword.value,
+                    slice=ast.Constant(name),
+                    ctx=ast.Load(),
+                ),
+                assignments,
+            )
+        else:
+            selected = select_mapping(keyword.value, name)
+        results.append(selected)
+    return _callback_value_provenance(_merge_provenance(results))
 
 
 def _executed_callback(
     node: ast.Call,
     assignments: AssignmentMap,
-) -> tuple[ast.expr | None, tuple[ast.expr, ...], int, bool]:
+    *,
+    resolve_keyword: Callable[
+        [ast.Call, str, AssignmentMap], _Provenance[ast.expr]
+    ] = _callback_keyword_provenance,
+) -> tuple[_Provenance[ast.expr], tuple[ast.expr, ...], int, bool]:
     dispatcher, receiver, trusted = _callback_dispatcher(node.func, assignments)
     if not trusted:
-        callback = _callback_keyword(node, "key") or _callback_keyword(node, "func")
+        callback = _merge_provenance(
+            (
+                resolve_keyword(node, "key", assignments),
+                resolve_keyword(node, "func", assignments),
+            )
+        )
         if (
-            callback is None
+            callback.state is _ProvenanceState.IRRELEVANT
             and dispatcher
             in {
                 "dropwhile",
@@ -2585,13 +2644,19 @@ def _executed_callback(
             }
             and node.args
         ):
-            callback = node.args[0]
-        if callback is None and dispatcher in {"accumulate", "groupby"} and len(node.args) >= 2:
-            callback = node.args[1]
-        if callback is None and dispatcher == "iter" and len(node.args) == 2:
-            callback = node.args[0]
-        if isinstance(callback, ast.Constant) and callback.value is None:
-            callback = None
+            callback = _callback_value_provenance(_known_provenance((node.args[0],)))
+        if (
+            callback.state is _ProvenanceState.IRRELEVANT
+            and dispatcher in {"accumulate", "groupby"}
+            and len(node.args) >= 2
+        ):
+            callback = _callback_value_provenance(_known_provenance((node.args[1],)))
+        if (
+            callback.state is _ProvenanceState.IRRELEVANT
+            and dispatcher == "iter"
+            and len(node.args) == 2
+        ):
+            callback = _callback_value_provenance(_known_provenance((node.args[0],)))
         inputs = (*((receiver,) if receiver is not None else ()), *node.args)
         implicit_protocol = dispatcher in {
             "accumulate",
@@ -2611,58 +2676,82 @@ def _executed_callback(
             "sort",
             "sorted",
         }
-        return callback, inputs, 0, callback is not None or implicit_protocol
-    if dispatcher in {"filter", "map"} and len(node.args) >= 2:
-        callback = node.args[0]
         return (
-            None if isinstance(callback, ast.Constant) and callback.value is None else callback,
+            callback,
+            inputs,
+            0,
+            callback.state is not _ProvenanceState.IRRELEVANT or implicit_protocol,
+        )
+    if dispatcher in {"filter", "map"} and len(node.args) >= 2:
+        callback = _callback_value_provenance(_known_provenance((node.args[0],)))
+        return (
+            callback,
             tuple(node.args[1:]),
             len(node.args) - 1 if dispatcher == "map" else 1,
-            dispatcher == "filter" and isinstance(callback, ast.Constant),
+            dispatcher == "filter" and isinstance(node.args[0], ast.Constant),
         )
     if dispatcher == "sorted" and node.args:
-        return _callback_keyword(node, "key"), (node.args[0],), 1, True
+        return resolve_keyword(node, "key", assignments), (node.args[0],), 1, True
     if dispatcher in {"max", "min"} and node.args:
         inputs = (node.args[0],) if len(node.args) == 1 else tuple(node.args)
-        return _callback_keyword(node, "key"), inputs, 1, True
+        return resolve_keyword(node, "key", assignments), inputs, 1, True
     if dispatcher == "sort":
         return (
-            _callback_keyword(node, "key"),
+            resolve_keyword(node, "key", assignments),
             ((receiver,) if receiver is not None else ()),
             1,
             True,
         )
     if dispatcher == "iter" and len(node.args) == 2:
-        return node.args[0], tuple(node.args), 0, True
+        return (
+            _callback_value_provenance(_known_provenance((node.args[0],))),
+            tuple(node.args),
+            0,
+            True,
+        )
     if dispatcher == "reduce" and len(node.args) >= 2:
         inputs = (node.args[1], *node.args[2:3])
-        return node.args[0], inputs, 2, False
+        return _callback_value_provenance(_known_provenance((node.args[0],))), inputs, 2, False
     if dispatcher in {"groupby", "accumulate"} and node.args:
         callback = (
-            node.args[1]
+            _callback_value_provenance(_known_provenance((node.args[1],)))
             if len(node.args) >= 2
-            else _callback_keyword(node, "key" if dispatcher == "groupby" else "func")
+            else resolve_keyword(
+                node,
+                "key" if dispatcher == "groupby" else "func",
+                assignments,
+            )
         )
         inputs = (node.args[0],)
-        initial = _callback_keyword(node, "initial")
-        if dispatcher == "accumulate" and initial is not None:
-            inputs = (*inputs, initial)
+        initial = resolve_keyword(node, "initial", assignments)
+        if dispatcher == "accumulate" and initial.values:
+            inputs = (*inputs, *initial.values)
         return callback, inputs, 1 if dispatcher == "groupby" else 2, True
     if dispatcher in {"dropwhile", "filterfalse", "takewhile"} and len(node.args) >= 2:
-        return node.args[0], (node.args[1],), 1, False
+        return (
+            _callback_value_provenance(_known_provenance((node.args[0],))),
+            (node.args[1],),
+            1,
+            False,
+        )
     if dispatcher == "starmap" and len(node.args) >= 2:
-        return node.args[0], (node.args[1],), 0, False
+        return (
+            _callback_value_provenance(_known_provenance((node.args[0],))),
+            (node.args[1],),
+            0,
+            False,
+        )
     if dispatcher == "merge" and node.args:
-        return _callback_keyword(node, "key"), tuple(node.args), 1, True
+        return resolve_keyword(node, "key", assignments), tuple(node.args), 1, True
     if dispatcher in {"nlargest", "nsmallest"} and len(node.args) >= 2:
-        return _callback_keyword(node, "key"), (node.args[1],), 1, True
+        return resolve_keyword(node, "key", assignments), (node.args[1],), 1, True
     if (
         dispatcher
         in {"bisect", "bisect_left", "bisect_right", "insort", "insort_left", "insort_right"}
         and node.args
     ):
-        return _callback_keyword(node, "key"), tuple(node.args[:2]), 1, True
-    return None, (), 0, False
+        return resolve_keyword(node, "key", assignments), tuple(node.args[:2]), 1, True
+    return _irrelevant_provenance(), (), 0, False
 
 
 def _direct_mutation_roots(function: FunctionNode | ast.Lambda) -> set[str]:
@@ -2955,11 +3044,13 @@ def _assignment_map(
             **(inherited_assignments or {}),
             **{name: tuple(values) for name, values in grouped.items()},
         }
-        callback, iterables, supplied_positional_count, executes_protocol = _executed_callback(
-            node, current
+        callback_provenance, iterables, supplied_positional_count, executes_protocol = (
+            _executed_callback(node, current)
         )
-        if callback is None:
-            callback = next(
+        if callback_provenance.state is _ProvenanceState.UNRESOLVED:
+            record_all_current_with_contents()
+        if callback_provenance.state is _ProvenanceState.IRRELEVANT:
+            inferred_callback = next(
                 (
                     argument
                     for argument in node.args
@@ -2971,11 +3062,15 @@ def _assignment_map(
                 ),
                 None,
             )
-            if callback is not None:
-                iterables = tuple(argument for argument in node.args if argument is not callback)
+            if inferred_callback is not None:
+                callback_provenance = _known_provenance((inferred_callback,))
+                iterables = tuple(
+                    argument for argument in node.args if argument is not inferred_callback
+                )
                 supplied_positional_count = 0
                 executes_protocol = True
-        protocol_values = (*iterables, *((callback,) if callback is not None else ()))
+        callbacks = tuple(callback_provenance.values)
+        protocol_values = iterables
         if executes_protocol and any(
             not _known_protocol_inert_expression(value, current) for value in protocol_values
         ):
@@ -2992,8 +3087,12 @@ def _assignment_map(
             for value in protocol_values:
                 for root in _reachable_assignment_roots(value, current):
                     record_unknown_with_contents(root)
-        if callback is None:
+        if not callbacks:
             return
+        if len(callbacks) != 1:
+            record_all_current_with_contents()
+            return
+        callback = callbacks[0]
         mutates_inputs = True
         if isinstance(callback, ast.Lambda):
             parameters = set(_function_parameter_annotations(callback))
@@ -4315,14 +4414,17 @@ def _qualified_selected_reference_expressions(
     if marker in seen:
         return _unresolved_provenance()
     seen = seen | {marker}
-    selected = _selected_reference_expression(node, assignments)
-    if selected is not None:
-        setattr(
-            selected,
-            ASSIGNMENT_ORIGIN_SCOPE_ATTRIBUTE,
-            dict(assignments),
-        )
-        return _known_provenance((selected,))
+    selected = _selected_reference_provenance(node, assignments)
+    if selected.state is _ProvenanceState.KNOWN:
+        for value in selected.values:
+            setattr(
+                value,
+                ASSIGNMENT_ORIGIN_SCOPE_ATTRIBUTE,
+                dict(assignments),
+            )
+        return selected
+    if selected.state is _ProvenanceState.IRRELEVANT:
+        return selected
 
     def select_candidate(
         candidate: ast.AST,
@@ -9298,18 +9400,50 @@ def _module_assignment_registry(
                             mutated.update(_loaded_root_names(actual[0]) & parameters)
             return mutated
 
+        def qualified_callback_keyword_provenance(
+            node: ast.Call,
+            name: str,
+            state: AssignmentMap,
+        ) -> _Provenance[ast.expr]:
+            qualified_assignments = expression_qualified_assignments(node, state)
+
+            def select_mapping(mapping: ast.expr, key: str) -> _Provenance[ast.AST]:
+                return _qualified_selected_reference_expressions(
+                    ast.Subscript(
+                        value=mapping,
+                        slice=ast.Constant(key),
+                        ctx=ast.Load(),
+                    ),
+                    state,
+                    qualified_assignments,
+                )
+
+            return _callback_keyword_provenance(
+                node,
+                name,
+                state,
+                select_mapping=select_mapping,
+            )
+
         def apply_callback_mutations(
             node: ast.Call,
             state: AssignmentMap,
             *,
             infer_unrecognized: bool,
         ) -> None:
-            callback, iterables, supplied_positional_count, executes_protocol = _executed_callback(
-                node, state
+            callback_provenance, iterables, supplied_positional_count, executes_protocol = (
+                _executed_callback(
+                    node,
+                    state,
+                    resolve_keyword=qualified_callback_keyword_provenance,
+                )
             )
-            recognized_callback = callback is not None
-            if callback is None and infer_unrecognized:
-                callback = next(
+            recognized_callback = callback_provenance.state is not _ProvenanceState.IRRELEVANT
+            if callback_provenance.state is _ProvenanceState.UNRESOLVED:
+                invalidate_class_references(_UnknownBinding(), state)
+                bind_all_current_objects(state)
+            if callback_provenance.state is _ProvenanceState.IRRELEVANT and infer_unrecognized:
+                inferred_callback = next(
                     (
                         argument
                         for argument in node.args
@@ -9321,12 +9455,14 @@ def _module_assignment_registry(
                     ),
                     None,
                 )
-                if callback is not None:
+                if inferred_callback is not None:
+                    callback_provenance = _known_provenance((inferred_callback,))
                     iterables = tuple(
-                        argument for argument in node.args if argument is not callback
+                        argument for argument in node.args if argument is not inferred_callback
                     )
                     supplied_positional_count = 0
                     executes_protocol = True
+            callbacks = tuple(callback_provenance.values)
             protocol_values = iterables
             if executes_protocol and any(
                 not _known_protocol_inert_expression(value, state) for value in protocol_values
@@ -9335,8 +9471,13 @@ def _module_assignment_registry(
                 for value in protocol_values:
                     for root in _reachable_assignment_roots(value, state):
                         bind_unknown_with_contents(root, state)
-            if callback is None:
+            if not callbacks:
                 return
+            if len(callbacks) != 1:
+                invalidate_class_references(_UnknownBinding(), state)
+                bind_all_current_objects(state)
+                return
+            callback = callbacks[0]
             mutates_inputs = True
             if isinstance(callback, ast.Lambda):
                 callback_module, callback_assignments = callback_state(callback, state)
