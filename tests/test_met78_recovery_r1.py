@@ -372,6 +372,151 @@ def build_manifest():
         required_keys=frozenset({"known"}),
     ),
     _Case(
+        "unknown callback receiving a tuple-wrapped structured value fails closed",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    external_callback((manifest,))
+    return manifest
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "unknown callback receiving a mapping-wrapped structured value fails closed",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    external_callback({"payload": manifest})
+    return manifest
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "unknown callback receiving a conditional structured value fails closed",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    external_callback(manifest if runtime_flag else 0)
+    return manifest
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "unknown callback receiving a deeply wrapped keyword value fails closed",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    external_callback(payload=({"nested": (manifest if runtime_flag else 0,)},))
+    return manifest
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "unknown callback follows structured alias wrappers",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    inner = (manifest,)
+    outer = {"payload": inner}
+    external_callback(outer)
+    return manifest
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "known helper return includes its literal scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    payload["added"] = {"child": 2}
+    return payload
+
+def build_manifest():
+    return helper()
+""",
+        Phase.KNOWN,
+        exact_keys=frozenset({"added", "child", "known"}),
+        expect_no_reasons=True,
+    ),
+    _Case(
+        "known helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return payload
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "recursive helper with a named return root remains bounded",
+        """
+def helper():
+    payload = {"known": 1}
+    if runtime_flag:
+        return helper()
+    return payload
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.CYCLE}),
+        required_keys=frozenset({"known"}),
+        max_queries=40,
+    ),
+    _Case(
+        "conditional test-only use does not expose the manifest to an unknown callback",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    external_callback(1 if manifest else 0)
+    return manifest
+""",
+        Phase.KNOWN,
+        exact_keys=frozenset({"known"}),
+        expect_no_reasons=True,
+    ),
+    _Case(
+        "nested structured value observed by an inert scalar call remains known",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    len((manifest,))
+    return manifest
+""",
+        Phase.KNOWN,
+        exact_keys=frozenset({"known"}),
+        expect_no_reasons=True,
+    ),
+    _Case(
+        "unknown callback receiving only scalars does not taint the manifest",
+        """
+def build_manifest():
+    manifest = {"known": 1}
+    external_callback((1, 2, 3))
+    return manifest
+""",
+        Phase.KNOWN,
+        exact_keys=frozenset({"known"}),
+        expect_no_reasons=True,
+    ),
+    _Case(
         "dynamic getattr callback fails closed",
         """
 def build_manifest():

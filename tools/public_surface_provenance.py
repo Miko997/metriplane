@@ -1301,7 +1301,10 @@ class AnalysisSession:
         function = self.index.functions[key.subject]
         if not function.returns:
             return Proposal(Phase.IRRELEVANT)
-        return self._combine(self.expression_query(value) for value in function.returns)
+        dependencies = [self.expression_query(value) for value in function.returns]
+        if function.return_root_names:
+            dependencies.append(self._effect_query(function.body_scope, function.return_root_names))
+        return self._combine(dependencies)
 
     def _subscript_parts(self, target: NodeId) -> tuple[NodeId | None, NodeId | None]:
         return self.index.child(target, "value"), self.index.child(target, "slice")
@@ -1333,7 +1336,8 @@ class AnalysisSession:
                     {
                         name
                         for argument in call_arguments(call)
-                        if (name := self.index.root_name(argument)) is not None and relevant(name)
+                        for name in possible_roots(argument)
+                        if relevant(name)
                     }
                 )
             )
@@ -1366,6 +1370,20 @@ class AnalysisSession:
                         edge.child
                         for edge in self.index.children.get(current, ())
                         if edge.field_name in {"body", "orelse"}
+                    )
+                    continue
+                if isinstance(node, ast.Dict):
+                    pending.extend(
+                        edge.child
+                        for edge in self.index.children.get(current, ())
+                        if edge.field_name == "values"
+                    )
+                    continue
+                if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+                    pending.extend(
+                        edge.child
+                        for edge in self.index.children.get(current, ())
+                        if edge.field_name == "elts"
                     )
                     continue
                 root_name = self.index.root_name(current)
