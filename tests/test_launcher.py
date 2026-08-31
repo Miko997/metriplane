@@ -28,11 +28,14 @@ Integration test (TestStartStatusStop):
 
 from __future__ import annotations
 
+import hashlib
 import os
 import signal
 import socket
+import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,6 +45,9 @@ import pytest
 from metriplane.cli import main as cli_main
 from metriplane.launcher import (
     _DEFAULT_FUSION_CONFIG,
+    _STATE_SCHEMA_VERSION,
+    _LauncherStateCorruptionError,
+    _LauncherStateLockError,
     _clear_state,
     _find_repo_root,
     _get_pgid,
@@ -57,6 +63,8 @@ from metriplane.launcher import (
     _start_fusion,
     _start_runner,
     _state_file,
+    _state_lock_file,
+    _state_write_lock,
     _wait_for_port_free,
     cmd_cleanup,
     cmd_start,
@@ -510,6 +518,51 @@ class TestNoState:
         assert cmd_status() == 2
         assert "launcher state" in capsys.readouterr().out.lower()
 
+    def test_start_without_home_or_xdg_paths_fails_before_launch(self, monkeypatch, capsys):
+        import metriplane.launcher as lm
+
+        for name in (
+            "HOME",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_STATE_HOME",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **_kwargs: pytest.fail("missing home reached process launch"),
+        )
+
+        assert cmd_start(open_browser=False) == 2
+        assert "platform directories" in capsys.readouterr().out.lower()
+
+    def test_start_with_unusable_home_fails_before_launch(self, tmp_path, monkeypatch, capsys):
+        import metriplane.launcher as lm
+
+        unusable_home = tmp_path / "home-is-a-file"
+        unusable_home.write_text("not a directory", encoding="utf-8")
+        for name in (
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_STATE_HOME",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("HOME", str(unusable_home))
+        monkeypatch.setattr(
+            lm,
+            "_start_runner",
+            lambda **_kwargs: pytest.fail("unusable home reached process launch"),
+        )
+
+        assert cmd_start(open_browser=False) == 2
+        assert "platform directories" in capsys.readouterr().out.lower()
+
     def test_start_with_read_only_run_root_fails_before_launch(self, tmp_path, monkeypatch, capsys):
         read_only = tmp_path / "read-only"
         read_only.mkdir()
@@ -555,6 +608,7 @@ class TestStateHelpers:
         paths = _test_platform_paths(tmp_path)
         _save_state({"runner": {"pid": 99999, "pgid": 99999, "port": 9000}}, paths)
         loaded = _load_state(paths)
+        assert loaded["schema_version"] == _STATE_SCHEMA_VERSION
         assert loaded["runner"]["pid"] == 99999
         assert loaded["runner"]["pgid"] == 99999
 
@@ -565,11 +619,164 @@ class TestStateHelpers:
         _clear_state(paths)
         assert not _state_file(paths).exists()
 
-    def test_load_returns_empty_on_corrupt(self, tmp_path):
+    def test_load_rejects_corrupt_json(self, tmp_path):
         paths = _test_platform_paths(tmp_path)
         paths.state_dir.mkdir(parents=True)
         paths.launcher_state_file.write_text("{NOT JSON}}")
-        assert _load_state(paths) == {}
+        with pytest.raises(_LauncherStateCorruptionError, match="strict UTF-8 JSON"):
+            _load_state(paths)
+
+    @pytest.mark.skipif(os.name != "posix", reason="0600 is the POSIX state-file contract")
+    def test_state_and_lock_files_are_private(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        _save_state({"runner": {"pid": 99999}}, paths)
+
+        assert stat.S_IMODE(paths.launcher_state_file.stat().st_mode) == 0o600
+        assert stat.S_IMODE(_state_lock_file(paths).stat().st_mode) == 0o600
+
+    def test_save_is_deterministic_for_equivalent_state(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        _save_state({"runner": {"port": 9000, "pid": 41}, "started_at": "fixed"}, paths)
+        first = paths.launcher_state_file.read_bytes()
+        _save_state({"started_at": "fixed", "runner": {"pid": 41, "port": 9000}}, paths)
+
+        assert paths.launcher_state_file.read_bytes() == first
+
+    def test_failed_atomic_replace_preserves_previous_state(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path)
+        _save_state({"runner": {"pid": 41}}, paths)
+        before = paths.launcher_state_file.read_bytes()
+        monkeypatch.setattr(lm.os, "replace", lambda *_args: (_ for _ in ()).throw(OSError("boom")))
+
+        with pytest.raises(OSError, match="boom"):
+            _save_state({"runner": {"pid": 42}}, paths)
+
+        assert paths.launcher_state_file.read_bytes() == before
+        assert list(paths.state_dir.glob(".launcher-state.json.*.tmp")) == []
+
+    def test_concurrent_writers_leave_one_complete_valid_state(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        barrier = threading.Barrier(8)
+        errors: list[BaseException] = []
+
+        def write(writer: int) -> None:
+            try:
+                barrier.wait(timeout=5)
+                _save_state({"writer": writer, "runner": {"pid": 100 + writer}}, paths)
+            except BaseException as exc:  # pragma: no cover - reported by the assertion below
+                errors.append(exc)
+
+        threads = [threading.Thread(target=write, args=(writer,)) for writer in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        assert errors == []
+        assert all(not thread.is_alive() for thread in threads)
+        retained = _load_state(paths)
+        assert retained["writer"] in range(8)
+        assert retained["runner"]["pid"] == 100 + retained["writer"]
+        if os.name == "posix":
+            assert stat.S_IMODE(paths.launcher_state_file.stat().st_mode) == 0o600
+        assert list(paths.state_dir.glob(".launcher-state.json.*.tmp")) == []
+
+    def test_second_writer_times_out_while_lock_is_held(self, tmp_path):
+        paths = _test_platform_paths(tmp_path)
+        with _state_write_lock(paths):
+            with pytest.raises(_LauncherStateLockError, match="timed out"):
+                with _state_write_lock(paths, timeout=0.02):
+                    pytest.fail("second writer entered the commit boundary")
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            b'{"runner":{"pid":41}}',
+            b'{"schema_version":2}',
+            b'{"schema_version":1,"schema_version":1}',
+            b'{"schema_version":1,"runner":{"pid":true}}',
+            b'{"schema_version":1,"runner":{"port":70000}}',
+            b'{"schema_version":1,"value":NaN}',
+        ],
+    )
+    def test_invalid_schema_and_non_strict_json_fail_closed(self, tmp_path, raw):
+        paths = _test_platform_paths(tmp_path)
+        paths.state_dir.mkdir(parents=True)
+        paths.launcher_state_file.write_bytes(raw)
+
+        with pytest.raises(_LauncherStateCorruptionError):
+            _load_state(paths)
+
+    def test_cleanup_quarantines_corrupt_bytes_by_digest(self, tmp_path, monkeypatch, capsys):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path)
+        paths.state_dir.mkdir(parents=True)
+        raw = b"{NOT JSON}}"
+        paths.launcher_state_file.write_bytes(raw)
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda *_args: False)
+
+        assert cmd_cleanup(paths=paths) == 0
+
+        quarantine = paths.launcher_state_file.with_name(
+            f"{paths.launcher_state_file.name}.corrupt-{hashlib.sha256(raw).hexdigest()}"
+        )
+        assert not paths.launcher_state_file.exists()
+        assert quarantine.read_bytes() == raw
+        if os.name == "posix":
+            assert stat.S_IMODE(quarantine.stat().st_mode) == 0o600
+        assert "Preserved corrupt launcher state" in capsys.readouterr().out
+
+    def test_status_reports_corruption_without_deleting_original(self, tmp_path, capsys):
+        paths = _test_platform_paths(tmp_path)
+        paths.state_dir.mkdir(parents=True)
+        raw = b"{NOT JSON}}"
+        paths.launcher_state_file.write_bytes(raw)
+
+        assert cmd_status(paths=paths) == 2
+        assert paths.launcher_state_file.read_bytes() == raw
+        output = capsys.readouterr().out
+        assert "strict UTF-8 JSON" in output
+        assert "metriplane cleanup" in output
+
+    def test_valid_state_is_not_quarantined_by_cleanup(self, tmp_path, monkeypatch):
+        import metriplane.launcher as lm
+
+        paths = _test_platform_paths(tmp_path)
+        _save_state({"runner": {"pid": 99999}}, paths)
+        monkeypatch.setattr(lm, "_is_port_in_use", lambda *_args: False)
+
+        assert cmd_cleanup(paths=paths) == 0
+        assert list(paths.state_dir.glob("launcher-state.json.corrupt-*")) == []
+
+    def test_injected_platform_paths_do_not_touch_read_only_home(self, tmp_path, monkeypatch):
+        home = tmp_path / "read-only-home"
+        home.mkdir()
+        home.chmod(0o500)
+        paths = _test_platform_paths(tmp_path / "injected")
+        monkeypatch.setenv("HOME", str(home))
+        try:
+            _save_state({"runner": {"pid": 41}}, paths)
+            assert _load_state(paths)["runner"]["pid"] == 41
+            assert list(home.iterdir()) == []
+        finally:
+            home.chmod(0o700)
+
+    def test_unusable_injected_state_parent_fails_without_partial_state(self, tmp_path):
+        blocker = tmp_path / "not-a-directory"
+        blocker.write_text("blocked", encoding="utf-8")
+        paths = PlatformPaths(
+            config_dir=tmp_path / "config",
+            data_dir=tmp_path / "data",
+            cache_dir=tmp_path / "cache",
+            state_dir=blocker / "state",
+        )
+
+        with pytest.raises(OSError):
+            _save_state({"runner": {"pid": 41}}, paths)
+        assert blocker.read_text(encoding="utf-8") == "blocked"
 
 
 # ---------------------------------------------------------------------------

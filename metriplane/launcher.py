@@ -23,19 +23,24 @@ Key design decisions (v2):
 from __future__ import annotations
 
 import csv
+import errno
+import hashlib
 import json
 import os
 import re
 import signal
 import socket
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from metriplane.paths import (
     PlatformPathError,
@@ -55,6 +60,10 @@ _DEFAULT_DASHBOARD_PORT = 8088
 _DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 _DEFAULT_FUSION_CONFIG = "configs/local_demo_replay.yaml"
 _DEFAULT_DURATION_S = 7200
+
+_STATE_SCHEMA_VERSION = 1
+_STATE_FILE_MODE = 0o600
+_STATE_LOCK_TIMEOUT_S = 30.0
 
 # Ports known to be owned by Metriplane services (in priority order for cleanup)
 _METRIPLANE_KNOWN_PORTS = [8000, 8765, 9000, 8088]
@@ -77,6 +86,18 @@ _METRIPLANE_SAFE_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 
+class _LauncherStateError(RuntimeError):
+    """Base class for launcher-state failures that are safe to show to users."""
+
+
+class _LauncherStateCorruptionError(_LauncherStateError):
+    """Raised when retained launcher state cannot satisfy its declared schema."""
+
+
+class _LauncherStateLockError(_LauncherStateError):
+    """Raised when another writer retains the launcher-state lock."""
+
+
 def _effective_paths(paths: PlatformPaths | None) -> PlatformPaths:
     return paths if paths is not None else resolve_platform_paths()
 
@@ -91,27 +112,251 @@ def _state_dir(paths: PlatformPaths | None = None) -> Path:
     return d
 
 
+def _state_lock_file(paths: PlatformPaths | None = None) -> Path:
+    state_file = _state_file(paths)
+    return state_file.with_name(f".{state_file.name}.lock")
+
+
+def _chmod_private(path: Path) -> None:
+    """Apply the private launcher-state mode without relying on the process umask."""
+    os.chmod(path, _STATE_FILE_MODE)
+
+
+def _acquire_state_lock(descriptor: int, *, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    if os.name == "nt":
+        import msvcrt
+
+        if os.fstat(descriptor).st_size == 0:
+            os.write(descriptor, b"\0")
+            os.fsync(descriptor)
+        while True:
+            try:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(  # type: ignore[attr-defined]
+                    descriptor, getattr(msvcrt, "LK_NBLCK"), 1
+                )
+                return
+            except OSError as exc:
+                if time.monotonic() >= deadline:
+                    raise _LauncherStateLockError(
+                        "timed out waiting for another launcher-state writer"
+                    ) from exc
+                time.sleep(0.01)
+
+    import fcntl
+
+    while True:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError as exc:
+            if time.monotonic() >= deadline:
+                raise _LauncherStateLockError(
+                    "timed out waiting for another launcher-state writer"
+                ) from exc
+            time.sleep(0.01)
+
+
+def _release_state_lock(descriptor: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+        return
+
+    import fcntl
+
+    fcntl.flock(descriptor, fcntl.LOCK_UN)
+
+
+@contextmanager
+def _state_write_lock(
+    paths: PlatformPaths | None = None,
+    *,
+    timeout: float = _STATE_LOCK_TIMEOUT_S,
+) -> Iterator[None]:
+    """Serialize state writers across processes using one private stable lock file."""
+    lock_file = _state_lock_file(paths)
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(lock_file, flags, _STATE_FILE_MODE)
+    acquired = False
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise _LauncherStateError(f"launcher-state lock is not a regular file: {lock_file}")
+        _chmod_private(lock_file)
+        _acquire_state_lock(descriptor, timeout=timeout)
+        acquired = True
+        yield
+    finally:
+        try:
+            if acquired:
+                _release_state_lock(descriptor)
+        finally:
+            os.close(descriptor)
+
+
+def _state_corruption(message: str) -> _LauncherStateCorruptionError:
+    return _LauncherStateCorruptionError(
+        f"{message}; run `metriplane cleanup` to preserve and recover the corrupt state"
+    )
+
+
+def _validate_process_entry(name: str, value: object) -> None:
+    if not isinstance(value, dict):
+        raise _state_corruption(f"launcher state field {name!r} is not an object")
+    for key in ("pid", "pgid"):
+        if key not in value:
+            continue
+        item = value[key]
+        if isinstance(item, bool) or not isinstance(item, int) or item <= 0:
+            raise _state_corruption(f"launcher state field {name}.{key} is invalid")
+    if "port" in value:
+        port = value["port"]
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise _state_corruption(f"launcher state field {name}.port is invalid")
+    if "host" in value and (not isinstance(value["host"], str) or not value["host"]):
+        raise _state_corruption(f"launcher state field {name}.host is invalid")
+
+
+def _validate_state(state: object) -> dict[str, Any]:
+    if not isinstance(state, dict):
+        raise _state_corruption("launcher state root is not an object")
+    version = state.get("schema_version")
+    if isinstance(version, bool) or version != _STATE_SCHEMA_VERSION:
+        raise _state_corruption(f"launcher state schema_version must be {_STATE_SCHEMA_VERSION}")
+    for name in ("runner", "dashboard", "fusion"):
+        if name in state:
+            _validate_process_entry(name, state[name])
+    return state
+
+
+def _decode_state(raw: bytes) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate object key {key!r}")
+            result[key] = value
+        return result
+
+    try:
+        decoded = raw.decode("utf-8")
+        state = json.loads(
+            decoded,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"invalid JSON constant {value}")
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise _state_corruption(f"launcher state is not strict UTF-8 JSON ({exc})") from exc
+    return _validate_state(state)
+
+
+def _fsync_directory(directory: Path) -> None:
+    if os.name != "posix":
+        return
+    descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            unsupported = {errno.EBADF, errno.EINVAL, errno.ENOTSUP}
+            if hasattr(errno, "EOPNOTSUPP"):
+                unsupported.add(errno.EOPNOTSUPP)
+            if exc.errno not in unsupported:
+                raise
+    finally:
+        os.close(descriptor)
+
+
 def _load_state(paths: PlatformPaths | None = None) -> dict[str, Any]:
     state_file = _state_file(paths)
-    if state_file.exists():
-        try:
-            state = json.loads(state_file.read_text())
-            return state if isinstance(state, dict) else {}
-        except Exception:
-            pass
-    return {}
+    try:
+        raw = state_file.read_bytes()
+    except FileNotFoundError:
+        return {}
+    return _decode_state(raw)
 
 
 def _save_state(state: dict[str, Any], paths: PlatformPaths | None = None) -> None:
     state_file = _state_file(paths)
-    _state_dir(paths)
-    state_file.write_text(json.dumps(state, indent=2))
+    payload = dict(state)
+    existing_version = payload.get("schema_version", _STATE_SCHEMA_VERSION)
+    if isinstance(existing_version, bool) or existing_version != _STATE_SCHEMA_VERSION:
+        raise _LauncherStateError(
+            f"cannot write launcher state schema_version {existing_version!r}; "
+            f"expected {_STATE_SCHEMA_VERSION}"
+        )
+    payload["schema_version"] = _STATE_SCHEMA_VERSION
+    _validate_state(payload)
+    encoded = (
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n"
+    ).encode("utf-8")
+    state_dir = _state_dir(paths)
+    temporary: Path | None = None
+    with _state_write_lock(paths):
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{state_file.name}.",
+            suffix=".tmp",
+            dir=state_dir,
+        )
+        temporary = Path(temporary_name)
+        try:
+            _chmod_private(temporary)
+            handle = os.fdopen(descriptor, "wb", closefd=True)
+            descriptor = -1
+            with handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, state_file)
+            temporary = None
+            _chmod_private(state_file)
+            _fsync_directory(state_dir)
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
 
 def _clear_state(paths: PlatformPaths | None = None) -> None:
     state_file = _state_file(paths)
-    if state_file.exists():
-        state_file.unlink()
+    with _state_write_lock(paths):
+        try:
+            state_file.unlink()
+        except FileNotFoundError:
+            return
+        _fsync_directory(state_file.parent)
+
+
+def _recover_corrupt_state(paths: PlatformPaths | None = None) -> Path | None:
+    """Quarantine invalid bytes under a digest-bound name; valid state is untouched."""
+    state_file = _state_file(paths)
+    with _state_write_lock(paths):
+        try:
+            raw = state_file.read_bytes()
+        except FileNotFoundError:
+            return None
+        try:
+            _decode_state(raw)
+        except _LauncherStateCorruptionError:
+            digest = hashlib.sha256(raw).hexdigest()
+            quarantine = state_file.with_name(f"{state_file.name}.corrupt-{digest}")
+            if quarantine.exists():
+                if quarantine.read_bytes() != raw:
+                    raise _LauncherStateError(f"corrupt-state quarantine collision at {quarantine}")
+                state_file.unlink()
+            else:
+                os.replace(state_file, quarantine)
+                _chmod_private(quarantine)
+            _fsync_directory(state_file.parent)
+            return quarantine
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -620,7 +865,7 @@ def cmd_start(
         effective_runs_dir = str(resolved_paths.runs_dir)
         state = _load_state(resolved_paths)
         _state_dir(resolved_paths)
-    except (OSError, PlatformPathError) as exc:
+    except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane platform directories: {exc}")
         return 2
 
@@ -817,7 +1062,7 @@ def cmd_stop(force: bool = False, *, paths: PlatformPaths | None = None) -> int:
     try:
         resolved_paths = _effective_paths(paths)
         state = _load_state(resolved_paths)
-    except (OSError, PlatformPathError) as exc:
+    except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane launcher state: {exc}")
         return 2
     if not state and not force:
@@ -920,6 +1165,13 @@ def cmd_cleanup(*, paths: PlatformPaths | None = None) -> int:
     except PlatformPathError as exc:
         print(f"Cannot resolve Metriplane launcher state: {exc}")
         return 2
+    try:
+        recovered_state = _recover_corrupt_state(resolved_paths)
+    except (OSError, _LauncherStateError) as exc:
+        print(f"Cannot recover Metriplane launcher state: {exc}")
+        return 2
+    if recovered_state is not None:
+        print(f"Preserved corrupt launcher state: {recovered_state}")
     print("🧹 Checking for orphaned Metriplane processes …")
 
     killed_any = False
@@ -981,7 +1233,7 @@ def cmd_restart(
     try:
         resolved_paths = _effective_paths(paths)
         state = _load_state(resolved_paths)
-    except (OSError, PlatformPathError) as exc:
+    except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane launcher state: {exc}")
         return 2
     print("⟳  Stopping existing stack …")
@@ -1030,7 +1282,7 @@ def cmd_status(*, paths: PlatformPaths | None = None) -> int:
     try:
         resolved_paths = _effective_paths(paths)
         state = _load_state(resolved_paths)
-    except (OSError, PlatformPathError) as exc:
+    except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane launcher state: {exc}")
         return 2
 
