@@ -38,6 +38,7 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
@@ -64,6 +65,10 @@ _DEFAULT_DURATION_S = 7200
 _STATE_SCHEMA_VERSION = 1
 _STATE_FILE_MODE = 0o600
 _STATE_LOCK_TIMEOUT_S = 30.0
+_STATE_LOCKS_HELD: ContextVar[frozenset[str]] = ContextVar(
+    "metriplane_launcher_state_locks_held",
+    default=frozenset(),
+)
 
 # Ports known to be owned by Metriplane services (in priority order for cleanup)
 _METRIPLANE_KNOWN_PORTS = [8000, 8765, 9000, 8088]
@@ -177,8 +182,14 @@ def _state_write_lock(
     *,
     timeout: float = _STATE_LOCK_TIMEOUT_S,
 ) -> Iterator[None]:
-    """Serialize state writers across processes using one private stable lock file."""
+    """Serialize state lifecycles and permit nested helpers in the lock owner."""
     lock_file = _state_lock_file(paths)
+    lock_key = os.fspath(lock_file)
+    held = _STATE_LOCKS_HELD.get()
+    if lock_key in held:
+        yield
+        return
+
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(lock_file, flags, _STATE_FILE_MODE)
@@ -189,7 +200,11 @@ def _state_write_lock(
         _chmod_private(lock_file)
         _acquire_state_lock(descriptor, timeout=timeout)
         acquired = True
-        yield
+        token = _STATE_LOCKS_HELD.set(held | {lock_key})
+        try:
+            yield
+        finally:
+            _STATE_LOCKS_HELD.reset(token)
     finally:
         try:
             if acquired:
@@ -863,11 +878,48 @@ def cmd_start(
         else:
             resolved_paths = resolved_paths.with_runs_dir(resolved_paths.runs_dir)
         effective_runs_dir = str(resolved_paths.runs_dir)
-        state = _load_state(resolved_paths)
-        _state_dir(resolved_paths)
+        with _state_write_lock(resolved_paths):
+            return _cmd_start_locked(
+                live=live,
+                backend=backend,
+                config=config,
+                duration_s=duration_s,
+                effective_run_id=effective_run_id,
+                dashboard_host=dashboard_host,
+                dashboard_port=dashboard_port,
+                runner_host=runner_host,
+                runner_port=runner_port,
+                open_browser=open_browser,
+                operator=operator,
+                resolved_paths=resolved_paths,
+                effective_runs_dir=effective_runs_dir,
+                timestamp=timestamp,
+            )
     except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane platform directories: {exc}")
         return 2
+
+
+def _cmd_start_locked(
+    *,
+    live: bool,
+    backend: str,
+    config: str,
+    duration_s: float,
+    effective_run_id: str,
+    dashboard_host: str,
+    dashboard_port: int,
+    runner_host: str,
+    runner_port: int,
+    open_browser: bool,
+    operator: bool,
+    resolved_paths: PlatformPaths,
+    effective_runs_dir: str,
+    timestamp: str,
+) -> int:
+    """Run one complete read/act/publish lifecycle under the state writer lock."""
+    state = _load_state(resolved_paths)
+    _state_dir(resolved_paths)
 
     # Check for stale state with live processes
     if state:
@@ -879,14 +931,14 @@ def cmd_start(
             return 1
         try:
             _clear_state(resolved_paths)
-        except OSError as exc:
+        except (OSError, _LauncherStateError) as exc:
             print(f"Cannot clear stale Metriplane launcher state: {exc}")
             return 2
 
     repo_root = _find_repo_root()
     try:
         log_d = _log_dir_path(effective_runs_dir, timestamp)
-    except OSError as exc:
+    except (OSError, _LauncherStateError) as exc:
         print(f"Cannot create Metriplane run directory: {exc}")
         return 2
 
@@ -1018,13 +1070,17 @@ def cmd_start(
         new_state["fusion"] = fusion_entry
     try:
         _save_state(new_state, resolved_paths)
-    except OSError as exc:
+    except (OSError, _LauncherStateError) as exc:
         if fusion_entry is not None:
             _stop_pg(
                 fusion_entry.get("pgid"), fusion_entry.get("pid"), use_sigint=True, name="fusion"
             )
         _stop_pg(_get_pgid(dp.pid) or dp.pid, dp.pid, name="dashboard")
         _stop_pg(_get_pgid(rp.pid) or rp.pid, rp.pid, name="runner")
+        try:
+            _clear_state(resolved_paths)
+        except (OSError, _LauncherStateError) as cleanup_exc:
+            print(f"Cannot clear failed launcher state: {cleanup_exc}")
         print(f"Cannot save Metriplane launcher state: {exc}")
         return 2
 
@@ -1061,10 +1117,16 @@ def cmd_stop(force: bool = False, *, paths: PlatformPaths | None = None) -> int:
     """Stop launcher-started processes and wait for ports to be released."""
     try:
         resolved_paths = _effective_paths(paths)
-        state = _load_state(resolved_paths)
+        with _state_write_lock(resolved_paths):
+            return _cmd_stop_locked(force=force, resolved_paths=resolved_paths)
     except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane launcher state: {exc}")
         return 2
+
+
+def _cmd_stop_locked(*, force: bool, resolved_paths: PlatformPaths) -> int:
+    """Stop and clear one retained launcher lifecycle while holding its writer lock."""
+    state = _load_state(resolved_paths)
     if not state and not force:
         print("ℹ️   No launcher state found. Use `metriplane cleanup` if processes are orphaned.")
         return 0
@@ -1142,7 +1204,7 @@ def cmd_stop(force: bool = False, *, paths: PlatformPaths | None = None) -> int:
 
     try:
         _clear_state(resolved_paths)
-    except OSError as exc:
+    except (OSError, _LauncherStateError) as exc:
         print(f"Cannot clear Metriplane launcher state: {exc}")
         return 2
 
@@ -1162,9 +1224,15 @@ def cmd_cleanup(*, paths: PlatformPaths | None = None) -> int:
     """Kill only known Metriplane orphans on known ports. Never kills unknown processes."""
     try:
         resolved_paths = _effective_paths(paths)
-    except PlatformPathError as exc:
+        with _state_write_lock(resolved_paths):
+            return _cmd_cleanup_locked(resolved_paths=resolved_paths)
+    except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot resolve Metriplane launcher state: {exc}")
         return 2
+
+
+def _cmd_cleanup_locked(*, resolved_paths: PlatformPaths) -> int:
+    """Recover state and remove known orphans while holding the lifecycle lock."""
     try:
         recovered_state = _recover_corrupt_state(resolved_paths)
     except (OSError, _LauncherStateError) as exc:
@@ -1202,7 +1270,7 @@ def cmd_cleanup(*, paths: PlatformPaths | None = None) -> int:
 
     try:
         _clear_state(resolved_paths)  # Remove any stale state
-    except OSError as exc:
+    except (OSError, _LauncherStateError) as exc:
         print(f"Cannot clear Metriplane launcher state: {exc}")
         return 2
 
@@ -1232,10 +1300,45 @@ def cmd_restart(
     """Stop all services (including orphans), then start fresh."""
     try:
         resolved_paths = _effective_paths(paths)
-        state = _load_state(resolved_paths)
+        with _state_write_lock(resolved_paths):
+            return _cmd_restart_locked(
+                live=live,
+                backend=backend,
+                config=config,
+                duration_s=duration_s,
+                run_id=run_id,
+                dashboard_host=dashboard_host,
+                dashboard_port=dashboard_port,
+                runner_host=runner_host,
+                runner_port=runner_port,
+                runs_dir=runs_dir,
+                open_browser=open_browser,
+                operator=operator,
+                resolved_paths=resolved_paths,
+            )
     except (OSError, PlatformPathError, _LauncherStateError) as exc:
         print(f"Cannot access Metriplane launcher state: {exc}")
         return 2
+
+
+def _cmd_restart_locked(
+    *,
+    live: bool,
+    backend: str,
+    config: str,
+    duration_s: float,
+    run_id: str | None,
+    dashboard_host: str,
+    dashboard_port: int,
+    runner_host: str,
+    runner_port: int,
+    runs_dir: str | None,
+    open_browser: bool,
+    operator: bool,
+    resolved_paths: PlatformPaths,
+) -> int:
+    """Run the complete stop/cleanup/start restart lifecycle under one lock."""
+    state = _load_state(resolved_paths)
     print("⟳  Stopping existing stack …")
     if state:
         result = cmd_stop(paths=resolved_paths)
