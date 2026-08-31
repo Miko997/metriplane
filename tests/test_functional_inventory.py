@@ -13,7 +13,7 @@ import os
 import subprocess
 import sys
 import tomllib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from functools import cache
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -318,6 +318,85 @@ def _repository_file(relative_path: str) -> Path:
     return resolved
 
 
+_GIT_FILE_MODES = frozenset({"100644", "100755", "120000"})
+
+
+def _git_index_stage_zero_entry(
+    relative_path: str, *, repository_root: Path | None = None
+) -> tuple[str, str]:
+    root = ROOT if repository_root is None else repository_root
+    expected_path = os.fsencode(relative_path)
+    assert expected_path and b"\0" not in expected_path
+
+    result = subprocess.run(
+        [
+            "git",
+            "--literal-pathspecs",
+            "ls-files",
+            "--stage",
+            "-z",
+            "--full-name",
+            "--",
+            relative_path,
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    records = result.stdout.split(b"\0")
+    assert records.pop() == b""
+    assert len(records) == 1
+
+    metadata, separator, indexed_path = records[0].partition(b"\t")
+    assert separator == b"\t"
+    assert indexed_path == expected_path
+    fields = metadata.split(b" ")
+    assert len(fields) == 3
+    raw_mode, raw_oid, raw_stage = fields
+    assert raw_stage == b"0"
+
+    mode = raw_mode.decode("ascii")
+    oid = raw_oid.decode("ascii")
+    assert mode in _GIT_FILE_MODES
+    assert len(oid) == 40 and all(character in "0123456789abcdef" for character in oid)
+    return mode, oid
+
+
+def _assert_git_blob_source_resolves(source: dict[str, Any]) -> None:
+    locator_identity, separator, semantic_locator = source["locator"].partition(";")
+    assert separator == ";"
+    assert semantic_locator
+    expected_oid = locator_identity.removeprefix("git-blob:")
+    assert locator_identity == f"git-blob:{expected_oid}"
+    assert len(expected_oid) == 40
+    assert all(character in "0123456789abcdef" for character in expected_oid)
+
+    mode, indexed_oid = _git_index_stage_zero_entry(source["path"])
+    assert indexed_oid == expected_oid
+
+    object_type = subprocess.run(
+        ["git", "cat-file", "-t", indexed_oid],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    assert object_type.stdout == b"blob\n"
+    blob = subprocess.run(
+        ["git", "cat-file", "blob", indexed_oid],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    assert source["digest_sha256"] == hashlib.sha256(blob).hexdigest()
+
+    if mode == "120000":
+        return
+
+    assert mode in {"100644", "100755"}
+    source_path = _repository_file(source["path"])
+    assert source_path.read_bytes() == blob
+
+
 @cache
 def _python_symbol_paths(relative_path: str) -> frozenset[str]:
     tree = ast.parse(_repository_file(relative_path).read_text(encoding="utf-8"))
@@ -370,6 +449,11 @@ def _assert_source_resolves(source: dict[str, Any], baseline: dict[str, Any]) ->
         assert source["digest_sha256"] == _sha(source_value)
         if "count" in source:
             assert source["count"] == len(source_value)
+        return
+
+    locator = source.get("locator")
+    if isinstance(locator, str) and locator.startswith("git-blob:"):
+        _assert_git_blob_source_resolves(source)
         return
 
     source_path = _repository_file(source["path"])
@@ -1870,3 +1954,189 @@ def test_declared_obligation_set_is_exact(_obligation: str) -> None:
     assert tuple(inventory["trace"]["obligation_ids"]) == OBLIGATION_IDS
     assert tuple(profiles["trace"]["obligation_ids"]) == OBLIGATION_IDS
     assert len(OBLIGATION_IDS) == len(set(OBLIGATION_IDS))
+
+
+_GIT_IDENTITY_LINK_PATH = "link\twith\ncontrol"
+_GIT_IDENTITY_TARGET_PATH = "target.txt"
+_GIT_IDENTITY_ORDINARY_PATH = "ordinary.txt"
+
+
+def _git_identity_command(repository: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    ).stdout
+
+
+@pytest.fixture
+def git_identity_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    _git_identity_command(tmp_path, "init", "--quiet")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    _tracked_repository_paths.cache_clear()
+    yield tmp_path
+    _tracked_repository_paths.cache_clear()
+
+
+def _add_git_identity_symlink(repository: Path, *, target: str = _GIT_IDENTITY_TARGET_PATH) -> None:
+    link = repository / _GIT_IDENTITY_LINK_PATH
+    if link.is_symlink():
+        link.unlink()
+    link.symlink_to(target)
+    _git_identity_command(repository, "add", "--", _GIT_IDENTITY_LINK_PATH)
+
+
+def _git_identity_symlink_source(repository: Path) -> dict[str, Any]:
+    oid = (
+        _git_identity_command(repository, "rev-parse", f":{_GIT_IDENTITY_LINK_PATH}")
+        .decode("ascii")
+        .strip()
+    )
+    blob = _git_identity_command(repository, "cat-file", "blob", oid)
+    return {
+        "digest_sha256": hashlib.sha256(blob).hexdigest(),
+        "locator": f"git-blob:{oid};fixture semantic locator",
+        "path": _GIT_IDENTITY_LINK_PATH,
+        "type": "repository_discovery",
+    }
+
+
+def _git_identity_ordinary_source(
+    repository: Path, content: bytes, *, git_blob_locator: bool
+) -> dict[str, Any]:
+    (repository / _GIT_IDENTITY_ORDINARY_PATH).write_bytes(content)
+    _git_identity_command(repository, "add", "--", _GIT_IDENTITY_ORDINARY_PATH)
+    _tracked_repository_paths.cache_clear()
+    locator = "fixture semantic locator"
+    if git_blob_locator:
+        oid = (
+            _git_identity_command(repository, "rev-parse", f":{_GIT_IDENTITY_ORDINARY_PATH}")
+            .decode("ascii")
+            .strip()
+        )
+        locator = f"git-blob:{oid};{locator}"
+    return {
+        "digest_sha256": hashlib.sha256(content).hexdigest(),
+        "locator": locator,
+        "path": _GIT_IDENTITY_ORDINARY_PATH,
+        "type": "repository_discovery",
+    }
+
+
+def test_exact_git_symlink_representation_passes(
+    git_identity_repository: Path,
+) -> None:
+    (git_identity_repository / _GIT_IDENTITY_TARGET_PATH).write_bytes(
+        b"dereferenced target bytes\n"
+    )
+    _add_git_identity_symlink(git_identity_repository)
+
+    _assert_source_resolves(_git_identity_symlink_source(git_identity_repository), {})
+
+
+def test_git_symlink_source_rejects_wrong_index_mode(
+    git_identity_repository: Path,
+) -> None:
+    (git_identity_repository / _GIT_IDENTITY_TARGET_PATH).write_bytes(
+        b"dereferenced target bytes\n"
+    )
+    _add_git_identity_symlink(git_identity_repository)
+    source = _git_identity_symlink_source(git_identity_repository)
+    oid = source["locator"].split(":", 1)[1].split(";", 1)[0]
+    _git_identity_command(
+        git_identity_repository,
+        "update-index",
+        "--cacheinfo",
+        "100644",
+        oid,
+        _GIT_IDENTITY_LINK_PATH,
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_source_resolves(source, {})
+
+
+def test_git_symlink_source_rejects_wrong_target_blob(
+    git_identity_repository: Path,
+) -> None:
+    (git_identity_repository / _GIT_IDENTITY_TARGET_PATH).write_bytes(
+        b"dereferenced target bytes\n"
+    )
+    (git_identity_repository / "other-target.txt").write_bytes(b"other dereferenced bytes\n")
+    _add_git_identity_symlink(git_identity_repository)
+    source = _git_identity_symlink_source(git_identity_repository)
+
+    _add_git_identity_symlink(git_identity_repository, target="other-target.txt")
+
+    with pytest.raises(AssertionError):
+        _assert_source_resolves(source, {})
+
+
+def test_git_symlink_source_rejects_dereferenced_file_identity(
+    git_identity_repository: Path,
+) -> None:
+    target_bytes = b"dereferenced target bytes\n"
+    (git_identity_repository / _GIT_IDENTITY_TARGET_PATH).write_bytes(target_bytes)
+    _add_git_identity_symlink(git_identity_repository)
+    source = _git_identity_symlink_source(git_identity_repository)
+    source["digest_sha256"] = hashlib.sha256(target_bytes).hexdigest()
+
+    with pytest.raises(AssertionError):
+        _assert_source_resolves(source, {})
+
+
+def test_legacy_ordinary_file_representation_passes(
+    git_identity_repository: Path,
+) -> None:
+    source = _git_identity_ordinary_source(
+        git_identity_repository,
+        b"ordinary source bytes\n",
+        git_blob_locator=False,
+    )
+
+    _assert_source_resolves(source, {})
+
+
+def test_legacy_ordinary_file_rejects_changed_bytes(
+    git_identity_repository: Path,
+) -> None:
+    source = _git_identity_ordinary_source(
+        git_identity_repository,
+        b"ordinary source bytes\n",
+        git_blob_locator=False,
+    )
+    (git_identity_repository / _GIT_IDENTITY_ORDINARY_PATH).write_bytes(
+        b"changed ordinary source bytes\n"
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_source_resolves(source, {})
+
+
+def test_git_blob_ordinary_file_representation_passes(
+    git_identity_repository: Path,
+) -> None:
+    source = _git_identity_ordinary_source(
+        git_identity_repository,
+        b"ordinary source bytes\n",
+        git_blob_locator=True,
+    )
+
+    _assert_source_resolves(source, {})
+
+
+def test_git_blob_ordinary_file_rejects_unstaged_worktree_bytes(
+    git_identity_repository: Path,
+) -> None:
+    source = _git_identity_ordinary_source(
+        git_identity_repository,
+        b"ordinary source bytes\n",
+        git_blob_locator=True,
+    )
+    (git_identity_repository / _GIT_IDENTITY_ORDINARY_PATH).write_bytes(
+        b"unstaged worktree bytes\n"
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_source_resolves(source, {})

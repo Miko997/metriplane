@@ -15,13 +15,14 @@ import ast
 import hashlib
 import heapq
 import json
+import sys
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import Any, TypeAlias
+from typing import Any, Literal, Protocol, TypeAlias, cast
 
 
 class AnalysisError(ValueError):
@@ -677,10 +678,13 @@ class ProgramIndex:
         return _root_name(self.nodes, self.children, identity)
 
     def binding_at(self, scope: ScopeId, name: str, use: NodeId) -> BindingRecord | None:
+        origin = scope
         current: ScopeId | None = scope
         use_key = _node_sort_key(use)
         while current is not None:
             records = self.bindings.get((current, name), ())
+            if records and current.lexical_kind == "module" and origin != current:
+                return records[-1]
             eligible = [
                 record
                 for record in records
@@ -688,6 +692,16 @@ class ProgramIndex:
             ]
             if eligible:
                 return eligible[-1]
+            if (
+                records
+                and current == origin
+                and current.lexical_kind
+                in {
+                    "comprehension",
+                    "function",
+                }
+            ):
+                return records[0]
             current = self.scope_parents[current]
         return None
 
@@ -1080,7 +1094,24 @@ class AnalysisSession:
             return None
         node = self.index.nodes[function_node]
         if isinstance(node, ast.Name):
-            return self.index.resolve_function(self.index.scopes[call], node.id)
+            binding = self.index.binding_at(self.index.scopes[call], node.id, call)
+            if binding is None or (
+                binding.identity.scope == self.index.scopes[call]
+                and _node_sort_key(binding.identity.defining_node) > _node_sort_key(call)
+            ):
+                return None
+            return next(
+                (
+                    record
+                    for record in self.index.functions.values()
+                    if record.identity.defining_node == binding.identity.defining_node
+                    and isinstance(
+                        self.index.nodes[binding.identity.defining_node],
+                        (ast.AsyncFunctionDef, ast.FunctionDef),
+                    )
+                ),
+                None,
+            )
         return None
 
     def _is_inert_scalar_call(self, call: NodeId) -> bool:
@@ -1088,7 +1119,11 @@ class AnalysisSession:
         if function_node is None:
             return False
         node = self.index.nodes[function_node]
-        return isinstance(node, ast.Name) and node.id in _INERT_SCALAR_CALLS
+        return (
+            isinstance(node, ast.Name)
+            and node.id in _INERT_SCALAR_CALLS
+            and self.index.binding_at(self.index.scopes[call], node.id, call) is None
+        )
 
     def _unknown_call(self, identity: NodeId | None) -> bool:
         if identity is None or not isinstance(self.index.nodes[identity], ast.Call):
@@ -1103,6 +1138,36 @@ class AnalysisSession:
                 result.append(value)
         return tuple(result)
 
+    def _literal_mapping_member(
+        self,
+        identity: NodeId,
+        selected: str,
+        *,
+        seen: frozenset[NodeId] = frozenset(),
+    ) -> NodeId | None:
+        if identity in seen:
+            return None
+        nested_seen = seen | {identity}
+        node = self.index.nodes[identity]
+        if isinstance(node, ast.Name):
+            binding = self.index.binding_at(self.index.scopes[identity], node.id, identity)
+            if binding is None or binding.value is None:
+                return None
+            return self._literal_mapping_member(binding.value, selected, seen=nested_seen)
+        if not isinstance(node, ast.Dict):
+            return None
+        matches: list[NodeId] = []
+        for ordinal in range(len(node.values)):
+            key_node = self.index.child(identity, "keys", ordinal)
+            value_node = self.index.child(identity, "values", ordinal)
+            if (
+                key_node is not None
+                and value_node is not None
+                and self._literal_string(key_node) == selected
+            ):
+                matches.append(value_node)
+        return matches[0] if len(matches) == 1 else None
+
     def _transfer_expression(self, key: QueryKey) -> Proposal:
         assert isinstance(key.subject, NodeId)
         identity = key.subject
@@ -1111,7 +1176,14 @@ class AnalysisSession:
             return Proposal(Phase.IRRELEVANT)
         if isinstance(node, ast.Name):
             binding = self.index.binding_at(key.scope, node.id, identity)
-            if binding is None or binding.value is None:
+            if (
+                binding is None
+                or binding.value is None
+                or (
+                    binding.identity.scope == key.scope
+                    and _node_sort_key(binding.identity.defining_node) > _node_sort_key(identity)
+                )
+            ):
                 return Proposal(
                     Phase.UNRESOLVED,
                     reasons=frozenset({Reason.UNSUPPORTED_FORM}),
@@ -1185,12 +1257,25 @@ class AnalysisSession:
             )
         if isinstance(node, ast.Subscript):
             value = self.index.child(identity, "value")
-            if value is None:
+            selected = self.index.child(identity, "slice")
+            if value is None or selected is None:
                 return Proposal(
                     Phase.UNRESOLVED,
                     reasons=frozenset({Reason.UNSUPPORTED_FORM}),
                 )
-            return self._combine((self.expression_query(value),))
+            literal = self._literal_string(selected)
+            if literal is None:
+                return self._combine(
+                    (self.expression_query(value), self.expression_query(selected)),
+                    unresolved_reasons=(Reason.DYNAMIC_KEY,),
+                )
+            member = self._literal_mapping_member(value, literal)
+            if member is None:
+                return self._combine(
+                    (self.expression_query(value),),
+                    unresolved_reasons=(Reason.UNSUPPORTED_FORM,),
+                )
+            return self._combine((self.expression_query(member),))
         if isinstance(node, ast.Attribute):
             value = self.index.child(identity, "value")
             if value is None:
@@ -1225,6 +1310,7 @@ class AnalysisSession:
         assert isinstance(key.subject, ScopeId)
         scope = key.subject
         roots = set(key.effect_roots)
+        aliases = set(roots)
         unknown_results: set[str] = set()
         dependencies: list[QueryKey] = []
         values: set[SemanticValue] = set()
@@ -1234,7 +1320,58 @@ class AnalysisSession:
             return SemanticValue("effect_target", f"{scope.module.import_name}:{name}")
 
         def relevant(name: str | None) -> bool:
-            return name is not None and (name in roots or name in unknown_results)
+            return name is not None and name in aliases
+
+        def call_arguments(call: NodeId | None) -> tuple[NodeId, ...]:
+            if call is None or not isinstance(self.index.nodes[call], ast.Call):
+                return ()
+            return self._call_argument_expressions(call)
+
+        def relevant_arguments(call: NodeId | None) -> tuple[str, ...]:
+            return tuple(
+                sorted(
+                    {
+                        name
+                        for argument in call_arguments(call)
+                        if (name := self.index.root_name(argument)) is not None and relevant(name)
+                    }
+                )
+            )
+
+        def target_has_reflection(target: NodeId) -> bool:
+            return any(
+                isinstance(candidate, ast.Call)
+                and isinstance(candidate.func, ast.Name)
+                and candidate.func.id in _REFLECTIVE_CALLS
+                for candidate in ast.walk(self.index.nodes[target])
+            )
+
+        def possible_roots(value: NodeId | None) -> frozenset[str]:
+            if value is None:
+                return frozenset()
+            found: set[str] = set()
+            pending = [value]
+            visited: set[NodeId] = set()
+            while pending:
+                current = pending.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                node = self.index.nodes[current]
+                if isinstance(node, ast.Name):
+                    found.add(node.id)
+                    continue
+                if isinstance(node, ast.IfExp):
+                    pending.extend(
+                        edge.child
+                        for edge in self.index.children.get(current, ())
+                        if edge.field_name in {"body", "orelse"}
+                    )
+                    continue
+                root_name = self.index.root_name(current)
+                if root_name is not None:
+                    found.add(root_name)
+            return frozenset(found)
 
         for identity in self.index.nodes_in_scope.get(scope, ()):
             node = self.index.nodes[identity]
@@ -1254,8 +1391,17 @@ class AnalysisSession:
                         self.index.nodes, self.index.children, target
                     )
                 ]
+                if any(relevant(value_root) for value_root in possible_roots(value)):
+                    aliases.update(names)
                 if self._unknown_call(value):
                     unknown_results.update(names)
+                    aliases.update(names)
+                    argument_aliases = relevant_arguments(value)
+                    if argument_aliases:
+                        aliases.update(names)
+                        for name in argument_aliases:
+                            values.add(target_value(name))
+                        reasons.add(Reason.UNKNOWN_CALL)
                     for name in names:
                         if name in roots:
                             values.add(target_value(name))
@@ -1267,13 +1413,17 @@ class AnalysisSession:
                     receiver, selected = self._subscript_parts(target)
                     root_name = self.index.root_name(receiver) if receiver is not None else None
                     if not relevant(root_name):
+                        if target_has_reflection(target):
+                            reasons.update({Reason.UNKNOWN_CALL, Reason.DYNAMIC_KEY})
+                            if value is not None:
+                                dependencies.append(self.expression_query(value))
                         continue
                     assert root_name is not None
                     values.add(target_value(root_name))
+                    if root_name in unknown_results:
+                        reasons.add(Reason.UNKNOWN_CALL)
                     if self._literal_string(selected) is None:
                         reasons.add(Reason.DYNAMIC_KEY)
-                        if root_name in unknown_results:
-                            reasons.add(Reason.UNKNOWN_CALL)
                     else:
                         values.add(
                             SemanticValue(
@@ -1285,29 +1435,69 @@ class AnalysisSession:
                         dependencies.append(self.expression_query(value))
                         if self._unknown_call(value):
                             reasons.add(Reason.UNKNOWN_CALL)
+            elif isinstance(node, ast.Delete):
+                for target in self.index.child_values(identity, "targets"):
+                    receiver, _selected = self._subscript_parts(target)
+                    root_name = self.index.root_name(receiver) if receiver is not None else None
+                    if relevant(root_name):
+                        assert root_name is not None
+                        values.add(target_value(root_name))
+                        reasons.add(Reason.UNSUPPORTED_FORM)
+                    elif target_has_reflection(target):
+                        reasons.add(Reason.UNKNOWN_CALL)
+            elif isinstance(node, ast.AugAssign):
+                target = self.index.child(identity, "target")
+                root_name = self.index.root_name(target) if target is not None else None
+                if relevant(root_name):
+                    assert root_name is not None
+                    values.add(target_value(root_name))
+                    reasons.add(Reason.UNSUPPORTED_FORM)
             elif isinstance(node, ast.Call):
                 function_node = self.index.child(identity, "func")
                 if function_node is None:
                     continue
                 function = self.index.nodes[function_node]
-                if (
-                    not isinstance(function, ast.Attribute)
-                    or function.attr not in _MUTATING_METHODS
-                ):
+                arguments = self._call_argument_expressions(identity)
+                if not isinstance(function, ast.Attribute):
+                    if self._unknown_call(identity):
+                        affected = relevant_arguments(identity)
+                        reflective = isinstance(function, ast.Name) and (
+                            function.id in _REFLECTIVE_CALLS
+                        )
+                        if affected or reflective:
+                            for name in affected:
+                                values.add(target_value(name))
+                            reasons.add(Reason.UNKNOWN_CALL)
+                            dependencies.extend(
+                                self.expression_query(argument) for argument in arguments
+                            )
                     continue
                 receiver = self.index.child(function_node, "value")
                 root_name = self.index.root_name(receiver) if receiver is not None else None
                 if not relevant(root_name):
                     continue
                 assert root_name is not None
+                if function.attr in {"copy", "get", "items", "keys", "values"}:
+                    continue
                 values.add(target_value(root_name))
-                arguments = self._call_argument_expressions(identity)
+                if function.attr not in _MUTATING_METHODS:
+                    reasons.add(Reason.UNSUPPORTED_FORM)
+                    dependencies.extend(self.expression_query(argument) for argument in arguments)
+                    continue
+                if root_name in unknown_results:
+                    reasons.add(Reason.UNKNOWN_CALL)
                 if function.attr in {"__setitem__", "setdefault"}:
                     selected = arguments[0] if arguments else None
-                    if self._literal_string(selected) is None:
+                    literal = self._literal_string(selected)
+                    if literal is None:
                         reasons.add(Reason.DYNAMIC_KEY)
-                        if root_name in unknown_results:
-                            reasons.add(Reason.UNKNOWN_CALL)
+                    else:
+                        values.add(
+                            SemanticValue(
+                                "mapping_key",
+                                f"{scope.module.import_name}:{root_name}:{literal}",
+                            )
+                        )
                 dependencies.extend(self.expression_query(argument) for argument in arguments)
 
         return self._combine(
@@ -1560,3 +1750,1151 @@ class AnalysisSession:
         if state.phase is Phase.PENDING:
             raise AnalysisError("pending state escaped the analysis session")
         return Result(state.phase, state.values, state.reasons)
+
+
+class _StagedEntryLike(Protocol):
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def data(self) -> bytes: ...
+
+
+class _StagedSnapshotLike(Protocol):
+    def parser_entry(self, path: str) -> _StagedEntryLike: ...
+
+
+class _PythonModuleLike(Protocol):
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def module(self) -> str: ...
+
+    @property
+    def tree(self) -> ast.Module: ...
+
+
+@dataclass(frozen=True)
+class _ManifestRoot:
+    path: str
+    module: str
+    function: str
+    projection: Literal["return", "returned_assignment", "constructor", "dynamic_family"]
+    selector: str = ""
+
+
+_MANIFEST_ROOTS = (
+    _ManifestRoot(
+        "adapters/maniskill_pickcube/src/maniskill_pickcube/core.py",
+        "maniskill_pickcube.core",
+        "_manifest",
+        "return",
+    ),
+    _ManifestRoot(
+        "adapters/massrobotics_amr/src/massrobotics_amr_adapter/fixture.py",
+        "massrobotics_amr_adapter.fixture",
+        "_manifest",
+        "return",
+    ),
+    _ManifestRoot(
+        "adapters/robomimic_lowdim/src/robomimic_lowdim/fixture.py",
+        "robomimic_lowdim.fixture",
+        "_manifest",
+        "return",
+    ),
+    _ManifestRoot(
+        "adapters/ros2_mcap/src/ros2_mcap_adapter/fixture.py",
+        "ros2_mcap_adapter.fixture",
+        "_manifest",
+        "return",
+    ),
+    _ManifestRoot(
+        "integrations/isaac/metriplane_to_usd.py",
+        "integrations.isaac.metriplane_to_usd",
+        "write_usda_replay",
+        "returned_assignment",
+        "manifest",
+    ),
+    _ManifestRoot(
+        "metriplane/atlas/bundles.py",
+        "metriplane.atlas.bundles",
+        "export_bundle",
+        "constructor",
+        "BundleManifest",
+    ),
+    _ManifestRoot(
+        "tools/release_artifacts.py",
+        "tools.release_artifacts",
+        "create_manifest",
+        "dynamic_family",
+        "digests",
+    ),
+)
+
+_REFLECTIVE_CALLS = frozenset(
+    {
+        "__import__",
+        "eval",
+        "exec",
+        "getattr",
+        "globals",
+        "locals",
+        "setattr",
+        "vars",
+    }
+)
+_SAFE_SCALAR_CALLS = frozenset(
+    {
+        "bool",
+        "bytes",
+        "float",
+        "hash",
+        "int",
+        "isinstance",
+        "len",
+        "max",
+        "min",
+        "repr",
+        "round",
+        "str",
+        "sum",
+    }
+)
+_MAX_MANIFEST_CALLS = 256
+_MAX_MANIFEST_STEPS = 50_000
+
+
+class _Shape:
+    pass
+
+
+@dataclass
+class _ScalarShape(_Shape):
+    literal: object | None = None
+
+
+@dataclass
+class _UnknownShape(_Shape):
+    origin: str
+
+
+@dataclass
+class _MappingShape(_Shape):
+    entries: dict[str, _Shape]
+
+
+@dataclass
+class _SequenceShape(_Shape):
+    items: list[_Shape]
+
+
+@dataclass
+class _TupleShape(_Shape):
+    items: list[_Shape]
+
+
+@dataclass
+class _RecordShape(_Shape):
+    fields: dict[str, _Shape]
+
+
+@dataclass
+class _ChoiceShape(_Shape):
+    choices: list[_Shape]
+
+
+@dataclass(frozen=True)
+class _StaticModule:
+    path: str
+    module: str
+    tree: ast.Module
+    functions: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef]
+    imports: Mapping[str, tuple[str, str]]
+    final_bindings: Mapping[str, ast.AST]
+
+
+def _absolute_import(module: str, imported: str | None, level: int) -> str:
+    if level == 0:
+        return imported or ""
+    package = module.rsplit(".", 1)[0] if "." in module else ""
+    parts = package.split(".") if package else []
+    remove = level - 1
+    if remove > len(parts):
+        raise AnalysisError(f"relative import escapes package: {module}")
+    prefix = parts[: len(parts) - remove]
+    if imported:
+        prefix.extend(imported.split("."))
+    return ".".join(prefix)
+
+
+def _static_module(module: _PythonModuleLike) -> _StaticModule:
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    imports: dict[str, tuple[str, str]] = {}
+    final_bindings: dict[str, ast.AST] = {}
+
+    def names(target: ast.expr) -> tuple[str, ...]:
+        pending = [target]
+        result: list[str] = []
+        while pending:
+            current = pending.pop()
+            if isinstance(current, ast.Name):
+                result.append(current.id)
+            elif isinstance(current, (ast.List, ast.Tuple)):
+                pending.extend(reversed(current.elts))
+        return tuple(result)
+
+    for statement in module.tree.body:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if statement.name in functions:
+                raise AnalysisError(
+                    f"manifest module redefines function {statement.name}: {module.path}"
+                )
+            functions[statement.name] = statement
+            final_bindings[statement.name] = statement
+        elif isinstance(statement, ast.ClassDef):
+            final_bindings[statement.name] = statement
+        elif isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                for name in names(target):
+                    final_bindings[name] = statement
+        elif isinstance(statement, ast.AnnAssign):
+            for name in names(statement.target):
+                final_bindings[name] = statement
+        elif isinstance(statement, ast.Import):
+            for alias in statement.names:
+                final_bindings[alias.asname or alias.name.split(".", 1)[0]] = statement
+        elif isinstance(statement, ast.ImportFrom):
+            target_module = _absolute_import(module.module, statement.module, statement.level)
+            for alias in statement.names:
+                if alias.name == "*":
+                    raise AnalysisError(f"star import is not analyzable: {module.path}")
+                local_name = alias.asname or alias.name
+                imports[local_name] = (target_module, alias.name)
+                final_bindings[local_name] = statement
+    return _StaticModule(
+        module.path,
+        module.module,
+        module.tree,
+        MappingProxyType(functions),
+        MappingProxyType(imports),
+        MappingProxyType(final_bindings),
+    )
+
+
+def _literal(shape: _Shape) -> object | None:
+    if isinstance(shape, _ScalarShape):
+        return shape.literal
+    return None
+
+
+def _choices(shapes: Iterable[_Shape]) -> _Shape:
+    flattened: list[_Shape] = []
+    for shape in shapes:
+        if isinstance(shape, _ChoiceShape):
+            flattened.extend(shape.choices)
+        else:
+            flattened.append(shape)
+    if not flattened:
+        return _ScalarShape()
+    if len(flattened) == 1:
+        return flattened[0]
+    return _ChoiceShape(flattened)
+
+
+class _LocalNameCollector(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+        self.globals: set[str] = set()
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Store):
+            self.names.add(node.id)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.names.add(node.name)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.names.add(node.name)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names.add(node.name)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.globals.update(node.names)
+
+
+def _function_local_names(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> frozenset[str]:
+    collector = _LocalNameCollector()
+    for statement in function.body:
+        collector.visit(statement)
+    parameters = {
+        argument.arg
+        for argument in (
+            *function.args.posonlyargs,
+            *function.args.args,
+            *function.args.kwonlyargs,
+        )
+    }
+    if function.args.vararg is not None:
+        parameters.add(function.args.vararg.arg)
+    if function.args.kwarg is not None:
+        parameters.add(function.args.kwarg.arg)
+    return frozenset((collector.names | parameters) - collector.globals)
+
+
+def _possibly_structured(value: _Shape) -> bool:
+    pending = [value]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        identity = id(current)
+        if identity in visited:
+            continue
+        visited.add(identity)
+        if isinstance(current, (_MappingShape, _SequenceShape)):
+            return True
+        if isinstance(current, _TupleShape):
+            pending.extend(current.items)
+        elif isinstance(current, _ChoiceShape):
+            pending.extend(current.choices)
+        elif isinstance(current, _RecordShape):
+            pending.extend(current.fields.values())
+    return False
+
+
+class _ManifestInterpreter:
+    """Bounded symbolic mapping-shape interpreter over staged AST values only."""
+
+    def __init__(self, modules: Mapping[str, _StaticModule]) -> None:
+        self.modules = modules
+        self.steps = 0
+        self.calls = 0
+        self.stack: list[tuple[str, str]] = []
+        self.local_bindings: list[frozenset[str]] = []
+
+    def _step(self, node: ast.AST) -> None:
+        self.steps += 1
+        if self.steps > _MAX_MANIFEST_STEPS:
+            raise AnalysisError(
+                f"manifest projection step budget exceeded near line {getattr(node, 'lineno', 0)}"
+            )
+
+    def _function(self, module: _StaticModule, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
+        function = module.functions.get(name)
+        if function is None:
+            raise AnalysisError(f"manifest root function is absent: {module.module}:{name}")
+        return function
+
+    def call_root(self, module: _StaticModule, name: str) -> _Shape:
+        function = self._function(module, name)
+        arguments = [
+            self._parameter_shape(module, argument)
+            for argument in (*function.args.posonlyargs, *function.args.args)
+        ]
+        keywords = {
+            argument.arg: self._parameter_shape(module, argument)
+            for argument in function.args.kwonlyargs
+        }
+        return self._call_function(module, function, arguments, keywords)
+
+    def _parameter_shape(self, module: _StaticModule, argument: ast.arg) -> _Shape:
+        if not isinstance(argument.annotation, ast.Name):
+            return _UnknownShape(f"parameter:{argument.arg}")
+        type_name = argument.annotation.id
+        imported = module.imports.get(type_name)
+        if imported is None:
+            return _UnknownShape(f"parameter:{argument.arg}")
+        owner_name, declared_name = imported
+        owner = self.modules.get(owner_name)
+        if owner is None:
+            return _UnknownShape(f"parameter:{argument.arg}")
+        declarations = [
+            statement
+            for statement in owner.tree.body
+            if isinstance(statement, ast.ClassDef) and statement.name == declared_name
+        ]
+        if len(declarations) != 1:
+            return _UnknownShape(f"parameter:{argument.arg}")
+        constructors = [
+            node
+            for node in ast.walk(owner.tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == declared_name
+            and not node.args
+            and all(keyword.arg is not None for keyword in node.keywords)
+        ]
+        if len(constructors) != 1:
+            return _UnknownShape(f"parameter:{argument.arg}")
+        fields = {
+            cast(str, keyword.arg): self._eval(owner, {}, keyword.value)
+            for keyword in constructors[0].keywords
+        }
+        return _RecordShape(fields)
+
+    def returned_assignment(
+        self,
+        module: _StaticModule,
+        function_name: str,
+        variable: str,
+    ) -> _Shape:
+        function = self._function(module, function_name)
+        returns_variable = any(
+            isinstance(statement, ast.Return)
+            and isinstance(statement.value, ast.Name)
+            and statement.value.id == variable
+            for statement in function.body
+        )
+        if not returns_variable:
+            raise AnalysisError(
+                f"manifest assignment is not returned: {module.module}:{function_name}:{variable}"
+            )
+        assignments = [
+            statement
+            for statement in function.body
+            if isinstance(statement, (ast.Assign, ast.AnnAssign))
+            and any(name == variable for name in self._assignment_names(statement))
+        ]
+        if len(assignments) != 1:
+            raise AnalysisError(
+                f"returned manifest assignment must resolve once: {module.path}:{variable}"
+            )
+        assignment = assignments[0]
+        value = assignment.value
+        if value is None:
+            raise AnalysisError(f"returned manifest assignment has no value: {module.path}")
+        return self._eval(module, {}, value)
+
+    def constructor_keys(
+        self,
+        module: _StaticModule,
+        function_name: str,
+        constructor: str,
+    ) -> tuple[str, ...]:
+        function = self._function(module, function_name)
+        calls = [
+            node
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == constructor
+        ]
+        if len(calls) != 1:
+            raise AnalysisError(
+                f"manifest constructor must resolve once: {module.module}:{function_name}:{constructor}"
+            )
+        call = calls[0]
+        if call.args or any(keyword.arg is None for keyword in call.keywords):
+            raise AnalysisError(f"manifest constructor must use only named keys: {module.path}")
+        keys = tuple(sorted(cast(str, keyword.arg) for keyword in call.keywords))
+        if len(keys) != len(set(keys)):
+            raise AnalysisError(f"manifest constructor repeats a key: {module.path}")
+        return keys
+
+    def dynamic_family(
+        self,
+        module: _StaticModule,
+        function_name: str,
+        variable: str,
+    ) -> tuple[str, ...]:
+        function = self._function(module, function_name)
+        assignments = [
+            statement
+            for statement in function.body
+            if isinstance(statement, (ast.Assign, ast.AnnAssign))
+            and any(name == variable for name in self._assignment_names(statement))
+        ]
+        if len(assignments) != 1:
+            raise AnalysisError(
+                f"bounded manifest family must resolve once: {module.path}:{variable}"
+            )
+        value = assignments[0].value
+        if not isinstance(value, ast.DictComp) or len(value.generators) != 1:
+            raise AnalysisError(
+                f"bounded manifest family must be one dict comprehension: {module.path}"
+            )
+        generator = value.generators[0]
+        if generator.is_async or generator.ifs:
+            raise AnalysisError(f"bounded manifest family has dynamic control flow: {module.path}")
+        if not (
+            isinstance(generator.target, ast.Name)
+            and isinstance(value.key, ast.Attribute)
+            and isinstance(value.key.value, ast.Name)
+            and value.key.value.id == generator.target.id
+            and value.key.attr == "name"
+        ):
+            raise AnalysisError(f"bounded manifest family key is not artifact.name: {module.path}")
+        if not (
+            isinstance(generator.iter, ast.Call)
+            and isinstance(generator.iter.func, ast.Name)
+            and generator.iter.func.id == "sorted"
+            and len(generator.iter.args) == 1
+            and isinstance(generator.iter.args[0], (ast.List, ast.Tuple, ast.Set))
+            and len(generator.iter.args[0].elts) > 0
+        ):
+            raise AnalysisError(f"bounded manifest family iterable is not finite: {module.path}")
+        return ("*",)
+
+    def _call_function(
+        self,
+        module: _StaticModule,
+        function: ast.FunctionDef | ast.AsyncFunctionDef,
+        positional: list[_Shape],
+        keywords: Mapping[str, _Shape],
+    ) -> _Shape:
+        identity = (module.module, function.name)
+        if identity in self.stack:
+            chain = " -> ".join(f"{owner}:{name}" for owner, name in (*self.stack, identity))
+            raise AnalysisError(f"recursive manifest projection is forbidden: {chain}")
+        self.calls += 1
+        if self.calls > _MAX_MANIFEST_CALLS:
+            raise AnalysisError("manifest projection call budget exceeded")
+        env: dict[str, _Shape] = {}
+        parameters = [*function.args.posonlyargs, *function.args.args]
+        for ordinal, argument in enumerate(parameters):
+            env[argument.arg] = (
+                positional[ordinal]
+                if ordinal < len(positional)
+                else keywords.get(argument.arg, _UnknownShape(f"parameter:{argument.arg}"))
+            )
+        for argument in function.args.kwonlyargs:
+            env[argument.arg] = keywords.get(
+                argument.arg,
+                _UnknownShape(f"parameter:{argument.arg}"),
+            )
+        if function.args.vararg is not None:
+            env[function.args.vararg.arg] = _SequenceShape(positional[len(parameters) :])
+        if function.args.kwarg is not None:
+            known = {argument.arg for argument in (*parameters, *function.args.kwonlyargs)}
+            env[function.args.kwarg.arg] = _MappingShape(
+                {key: value for key, value in keywords.items() if key not in known}
+            )
+        self.stack.append(identity)
+        self.local_bindings.append(_function_local_names(function))
+        try:
+            for statement in function.body:
+                returned = self._statement(module, env, statement)
+                if returned is not None:
+                    return returned
+        finally:
+            self.local_bindings.pop()
+            popped = self.stack.pop()
+            if popped != identity:
+                raise AnalysisError("manifest interpreter call stack is corrupt")
+        return _ScalarShape()
+
+    @staticmethod
+    def _assignment_names(statement: ast.Assign | ast.AnnAssign) -> tuple[str, ...]:
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        return tuple(target.id for target in targets if isinstance(target, ast.Name))
+
+    def _statement(
+        self,
+        module: _StaticModule,
+        env: dict[str, _Shape],
+        statement: ast.stmt,
+    ) -> _Shape | None:
+        self._step(statement)
+        if isinstance(statement, ast.Assign):
+            value = self._eval(module, env, statement.value)
+            for target in statement.targets:
+                self._bind(module, env, target, value)
+            return None
+        if isinstance(statement, ast.AnnAssign):
+            if statement.value is not None:
+                self._bind(module, env, statement.target, self._eval(module, env, statement.value))
+            return None
+        if isinstance(statement, ast.Expr):
+            self._eval(module, env, statement.value)
+            return None
+        if isinstance(statement, ast.Return):
+            return (
+                _ScalarShape()
+                if statement.value is None
+                else self._eval(module, env, statement.value)
+            )
+        if isinstance(statement, (ast.Pass, ast.Assert)):
+            return None
+        if isinstance(statement, ast.If):
+            return self._branch(module, env, statement.body, statement.orelse)
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return None
+        raise AnalysisError(
+            f"unsupported manifest statement {type(statement).__name__}:"
+            f"{module.path}:{getattr(statement, 'lineno', 0)}"
+        )
+
+    def _branch(
+        self,
+        module: _StaticModule,
+        env: dict[str, _Shape],
+        body: list[ast.stmt],
+        orelse: list[ast.stmt],
+    ) -> _Shape | None:
+        if any(
+            self._contains_structural_mutation(statement, env) for statement in (*body, *orelse)
+        ):
+            raise AnalysisError(
+                f"conditional structural manifest mutation is ambiguous: {module.path}"
+            )
+        returned: list[_Shape] = []
+        for branch in (body, orelse):
+            local = dict(env)
+            for statement in branch:
+                result = self._statement(module, local, statement)
+                if result is not None:
+                    returned.append(result)
+                    break
+        return _choices(returned) if returned else None
+
+    def _contains_structural_mutation(
+        self,
+        statement: ast.stmt,
+        env: Mapping[str, _Shape],
+    ) -> bool:
+        for node in ast.walk(statement):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any(isinstance(target, ast.Subscript) for target in targets):
+                    return True
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and isinstance(env.get(node.func.value.id), (_MappingShape, _SequenceShape))
+            ):
+                return True
+        return False
+
+    def _bind(
+        self,
+        module: _StaticModule,
+        env: dict[str, _Shape],
+        target: ast.expr,
+        value: _Shape,
+    ) -> None:
+        if isinstance(target, ast.Name):
+            env[target.id] = value
+            return
+        if isinstance(target, (ast.Tuple, ast.List)):
+            items = value.items if isinstance(value, (_TupleShape, _SequenceShape)) else []
+            if len(items) != len(target.elts):
+                raise AnalysisError(
+                    f"manifest destructuring is not statically exact:"
+                    f"{module.path}:{getattr(target, 'lineno', 0)}"
+                )
+            for nested, item in zip(target.elts, items, strict=True):
+                self._bind(module, env, nested, item)
+            return
+        if isinstance(target, ast.Subscript):
+            receiver = self._eval(module, env, target.value)
+            key = _literal(self._eval(module, env, target.slice))
+            if not isinstance(receiver, _MappingShape):
+                raise AnalysisError(
+                    f"manifest subscript target is not a known mapping: {module.path}"
+                )
+            if not isinstance(key, str) or not key:
+                raise AnalysisError(f"dynamic manifest mutation key is forbidden: {module.path}")
+            receiver.entries[key] = value
+            return
+        raise AnalysisError(
+            f"unsupported manifest assignment target {type(target).__name__}: {module.path}"
+        )
+
+    def _eval(self, module: _StaticModule, env: dict[str, _Shape], node: ast.AST) -> _Shape:
+        self._step(node)
+        if isinstance(node, ast.Constant):
+            return _ScalarShape(node.value)
+        if isinstance(node, ast.Name):
+            return env.get(node.id, _UnknownShape(f"name:{node.id}"))
+        if isinstance(node, ast.Dict):
+            result = _MappingShape({})
+            for key_node, value_node in zip(node.keys, node.values, strict=True):
+                value = self._eval(module, env, value_node)
+                if key_node is None:
+                    sources = value.choices if isinstance(value, _ChoiceShape) else [value]
+                    mappings = [item for item in sources if isinstance(item, _MappingShape)]
+                    if len(mappings) != len(sources):
+                        raise AnalysisError(
+                            f"dynamic manifest mapping unpack is forbidden: {module.path}"
+                        )
+                    for source in mappings:
+                        result.entries.update(source.entries)
+                    continue
+                key = _literal(self._eval(module, env, key_node))
+                if not isinstance(key, str) or not key:
+                    raise AnalysisError(f"dynamic manifest literal key is forbidden: {module.path}")
+                if key in result.entries:
+                    raise AnalysisError(f"duplicate manifest literal key {key!r}: {module.path}")
+                result.entries[key] = value
+            return result
+        if isinstance(node, ast.List):
+            return _SequenceShape([self._eval(module, env, item) for item in node.elts])
+        if isinstance(node, (ast.Tuple, ast.Set)):
+            return _TupleShape([self._eval(module, env, item) for item in node.elts])
+        if isinstance(node, ast.IfExp):
+            condition = self._condition(module, env, node.test)
+            if condition is True:
+                return self._eval(module, env, node.body)
+            if condition is False:
+                return self._eval(module, env, node.orelse)
+            return _choices(
+                (self._eval(module, env, node.body), self._eval(module, env, node.orelse))
+            )
+        if isinstance(node, ast.Subscript):
+            receiver = self._eval(module, env, node.value)
+            key = _literal(self._eval(module, env, node.slice))
+            return self._subscript(module, receiver, key)
+        if isinstance(node, ast.Attribute):
+            receiver = self._eval(module, env, node.value)
+            if isinstance(receiver, _RecordShape):
+                return receiver.fields.get(node.attr, _UnknownShape(f"attribute:{node.attr}"))
+            if isinstance(receiver, _MappingShape) and node.attr in receiver.entries:
+                return receiver.entries[node.attr]
+            return _UnknownShape(f"attribute:{node.attr}")
+        if isinstance(node, ast.Call):
+            return self._call(module, env, node)
+        if isinstance(node, ast.ListComp):
+            return _SequenceShape(self._comprehension(module, env, node.elt, node.generators))
+        if isinstance(node, ast.GeneratorExp):
+            return _SequenceShape(self._comprehension(module, env, node.elt, node.generators))
+        if isinstance(node, ast.DictComp):
+            entries: dict[str, _Shape] = {}
+            for local in self._comprehension_envs(module, env, node.generators):
+                key = _literal(self._eval(module, local, node.key))
+                if not isinstance(key, str) or not key:
+                    raise AnalysisError(
+                        f"dynamic manifest comprehension key is forbidden: {module.path}"
+                    )
+                entries[key] = self._eval(module, local, node.value)
+            return _MappingShape(entries)
+        if isinstance(
+            node,
+            (
+                ast.BinOp,
+                ast.BoolOp,
+                ast.Compare,
+                ast.FormattedValue,
+                ast.JoinedStr,
+                ast.Lambda,
+                ast.UnaryOp,
+            ),
+        ):
+            return _ScalarShape()
+        if isinstance(node, ast.Slice):
+            return _ScalarShape()
+        raise AnalysisError(
+            f"unsupported manifest expression {type(node).__name__}:"
+            f"{module.path}:{getattr(node, 'lineno', 0)}"
+        )
+
+    def _condition(
+        self,
+        module: _StaticModule,
+        env: dict[str, _Shape],
+        node: ast.expr,
+    ) -> bool | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+            return node.value
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "isinstance"
+            and len(node.args) == 2
+            and isinstance(node.args[1], ast.Name)
+        ):
+            value = self._eval(module, env, node.args[0])
+            expected = node.args[1].id
+            if expected == "tuple":
+                return isinstance(value, _TupleShape)
+            if expected == "list":
+                return isinstance(value, _SequenceShape)
+            if expected == "dict":
+                return isinstance(value, _MappingShape)
+            if expected == "str" and isinstance(value, _ScalarShape):
+                return isinstance(value.literal, str)
+        return None
+
+    def _subscript(self, module: _StaticModule, receiver: _Shape, key: object | None) -> _Shape:
+        if isinstance(receiver, _ChoiceShape):
+            return _choices(self._subscript(module, choice, key) for choice in receiver.choices)
+        if isinstance(receiver, _MappingShape):
+            if not isinstance(key, str):
+                return _UnknownShape("dynamic-mapping-selection")
+            return receiver.entries.get(key, _UnknownShape(f"missing-key:{key}"))
+        if isinstance(receiver, (_SequenceShape, _TupleShape)):
+            if isinstance(key, int) and -len(receiver.items) <= key < len(receiver.items):
+                return receiver.items[key]
+            return _UnknownShape("dynamic-sequence-selection")
+        return _UnknownShape("subscript")
+
+    def _comprehension(
+        self,
+        module: _StaticModule,
+        env: dict[str, _Shape],
+        element: ast.expr,
+        generators: list[ast.comprehension],
+    ) -> list[_Shape]:
+        return [
+            self._eval(module, local, element)
+            for local in self._comprehension_envs(module, env, generators)
+        ]
+
+    def _comprehension_envs(
+        self,
+        module: _StaticModule,
+        env: dict[str, _Shape],
+        generators: list[ast.comprehension],
+    ) -> list[dict[str, _Shape]]:
+        environments = [dict(env)]
+        for generator in generators:
+            if generator.is_async:
+                raise AnalysisError(f"async manifest comprehension is forbidden: {module.path}")
+            expanded: list[dict[str, _Shape]] = []
+            for current in environments:
+                iterable = self._eval(module, current, generator.iter)
+                items: list[_Shape]
+                if isinstance(iterable, _UnknownShape):
+                    items = [iterable]
+                elif isinstance(iterable, (_SequenceShape, _TupleShape)):
+                    items = iterable.items
+                else:
+                    raise AnalysisError(
+                        f"unbounded manifest comprehension is forbidden: {module.path}"
+                    )
+                for item in items:
+                    local = dict(current)
+                    self._bind(module, local, generator.target, item)
+                    expanded.append(local)
+            environments = expanded
+        return environments
+
+    def _call(self, module: _StaticModule, env: dict[str, _Shape], node: ast.Call) -> _Shape:
+        if (
+            isinstance(node.func, ast.Call)
+            and isinstance(node.func.func, ast.Name)
+            and node.func.func.id in _REFLECTIVE_CALLS
+        ):
+            raise AnalysisError(
+                f"reflective/callback manifest call is forbidden: {node.func.func.id}"
+            )
+        positional = [self._eval(module, env, argument) for argument in node.args]
+        keywords: dict[str, _Shape] = {}
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                unpacked = self._eval(module, env, keyword.value)
+                if not isinstance(unpacked, _MappingShape):
+                    raise AnalysisError(
+                        f"dynamic manifest call keywords are forbidden: {module.path}"
+                    )
+                keywords.update(unpacked.entries)
+            else:
+                keywords[keyword.arg] = self._eval(module, env, keyword.value)
+        if isinstance(node.func, ast.Name):
+            name = node.func.id
+            if name in _REFLECTIVE_CALLS or name in {"map", "filter"}:
+                raise AnalysisError(f"reflective/callback manifest call is forbidden: {name}")
+            local_shadow = bool(self.local_bindings and name in self.local_bindings[-1])
+            binding = module.final_bindings.get(name)
+            structured_arguments = any(
+                _possibly_structured(value) for value in (*positional, *keywords.values())
+            )
+            if local_shadow:
+                raise AnalysisError(f"local callback binding is unresolved: {name}")
+            if name == "dict" and binding is None:
+                return self._dict_call(module, positional, keywords)
+            if name in {"list", "tuple", "set", "sorted"} and binding is None:
+                return self._sequence_call(module, name, positional)
+            if name in _SAFE_SCALAR_CALLS and binding is None:
+                return _ScalarShape()
+            function = (
+                module.functions.get(name)
+                if isinstance(binding, (ast.AsyncFunctionDef, ast.FunctionDef))
+                else None
+            )
+            owner = module
+            if function is None and isinstance(binding, ast.ImportFrom) and name in module.imports:
+                target_module, target_name = module.imports[name]
+                owner = self.modules.get(target_module)  # type: ignore[assignment]
+                if owner is not None:
+                    function = owner.functions.get(target_name)
+            if function is not None:
+                return self._call_function(owner, function, positional, keywords)
+            if binding is not None:
+                raise AnalysisError(f"shadowed callback binding is unresolved: {name}")
+            if structured_arguments:
+                raise AnalysisError(f"unknown callback may mutate manifest structure: {name}")
+            return _UnknownShape(f"call:{name}")
+        if isinstance(node.func, ast.Attribute):
+            receiver = self._eval(module, env, node.func.value)
+            return self._method_call(module, receiver, node.func.attr, positional, keywords)
+        raise AnalysisError(f"dynamic manifest callable is forbidden: {module.path}")
+
+    def _dict_call(
+        self,
+        module: _StaticModule,
+        positional: list[_Shape],
+        keywords: Mapping[str, _Shape],
+    ) -> _Shape:
+        if len(positional) > 1:
+            raise AnalysisError(f"dict manifest call has too many arguments: {module.path}")
+        result: dict[str, _Shape] = {}
+        if positional:
+            source = positional[0]
+            if isinstance(source, _ChoiceShape):
+                mappings = [
+                    choice for choice in source.choices if isinstance(choice, _MappingShape)
+                ]
+                if len(mappings) != len(source.choices):
+                    raise AnalysisError(f"dict manifest source is ambiguous: {module.path}")
+                for mapping in mappings:
+                    result.update(mapping.entries)
+            elif isinstance(source, _MappingShape):
+                result.update(source.entries)
+            else:
+                raise AnalysisError(f"dict manifest source is not a known mapping: {module.path}")
+        result.update(keywords)
+        return _MappingShape(result)
+
+    def _sequence_call(
+        self,
+        module: _StaticModule,
+        name: str,
+        positional: list[_Shape],
+    ) -> _Shape:
+        if len(positional) > 1:
+            raise AnalysisError(f"{name} manifest call has too many arguments: {module.path}")
+        if not positional:
+            return _SequenceShape([])
+        source = positional[0]
+        if isinstance(source, (_SequenceShape, _TupleShape)):
+            return _SequenceShape(list(source.items))
+        if isinstance(source, _ChoiceShape):
+            choices = [self._sequence_call(module, name, [choice]) for choice in source.choices]
+            return _choices(choices)
+        if isinstance(source, _MappingShape):
+            return _SequenceShape([_ScalarShape(key) for key in source.entries])
+        if isinstance(source, _UnknownShape):
+            if name == "sorted":
+                return source
+            return _SequenceShape([source])
+        raise AnalysisError(f"{name} manifest source is not finite: {module.path}")
+
+    def _method_call(
+        self,
+        module: _StaticModule,
+        receiver: _Shape,
+        method: str,
+        positional: list[_Shape],
+        keywords: Mapping[str, _Shape],
+    ) -> _Shape:
+        if isinstance(receiver, _ChoiceShape):
+            return _choices(
+                self._method_call(module, choice, method, positional, keywords)
+                for choice in receiver.choices
+            )
+        if isinstance(receiver, _MappingShape):
+            if method == "items" and not positional and not keywords:
+                return _SequenceShape(
+                    [
+                        _TupleShape([_ScalarShape(key), value])
+                        for key, value in receiver.entries.items()
+                    ]
+                )
+            if method == "keys" and not positional and not keywords:
+                return _SequenceShape([_ScalarShape(key) for key in receiver.entries])
+            if method == "values" and not positional and not keywords:
+                return _SequenceShape(list(receiver.entries.values()))
+            if method == "copy" and not positional and not keywords:
+                return _MappingShape(dict(receiver.entries))
+            if method == "get" and 1 <= len(positional) <= 2 and not keywords:
+                key = _literal(positional[0])
+                if not isinstance(key, str):
+                    return _UnknownShape("dynamic-get")
+                default = positional[1] if len(positional) == 2 else _UnknownShape("missing-get")
+                return receiver.entries.get(key, default)
+            if method == "setdefault" and 1 <= len(positional) <= 2 and not keywords:
+                key = _literal(positional[0])
+                if not isinstance(key, str) or not key:
+                    raise AnalysisError(
+                        f"dynamic manifest setdefault key is forbidden: {module.path}"
+                    )
+                default = positional[1] if len(positional) == 2 else _ScalarShape()
+                return receiver.entries.setdefault(key, default)
+            if method == "update" and len(positional) <= 1:
+                if positional:
+                    source = positional[0]
+                    if not isinstance(source, _MappingShape):
+                        raise AnalysisError(f"dynamic manifest update is forbidden: {module.path}")
+                    receiver.entries.update(source.entries)
+                receiver.entries.update(keywords)
+                return _ScalarShape()
+            raise AnalysisError(f"unknown manifest mapping mutator/call {method!r}: {module.path}")
+        if isinstance(receiver, _SequenceShape):
+            if method == "append" and len(positional) == 1 and not keywords:
+                receiver.items.append(positional[0])
+                return _ScalarShape()
+            if method == "extend" and len(positional) == 1 and not keywords:
+                source = positional[0]
+                if not isinstance(source, (_SequenceShape, _TupleShape)):
+                    raise AnalysisError(f"dynamic manifest extend is forbidden: {module.path}")
+                receiver.items.extend(source.items)
+                return _ScalarShape()
+            raise AnalysisError(f"unknown manifest sequence mutator/call {method!r}: {module.path}")
+        if _possibly_structured(receiver) or any(
+            _possibly_structured(value) for value in (*positional, *keywords.values())
+        ):
+            raise AnalysisError(
+                f"unknown attribute callback may mutate manifest structure: {method}"
+            )
+        return _UnknownShape(f"method:{method}")
+
+
+def _pointer_component(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
+
+
+def _shape_pointers(shape: _Shape) -> tuple[str, ...]:
+    pointers: set[str] = set()
+    active: set[int] = set()
+
+    def visit(value: _Shape, path: tuple[str, ...]) -> None:
+        if isinstance(value, _ChoiceShape):
+            for choice in value.choices:
+                visit(choice, path)
+            return
+        if isinstance(value, _UnknownShape):
+            if not path:
+                raise AnalysisError(f"manifest root is unresolved: {value.origin}")
+            return
+        if isinstance(value, _MappingShape):
+            identity = id(value)
+            if identity in active:
+                raise AnalysisError("recursive manifest mapping shape is forbidden")
+            active.add(identity)
+            try:
+                for key, child in sorted(value.entries.items()):
+                    selected = (*path, key)
+                    pointers.add("/" + "/".join(_pointer_component(item) for item in selected))
+                    visit(child, selected)
+            finally:
+                active.remove(identity)
+            return
+        if isinstance(value, (_SequenceShape, _TupleShape)):
+            identity = id(value)
+            if identity in active:
+                raise AnalysisError("recursive manifest sequence shape is forbidden")
+            active.add(identity)
+            try:
+                selected = (*path, "*")
+                for child in value.items:
+                    visit(child, selected)
+            finally:
+                active.remove(identity)
+
+    visit(shape, ())
+    if not pointers:
+        raise AnalysisError("manifest projection produced no keys")
+    return tuple(sorted(pointers))
+
+
+def _validated_modules(
+    snapshot: _StagedSnapshotLike,
+    modules: Sequence[_PythonModuleLike],
+) -> Mapping[str, _StaticModule]:
+    result: dict[str, _StaticModule] = {}
+    paths: set[str] = set()
+    for supplied in sorted(modules, key=lambda item: (item.module, item.path)):
+        if supplied.module in result or supplied.path in paths:
+            raise AnalysisError(
+                f"duplicate staged Python module: {supplied.module}:{supplied.path}"
+            )
+        entry = snapshot.parser_entry(supplied.path)
+        if entry.path != supplied.path:
+            raise AnalysisError(f"staged parser entry path mismatch: {supplied.path}")
+        try:
+            source = entry.data.decode("utf-8")
+            parsed = ast.parse(source, filename=supplied.path)
+        except (UnicodeError, SyntaxError) as exc:
+            raise AnalysisError(f"cannot parse exact staged source {supplied.path}: {exc}") from exc
+        if ast.dump(parsed, include_attributes=True) != ast.dump(
+            supplied.tree,
+            include_attributes=True,
+        ):
+            raise AnalysisError(f"provided AST differs from exact staged source: {supplied.path}")
+        indexed = _static_module(supplied)
+        result[supplied.module] = indexed
+        paths.add(supplied.path)
+    return MappingProxyType(result)
+
+
+def _observation_type(snapshot: object) -> type[Any]:
+    owner = sys.modules.get(type(snapshot).__module__)
+    observation = getattr(owner, "ManifestKeyObservation", None) if owner is not None else None
+    if not isinstance(observation, type):
+        raise AnalysisError(
+            "scanner module does not expose ManifestKeyObservation beside StagedSnapshot"
+        )
+    fields = getattr(observation, "__dataclass_fields__", None)
+    if not isinstance(fields, dict) or set(fields) != {"key", "source_path", "locator"}:
+        raise AnalysisError("ManifestKeyObservation has an incompatible scanner contract")
+    return observation
+
+
+def discover_manifest_keys(
+    snapshot: _StagedSnapshotLike,
+    modules: Sequence[_PythonModuleLike],
+) -> tuple[Any, ...]:
+    """Project maintained production manifest keys from exact staged source ASTs.
+
+    The scanner owns both input and observation classes.  Resolving the observation
+    class beside the concrete snapshot type avoids importing a second scanner module
+    when the scanner is executed as ``__main__``.
+    """
+
+    static_modules = _validated_modules(snapshot, modules)
+    interpreter = _ManifestInterpreter(static_modules)
+    projected: list[tuple[str, str, str]] = []
+    for root in _MANIFEST_ROOTS:
+        module = static_modules.get(root.module)
+        if module is None or module.path != root.path:
+            raise AnalysisError(f"maintained manifest module is absent: {root.path}")
+        if root.projection == "return":
+            keys = _shape_pointers(interpreter.call_root(module, root.function))
+        elif root.projection == "returned_assignment":
+            keys = _shape_pointers(
+                interpreter.returned_assignment(module, root.function, root.selector)
+            )
+        elif root.projection == "constructor":
+            keys = tuple(
+                f"/{_pointer_component(key)}"
+                for key in interpreter.constructor_keys(
+                    module,
+                    root.function,
+                    root.selector,
+                )
+            )
+        else:
+            keys = tuple(
+                f"/{_pointer_component(key)}"
+                for key in interpreter.dynamic_family(
+                    module,
+                    root.function,
+                    root.selector,
+                )
+            )
+        projected.extend((key, root.path, f"{root.function}:{key}") for key in keys)
+    projected.sort()
+    if len(projected) != len(set(projected)):
+        raise AnalysisError("manifest observation identities are not unique")
+    observation = _observation_type(snapshot)
+    return tuple(
+        observation(key=key, source_path=source_path, locator=locator)
+        for key, source_path, locator in projected
+    )
