@@ -299,6 +299,38 @@ def _root_name(
         return None
 
 
+def _possible_root_names(
+    index_nodes: Mapping[NodeId, ast.AST],
+    children: Mapping[NodeId, tuple[ChildEdge, ...]],
+    root: NodeId,
+) -> frozenset[str]:
+    found: set[str] = set()
+    pending = [root]
+    visited: set[NodeId] = set()
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        root_name = _root_name(index_nodes, children, current)
+        if root_name is not None:
+            found.add(root_name)
+            continue
+        node = index_nodes[current]
+        if isinstance(node, ast.IfExp):
+            fields = {"body", "orelse"}
+        elif isinstance(node, ast.Dict):
+            fields = {"values"}
+        elif isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+            fields = {"elts"}
+        else:
+            continue
+        pending.extend(
+            edge.child for edge in children.get(current, ()) if edge.field_name in fields
+        )
+    return frozenset(found)
+
+
 class ProgramIndex:
     """Immutable side tables over parsed ASTs.
 
@@ -540,7 +572,7 @@ class ProgramIndex:
                     {
                         root_name
                         for value in return_expressions
-                        if (root_name := _root_name(nodes, children, value)) is not None
+                        for root_name in _possible_root_names(nodes, children, value)
                     }
                 )
                 functions[function_id] = FunctionRecord(
@@ -1353,43 +1385,7 @@ class AnalysisSession:
         def possible_roots(value: NodeId | None) -> frozenset[str]:
             if value is None:
                 return frozenset()
-            found: set[str] = set()
-            pending = [value]
-            visited: set[NodeId] = set()
-            while pending:
-                current = pending.pop()
-                if current in visited:
-                    continue
-                visited.add(current)
-                node = self.index.nodes[current]
-                if isinstance(node, ast.Name):
-                    found.add(node.id)
-                    continue
-                if isinstance(node, ast.IfExp):
-                    pending.extend(
-                        edge.child
-                        for edge in self.index.children.get(current, ())
-                        if edge.field_name in {"body", "orelse"}
-                    )
-                    continue
-                if isinstance(node, ast.Dict):
-                    pending.extend(
-                        edge.child
-                        for edge in self.index.children.get(current, ())
-                        if edge.field_name == "values"
-                    )
-                    continue
-                if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
-                    pending.extend(
-                        edge.child
-                        for edge in self.index.children.get(current, ())
-                        if edge.field_name == "elts"
-                    )
-                    continue
-                root_name = self.index.root_name(current)
-                if root_name is not None:
-                    found.add(root_name)
-            return frozenset(found)
+            return _possible_root_names(self.index.nodes, self.index.children, value)
 
         for identity in self.index.nodes_in_scope.get(scope, ()):
             node = self.index.nodes[identity]

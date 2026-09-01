@@ -464,6 +464,126 @@ def build_manifest():
         required_keys=frozenset({"known"}),
     ),
     _Case(
+        "conditional helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return payload if runtime_flag else {}
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "tuple helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return (payload,)
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "list helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return [payload]
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "set helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return {payload}
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known"}),
+    ),
+    _Case(
+        "mapping helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return {"payload": payload}
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known", "payload"}),
+    ),
+    _Case(
+        "deep structured helper return includes its unknown callback scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    external_callback(payload)
+    return {"payload": (payload if runtime_flag else {},)}
+
+def build_manifest():
+    return helper()
+""",
+        Phase.UNRESOLVED,
+        required_reasons=frozenset({Reason.UNKNOWN_CALL}),
+        required_keys=frozenset({"known", "payload"}),
+    ),
+    _Case(
+        "structured helper return includes its literal scope effects",
+        """
+def helper():
+    payload = {"known": 1}
+    payload["added"] = {"child": 2}
+    return {"payload": (payload,)}
+
+def build_manifest():
+    return helper()
+""",
+        Phase.KNOWN,
+        exact_keys=frozenset({"added", "child", "known", "payload"}),
+        expect_no_reasons=True,
+    ),
+    _Case(
+        "unreturned helper local does not contribute scope effects",
+        """
+def helper():
+    scratch = {"private": 1}
+    external_callback(scratch)
+    return {"known": 1} if scratch else {}
+
+def build_manifest():
+    return helper()
+""",
+        Phase.KNOWN,
+        exact_keys=frozenset({"known"}),
+        expect_no_reasons=True,
+    ),
+    _Case(
         "recursive helper with a named return root remains bounded",
         """
 def helper():
