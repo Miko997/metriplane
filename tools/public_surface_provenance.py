@@ -1931,6 +1931,7 @@ class _StaticModule:
     source_sha256: str
     tree: ast.Module
     functions: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef]
+    classes: Mapping[str, ast.ClassDef]
     imports: Mapping[str, tuple[str, str]]
     final_bindings: Mapping[str, ast.AST]
 
@@ -1951,6 +1952,7 @@ def _absolute_import(module: str, imported: str | None, level: int) -> str:
 
 def _static_module(module: _PythonModuleLike, source_sha256: str) -> _StaticModule:
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    classes: dict[str, ast.ClassDef] = {}
     imports: dict[str, tuple[str, str]] = {}
     final_bindings: dict[str, ast.AST] = {}
 
@@ -1967,13 +1969,10 @@ def _static_module(module: _PythonModuleLike, source_sha256: str) -> _StaticModu
 
     for statement in module.tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if statement.name in functions:
-                raise AnalysisError(
-                    f"manifest module redefines function {statement.name}: {module.path}"
-                )
             functions[statement.name] = statement
             final_bindings[statement.name] = statement
         elif isinstance(statement, ast.ClassDef):
+            classes[statement.name] = statement
             final_bindings[statement.name] = statement
         elif isinstance(statement, ast.Assign):
             for target in statement.targets:
@@ -1993,12 +1992,17 @@ def _static_module(module: _PythonModuleLike, source_sha256: str) -> _StaticModu
                 local_name = alias.asname or alias.name
                 imports[local_name] = (target_module, alias.name)
                 final_bindings[local_name] = statement
+        elif isinstance(statement, ast.Delete):
+            for target in statement.targets:
+                for name in names(target):
+                    final_bindings[name] = statement
     return _StaticModule(
         module.path,
         module.module,
         source_sha256,
         module.tree,
         MappingProxyType(functions),
+        MappingProxyType(classes),
         MappingProxyType(imports),
         MappingProxyType(final_bindings),
     )
@@ -2024,34 +2028,459 @@ def _choices(shapes: Iterable[_Shape]) -> _Shape:
     return _ChoiceShape(flattened)
 
 
-def _is_hashlib_sha256_call(module: _StaticModule, node: ast.Call) -> bool:
-    if not (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr == "sha256"
-        and isinstance(node.func.value, ast.Name)
-        and len(node.args) == 1
-        and not node.keywords
-    ):
-        return False
-    binding = module.final_bindings.get(node.func.value.id)
-    if not isinstance(binding, ast.Import):
-        return False
-    return any(
-        alias.name == "hashlib"
-        and (alias.asname or alias.name.split(".", 1)[0]) == node.func.value.id
-        for alias in binding.names
-    )
+class _BindingStatus(Enum):
+    STABLE_EXACT = "stable_exact"
+    UNRESOLVED = "unresolved"
 
 
-def _is_hashlib_sha256_hexdigest_call(module: _StaticModule, node: ast.Call) -> bool:
-    return (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr == "hexdigest"
-        and not node.args
-        and not node.keywords
-        and isinstance(node.func.value, ast.Call)
-        and _is_hashlib_sha256_call(module, node.func.value)
-    )
+@dataclass(frozen=True)
+class _BindingAnswer:
+    status: _BindingStatus
+    binding: ast.AST | None = None
+    target_module: str | None = None
+    target_member: str | None = None
+
+    @property
+    def stable_exact(self) -> bool:
+        return self.status is _BindingStatus.STABLE_EXACT
+
+
+@dataclass(frozen=True)
+class _AliasSymbol:
+    kind: Literal["module", "setter", "safe_builtin"]
+    name: str
+
+
+def _binding_target_names(target: ast.AST) -> tuple[str, ...]:
+    if isinstance(target, ast.Name):
+        return (target.id,)
+    if isinstance(target, (ast.List, ast.Tuple)):
+        return tuple(name for item in target.elts for name in _binding_target_names(item))
+    if isinstance(target, ast.Starred):
+        return _binding_target_names(target.value)
+    return ()
+
+
+def _binding_node_names(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)):
+        return (node.name,)
+    if isinstance(node, ast.Assign):
+        return tuple(name for target in node.targets for name in _binding_target_names(target))
+    if isinstance(node, ast.AnnAssign):
+        return _binding_target_names(node.target)
+    if isinstance(node, ast.Import):
+        return tuple(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+    if isinstance(node, ast.ImportFrom):
+        return tuple(alias.asname or alias.name for alias in node.names if alias.name != "*")
+    return ()
+
+
+class _LexicalBindingCollector(ast.NodeVisitor):
+    """Collect only bounded, lexical binding facts needed by the stability boundary."""
+
+    def __init__(self) -> None:
+        self.counts: dict[str, int] = defaultdict(int)
+        self.aliases: dict[str, ast.expr] = {}
+        self.module_imports: dict[str, str] = {}
+        self.builtin_imports: dict[str, str] = {}
+        self.globals: set[str] = set()
+
+    def _bind(self, name: str) -> None:
+        self.counts[name] += 1
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, (ast.Del, ast.Store)):
+            self._bind(node.id)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                self.aliases[target.id] = node.value
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name) and node.value is not None:
+            self.aliases[node.target.id] = node.value
+        self.generic_visit(node)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        if isinstance(node.target, ast.Name):
+            self.aliases[node.target.id] = node.value
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._bind(node.name)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._bind(node.name)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._bind(node.name)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            local_name = alias.asname or alias.name.split(".", 1)[0]
+            self._bind(local_name)
+            self.module_imports[local_name] = (
+                alias.name if alias.asname is not None else alias.name.split(".", 1)[0]
+            )
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.level != 0 or node.module != "builtins":
+            for alias in node.names:
+                if alias.name != "*":
+                    self._bind(alias.asname or alias.name)
+            return
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            local_name = alias.asname or alias.name
+            self._bind(local_name)
+            if alias.name in {"delattr", "setattr"}:
+                self.builtin_imports[local_name] = alias.name
+            elif alias.name in _TRUSTED_MANIFEST_BUILTINS:
+                self.builtin_imports[local_name] = alias.name
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.globals.update(node.names)
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        return
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        return
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        return
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        return
+
+
+_TRUSTED_MANIFEST_BUILTINS = frozenset(
+    {
+        *_SAFE_SCALAR_CALLS,
+        "dict",
+        "list",
+        "set",
+        "sorted",
+        "tuple",
+    }
+)
+_ANY_BINDING = object()
+
+
+class _BindingStability:
+    """Answer every trusted binding query as stable-exact or unresolved.
+
+    The boundary deliberately recognizes only final module bindings, exact
+    builtin absence, direct imports, and simple lexical aliases used while
+    looking for module-object mutation.  Anything else remains unresolved.
+    """
+
+    def __init__(self, modules: Mapping[str, _StaticModule]) -> None:
+        self.modules = modules
+        self._module_facts = {
+            module.module: self._lexical_facts(module.tree.body) for module in modules.values()
+        }
+        self._mutated_owners: dict[str, set[str]] = defaultdict(set)
+        self._mutated_members: dict[str, set[tuple[str, str]]] = defaultdict(set)
+        for module in modules.values():
+            baseline = {
+                name: _AliasSymbol(
+                    "setter" if name in {"delattr", "setattr"} else "safe_builtin",
+                    name,
+                )
+                for name in (*_TRUSTED_MANIFEST_BUILTINS, "delattr", "setattr")
+            }
+            symbols = self._scope_symbols(
+                self._module_facts[module.module],
+                baseline,
+            )
+            visitor = _OwnerMutationVisitor(self, module, symbols)
+            for statement in module.tree.body:
+                visitor.visit(statement)
+
+    @staticmethod
+    def _lexical_facts(
+        body: Sequence[ast.stmt],
+        arguments: ast.arguments | None = None,
+    ) -> _LexicalBindingCollector:
+        collector = _LexicalBindingCollector()
+        if arguments is not None:
+            for argument in (
+                *arguments.posonlyargs,
+                *arguments.args,
+                *arguments.kwonlyargs,
+            ):
+                collector._bind(argument.arg)
+            if arguments.vararg is not None:
+                collector._bind(arguments.vararg.arg)
+            if arguments.kwarg is not None:
+                collector._bind(arguments.kwarg.arg)
+        for statement in body:
+            collector.visit(statement)
+        for name in collector.globals:
+            collector.counts.pop(name, None)
+            collector.aliases.pop(name, None)
+            collector.module_imports.pop(name, None)
+            collector.builtin_imports.pop(name, None)
+        return collector
+
+    @classmethod
+    def _scope_symbols(
+        cls,
+        facts: _LexicalBindingCollector,
+        parent: Mapping[str, _AliasSymbol],
+    ) -> Mapping[str, _AliasSymbol]:
+        resolved: dict[str, _AliasSymbol] = {}
+        active: set[str] = set()
+
+        def expression_symbol(node: ast.expr) -> _AliasSymbol | None:
+            if isinstance(node, ast.Name):
+                return name_symbol(node.id)
+            if isinstance(node, ast.Attribute):
+                receiver = expression_symbol(node.value)
+                if receiver == _AliasSymbol("module", "builtins"):
+                    if node.attr in {"delattr", "setattr"}:
+                        return _AliasSymbol("setter", node.attr)
+                    if node.attr in _TRUSTED_MANIFEST_BUILTINS:
+                        return _AliasSymbol("safe_builtin", node.attr)
+            return None
+
+        def name_symbol(name: str) -> _AliasSymbol | None:
+            if name in resolved:
+                return resolved[name]
+            count = facts.counts.get(name, 0)
+            if count == 0:
+                inherited = parent.get(name)
+                if inherited is not None:
+                    resolved[name] = inherited
+                return inherited
+            if count != 1 or name in active:
+                return None
+            active.add(name)
+            try:
+                symbol: _AliasSymbol | None = None
+                imported_module = facts.module_imports.get(name)
+                if imported_module is not None:
+                    symbol = _AliasSymbol("module", imported_module)
+                imported_builtin = facts.builtin_imports.get(name)
+                if imported_builtin is not None:
+                    symbol = _AliasSymbol(
+                        (
+                            "setter"
+                            if imported_builtin in {"delattr", "setattr"}
+                            else "safe_builtin"
+                        ),
+                        imported_builtin,
+                    )
+                alias = facts.aliases.get(name)
+                if symbol is None and alias is not None:
+                    symbol = expression_symbol(alias)
+                if symbol is not None:
+                    resolved[name] = symbol
+                return symbol
+            finally:
+                active.remove(name)
+
+        for name in sorted(set(parent) | set(facts.counts)):
+            name_symbol(name)
+        return MappingProxyType(resolved)
+
+    def child_symbols(
+        self,
+        body: Sequence[ast.stmt],
+        parent: Mapping[str, _AliasSymbol],
+        arguments: ast.arguments | None = None,
+    ) -> Mapping[str, _AliasSymbol]:
+        return self._scope_symbols(self._lexical_facts(body, arguments), parent)
+
+    def note_member_mutation(self, source: str, owner: str, member: str) -> None:
+        self._mutated_members[source].add((owner, member))
+
+    def note_owner_escape(self, source: str, owner: str) -> None:
+        self._mutated_owners[source].add(owner)
+
+    def member_stable(self, source: str, owner: str, member: str) -> bool:
+        return (
+            owner not in self._mutated_owners[source]
+            and (owner, member) not in self._mutated_members[source]
+        )
+
+    def resolve(
+        self,
+        module: _StaticModule,
+        name: str,
+        *,
+        local_bindings: frozenset[str] = frozenset(),
+        expected_binding: ast.AST | None | object = _ANY_BINDING,
+        owner_member: str | None = None,
+        expected_owner: str | None = None,
+    ) -> _BindingAnswer:
+        unresolved = _BindingAnswer(_BindingStatus.UNRESOLVED)
+        if name in local_bindings:
+            return unresolved
+        facts = self._module_facts[module.module]
+        count = facts.counts.get(name, 0)
+        binding = module.final_bindings.get(name)
+        if binding is None:
+            if count != 0:
+                return unresolved
+        elif count != 1 or name not in _binding_node_names(binding):
+            return unresolved
+        if expected_binding is not _ANY_BINDING and binding is not expected_binding:
+            return unresolved
+
+        target_module: str | None = None
+        target_member: str | None = None
+        if isinstance(binding, ast.Import):
+            matches = [
+                alias
+                for alias in binding.names
+                if (alias.asname or alias.name.split(".", 1)[0]) == name
+            ]
+            if len(matches) != 1:
+                return unresolved
+            selected = matches[0]
+            target_module = (
+                selected.name if selected.asname is not None else selected.name.split(".", 1)[0]
+            )
+        elif isinstance(binding, ast.ImportFrom):
+            matches = [
+                alias
+                for alias in binding.names
+                if alias.name != "*" and (alias.asname or alias.name) == name
+            ]
+            if len(matches) != 1:
+                return unresolved
+            target_module = _absolute_import(module.module, binding.module, binding.level)
+            target_member = matches[0].name
+            if not self.member_stable(module.module, target_module, target_member):
+                return unresolved
+
+        if owner_member is not None:
+            if target_module is None or target_member is not None:
+                return unresolved
+            if expected_owner is not None and target_module != expected_owner:
+                return unresolved
+            if not self.member_stable(module.module, target_module, owner_member):
+                return unresolved
+        elif expected_owner is not None and target_module != expected_owner:
+            return unresolved
+        return _BindingAnswer(
+            _BindingStatus.STABLE_EXACT,
+            binding,
+            target_module,
+            target_member,
+        )
+
+
+class _OwnerMutationVisitor(ast.NodeVisitor):
+    def __init__(
+        self,
+        stability: _BindingStability,
+        module: _StaticModule,
+        symbols: Mapping[str, _AliasSymbol],
+    ) -> None:
+        self.stability = stability
+        self.module = module
+        self.symbols = symbols
+
+    def _symbol(self, node: ast.expr) -> _AliasSymbol | None:
+        if isinstance(node, ast.Name):
+            return self.symbols.get(node.id)
+        if isinstance(node, ast.Attribute):
+            receiver = self._symbol(node.value)
+            if receiver == _AliasSymbol("module", "builtins"):
+                if node.attr in {"delattr", "setattr"}:
+                    return _AliasSymbol("setter", node.attr)
+                if node.attr in _TRUSTED_MANIFEST_BUILTINS:
+                    return _AliasSymbol("safe_builtin", node.attr)
+        return None
+
+    def _owners(self, node: ast.expr) -> frozenset[str]:
+        symbol = self._symbol(node)
+        if symbol is not None and symbol.kind == "module":
+            return frozenset({symbol.name})
+        children: Iterable[ast.expr]
+        if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+            children = node.elts
+        elif isinstance(node, ast.Dict):
+            children = (item for item in (*node.keys, *node.values) if isinstance(item, ast.expr))
+        elif isinstance(node, ast.IfExp):
+            children = (node.body, node.orelse)
+        elif isinstance(node, ast.Starred):
+            children = (node.value,)
+        else:
+            return frozenset()
+        return frozenset(owner for child in children for owner in self._owners(child))
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if isinstance(node.ctx, (ast.Del, ast.Store)):
+            receiver = self._symbol(node.value)
+            if receiver is not None and receiver.kind == "module":
+                self.stability.note_member_mutation(
+                    self.module.module,
+                    receiver.name,
+                    node.attr,
+                )
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        callee = self._symbol(node.func)
+        if callee is not None and callee.kind == "setter":
+            owners = self._owners(node.args[0]) if node.args else frozenset()
+            selected = node.args[1] if len(node.args) > 1 else None
+            member = (
+                selected.value
+                if isinstance(selected, ast.Constant)
+                and isinstance(selected.value, str)
+                and selected.value
+                else None
+            )
+            for owner in owners:
+                if member is None:
+                    self.stability.note_owner_escape(self.module.module, owner)
+                else:
+                    self.stability.note_member_mutation(self.module.module, owner, member)
+        elif callee is None or callee.kind != "safe_builtin":
+            arguments = [*node.args, *(keyword.value for keyword in node.keywords)]
+            for owner in {owner for argument in arguments for owner in self._owners(argument)}:
+                self.stability.note_owner_escape(self.module.module, owner)
+        self.generic_visit(node)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        child = self.stability.child_symbols(node.body, self.symbols, node.args)
+        visitor = _OwnerMutationVisitor(self.stability, self.module, child)
+        for statement in node.body:
+            visitor.visit(statement)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        for expression in (*node.decorator_list, *node.bases):
+            self.visit(expression)
+        child = self.stability.child_symbols(node.body, self.symbols)
+        visitor = _OwnerMutationVisitor(self.stability, self.module, child)
+        for statement in node.body:
+            visitor.visit(statement)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        child = self.stability.child_symbols((), self.symbols, node.args)
+        _OwnerMutationVisitor(self.stability, self.module, child).visit(node.body)
 
 
 class _LocalNameCollector(ast.NodeVisitor):
@@ -2060,7 +2489,7 @@ class _LocalNameCollector(ast.NodeVisitor):
         self.globals: set[str] = set()
 
     def visit_Name(self, node: ast.Name) -> None:
-        if isinstance(node.ctx, ast.Store):
+        if isinstance(node.ctx, (ast.Del, ast.Store)):
             self.names.add(node.id)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -2075,8 +2504,39 @@ class _LocalNameCollector(ast.NodeVisitor):
     def visit_Lambda(self, node: ast.Lambda) -> None:
         return
 
+    def visit_Import(self, node: ast.Import) -> None:
+        self.names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        self.names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+
     def visit_Global(self, node: ast.Global) -> None:
         self.globals.update(node.names)
+
+
+class _ScopedNameCallCollector(ast.NodeVisitor):
+    """Collect direct name calls without crossing another lexical definition."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.calls: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Name) and node.func.id == self.name:
+            self.calls.append(node)
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        return
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        return
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        return
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return
 
 
 def _function_local_names(
@@ -2125,6 +2585,7 @@ class _ManifestInterpreter:
 
     def __init__(self, modules: Mapping[str, _StaticModule]) -> None:
         self.modules = modules
+        self.stability = _BindingStability(modules)
         self.steps = 0
         self.calls = 0
         self.stack: list[tuple[str, str]] = []
@@ -2137,72 +2598,147 @@ class _ManifestInterpreter:
                 f"manifest projection step budget exceeded near line {getattr(node, 'lineno', 0)}"
             )
 
-    @staticmethod
-    def _module_binding_count(module: _StaticModule, name: str) -> int:
-        class BindingCounter(ast.NodeVisitor):
-            def __init__(self) -> None:
-                self.count = 0
+    def _exact_class(self, module: _StaticModule, name: str) -> ast.ClassDef | None:
+        declaration = module.classes.get(name)
+        if declaration is None:
+            return None
+        answer = self.stability.resolve(
+            module,
+            name,
+            expected_binding=declaration,
+        )
+        return declaration if answer.stable_exact else None
 
-            def visit_Name(self, node: ast.Name) -> None:
-                if node.id == name and isinstance(node.ctx, (ast.Del, ast.Store)):
-                    self.count += 1
+    def _resolved_class(
+        self,
+        module: _StaticModule,
+        name: str,
+    ) -> tuple[_StaticModule, ast.ClassDef] | None:
+        local = self._exact_class(module, name)
+        if local is not None:
+            return module, local
+        answer = self.stability.resolve(module, name)
+        if not answer.stable_exact or answer.target_member is None:
+            return None
+        owner = self.modules.get(cast(str, answer.target_module))
+        if owner is None:
+            return None
+        imported = self._exact_class(owner, answer.target_member)
+        return (owner, imported) if imported is not None else None
 
-            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-                if node.name == name:
-                    self.count += 1
+    def _exact_function(
+        self,
+        module: _StaticModule,
+        name: str,
+    ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+        function = module.functions.get(name)
+        if function is None:
+            return None
+        answer = self.stability.resolve(
+            module,
+            name,
+            expected_binding=function,
+        )
+        return function if answer.stable_exact else None
 
-            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-                if node.name == name:
-                    self.count += 1
+    def _exact_builtin(
+        self,
+        module: _StaticModule,
+        name: str,
+        *,
+        local_bindings: frozenset[str] | None = None,
+    ) -> bool:
+        lexical = (
+            self.local_bindings[-1]
+            if local_bindings is None and self.local_bindings
+            else local_bindings or frozenset()
+        )
+        answer = self.stability.resolve(
+            module,
+            name,
+            local_bindings=lexical,
+        )
+        return answer.stable_exact and answer.binding is None
 
-            def visit_ClassDef(self, node: ast.ClassDef) -> None:
-                if node.name == name:
-                    self.count += 1
+    def _is_hashlib_sha256_call(self, module: _StaticModule, node: ast.Call) -> bool:
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "sha256"
+            and isinstance(node.func.value, ast.Name)
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            return False
+        local_names = self.local_bindings[-1] if self.local_bindings else frozenset()
+        answer = self.stability.resolve(
+            module,
+            node.func.value.id,
+            local_bindings=local_names,
+            owner_member="sha256",
+            expected_owner="hashlib",
+        )
+        return answer.stable_exact and isinstance(answer.binding, ast.Import)
 
-            def visit_Lambda(self, node: ast.Lambda) -> None:
-                return
-
-            def visit_Import(self, node: ast.Import) -> None:
-                for alias in node.names:
-                    if (alias.asname or alias.name.split(".", 1)[0]) == name:
-                        self.count += 1
-
-            def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-                for alias in node.names:
-                    if (alias.asname or alias.name) == name:
-                        self.count += 1
-
-        counter = BindingCounter()
-        for statement in module.tree.body:
-            counter.visit(statement)
-        return counter.count
-
-    @staticmethod
-    def _module_attribute_write_count(module: _StaticModule, owner: str, attribute: str) -> int:
-        return sum(
-            1
-            for node in ast.walk(module.tree)
-            if isinstance(node, ast.Attribute)
-            and node.attr == attribute
-            and isinstance(node.ctx, (ast.Del, ast.Store))
-            and isinstance(node.value, ast.Name)
-            and node.value.id == owner
+    def _is_hashlib_sha256_hexdigest_call(
+        self,
+        module: _StaticModule,
+        node: ast.Call,
+    ) -> bool:
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "hexdigest"
+            and not node.args
+            and not node.keywords
+            and isinstance(node.func.value, ast.Call)
+            and self._is_hashlib_sha256_call(module, node.func.value)
         )
 
+    @staticmethod
+    def _scope_name_calls(body: Sequence[ast.stmt], name: str) -> tuple[ast.Call, ...]:
+        collector = _ScopedNameCallCollector(name)
+        for statement in body:
+            collector.visit(statement)
+        return tuple(collector.calls)
+
+    def _exact_class_calls(
+        self,
+        module: _StaticModule,
+        declaration: ast.ClassDef,
+    ) -> tuple[ast.Call, ...]:
+        if self._exact_class(module, declaration.name) is not declaration:
+            return ()
+        calls: list[ast.Call] = []
+        for statement in module.tree.body:
+            if isinstance(statement, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                if self._exact_function(module, statement.name) is not statement:
+                    continue
+                local_names = _function_local_names(statement)
+                answer = self.stability.resolve(
+                    module,
+                    declaration.name,
+                    local_bindings=local_names,
+                    expected_binding=declaration,
+                )
+                if answer.stable_exact:
+                    calls.extend(self._scope_name_calls(statement.body, declaration.name))
+            elif not isinstance(statement, ast.ClassDef):
+                collector = _ScopedNameCallCollector(declaration.name)
+                collector.visit(statement)
+                calls.extend(collector.calls)
+        return tuple(calls)
+
     def _imported_scalar_binding(self, module: _StaticModule, name: str) -> _Shape | None:
-        binding = module.final_bindings.get(name)
-        imported = module.imports.get(name)
-        if (
-            not isinstance(binding, ast.ImportFrom)
-            or imported is None
-            or self._module_binding_count(module, name) != 1
-        ):
+        answer = self.stability.resolve(module, name)
+        if not answer.stable_exact or answer.target_member is None:
             return None
-        owner_name, declared_name = imported
-        owner = self.modules.get(owner_name)
-        if owner is None or self._module_binding_count(owner, declared_name) != 1:
+        owner = self.modules.get(cast(str, answer.target_module))
+        if owner is None:
             return None
-        owner_binding = owner.final_bindings.get(declared_name)
+        declared_name = answer.target_member
+        owner_answer = self.stability.resolve(owner, declared_name)
+        if not owner_answer.stable_exact:
+            return None
+        owner_binding = owner_answer.binding
         value: ast.expr | None = None
         if isinstance(owner_binding, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == declared_name
@@ -2218,9 +2754,11 @@ class _ManifestInterpreter:
         return _ScalarShape(value.value) if isinstance(value, ast.Constant) else None
 
     def _function(self, module: _StaticModule, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
-        function = module.functions.get(name)
+        function = self._exact_function(module, name)
         if function is None:
-            raise AnalysisError(f"manifest root function is absent: {module.module}:{name}")
+            raise AnalysisError(
+                f"manifest root function binding is unresolved: {module.module}:{name}"
+            )
         return function
 
     def call_root(self, module: _StaticModule, name: str) -> _Shape:
@@ -2236,53 +2774,46 @@ class _ManifestInterpreter:
         return self._call_function(module, function, arguments, keywords)
 
     def _parameter_shape(self, module: _StaticModule, argument: ast.arg) -> _Shape:
+        mapping_answer = self.stability.resolve(
+            module,
+            "Mapping",
+            expected_owner="collections.abc",
+        )
+        string_answer = self.stability.resolve(module, "str")
         if (
             isinstance(argument.annotation, ast.Subscript)
             and isinstance(argument.annotation.value, ast.Name)
             and argument.annotation.value.id == "Mapping"
-            and module.imports.get("Mapping") == ("collections.abc", "Mapping")
-            and isinstance(module.final_bindings.get("Mapping"), ast.ImportFrom)
-            and self._module_binding_count(module, "Mapping") == 1
+            and mapping_answer.stable_exact
+            and mapping_answer.target_member == "Mapping"
             and isinstance(argument.annotation.slice, ast.Tuple)
             and len(argument.annotation.slice.elts) == 2
             and all(isinstance(item, ast.Name) for item in argument.annotation.slice.elts)
             and cast(ast.Name, argument.annotation.slice.elts[0]).id == "str"
             and cast(ast.Name, argument.annotation.slice.elts[1]).id == "str"
+            and string_answer.stable_exact
+            and string_answer.binding is None
         ):
             return _ScalarValueMappingShape(f"parameter:{argument.arg}")
         if not isinstance(argument.annotation, ast.Name):
             return _UnknownShape(f"parameter:{argument.arg}")
         type_name = argument.annotation.id
-        if type_name in _SCALAR_PARAMETER_ANNOTATIONS and type_name not in module.final_bindings:
-            return _ScalarShape()
-        imported = module.imports.get(type_name)
-        if imported is None or not isinstance(module.final_bindings.get(type_name), ast.ImportFrom):
-            return _UnknownShape(f"parameter:{argument.arg}")
-        owner_name, declared_name = imported
-        owner = self.modules.get(owner_name)
-        if owner is None:
-            return _UnknownShape(f"parameter:{argument.arg}")
-        declarations = [
-            statement
-            for statement in owner.tree.body
-            if isinstance(statement, ast.ClassDef) and statement.name == declared_name
-        ]
-        if len(declarations) != 1:
-            return _UnknownShape(f"parameter:{argument.arg}")
+        scalar_answer = self.stability.resolve(module, type_name)
         if (
-            owner.final_bindings.get(declared_name) is not declarations[0]
-            or self._module_binding_count(owner, declared_name) != 1
+            type_name in _SCALAR_PARAMETER_ANNOTATIONS
+            and scalar_answer.stable_exact
+            and scalar_answer.binding is None
         ):
+            return _ScalarShape()
+        resolved = self._resolved_class(module, type_name)
+        if resolved is None:
             return _UnknownShape(f"parameter:{argument.arg}")
-        annotated = self._dataclass_shape(owner, declarations[0], frozenset())
+        owner, declaration = resolved
+        annotated = self._dataclass_shape(owner, declaration, frozenset())
         constructors = [
             node
-            for node in ast.walk(owner.tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == declared_name
-            and not node.args
-            and all(keyword.arg is not None for keyword in node.keywords)
+            for node in self._exact_class_calls(owner, declaration)
+            if not node.args and all(keyword.arg is not None for keyword in node.keywords)
         ]
         if len(constructors) != 1:
             return annotated or _UnknownShape(f"parameter:{argument.arg}")
@@ -2302,7 +2833,7 @@ class _ManifestInterpreter:
             and owner.module == "ros2_mcap_adapter.decoder"
             and owner.source_sha256
             == "aa86935989afc7a1d7343d5a07f212b14b9d00766d8482d4dd3a8b7e87a2455c"
-            and declarations[0].name == "DecodedSource"
+            and declaration.name == "DecodedSource"
         ):
             fields["schema_inventory"] = _SequenceShape(
                 [
@@ -2335,11 +2866,21 @@ class _ManifestInterpreter:
         seen: frozenset[tuple[str, str]],
     ) -> _RecordShape | None:
         identity = (module.module, declaration.name)
+        class_answer = self.stability.resolve(
+            module,
+            declaration.name,
+            expected_binding=declaration,
+        )
+        decorator_answer = self.stability.resolve(
+            module,
+            "dataclass",
+            expected_owner="dataclasses",
+        )
         if (
             identity in seen
-            or module.imports.get("dataclass") != ("dataclasses", "dataclass")
-            or not isinstance(module.final_bindings.get("dataclass"), ast.ImportFrom)
-            or self._module_binding_count(module, "dataclass") != 1
+            or not class_answer.stable_exact
+            or not decorator_answer.stable_exact
+            or decorator_answer.target_member != "dataclass"
         ):
             return None
         if not any(
@@ -2374,36 +2915,19 @@ class _ManifestInterpreter:
         if isinstance(annotation, ast.Constant) and annotation.value is None:
             return _ScalarShape(None)
         if isinstance(annotation, ast.Name):
+            scalar_answer = self.stability.resolve(module, annotation.id)
             if (
                 annotation.id in _SCALAR_PARAMETER_ANNOTATIONS
-                and annotation.id not in module.final_bindings
+                and scalar_answer.stable_exact
+                and scalar_answer.binding is None
             ):
                 return _ScalarShape()
-            declarations = [
-                statement
-                for statement in module.tree.body
-                if isinstance(statement, ast.ClassDef) and statement.name == annotation.id
-            ]
-            if len(declarations) == 1:
-                return self._dataclass_shape(module, declarations[0], seen) or _UnknownShape(
+            resolved = self._resolved_class(module, annotation.id)
+            if resolved is not None:
+                owner, declaration = resolved
+                return self._dataclass_shape(owner, declaration, seen) or _UnknownShape(
                     f"annotation:{annotation.id}"
                 )
-            imported = module.imports.get(annotation.id)
-            if imported is not None:
-                owner = self.modules.get(imported[0])
-                declarations = (
-                    [
-                        statement
-                        for statement in owner.tree.body
-                        if isinstance(statement, ast.ClassDef) and statement.name == imported[1]
-                    ]
-                    if owner is not None
-                    else []
-                )
-                if owner is not None and len(declarations) == 1:
-                    return self._dataclass_shape(owner, declarations[0], seen) or _UnknownShape(
-                        f"annotation:{annotation.id}"
-                    )
             return _UnknownShape(f"annotation:{annotation.id}")
         if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
             left = self._annotation_shape(module, annotation.left, seen)
@@ -2506,13 +3030,25 @@ class _ManifestInterpreter:
         constructor: str,
     ) -> tuple[str, ...]:
         function = self._function(module, function_name)
-        calls = [
-            node
-            for node in ast.walk(function)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == constructor
-        ]
+        local_names = _function_local_names(function)
+        answer = self.stability.resolve(
+            module,
+            constructor,
+            local_bindings=local_names,
+        )
+        exact_class: ast.ClassDef | None = None
+        if answer.stable_exact and isinstance(answer.binding, ast.ClassDef):
+            exact_class = self._exact_class(module, constructor)
+        elif answer.stable_exact and answer.target_member is not None:
+            owner = self.modules.get(cast(str, answer.target_module))
+            if owner is not None:
+                exact_class = self._exact_class(owner, answer.target_member)
+        if exact_class is None:
+            raise AnalysisError(
+                f"manifest constructor binding is unresolved:"
+                f"{module.module}:{function_name}:{constructor}"
+            )
+        calls = list(self._scope_name_calls(function.body, constructor))
         if len(calls) != 1:
             raise AnalysisError(
                 f"manifest constructor must resolve once: {module.module}:{function_name}:{constructor}"
@@ -2532,6 +3068,14 @@ class _ManifestInterpreter:
         variable: str,
     ) -> tuple[str, ...]:
         function = self._function(module, function_name)
+        if not self._exact_builtin(
+            module,
+            "sorted",
+            local_bindings=_function_local_names(function),
+        ):
+            raise AnalysisError(
+                f"bounded manifest family sorted binding is unresolved: {module.path}"
+            )
         assignments = [
             statement
             for statement in function.body
@@ -2842,8 +3386,10 @@ class _ManifestInterpreter:
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "isinstance"
+            and self._exact_builtin(module, "isinstance")
             and len(node.args) == 2
             and isinstance(node.args[1], ast.Name)
+            and self._exact_builtin(module, node.args[1].id)
         ):
             value = self._eval(module, env, node.args[0])
             expected = node.args[1].id
@@ -2922,6 +3468,7 @@ class _ManifestInterpreter:
             isinstance(node.func, ast.Call)
             and isinstance(node.func.func, ast.Name)
             and node.func.func.id in _REFLECTIVE_CALLS
+            and self._exact_builtin(module, node.func.func.id)
         ):
             raise AnalysisError(
                 f"reflective/callback manifest call is forbidden: {node.func.func.id}"
@@ -2930,21 +3477,10 @@ class _ManifestInterpreter:
         if (
             isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Call)
-            and _is_hashlib_sha256_hexdigest_call(module, node)
+            and self._is_hashlib_sha256_hexdigest_call(module, node)
         ):
             digest_call = node.func.value
-        digest_owner = (
-            digest_call.func.value
-            if digest_call is not None and isinstance(digest_call.func, ast.Attribute)
-            else None
-        )
-        if (
-            digest_call is not None
-            and isinstance(digest_owner, ast.Name)
-            and not (self.local_bindings and digest_owner.id in self.local_bindings[-1])
-            and self._module_binding_count(module, digest_owner.id) == 1
-            and self._module_attribute_write_count(module, digest_owner.id, "sha256") == 0
-        ):
+        if digest_call is not None:
             self._step(digest_call)
             self._eval(module, env, digest_call.args[0])
             return _ScalarShape()
@@ -2962,35 +3498,38 @@ class _ManifestInterpreter:
                 keywords[keyword.arg] = self._eval(module, env, keyword.value)
         if isinstance(node.func, ast.Name):
             name = node.func.id
-            if name in _REFLECTIVE_CALLS or name in {"map", "filter"}:
-                raise AnalysisError(f"reflective/callback manifest call is forbidden: {name}")
-            local_shadow = bool(self.local_bindings and name in self.local_bindings[-1])
-            binding = module.final_bindings.get(name)
+            local_names = self.local_bindings[-1] if self.local_bindings else frozenset()
+            answer = self.stability.resolve(
+                module,
+                name,
+                local_bindings=local_names,
+            )
             structured_arguments = any(
                 _possibly_structured(value) for value in (*positional, *keywords.values())
             )
-            if local_shadow:
-                raise AnalysisError(f"local callback binding is unresolved: {name}")
-            if name == "dict" and binding is None:
+            if not answer.stable_exact:
+                raise AnalysisError(f"callback binding is unresolved: {name}")
+            exact_builtin = answer.binding is None
+            if (name in _REFLECTIVE_CALLS or name in {"map", "filter"}) and exact_builtin:
+                raise AnalysisError(f"reflective/callback manifest call is forbidden: {name}")
+            if name == "dict" and exact_builtin:
                 return self._dict_call(module, positional, keywords)
-            if name in {"list", "tuple", "set", "sorted"} and binding is None:
+            if name in {"list", "tuple", "set", "sorted"} and exact_builtin:
                 return self._sequence_call(module, name, positional)
-            if name in _SAFE_SCALAR_CALLS and binding is None:
+            if name in _SAFE_SCALAR_CALLS and exact_builtin:
                 return _ScalarShape()
-            function = (
-                module.functions.get(name)
-                if isinstance(binding, (ast.AsyncFunctionDef, ast.FunctionDef))
-                else None
-            )
-            owner = module
-            if function is None and isinstance(binding, ast.ImportFrom) and name in module.imports:
-                target_module, target_name = module.imports[name]
-                owner = self.modules.get(target_module)  # type: ignore[assignment]
+            owner: _StaticModule | None = module
+            function = self._exact_function(module, name)
+            if function is not answer.binding:
+                function = None
+            if function is None and answer.target_member is not None:
+                owner = self.modules.get(cast(str, answer.target_module))
                 if owner is not None:
-                    function = owner.functions.get(target_name)
+                    function = self._exact_function(owner, answer.target_member)
             if function is not None:
+                assert owner is not None
                 return self._call_function(owner, function, positional, keywords)
-            if binding is not None:
+            if answer.binding is not None:
                 raise AnalysisError(f"shadowed callback binding is unresolved: {name}")
             if structured_arguments:
                 raise AnalysisError(f"unknown callback may mutate manifest structure: {name}")

@@ -208,6 +208,104 @@ def build_manifest():
             provenance.discover_manifest_keys(fail_snapshot, fail_modules)
 
 
+def test_unmodified_hashlib_sha256_call_remains_a_known_scalar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot, modules = _fixture(
+        monkeypatch,
+        """
+import hashlib
+
+def build_manifest():
+    return {"sha256": hashlib.sha256(b"safe").hexdigest()}
+""",
+    )
+
+    assert _keys(provenance.discover_manifest_keys(snapshot, modules)) == ("/sha256",)
+
+
+def test_hashlib_sha256_setattr_replacement_with_structured_digest_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot, modules = _fixture(
+        monkeypatch,
+        """
+import hashlib
+
+class Digest:
+    def hexdigest(self):
+        return {'hidden': 1}
+
+def external_sha256(_):
+    return Digest()
+
+setattr(hashlib, 'sha256', external_sha256)
+
+def build_manifest():
+    return {'digest': hashlib.sha256(b'x').hexdigest()}
+""",
+    )
+
+    with pytest.raises(provenance.AnalysisError):
+        provenance.discover_manifest_keys(snapshot, modules)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        pytest.param(
+            "hashlib.sha256 = external_sha256",
+            id="direct-assignment",
+        ),
+        pytest.param(
+            'delattr(hashlib, "sha256")',
+            id="builtin-delattr",
+        ),
+        pytest.param(
+            "setattr(hashlib, runtime_attribute(), external_sha256)",
+            id="dynamic-reflected-attribute",
+        ),
+        pytest.param(
+            'mutate = setattr\nmutate(hashlib, "sha256", external_sha256)',
+            id="builtin-setattr-alias",
+        ),
+        pytest.param(
+            'import builtins\nbuiltins.setattr(hashlib, "sha256", external_sha256)',
+            id="builtins-setattr",
+        ),
+        pytest.param(
+            'import builtins\nbuiltins.delattr(hashlib, "sha256")',
+            id="builtins-delattr",
+        ),
+        pytest.param(
+            """def setattr(owner, name, value):
+    return None
+
+setattr(hashlib, "sha256", external_sha256)""",
+            id="shadowed-setattr",
+        ),
+    ),
+)
+def test_hashlib_sha256_mutations_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    snapshot, modules = _fixture(
+        monkeypatch,
+        f"""
+import hashlib
+
+{mutation}
+
+def build_manifest():
+    return {{"sha256": hashlib.sha256(b"unsafe").hexdigest()}}
+""",
+    )
+
+    with pytest.raises(provenance.AnalysisError):
+        provenance.discover_manifest_keys(snapshot, modules)
+
+
 def test_hook_rejects_ast_that_differs_from_exact_staged_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -466,6 +564,109 @@ def test_known_manifest_shapes_still_project_completely(
     assert _keys(provenance.discover_manifest_keys(snapshot, modules)) == expected
 
 
+@pytest.mark.parametrize(
+    "unrelated_statement",
+    (
+        pytest.param("", id="unchanged-imported-dataclass"),
+        pytest.param(
+            """@dataclass
+class Unrelated:
+    ignored: str
+
+Unrelated = dict""",
+            id="unrelated-rebind",
+        ),
+    ),
+)
+def test_imported_dataclass_with_exact_final_classdefs_passes(
+    monkeypatch: pytest.MonkeyPatch,
+    unrelated_statement: str,
+) -> None:
+    snapshot, modules = _fixture(
+        monkeypatch,
+        """
+from models import Parent
+
+def build_manifest(payload: Parent):
+    return {"payload": payload.child}
+""",
+        extra_sources=(
+            (
+                "src/models.py",
+                "models",
+                f"""
+from dataclasses import dataclass
+
+@dataclass
+class Child:
+    field: str
+
+{unrelated_statement}
+
+@dataclass
+class Parent:
+    child: Child
+""",
+            ),
+        ),
+    )
+
+    assert _keys(provenance.discover_manifest_keys(snapshot, modules)) == (
+        "/payload",
+        "/payload/field",
+    )
+
+
+@pytest.mark.parametrize(
+    "child_rebinding",
+    (
+        pytest.param("Child = dict", id="assignment"),
+        pytest.param("Child: object = dict", id="annotated-assignment"),
+        pytest.param("from replacements import Child", id="import"),
+        pytest.param(
+            "if runtime_flag:\n    Child = dict",
+            id="conditional-ambiguity",
+        ),
+        pytest.param("del Child", id="deletion"),
+    ),
+)
+def test_imported_dataclass_child_rebinding_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    child_rebinding: str,
+) -> None:
+    snapshot, modules = _fixture(
+        monkeypatch,
+        """
+from models import Parent
+
+def build_manifest(payload: Parent):
+    return {"payload": payload.child}
+""",
+        extra_sources=(
+            (
+                "src/models.py",
+                "models",
+                f"""
+from dataclasses import dataclass
+
+@dataclass
+class Child:
+    field: str
+
+{child_rebinding}
+
+@dataclass
+class Parent:
+    child: Child
+""",
+            ),
+        ),
+    )
+
+    with pytest.raises(provenance.AnalysisError):
+        provenance.discover_manifest_keys(snapshot, modules)
+
+
 def _module_name(path: str) -> str:
     relative = path.split("/src/", 1)[-1]
     if relative.endswith("/__init__.py"):
@@ -499,6 +700,7 @@ def test_production_hook_has_exact_retained_manifest_projection() -> None:
         "adapters/ros2_mcap/src/ros2_mcap_adapter/canonical.py",
         "adapters/ros2_mcap/src/ros2_mcap_adapter/constants.py",
         "adapters/ros2_mcap/src/ros2_mcap_adapter/decoder.py",
+        "metriplane/atlas/models.py",
     }
     entries: dict[str, StagedEntry] = {}
     modules: list[PythonModule] = []
