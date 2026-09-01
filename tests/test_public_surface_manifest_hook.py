@@ -92,13 +92,19 @@ def test_exact_alias_shape_passes_and_is_deterministic(
     snapshot, modules = _fixture(
         monkeypatch,
         """
+from constants import IMPORTED_SCALAR
+
 def build_manifest():
-    manifest = {"known": {"nested": 1}, "items": [{"name": "one"}]}
+    manifest = {
+        "known": {"nested": 1},
+        "items": [{"name": "one"}],
+        "imported": IMPORTED_SCALAR,
+    }
     alias = manifest
     alias["added"] = {"child": 2}
     return manifest
 """,
-        extra_sources=(("src/unused.py", "unused", "value = 1\n"),),
+        extra_sources=(("src/constants.py", "constants", 'IMPORTED_SCALAR = "known"\n'),),
     )
 
     forward = provenance.discover_manifest_keys(snapshot, modules)
@@ -108,11 +114,98 @@ def build_manifest():
     assert _keys(forward) == (
         "/added",
         "/added/child",
+        "/imported",
         "/items",
         "/items/*/name",
         "/known",
         "/known/nested",
     )
+
+    known_record = provenance._MappingShape(
+        {"record": provenance._RecordShape({"field": provenance._ScalarShape()})}
+    )
+    assert provenance._shape_pointers(known_record) == ("/record", "/record/field")
+
+    unresolved_record = provenance._MappingShape(
+        {"record": provenance._RecordShape({"field": provenance._UnknownShape("record-field")})}
+    )
+    with pytest.raises(
+        provenance.AnalysisError,
+        match=r"manifest shape is unresolved beneath /record/field: record-field",
+    ):
+        provenance._shape_pointers(unresolved_record)
+
+    scalar_snapshot, scalar_modules = _fixture(
+        monkeypatch,
+        """
+def build_manifest(value: str):
+    return {"value": value}
+""",
+    )
+    assert _keys(provenance.discover_manifest_keys(scalar_snapshot, scalar_modules)) == ("/value",)
+
+    fail_closed_fixtures = (
+        (
+            """
+import hashlib
+
+def build_manifest(hashlib):
+    return {"sha256": hashlib.sha256(b"shadowed").hexdigest()}
+""",
+            (),
+        ),
+        (
+            """
+import hashlib
+if runtime_flag:
+    hashlib = shadowed
+
+def build_manifest():
+    return {"sha256": hashlib.sha256(b"rebound").hexdigest()}
+""",
+            (),
+        ),
+        (
+            """
+import hashlib
+hashlib.sha256 = external_sha256
+
+def build_manifest():
+    return {"sha256": hashlib.sha256(b"rebound").hexdigest()}
+""",
+            (),
+        ),
+        (
+            """
+def build_manifest(value):
+    return {"sha256": value.hexdigest()}
+""",
+            (),
+        ),
+        (
+            """
+from constants import IMPORTED_SCALAR
+
+def build_manifest():
+    return {"imported": IMPORTED_SCALAR}
+""",
+            (
+                (
+                    "src/constants.py",
+                    "constants",
+                    'IMPORTED_SCALAR = "known"\nif runtime_flag:\n    IMPORTED_SCALAR = {"hidden": 1}\n',
+                ),
+            ),
+        ),
+    )
+    for fail_source, fail_extras in fail_closed_fixtures:
+        fail_snapshot, fail_modules = _fixture(
+            monkeypatch,
+            fail_source,
+            extra_sources=fail_extras,
+        )
+        with pytest.raises(provenance.AnalysisError, match="manifest shape is unresolved"):
+            provenance.discover_manifest_keys(fail_snapshot, fail_modules)
 
 
 def test_hook_rejects_ast_that_differs_from_exact_staged_source(
@@ -269,6 +362,110 @@ def build_manifest():
         provenance.discover_manifest_keys(snapshot, modules)
 
 
+@pytest.mark.parametrize(
+    ("source", "location", "origin"),
+    (
+        (
+            """
+def build_manifest():
+    manifest = {"known": 1}
+    manifest["nested"] = external_value()
+    return manifest
+""",
+            "/nested",
+            "call:external_value",
+        ),
+        (
+            """
+def build_manifest():
+    return external_value()
+""",
+            "root",
+            "call:external_value",
+        ),
+        (
+            """
+def build_manifest():
+    return {"outer": {"inner": external_value()}}
+""",
+            "/outer/inner",
+            "call:external_value",
+        ),
+        (
+            """
+def build_manifest():
+    return {"nested": [external_value()]}
+""",
+            "/nested/*",
+            "call:external_value",
+        ),
+        (
+            """
+def build_manifest():
+    return {"nested": external_value() if runtime_flag else {"known": 1}}
+""",
+            "/nested",
+            "call:external_value",
+        ),
+    ),
+)
+def test_unknown_manifest_shapes_fail_closed_at_every_depth(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    location: str,
+    origin: str,
+) -> None:
+    snapshot, modules = _fixture(monkeypatch, source)
+
+    with pytest.raises(provenance.AnalysisError) as captured:
+        provenance.discover_manifest_keys(snapshot, modules)
+
+    assert "manifest shape is unresolved" in str(captured.value)
+    assert location in str(captured.value)
+    assert origin in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    (
+        (
+            """
+def build_manifest():
+    return {"known": 1}
+""",
+            ("/known",),
+        ),
+        (
+            """
+def build_manifest():
+    return {"outer": {"inner": 1}}
+""",
+            ("/outer", "/outer/inner"),
+        ),
+        (
+            """
+import hashlib
+
+def build_manifest():
+    return {
+        "count": len((1, 2)),
+        "sha256": hashlib.sha256(b"safe").hexdigest(),
+    }
+""",
+            ("/count", "/sha256"),
+        ),
+    ),
+)
+def test_known_manifest_shapes_still_project_completely(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    expected: tuple[str, ...],
+) -> None:
+    snapshot, modules = _fixture(monkeypatch, source)
+
+    assert _keys(provenance.discover_manifest_keys(snapshot, modules)) == expected
+
+
 def _module_name(path: str) -> str:
     relative = path.split("/src/", 1)[-1]
     if relative.endswith("/__init__.py"):
@@ -294,8 +491,13 @@ def _json_pointers(value: object, path: tuple[str, ...] = ()) -> set[str]:
 
 def test_production_hook_has_exact_retained_manifest_projection() -> None:
     source_paths = {root.path for root in provenance._MANIFEST_ROOTS} | {
+        "adapters/maniskill_pickcube/src/maniskill_pickcube/constants.py",
+        "adapters/massrobotics_amr/src/massrobotics_amr_adapter/constants.py",
+        "adapters/massrobotics_amr/src/massrobotics_amr_adapter/models.py",
         "adapters/massrobotics_amr/src/massrobotics_amr_adapter/reporting.py",
+        "adapters/robomimic_lowdim/src/robomimic_lowdim/constants.py",
         "adapters/ros2_mcap/src/ros2_mcap_adapter/canonical.py",
+        "adapters/ros2_mcap/src/ros2_mcap_adapter/constants.py",
         "adapters/ros2_mcap/src/ros2_mcap_adapter/decoder.py",
     }
     entries: dict[str, StagedEntry] = {}

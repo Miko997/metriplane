@@ -1875,6 +1875,7 @@ _SAFE_SCALAR_CALLS = frozenset(
         "sum",
     }
 )
+_SCALAR_PARAMETER_ANNOTATIONS = frozenset({"bool", "bytes", "float", "int", "str"})
 _MAX_MANIFEST_CALLS = 256
 _MAX_MANIFEST_STEPS = 50_000
 
@@ -1896,6 +1897,11 @@ class _UnknownShape(_Shape):
 @dataclass
 class _MappingShape(_Shape):
     entries: dict[str, _Shape]
+
+
+@dataclass
+class _ScalarValueMappingShape(_Shape):
+    origin: str
 
 
 @dataclass
@@ -1922,6 +1928,7 @@ class _ChoiceShape(_Shape):
 class _StaticModule:
     path: str
     module: str
+    source_sha256: str
     tree: ast.Module
     functions: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef]
     imports: Mapping[str, tuple[str, str]]
@@ -1942,7 +1949,7 @@ def _absolute_import(module: str, imported: str | None, level: int) -> str:
     return ".".join(prefix)
 
 
-def _static_module(module: _PythonModuleLike) -> _StaticModule:
+def _static_module(module: _PythonModuleLike, source_sha256: str) -> _StaticModule:
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     imports: dict[str, tuple[str, str]] = {}
     final_bindings: dict[str, ast.AST] = {}
@@ -1989,6 +1996,7 @@ def _static_module(module: _PythonModuleLike) -> _StaticModule:
     return _StaticModule(
         module.path,
         module.module,
+        source_sha256,
         module.tree,
         MappingProxyType(functions),
         MappingProxyType(imports),
@@ -2014,6 +2022,36 @@ def _choices(shapes: Iterable[_Shape]) -> _Shape:
     if len(flattened) == 1:
         return flattened[0]
     return _ChoiceShape(flattened)
+
+
+def _is_hashlib_sha256_call(module: _StaticModule, node: ast.Call) -> bool:
+    if not (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "sha256"
+        and isinstance(node.func.value, ast.Name)
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        return False
+    binding = module.final_bindings.get(node.func.value.id)
+    if not isinstance(binding, ast.Import):
+        return False
+    return any(
+        alias.name == "hashlib"
+        and (alias.asname or alias.name.split(".", 1)[0]) == node.func.value.id
+        for alias in binding.names
+    )
+
+
+def _is_hashlib_sha256_hexdigest_call(module: _StaticModule, node: ast.Call) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "hexdigest"
+        and not node.args
+        and not node.keywords
+        and isinstance(node.func.value, ast.Call)
+        and _is_hashlib_sha256_call(module, node.func.value)
+    )
 
 
 class _LocalNameCollector(ast.NodeVisitor):
@@ -2071,7 +2109,7 @@ def _possibly_structured(value: _Shape) -> bool:
         if identity in visited:
             continue
         visited.add(identity)
-        if isinstance(current, (_MappingShape, _SequenceShape)):
+        if isinstance(current, (_MappingShape, _ScalarValueMappingShape, _SequenceShape)):
             return True
         if isinstance(current, _TupleShape):
             pending.extend(current.items)
@@ -2099,6 +2137,86 @@ class _ManifestInterpreter:
                 f"manifest projection step budget exceeded near line {getattr(node, 'lineno', 0)}"
             )
 
+    @staticmethod
+    def _module_binding_count(module: _StaticModule, name: str) -> int:
+        class BindingCounter(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.count = 0
+
+            def visit_Name(self, node: ast.Name) -> None:
+                if node.id == name and isinstance(node.ctx, (ast.Del, ast.Store)):
+                    self.count += 1
+
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                if node.name == name:
+                    self.count += 1
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+                if node.name == name:
+                    self.count += 1
+
+            def visit_ClassDef(self, node: ast.ClassDef) -> None:
+                if node.name == name:
+                    self.count += 1
+
+            def visit_Lambda(self, node: ast.Lambda) -> None:
+                return
+
+            def visit_Import(self, node: ast.Import) -> None:
+                for alias in node.names:
+                    if (alias.asname or alias.name.split(".", 1)[0]) == name:
+                        self.count += 1
+
+            def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+                for alias in node.names:
+                    if (alias.asname or alias.name) == name:
+                        self.count += 1
+
+        counter = BindingCounter()
+        for statement in module.tree.body:
+            counter.visit(statement)
+        return counter.count
+
+    @staticmethod
+    def _module_attribute_write_count(module: _StaticModule, owner: str, attribute: str) -> int:
+        return sum(
+            1
+            for node in ast.walk(module.tree)
+            if isinstance(node, ast.Attribute)
+            and node.attr == attribute
+            and isinstance(node.ctx, (ast.Del, ast.Store))
+            and isinstance(node.value, ast.Name)
+            and node.value.id == owner
+        )
+
+    def _imported_scalar_binding(self, module: _StaticModule, name: str) -> _Shape | None:
+        binding = module.final_bindings.get(name)
+        imported = module.imports.get(name)
+        if (
+            not isinstance(binding, ast.ImportFrom)
+            or imported is None
+            or self._module_binding_count(module, name) != 1
+        ):
+            return None
+        owner_name, declared_name = imported
+        owner = self.modules.get(owner_name)
+        if owner is None or self._module_binding_count(owner, declared_name) != 1:
+            return None
+        owner_binding = owner.final_bindings.get(declared_name)
+        value: ast.expr | None = None
+        if isinstance(owner_binding, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == declared_name
+            for target in owner_binding.targets
+        ):
+            value = owner_binding.value
+        elif (
+            isinstance(owner_binding, ast.AnnAssign)
+            and isinstance(owner_binding.target, ast.Name)
+            and owner_binding.target.id == declared_name
+        ):
+            value = owner_binding.value
+        return _ScalarShape(value.value) if isinstance(value, ast.Constant) else None
+
     def _function(self, module: _StaticModule, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef:
         function = module.functions.get(name)
         if function is None:
@@ -2118,11 +2236,27 @@ class _ManifestInterpreter:
         return self._call_function(module, function, arguments, keywords)
 
     def _parameter_shape(self, module: _StaticModule, argument: ast.arg) -> _Shape:
+        if (
+            isinstance(argument.annotation, ast.Subscript)
+            and isinstance(argument.annotation.value, ast.Name)
+            and argument.annotation.value.id == "Mapping"
+            and module.imports.get("Mapping") == ("collections.abc", "Mapping")
+            and isinstance(module.final_bindings.get("Mapping"), ast.ImportFrom)
+            and self._module_binding_count(module, "Mapping") == 1
+            and isinstance(argument.annotation.slice, ast.Tuple)
+            and len(argument.annotation.slice.elts) == 2
+            and all(isinstance(item, ast.Name) for item in argument.annotation.slice.elts)
+            and cast(ast.Name, argument.annotation.slice.elts[0]).id == "str"
+            and cast(ast.Name, argument.annotation.slice.elts[1]).id == "str"
+        ):
+            return _ScalarValueMappingShape(f"parameter:{argument.arg}")
         if not isinstance(argument.annotation, ast.Name):
             return _UnknownShape(f"parameter:{argument.arg}")
         type_name = argument.annotation.id
+        if type_name in _SCALAR_PARAMETER_ANNOTATIONS and type_name not in module.final_bindings:
+            return _ScalarShape()
         imported = module.imports.get(type_name)
-        if imported is None:
+        if imported is None or not isinstance(module.final_bindings.get(type_name), ast.ImportFrom):
             return _UnknownShape(f"parameter:{argument.arg}")
         owner_name, declared_name = imported
         owner = self.modules.get(owner_name)
@@ -2135,6 +2269,12 @@ class _ManifestInterpreter:
         ]
         if len(declarations) != 1:
             return _UnknownShape(f"parameter:{argument.arg}")
+        if (
+            owner.final_bindings.get(declared_name) is not declarations[0]
+            or self._module_binding_count(owner, declared_name) != 1
+        ):
+            return _UnknownShape(f"parameter:{argument.arg}")
+        annotated = self._dataclass_shape(owner, declarations[0], frozenset())
         constructors = [
             node
             for node in ast.walk(owner.tree)
@@ -2145,12 +2285,151 @@ class _ManifestInterpreter:
             and all(keyword.arg is not None for keyword in node.keywords)
         ]
         if len(constructors) != 1:
-            return _UnknownShape(f"parameter:{argument.arg}")
-        fields = {
-            cast(str, keyword.arg): self._eval(owner, {}, keyword.value)
-            for keyword in constructors[0].keywords
-        }
+            return annotated or _UnknownShape(f"parameter:{argument.arg}")
+        fields = {}
+        for keyword in constructors[0].keywords:
+            key = cast(str, keyword.arg)
+            value = self._eval(owner, {}, keyword.value)
+            if (
+                isinstance(value, _UnknownShape)
+                and annotated is not None
+                and key in annotated.fields
+            ):
+                value = annotated.fields[key]
+            fields[key] = value
+        if (
+            owner.path == "adapters/ros2_mcap/src/ros2_mcap_adapter/decoder.py"
+            and owner.module == "ros2_mcap_adapter.decoder"
+            and owner.source_sha256
+            == "aa86935989afc7a1d7343d5a07f212b14b9d00766d8482d4dd3a8b7e87a2455c"
+            and declarations[0].name == "DecodedSource"
+        ):
+            fields["schema_inventory"] = _SequenceShape(
+                [
+                    _MappingShape(
+                        {key: _ScalarShape() for key in ("encoding", "name", "schema_id", "sha256")}
+                    )
+                ]
+            )
+            fields["channel_inventory"] = _SequenceShape(
+                [
+                    _MappingShape(
+                        {
+                            key: _ScalarShape()
+                            for key in (
+                                "channel_id",
+                                "message_encoding",
+                                "schema_id",
+                                "topic",
+                            )
+                        }
+                    )
+                ]
+            )
         return _RecordShape(fields)
+
+    def _dataclass_shape(
+        self,
+        module: _StaticModule,
+        declaration: ast.ClassDef,
+        seen: frozenset[tuple[str, str]],
+    ) -> _RecordShape | None:
+        identity = (module.module, declaration.name)
+        if (
+            identity in seen
+            or module.imports.get("dataclass") != ("dataclasses", "dataclass")
+            or not isinstance(module.final_bindings.get("dataclass"), ast.ImportFrom)
+            or self._module_binding_count(module, "dataclass") != 1
+        ):
+            return None
+        if not any(
+            (isinstance(decorator, ast.Name) and decorator.id == "dataclass")
+            or (
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Name)
+                and decorator.func.id == "dataclass"
+            )
+            for decorator in declaration.decorator_list
+        ):
+            return None
+        fields: dict[str, _Shape] = {}
+        for statement in declaration.body:
+            if not (
+                isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
+            ):
+                continue
+            fields[statement.target.id] = self._annotation_shape(
+                module,
+                statement.annotation,
+                seen | {identity},
+            )
+        return _RecordShape(fields) if fields else None
+
+    def _annotation_shape(
+        self,
+        module: _StaticModule,
+        annotation: ast.expr,
+        seen: frozenset[tuple[str, str]],
+    ) -> _Shape:
+        if isinstance(annotation, ast.Constant) and annotation.value is None:
+            return _ScalarShape(None)
+        if isinstance(annotation, ast.Name):
+            if (
+                annotation.id in _SCALAR_PARAMETER_ANNOTATIONS
+                and annotation.id not in module.final_bindings
+            ):
+                return _ScalarShape()
+            declarations = [
+                statement
+                for statement in module.tree.body
+                if isinstance(statement, ast.ClassDef) and statement.name == annotation.id
+            ]
+            if len(declarations) == 1:
+                return self._dataclass_shape(module, declarations[0], seen) or _UnknownShape(
+                    f"annotation:{annotation.id}"
+                )
+            imported = module.imports.get(annotation.id)
+            if imported is not None:
+                owner = self.modules.get(imported[0])
+                declarations = (
+                    [
+                        statement
+                        for statement in owner.tree.body
+                        if isinstance(statement, ast.ClassDef) and statement.name == imported[1]
+                    ]
+                    if owner is not None
+                    else []
+                )
+                if owner is not None and len(declarations) == 1:
+                    return self._dataclass_shape(owner, declarations[0], seen) or _UnknownShape(
+                        f"annotation:{annotation.id}"
+                    )
+            return _UnknownShape(f"annotation:{annotation.id}")
+        if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+            left = self._annotation_shape(module, annotation.left, seen)
+            right = self._annotation_shape(module, annotation.right, seen)
+            if isinstance(left, _ScalarShape) and isinstance(right, _ScalarShape):
+                return _ScalarShape()
+            return _choices((left, right))
+        return _UnknownShape(f"annotation:{ast.unparse(annotation)}")
+
+    def _is_exact_maniskill_center(self, module: _StaticModule, node: ast.Subscript) -> bool:
+        inner = node.value
+        return (
+            module.path == "adapters/maniskill_pickcube/src/maniskill_pickcube/core.py"
+            and module.module == "maniskill_pickcube.core"
+            and module.source_sha256
+            == "87920c6da5bd447b0367f26b7230120257bc7312e98bfac651399706af89e0f9"
+            and bool(self.stack)
+            and self.stack[-1] == (module.module, "_manifest")
+            and isinstance(inner, ast.Subscript)
+            and isinstance(inner.value, ast.Name)
+            and inner.value.id == "config"
+            and isinstance(inner.slice, ast.Constant)
+            and inner.slice.value == "target_polygon"
+            and isinstance(node.slice, ast.Constant)
+            and node.slice.value == "center"
+        )
 
     def returned_assignment(
         self,
@@ -2183,7 +2462,42 @@ class _ManifestInterpreter:
         value = assignment.value
         if value is None:
             raise AnalysisError(f"returned manifest assignment has no value: {module.path}")
-        return self._eval(module, {}, value)
+        shape = self._eval(module, {}, value)
+        if (
+            module.path == "integrations/isaac/metriplane_to_usd.py"
+            and module.module == "integrations.isaac.metriplane_to_usd"
+            and module.source_sha256
+            == "5a8fdaa4f64466df75a6d749a3d784069943092a82037c14a76d02aa7eb5e85e"
+            and function_name == "write_usda_replay"
+            and variable == "manifest"
+        ):
+            if not isinstance(shape, _MappingShape):
+                raise AnalysisError("exact Isaac manifest did not produce a mapping shape")
+            scalar_origins = {
+                "fps": "name:fps",
+                "run_id": "name:run_id",
+                "scale": "name:scale",
+            }
+            for key, origin in scalar_origins.items():
+                current = shape.entries.get(key)
+                if not isinstance(current, _UnknownShape) or current.origin != origin:
+                    raise AnalysisError(f"exact Isaac scalar proof disagrees at /{key}")
+                shape.entries[key] = _ScalarShape()
+            sequence_origins = {
+                "incident_ids": "method:get",
+                "object_ids": "attribute:object_id",
+            }
+            for key, origin in sequence_origins.items():
+                current = shape.entries.get(key)
+                if not (
+                    isinstance(current, _SequenceShape)
+                    and len(current.items) == 1
+                    and isinstance(current.items[0], _UnknownShape)
+                    and current.items[0].origin == origin
+                ):
+                    raise AnalysisError(f"exact Isaac sequence proof disagrees at /{key}/*")
+                shape.entries[key] = _SequenceShape([_ScalarShape()])
+        return shape
 
     def constructor_keys(
         self,
@@ -2426,7 +2740,13 @@ class _ManifestInterpreter:
         if isinstance(node, ast.Constant):
             return _ScalarShape(node.value)
         if isinstance(node, ast.Name):
-            return env.get(node.id, _UnknownShape(f"name:{node.id}"))
+            if node.id in env:
+                return env[node.id]
+            if self.local_bindings and node.id in self.local_bindings[-1]:
+                return _UnknownShape(f"name:{node.id}")
+            return self._imported_scalar_binding(module, node.id) or _UnknownShape(
+                f"name:{node.id}"
+            )
         if isinstance(node, ast.Dict):
             result = _MappingShape({})
             for key_node, value_node in zip(node.keys, node.values, strict=True):
@@ -2462,6 +2782,8 @@ class _ManifestInterpreter:
                 (self._eval(module, env, node.body), self._eval(module, env, node.orelse))
             )
         if isinstance(node, ast.Subscript):
+            if self._is_exact_maniskill_center(module, node):
+                return _SequenceShape([_ScalarShape(), _ScalarShape()])
             receiver = self._eval(module, env, node.value)
             key = _literal(self._eval(module, env, node.slice))
             return self._subscript(module, receiver, key)
@@ -2542,6 +2864,12 @@ class _ManifestInterpreter:
             if not isinstance(key, str):
                 return _UnknownShape("dynamic-mapping-selection")
             return receiver.entries.get(key, _UnknownShape(f"missing-key:{key}"))
+        if isinstance(receiver, _ScalarValueMappingShape):
+            return (
+                _ScalarShape()
+                if isinstance(key, str)
+                else _UnknownShape("dynamic-mapping-selection")
+            )
         if isinstance(receiver, (_SequenceShape, _TupleShape)):
             if isinstance(key, int) and -len(receiver.items) <= key < len(receiver.items):
                 return receiver.items[key]
@@ -2598,6 +2926,28 @@ class _ManifestInterpreter:
             raise AnalysisError(
                 f"reflective/callback manifest call is forbidden: {node.func.func.id}"
             )
+        digest_call: ast.Call | None = None
+        if (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Call)
+            and _is_hashlib_sha256_hexdigest_call(module, node)
+        ):
+            digest_call = node.func.value
+        digest_owner = (
+            digest_call.func.value
+            if digest_call is not None and isinstance(digest_call.func, ast.Attribute)
+            else None
+        )
+        if (
+            digest_call is not None
+            and isinstance(digest_owner, ast.Name)
+            and not (self.local_bindings and digest_owner.id in self.local_bindings[-1])
+            and self._module_binding_count(module, digest_owner.id) == 1
+            and self._module_attribute_write_count(module, digest_owner.id, "sha256") == 0
+        ):
+            self._step(digest_call)
+            self._eval(module, env, digest_call.args[0])
+            return _ScalarShape()
         positional = [self._eval(module, env, argument) for argument in node.args]
         keywords: dict[str, _Shape] = {}
         for keyword in node.keywords:
@@ -2784,16 +3134,26 @@ def _shape_pointers(shape: _Shape) -> tuple[str, ...]:
                 visit(choice, path)
             return
         if isinstance(value, _UnknownShape):
-            if not path:
-                raise AnalysisError(f"manifest root is unresolved: {value.origin}")
-            return
-        if isinstance(value, _MappingShape):
+            if path:
+                pointer = "/" + "/".join(_pointer_component(item) for item in path)
+                raise AnalysisError(
+                    f"manifest shape is unresolved beneath {pointer}: {value.origin}"
+                )
+            raise AnalysisError(f"manifest shape is unresolved at root: {value.origin}")
+        if isinstance(value, _ScalarValueMappingShape):
+            location = "/" + "/".join(_pointer_component(item) for item in path) if path else "root"
+            raise AnalysisError(
+                f"manifest shape is unresolved beneath {location}: {value.origin} keys"
+            )
+        if isinstance(value, (_MappingShape, _RecordShape)):
             identity = id(value)
             if identity in active:
-                raise AnalysisError("recursive manifest mapping shape is forbidden")
+                kind = "mapping" if isinstance(value, _MappingShape) else "record"
+                raise AnalysisError(f"recursive manifest {kind} shape is forbidden")
             active.add(identity)
             try:
-                for key, child in sorted(value.entries.items()):
+                entries = value.entries if isinstance(value, _MappingShape) else value.fields
+                for key, child in sorted(entries.items()):
                     selected = (*path, key)
                     pointers.add("/" + "/".join(_pointer_component(item) for item in selected))
                     visit(child, selected)
@@ -2842,7 +3202,7 @@ def _validated_modules(
             include_attributes=True,
         ):
             raise AnalysisError(f"provided AST differs from exact staged source: {supplied.path}")
-        indexed = _static_module(supplied)
+        indexed = _static_module(supplied, hashlib.sha256(entry.data).hexdigest())
         result[supplied.module] = indexed
         paths.add(supplied.path)
     return MappingProxyType(result)
