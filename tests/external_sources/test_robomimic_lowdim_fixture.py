@@ -20,6 +20,7 @@ from metriplane.atlas.regression import run_regression
 from metriplane.atlas.usd import export_usda
 from metriplane.external_sources.contract import validate_external_fixture_bundle
 from metriplane.external_sources.execution import run_external_fixture
+from tests.external_sources.version_projection import materialize_current_version_fixture
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = REPOSITORY_ROOT / "examples" / "external_sources" / "robomimic_lowdim"
@@ -235,7 +236,10 @@ def _canonical_semantics(root: Path) -> dict[str, Any]:
 def test_three_runs_have_frozen_equivalent_semantics(
     variant: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = FIXTURE_ROOT / variant
+    fixture = materialize_current_version_fixture(
+        FIXTURE_ROOT / variant,
+        tmp_path / f"{variant}-candidate-fixture",
+    )
     canonical = []
     monkeypatch.setenv("METRIPLANE_GIT_COMMIT", "a" * 40)
     for index in range(3):
@@ -302,7 +306,7 @@ def test_runs_are_movable_and_path_clean(
     output_root = tmp_path / "PRIVATE_OUTPUT_ROOT_SENTINEL"
     moved_root = tmp_path / "moved"
     fixture = fixture_root / variant
-    shutil.copytree(FIXTURE_ROOT / variant, fixture)
+    materialize_current_version_fixture(FIXTURE_ROOT / variant, fixture)
     monkeypatch.setenv("HOME", str(tmp_path / "PRIVATE_HOME_SENTINEL"))
     monkeypatch.setenv("METRIPLANE_GIT_COMMIT", "b" * 40)
     summary = run_external_fixture(fixture, output_root, run_id=f"movable_{variant}")
@@ -342,7 +346,7 @@ def test_root_package_boundary_and_frozen_contract() -> None:
     assert project["tool"]["setuptools"]["dynamic"]["version"] == {"attr": "metriplane.__version__"}
     assert (REPOSITORY_ROOT / "metriplane" / "__init__.py").read_text(
         encoding="utf-8"
-    ).splitlines()[5] == '__version__ = "0.3.0"'
+    ).splitlines()[5] == '__version__ = "0.4.0"'
     dependencies = "\n".join(project["project"]["dependencies"]).lower()
     lock = (REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
     prohibited = (

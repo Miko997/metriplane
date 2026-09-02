@@ -160,10 +160,15 @@ def test_external_fixture_guide_uses_the_canonical_safe_workflow() -> None:
     guide = (GUIDE / "external-fixtures.md").read_text(encoding="utf-8")
 
     required = (
-        "newer than the\n> published Metriplane v0.3.0 packages",
-        "development wheel built from commit",
-        "a901ea8d3be62355997c08e3030512e4129ee03c",
+        "The `metriplane external` commands ship in Metriplane\n> v0.4.0.",
+        "Install that exact release for this workflow.",
         "The v0.3.0 packages on PyPI and conda-forge do not contain these commands",
+        "Exact evaluation-version boundary",
+        "remain v0.3.0 evidence and intentionally fail",
+        "The generic `minimal` fixture is the\nmaintained v0.4.0 example",
+        "Make a separate copy",
+        "recompute only that copy's `source-manifest.json` entry",
+        "Never\nsilently relabel the historical fixture in place",
         "metriplane external validate path/to/fixture",
         "metriplane external validate path/to/fixture --json",
         "metriplane external run path/to/fixture --out external-run",
@@ -181,19 +186,19 @@ def test_external_fixture_guide_uses_the_canonical_safe_workflow() -> None:
     assert guide.index("**Availability:**") < guide.index("An External Fixture Bundle")
 
 
-def test_v030_package_install_and_research_boundaries_are_truthful() -> None:
+def test_v040_package_install_and_research_boundaries_are_truthful() -> None:
     front_door = (DOCS / "README.md").read_text(encoding="utf-8")
     quickstart = (GUIDE / "quickstart.md").read_text(encoding="utf-8")
     troubleshooting = (GUIDE / "troubleshooting.md").read_text(encoding="utf-8")
     research = (GUIDE / "research-artifacts.md").read_text(encoding="utf-8")
     exact_quickstart = """```bash
-python -m pip install \"metriplane==0.3.0\"
+python -m pip install \"metriplane==0.4.0\"
 metriplane demo --open
 ```"""
 
     assert exact_quickstart in front_door
     assert exact_quickstart in quickstart
-    assert 'python -m pip install "metriplane==0.3.0"' in troubleshooting
+    assert 'python -m pip install "metriplane==0.4.0"' in troubleshooting
     for text in (front_door, quickstart, troubleshooting):
         assert "current-`main`" not in text
         assert "source preview" not in text.lower()
@@ -202,6 +207,10 @@ metriplane demo --open
     assert "10.5281/zenodo.20736619" in research
     assert "10.2139/ssrn.7166858" in research
     assert "v0.1.3" in research
+    assert "v0.4.0" in research
+    assert "v0.3.0" in research
+    assert "No v0.4.0 DOI exists" in research
+    assert "No v0.3.0 DOI exists" in research
     assert "Do **not** attach\nthat DOI to v0.3.0" in research
 
 

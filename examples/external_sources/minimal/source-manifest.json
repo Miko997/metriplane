@@ -80,7 +80,7 @@
     "domain_pack_id": "synthetic-external-inspection-v1",
     "engine": "atlas",
     "expected_outcome_is_input": false,
-    "metriplane_version": "0.3.0",
+    "metriplane_version": "0.4.0",
     "provenance_layer": "metriplane_derived_results"
   },
   "extensions": {

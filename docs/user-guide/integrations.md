@@ -5,24 +5,25 @@ SPDX-License-Identifier: MIT
 
 # Integrations and actual support status
 
-The v0.3.0 adoption path is intentionally narrow: install the Python package,
-analyze a `FrameStateModel` JSONL recording with process rules, inspect the local
-report, verify its bundle, and rerun its generated regression check.
+The v0.4.0 reduced Truth Recovery core path is intentionally narrow: install the
+Python package, analyze a `FrameStateModel` JSONL recording with process rules,
+inspect the local report, verify its bundle, and rerun its generated regression
+check.
 
 | Path | Status | What that means |
 | --- | --- | --- |
 | Bundled camera-free demo | Release-gated | Runs from an installed wheel outside a source checkout on Ubuntu and macOS with Python 3.12/3.13. |
 | `FrameStateModel` JSONL + process rules | Supported incident input | Requires already-estimated object IDs, positions, and preclassified zone labels. |
-| External Fixture Bundle | Generic validation and execution path | An installed build containing this interface can validate one contract-compliant fixture directory and run its declared normalized state through Atlas without the original source framework. It records external provenance but does not add or claim an importer for any particular source. |
+| External Fixture Bundle | Generic validation and execution path | The v0.4.0 installed package can validate one contract-compliant fixture directory and run its declared normalized state through Atlas without the original source framework. It records external provenance but does not add or claim an importer for any particular source. |
 | Headless/SSH use | Supported for the demo | Omit `--open`; all artifacts are still generated locally. |
 | Live camera runtime | Optional, Linux-hardware dependent | Not needed for the demo. A missing camera does not make the camera-free installation broken. No macOS live-camera claim is made. |
 | GPU acceleration | Optional | Not needed for the demo or recorded incident path. CPU operation is the default adoption path. |
-| ROS 2 source bridge | Repository-only, separate component | It is not part of the core wheel or the v0.3.0 product promise. It does not add rosbag ingestion. |
-| rosbag / rosbag2 / MCAP import | Not implemented for v0.3.0 | Convert upstream data to validated `FrameStateModel` JSONL yourself; no generic importer is claimed. |
-| Raw-video incident import | Not implemented for v0.3.0 | This workflow starts after object-state estimation and zone classification. |
-| USD / Isaac Sim replay export | Experimental, manual external validation | Repository tools exist, but Isaac Sim is not required and end-to-end rendering is not a v0.3.0 gate. |
-| WSL2 Ubuntu 24.04 | Manually validated, camera-free path | An owner-run Python 3.12.3 installed-wheel check completed in 7 seconds and passed doctor, the six-event/one-incident demo, bundle verification, regression, and a second headless demo. Automatic browser opening is not claimed because that environment had no default HTML handler; omit `--open` or open the printed report path manually. This is not full-suite coverage. |
-| Native Windows | Demo-only owner report | The owner reports that the bundled camera-free demo completed from Command Prompt. No complete environment record, full suite, or wheel matrix was captured, so broader support is not advertised. |
+| ROS 2 source bridge | Repository-only, separate component | It is not part of the core wheel or the v0.4.0 product promise. It does not add rosbag ingestion. |
+| rosbag / rosbag2 / MCAP import | Not implemented for v0.4.0 | Convert upstream data to validated `FrameStateModel` JSONL yourself; no generic importer is claimed. |
+| Raw-video incident import | Not implemented for v0.4.0 | This workflow starts after object-state estimation and zone classification. |
+| USD / Isaac Sim replay export | Experimental, manual external validation | Repository tools exist, but Isaac Sim is not required and end-to-end rendering is not a v0.4.0 gate. |
+| WSL2 Ubuntu 24.04 | Historical v0.3.0 observation; no v0.4.0 claim | The retained v0.3.0 owner run used Python 3.12.3 and an installed wheel. No fresh exact-v0.4.0 WSL2 run is recorded. Automatic browser opening remains environment-dependent; omit `--open` or open the printed report path manually. |
+| Native Windows | Historical v0.3.0 observation; no v0.4.0 claim | The retained v0.3.0 owner report covers one bundled camera-free demo from Command Prompt. No fresh exact-v0.4.0 environment record, full suite, or wheel matrix is claimed. |
 
 The authoritative platform matrix is
 [Supported Environments](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md).

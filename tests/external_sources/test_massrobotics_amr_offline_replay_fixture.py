@@ -16,6 +16,7 @@ from metriplane.atlas.bundles import verify_bundle
 from metriplane.atlas.regression import run_regression
 from metriplane.external_sources.contract import validate_external_fixture_bundle
 from metriplane.external_sources.execution import run_external_fixture
+from tests.external_sources.version_projection import materialize_current_version_fixture
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = REPOSITORY_ROOT / "examples" / "external_sources" / "massrobotics_amr"
@@ -165,9 +166,13 @@ def test_public_fixture_exact_atlas_result(
     variant: str,
 ) -> None:
     monkeypatch.setenv("METRIPLANE_GIT_COMMIT", "b" * 40)
+    fixture = materialize_current_version_fixture(
+        FIXTURE_ROOT / variant,
+        tmp_path / f"{variant}-candidate-fixture",
+    )
     output = tmp_path / f"{variant}-run"
     summary = run_external_fixture(
-        FIXTURE_ROOT / variant,
+        fixture,
         output,
         run_id=f"massrobotics_amr_{variant}",
     )

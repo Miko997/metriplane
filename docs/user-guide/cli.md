@@ -96,7 +96,9 @@ workflow, adapter-author requirements, provenance, and claim limits.
 ## Other command groups
 
 Root help also lists replay, comparison, incident, and live-runtime functions for
-existing users. They are not required for the v0.3.0 bundled-demo promise. In
+existing users. They are not required for the bundled-demo promise and some have
+narrower support boundaries. The Atlas workflow documented above, including its
+generated regression check, is part of the v0.4.0 recorded-state path. In
 particular, `metriplane test` checks an incident evidence bundle against its
 stored expectations, while `metriplane atlas test` runs the YAML regression spec
 generated for an incident. The namespaces are intentionally different.
