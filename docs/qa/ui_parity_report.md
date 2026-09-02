@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
+Canonical projection SHA-256: `922efd3be3c49255cc1b52d27f473f6f4351dfa0912c9c13dd185dfe4b7359bf`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 157 |
+| total_discovered_features | 159 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 71 |
+| cli_only_documented | 73 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -182,6 +182,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.demo4_everything | Demo4 Everything | tools/demo4_everything.sh | tools/demo4_everything.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.discover_functional_surface | Discover Functional Surface | tools/discover_functional_surface.py | python tools/discover_functional_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.discover_public_surface | Discover Public Surface | tools/discover_public_surface.py | python tools/discover_public_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_clean | Docker Clean | tools/docker_clean.sh | tools/docker_clean.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_demo_up | Docker Demo Up | tools/docker_demo_up.sh | tools/docker_demo_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_dummy_up | Docker Dummy Up | tools/docker_dummy_up.sh | tools/docker_dummy_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -197,6 +198,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.preview_world_overlay_multi_ws | Preview World Overlay Multi Ws | tools/preview_world_overlay_multi_ws.py | python tools/preview_world_overlay_multi_ws.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_zones_overlay | Preview Zones Overlay | tools/preview_zones_overlay.py | python tools/preview_zones_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.proof_m8_fusion | Proof M8 Fusion | tools/proof_m8_fusion.sh | tools/proof_m8_fusion.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_demo_all | Run Demo All | tools/run_demo_all.sh | tools/run_demo_all.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_fusion_preview | Run Fusion Preview | tools/run_fusion_preview.py | python tools/run_fusion_preview.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

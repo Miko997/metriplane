@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
+Canonical projection SHA-256: `922efd3be3c49255cc1b52d27f473f6f4351dfa0912c9c13dd185dfe4b7359bf`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 157 |
+| actions | 159 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -273,6 +273,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.debug_alignment | tool | Debug Alignment | python tools/debug_alignment.py |
 | tool.demo4_everything | tool | Demo4 Everything | tools/demo4_everything.sh |
 | tool.discover_functional_surface | tool | Discover Functional Surface | python tools/discover_functional_surface.py |
+| tool.discover_public_surface | tool | Discover Public Surface | python tools/discover_public_surface.py |
 | tool.docker_clean | tool | Docker Clean | tools/docker_clean.sh |
 | tool.docker_demo_up | tool | Docker Demo Up | tools/docker_demo_up.sh |
 | tool.docker_dummy_up | tool | Docker Dummy Up | tools/docker_dummy_up.sh |
@@ -290,6 +291,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.preview_world_overlay_multi_ws | tool | Preview World Overlay Multi Ws | python tools/preview_world_overlay_multi_ws.py |
 | tool.preview_zones_overlay | tool | Preview Zones Overlay | python tools/preview_zones_overlay.py |
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
+| tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |
 | tool.report_alignment | tool | Report Alignment | python tools/report_alignment.py |
 | tool.run_demo_all | tool | Run Demo All | tools/run_demo_all.sh |

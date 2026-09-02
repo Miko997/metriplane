@@ -505,11 +505,11 @@ def test_current_governed_surface_has_exact_measured_counts():
     audit = run_audit(ROOT)
     status = canonical_status(audit)
     assert status["counts"] == {
-        "action_rows": 157,
+        "action_rows": 159,
         "baseline_route_crosswalk_rows": 48,
         "http_routes": 34,
         "pages": 12,
-        "registry_extension_rows": 176,
+        "registry_extension_rows": 178,
         "services": 4,
         "topics": 3,
     }
@@ -520,7 +520,7 @@ def test_current_governed_surface_has_exact_measured_counts():
         "cli": 23,
         "operator_api": 28,
         "runner_api": 6,
-        "tool": 58,
+        "tool": 60,
     }
     assert {
         key: audit.summary[key]
@@ -743,7 +743,7 @@ def test_committed_status_matches_current_governed_surface():
     generated_rows = [
         row for row in audit.inventory["rows"] if str(row["id"]).startswith(ROW_PREFIX)
     ]
-    assert len(generated_rows) == 176
+    assert len(generated_rows) == 178
     assert all(row["owner"] == "MP2-012" for row in generated_rows)
     assert all(row["profile"] == PROFILE_ID for row in generated_rows)
     assert all(
@@ -785,7 +785,7 @@ def test_canonical_json_has_no_wall_clock_field(tmp_path: Path):
     write_json(output, audit)
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert "generated_at" not in payload
-    assert payload["counts"]["registry_extension_rows"] == 176
+    assert payload["counts"]["registry_extension_rows"] == 178
     first = output.read_bytes()
     write_json(output, run_audit(ROOT))
     assert output.read_bytes() == first

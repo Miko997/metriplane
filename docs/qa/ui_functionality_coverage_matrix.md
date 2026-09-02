@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de41361e3eab6f5d7b`
+Canonical projection SHA-256: `922efd3be3c49255cc1b52d27f473f6f4351dfa0912c9c13dd185dfe4b7359bf`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -132,6 +132,7 @@ Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de4
 | tool.debug_alignment | Debug Alignment | tools/debug_alignment.py | python tools/debug_alignment.py | web/dashboard/* | debug_alignment.py | ui_copy_command_only | P2 |  |
 | tool.demo4_everything | Demo4 Everything | tools/demo4_everything.sh | tools/demo4_everything.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.discover_functional_surface | Discover Functional Surface | tools/discover_functional_surface.py | python tools/discover_functional_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.discover_public_surface | Discover Public Surface | tools/discover_public_surface.py | python tools/discover_public_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_clean | Docker Clean | tools/docker_clean.sh | tools/docker_clean.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_demo_up | Docker Demo Up | tools/docker_demo_up.sh | tools/docker_demo_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_dummy_up | Docker Dummy Up | tools/docker_dummy_up.sh | tools/docker_dummy_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -149,6 +150,7 @@ Canonical projection SHA-256: `62aa35d4976c9e8027b547399f97acd7aa375503a9bca1de4
 | tool.preview_world_overlay_multi_ws | Preview World Overlay Multi Ws | tools/preview_world_overlay_multi_ws.py | python tools/preview_world_overlay_multi_ws.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_zones_overlay | Preview Zones Overlay | tools/preview_zones_overlay.py | python tools/preview_zones_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.proof_m8_fusion | Proof M8 Fusion | tools/proof_m8_fusion.sh | tools/proof_m8_fusion.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.report_alignment | Report Alignment | tools/report_alignment.py | python tools/report_alignment.py | web/dashboard/* | report_alignment.py | ui_copy_command_only | P2 |  |
 | tool.run_demo_all | Run Demo All | tools/run_demo_all.sh | tools/run_demo_all.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
