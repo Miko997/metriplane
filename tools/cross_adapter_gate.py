@@ -2413,12 +2413,21 @@ def propose_baseline_update(repo: Path, variant_id: str, output: Path) -> Path:
     if variant_id not in variants:
         raise GateError(f"unknown fixture variant: {variant_id}")
     variant = variants[variant_id]
+    from metriplane import __version__
     from metriplane.external_sources.execution import run_external_fixture
 
     with tempfile.TemporaryDirectory(prefix="cross-adapter-baseline-candidate-") as temporary:
-        run_root = Path(temporary) / "run"
-        summary = run_external_fixture(
+        temporary_root = Path(temporary)
+        projected_fixture = temporary_root / "input" / variant_id
+        projected_fixture.parent.mkdir(parents=True)
+        _materialize_current_version_fixture(
             repo / variant["path"],
+            projected_fixture,
+            installed_version=__version__,
+        )
+        run_root = temporary_root / "run"
+        summary = run_external_fixture(
+            projected_fixture,
             run_root,
             run_id=f"baseline_candidate_{variant_id.replace('-', '_')}",
         )

@@ -19,6 +19,7 @@ from tools.cross_adapter_gate import (
     assert_fixture_contract,
     fixture_variants,
     load_registry,
+    propose_baseline_update,
 )
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
@@ -322,6 +323,13 @@ def test_all_registered_fixtures_enforce_contract_trust_and_snapshot_invariants(
         _read_json(projected / "source-manifest.json")["evaluation"]["metriplane_version"]
         == __version__
     )
+
+    proposal_path = tmp_path / "baseline-update-proposal.json"
+    propose_baseline_update(REPOSITORY_ROOT, legacy["variant_id"], proposal_path)
+    proposal = _read_json(proposal_path)
+    assert proposal["variant_id"] == legacy["variant_id"]
+    assert proposal["review_required"] is True
+    assert proposal["observed"]["frame_count"] == legacy["expected"]["frame_count"]
     assert _sha256(frozen_checksums) == frozen_fingerprint
 
 
