@@ -5,10 +5,8 @@ SPDX-License-Identifier: MIT
 
 # Validate and run an external fixture
 
-> **Availability:** The `metriplane external` commands are newer than the
-> published Metriplane v0.3.0 packages. Until a later release includes them,
-> use a development wheel built from commit
-> [`a901ea8d3be62355997c08e3030512e4129ee03c`](https://github.com/Miko997/metriplane/commit/a901ea8d3be62355997c08e3030512e4129ee03c).
+> **Availability:** The `metriplane external` commands ship in Metriplane
+> v0.4.0. Install that exact release for this workflow.
 > The v0.3.0 packages on PyPI and conda-forge do not contain these commands.
 
 An External Fixture Bundle is a portable, recorded input that has already been
@@ -19,6 +17,23 @@ when the finished bundle is validated or evaluated.
 The person who gives you a fixture should provide one directory anchored by
 `source-manifest.json`. Keep the directory together. You do not need to select its
 session, mapping, or domain pack separately.
+
+## Exact evaluation-version boundary
+
+The manifest binds the exact installed Metriplane evaluation version. The
+repository's frozen source-specific ManiSkill, robomimic, ROS 2/MCAP, and
+MassRobotics fixture trees remain v0.3.0 evidence and intentionally fail
+exact-version validation under v0.4.0. The generic `minimal` fixture is the
+maintained v0.4.0 example.
+
+To evaluate a frozen source-specific case with v0.4.0, preserve the original
+tree and fingerprints. Make a separate copy, change only
+`evaluation.metriplane_version` when that declaration remains accurate,
+recompute only that copy's `source-manifest.json` entry in
+`CHECKSUMS.sha256`, and validate the complete copy before running it. Never
+silently relabel the historical fixture in place. See the
+[v0.4.0 migration note](../releases/v0.4.0-migration.md#external-fixture-version-boundary)
+for the full boundary.
 
 ## Validate a fixture
 

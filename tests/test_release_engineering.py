@@ -15,6 +15,9 @@ RELEASES = ROOT / "docs" / "releases"
 CHANGELOG = ROOT / "CHANGELOG.md"
 SUPPORTED_ENVIRONMENTS = ROOT / "docs" / "SUPPORTED_ENVIRONMENTS.md"
 WSL2_VALIDATION = ROOT / "docs" / "validation" / "wsl2-v0.3.0-owner-run.md"
+V040_MIGRATION = RELEASES / "v0.4.0-migration.md"
+V040_NOTES = RELEASES / "v0.4.0-release-notes.md"
+V040_LAUNCH = RELEASES / "v0.4.0-launch-materials.md"
 
 
 def _workflow() -> tuple[dict[str, object], str]:
@@ -183,8 +186,8 @@ def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
     assert "publish metriplane <version> to production" in text
     assert "Do not merge the final candidate" in text
     assert 'test -z "$(git status --porcelain)"' in text
-    assert "Zenodo's GitHub\nintegration will **not** automatically archive v0.3.0" in text
-    assert "The frozen v0.2.0 DOI\nmust not be attached to v0.3.0" in text
+    assert "Zenodo's GitHub\nintegration will **not** automatically archive v0.4.0" in text
+    assert "The frozen v0.2.0 DOI\nmust not be attached to v0.4.0" in text
 
 
 def test_v030_release_copy_and_draft_materials_are_separated() -> None:
@@ -225,14 +228,73 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     assert "no passing human-validation claim is made" in notes
 
 
+def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> None:
+    index = (RELEASES / "README.md").read_text(encoding="utf-8")
+    migration = V040_MIGRATION.read_text(encoding="utf-8")
+    notes = V040_NOTES.read_text(encoding="utf-8")
+    launch = V040_LAUNCH.read_text(encoding="utf-8")
+
+    assert index.index("v0.4.0-migration.md") < index.index("v0.3.0-migration.md")
+    assert index.index("v0.4.0-release-notes.md") < index.index("v0.3.0-release-notes.md")
+    assert index.index("v0.4.0-launch-materials.md") < index.index("v0.3.0-launch-materials.md")
+
+    assert "# v0.4.0 migration and behavior changes" in migration
+    assert "DRAFT — UNPUBLISHED" not in migration
+    assert 'python -m pip install "metriplane==0.4.0"' in migration
+    migration_headings = (
+        "## Primary user path",
+        "## External fixture version boundary",
+        "## Supported Python and environments",
+        "## Deferred assurance work",
+        "## Research-version boundary",
+    )
+    assert all(heading in migration for heading in migration_headings)
+
+    assert "# Metriplane v0.4.0 release notes" in notes
+    assert "**DRAFT — UNPUBLISHED**" in notes
+    assert "v0.4.0 DOI: none" in notes
+    for placeholder in (
+        "<fill-after-production-verification>",
+        "<fill-from-approved-final-main>",
+        "<fill-from-retained-build-once-manifest>",
+    ):
+        assert placeholder in notes
+    notes_headings = (
+        "## Install and run",
+        "## Reduced Truth Recovery core",
+        "## Qualification",
+        "## Supported environments",
+        "## Known limitations and deferred work",
+        "## Research boundary",
+    )
+    assert all(heading in notes for heading in notes_headings)
+
+    assert "# v0.4.0 launch materials" in launch
+    assert "**DRAFT — UNPUBLISHED**" in launch
+    assert "metriplane-0.4.0-py3-none-any.whl" in launch
+    assert "metriplane-0.4.0.tar.gz" in launch
+    assert "v0.4.0 DOI: none" in launch
+    assert "## Zenodo stop gate" in launch
+    checklist = [line for line in launch.splitlines() if line.startswith("- [")]
+    assert checklist
+    assert all(line.startswith("- [ ]") for line in checklist)
+
+    for text in (migration, notes, launch):
+        assert "reduced Truth Recovery core" in text
+        assert "MP2-007" in text
+        for task in ("MP2-014", "MP2-015", "MP2-016", "MP2-017"):
+            assert task in text
+
+
 def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
     environments = SUPPORTED_ENVIRONMENTS.read_text(encoding="utf-8")
     validation = WSL2_VALIDATION.read_text(encoding="utf-8")
 
-    assert "926 passed, 1 optional GPU test skipped" in environments
-    assert "925 passed, 2 optional browser/GPU tests skipped" in environments
-    assert "815 passed" not in environments
-    assert "814 passed" not in environments
+    assert "No fresh exact-v0.4.0 candidate run is recorded" in environments
+    assert "No v0.4.0 WSL2 support claim is made" in environments
+    assert "No v0.4.0 native-Windows support claim is made" in environments
+    assert "926 passed" not in environments
+    assert "925 passed" not in environments
 
     for expected in (
         "75bb31e801410df5f94ea60514fc1177811a999a",
@@ -284,22 +346,28 @@ def test_citation_paths_do_not_mix_release_and_research_versions() -> None:
     assert "10.5281/zenodo.20736619" in guide
     assert "10.2139/ssrn.7166858" in guide
     assert "v0.1.3" in guide
-    assert "Exact v0.3.0 software release" in guide
-    assert "exact `v0.3.0` GitHub software release" in guide
+    assert "Exact v0.4.0 software release" in guide
+    assert "Metriplane v0.4.0 is the reduced Truth Recovery core release and has no DOI." in guide
+    assert "Parkkinen, Miko. *Metriplane v0.4.0* [Computer software]." in guide
+    assert "releases/tag/v0.4.0" in guide
+    assert "No v0.4.0 DOI exists. Do not use the v0.2.0 DOI for v0.4.0." in guide
+    assert "Prior v0.3.0 software release" in guide
+    assert "prior usability and adoption software release" in guide
     assert "releases/tag/v0.3.0" in guide
     assert "<release year>" not in guide
     assert "Do not use the v0.2.0 DOI for v0.3.0" in guide
 
 
-def test_v030_release_sets_the_package_version() -> None:
+def test_v040_release_candidate_sets_the_package_version() -> None:
     import metriplane
 
-    assert metriplane.__version__ == "0.3.0"
+    assert metriplane.__version__ == "0.4.0"
 
 
 def test_changelog_is_dated_and_complete() -> None:
     text = CHANGELOG.read_text(encoding="utf-8")
 
+    assert "## [0.4.0] — 2026-09-02 — Reduced Truth Recovery core" in text
     assert "## [0.3.0] — 2026-08-09 — Usability and adoption" in text
     assert "## [Unreleased]" in text
     assert "owner-only manual dispatch" in text
@@ -326,14 +394,18 @@ def test_release_copy_preserves_research_version_boundaries() -> None:
 
     for path in paths:
         text = path.read_text(encoding="utf-8")
+        assert "v0.4.0" in text
         assert "v0.3.0" in text
         assert "v0.2.0" in text
         assert "v0.1.3" in text
 
     artifacts = paths[0].read_text(encoding="utf-8")
     research = paths[-1].read_text(encoding="utf-8")
+    assert "Reduced Truth Recovery core software release: `v0.4.0`" in artifacts
+    assert "No DOI is claimed for v0.4.0" in artifacts
     assert "Usability and adoption software release: `v0.3.0`" in artifacts
     assert "No DOI is claimed for v0.3.0" in artifacts
+    assert "No v0.4.0 DOI exists" in research
     assert "No v0.3.0 DOI exists" in research
     assert "v0.3.0 output produced the SoftwareX or TIM\nmeasurements" in research
 
@@ -344,6 +416,7 @@ def test_durable_release_docs_do_not_encode_transient_pr_state() -> None:
         ROOT / "ROADMAP.md",
         ROOT / "docs" / "eval" / "evidence_index.md",
         ROOT / "docs" / "eval" / "evidence_matrix.md",
+        V040_MIGRATION,
         ROOT / "docs" / "releases" / "v0.3.0-migration.md",
         ROOT / "docs" / "user-guide" / "citing.md",
         ROOT / "docs" / "user-guide" / "research-artifacts.md",

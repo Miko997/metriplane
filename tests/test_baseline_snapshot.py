@@ -23,6 +23,8 @@ from typing import Any, cast
 
 import pytest
 
+from metriplane import __version__ as CURRENT_VERSION
+
 AUDITED_BASE_SHA = "14c1befff886215d928f1c3f6b412b843b902671"
 AUDITED_BASE_TREE = "38dcd26db9a467c850c75d4af0e6c932c3d0ecd7"
 SCHEMA_VERSION = "metriplane.baseline-snapshot.v1"
@@ -1323,25 +1325,7 @@ def installed_bootstrap_cli_python(
 
     root = tmp_path_factory.mktemp("mp2-000-installed-bootstrap")
     source = root / "source"
-    ignored_names = {
-        ".git",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-    }
-
-    def ignore(_directory: str, names: list[str]) -> set[str]:
-        return {
-            name
-            for name in names
-            if name in ignored_names or name.endswith((".egg-info", ".pyc", ".pyo"))
-        }
-
-    shutil.copytree(ROOT, source, ignore=ignore)
+    _fresh_exact_base_repository(source)
     uv = shutil.which("uv")
     assert uv is not None
     cross_minor = sys.version_info[:2] != (3, 12)
@@ -4753,7 +4737,7 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
         env=installer_env,
     )
     assert built.returncode == 0, built.stderr.decode("utf-8", "replace")
-    wheels = list(dist.glob("metriplane-0.3.0-*.whl"))
+    wheels = list(dist.glob(f"metriplane-{CURRENT_VERSION}-*.whl"))
     assert len(wheels) == 1
 
     venv = tmp_path / "installed-venv"
@@ -4831,7 +4815,7 @@ def test_installed_wheel_help_and_resources_fail_closed(_obligation: str, tmp_pa
     )
     assert imported.returncode == 0, imported.stderr.decode("utf-8", "replace")
     version, imported_path = imported.stdout.decode().splitlines()
-    assert version == "0.3.0"
+    assert version == CURRENT_VERSION
     assert Path(imported_path).is_relative_to(venv)
     assert not Path(imported_path).is_relative_to(ROOT)
 

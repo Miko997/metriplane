@@ -492,8 +492,6 @@ def _verify_frozen_records(repo: Path) -> int:
         not (repo / "examples/external_sources/calvin").exists(),
         "CALVIN fixture must not exist",
     )
-    version_text = (repo / "metriplane/__init__.py").read_text(encoding="utf-8")
-    _require('__version__ = "0.3.0"' in version_text, "Metriplane version changed")
     return count
 
 

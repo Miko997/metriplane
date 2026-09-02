@@ -46,16 +46,19 @@ demo and the existing CLI for timestamped object state and bounded process
 rules. Python 3.12 and 3.13 are supported. Linux/Ubuntu receives the complete CI
 suite; macOS receives the camera-free suite and installed-wheel demo.
 
-WSL2 Ubuntu 24.04 has a bounded owner-run validation for the Python 3.12.3
-installed-wheel, camera-free, and headless demo path. It is not covered by the
-complete Linux CI suite, and automatic browser opening was not validated because
-the test environment had no default HTML handler. Omit `--open` or open the
-printed report path manually. The owner reports one successful bundled-demo run
-from native Windows Command Prompt, but broader native-Windows workflows remain
-unvalidated and are not advertised as supported. A missing camera or GPU does
-not make the bundled demo unavailable. ROS 2, rosbag, MCAP, Isaac
-Sim, generic 3D state, robot control, safety logic, and quality certification are
-not part of the v0.3.0 adoption-release promise.
+The retained WSL2 Ubuntu 24.04/Python 3.12.3 installed-wheel record and the
+owner-reported native-Windows bundled-demo observation describe v0.3.0 only.
+No fresh v0.4.0 WSL2 or native-Windows validation is claimed. Automatic browser
+opening remains environment-dependent; omit `--open` or open the printed report
+path manually. A missing camera or GPU does not make the bundled demo
+unavailable.
+
+Raw or generic ROS 2, rosbag, MCAP, Isaac Sim, and generic 3D ingestion are not
+part of the v0.4.0 release promise. v0.4.0 does support its strict,
+already-normalized External Source Contract workflow and the repository's
+bounded source-specific fixture cases; those cases do not establish generic
+format or ecosystem compatibility. Robot control, safety logic, and quality
+certification remain outside the product boundary.
 
 Experimental or repository-only components may change and may have narrower
 test coverage. Public support is best-effort community support; the project does

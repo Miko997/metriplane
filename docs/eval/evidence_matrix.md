@@ -5,7 +5,8 @@ SPDX-License-Identifier: MIT
 
 # Metriplane Evidence Matrix
 
-**Usability and adoption software release**: `v0.3.0` (no DOI; not a new measurement boundary)
+**Reduced Truth Recovery core software release**: `v0.4.0` (no DOI; not a new measurement boundary)
+**Prior usability and adoption software release**: `v0.3.0` (no DOI; not a new measurement boundary)
 **Published packaging predecessor**: `v0.2.1`
 **Frozen DOI research artifact**: [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619)
 **Archived release name**: MetriPlane v0.2.0 — Physical Observability, Evidence Bundles, and Command Center
@@ -86,7 +87,7 @@ Key: YES = primary artifact supports the claim; PARTIAL = implementation/evidenc
 |---|---|
 | Display name | Use Metriplane in active copy; retain MetriPlane inside frozen historical names where changing it would alter provenance. |
 | Package/repo/CLI references | Use `metriplane` where referring to package, repo, or commands. |
-| Frozen research release and DOI | Use `v0.2.0` and DOI `10.5281/zenodo.20736619` only for the frozen SoftwareX research artifact; v0.3.0 has no DOI and did not produce these results. |
+| Frozen research release and DOI | Use `v0.2.0` and DOI `10.5281/zenodo.20736619` only for the frozen SoftwareX research artifact; v0.4.0 and v0.3.0 have no DOI and did not produce these results. |
 | Historical benchmark and DOI lineage | Use `v0.1.3` as the historical benchmark evidence release, `v0.1.4` / `10.5281/zenodo.20631037` as the historical DOI-archived baseline, `v0.1.2` as the prior canonical evidence release, and `v0.1.0` as the initial public release. |
 | GPU claim | CPU faster than GPU for current N=1-1000 fusion-compute benchmark; no full-pipeline GPU acceleration claim. |
 | Zone claim | Four zones and 112 transitions from current CSVs. |

@@ -7,7 +7,8 @@ SPDX-License-Identifier: MIT
 
 Summary of public evidence artifacts, supported Paper B claims, and known limitations.
 
-**Usability and adoption software release**: `v0.3.0` (no DOI; not a new measurement boundary)
+**Reduced Truth Recovery core software release**: `v0.4.0` (no DOI; not a new measurement boundary)
+**Prior usability and adoption software release**: `v0.3.0` (no DOI; not a new measurement boundary)
 **Published packaging predecessor**: `v0.2.1`
 **Frozen DOI research artifact**: [`v0.2.0`](https://github.com/Miko997/metriplane/releases/tag/v0.2.0)
 **Paper B canonical release tag**: [`v0.1.3`](https://github.com/Miko997/metriplane/releases/tag/v0.1.3)
@@ -24,7 +25,8 @@ For Paper B, the authoritative metric table is docs/eval/CANONICAL_EVIDENCE.md i
 
 No benchmark numbers changed from v0.1.2 to v0.1.3. No archival DOI is claimed
 for the historical Paper B v0.1.3 artifact. The v0.2.0 DOI must not be assigned
-to v0.3.0, and no v0.3.0 output produced these measurements.
+to v0.4.0 or v0.3.0, and no v0.4.0 or v0.3.0 output produced these
+measurements.
 
 ## Benchmark Artifacts
 

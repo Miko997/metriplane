@@ -122,7 +122,14 @@ jobs:
             "$SOURCE_SHA256" source/metriplane-synthetic-recorded-state-v1.mcap \
             "$CONFIG_SHA256" config/frozen-config.json \
             "$LOCK_SHA256" uv.lock | sha256sum --check --strict
-          uv pip install --system "$GITHUB_WORKSPACE"
+
+          freeze="${RUNNER_TEMP}/adapter-test-freeze"
+          git worktree add --detach "$freeze" "$ADAPTER_COMMIT"
+          trap 'git worktree remove --force "$freeze"' EXIT
+          test "$(git -C "$freeze" rev-parse HEAD)" = "$ADAPTER_COMMIT"
+          test -z "$(git -C "$freeze" status --porcelain --untracked-files=all)"
+          cd "$freeze/adapters/ros2_mcap"
+          uv pip install --system "$freeze"
           uv sync --locked --extra test --python 3.12
           uv run --frozen ruff check .
           uv run --frozen ruff format --check .
@@ -234,8 +241,25 @@ jobs:
           input="${RUNNER_TEMP}/portable-input"
           output="${RUNNER_TEMP}/portable-output"
           moved="${RUNNER_TEMP}/moved-output"
-          mkdir -p "$input" "$output"
-          cp -R examples/external_sources/ros2_mcap "$input/fixture"
+          mkdir -p "$input/fixture" "$output"
+          SOURCE_ROOT="$GITHUB_WORKSPACE/examples/external_sources/ros2_mcap" \
+          DESTINATION_ROOT="$input/fixture" \
+            python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from tests.external_sources.version_projection import (
+              materialize_current_version_fixture,
+          )
+
+          source = Path(os.environ["SOURCE_ROOT"])
+          destination = Path(os.environ["DESTINATION_ROOT"])
+          for variant in ("incident", "control"):
+              materialize_current_version_fixture(
+                  source / variant,
+                  destination / variant,
+              )
+          PY
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           for variant in incident control; do

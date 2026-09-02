@@ -6,28 +6,29 @@ SPDX-License-Identifier: MIT
 # Supported Environments
 
 This page is the authoritative compatibility statement for the active Metriplane
-development line. It describes workflows that are currently exercised, rather
-than environments that are merely expected to work.
+development line. v0.4.0 support is accepted only from its exact protected
+release workflows; historical results are labeled separately.
 
-The Python package requires Python 3.12 or 3.13.
+The v0.4.0 reduced Truth Recovery core release requires Python 3.12 or 3.13.
 
-| Environment | Python | Current validation | Support statement |
+| Environment | Python | v0.4.0 release validation | Support statement |
 | --- | --- | --- | --- |
-| Ubuntu Linux | 3.12, 3.13 | Automated repository run on each Python version: 926 passed, 1 optional GPU test skipped; installed-wheel camera-free demo; owner Ubuntu 24.04/Python 3.12 run | Camera-free and core repository workflows are fully tested. Live-camera use additionally requires local V4L2 hardware and configuration. |
-| macOS | 3.12, 3.13 | Camera-free repository run on each Python version: 925 passed, 2 optional browser/GPU tests skipped; installed-wheel demo | Camera-free core workflows are tested. No live-camera support claim is made. |
-| WSL2 Ubuntu 24.04 | 3.12.3 (manual) | Owner-run installed-wheel check on 2026-08-09: `pip check`, version, doctor, six-event/one-incident demo, bundle verification, regression check, and a second headless demo all passed; install-to-report took 7 seconds | The installed-wheel camera-free and headless path is manually validated. This is not full-suite coverage. Automatic browser opening is not claimed because the test environment had no default HTML handler; omit `--open` or open the report path manually. |
-| Native Windows | Not recorded | Owner-reported bundled camera-free demo completion from Command Prompt on 2026-08-09; no complete transcript, interpreter version, full suite, or wheel matrix was recorded | The single demo result is a useful compatibility observation, not a broad support claim. Other native-Windows workflows remain unvalidated and are not advertised as supported. |
+| Ubuntu Linux | 3.12, 3.13 | Protected Release Gates run the complete repository suite and an installed-wheel camera-free demo on each Python version. Exact v0.4.0 results belong in the final release record. | Camera-free and core repository workflows are release-gated. Live-camera use additionally requires local V4L2 hardware and configuration. |
+| macOS | 3.12, 3.13 | Protected Release Gates run the complete repository suite and an installed-wheel camera-free demo on each Python version. Exact v0.4.0 results belong in the final release record. | Camera-free core workflows are release-gated. No live-camera support claim is made. |
+| WSL2 Ubuntu 24.04 | Not recorded for v0.4.0 | No fresh exact-v0.4.0 candidate run is recorded. | No v0.4.0 WSL2 support claim is made. Automatic browser opening remains environment-dependent; headless users may omit `--open` or open the report path manually. |
+| Native Windows | Not recorded for v0.4.0 | No fresh exact-v0.4.0 candidate run is recorded. | No v0.4.0 native-Windows support claim is made. |
 
 The automated evidence is maintained in
 [`ci.yml`](../.github/workflows/ci.yml) and
 [`release-gates.yml`](../.github/workflows/release-gates.yml). The wheel demo runs
 outside the source checkout and is required to finish within two minutes.
 
-The WSL2 result above is recorded in the
+The historical v0.3.0 WSL2 result is recorded in the
 [owner-run validation note](validation/wsl2-v0.3.0-owner-run.md). Some archived
 v0.2.0 reproduction documents also describe a WSL2 Ubuntu path. Those archived
 instructions remain part of the frozen research-artifact record and are not the
 basis for the v0.3.0 compatibility statement. Native Windows and WSL2 are
 different environments, and support for one must not be inferred from the other.
-The reported Windows demo completion does not substitute for the automated
-platform matrix above.
+The reported v0.3.0 Windows demo completion does not substitute for the
+automated platform matrix above. These retained v0.3.0 manual observations are
+not a separate WSL2 or native-Windows validation of v0.4.0.

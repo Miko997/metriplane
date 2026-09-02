@@ -11,12 +11,77 @@ All notable changes to Metriplane are documented here.
 
 ## [Unreleased]
 
+No additional changes are recorded.
+
+## [0.4.0] — 2026-09-02 — Reduced Truth Recovery core
+
+### Added
+
+- Added strict, portable external-fixture validation and recorded-state
+  evaluation through `metriplane external validate` and `metriplane external
+  run`. The repository includes bounded fixtures and adapters for specific
+  ManiSkill, robomimic, ROS 2/MCAP, and MassRobotics inputs; these are not a
+  claim of generic compatibility with those ecosystems.
+- Added an audited baseline and deterministic governed inventories for the
+  command line, UI declarations, public Python surface, maintained resources,
+  configurations, examples, proofs, workflows, claims, and artifact-manifest
+  keys. Stable identifiers, source digests, and no-write currentness checks make
+  drift visible without treating a static census as runtime support evidence.
+- Added fail-closed protected-main health and release-serialization contracts
+  for repository administration. These maintainer controls do not change
+  Metriplane's observe-only product boundary.
+
+### Changed
+
+- Made run and generated-output storage portable across supported host path
+  conventions while retaining explicit no-clobber behavior and binding writes,
+  cleanup, and publication to validated filesystem identities.
+- Pinned the maintained lint, formatting, type-checking, documentation, and test
+  toolchain and made generated functional inventories part of the governed
+  release checks.
+- Preserved source-specific v0.3.0 fixture trees as historical evidence while
+  requiring any v0.4.0 evaluation to use an explicit current-version
+  materialization with a recomputed checksum inventory.
+
+### Fixed
+
+- Closed public-surface discovery gaps for nested manifests, structured return
+  effects, unresolved shapes, and exact binding stability.
+- Hardened local-run lifecycle, reservation, overwrite, cleanup, and generated
+  file-mode handling against ambiguous, stale, replaced, or unsafe paths.
+- Made protected-main admission reconcile exact provider attempts, immutable
+  commits, state generations, repository rules, and owner-request evidence
+  before the broker may merge.
+
 ### Security and integrity
 
 - Split production PyPI promotion from the tag-triggered TestPyPI workflow.
   Production now requires a separate owner-only manual dispatch naming the
   successful tag run, exact version, and explicit confirmation phrase; the
   protected environment remains an additional safeguard.
+- Production publication is serialized by an App-owned release lease. Exact
+  artifacts are built once, verified on TestPyPI, promoted without rebuilding,
+  and checked by hash again after production publication.
+- Frozen v0.2.0 research evidence and source-specific historical proof records
+  remain unchanged.
+
+### Scope and deferred assurance
+
+- v0.4.0 is the reduced Truth Recovery core release. MP2-007 and MP2-014 through
+  MP2-017 remain deferred to v0.4.1 Assurance Hardening; they are not completed,
+  waived, or implied by this release.
+- Static inventory and deterministic replay results do not establish production
+  safety, physical accuracy, generic robotics compatibility, or completion of
+  the v1.0 assurance programme. Metriplane remains recorded, local, bounded,
+  planar, and observe-only.
+- Historical v2.5.x authority packets are not release evidence for v0.4.0 and
+  are neither consumed nor recreated.
+
+### Research scope
+
+- v0.4.0 does not replace or modify the frozen v0.2.0 SoftwareX artifact, its
+  DOI, checksums, or measurements, and it does not change the TIM evaluated
+  software boundary at v0.1.3. No v0.4.0 DOI is claimed.
 
 ## [0.3.0] — 2026-08-09 — Usability and adoption
 

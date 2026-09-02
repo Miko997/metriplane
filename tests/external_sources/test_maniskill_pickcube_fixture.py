@@ -21,6 +21,7 @@ from metriplane.atlas.runtime import run_atlas
 from metriplane.atlas.usd import export_usda
 from metriplane.external_sources.contract import validate_external_fixture_bundle
 from metriplane.external_sources.execution import run_external_fixture
+from tests.external_sources.version_projection import materialize_current_version_fixture
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = REPOSITORY_ROOT / "examples" / "external_sources" / "maniskill_pickcube"
@@ -401,7 +402,10 @@ def test_three_atlas_runs_have_the_frozen_outcome_and_equivalent_semantics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fixture = FIXTURE_ROOT / variant
+    fixture = materialize_current_version_fixture(
+        FIXTURE_ROOT / variant,
+        tmp_path / f"{variant}-candidate-fixture",
+    )
     expected = _read_json(fixture / "expected-outcome.json")
     expected_counts = EXPECTED_COUNTS[variant]
     canonical: list[dict[str, Any]] = []
@@ -562,7 +566,7 @@ def test_run_is_movable_and_contains_no_operational_path(
     private_home.mkdir()
     private_source_root.mkdir()
     private_cache_root.mkdir()
-    shutil.copytree(FIXTURE_ROOT / variant, private_fixture)
+    materialize_current_version_fixture(FIXTURE_ROOT / variant, private_fixture)
     shutil.copytree(private_fixture / "domain-pack", private_pack_root)
     private_session = private_source_root / "session.jsonl"
     shutil.copyfile(private_fixture / "session.jsonl", private_session)

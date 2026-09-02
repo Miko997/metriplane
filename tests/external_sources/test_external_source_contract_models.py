@@ -389,7 +389,7 @@ def test_contract_and_profile_versions_are_independent() -> None:
     assert manifest.schema_version == CONTRACT_SCHEMA_VERSION
     assert manifest.contract_profile == CONTRACT_PROFILE
     assert manifest.normalization.frame_state_model_version == "1.0"
-    assert manifest.evaluation.metriplane_version == "0.3.0"
+    assert manifest.evaluation.metriplane_version == "0.4.0"
     assert (
         len(
             {

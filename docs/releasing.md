@@ -81,8 +81,10 @@ the only place that changes the package version.
 1. Set `metriplane.__version__` to the intended version.
 2. Confirm distribution metadata and `metriplane --version` use that same
    value.
-3. Finalize the changelog, migration notes, README quickstart, and release
-   notes. Remove all pre-release wording that is no longer true.
+3. Finalize the changelog, migration note, README quickstart, and substantive
+   release copy. The migration note must be final, but release notes and launch
+   materials remain explicitly **DRAFT — UNPUBLISHED** with unfilled commit,
+   date, workflow, and artifact-hash fields until production verification.
 4. Confirm supported-environment wording matches executed checks.
 5. Verify that the frozen v0.2.0 evidence, tag, DOI metadata, checksums,
    `CITATION.cff`, and `.zenodo.json` were not rewritten.
@@ -154,6 +156,58 @@ python3.12 -m venv /tmp/metriplane-release-sdist
   /tmp/metriplane-release-sdist/bin/metriplane doctor
   /tmp/metriplane-release-sdist/bin/metriplane demo
 )
+```
+
+Run the complete documented evidence-to-regression proof with the installed
+wheel, outside the checkout. Both Atlas runs use the same explicit run identity
+so the deterministic files are directly comparable:
+
+```bash
+metriplane_cmd=/tmp/metriplane-release-wheel/bin/metriplane
+wheel_python=/tmp/metriplane-release-wheel/bin/python
+proof_root="$(mktemp -d)"
+proof_inputs="$proof_root/inputs"
+proof_run_a="$proof_root/run-a"
+proof_run_b="$proof_root/run-b"
+
+"$metriplane_cmd" demo --export-inputs "$proof_inputs"
+"$metriplane_cmd" atlas validate-pack "$proof_inputs/domain-pack"
+
+for proof_run in "$proof_run_a" "$proof_run_b"; do
+  "$metriplane_cmd" atlas run \
+    --session-jsonl "$proof_inputs/session.jsonl" \
+    --pack "$proof_inputs/domain-pack" \
+    --out "$proof_run" \
+    --run-id v040-release-proof
+  "$metriplane_cmd" atlas report --run-dir "$proof_run"
+  "$metriplane_cmd" atlas bundle verify \
+    "$proof_run/evidence_bundles/INC-0001.zip"
+  "$metriplane_cmd" atlas test \
+    "$proof_run/regression_tests/INC-0001.yaml" --json
+done
+
+for artifact in \
+  physical_event_log.jsonl deviations.jsonl incidents.jsonl \
+  reality_graph.json process_trace.json flow_metrics.csv; do
+  cmp -- "$proof_run_a/$artifact" "$proof_run_b/$artifact"
+done
+```
+
+The declared negative case mutates only a disposable copy of the directory-form
+bundle. Verification must exit 3, report `pass: false`, and name the changed
+file:
+
+```bash
+negative_bundle="$proof_root/tampered-bundle"
+cp -R "$proof_run_a/evidence_bundles/INC-0001" "$negative_bundle"
+printf '\n' >> "$negative_bundle/incident.json"
+set +e
+negative_json="$("$metriplane_cmd" atlas bundle verify "$negative_bundle")"
+negative_status=$?
+set -e
+test "$negative_status" -eq 3
+printf '%s\n' "$negative_json" | "$wheel_python" -c \
+  'import json,sys; r=json.load(sys.stdin); assert r["pass"] is False; assert "checksum mismatch: incident.json" in r["errors"]'
 ```
 
 Inspect both archives before approval. They must contain package source,
@@ -261,45 +315,110 @@ python3.12 -m venv /tmp/metriplane-production-check
 )
 ```
 
-Only then finalize the GitHub release body, merge the separately validated
-website release pull request, deploy the website, and update repository
-discovery metadata.
-
 ### Stop gate: Zenodo and citation metadata
 
 Before creating the GitHub release, the owner must verify that Zenodo's GitHub
-integration will **not** automatically archive v0.3.0. The frozen v0.2.0 DOI
-must not be attached to v0.3.0, and no v0.3.0 DOI may be claimed before a
+integration will **not** automatically archive v0.4.0. The frozen v0.2.0 DOI
+must not be attached to v0.4.0, and no v0.4.0 DOI may be claimed before a
 separate, intentionally described archive exists. If automatic archiving is
 enabled or its behavior is uncertain, stop before creating the GitHub release.
 
 See [Citing Metriplane](user-guide/citing.md) for the separate software,
 frozen-artifact, and paper citation paths.
 
-## v0.3.0 release-candidate checklist
+Only then finalize the GitHub release body. Attach the retained workflow copies
+of the wheel, source distribution, and `SHA256SUMS`; do not rebuild or rename
+them. Download all three GitHub Release assets into a new directory, require the
+exact three-name inventory, verify the manifest, and compare every SHA-256 value
+with the retained workflow artifact and both public registries. Any missing,
+extra, or changed asset stops release completion.
 
-This section is a preparation checklist, not evidence that v0.3.0 is published.
+After that readback succeeds, merge the separately validated website release
+pull request, deploy the website, and update repository discovery metadata.
 
-- [ ] Final candidate version is `0.3.0` in the package, CLI, and metadata.
+## v0.4.0 reduced-scope stop gates
+
+v0.4.0 is limited to the reduced Truth Recovery core. Stop the candidate before
+tagging or publication if any of these conditions is false:
+
+- `0.4.0` and `v0.4.0` were confirmed unoccupied before the candidate was
+  frozen;
+- the exact candidate commit and tree descend from dependency-complete protected
+  `main` and remain unchanged throughout qualification;
+- MP2-007 and MP2-014 through MP2-017 remain explicitly deferred to v0.4.1
+  Assurance Hardening rather than being described as passed, completed, or
+  waived;
+- historical v2.5.x authority packets were not consumed or recreated as release
+  authority;
+- current-version external-fixture evaluations are separate, checksummed
+  materializations and the frozen source-specific v0.3.0 proof trees are
+  unchanged;
+- release claims do not expand static inventories or deterministic software
+  checks into production-safety, physical-accuracy, generic-robotics, or v1.0
+  assurance claims;
+- release notes and launch materials still carry their draft marker and
+  unfilled production fields; and
+- generated inventories are current for the exact staged candidate.
+
+Any candidate-code or release-document change after qualification and before
+tagging invalidates the candidate and requires qualification of the new exact
+commit. Local pre-tag builds are disposable checks. The tag workflow's retained
+wheel, source distribution, and SHA-256 manifest are the build-once publication
+set and must not be rebuilt for production promotion.
+
+## v0.4.0 release-candidate checklist
+
+This section is a preparation checklist, not evidence that v0.4.0 is published.
+
+- [ ] Version `0.4.0` and tag `v0.4.0` were confirmed unoccupied.
+- [ ] Final candidate version is `0.4.0` in the package, CLI, and metadata.
+- [ ] Exact candidate commit and tree are recorded from dependency-complete
+      protected `main`.
 - [ ] Primary README path is
-      `python -m pip install "metriplane==0.3.0"` followed by
+      `python -m pip install "metriplane==0.4.0"` followed by
       `metriplane demo --open`.
+- [ ] Pinned Ruff lint and format, strict mypy, tracked Python compilation,
+      strict documentation, and generated-inventory currentness checks pass.
+- [ ] Complete source qualification and the focused MP2-002 and MP2-013 checks
+      pass on the exact candidate.
 - [ ] Linux Release Gates pass on Python 3.12 and 3.13.
 - [ ] The bundled camera-free demo passes on macOS with Python 3.12 and 3.13.
-- [x] WSL2 wording is bounded to the recorded Ubuntu 24.04/Python 3.12.3
-      installed-wheel camera-free and headless owner run; automatic browser
-      opening is not claimed.
-- [x] Native Windows wording is limited to one owner-reported bundled-demo
-      completion; broader platform support is not advertised.
+- [ ] Any WSL2 or native-Windows wording is backed by a fresh v0.4.0 candidate
+      record; historical v0.3.0 observations are not relabeled.
 - [ ] Wheel and source distribution pass independent clean installations.
+- [ ] The canonical bundled example, complete documented
+      evidence-to-regression workflow, deterministic repeat, and one declared
+      negative case pass in their declared clean environments.
 - [ ] The exact artifact SHA-256 manifest is recorded from the workflow run.
 - [ ] Frozen v0.2.0 evidence and research-integrity checks pass.
-- [x] Human-comprehension results remain an accurate zero-tester pending record;
-      the owner explicitly deferred this non-blocking check to post-release
-      adoption follow-up without claiming that human validation passed.
+- [ ] Frozen source-specific v0.3.0 fixture/proof identities remain unchanged;
+      v0.4.0 compatibility evaluation uses explicit disposable projections.
+- [ ] The release notes identify the reduced Truth Recovery scope, all deferred
+      Assurance Hardening work, and every actual limitation without expanding
+      support claims.
 - [ ] Final release-candidate pull request has explicit owner approval.
 - [ ] Zenodo automatic archiving is confirmed disabled before GitHub release.
 
-The prepared v0.3.0 migration, release, and launch drafts live under
-[`docs/releases/`](releases/). Fill their explicit placeholders only from the
-actual approved release and registry results.
+The prepared v0.4.0 migration note, draft release notes, and draft launch
+materials live under [`docs/releases/`](releases/). Fill their explicit
+placeholders only from the actual approved release, retained build-once
+artifacts, successful tag and production runs, and final registry readback.
+
+The v0.3.0 release files and the recorded v0.3.0 human-comprehension,
+WSL2, and native-Windows facts remain historical evidence. Do not update them to
+describe v0.4.0.
+
+### Post-publication documentation reconciliation
+
+The immutable tag necessarily contains the explicitly marked draft release
+notes and launch checklist: production workflow IDs, retained artifact hashes,
+registry readback, and the GitHub release URL do not exist when the tag is
+created. Build the final GitHub release body directly from that verified live
+evidence.
+
+After publication succeeds, use a separate documentation-only pull request on
+protected `main` to fill the v0.4.0 release-note and launch-material fields,
+remove their draft notices, and record the completed checklist. This follow-up
+does not modify the tag, rebuild artifacts, or invalidate the already published
+candidate. Run only the documentation, generated-inventory currentness, and
+clean-worktree gates appropriate to that follow-up.
