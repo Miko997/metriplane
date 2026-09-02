@@ -150,8 +150,25 @@ jobs:
           input="${RUNNER_TEMP}/portable-input"
           output="${RUNNER_TEMP}/portable-output"
           moved="${RUNNER_TEMP}/moved-output"
-          mkdir -p "$input" "$output"
-          cp -R examples/external_sources/robomimic_lowdim "$input/fixture"
+          mkdir -p "$input/fixture" "$output"
+          SOURCE_ROOT="$GITHUB_WORKSPACE/examples/external_sources/robomimic_lowdim" \
+          DESTINATION_ROOT="$input/fixture" \
+            python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from tests.external_sources.version_projection import (
+              materialize_current_version_fixture,
+          )
+
+          source = Path(os.environ["SOURCE_ROOT"])
+          destination = Path(os.environ["DESTINATION_ROOT"])
+          for variant in ("incident", "control"):
+              materialize_current_version_fixture(
+                  source / variant,
+                  destination / variant,
+              )
+          PY
           cd "$RUNNER_TEMP"
           unset PYTHONPATH
           for variant in incident control; do

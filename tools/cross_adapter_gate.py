@@ -1439,53 +1439,6 @@ def check_component(repo: Path, component_id: str, results_dir: Path) -> Path:
                 "cli_help",
                 "source_inspection",
             )
-            for name in ordered:
-                if not full_suite_supported and name in {"unit_tests", "source_inspection"}:
-                    skip_reasons.append(
-                        f"{name}: full source suite is registered only for "
-                        f"{component['full_suite_python_versions']}"
-                    )
-                    continue
-                command = commands[name]
-                if command is None:
-                    if name in {"type_check", "source_inspection"}:
-                        skip_reasons.append(f"{name}: not defined by this isolated package")
-                    continue
-                if name == "format" and component["format_policy"]["mode"] == "frozen_migration":
-                    command_results.extend(
-                        _check_frozen_format_migration(
-                            package,
-                            component["format_policy"],
-                            temporary_root,
-                        )
-                    )
-                    continue
-                rendered = command.format(
-                    adapter_commit=component.get("source_conversion_commit", ""),
-                    dist=shlex.quote(str(dist)),
-                    repo=shlex.quote(str(repo)),
-                    temp=shlex.quote(str(temporary_root)),
-                )
-                command_env = {"PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
-                if component_id in {"ros2-mcap", "massrobotics-amr"}:
-                    command_env["PYTHONPATH"] = str(repo) if name == "unit_tests" else ""
-                if component_id in {"ros2-mcap", "massrobotics-amr"} and name == "unit_tests":
-                    command_env["CROSS_ADAPTER_ROOT_TEST_PYTHON"] = sys.executable
-                record, output = _run_command(
-                    rendered,
-                    cwd=package,
-                    env=command_env,
-                )
-                command_results.append(record)
-                if name == "unit_tests":
-                    test_output = output
-            if commands["type_check"] is None:
-                skip_reasons.append(
-                    "type_check: package has no supported static type-check command"
-                )
-            else:
-                record, _ = _run_command(commands["type_check"], cwd=package)
-                command_results.append(record)
             conversion_supported = (
                 component.get("source_fixture_path") is not None
                 and isinstance(component.get("source_fixture_path"), str)
@@ -1495,27 +1448,110 @@ def check_component(repo: Path, component_id: str, results_dir: Path) -> Path:
                 in component.get("source_conversion_operating_systems", [])
             )
             conversion_executed = False
-            if conversion_supported:
-                commit = component["source_conversion_commit"]
-                conversion_paths = [component["package_path"]]
-                if component.get("source_adapter_sdk_required"):
-                    conversion_paths.append("adapters/source_adapter_sdk")
-                for conversion_path in conversion_paths:
-                    frozen_tree = _git(repo, "rev-parse", f"{commit}:{conversion_path}")
-                    current_tree = _git(repo, "rev-parse", f"HEAD:{conversion_path}")
-                    if frozen_tree != current_tree:
-                        raise GateError(
-                            f"source conversion baseline tree drift for "
-                            f"{component['component_id']}: {conversion_path}"
+            frozen_checkout: Path | None = None
+            execution_package = package
+            try:
+                if component_id in {"ros2-mcap", "massrobotics-amr"}:
+                    commit = component["source_conversion_commit"]
+                    conversion_paths = [component["package_path"]]
+                    if component.get("source_adapter_sdk_required"):
+                        conversion_paths.append("adapters/source_adapter_sdk")
+                    for conversion_path in conversion_paths:
+                        frozen_tree = _git(repo, "rev-parse", f"{commit}:{conversion_path}")
+                        current_tree = _git(repo, "rev-parse", f"HEAD:{conversion_path}")
+                        if frozen_tree != current_tree:
+                            raise GateError(
+                                f"source conversion baseline tree drift for "
+                                f"{component['component_id']}: {conversion_path}"
+                            )
+                    frozen_checkout = temporary_root / "frozen-command-checkout"
+                    add_worktree = (
+                        f"git worktree add --detach {shlex.quote(str(frozen_checkout))} "
+                        f"{shlex.quote(commit)}"
+                    )
+                    record, _ = _run_command(add_worktree, cwd=repo)
+                    command_results.append(record)
+                    execution_package = frozen_checkout / component["package_path"]
+
+                for name in ordered:
+                    if not full_suite_supported and name in {"unit_tests", "source_inspection"}:
+                        skip_reasons.append(
+                            f"{name}: full source suite is registered only for "
+                            f"{component['full_suite_python_versions']}"
                         )
-                frozen_checkout = temporary_root / "frozen-checkout"
-                add_worktree = (
-                    f"git worktree add --detach {shlex.quote(str(frozen_checkout))} "
-                    f"{shlex.quote(commit)}"
-                )
-                record, _ = _run_command(add_worktree, cwd=repo)
-                command_results.append(record)
-                try:
+                        continue
+                    command = commands[name]
+                    if command is None:
+                        if name in {"type_check", "source_inspection"}:
+                            skip_reasons.append(f"{name}: not defined by this isolated package")
+                        continue
+                    if (
+                        name == "format"
+                        and component["format_policy"]["mode"] == "frozen_migration"
+                    ):
+                        command_results.extend(
+                            _check_frozen_format_migration(
+                                execution_package,
+                                component["format_policy"],
+                                temporary_root,
+                            )
+                        )
+                        continue
+                    rendered = command.format(
+                        adapter_commit=component.get("source_conversion_commit", ""),
+                        dist=shlex.quote(str(dist)),
+                        repo=shlex.quote(str(repo)),
+                        temp=shlex.quote(str(temporary_root)),
+                    )
+                    command_env = {
+                        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+                        "UV_PYTHON": sys.executable,
+                    }
+                    if component_id in {"ros2-mcap", "massrobotics-amr"}:
+                        command_env["PYTHONPATH"] = (
+                            os.pathsep.join((str(frozen_checkout), str(repo)))
+                            if name == "unit_tests" and frozen_checkout is not None
+                            else ""
+                        )
+                    if component_id in {"ros2-mcap", "massrobotics-amr"} and name == "unit_tests":
+                        command_env["CROSS_ADAPTER_ROOT_TEST_PYTHON"] = sys.executable
+                    record, output = _run_command(
+                        rendered,
+                        cwd=execution_package,
+                        env=command_env,
+                    )
+                    command_results.append(record)
+                    if name == "unit_tests":
+                        test_output = output
+                if commands["type_check"] is None:
+                    skip_reasons.append(
+                        "type_check: package has no supported static type-check command"
+                    )
+                else:
+                    record, _ = _run_command(commands["type_check"], cwd=execution_package)
+                    command_results.append(record)
+
+                if conversion_supported:
+                    commit = component["source_conversion_commit"]
+                    if frozen_checkout is None:
+                        conversion_paths = [component["package_path"]]
+                        if component.get("source_adapter_sdk_required"):
+                            conversion_paths.append("adapters/source_adapter_sdk")
+                        for conversion_path in conversion_paths:
+                            frozen_tree = _git(repo, "rev-parse", f"{commit}:{conversion_path}")
+                            current_tree = _git(repo, "rev-parse", f"HEAD:{conversion_path}")
+                            if frozen_tree != current_tree:
+                                raise GateError(
+                                    f"source conversion baseline tree drift for "
+                                    f"{component['component_id']}: {conversion_path}"
+                                )
+                        frozen_checkout = temporary_root / "frozen-conversion-checkout"
+                        add_worktree = (
+                            f"git worktree add --detach {shlex.quote(str(frozen_checkout))} "
+                            f"{shlex.quote(commit)}"
+                        )
+                        record, _ = _run_command(add_worktree, cwd=repo)
+                        command_results.append(record)
                     frozen_package = frozen_checkout / component["package_path"]
                     for name in ("conversion", "finalization"):
                         command = commands[name]
@@ -1533,27 +1569,31 @@ def check_component(repo: Path, component_id: str, results_dir: Path) -> Path:
                             env={
                                 "PYTHONPATH": "",
                                 "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+                                "UV_PYTHON": sys.executable,
                             },
                         )
                         command_results.append(record)
-                finally:
+                    conversion_executed = True
+                elif component["component_type"] == "source_adapter":
+                    skip_reasons.append(
+                        "source_conversion: source or frozen conversion environment is unavailable"
+                    )
+                wheel, sdist = _inspect_adapter_distributions(repo, component, dist)
+                distribution_identities = {
+                    "dependency_lock_sha256": _sha256(package / "uv.lock"),
+                    "wheel_sha256": _sha256(wheel),
+                    "sdist_sha256": _sha256(sdist),
+                }
+                command_results.extend(
+                    _clean_install_component(repo, component, wheel, temporary_root)
+                )
+            finally:
+                if frozen_checkout is not None:
                     remove_worktree = (
                         f"git worktree remove --force {shlex.quote(str(frozen_checkout))}"
                     )
                     record, _ = _run_command(remove_worktree, cwd=repo)
                     command_results.append(record)
-                conversion_executed = True
-            elif component["component_type"] == "source_adapter":
-                skip_reasons.append(
-                    "source_conversion: source or frozen conversion environment is unavailable"
-                )
-            wheel, sdist = _inspect_adapter_distributions(repo, component, dist)
-            distribution_identities = {
-                "dependency_lock_sha256": _sha256(package / "uv.lock"),
-                "wheel_sha256": _sha256(wheel),
-                "sdist_sha256": _sha256(sdist),
-            }
-            command_results.extend(_clean_install_component(repo, component, wheel, temporary_root))
         collected, passed, skipped = _pytest_counts(test_output)
         result["commands"] = command_results
         result["tests"] = {
@@ -2088,13 +2128,39 @@ def check_root_wheel(repo: Path, results_dir: Path) -> Path:
         command_result, _ = _run_command(install, cwd=root)
         result["commands"].append(command_result)
         cli = _venv_program(venv, "metriplane")
+        version_program = (
+            "import importlib.metadata as metadata,metriplane;"
+            "version=metadata.version('metriplane');"
+            "assert metriplane.__version__==version;"
+            "print(version)"
+        )
+        version_command = f"{shlex.quote(str(python))} -c {shlex.quote(version_program)}"
+        command_result, version_output = _run_command(
+            version_command,
+            cwd=root,
+            env={"PYTHONPATH": ""},
+        )
+        result["commands"].append(command_result)
+        installed_version = version_output.strip()
+        if not installed_version or any(character.isspace() for character in installed_version):
+            raise GateError("installed root-wheel version is malformed")
         input_root = root / "relocated-input"
         run_root = root / "runs"
         variants = fixture_variants(registry)
         for variant in variants:
             relocated = input_root / variant["variant_id"]
             relocated.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(repo / variant["path"], relocated)
+            _materialize_current_version_fixture(
+                repo / variant["path"],
+                relocated,
+                installed_version=installed_version,
+            )
+            result["source_provenance_identities"][
+                f"{variant['variant_id']}_source_fixture_fingerprint_sha256"
+            ] = variant["fixture_fingerprint"]
+            result["source_provenance_identities"][
+                f"{variant['variant_id']}_projected_fixture_fingerprint_sha256"
+            ] = _sha256(relocated / "CHECKSUMS.sha256")
             validate_command = (
                 f"{shlex.quote(str(cli))} external validate {shlex.quote(str(relocated))} --json"
             )
