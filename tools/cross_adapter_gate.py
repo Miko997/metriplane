@@ -1689,6 +1689,48 @@ def _assert_run_expected(output: Path, summary: Any, variant: Mapping[str, Any])
         raise GateError(f"control manufactured a regression: {variant['variant_id']}")
 
 
+def _materialize_current_version_fixture(
+    source: Path,
+    destination: Path,
+    *,
+    installed_version: str,
+) -> Path:
+    """Copy frozen fixture evidence into an exact-version evaluation workspace."""
+
+    shutil.copytree(source, destination)
+    manifest_path = destination / "source-manifest.json"
+    manifest = _load_json(manifest_path)
+    evaluation = manifest.get("evaluation")
+    if not isinstance(evaluation, dict):
+        raise GateError("fixture evaluation declaration is missing")
+    declared_version = evaluation.get("metriplane_version")
+    if declared_version == installed_version:
+        return destination
+    if not isinstance(declared_version, str) or not declared_version:
+        raise GateError("fixture evaluation version is missing")
+
+    evaluation["metriplane_version"] = installed_version
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    manifest_sha256 = _sha256(manifest_path)
+    checksums_path = destination / manifest["normalized_artifacts"]["checksums_path"]
+    lines = checksums_path.read_text(encoding="utf-8").splitlines()
+    replacements = 0
+    for index, line in enumerate(lines):
+        digest, separator, relative = line.partition("  ")
+        if separator and relative == "source-manifest.json":
+            if _SHA256.fullmatch(digest) is None:
+                raise GateError("source-manifest checksum is malformed")
+            lines[index] = f"{manifest_sha256}  source-manifest.json"
+            replacements += 1
+    if replacements != 1:
+        raise GateError("fixture must contain exactly one source-manifest checksum entry")
+    checksums_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
+
+
 def check_fixture(
     repo: Path,
     variant_id: str,
@@ -1713,17 +1755,25 @@ def check_fixture(
         package_name="metriplane",
         package_version=None,
     )
+    from metriplane import __version__
     from metriplane.external_sources.execution import (
         run_external_fixture,
         validate_external_fixture,
     )
 
+    source_fixture = repo / variant["path"]
+    contract = assert_fixture_contract(repo, variant)
+    source_manifest_sha256 = _sha256(source_fixture / "source-manifest.json")
+
     with tempfile.TemporaryDirectory(prefix=f"cross-adapter-{variant_id}-") as temporary:
         temporary_root = Path(temporary)
         relocated = temporary_root / "input" / variant_id
         relocated.parent.mkdir(parents=True)
-        shutil.copytree(repo / variant["path"], relocated)
-        contract = assert_fixture_contract(repo, variant)
+        _materialize_current_version_fixture(
+            source_fixture,
+            relocated,
+            installed_version=__version__,
+        )
         operation_started = time.monotonic()
         validation = validate_external_fixture(relocated)
         if not validation.passed:
@@ -1797,7 +1847,7 @@ def check_fixture(
         result["determinism_result"] = "pass"
         result["source_provenance_identities"] = {
             "fixture_fingerprint_sha256": variant["fixture_fingerprint"],
-            "manifest_sha256": _sha256(relocated / "source-manifest.json"),
+            "manifest_sha256": source_manifest_sha256,
             "session_sha256": variant["session_sha256"],
             "contract_schema_version": "metriplane.external_source_contract.v1",
             "frame_state_model_version": str(contract["schema_version"]),

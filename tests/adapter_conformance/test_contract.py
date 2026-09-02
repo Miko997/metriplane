@@ -12,8 +12,10 @@ from itertools import pairwise
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from metriplane.external_sources.execution import run_external_fixture
+from metriplane import __version__
+from metriplane.external_sources.execution import run_external_fixture, validate_external_fixture
 from tools.cross_adapter_gate import (
+    _materialize_current_version_fixture,
     assert_fixture_contract,
     fixture_variants,
     load_registry,
@@ -292,10 +294,35 @@ def _assert_expected_outcome_is_test_only(variant: dict[str, Any]) -> None:
     assert outcome["regression_passed"] is (expected["regression_execution"] == "pass")
 
 
-def test_all_registered_fixtures_enforce_contract_trust_and_snapshot_invariants() -> None:
-    for variant in _variants():
+def test_all_registered_fixtures_enforce_contract_trust_and_snapshot_invariants(
+    tmp_path: Path,
+) -> None:
+    variants = _variants()
+    for variant in variants:
         assert_fixture_contract(REPOSITORY_ROOT, variant)
         _assert_trust_clock_identity_and_snapshot(variant)
+
+    legacy = next(
+        variant
+        for variant in variants
+        if _read_json(REPOSITORY_ROOT / variant["path"] / "source-manifest.json")["evaluation"][
+            "metriplane_version"
+        ]
+        != __version__
+    )
+    frozen_checksums = REPOSITORY_ROOT / legacy["path"] / "CHECKSUMS.sha256"
+    frozen_fingerprint = _sha256(frozen_checksums)
+    projected = _materialize_current_version_fixture(
+        REPOSITORY_ROOT / legacy["path"],
+        tmp_path / "current-version-fixture",
+        installed_version=__version__,
+    )
+    assert validate_external_fixture(projected).passed is True
+    assert (
+        _read_json(projected / "source-manifest.json")["evaluation"]["metriplane_version"]
+        == __version__
+    )
+    assert _sha256(frozen_checksums) == frozen_fingerprint
 
 
 def test_all_registered_fixtures_have_closed_checksum_and_rights_boundaries() -> None:
