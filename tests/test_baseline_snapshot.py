@@ -1325,25 +1325,7 @@ def installed_bootstrap_cli_python(
 
     root = tmp_path_factory.mktemp("mp2-000-installed-bootstrap")
     source = root / "source"
-    ignored_names = {
-        ".git",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".venv",
-        "__pycache__",
-        "build",
-        "dist",
-    }
-
-    def ignore(_directory: str, names: list[str]) -> set[str]:
-        return {
-            name
-            for name in names
-            if name in ignored_names or name.endswith((".egg-info", ".pyc", ".pyo"))
-        }
-
-    shutil.copytree(ROOT, source, ignore=ignore)
+    _fresh_exact_base_repository(source)
     uv = shutil.which("uv")
     assert uv is not None
     cross_minor = sys.version_info[:2] != (3, 12)
