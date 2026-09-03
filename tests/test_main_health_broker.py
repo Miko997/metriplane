@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Callable, Self
 
 import pytest
 
@@ -3981,6 +3981,61 @@ def test_protected_state_rejects_unbound_legacy_result_filename(tmp_path: Path) 
         broker.StateBranch._result_identities(tmp_path)
 
 
+class SequenceStateRefApi(broker.GitHubApi):
+    def __init__(self, responses: list[Any]) -> None:
+        super().__init__()
+        self.responses = iter(responses)
+        self.observed: list[Any] = []
+
+    def request(
+        self,
+        path: str,
+        *,
+        token: str,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        expected: tuple[int, ...] = (200,),
+    ) -> broker.ApiResult:
+        assert path == f"repos/{REPOSITORY}/git/ref/heads/metriplane-main-health-state"
+        assert token == "token"
+        assert method == "GET"
+        assert payload is None
+        assert expected == (200,)
+        response = next(self.responses)
+        self.observed.append(response)
+        if isinstance(response, Exception):
+            raise response
+        if isinstance(response, str):
+            response = {
+                "object": {"sha": response, "type": "commit"},
+                "ref": "refs/heads/metriplane-main-health-state",
+                "url": (
+                    f"https://api.github.com/repos/{REPOSITORY}/git/refs/heads/"
+                    "metriplane-main-health-state"
+                ),
+            }
+            response["object"]["url"] = (
+                f"https://api.github.com/repos/{REPOSITORY}/git/commits/{response['object']['sha']}"
+            )
+        return broker.ApiResult({}, 200, response)
+
+
+def _state_branch_for_convergence(
+    tmp_path: Path,
+    *,
+    api: broker.GitHubApi,
+    monotonic: Callable[[], float] = lambda: 0.0,
+    sleep: Callable[[float], None] = lambda _seconds: None,
+) -> broker.StateBranch:
+    return broker.StateBranch(
+        api=api,
+        config=_config(tmp_path),
+        monotonic=monotonic,
+        sleep=sleep,
+        token="token",
+    )
+
+
 @pytest.mark.parametrize("run_id", ["32893499507", "github-actions:501:1"])
 def test_state_branch_rejects_new_nonaggregate_protected_main_result(
     tmp_path: Path, run_id: str
@@ -3997,6 +4052,600 @@ def test_state_branch_rejects_new_nonaggregate_protected_main_result(
             scope="main",
             summary={"run_id": run_id},
         )
+
+
+def test_state_ref_convergence_accepts_immediate_expected_commit(tmp_path: Path) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi([expected_commit])
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    state._await_state_ref_convergence(
+        expected_state_commit=expected_commit,
+        operation="state branch push",
+        previous_state_commit=previous_commit,
+    )
+
+    assert api.observed == [expected_commit]
+    assert sleeps == []
+
+
+def test_state_ref_convergence_accepts_several_stale_reads_within_bound(
+    tmp_path: Path,
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi([previous_commit, previous_commit, previous_commit, expected_commit])
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    state._await_state_ref_convergence(
+        expected_state_commit=expected_commit,
+        operation="state branch push",
+        previous_state_commit=previous_commit,
+    )
+
+    assert api.observed == [previous_commit, previous_commit, previous_commit, expected_commit]
+    assert sleeps == [1.0, 1.0, 1.0]
+
+
+def test_state_ref_convergence_accepts_expected_commit_on_final_bounded_read(
+    tmp_path: Path,
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi(
+        [previous_commit] * (broker.STATE_REF_CONVERGENCE_MAX_READS - 1) + [expected_commit]
+    )
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    state._await_state_ref_convergence(
+        expected_state_commit=expected_commit,
+        operation="state branch push",
+        previous_state_commit=previous_commit,
+    )
+
+    assert api.observed == [previous_commit] * (broker.STATE_REF_CONVERGENCE_MAX_READS - 1) + [
+        expected_commit
+    ]
+    assert sleeps == [1.0] * (broker.STATE_REF_CONVERGENCE_MAX_READS - 1)
+
+
+def test_state_ref_convergence_fails_closed_when_previous_commit_never_advances(
+    tmp_path: Path,
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi([previous_commit] * broker.STATE_REF_CONVERGENCE_MAX_READS)
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    with pytest.raises(broker.BrokerError) as exc_info:
+        state._await_state_ref_convergence(
+            expected_state_commit=expected_commit,
+            operation="state branch push",
+            previous_state_commit=previous_commit,
+        )
+
+    assert str(exc_info.value) == (
+        "state branch push was not read back exactly: "
+        f"expected new SHA {expected_commit}; last observed SHA {previous_commit}; "
+        f"timeout {broker.STATE_REF_CONVERGENCE_TIMEOUT_SECONDS}s; "
+        f"reads {broker.STATE_REF_CONVERGENCE_MAX_READS}"
+    )
+    assert api.observed == [previous_commit] * broker.STATE_REF_CONVERGENCE_MAX_READS
+    assert sleeps == [1.0] * (broker.STATE_REF_CONVERGENCE_MAX_READS - 1)
+
+
+def test_state_ref_convergence_obeys_elapsed_deadline(tmp_path: Path) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi([previous_commit])
+    clock = iter([0.0, float(broker.STATE_REF_CONVERGENCE_TIMEOUT_SECONDS)])
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(
+        tmp_path,
+        api=api,
+        monotonic=lambda: next(clock),
+        sleep=sleeps.append,
+    )
+
+    with pytest.raises(broker.BrokerError, match=r"timeout 10s; reads 1$"):
+        state._await_state_ref_convergence(
+            expected_state_commit=expected_commit,
+            operation="state branch push",
+            previous_state_commit=previous_commit,
+        )
+
+    assert api.observed == [previous_commit]
+    assert sleeps == []
+
+
+def test_state_ref_convergence_rejects_unrelated_commit_immediately(tmp_path: Path) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    unrelated_commit = "3" * 40
+    api = SequenceStateRefApi([unrelated_commit, expected_commit])
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    with pytest.raises(broker.BrokerError) as exc_info:
+        state._await_state_ref_convergence(
+            expected_state_commit=expected_commit,
+            operation="state branch push",
+            previous_state_commit=previous_commit,
+        )
+
+    assert str(exc_info.value) == (
+        "state branch push observed concurrent/provider state drift: "
+        f"expected new SHA {expected_commit}; previous SHA {previous_commit}; "
+        f"observed SHA {unrelated_commit}; reads 1"
+    )
+    assert api.observed == [unrelated_commit]
+    assert sleeps == []
+
+
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        (None, "state-branch ref response is malformed"),
+        ({"object": {"sha": "2" * 40, "type": "commit"}}, "not provider-bound"),
+        (
+            {
+                "object": {"sha": "2" * 40, "type": "commit"},
+                "ref": "refs/heads/wrong-state-branch",
+            },
+            "not provider-bound",
+        ),
+        (
+            {
+                "object": {"sha": "2" * 40, "type": "tag"},
+                "ref": "refs/heads/metriplane-main-health-state",
+            },
+            "not provider-bound",
+        ),
+        (
+            {
+                "object": {"sha": 2, "type": "commit"},
+                "ref": "refs/heads/metriplane-main-health-state",
+            },
+            "is not a lowercase 40-hex SHA",
+        ),
+    ],
+)
+def test_state_ref_convergence_rejects_malformed_or_unbound_provider_response(
+    tmp_path: Path, response: Any, message: str
+) -> None:
+    api = SequenceStateRefApi([response])
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    with pytest.raises(broker.BrokerError, match=message):
+        state._await_state_ref_convergence(
+            expected_state_commit="2" * 40,
+            operation="state branch push",
+            previous_state_commit="1" * 40,
+        )
+
+    assert api.observed == [response]
+    assert sleeps == []
+
+
+def test_state_ref_convergence_does_not_retry_transport_or_provider_errors(
+    tmp_path: Path,
+) -> None:
+    error = broker.ProviderTransportError("ref read transport failed")
+    api = SequenceStateRefApi([error, "2" * 40])
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    with pytest.raises(broker.ProviderTransportError, match="ref read transport failed"):
+        state._await_state_ref_convergence(
+            expected_state_commit="2" * 40,
+            operation="state branch push",
+            previous_state_commit="1" * 40,
+        )
+
+    assert api.observed == [error]
+    assert sleeps == []
+
+
+def _install_state_write_git_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    expected_commit: str,
+    previous_commit: str,
+) -> list[tuple[str, ...]]:
+    push_calls: list[tuple[str, ...]] = []
+
+    def git(
+        _root: Path,
+        *arguments: str,
+        token: str,
+        check: bool = True,
+        environment: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert token == "token"
+        del check, environment
+        if arguments == ("diff", "--cached", "--quiet"):
+            return subprocess.CompletedProcess(["git", *arguments], 1, b"", b"")
+        if arguments == ("rev-parse", "HEAD"):
+            return subprocess.CompletedProcess(
+                ["git", *arguments], 0, expected_commit.encode(), b""
+            )
+        if arguments == ("rev-parse", "HEAD^"):
+            return subprocess.CompletedProcess(
+                ["git", *arguments], 0, previous_commit.encode(), b""
+            )
+        if arguments[:2] == ("push", "--quiet"):
+            push_calls.append(arguments)
+        return subprocess.CompletedProcess(["git", *arguments], 0, b"", b"")
+
+    monkeypatch.setattr(broker, "_git", git)
+    monkeypatch.setattr(broker.StateBranch, "_checkout", lambda *_args, **_kwargs: None)
+    return push_calls
+
+
+def test_state_append_converges_after_accepted_push_with_one_stale_ref_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    observed_refs = iter(
+        [
+            previous_commit,
+            previous_commit,
+            previous_commit,
+            expected_commit,
+            expected_commit,
+            expected_commit,
+        ]
+    )
+    ref_reads: list[str] = []
+
+    class StateRefApi(broker.GitHubApi):
+        def request(
+            self,
+            path: str,
+            *,
+            token: str,
+            method: str = "GET",
+            payload: dict[str, Any] | None = None,
+            expected: tuple[int, ...] = (200,),
+        ) -> broker.ApiResult:
+            assert path == (f"repos/{REPOSITORY}/git/ref/heads/metriplane-main-health-state")
+            assert token == "token"
+            assert method == "GET"
+            assert payload is None
+            assert expected == (200,)
+            observed = next(observed_refs)
+            ref_reads.append(observed)
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "object": {"sha": observed, "type": "commit"},
+                    "ref": "refs/heads/metriplane-main-health-state",
+                },
+            )
+
+    histories = iter(
+        [
+            {"generation": 7, "state_commit": previous_commit},
+            {"generation": 8, "state_commit": expected_commit},
+        ]
+    )
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+    monkeypatch.setattr(broker.stop_the_line, "validate_git_history", lambda _root: next(histories))
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "ingest",
+        lambda *_args, **_kwargs: {"generation": 8, "state_commit": expected_commit},
+    )
+    sleeps: list[float] = []
+    state = broker.StateBranch(
+        api=StateRefApi(),
+        config=_config(tmp_path),
+        monotonic=lambda: 0.0,
+        sleep=sleeps.append,
+        token="token",
+    )
+
+    assert state.append(expected_generation=7, scope="nightly", summary={"run_id": "1"}) == {
+        "generation": 8,
+        "state_commit": expected_commit,
+    }
+    assert ref_reads == [
+        previous_commit,
+        previous_commit,
+        previous_commit,
+        expected_commit,
+        expected_commit,
+        expected_commit,
+    ]
+    assert len(push_calls) == 1
+    assert push_calls == [
+        (
+            "push",
+            "--quiet",
+            "origin",
+            "HEAD:refs/heads/metriplane-main-health-state",
+        )
+    ]
+    assert sleeps == [1.0]
+
+
+def test_state_append_never_repeats_push_when_stale_ref_exhausts_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi(
+        [previous_commit, previous_commit]
+        + [previous_commit] * broker.STATE_REF_CONVERGENCE_MAX_READS
+    )
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "validate_git_history",
+        lambda _root: {"generation": 7, "state_commit": previous_commit},
+    )
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "ingest",
+        lambda *_args, **_kwargs: {"generation": 8, "state_commit": expected_commit},
+    )
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    with pytest.raises(broker.BrokerError, match=r"timeout 10s; reads 11$"):
+        state.append(expected_generation=7, scope="nightly", summary={"run_id": "1"})
+
+    assert push_calls == [
+        (
+            "push",
+            "--quiet",
+            "origin",
+            "HEAD:refs/heads/metriplane-main-health-state",
+        )
+    ]
+    assert api.observed == [previous_commit] * (broker.STATE_REF_CONVERGENCE_MAX_READS + 2)
+    assert sleeps == [1.0] * (broker.STATE_REF_CONVERGENCE_MAX_READS - 1)
+
+
+def test_state_append_fails_immediately_on_third_sha_after_single_push(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    unrelated_commit = "3" * 40
+    api = SequenceStateRefApi([previous_commit, previous_commit, unrelated_commit])
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "validate_git_history",
+        lambda _root: {"generation": 7, "state_commit": previous_commit},
+    )
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "ingest",
+        lambda *_args, **_kwargs: {"generation": 8, "state_commit": expected_commit},
+    )
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    with pytest.raises(broker.BrokerError, match="concurrent/provider state drift"):
+        state.append(expected_generation=7, scope="nightly", summary={"run_id": "1"})
+
+    assert len(push_calls) == 1
+    assert api.observed == [previous_commit, previous_commit, unrelated_commit]
+    assert sleeps == []
+
+
+@pytest.mark.parametrize(
+    ("read_back", "message"),
+    [
+        (
+            {"generation": 8, "state_commit": "3" * 40},
+            "state branch changed during read-back validation",
+        ),
+        (
+            {"generation": 9, "state_commit": "2" * 40},
+            "state branch append read-back is not exact",
+        ),
+    ],
+)
+def test_state_append_rejects_nonexact_state_after_ref_convergence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    read_back: dict[str, Any],
+    message: str,
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi(
+        [previous_commit, previous_commit, expected_commit, expected_commit, expected_commit]
+    )
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+    histories = iter(
+        [
+            {"generation": 7, "state_commit": previous_commit},
+            read_back,
+        ]
+    )
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "validate_git_history",
+        lambda _root: next(histories),
+    )
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "ingest",
+        lambda *_args, **_kwargs: {"generation": 8, "state_commit": expected_commit},
+    )
+    state = _state_branch_for_convergence(tmp_path, api=api)
+
+    with pytest.raises(broker.BrokerError, match=message):
+        state.append(expected_generation=7, scope="nightly", summary={"run_id": "1"})
+
+    assert len(push_calls) == 1
+
+
+@pytest.mark.parametrize("failure_stage", ["checkout", "history"])
+def test_state_append_rejects_invalid_checkout_or_history_after_ref_convergence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi([previous_commit, previous_commit, expected_commit, expected_commit])
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+    checkout_calls = 0
+
+    def checkout(_state: broker.StateBranch, _root: Path, _expected_ref: str) -> None:
+        nonlocal checkout_calls
+        checkout_calls += 1
+        if checkout_calls == 2 and failure_stage == "checkout":
+            raise broker.BrokerError("state checkout does not match the provider ref")
+
+    history_calls = 0
+
+    def validate(_root: Path) -> dict[str, Any]:
+        nonlocal history_calls
+        history_calls += 1
+        if history_calls == 2 and failure_stage == "history":
+            raise broker.BrokerError("state history tree identity is invalid")
+        return {"generation": 7, "state_commit": previous_commit}
+
+    monkeypatch.setattr(broker.StateBranch, "_checkout", checkout)
+    monkeypatch.setattr(broker.stop_the_line, "validate_git_history", validate)
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "ingest",
+        lambda *_args, **_kwargs: {"generation": 8, "state_commit": expected_commit},
+    )
+    state = _state_branch_for_convergence(tmp_path, api=api)
+
+    with pytest.raises(
+        broker.BrokerError,
+        match=(
+            "state checkout does not match"
+            if failure_stage == "checkout"
+            else "state history tree identity is invalid"
+        ),
+    ):
+        state.append(expected_generation=7, scope="nightly", summary={"run_id": "1"})
+
+    assert len(push_calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("history", "message"),
+    [
+        ({"generation": 8, "state_commit": "1" * 40}, "generation changed"),
+        (broker.BrokerError("invalid state history linkage"), "invalid state history linkage"),
+    ],
+)
+def test_state_append_rejects_invalid_generation_or_history_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    history: dict[str, Any] | Exception,
+    message: str,
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi([previous_commit])
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+
+    def validate(_root: Path) -> dict[str, Any]:
+        if isinstance(history, Exception):
+            raise history
+        return history
+
+    monkeypatch.setattr(broker.stop_the_line, "validate_git_history", validate)
+    state = _state_branch_for_convergence(tmp_path, api=api)
+
+    with pytest.raises(broker.BrokerError, match=message):
+        state.append(expected_generation=7, scope="nightly", summary={"run_id": "1"})
+
+    assert push_calls == []
+
+
+def test_repair_resolution_uses_same_single_push_ref_convergence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    previous_commit = "1" * 40
+    expected_commit = "2" * 40
+    api = SequenceStateRefApi(
+        [
+            previous_commit,
+            previous_commit,
+            previous_commit,
+            expected_commit,
+            expected_commit,
+            expected_commit,
+        ]
+    )
+    push_calls = _install_state_write_git_fakes(
+        monkeypatch,
+        expected_commit=expected_commit,
+        previous_commit=previous_commit,
+    )
+    histories = iter(
+        [
+            {"generation": 7, "state_commit": previous_commit, "status": "red"},
+            {"generation": 8, "state_commit": expected_commit, "status": "green"},
+        ]
+    )
+    monkeypatch.setattr(broker.stop_the_line, "validate_git_history", lambda _root: next(histories))
+    monkeypatch.setattr(
+        broker.stop_the_line,
+        "resolve",
+        lambda *_args, **_kwargs: {
+            "generation": 8,
+            "state_commit": expected_commit,
+            "status": "green",
+        },
+    )
+    sleeps: list[float] = []
+    state = _state_branch_for_convergence(tmp_path, api=api, sleep=sleeps.append)
+
+    assert state.resolve_repair(
+        approval_evidence={},
+        authorization={},
+        expected_generation=7,
+        repaired_main={},
+        resolved_at="2026-09-03T12:00:00Z",
+    ) == {"generation": 8, "state_commit": expected_commit, "status": "green"}
+    assert len(push_calls) == 1
+    assert sleeps == [1.0]
 
 
 def test_current_ci_selects_a_later_active_rerun_of_an_older_id(tmp_path: Path) -> None:
