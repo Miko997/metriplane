@@ -45,6 +45,9 @@ MERGE_READINESS_POLL_SECONDS = 2
 MERGE_READINESS_TIMEOUT_SECONDS = 60
 MERGE_READINESS_LEASE_MARGIN_SECONDS = 120
 MERGE_READINESS_MAX_ATTEMPTS = 31
+STATE_REF_CONVERGENCE_POLL_SECONDS = 1
+STATE_REF_CONVERGENCE_TIMEOUT_SECONDS = 10
+STATE_REF_CONVERGENCE_MAX_READS = 11
 MAIN_HEALTH_CHECK = "Main health / required"
 PUBLISH_LEASE_CHECK = "Release serialization / required"
 PUBLISH_LEASE_REF_PREFIX = "refs/heads/release-leases/pypi-"
@@ -2519,10 +2522,14 @@ class StateBranch:
         *,
         api: GitHubApi,
         config: BrokerConfig,
+        monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
         token: str,
     ) -> None:
         self.api = api
         self.config = config
+        self.monotonic = monotonic
+        self.sleep = sleep
         self.token = token
 
     def provider_ref(self) -> str:
@@ -2540,6 +2547,49 @@ class StateBranch:
         ):
             raise BrokerError("state-branch ref response is not provider-bound")
         return _require_sha(provider_object.get("sha"), "state-branch ref SHA")
+
+    def _await_state_ref_convergence(
+        self,
+        *,
+        expected_state_commit: str,
+        operation: str,
+        previous_state_commit: str,
+    ) -> None:
+        expected = _require_sha(expected_state_commit, "expected state commit")
+        previous = _require_sha(previous_state_commit, "previous state commit")
+        started_at = self.monotonic()
+        last_observed = previous
+        read_count = 0
+        for read_count in range(1, STATE_REF_CONVERGENCE_MAX_READS + 1):
+            observed = self.provider_ref()
+            last_observed = observed
+            elapsed = max(0.0, self.monotonic() - started_at)
+            if observed == expected and elapsed <= STATE_REF_CONVERGENCE_TIMEOUT_SECONDS:
+                return
+            if observed != previous:
+                if observed == expected:
+                    break
+                raise BrokerError(
+                    f"{operation} observed concurrent/provider state drift: "
+                    f"expected new SHA {expected}; previous SHA {previous}; "
+                    f"observed SHA {observed}; reads {read_count}"
+                )
+            if (
+                elapsed >= STATE_REF_CONVERGENCE_TIMEOUT_SECONDS
+                or read_count == STATE_REF_CONVERGENCE_MAX_READS
+            ):
+                break
+            self.sleep(
+                min(
+                    float(STATE_REF_CONVERGENCE_POLL_SECONDS),
+                    STATE_REF_CONVERGENCE_TIMEOUT_SECONDS - elapsed,
+                )
+            )
+        raise BrokerError(
+            f"{operation} was not read back exactly: expected new SHA {expected}; "
+            f"last observed SHA {last_observed}; "
+            f"timeout {STATE_REF_CONVERGENCE_TIMEOUT_SECONDS}s; reads {read_count}"
+        )
 
     def _checkout(self, root: Path, expected_ref: str) -> None:
         _git(root, "init", "--quiet", token=self.token)
@@ -2750,8 +2800,11 @@ class StateBranch:
                 f"HEAD:refs/heads/{self.config.state_branch}",
                 token=self.token,
             )
-        if self.provider_ref() != new_commit:
-            raise BrokerError("state branch push was not read back exactly")
+        self._await_state_ref_convergence(
+            expected_state_commit=new_commit,
+            operation="state branch push",
+            previous_state_commit=before,
+        )
         read_back = self.read()
         if read_back.get("state_commit") != new_commit or read_back.get("generation") != (
             expected_generation + 1
@@ -2847,8 +2900,11 @@ class StateBranch:
                 f"HEAD:refs/heads/{self.config.state_branch}",
                 token=self.token,
             )
-        if self.provider_ref() != new_commit:
-            raise BrokerError("repair resolution push was not read back exactly")
+        self._await_state_ref_convergence(
+            expected_state_commit=new_commit,
+            operation="repair resolution push",
+            previous_state_commit=before,
+        )
         read_back = self.read()
         if (
             read_back.get("state_commit") != new_commit
@@ -6345,7 +6401,12 @@ class Broker:
             provider_now=self.api.provider_now(token),
             settings_token=settings_token,
         )
-        state_branch = StateBranch(api=self.api, config=self.config, token=token)
+        state_branch = StateBranch(
+            api=self.api,
+            config=self.config,
+            sleep=self.sleep,
+            token=token,
+        )
         reconciler = HealthReconciler(
             api=self.api,
             config=self.config,

@@ -20,6 +20,17 @@ fast-forward CAS push, read-back-validates its complete immutable history, and
 keeps `Main health / required` failed except inside one serialized exact-head
 merge transaction.
 
+After a successful state-branch push, the provider ref read may briefly expose
+only the exact pre-push commit. The broker performs at most eleven read-only
+ref observations over a ten-second convergence window, with one-second waits.
+It never repeats the push. Only the pre-push commit is retryable: the exact new
+commit advances to the existing fresh-checkout and complete history/content
+validation, while any third commit or malformed response fails immediately.
+Continued visibility of the pre-push commit fails closed with the expected and
+last-observed commit identities, timeout, and read count. Repair-resolution
+pushes use the same boundary; ordinary state reads remain one-shot drift
+detectors.
+
 ## Credential boundary
 
 Revoke every merge-App private key that was ever available to GitHub Actions
