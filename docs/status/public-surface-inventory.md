@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `36408fb3d8d75e0e56de375cf5eb0dff2c56a05ebfe9419ab03fcea5cb1c3ac5`
+- Materialization SHA-256: `51f8bb9dde966ca915f4c5bb17ac26608588d703a4220beb36b936ed9a783ec3`
 - Owned rows: `10091`
-- Owned rows SHA-256: `50c0fe7f42c6576c6ac8e8c59fc66a7dd9aba066582372df65526d37b63492af`
+- Owned rows SHA-256: `17bf7bce400eab92e9f4e96327ee48f00f7213136fe1fcf37363c2260a308bd5`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
