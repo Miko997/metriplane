@@ -47,8 +47,10 @@ but is explicitly excluded from the generated documentation site.
    protection is absent or misconfigured.
 3. Restrict `testpypi` to release tags and restrict `pypi` to protected
    `main`. The manual production dispatch rejects any other ref or a stale main
-   commit. Protect `v*` tags against update and deletion with a repository
-   ruleset.
+   commit. Keep the active repository ruleset `Protect release tags` targeted
+   at tags with the sole include `refs/tags/v*`, empty exclusions and bypass
+   actors, and exactly the `update` and `deletion` rules. Do not add a creation
+   rule: new release tags must remain creatable.
 4. Activate the App-only `main` update ruleset and the protected
    `release-leases/**` ruleset described in
    [Release blocker workflow](maintainers/blocker-workflow.md#production-serialization).

@@ -40,6 +40,11 @@
       "minimum": 0,
       "type": "integer"
     },
+    "release_tag_ruleset_id": {
+      "description": "The committed planned example uses 0; deployment must replace it with the positive release-tag immutability ruleset ID.",
+      "minimum": 0,
+      "type": "integer"
+    },
     "repository": {
       "const": "Miko997/metriplane"
     },
@@ -81,6 +86,7 @@
     "max_clock_skew_seconds",
     "poll_seconds",
     "release_lease_ruleset_id",
+    "release_tag_ruleset_id",
     "repository",
     "settings_app_id",
     "settings_app_slug",

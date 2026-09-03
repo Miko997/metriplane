@@ -49,6 +49,7 @@ MAIN_HEALTH_CHECK = "Main health / required"
 PUBLISH_LEASE_CHECK = "Release serialization / required"
 PUBLISH_LEASE_REF_PREFIX = "refs/heads/release-leases/pypi-"
 PUBLISH_LEASE_REF_GLOB = "refs/heads/release-leases/**"
+RELEASE_TAG_REF_GLOB = "refs/tags/v*"
 PUBLISH_LEASE_EXTERNAL_PREFIX = "metriplane-publish-lease.v1"
 PUBLISH_WORKFLOW_PATH = ".github/workflows/publish-pypi.yml"
 PUBLISH_WORKFLOW_NAME = "Publish Python distributions"
@@ -176,6 +177,7 @@ CONFIG_FIELDS = {
     "max_clock_skew_seconds",
     "poll_seconds",
     "release_lease_ruleset_id",
+    "release_tag_ruleset_id",
     "repository",
     "settings_app_id",
     "settings_app_slug",
@@ -185,7 +187,7 @@ CONFIG_FIELDS = {
     "state_root",
     "state_writer_ruleset_id",
 }
-GOVERNED_RULESET_COUNT = 6
+GOVERNED_RULESET_COUNT = 7
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 NONCE_RE = re.compile(r"[0-9a-f]{32}")
@@ -309,6 +311,7 @@ class BrokerConfig:
     max_clock_skew_seconds: int
     poll_seconds: int
     release_lease_ruleset_id: int
+    release_tag_ruleset_id: int
     repository: str
     settings_app_id: int
     settings_app_slug: str
@@ -385,6 +388,9 @@ class BrokerConfig:
             poll_seconds=poll_seconds,
             release_lease_ruleset_id=_require_positive_int(
                 value["release_lease_ruleset_id"], "release_lease_ruleset_id"
+            ),
+            release_tag_ruleset_id=_require_positive_int(
+                value["release_tag_ruleset_id"], "release_tag_ruleset_id"
             ),
             repository=repository,
             settings_app_id=settings_app_id,
@@ -1352,6 +1358,17 @@ def _release_lease_ruleset() -> dict[str, Any]:
     }
 
 
+def _release_tag_ruleset() -> dict[str, Any]:
+    return {
+        "bypass_actors": [],
+        "conditions": {"ref_name": {"exclude": [], "include": [RELEASE_TAG_REF_GLOB]}},
+        "enforcement": "active",
+        "name": "Protect release tags",
+        "rules": [{"type": "update"}, {"type": "deletion"}],
+        "target": "tag",
+    }
+
+
 def validate_hosted_rulesets(
     *, config: BrokerConfig, rulesets: dict[int, dict[str, Any]]
 ) -> dict[str, str]:
@@ -1371,6 +1388,7 @@ def validate_hosted_rulesets(
             )
         ),
         config.release_lease_ruleset_id: _provider_ruleset(_release_lease_ruleset()),
+        config.release_tag_ruleset_id: _provider_ruleset(_release_tag_ruleset()),
     }
     if set(rulesets) != set(expected):
         raise BrokerError("live ruleset ID inventory is not exact")
@@ -2899,6 +2917,7 @@ def _rulesets(api: GitHubApi, *, config: BrokerConfig, token: str) -> dict[int, 
         config.state_protection_ruleset_id,
         config.state_writer_ruleset_id,
         config.release_lease_ruleset_id,
+        config.release_tag_ruleset_id,
     )
     if len(set(identifiers)) != len(identifiers):
         raise BrokerError("governed ruleset IDs are not distinct")

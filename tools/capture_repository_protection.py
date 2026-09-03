@@ -22,8 +22,10 @@ APP_BROKER_RULESET_NAMES = {
     "Protect main",
     "Protect main health admission",
     "Protect main health state",
+    "Protect release tags",
     "Restrict main health state writers",
     "Restrict main updates to broker",
+    "Restrict release lease writers",
 }
 EXACT_INTEGRATIONS = [
     {"context": "Metriplane / required", "integration_id": 15368},
@@ -422,8 +424,10 @@ def _broker_settings(
     core = active_by_name["Protect main"]
     admission = active_by_name["Protect main health admission"]
     state_protection = active_by_name["Protect main health state"]
+    release_tag = active_by_name["Protect release tags"]
     main_update = active_by_name["Restrict main updates to broker"]
     state_writer = active_by_name["Restrict main health state writers"]
+    release_lease = active_by_name["Restrict release lease writers"]
     core_types = {rule.get("type") for rule in core.get("rules", [])}
     state_types = {rule.get("type") for rule in state_protection.get("rules", [])}
     integrations = _status_integrations(core) + _status_integrations(admission)
@@ -440,7 +444,15 @@ def _broker_settings(
             key=lambda item: str(item["context"]),
         )
     )
-    governed = (core, admission, state_protection, main_update, state_writer)
+    governed = (
+        core,
+        admission,
+        state_protection,
+        release_tag,
+        main_update,
+        state_writer,
+        release_lease,
+    )
     human_bypass_actors = [
         actor
         for ruleset in governed
@@ -455,6 +467,7 @@ def _broker_settings(
         "Protect main health state": broker._provider_ruleset(
             broker._state_protection_ruleset(state_ref.rsplit("/", 1)[1])
         ),
+        "Protect release tags": broker._provider_ruleset(broker._release_tag_ruleset()),
         "Restrict main health state writers": broker._provider_ruleset(
             broker._app_update_ruleset(
                 name="Restrict main health state writers", include=[state_ref]
@@ -465,6 +478,7 @@ def _broker_settings(
                 name="Restrict main updates to broker", include=[broker.MAIN_REF]
             )
         ),
+        "Restrict release lease writers": broker._provider_ruleset(broker._release_lease_ruleset()),
     }
     exact_governed_bodies = all(
         broker._ruleset_view(active_by_name[name]) == expected
@@ -475,6 +489,7 @@ def _broker_settings(
         and core.get("bypass_actors") == []
         and admission.get("bypass_actors") == []
         and state_protection.get("bypass_actors") == []
+        and release_tag.get("bypass_actors") == []
         and core.get("conditions", {}).get("ref_name") == default_ref
         and admission.get("conditions", {}).get("ref_name") == default_ref
         and main_update.get("bypass_actors") == APP_BYPASS
@@ -548,6 +563,11 @@ def normalize_capture(
         len(active) != len(broker_names) or set(names) != broker_names
     ):
         raise ValueError("App-broker active ruleset inventory is not exact")
+    if broker_names == APP_BROKER_RULESET_NAMES:
+        release_tag = broker._ruleset_view(active_by_name["Protect release tags"])
+        expected_release_tag = broker._provider_ruleset(broker._release_tag_ruleset())
+        if release_tag != expected_release_tag:
+            raise ValueError("release-tag ruleset is not the exact governed configuration")
     default_rulesets = [
         item
         for item in active

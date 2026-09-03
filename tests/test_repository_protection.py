@@ -799,9 +799,9 @@ def test_merge_proof_capture_retains_all_exact_provider_objects(
     }
 
 
-def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
+def _exact_broker_rulesets() -> list[dict[str, object]]:
     state_branch = "metriplane-main-health-state"
-    rulesets = [
+    return [
         {"id": 1, **broker._provider_ruleset(broker._core_ruleset())},
         {"id": 2, **broker._provider_ruleset(broker._admission_ruleset())},
         {
@@ -825,7 +825,13 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
                 )
             ),
         },
+        {"id": 6, **broker._provider_ruleset(broker._release_lease_ruleset())},
+        {"id": 7, **broker._provider_ruleset(broker._release_tag_ruleset())},
     ]
+
+
+def test_normalization_recognizes_exact_seven_ruleset_broker() -> None:
+    rulesets = _exact_broker_rulesets()
     capability, settings = normalize_capture(
         repository="Miko997/metriplane",
         captured_at="2026-08-26T12:00:00Z",
@@ -869,7 +875,7 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
         *rulesets,
         {
             "enforcement": "active",
-            "id": 6,
+            "id": 8,
             "name": "Unexpected",
             "source": "Miko997/metriplane",
             "source_type": "Repository",
@@ -882,6 +888,48 @@ def test_normalization_recognizes_exact_five_ruleset_broker() -> None:
             captured_at="2026-08-26T12:00:00Z",
             repository_payload=_repository_payload(),
             rulesets_payload=extra,
+            merge_queue_payload=_merge_queue_payload(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("enforcement", "disabled"),
+        ("target", "branch"),
+        ("conditions", {"ref_name": {"exclude": [], "include": ["refs/tags/v**"]}}),
+        ("rules", [{"type": "update"}]),
+        ("rules", [{"type": "deletion"}]),
+        ("rules", [{"type": "creation"}, {"type": "update"}, {"type": "deletion"}]),
+        (
+            "bypass_actors",
+            [
+                {
+                    "actor_id": 4722589,
+                    "actor_type": "Integration",
+                    "bypass_mode": "always",
+                }
+            ],
+        ),
+    ],
+)
+def test_normalization_rejects_release_tag_ruleset_semantic_drift(
+    field: str, value: object
+) -> None:
+    rulesets = _exact_broker_rulesets()
+    rulesets[-1][field] = value
+
+    message = (
+        "activation is partial"
+        if field == "enforcement"
+        else "release-tag ruleset is not the exact governed configuration"
+    )
+    with pytest.raises(ValueError, match=message):
+        normalize_capture(
+            repository="Miko997/metriplane",
+            captured_at="2026-08-26T12:00:00Z",
+            repository_payload=_repository_payload(),
+            rulesets_payload=rulesets,
             merge_queue_payload=_merge_queue_payload(),
         )
 

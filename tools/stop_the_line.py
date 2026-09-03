@@ -46,7 +46,19 @@ BROKER_OWNER_RULESET_IDS = {
     "21500579",
     "21533351",
     "21633569",
+    "22071973",
+    "22170798",
 }
+LEGACY_BROKER_OWNER_REPAIR_RULESET_IDS = {
+    "20613848",
+    "21487681",
+    "21500579",
+    "21533351",
+    "21633569",
+}
+LEGACY_BROKER_OWNER_REPAIR_REQUEST_DIGEST = (
+    "d6ea4e6491127bb1eba199e677d4934144140e70eafe75e3321afb4fccb7c396"
+)
 CORE_REQUIRED_CONTEXTS = {
     "Documentation / required",
     "Metriplane / required",
@@ -134,7 +146,31 @@ def digest(value: Any) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
 
-def _parse_broker_owner_repair_review(body: Any, *, reviewer_id: int) -> dict[str, Any]:
+def _broker_owner_ruleset_digests_are_valid(
+    request: dict[str, Any], *, retained_history: bool
+) -> bool:
+    ruleset_digests = request.get("ruleset_digests")
+    if not isinstance(ruleset_digests, dict) or not all(
+        isinstance(identifier, str)
+        and re.fullmatch(r"[1-9][0-9]*", identifier) is not None
+        and isinstance(value, str)
+        and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+        for identifier, value in ruleset_digests.items()
+    ):
+        return False
+    identifiers = set(ruleset_digests)
+    if identifiers == BROKER_OWNER_RULESET_IDS:
+        return True
+    return (
+        retained_history
+        and identifiers == LEGACY_BROKER_OWNER_REPAIR_RULESET_IDS
+        and digest(request) == LEGACY_BROKER_OWNER_REPAIR_REQUEST_DIGEST
+    )
+
+
+def _parse_broker_owner_repair_review(
+    body: Any, *, reviewer_id: int, retained_history: bool = False
+) -> dict[str, Any]:
     if not isinstance(body, str):
         raise HealthError("broker owner-repair review has no body")
     lines = body.rstrip("\n").splitlines()
@@ -181,18 +217,7 @@ def _parse_broker_owner_repair_review(body: Any, *, reviewer_id: int) -> dict[st
             or re.fullmatch(r"[0-9a-f]{64}", request[field]) is None
         ):
             raise HealthError(f"broker owner-repair {field} is invalid")
-    ruleset_digests = request["ruleset_digests"]
-    if (
-        not isinstance(ruleset_digests, dict)
-        or set(ruleset_digests) != BROKER_OWNER_RULESET_IDS
-        or not all(
-            isinstance(identifier, str)
-            and re.fullmatch(r"[1-9][0-9]*", identifier) is not None
-            and isinstance(value, str)
-            and re.fullmatch(r"[0-9a-f]{64}", value) is not None
-            for identifier, value in ruleset_digests.items()
-        )
-    ):
+    if not _broker_owner_ruleset_digests_are_valid(request, retained_history=retained_history):
         raise HealthError("broker owner-repair ruleset digests are invalid")
     if not isinstance(request["expires_at"], str):
         raise HealthError("broker owner-repair expiry is invalid")
@@ -2467,6 +2492,7 @@ def _validate_app_broker_owner_repair_binding(
     incident: dict[str, Any],
     repaired_main_sha: str,
     resolved_at: str,
+    retained_history: bool,
 ) -> list[str]:
     expected_incident = {
         "failing_obligations",
@@ -2693,10 +2719,11 @@ def _validate_app_broker_owner_repair_binding(
     except (TypeError, ValueError) as exc:
         raise HealthError("App-broker owner review identity is invalid") from exc
     request = _parse_broker_owner_repair_review(
-        admission.get("review_body"), reviewer_id=reviewer_id
+        admission.get("review_body"),
+        reviewer_id=reviewer_id,
+        retained_history=retained_history,
     )
     request_digest = digest(request)
-    ruleset_digests = request["ruleset_digests"]
     if (
         admission.get("authorization_mode") != mode
         or admission.get("request") != request
@@ -2717,7 +2744,7 @@ def _validate_app_broker_owner_repair_binding(
         or request["collaboration_digest"] != manifest["collaboration_digest"]
         or request["manifest_digest"] != manifest_digest
         or request["policy_amendment_digest"] != amendment_digest
-        or set(ruleset_digests) != BROKER_OWNER_RULESET_IDS
+        or not _broker_owner_ruleset_digests_are_valid(request, retained_history=retained_history)
     ):
         raise HealthError("App-broker owner request changed after admission")
     expected_external_id = f"mhb1:merge:{request_digest}"
@@ -2808,6 +2835,7 @@ def _validate_repair_binding(
     incident: dict[str, Any],
     repaired_main_sha: str,
     resolved_at: str,
+    retained_history: bool = False,
 ) -> list[str]:
     admission = approval_evidence.get("admission")
     if isinstance(admission, dict) and admission.get("mechanism") == "github-app-broker-v1":
@@ -2817,6 +2845,7 @@ def _validate_repair_binding(
             incident=incident,
             repaired_main_sha=repaired_main_sha,
             resolved_at=resolved_at,
+            retained_history=retained_history,
         )
     if (
         set(incident)
@@ -3605,6 +3634,7 @@ def validate_history(root: Path) -> dict[str, Any]:
             incident=incident,
             repaired_main_sha=resolution["repaired_main_sha"],
             resolved_at=resolution["resolved_at"],
+            retained_history=True,
         )
         retained = repair_retained[resolution_digest]
         repair_entry = repair_history[resolution_digest]
