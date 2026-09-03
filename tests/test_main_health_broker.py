@@ -47,6 +47,7 @@ def _config(tmp_path: Path) -> broker.BrokerConfig:
             "max_clock_skew_seconds": 30,
             "poll_seconds": 60,
             "release_lease_ruleset_id": 21600002,
+            "release_tag_ruleset_id": 21600003,
             "repository": REPOSITORY,
             "settings_app_id": 9876543,
             "settings_app_slug": "metriplane-ruleset-witness",
@@ -72,6 +73,7 @@ def _rulesets(config: broker.BrokerConfig) -> dict[int, dict[str, Any]]:
             include=[f"refs/heads/{config.state_branch}"],
         ),
         config.release_lease_ruleset_id: broker._release_lease_ruleset(),
+        config.release_tag_ruleset_id: broker._release_tag_ruleset(),
     }
     return {
         identifier: {"id": identifier, **broker._provider_ruleset(value)}
@@ -154,6 +156,7 @@ def _owner_ruleset_digests() -> dict[str, str]:
         "21533351": "4" * 64,
         "21600001": "5" * 64,
         "21600002": "6" * 64,
+        "21600003": "7" * 64,
     }
 
 
@@ -697,11 +700,22 @@ def test_git_environment_uses_noninteractive_github_app_basic_auth() -> None:
 
 def test_config_rejects_noncanonical_app_and_permissive_clock(tmp_path: Path) -> None:
     config = _config(tmp_path)
+    assert broker.GOVERNED_RULESET_COUNT == 7
+    assert config.release_tag_ruleset_id == 21600003
     assert config.state_root == tmp_path / "state"
     value = {field: getattr(config, field) for field in broker.CONFIG_FIELDS}
     value["credential_path"] = str(value["credential_path"])
     value["settings_credential_path"] = str(value["settings_credential_path"])
     value["state_root"] = str(value["state_root"])
+    legacy_six_rule_value = dict(value)
+    del legacy_six_rule_value["release_tag_ruleset_id"]
+    with pytest.raises(broker.BrokerError, match="fields are not exact"):
+        broker.BrokerConfig.from_mapping(legacy_six_rule_value)
+    for invalid in (0, -1, True):
+        value["release_tag_ruleset_id"] = invalid
+        with pytest.raises(broker.BrokerError, match="release_tag_ruleset_id"):
+            broker.BrokerConfig.from_mapping(value)
+    value["release_tag_ruleset_id"] = config.release_tag_ruleset_id
     value["app_id"] = 999
     with pytest.raises(broker.BrokerError, match="App ID"):
         broker.BrokerConfig.from_mapping(value)
@@ -734,6 +748,7 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     _internal_validate(example, schema)
     assert example["main_update_ruleset_id"] == 0
     assert example["release_lease_ruleset_id"] == 0
+    assert example["release_tag_ruleset_id"] == 0
     assert example["settings_app_id"] == 0
     assert example["poll_seconds"] == 60
     assert Path(example["state_root"]) == Path("/home/metriplane-health/state")
@@ -745,6 +760,12 @@ def test_committed_config_and_system_service_are_hardened() -> None:
     example_with_main_rule = {**example_with_witness, "main_update_ruleset_id": 21600001}
     with pytest.raises(broker.BrokerError, match="release_lease_ruleset_id"):
         broker.BrokerConfig.from_mapping(example_with_main_rule)
+    example_with_lease_rule = {
+        **example_with_main_rule,
+        "release_lease_ruleset_id": 21600002,
+    }
+    with pytest.raises(broker.BrokerError, match="release_tag_ruleset_id"):
+        broker.BrokerConfig.from_mapping(example_with_lease_rule)
     unit = (ROOT / "scripts" / "systemd" / "metriplane-main-health-broker.service").read_text(
         encoding="utf-8"
     )
@@ -951,6 +972,17 @@ def test_rulesets_require_app_only_updates_and_no_human_bypass(tmp_path: Path) -
         {"type": "update"},
         {"type": "deletion"},
     ]
+    assert values[config.release_tag_ruleset_id] == {
+        "bypass_actors": [],
+        "conditions": {"ref_name": {"exclude": [], "include": [broker.RELEASE_TAG_REF_GLOB]}},
+        "enforcement": "active",
+        "id": config.release_tag_ruleset_id,
+        "name": "Protect release tags",
+        "rules": [{"type": "update"}, {"type": "deletion"}],
+        "source": REPOSITORY,
+        "source_type": "Repository",
+        "target": "tag",
+    }
 
     changed = _rulesets(config)
     changed[config.release_lease_ruleset_id]["rules"].remove({"type": "creation"})
@@ -973,6 +1005,52 @@ def test_rulesets_require_app_only_updates_and_no_human_bypass(tmp_path: Path) -
 
     changed = _rulesets(config)
     changed[config.core_ruleset_id]["source"] = "Miko997/other"
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+
+def test_release_tag_ruleset_is_exact_and_fail_closed(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    missing = _rulesets(config)
+    del missing[config.release_tag_ruleset_id]
+    with pytest.raises(broker.BrokerError, match="ID inventory is not exact"):
+        broker.validate_hosted_rulesets(config=config, rulesets=missing)
+
+    changed = _rulesets(config)
+    changed[config.release_tag_ruleset_id]["enforcement"] = "disabled"
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+    changed = _rulesets(config)
+    changed[config.release_tag_ruleset_id]["target"] = "branch"
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+    changed = _rulesets(config)
+    changed[config.release_tag_ruleset_id]["conditions"]["ref_name"]["include"] = ["refs/tags/v**"]
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+    for missing_rule in ({"type": "update"}, {"type": "deletion"}):
+        changed = _rulesets(config)
+        changed[config.release_tag_ruleset_id]["rules"].remove(missing_rule)
+        with pytest.raises(broker.BrokerError, match="not the governed"):
+            broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+    changed = _rulesets(config)
+    changed[config.release_tag_ruleset_id]["rules"].append({"type": "creation"})
+    with pytest.raises(broker.BrokerError, match="not the governed"):
+        broker.validate_hosted_rulesets(config=config, rulesets=changed)
+
+    changed = _rulesets(config)
+    changed[config.release_tag_ruleset_id]["bypass_actors"] = [
+        {
+            "actor_id": broker.APP_INTEGRATION_ID,
+            "actor_type": "Integration",
+            "bypass_mode": "always",
+        }
+    ]
     with pytest.raises(broker.BrokerError, match="not the governed"):
         broker.validate_hosted_rulesets(config=config, rulesets=changed)
 
@@ -1710,6 +1788,8 @@ class FakeTransactionApi(broker.GitHubApi):
         self.weekly_run_id = 602
         self.weekly_status = "completed"
         self.drift_on_final_ruleset = False
+        self.drift_tag_identity_on_final_ruleset = False
+        self.drift_tag_semantics_on_final_ruleset = False
         self.drift_update_bypass = False
         self.inject_older_rerun_on_final_ruleset = False
         self.extra_active_ruleset = False
@@ -1861,6 +1941,18 @@ class FakeTransactionApi(broker.GitHubApi):
         if "/rulesets/" in path:
             ruleset_id = int(path.rsplit("/", 1)[1])
             ruleset = copy.deepcopy(_rulesets(self.config)[ruleset_id])
+            if (
+                self.drift_tag_identity_on_final_ruleset
+                and self.ruleset_inventory_calls >= 2
+                and ruleset_id == self.config.release_tag_ruleset_id
+            ):
+                ruleset["id"] = 999
+            if (
+                self.drift_tag_semantics_on_final_ruleset
+                and self.ruleset_inventory_calls >= 2
+                and ruleset_id == self.config.release_tag_ruleset_id
+            ):
+                ruleset["rules"].append({"type": "creation"})
             if self.drift_update_bypass and ruleset_id == self.config.main_update_ruleset_id:
                 ruleset["bypass_actors"] = []
             return broker.ApiResult({}, 200, ruleset)
@@ -2879,6 +2971,44 @@ def test_rulesets_are_rechecked_immediately_before_success(tmp_path: Path) -> No
     api.drift_on_final_ruleset = True
 
     with pytest.raises(broker.BrokerError, match="inventory is not the exact governed set"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.ruleset_inventory_calls == 2
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+def test_release_tag_ruleset_identity_drift_between_reads_blocks_merge(tmp_path: Path) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.drift_tag_identity_on_final_ruleset = True
+
+    with pytest.raises(broker.BrokerError, match="wrong provider ID"):
+        service._process_pull(
+            check_controller=checks,  # type: ignore[arg-type]
+            number=81,
+            provider_now=NOW + timedelta(minutes=2),
+            settings_token="token",
+            state_branch=FakeAdmissionState(),  # type: ignore[arg-type]
+            token="token",
+        )
+
+    assert api.ruleset_inventory_calls == 2
+    assert api.merge_calls == 0
+    assert checks.succeeded == []
+
+
+def test_release_tag_ruleset_semantic_drift_between_reads_blocks_merge(tmp_path: Path) -> None:
+    service, api, checks, _spool = _transaction_fixture(tmp_path, "success")
+    api.drift_tag_semantics_on_final_ruleset = True
+
+    with pytest.raises(broker.BrokerError, match="not the governed"):
         service._process_pull(
             check_controller=checks,  # type: ignore[arg-type]
             number=81,

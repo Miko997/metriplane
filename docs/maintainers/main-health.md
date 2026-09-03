@@ -61,7 +61,7 @@ manifest.
 
 ## Admission
 
-Main has five layered rulesets:
+The repository has exactly seven active governed rulesets:
 
 1. Core protection blocks deletion and non-fast-forward updates, requires pull
    requests, strict up-to-date heads, and the three exact Actions terminals.
@@ -74,13 +74,18 @@ Main has five layered rulesets:
    branch. It has no bypass.
 5. A separate state update restriction allows only integration 4722589 to
    update that branch.
+6. A release-lease restriction allows only integration 4722589 to create,
+   update, or delete `refs/heads/release-leases/**`.
+7. Release-tag immutability blocks update and deletion of `refs/tags/v*` with
+   no bypass actor. It deliberately does not restrict creation.
 
 All three main rulesets target literal `refs/heads/main`; the runtime also
 revalidates that the canonical repository's default branch is still `main` at
 authentication and every hosted-ruleset boundary.
 
-The App bypasses only the two update restrictions. It cannot bypass the core,
-admission, or state-protection rules because rulesets aggregate.
+The App bypasses only the two branch-update restrictions and the release-lease
+restriction. It cannot bypass the core, admission, state-protection, or
+release-tag rules because rulesets aggregate.
 
 The merge App has no Administration permission. A separate ruleset-witness App
 has exactly Administration write and Metadata read so the broker can observe
@@ -103,7 +108,7 @@ changes-requested, dismissal, or approval for another request invalidates the
 earlier approval.
 
 Under one singleton host lock, the broker re-reads reviews, commits, all exact
-checks, every active repository ruleset, all five governed ruleset bodies
+checks, every active repository ruleset, all seven governed ruleset bodies
 including complete bypass actors, provider time, current main, and the state
 branch. Summaries and bodies must agree on identity, source, target, and
 enforcement. The witness App performs one final ruleset read after orphan and

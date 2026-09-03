@@ -1627,6 +1627,112 @@ def test_app_broker_owner_emergency_resolves_with_exact_provider_check(
         )
 
 
+def _legacy_broker_owner_repair_request() -> dict[str, object]:
+    return {
+        "authorization_mode": "single-maintainer-owner-emergency",
+        "base_ref": "main",
+        "base_sha": "0644a5dbd7fcdf4f9447b995a2baa5df17af8f75",
+        "changed_paths_digest": "543539a83dabf792c2c8e30867149ba659ba0966f18aed08f52f3f53005f964f",
+        "collaboration_digest": "97956f2c016d6323f4e7921877599536bc72d63f26a73a3ab9e2d91abaf909d4",
+        "expires_at": "2026-08-27T17:04:20Z",
+        "head_sha": "38fb103741cdadcf90063278cbb36f9ba66a2e6d",
+        "incident_digest": "646109343112eb9ba6b736928206c5560e4be28e4e64d377ef2807de5cfa39e8",
+        "issue": "MET-77",
+        "manifest_digest": "402b6abb205c6de0953ca89bb954db03b1f2028beb38f98ad19361e19bdedc68",
+        "nonce": "fde0f13b6b9dc0b4510dafdfc3a3d01c",
+        "policy_amendment_digest": (
+            "7b7b331874f00a8136b74b7aed3af5a1606ae685db247795a02246715b067a1b"
+        ),
+        "pull_request": 89,
+        "repository": "Miko997/metriplane",
+        "requester_id": 141511110,
+        "ruleset_digests": {
+            "20613848": "1296e1ef0e46ed8e2a0e05a73440b0be9f9ef0b9d250fb2e403f8f8538719a92",
+            "21487681": "c1689c8b834e31c319fd16007fced5f10fc939fed655fc32f47d0c03e5df6fce",
+            "21500579": "a9666448444c28603d7b16f36a866f3c3ebf008107e0e495b8433a5726fd115a",
+            "21533351": "4a6c626d1ff8d57dc3aef04b6c65769e750fb1d1ed866bf7ed60902553c8a671",
+            "21633569": "6f4993da872387e0b31ca5366be448a9cb7eae69154f36710af2d235eb80ca2b",
+        },
+        "schema_version": 1,
+        "state_commit": "6f3e7f275f01ecc180a8ea6e8a9546e2affa5a30",
+        "state_generation": 11,
+    }
+
+
+def test_broker_owner_ruleset_digest_inventory_is_exact_seven_rule_provider_set() -> None:
+    assert stop_the_line.BROKER_OWNER_RULESET_IDS == {
+        "20613848",
+        "21487681",
+        "21500579",
+        "21533351",
+        "21633569",
+        "22071973",
+        "22170798",
+    }
+
+    legacy_request = _legacy_broker_owner_repair_request()
+    assert digest(legacy_request) == stop_the_line.LEGACY_BROKER_OWNER_REPAIR_REQUEST_DIGEST
+    legacy_body = (
+        stop_the_line.BROKER_OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + canonical_bytes(legacy_request).decode().rstrip("\n")
+    )
+    with pytest.raises(HealthError, match="ruleset digests"):
+        stop_the_line._parse_broker_owner_repair_review(legacy_body, reviewer_id=141511110)
+    assert (
+        stop_the_line._parse_broker_owner_repair_review(
+            legacy_body,
+            reviewer_id=141511110,
+            retained_history=True,
+        )
+        == legacy_request
+    )
+
+    tampered_legacy = copy.deepcopy(legacy_request)
+    tampered_legacy["nonce"] = "0" * 32
+    tampered_body = (
+        stop_the_line.BROKER_OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + canonical_bytes(tampered_legacy).decode().rstrip("\n")
+    )
+    with pytest.raises(HealthError, match="ruleset digests"):
+        stop_the_line._parse_broker_owner_repair_review(
+            tampered_body,
+            reviewer_id=141511110,
+            retained_history=True,
+        )
+
+    six_rule_request = copy.deepcopy(legacy_request)
+    six_rule_digests = six_rule_request["ruleset_digests"]
+    assert isinstance(six_rule_digests, dict)
+    six_rule_digests["22071973"] = "6" * 64
+    six_rule_body = (
+        stop_the_line.BROKER_OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + canonical_bytes(six_rule_request).decode().rstrip("\n")
+    )
+    with pytest.raises(HealthError, match="ruleset digests"):
+        stop_the_line._parse_broker_owner_repair_review(
+            six_rule_body,
+            reviewer_id=141511110,
+            retained_history=True,
+        )
+
+    current_request = copy.deepcopy(six_rule_request)
+    current_rule_digests = current_request["ruleset_digests"]
+    assert isinstance(current_rule_digests, dict)
+    current_rule_digests["22170798"] = "7" * 64
+    current_body = (
+        stop_the_line.BROKER_OWNER_REPAIR_REQUEST_MARKER
+        + "\n"
+        + canonical_bytes(current_request).decode().rstrip("\n")
+    )
+    assert (
+        stop_the_line._parse_broker_owner_repair_review(current_body, reviewer_id=141511110)
+        == current_request
+    )
+
+
 def test_app_broker_owner_emergency_rejects_request_outliving_manifest(
     tmp_path: Path,
 ) -> None:

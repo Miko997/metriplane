@@ -2,8 +2,10 @@
 
 The `metriplane-main-health-publisher` merge App is the only actor permitted by
 the dedicated rulesets to update `main` and `metriplane-main-health-state` or
-create, update, and delete `release-leases/**`. A distinct
-`metriplane-ruleset-witness` App has
+create, update, and delete `release-leases/**`. The separate `Protect release
+tags` ruleset targets `refs/tags/v*` and prevents only update and deletion; it
+has no bypass actor and deliberately permits creation of new release tags. A
+distinct `metriplane-ruleset-witness` App has
 repository-settings authority only, so it can read complete ruleset bodies and
 bypass actors but cannot write contents, checks, or pull requests. The core
 pull-request, deletion, non-fast-forward, and exact required-check rules remain
@@ -60,11 +62,13 @@ check. The three rulesets governing main target explicit `refs/heads/main`;
 they do not follow the mutable `~DEFAULT_BRANCH` alias.
 
 The committed broker-config example is deliberately non-runnable:
-`main_update_ruleset_id`, `release_lease_ruleset_id`, and `settings_app_id` are
-`0`. Create the App-only main-update and release-lease restrictions and the
-witness App, capture their positive provider IDs, and place all three IDs in
-the host's `/etc/metriplane/main-health-broker.json`. `validate-config` and
-`run` reject every zero sentinel.
+`main_update_ruleset_id`, `release_lease_ruleset_id`,
+`release_tag_ruleset_id`, and `settings_app_id` are `0`. Create the App-only
+main-update and release-lease restrictions, the no-bypass release-tag
+restriction, and the witness App; capture their positive provider IDs and
+place all four IDs in the host's `/etc/metriplane/main-health-broker.json`.
+`validate-config` and `run` reject every zero sentinel. The new broker also
+rejects a legacy six-rule configuration that omits `release_tag_ruleset_id`.
 
 Run the broker as the repository module, including for manual validation:
 
@@ -118,12 +122,12 @@ fi
 ~~~
 
 The host is now staged, but the broker must remain disabled and stopped. With
-the staged witness credential, apply and read back the exact core, admission,
-and state-writer ruleset bodies. Confirm that the main-update ruleset is exact
-except for disabled enforcement, activate it with the complete exact body, and
-then validate the complete active ruleset inventory plus all five governed
-ruleset details through the witness App. Only after that validation succeeds,
-enable and start the broker:
+the staged witness credential, apply and read back the exact governed ruleset
+bodies. Confirm that every newly staged mutation rule is exact except for
+disabled enforcement, activate it with the complete exact body, and then
+validate the complete active inventory plus all seven governed ruleset details
+through the witness App. Only after that validation succeeds, enable and start
+the broker:
 
 ~~~bash
 sudo systemctl enable --now metriplane-main-health-broker.service
@@ -134,20 +138,41 @@ sudo journalctl -u metriplane-main-health-broker.service \
   --grep='ready after one successful full cycle' --lines=1
 ~~~
 
-Replace only the `main_update_ruleset_id`, `release_lease_ruleset_id`, and
-`settings_app_id` zero sentinels in the installed host configuration before
-`validate-config`; all other committed identities and boundaries remain exact.
+Replace only the `main_update_ruleset_id`, `release_lease_ruleset_id`,
+`release_tag_ruleset_id`, and `settings_app_id` zero sentinels in the installed
+host configuration before `validate-config`; all other committed identities
+and boundaries remain exact.
 
-Activate the sixth ruleset only during a deliberate broker and main-update
-freeze. Stop the old broker, create `Restrict release lease writers` in
-`disabled` mode with branch include `refs/heads/release-leases/**`, the broker
-Integration ID `4722589` as its sole `always` bypass actor, and exactly the
-`creation`, `update`, and `deletion` rules. Install the independently approved
-broker commit and positive ruleset ID while the service remains stopped, switch
-that ruleset to `active`, and then start the new broker. Its first cycle accepts
-only the exact six-rule inventory. Activating the sixth rule before replacing
-the old broker, or starting the new broker before the rule is active, fails the
-exact-inventory check by design.
+`Restrict release lease writers` is an active branch ruleset with include
+`refs/heads/release-leases/**`, the broker Integration ID `4722589` as its sole
+`always` bypass actor, and exactly `creation`, `update`, and `deletion` rules.
+`Protect release tags` is an active tag ruleset with include `refs/tags/v*`, an
+empty exclude list, no bypass actors, and exactly `update` and `deletion` rules.
+It has no creation rule so a new release identity can be created once, while an
+existing release tag cannot be moved or removed.
+
+Migrate an already-running six-rule broker only during a deliberate broker
+freeze. Merge the independently approved seven-rule implementation through the
+healthy six-rule broker while `Protect release tags` remains absent or
+disabled. Preserve the old executable and configuration, stop the service, and
+require it to be inactive. Install the exact protected-main broker commit,
+create or read back `Protect release tags` in `disabled` mode, and add only its
+positive provider ID as `release_tag_ruleset_id` in the live configuration.
+After the new broker's `validate-config` passes, activate the tag ruleset, read
+the complete seven-rule inventory twice, and start the new broker. Its first
+cycle accepts only the exact seven-rule inventory: six active rules, an
+inactive or missing tag rule, or any eighth active rule fails closed. If the
+new broker cannot complete a successful cycle after activation, stop it and
+disable `Protect release tags` before restoring or restarting the preserved
+six-rule broker.
+
+One immutable owner-repair request in retained protected-state history predates
+both release rulesets. History validation accepts its former five-ruleset
+digest inventory only when the complete canonical request has digest
+`d6ea4e6491127bb1eba199e677d4934144140e70eafe75e3321afb4fccb7c396`.
+That compatibility is limited to retained-history validation; live capture,
+resolution, and every new owner request require the exact seven-ruleset
+inventory.
 
 The systemd unit is `Type=notify`. It becomes active only after one complete
 successful broker cycle, including authentication, orphan reconciliation,
@@ -188,13 +213,13 @@ owner may instead submit this exact `COMMENTED` review on an owner-authored PR:
 
 ~~~text
 metriplane-owner-merge-request:v1
-{"authorization_mode":"single-maintainer-owner-attestation","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","health_generation":1,"nonce":"<32hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>"},"schema_version":1,"state_commit":"<40hex>"}
+{"authorization_mode":"single-maintainer-owner-attestation","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","health_generation":1,"nonce":"<32hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>","22071973":"<64hex>","22170798":"<64hex>"},"schema_version":1,"state_commit":"<40hex>"}
 ~~~
 
 This request is the explicit owner decision and has the same maximum ten-minute
 provider lease. The witness App reads the complete collaborator and pending
 invitation inventories twice and requires their canonical digest, every changed
-path, all five exact hosted-ruleset digests, and the protected state commit to
+path, all seven exact hosted-ruleset digests, and the protected state commit to
 match the request at every admission pass. Adding an eligible collaborator or
 invitation disables the single-maintainer path immediately. It does not create
 a human push, settings, required-check, or merge bypass.
@@ -210,7 +235,7 @@ The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
 earlier approval. It re-reads the pull request, every commit actor, reviews,
 exact Actions checks, the complete inventory of all active repository rulesets
-and all six governed ruleset bodies, current `main`, provider clock, and the
+and all seven governed ruleset bodies, current `main`, provider clock, and the
 protected state branch immediately before admission. Inventory summaries and
 detail bodies must agree on ID, name, enforcement, target, source, and source
 type. A protected-main result identity binds the exact CI, Documentation, and
@@ -298,7 +323,7 @@ blocker, reassertion, and upload step still queued.
 The workflow, `tools/release_artifacts.py`, `tools/check_blockers.py`, and the
 blocker schema at the release commit must be byte-identical Git blobs to the
 independently approved broker checkout. The broker then revalidates current
-`main` and the exact six hosted rulesets immediately before reserving the
+`main` and the exact seven hosted rulesets immediately before reserving the
 durable transaction. Any governed authority change therefore requires a new
 broker review and deployment before production publication can proceed.
 
@@ -363,7 +388,7 @@ incident-only policy amendment. After qualification, the owner submits:
 
 ~~~text
 metriplane-owner-repair-request:v1
-{"authorization_mode":"single-maintainer-owner-emergency","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","incident_digest":"<64hex>","issue":"MET-77","manifest_digest":"<64hex>","nonce":"<32hex>","policy_amendment_digest":"<64hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>"},"schema_version":1,"state_commit":"<40hex>","state_generation":1}
+{"authorization_mode":"single-maintainer-owner-emergency","base_ref":"main","base_sha":"<40hex>","changed_paths_digest":"<64hex>","collaboration_digest":"<64hex>","expires_at":"<RFC3339>","head_sha":"<40hex>","incident_digest":"<64hex>","issue":"MET-77","manifest_digest":"<64hex>","nonce":"<32hex>","policy_amendment_digest":"<64hex>","pull_request":1,"repository":"Miko997/metriplane","requester_id":141511110,"ruleset_digests":{"20613848":"<64hex>","21487681":"<64hex>","21500579":"<64hex>","21533351":"<64hex>","21633569":"<64hex>","22071973":"<64hex>","22170798":"<64hex>"},"schema_version":1,"state_commit":"<40hex>","state_generation":1}
 ~~~
 
 The broker validates that request and manifest against live provider state on

@@ -53,12 +53,14 @@ python tools/check_repository_protection.py merge-proof \
 The current repository has no merge queue. Its governed target mode is
 App-brokered strict-up-to-date merging: layered no-bypass core and admission
 rulesets, App-only update restrictions for `main` and the protected state
-branch, and the exact four integration-bound terminals. A partial five-ruleset
-activation, any additional active repository ruleset, or disagreement between
-ruleset inventory and detail source, target, name, or enforcement fails
-capture. Hosted setting changes remain an owner operation and require a new
-capture; the committed example remains `planned` until the independently
-approved same-plan live proof is retained.
+branch, App-only creation/update/deletion of `release-leases/**`, no-bypass
+update/deletion protection for `v*` release tags, and the exact four
+integration-bound terminals. A partial seven-ruleset activation, any additional
+active repository ruleset, a release-tag rule with any other target, ref, rule,
+or bypass actor, or disagreement between ruleset inventory and detail source,
+target, name, or enforcement fails capture. Hosted setting changes remain an
+owner operation and require a new capture; the committed example remains
+`planned` until the independently approved same-plan live proof is retained.
 
 The hosted required-check set must equal the four MP2-004 terminal names exactly;
 legacy, missing, or extra contexts fail offline validation. Each aggregate consumes
