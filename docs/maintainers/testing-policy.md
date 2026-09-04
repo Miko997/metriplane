@@ -20,11 +20,13 @@ The matching pre-commit hooks use Ruff `v0.16.2` and mypy `v1.20.2`; local
 hooks and CI therefore evaluate the same tool identities.
 
 `setuptools==82.0.1` is both the exact build-system requirement and a member of
-the canonical dev group. Release qualification syncs with
-`uv sync --frozen --all-groups --no-build-isolation`, and release builds use
-`python -m build --no-isolation` from that frozen environment. Both operations
-therefore execute the installed, lock-governed backend rather than a separately
-resolved build environment.
+the canonical dev group. In a fresh release environment, qualification first
+syncs the frozen dependency groups with `--no-install-project`; this installs
+the lock-governed build backend before a second frozen sync installs the project
+with `--no-build-isolation`. Release builds then use
+`python -m build --no-isolation` from that same environment. Both project
+operations therefore execute the installed, lock-governed backend rather than
+a separately resolved build environment.
 
 Use the exact uv executable and ignore user or system uv configuration:
 

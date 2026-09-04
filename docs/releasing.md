@@ -115,6 +115,7 @@ export UV_PROJECT_ENVIRONMENT="$release_source_root/.venv"
 export UV_NO_CONFIG=1
 test "$(uv --version | awk '{print $2}')" = "0.12.0"
 uv --no-config lock --check
+uv --no-config sync --frozen --all-groups --no-install-project
 uv --no-config sync --frozen --all-groups --no-build-isolation
 uv --no-config pip check
 uv --no-config run --frozen python -m playwright install chromium --with-deps

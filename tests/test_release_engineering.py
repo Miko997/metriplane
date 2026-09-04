@@ -63,6 +63,7 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
     assert setup_uv["with"] == {"version": "0.12.0", "enable-cache": False}
     assert named_steps["Sync locked release environment"]["run"].splitlines() == [
         "uv --no-config lock --check",
+        "uv --no-config sync --frozen --all-groups --no-install-project",
         "uv --no-config sync --frozen --all-groups --no-build-isolation",
         "uv --no-config pip check",
     ]
@@ -243,6 +244,7 @@ def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
     assert text.count("failed workflow `33695500256`") == 1
     for command in (
         "uv --no-config lock --check",
+        "uv --no-config sync --frozen --all-groups --no-install-project",
         "uv --no-config sync --frozen --all-groups --no-build-isolation",
         "uv --no-config pip check",
         "uv --no-config run --frozen python -m playwright install chromium --with-deps",
