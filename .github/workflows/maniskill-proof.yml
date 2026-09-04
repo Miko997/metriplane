@@ -182,6 +182,7 @@ jobs:
             "${candidate_identity_paths[@]}"
           python - "$candidate_commit" <<'PY'
           import hashlib
+          import json
           import subprocess
           import sys
           import tomllib
@@ -190,6 +191,11 @@ jobs:
           EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
           EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
           EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+          SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
+          SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
+          SETUPTOOLS_PACKAGE_SHA256 = (
+              "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
+          )
 
 
           def read_bytes(revision, path):
@@ -200,7 +206,7 @@ jobs:
               return tomllib.loads(read_bytes(revision, path).decode("utf-8"))
 
 
-          def normalized_lock(revision):
+          def normalized_lock(revision, *, expect_release_setuptools):
               lock = read_toml(revision, "uv.lock")
               root_packages = [
                   package
@@ -210,9 +216,66 @@ jobs:
               ]
               if len(root_packages) != 1:
                   raise SystemExit(f"expected one editable root package: {root_packages!r}")
-              metadata = root_packages[0].get("metadata")
-              if not isinstance(metadata, dict) or "requires-dev" not in metadata:
-                  raise SystemExit("editable root package is missing metadata.requires-dev")
+              root_package = root_packages[0]
+              metadata = root_package.get("metadata")
+              if not isinstance(metadata, dict):
+                  raise SystemExit("editable root package is missing metadata")
+
+              requires_dev = metadata.get("requires-dev")
+              if (
+                  not isinstance(requires_dev, dict)
+                  or set(requires_dev) != {"dev"}
+                  or not isinstance(requires_dev["dev"], list)
+              ):
+                  raise SystemExit("editable root requires-dev shape differs")
+              metadata_edges = [
+                  row
+                  for row in requires_dev["dev"]
+                  if isinstance(row, dict) and row.get("name") == "setuptools"
+              ]
+
+              dev_dependencies = root_package.get("dev-dependencies")
+              if (
+                  not isinstance(dev_dependencies, dict)
+                  or set(dev_dependencies) != {"dev"}
+                  or not isinstance(dev_dependencies["dev"], list)
+              ):
+                  raise SystemExit("editable root dev-dependencies shape differs")
+              graph_edges = [
+                  row
+                  for row in dev_dependencies["dev"]
+                  if isinstance(row, dict) and row.get("name") == "setuptools"
+              ]
+              packages = [
+                  package for package in lock["package"]
+                  if package.get("name") == "setuptools"
+              ]
+              non_dev_edges = [
+                  (package.get("name"), row)
+                  for package in lock["package"]
+                  for row in package.get("dependencies", [])
+                  if isinstance(row, dict) and row.get("name") == "setuptools"
+              ]
+              if non_dev_edges:
+                  raise SystemExit(f"setuptools has non-dev lock edges: {non_dev_edges!r}")
+
+              if expect_release_setuptools:
+                  if metadata_edges != [SETUPTOOLS_METADATA_EDGE]:
+                      raise SystemExit("checkout setuptools metadata edge differs")
+                  if graph_edges != [SETUPTOOLS_DEV_EDGE]:
+                      raise SystemExit("checkout setuptools dev edge differs")
+                  if len(packages) != 1:
+                      raise SystemExit("checkout must contain one setuptools package")
+                  encoded = json.dumps(
+                      packages[0], sort_keys=True, separators=(",", ":")
+                  ).encode("utf-8")
+                  if hashlib.sha256(encoded).hexdigest() != SETUPTOOLS_PACKAGE_SHA256:
+                      raise SystemExit("checkout setuptools package identity differs")
+                  dev_dependencies["dev"].remove(SETUPTOOLS_DEV_EDGE)
+                  lock["package"].remove(packages[0])
+              elif metadata_edges or graph_edges or packages:
+                  raise SystemExit("recorded candidate unexpectedly contains setuptools")
+
               metadata.pop("requires-dev")
               return lock
 
@@ -237,7 +300,9 @@ jobs:
               != checkout_pyproject["tool"]["setuptools"]
           ):
               raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
-          if normalized_lock(candidate_commit) != normalized_lock("HEAD"):
+          if normalized_lock(
+              candidate_commit, expect_release_setuptools=False
+          ) != normalized_lock("HEAD", expect_release_setuptools=True):
               raise SystemExit("candidate and checkout runtime lock identities differ")
           PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"
@@ -356,6 +421,7 @@ jobs:
             "${candidate_identity_paths[@]}"
           python - "$candidate_commit" <<'PY'
           import hashlib
+          import json
           import subprocess
           import sys
           import tomllib
@@ -364,6 +430,11 @@ jobs:
           EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
           EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
           EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+          SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
+          SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
+          SETUPTOOLS_PACKAGE_SHA256 = (
+              "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
+          )
 
 
           def read_bytes(revision, path):
@@ -374,7 +445,7 @@ jobs:
               return tomllib.loads(read_bytes(revision, path).decode("utf-8"))
 
 
-          def normalized_lock(revision):
+          def normalized_lock(revision, *, expect_release_setuptools):
               lock = read_toml(revision, "uv.lock")
               root_packages = [
                   package
@@ -384,9 +455,66 @@ jobs:
               ]
               if len(root_packages) != 1:
                   raise SystemExit(f"expected one editable root package: {root_packages!r}")
-              metadata = root_packages[0].get("metadata")
-              if not isinstance(metadata, dict) or "requires-dev" not in metadata:
-                  raise SystemExit("editable root package is missing metadata.requires-dev")
+              root_package = root_packages[0]
+              metadata = root_package.get("metadata")
+              if not isinstance(metadata, dict):
+                  raise SystemExit("editable root package is missing metadata")
+
+              requires_dev = metadata.get("requires-dev")
+              if (
+                  not isinstance(requires_dev, dict)
+                  or set(requires_dev) != {"dev"}
+                  or not isinstance(requires_dev["dev"], list)
+              ):
+                  raise SystemExit("editable root requires-dev shape differs")
+              metadata_edges = [
+                  row
+                  for row in requires_dev["dev"]
+                  if isinstance(row, dict) and row.get("name") == "setuptools"
+              ]
+
+              dev_dependencies = root_package.get("dev-dependencies")
+              if (
+                  not isinstance(dev_dependencies, dict)
+                  or set(dev_dependencies) != {"dev"}
+                  or not isinstance(dev_dependencies["dev"], list)
+              ):
+                  raise SystemExit("editable root dev-dependencies shape differs")
+              graph_edges = [
+                  row
+                  for row in dev_dependencies["dev"]
+                  if isinstance(row, dict) and row.get("name") == "setuptools"
+              ]
+              packages = [
+                  package for package in lock["package"]
+                  if package.get("name") == "setuptools"
+              ]
+              non_dev_edges = [
+                  (package.get("name"), row)
+                  for package in lock["package"]
+                  for row in package.get("dependencies", [])
+                  if isinstance(row, dict) and row.get("name") == "setuptools"
+              ]
+              if non_dev_edges:
+                  raise SystemExit(f"setuptools has non-dev lock edges: {non_dev_edges!r}")
+
+              if expect_release_setuptools:
+                  if metadata_edges != [SETUPTOOLS_METADATA_EDGE]:
+                      raise SystemExit("checkout setuptools metadata edge differs")
+                  if graph_edges != [SETUPTOOLS_DEV_EDGE]:
+                      raise SystemExit("checkout setuptools dev edge differs")
+                  if len(packages) != 1:
+                      raise SystemExit("checkout must contain one setuptools package")
+                  encoded = json.dumps(
+                      packages[0], sort_keys=True, separators=(",", ":")
+                  ).encode("utf-8")
+                  if hashlib.sha256(encoded).hexdigest() != SETUPTOOLS_PACKAGE_SHA256:
+                      raise SystemExit("checkout setuptools package identity differs")
+                  dev_dependencies["dev"].remove(SETUPTOOLS_DEV_EDGE)
+                  lock["package"].remove(packages[0])
+              elif metadata_edges or graph_edges or packages:
+                  raise SystemExit("recorded candidate unexpectedly contains setuptools")
+
               metadata.pop("requires-dev")
               return lock
 
@@ -411,7 +539,9 @@ jobs:
               != checkout_pyproject["tool"]["setuptools"]
           ):
               raise SystemExit("candidate and checkout [tool.setuptools] tables differ")
-          if normalized_lock(candidate_commit) != normalized_lock("HEAD"):
+          if normalized_lock(
+              candidate_commit, expect_release_setuptools=False
+          ) != normalized_lock("HEAD", expect_release_setuptools=True):
               raise SystemExit("candidate and checkout runtime lock identities differ")
           PY
           candidate_source="${RUNNER_TEMP}/metriplane-candidate-source"

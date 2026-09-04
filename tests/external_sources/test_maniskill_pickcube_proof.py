@@ -36,6 +36,9 @@ WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "maniskill-proof.yml
 EVIDENCE_LAKE_PATH = "metriplane/atlas/evidence_lake.py"
 EVIDENCE_LAKE_FROZEN_SHA256 = "9dde8a9b5a5aad28a8427507f4799af824146682193b5b10eea833c5708b7c78"
 EVIDENCE_LAKE_REPAIRED_SHA256 = "7190552b7f2d9976c69fa7170bd7c6bc3965c689127f1829bc5ab830c1c4bd2f"
+SETUPTOOLS_METADATA_EDGE = {"name": "setuptools", "specifier": "==82.0.1"}
+SETUPTOOLS_DEV_EDGE = {"name": "setuptools"}
+SETUPTOOLS_PACKAGE_SHA256 = "8f4dbc5fa9c38717aec3a826b461d27bc76a921cc9420a3418250cc7c305a08b"
 FROZEN_CANDIDATE_IDENTITY_PATHS = (
     "adapters/maniskill_pickcube",
     "examples/external_sources/maniskill_pickcube",
@@ -1024,25 +1027,137 @@ def test_recorded_candidate_matches_checkout_on_frozen_identity_paths() -> None:
         assert git_show.returncode == 0, git_show.stderr
         return tomllib.loads(git_show.stdout)
 
-    def normalized_lock(revision: str) -> dict[str, Any]:
-        lock = read_git_toml(revision, "uv.lock")
+    def normalize_lock(lock: dict[str, Any], *, expect_release_setuptools: bool) -> dict[str, Any]:
+        lock = copy.deepcopy(lock)
         root_packages = [
             package
             for package in lock["package"]
             if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
         ]
         assert len(root_packages) == 1, root_packages
-        metadata = root_packages[0].get("metadata")
+        root_package = root_packages[0]
+        metadata = root_package.get("metadata")
         assert isinstance(metadata, dict)
-        assert "requires-dev" in metadata
+
+        requires_dev = metadata.get("requires-dev")
+        assert isinstance(requires_dev, dict)
+        assert set(requires_dev) == {"dev"}
+        assert isinstance(requires_dev["dev"], list)
+        metadata_edges = [
+            row
+            for row in requires_dev["dev"]
+            if isinstance(row, dict) and row.get("name") == "setuptools"
+        ]
+
+        dev_dependencies = root_package.get("dev-dependencies")
+        assert isinstance(dev_dependencies, dict)
+        assert set(dev_dependencies) == {"dev"}
+        assert isinstance(dev_dependencies["dev"], list)
+        graph_edges = [
+            row
+            for row in dev_dependencies["dev"]
+            if isinstance(row, dict) and row.get("name") == "setuptools"
+        ]
+        packages = [package for package in lock["package"] if package.get("name") == "setuptools"]
+        non_dev_edges = [
+            (package.get("name"), row)
+            for package in lock["package"]
+            for row in package.get("dependencies", [])
+            if isinstance(row, dict) and row.get("name") == "setuptools"
+        ]
+        assert not non_dev_edges
+
+        if expect_release_setuptools:
+            assert metadata_edges == [SETUPTOOLS_METADATA_EDGE]
+            assert graph_edges == [SETUPTOOLS_DEV_EDGE]
+            assert len(packages) == 1
+            encoded = json.dumps(packages[0], sort_keys=True, separators=(",", ":")).encode("utf-8")
+            assert hashlib.sha256(encoded).hexdigest() == SETUPTOOLS_PACKAGE_SHA256
+            dev_dependencies["dev"].remove(SETUPTOOLS_DEV_EDGE)
+            lock["package"].remove(packages[0])
+        else:
+            assert not metadata_edges
+            assert not graph_edges
+            assert not packages
+
         metadata.pop("requires-dev")
         return lock
+
+    def normalized_lock(revision: str, *, expect_release_setuptools: bool) -> dict[str, Any]:
+        return normalize_lock(
+            read_git_toml(revision, "uv.lock"),
+            expect_release_setuptools=expect_release_setuptools,
+        )
 
     candidate_pyproject = read_git_toml(candidate, "pyproject.toml")
     checkout_pyproject = read_git_toml("HEAD", "pyproject.toml")
     assert candidate_pyproject["project"] == checkout_pyproject["project"]
     assert candidate_pyproject["tool"]["setuptools"] == checkout_pyproject["tool"]["setuptools"]
-    assert normalized_lock(candidate) == normalized_lock("HEAD")
+    assert normalized_lock(candidate, expect_release_setuptools=False) == normalized_lock(
+        "HEAD", expect_release_setuptools=True
+    )
+
+    checkout_lock = read_git_toml("HEAD", "uv.lock")
+    invalid_locks: list[dict[str, Any]] = []
+
+    wrong_metadata = copy.deepcopy(checkout_lock)
+    checkout_root = next(
+        package
+        for package in wrong_metadata["package"]
+        if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+    )
+    setuptools_requirement = next(
+        row
+        for row in checkout_root["metadata"]["requires-dev"]["dev"]
+        if row.get("name") == "setuptools"
+    )
+    setuptools_requirement["specifier"] = "==82.0.2"
+    invalid_locks.append(wrong_metadata)
+
+    wrong_graph = copy.deepcopy(checkout_lock)
+    checkout_root = next(
+        package
+        for package in wrong_graph["package"]
+        if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+    )
+    setuptools_edge = next(
+        row for row in checkout_root["dev-dependencies"]["dev"] if row.get("name") == "setuptools"
+    )
+    setuptools_edge["marker"] = "python_version >= '3.12'"
+    invalid_locks.append(wrong_graph)
+
+    wrong_package = copy.deepcopy(checkout_lock)
+    setuptools_package = next(
+        package for package in wrong_package["package"] if package.get("name") == "setuptools"
+    )
+    setuptools_package["wheels"][0]["hash"] = "sha256:" + ("0" * 64)
+    invalid_locks.append(wrong_package)
+
+    missing_package = copy.deepcopy(checkout_lock)
+    missing_package["package"] = [
+        package for package in missing_package["package"] if package.get("name") != "setuptools"
+    ]
+    invalid_locks.append(missing_package)
+
+    duplicate_package = copy.deepcopy(checkout_lock)
+    setuptools_package = next(
+        package for package in duplicate_package["package"] if package.get("name") == "setuptools"
+    )
+    duplicate_package["package"].append(copy.deepcopy(setuptools_package))
+    invalid_locks.append(duplicate_package)
+
+    runtime_edge = copy.deepcopy(checkout_lock)
+    checkout_root = next(
+        package
+        for package in runtime_edge["package"]
+        if package.get("name") == "metriplane" and package.get("source") == {"editable": "."}
+    )
+    checkout_root["dependencies"].append({"name": "setuptools"})
+    invalid_locks.append(runtime_edge)
+
+    for invalid_lock in invalid_locks:
+        with pytest.raises(AssertionError):
+            normalize_lock(invalid_lock, expect_release_setuptools=True)
 
 
 def test_frozen_identity_diff_allows_core_evolution_but_rejects_proof_mutation(
@@ -1126,7 +1241,14 @@ def test_dedicated_workflow_has_structure_red_team_and_four_portable_jobs() -> N
     assert text.count('candidate_pyproject["project"]') == 2
     assert text.count('candidate_pyproject["tool"]["setuptools"]') == 2
     assert text.count('metadata.pop("requires-dev")') == 2
-    assert text.count('normalized_lock(candidate_commit) != normalized_lock("HEAD")') == 2
+    assert text.count(f'"{SETUPTOOLS_PACKAGE_SHA256}"') == 2
+    assert text.count("expect_release_setuptools=False") == 2
+    assert text.count('normalized_lock("HEAD", expect_release_setuptools=True)') == 2
+    normalizer_blocks = re.findall(
+        r"(?ms)^ {10}def normalized_lock\(.*?(?=^ {10}candidate_commit =)", text
+    )
+    assert len(normalizer_blocks) == 2
+    assert normalizer_blocks[0] == normalizer_blocks[1]
     assert text.count(f'EVIDENCE_LAKE_FROZEN_SHA256 = "{EVIDENCE_LAKE_FROZEN_SHA256}"') == 2
     assert text.count(f'EVIDENCE_LAKE_REPAIRED_SHA256 = "{EVIDENCE_LAKE_REPAIRED_SHA256}"') == 2
     for identity_path in FROZEN_CANDIDATE_IDENTITY_PATHS:
