@@ -48,7 +48,58 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
     ):
         assert "github.event_name == 'push'" in jobs[name]["if"]
 
-    assert text.count("python -m build --outdir release-artifacts/dist") == 1
+    build = jobs["build"]
+    build_steps = build["steps"]
+    build_step_names = [step["name"] for step in build_steps if "name" in step]
+    assert len(build_step_names) == len(set(build_step_names))
+    named_steps = {step["name"]: step for step in build_steps if "name" in step}
+    setup_uv_steps = [
+        step for step in build_steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")
+    ]
+    assert len(setup_uv_steps) == 1
+    setup_uv = setup_uv_steps[0]
+    assert build["env"]["UV_NO_CONFIG"] == "1"
+    assert setup_uv["uses"] == ("astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9")
+    assert setup_uv["with"] == {"version": "0.12.0", "enable-cache": False}
+    assert named_steps["Sync locked release environment"]["run"].splitlines() == [
+        "uv --no-config lock --check",
+        "uv --no-config sync --frozen --all-groups --no-build-isolation",
+        "uv --no-config pip check",
+    ]
+    toolchain_proof = named_steps["Prove exact release toolchain"]["run"]
+    for fragment in (
+        "uv --version",
+        'project["tool"]["uv"]["required-version"]',
+        'project["dependency-groups"]["dev"]',
+        "metadata.version(name)",
+        'project["build-system"]["requires"]',
+        "governed[normalized] = actual",
+        "governed.get(name.lower())",
+    ):
+        assert fragment in toolchain_proof
+    assert named_steps["Install Chromium for complete release qualification"]["run"] == (
+        "uv --no-config run --frozen python -m playwright install chromium --with-deps"
+    )
+    assert named_steps["Run the complete test suite"]["run"] == (
+        "uv --no-config run --frozen python -m pytest -q"
+    )
+
+    build_run = named_steps["Build, inspect, and fingerprint distributions"]["run"]
+    assert build_run.count("uv --no-config run --frozen python -m build") == 1
+    assert build_run.count("--no-isolation") == 1
+    assert "--installer" not in build_run
+    assert "uv --no-config run --frozen python -m twine check --strict" in build_run
+    assert build_run.count("uv --no-config run --frozen python tools/release_artifacts.py") == 3
+    wheel_smoke_index = next(
+        index
+        for index, step in enumerate(build_steps)
+        if step.get("name") == "Smoke-test the wheel outside the checkout"
+    )
+    qualification_text = "\n".join(
+        str(step.get("run", "")) for step in build_steps[:wheel_smoke_index]
+    )
+    assert "pip install" not in qualification_text
+    assert "python -m pip install . pytest setuptools build twine" not in text
     assert "python -m twine check --strict release-artifacts/dist/*" in text
     assert "Install and smoke-test the source distribution independently" in text
     assert text.count("packages-dir: release-artifacts/dist/") == 2
@@ -188,6 +239,20 @@ def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
     assert 'test -z "$(git status --porcelain)"' in text
     assert "Zenodo's GitHub\nintegration will **not** automatically archive v0.4.0" in text
     assert "The frozen v0.2.0 DOI\nmust not be attached to v0.4.0" in text
+    for command in (
+        "uv --no-config lock --check",
+        "uv --no-config sync --frozen --all-groups --no-build-isolation",
+        "uv --no-config pip check",
+        "uv --no-config run --frozen python -m playwright install chromium --with-deps",
+        "uv --no-config run --frozen python -m pytest -q",
+        "--no-isolation",
+    ):
+        assert command in text
+    source_section = text.split("## Validate the candidate locally", maxsplit=1)[1].split(
+        "Test the wheel outside the checkout", maxsplit=1
+    )[0]
+    assert "pip install" not in source_section
+    assert "python -m pip install -e . pytest setuptools build twine" not in text
 
 
 def test_v030_release_copy_and_draft_materials_are_separated() -> None:

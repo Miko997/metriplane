@@ -91,6 +91,7 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
       RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
+      UV_NO_CONFIG: "1"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -100,32 +101,89 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-          cache: pip
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked release environment
+        run: |
+          uv --no-config lock --check
+          uv --no-config sync --frozen --all-groups --no-build-isolation
+          uv --no-config pip check
+
+      - name: Prove exact release toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv --version
+          UV_VERSION="$(uv --version | awk '{print $2}')" \
+            uv --no-config run --frozen python - <<'PY'
+          from importlib import metadata
+          import os
+          from pathlib import Path
+          import tomllib
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          actual_uv = os.environ["UV_VERSION"]
+          expected_uv = project["tool"]["uv"]["required-version"]
+          if expected_uv != f"=={actual_uv}":
+              raise SystemExit(f"uv: installed {actual_uv}, expected {expected_uv}")
+          print(f"uv=={actual_uv}")
+
+          governed = {}
+          for requirement in project["dependency-groups"]["dev"]:
+              name, separator, expected = requirement.partition("==")
+              if separator != "==" or not name or not expected:
+                  raise SystemExit(f"non-exact governed tool requirement: {requirement}")
+              normalized = name.lower()
+              if normalized in governed:
+                  raise SystemExit(f"duplicate governed tool requirement: {name}")
+              actual = metadata.version(name)
+              if actual != expected:
+                  raise SystemExit(f"{name}: installed {actual}, expected {expected}")
+              governed[normalized] = actual
+              print(f"{name}=={actual}")
+
+          for requirement in project["build-system"]["requires"]:
+              name, separator, expected = requirement.partition("==")
+              if separator != "==" or not name or not expected:
+                  raise SystemExit(f"non-exact build-backend requirement: {requirement}")
+              actual = governed.get(name.lower())
+              if actual != expected:
+                  raise SystemExit(
+                      f"build backend {requirement} is not installed from the governed toolchain"
+                  )
+              print(f"build-backend:{name}=={actual}")
+          PY
+
+      - name: Install Chromium for complete release qualification
+        run: uv --no-config run --frozen python -m playwright install chromium --with-deps
 
       - name: Run the complete test suite
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install . pytest setuptools build twine
-          python -m pip check
-          python -m pytest -q
+        run: uv --no-config run --frozen python -m pytest -q
 
       - name: Build, inspect, and fingerprint distributions
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-artifacts/dist
-          python -m build --outdir release-artifacts/dist
-          python -m twine check --strict release-artifacts/dist/*
-          python tools/release_artifacts.py create-manifest \
+          uv --no-config run --frozen python -m build \
+            --no-isolation \
+            --outdir release-artifacts/dist
+          uv --no-config run --frozen python -m twine check --strict release-artifacts/dist/*
+          uv --no-config run --frozen python tools/release_artifacts.py create-manifest \
             --dist release-artifacts/dist \
             --manifest release-artifacts/SHA256SUMS \
             --version "$RELEASE_VERSION"
-          python tools/release_artifacts.py verify-manifest \
+          uv --no-config run --frozen python tools/release_artifacts.py verify-manifest \
             --dist release-artifacts/dist \
             --manifest release-artifacts/SHA256SUMS \
             --version "$RELEASE_VERSION"
           sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
-          python tools/release_artifacts.py inspect-sdist \
+          uv --no-config run --frozen python tools/release_artifacts.py inspect-sdist \
             --sdist "$sdist_path" \
             --version "$RELEASE_VERSION"
           cat release-artifacts/SHA256SUMS
