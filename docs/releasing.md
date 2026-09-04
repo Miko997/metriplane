@@ -102,24 +102,35 @@ explicit approval.
 
 Run from a clean checkout. Replace `<version>` with the exact candidate version,
 keep the same shell for the following blocks, and use separate temporary
-environments for the source tree, wheel, and source distribution.
+environments for the source tree, wheel, and source distribution. Source
+qualification uses the exact root lock and tool identities in the
+[maintainer testing policy](maintainers/testing-policy.md); it does not resolve a
+parallel release-only toolchain. The exact setuptools build backend is installed
+from that same lock, and the build runs without an isolated resolver.
 
 ```bash
 release_version="<version>"
-python3.12 -m venv /tmp/metriplane-release-source
-source /tmp/metriplane-release-source/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e . pytest setuptools build twine
-python -m pip check
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
+release_source_root="$(mktemp -d)"
+export UV_PROJECT_ENVIRONMENT="$release_source_root/.venv"
+export UV_NO_CONFIG=1
+test "$(uv --version | awk '{print $2}')" = "0.12.0"
+uv --no-config lock --check
+uv --no-config sync --frozen --all-groups --no-build-isolation
+uv --no-config pip check
+uv --no-config run --frozen python -m playwright install chromium --with-deps
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+  uv --no-config run --frozen python -m pytest -q
 release_artifact_root="$(mktemp -d)"
-python -m build --outdir "$release_artifact_root/dist"
-python -m twine check --strict "$release_artifact_root"/dist/*
-python tools/release_artifacts.py create-manifest \
+uv --no-config run --frozen python -m build \
+  --no-isolation \
+  --outdir "$release_artifact_root/dist"
+uv --no-config run --frozen python -m twine check --strict \
+  "$release_artifact_root"/dist/*
+uv --no-config run --frozen python tools/release_artifacts.py create-manifest \
   --dist "$release_artifact_root/dist" \
   --manifest "$release_artifact_root/SHA256SUMS" \
   --version "$release_version"
-python tools/release_artifacts.py inspect-sdist \
+uv --no-config run --frozen python tools/release_artifacts.py inspect-sdist \
   --sdist "$release_artifact_root/dist/metriplane-${release_version}.tar.gz" \
   --version "$release_version"
 ```
@@ -254,8 +265,11 @@ The workflow performs this sequence:
 
 1. verify tag provenance;
 2. run the reusable Release Gates;
-3. rerun the complete test suite;
-4. build the wheel and source distribution once;
+3. sync the canonical lock, prove its exact governed tool versions, install the
+   locked Playwright browser and runtime dependencies, and rerun the complete
+   test suite;
+4. build the wheel and source distribution once with the locked build frontend
+   and setuptools backend, without an isolated resolver;
 5. run strict metadata validation;
 6. test the wheel outside the checkout;
 7. install and test the source distribution in a different environment;

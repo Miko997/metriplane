@@ -54,6 +54,7 @@ TOOLCHAIN = {
     "playwright": "1.62.0",
     "pytest": "8.4.2",
     "ruff": "0.16.2",
+    "setuptools": "82.0.1",
     "twine": "6.2.0",
     "types-PyYAML": "6.0.12.20260724",
 }
@@ -96,6 +97,7 @@ def test_build_backend_is_exact() -> None:
         "requires": ["setuptools==82.0.1"],
         "build-backend": "setuptools.build_meta",
     }
+    assert build_system["requires"][0] in _pyproject()["dependency-groups"]["dev"]
 
 
 def test_dev_toolchain_is_exact() -> None:
