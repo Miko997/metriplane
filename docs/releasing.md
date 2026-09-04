@@ -105,8 +105,9 @@ keep the same shell for the following blocks, and use separate temporary
 environments for the source tree, wheel, and source distribution. Source
 qualification uses the exact root lock and tool identities in the
 [maintainer testing policy](maintainers/testing-policy.md); it does not resolve a
-parallel release-only toolchain. The exact setuptools build backend is installed
-from that same lock, and the build runs without an isolated resolver.
+parallel release-only toolchain. The canonical frozen sync installs the exact
+setuptools build backend, and the retained distribution build runs without an
+isolated resolver.
 
 ```bash
 release_version="<version>"
@@ -115,8 +116,7 @@ export UV_PROJECT_ENVIRONMENT="$release_source_root/.venv"
 export UV_NO_CONFIG=1
 test "$(uv --version | awk '{print $2}')" = "0.12.0"
 uv --no-config lock --check
-uv --no-config sync --frozen --all-groups --no-install-project
-uv --no-config sync --frozen --all-groups --no-build-isolation
+uv --no-config sync --frozen --all-groups
 uv --no-config pip check
 uv --no-config run --frozen python -m playwright install chromium --with-deps
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
