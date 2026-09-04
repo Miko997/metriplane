@@ -334,8 +334,8 @@ python3.12 -m venv /tmp/metriplane-production-check
 ### Stop gate: Zenodo and citation metadata
 
 Before creating the GitHub release, the owner must verify that Zenodo's GitHub
-integration will **not** automatically archive v0.4.0. The frozen v0.2.0 DOI
-must not be attached to v0.4.0, and no v0.4.0 DOI may be claimed before a
+integration will **not** automatically archive v0.4.0.post1. The frozen v0.2.0 DOI
+must not be attached to v0.4.0.post1, and no v0.4.0.post1 DOI may be claimed before a
 separate, intentionally described archive exists. If automatic archiving is
 enabled or its behavior is uncertain, stop before creating the GitHub release.
 
@@ -352,13 +352,21 @@ extra, or changed asset stops release completion.
 After that readback succeeds, merge the separately validated website release
 pull request, deploy the website, and update repository discovery metadata.
 
-## v0.4.0 reduced-scope stop gates
+## v0.4.0.post1 publication-recovery stop gates
 
-v0.4.0 is limited to the reduced Truth Recovery core. Stop the candidate before
-tagging or publication if any of these conditions is false:
+v0.4.0.post1 publishes the existing reduced Truth Recovery core scope under the
+corrected publication identity. It adds no product capability or assurance.
+Stop the candidate before tagging or publication if any condition is false:
 
-- `0.4.0` and `v0.4.0` were confirmed unoccupied before the candidate was
+- `0.4.0.post1` and `v0.4.0.post1` were confirmed unoccupied before the candidate was
   frozen;
+- `v0.4.0` still identifies
+  `6a87936b5471c320efa6bcd7f5d1fe5569ca57b9`, no 0.4.0 registry package or
+  GitHub Release exists, and no artifact from failed workflow `33695500256` is
+  reused;
+- the active `Protect release tags` provider ruleset has exact include
+  `refs/tags/v*`, empty exclusions and bypass actors, and exactly `update` and
+  `deletion` rules, leaving creation permitted;
 - the exact candidate commit and tree descend from dependency-complete protected
   `main` and remain unchanged throughout qualification;
 - MP2-007 and MP2-014 through MP2-017 remain explicitly deferred to v0.4.1
@@ -382,16 +390,19 @@ commit. Local pre-tag builds are disposable checks. The tag workflow's retained
 wheel, source distribution, and SHA-256 manifest are the build-once publication
 set and must not be rebuilt for production promotion.
 
-## v0.4.0 release-candidate checklist
+## v0.4.0.post1 release-candidate checklist
 
-This section is a preparation checklist, not evidence that v0.4.0 is published.
+This section is a preparation checklist, not evidence that v0.4.0.post1 is published.
 
-- [ ] Version `0.4.0` and tag `v0.4.0` were confirmed unoccupied.
-- [ ] Final candidate version is `0.4.0` in the package, CLI, and metadata.
+- [ ] Version `0.4.0.post1` and tag `v0.4.0.post1` were confirmed unoccupied.
+- [ ] Final candidate version is `0.4.0.post1` in the package, CLI, and metadata;
+      the tag invariant remains `tag == "v" + exact package version`.
+- [ ] The failed `v0.4.0` identity and workflow are preserved exactly, and no
+      failed-workflow artifact is reused.
 - [ ] Exact candidate commit and tree are recorded from dependency-complete
       protected `main`.
 - [ ] Primary README path is
-      `python -m pip install "metriplane==0.4.0"` followed by
+      `python -m pip install "metriplane==0.4.0.post1"` followed by
       `metriplane demo --open`.
 - [ ] Pinned Ruff lint and format, strict mypy, tracked Python compilation,
       strict documentation, and generated-inventory currentness checks pass.
@@ -399,7 +410,7 @@ This section is a preparation checklist, not evidence that v0.4.0 is published.
       pass on the exact candidate.
 - [ ] Linux Release Gates pass on Python 3.12 and 3.13.
 - [ ] The bundled camera-free demo passes on macOS with Python 3.12 and 3.13.
-- [ ] Any WSL2 or native-Windows wording is backed by a fresh v0.4.0 candidate
+- [ ] Any WSL2 or native-Windows wording is backed by a fresh v0.4.0.post1 candidate
       record; historical v0.3.0 observations are not relabeled.
 - [ ] Wheel and source distribution pass independent clean installations.
 - [ ] The canonical bundled example, complete documented
@@ -408,21 +419,21 @@ This section is a preparation checklist, not evidence that v0.4.0 is published.
 - [ ] The exact artifact SHA-256 manifest is recorded from the workflow run.
 - [ ] Frozen v0.2.0 evidence and research-integrity checks pass.
 - [ ] Frozen source-specific v0.3.0 fixture/proof identities remain unchanged;
-      v0.4.0 compatibility evaluation uses explicit disposable projections.
+      v0.4.0.post1 compatibility evaluation uses explicit disposable projections.
 - [ ] The release notes identify the reduced Truth Recovery scope, all deferred
       Assurance Hardening work, and every actual limitation without expanding
       support claims.
 - [ ] Final release-candidate pull request has explicit owner approval.
 - [ ] Zenodo automatic archiving is confirmed disabled before GitHub release.
 
-The prepared v0.4.0 migration note, draft release notes, and draft launch
+The prepared v0.4.0.post1 migration note, draft release notes, and draft launch
 materials live under [`docs/releases/`](releases/). Fill their explicit
 placeholders only from the actual approved release, retained build-once
 artifacts, successful tag and production runs, and final registry readback.
 
 The v0.3.0 release files and the recorded v0.3.0 human-comprehension,
 WSL2, and native-Windows facts remain historical evidence. Do not update them to
-describe v0.4.0.
+describe v0.4.0.post1.
 
 ### Post-publication documentation reconciliation
 
@@ -433,7 +444,7 @@ created. Build the final GitHub release body directly from that verified live
 evidence.
 
 After publication succeeds, use a separate documentation-only pull request on
-protected `main` to fill the v0.4.0 release-note and launch-material fields,
+protected `main` to fill the v0.4.0.post1 release-note and launch-material fields,
 remove their draft notices, and record the completed checklist. This follow-up
 does not modify the tag, rebuild artifacts, or invalidate the already published
 candidate. Run only the documentation, generated-inventory currentness, and

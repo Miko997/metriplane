@@ -92,7 +92,9 @@ _PROHIBITED_SESSION_ANNOTATIONS = {
 _COMMIT_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _CONTENT_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CONTAINER_DIGEST = re.compile(r"^(?:[^@\s]+@)?sha256:[0-9a-f]{64}$")
-_METRIPLANE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$")
+_METRIPLANE_VERSION = re.compile(
+    r"^[0-9]+\.[0-9]+\.[0-9]+(?:\.post[1-9][0-9]*|[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
+)
 
 
 def validate_safe_relative_path(value: str) -> str:
@@ -1366,7 +1368,7 @@ class EvaluationDeclaration(ContractModel):
     @classmethod
     def _exact_version(cls, value: str) -> str:
         if _METRIPLANE_VERSION.fullmatch(value) is None:
-            raise ValueError("metriplane_version must be an exact semantic version")
+            raise ValueError("metriplane_version must be an exact supported package version")
         return value
 
 

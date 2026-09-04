@@ -237,8 +237,10 @@ def test_release_runbook_is_reusable_and_keeps_owner_stop_gates() -> None:
     assert "publish metriplane <version> to production" in text
     assert "Do not merge the final candidate" in text
     assert 'test -z "$(git status --porcelain)"' in text
-    assert "Zenodo's GitHub\nintegration will **not** automatically archive v0.4.0" in text
-    assert "The frozen v0.2.0 DOI\nmust not be attached to v0.4.0" in text
+    assert ("Zenodo's GitHub\nintegration will **not** automatically archive v0.4.0.post1") in text
+    assert "The frozen v0.2.0 DOI\nmust not be attached to v0.4.0.post1" in text
+    assert text.count("6a87936b5471c320efa6bcd7f5d1fe5569ca57b9") == 1
+    assert text.count("failed workflow `33695500256`") == 1
     for command in (
         "uv --no-config lock --check",
         "uv --no-config sync --frozen --all-groups --no-build-isolation",
@@ -303,9 +305,9 @@ def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> No
     assert index.index("v0.4.0-release-notes.md") < index.index("v0.3.0-release-notes.md")
     assert index.index("v0.4.0-launch-materials.md") < index.index("v0.3.0-launch-materials.md")
 
-    assert "# v0.4.0 migration and behavior changes" in migration
+    assert "# v0.4.0.post1 migration and behavior changes" in migration
     assert "DRAFT — UNPUBLISHED" not in migration
-    assert 'python -m pip install "metriplane==0.4.0"' in migration
+    assert 'python -m pip install "metriplane==0.4.0.post1"' in migration
     migration_headings = (
         "## Primary user path",
         "## External fixture version boundary",
@@ -315,9 +317,11 @@ def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> No
     )
     assert all(heading in migration for heading in migration_headings)
 
-    assert "# Metriplane v0.4.0 release notes" in notes
+    assert "# Metriplane v0.4.0.post1 release notes" in notes
     assert "**DRAFT — UNPUBLISHED**" in notes
-    assert "v0.4.0 DOI: none" in notes
+    assert "v0.4.0.post1 DOI: none" in notes
+    assert "No\n0.4.0 package or GitHub Release was published" in notes
+    assert "Post1 adds no product capability or assurance claim" in notes
     for placeholder in (
         "<fill-after-production-verification>",
         "<fill-from-approved-final-main>",
@@ -334,11 +338,11 @@ def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> No
     )
     assert all(heading in notes for heading in notes_headings)
 
-    assert "# v0.4.0 launch materials" in launch
+    assert "# v0.4.0.post1 launch materials" in launch
     assert "**DRAFT — UNPUBLISHED**" in launch
-    assert "metriplane-0.4.0-py3-none-any.whl" in launch
-    assert "metriplane-0.4.0.tar.gz" in launch
-    assert "v0.4.0 DOI: none" in launch
+    assert "metriplane-0.4.0.post1-py3-none-any.whl" in launch
+    assert "metriplane-0.4.0.post1.tar.gz" in launch
+    assert "v0.4.0.post1 DOI: none" in launch
     assert "## Zenodo stop gate" in launch
     checklist = [line for line in launch.splitlines() if line.startswith("- [")]
     assert checklist
@@ -355,9 +359,9 @@ def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
     environments = SUPPORTED_ENVIRONMENTS.read_text(encoding="utf-8")
     validation = WSL2_VALIDATION.read_text(encoding="utf-8")
 
-    assert "No fresh exact-v0.4.0 candidate run is recorded" in environments
-    assert "No v0.4.0 WSL2 support claim is made" in environments
-    assert "No v0.4.0 native-Windows support claim is made" in environments
+    assert "No fresh exact-v0.4.0.post1 candidate run is recorded" in environments
+    assert "No v0.4.0.post1 WSL2 support claim is made" in environments
+    assert "No v0.4.0.post1 native-Windows support claim is made" in environments
     assert "926 passed" not in environments
     assert "925 passed" not in environments
 
@@ -411,11 +415,11 @@ def test_citation_paths_do_not_mix_release_and_research_versions() -> None:
     assert "10.5281/zenodo.20736619" in guide
     assert "10.2139/ssrn.7166858" in guide
     assert "v0.1.3" in guide
-    assert "Exact v0.4.0 software release" in guide
-    assert "Metriplane v0.4.0 is the reduced Truth Recovery core release and has no DOI." in guide
-    assert "Parkkinen, Miko. *Metriplane v0.4.0* [Computer software]." in guide
-    assert "releases/tag/v0.4.0" in guide
-    assert "No v0.4.0 DOI exists. Do not use the v0.2.0 DOI for v0.4.0." in guide
+    assert "Exact v0.4.0.post1 software release" in guide
+    assert "Metriplane v0.4.0.post1 is the corrected publication identity" in guide
+    assert "Parkkinen, Miko. *Metriplane v0.4.0.post1* [Computer software]." in guide
+    assert "releases/tag/v0.4.0.post1" in guide
+    assert "No v0.4.0.post1 DOI exists. Do not use the v0.2.0 DOI for v0.4.0.post1." in guide
     assert "Prior v0.3.0 software release" in guide
     assert "prior usability and adoption software release" in guide
     assert "releases/tag/v0.3.0" in guide
@@ -426,13 +430,15 @@ def test_citation_paths_do_not_mix_release_and_research_versions() -> None:
 def test_v040_release_candidate_sets_the_package_version() -> None:
     import metriplane
 
-    assert metriplane.__version__ == "0.4.0"
+    assert metriplane.__version__ == "0.4.0.post1"
 
 
 def test_changelog_is_dated_and_complete() -> None:
     text = CHANGELOG.read_text(encoding="utf-8")
 
-    assert "## [0.4.0] — 2026-09-02 — Reduced Truth Recovery core" in text
+    assert "## [0.4.0.post1] — 2026-09-04 — Reduced Truth Recovery publication recovery" in text
+    assert "## [0.4.0] — 2026-09-02 — Failed publication attempt" in text
+    assert "no 0.4.0 package or GitHub\n  Release was published" in text
     assert "## [0.3.0] — 2026-08-09 — Usability and adoption" in text
     assert "## [Unreleased]" in text
     assert "owner-only manual dispatch" in text
@@ -459,18 +465,18 @@ def test_release_copy_preserves_research_version_boundaries() -> None:
 
     for path in paths:
         text = path.read_text(encoding="utf-8")
-        assert "v0.4.0" in text
+        assert "v0.4.0.post1" in text
         assert "v0.3.0" in text
         assert "v0.2.0" in text
         assert "v0.1.3" in text
 
     artifacts = paths[0].read_text(encoding="utf-8")
     research = paths[-1].read_text(encoding="utf-8")
-    assert "Reduced Truth Recovery core software release: `v0.4.0`" in artifacts
-    assert "No DOI is claimed for v0.4.0" in artifacts
+    assert "Reduced Truth Recovery core software release: `v0.4.0.post1`" in artifacts
+    assert "No DOI is claimed for v0.4.0.post1" in artifacts
     assert "Usability and adoption software release: `v0.3.0`" in artifacts
     assert "No DOI is claimed for v0.3.0" in artifacts
-    assert "No v0.4.0 DOI exists" in research
+    assert "No v0.4.0.post1 DOI exists" in research
     assert "No v0.3.0 DOI exists" in research
     assert "v0.3.0 output produced the SoftwareX or TIM\nmeasurements" in research
 

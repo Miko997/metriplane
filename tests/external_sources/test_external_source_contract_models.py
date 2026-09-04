@@ -389,7 +389,7 @@ def test_contract_and_profile_versions_are_independent() -> None:
     assert manifest.schema_version == CONTRACT_SCHEMA_VERSION
     assert manifest.contract_profile == CONTRACT_PROFILE
     assert manifest.normalization.frame_state_model_version == "1.0"
-    assert manifest.evaluation.metriplane_version == "0.4.0"
+    assert manifest.evaluation.metriplane_version == "0.4.0.post1"
     assert (
         len(
             {
@@ -401,6 +401,12 @@ def test_contract_and_profile_versions_are_independent() -> None:
         )
         == 4
     )
+
+    for invalid_version in ("0.4.0.post", "0.4.0.post0", "0.4.0.post01", "0.4.0.post1.extra"):
+        payload = _read_json(VALID_BUNDLE / "source-manifest.json")
+        payload["evaluation"]["metriplane_version"] = invalid_version
+        with pytest.raises(ValueError, match="exact supported package version"):
+            ExternalSourceManifestV1.model_validate(payload)
 
 
 def test_reference_only_source_can_use_immutable_identifier() -> None:

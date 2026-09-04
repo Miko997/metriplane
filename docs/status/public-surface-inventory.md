@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `a7c772469530b9976906181e3434eac06293e7b708a9a1328c24854c137b63cd`
+- Materialization SHA-256: `21dd756a568657252f44cb0b5255be755d5cadd477ccd4c1fcc17874e1066417`
 - Owned rows: `10091`
-- Owned rows SHA-256: `b873e088633ddbd136238729d691f5829ccd94fa7c4f3da204a2b73fc176e832`
+- Owned rows SHA-256: `534ce5e5c87532c42b50292afba935d1ca04da6f79d4bb2a137c425689eba20e`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
@@ -18,11 +18,11 @@
 | `current_claims` | `current_claim` | 312 | `f80f3c98e3c0ab50c5a5a14feb82f359bb54870198e6f16f90f4786c8eda20ae` |
 | `examples` | `maintained_example` | 172 | `3fb4bcd7b25bee665e567d1d787bec3bf165e917d848fa09d797ba55315b9df6` |
 | `jobs` | `workflow_job_declaration` | 55 | `248a8a353c0227cdcc97cb87c781a92a6ff8337331ba9ae454b040778798ebf0` |
-| `manifest_keys` | `artifact_manifest_key` | 3580 | `6c9504ae6b7d45877b10f7623f0be4dac093bc2dc08a31c05e9fc5ffc9bd89a6` |
-| `model_fields` | `python_model_field` | 1389 | `458c0afe28b7fb575b04a49c88e0239e66fd3fbd5fa39d2489eb076a65c91e31` |
-| `models` | `python_model` | 229 | `a7d4e45a1515b2d7d5c4389ae1cc6cc71cc2009aed788356e9d49e396fbea82e` |
+| `manifest_keys` | `artifact_manifest_key` | 3580 | `05555a78e2bf0f636b333701c069bdb201309a387c12688fdba04fd9b65c4a24` |
+| `model_fields` | `python_model_field` | 1389 | `a9582138e25ce223ec611507fb7432e56dc3086d9b92478fdb69ce75b88fa4b8` |
+| `models` | `python_model` | 229 | `128f86ee23494a97beec5bfe0ce86aa0ad5c2d9a324dc80324b1412252485001` |
 | `proofs` | `maintained_proof` | 322 | `cd6dcae29622d9e73dea66a214b0d52f3498bee529af968da4d8af69981fc4de` |
-| `public_api` | `python_public_api` | 2293 | `b002addb9c530dc15bde4b86b4e08c30142b5011553b3b1ccf5775cf65bb382c` |
+| `public_api` | `python_public_api` | 2293 | `a366b424e82c07b6206690e6faea82c50731013b887b718034a1795722c8a7d1` |
 | `resources` | `repository_resource` | 1556 | `72d8344c77be0e593360c3dae5fb08397583c11ef8dc486d1f3ebd5b41a7304b` |
 | `workflows` | `workflow_declaration` | 16 | `e0bccefee3330b5380dbbcd856f9a2d63443a8b7bdee7977b9c89f900092ca4f` |
 
