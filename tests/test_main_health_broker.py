@@ -5105,6 +5105,7 @@ class FakePublishLeaseApi(broker.GitHubApi):
         self.ambiguous_check_create = False
         self.ambiguous_ref_delete = False
         self.reconciliation_failed = False
+        self.jobs_mutator: Callable[[list[dict[str, Any]]], None] | None = None
         self.refs: dict[str, str] = {}
         self.check: dict[str, Any] | None = None
         self.runs = [self._run(8001, 1)]
@@ -5254,7 +5255,10 @@ class FakePublishLeaseApi(broker.GitHubApi):
             status="completed" if self.reconciliation_failed else reconcile_status,
             steps=reconcile_steps,
         )
-        return [validate, artifact, publish, verify, reconcile]
+        jobs = [validate, artifact, publish, verify, reconcile]
+        if self.jobs_mutator is not None:
+            self.jobs_mutator(jobs)
+        return jobs
 
     def provider_now(self, token: str) -> datetime:
         assert token in {"settings-token", "token"}
@@ -5424,6 +5428,429 @@ def _publish_controller(
     )
 
 
+def _publish_test_job(jobs: list[dict[str, Any]], name: str) -> dict[str, Any]:
+    matches = [job for job in jobs if job.get("name") == name]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _publish_test_step(job: dict[str, Any], name: str) -> dict[str, Any]:
+    matches = [step for step in job["steps"] if step.get("name") == name]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _assert_no_publish_lease_mutation(api: FakePublishLeaseApi, spool: broker.DurableSpool) -> None:
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is None
+    assert all(method == "GET" for method, _path in api.calls)
+
+
+def test_shared_publish_step_parser_remains_strict_for_pending() -> None:
+    job = {
+        "name": "Completed production job",
+        "steps": [
+            _publish_step("Expected completed step", 1, "completed", conclusion="success"),
+            _publish_step("Unrelated pending tail", 2, "pending"),
+        ],
+    }
+
+    with pytest.raises(broker.BrokerError, match="step status is invalid"):
+        broker._named_publish_step(job, "Expected completed step")
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        broker.PUBLISH_VALIDATE_JOB,
+        broker.PUBLISH_ARTIFACT_JOB,
+        broker.PUBLISH_VERIFY_JOB,
+        broker.PUBLISH_RECONCILE_JOB,
+    ],
+)
+def test_publish_lease_rejects_pending_step_outside_publication_job_before_provider_write(
+    tmp_path: Path, job_name: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def append_pending_step(jobs: list[dict[str, Any]]) -> None:
+        job = _publish_test_job(jobs, job_name)
+        job["steps"].append(_publish_step("Unrelated pending prerequisite tail", 99, "pending"))
+
+    api.jobs_mutator = append_pending_step
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="step status is invalid"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+def test_publish_lease_rejects_pending_step_before_exact_wait_boundary(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def append_pending_step(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        publish["steps"].append(_publish_step("Unexpected pending prefix", 1, "pending"))
+
+    api.jobs_mutator = append_pending_step
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="before publish lease is incomplete"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize(
+    "future_statuses",
+    [
+        pytest.param(("queued", "queued", "queued"), id="all-queued"),
+        pytest.param(("pending", "pending", "pending"), id="exact-live-pending"),
+        pytest.param(("pending", "queued", "pending"), id="mixed-unstarted"),
+    ],
+)
+def test_publish_lease_accepts_exact_unstarted_future_step_states(
+    tmp_path: Path, future_statuses: tuple[str, str, str]
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    future_names = (
+        broker.PUBLISH_FENCED_BLOCKER_STEP,
+        broker.PUBLISH_REASSERT_STEP,
+        broker.PUBLISH_UPLOAD_STEP,
+    )
+
+    def expose_provider_states(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        for name, status in zip(future_names, future_statuses, strict=True):
+            _publish_test_step(publish, name)["status"] = status
+        if future_statuses == ("pending", "pending", "pending"):
+            publish["steps"].extend(
+                [
+                    _publish_step(
+                        "Rehash the exact artifact set immediately before publish",
+                        10,
+                        "pending",
+                    ),
+                    _publish_step("Post Install uv", 20, "pending"),
+                    _publish_step("Post Run actions/setup-python", 21, "pending"),
+                    _publish_step("Post Run actions/checkout", 22, "pending"),
+                    _publish_step("Complete job", 23, "pending"),
+                ]
+            )
+
+    api.jobs_mutator = expose_provider_states
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    assert _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active"
+    assert api.refs == {active.lease_ref: HEAD_SHA}
+    assert api.check is not None and api.check["status"] == "in_progress"
+
+
+def test_publish_lease_rejects_started_raw_step_after_wait_before_provider_write(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def start_unnamed_future_step(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        publish["steps"].append(
+            _publish_step(
+                "Rehash the exact artifact set immediately before publish",
+                10,
+                "in_progress",
+            )
+        )
+
+    api.jobs_mutator = start_unnamed_future_step
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="started before publish lease"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize("timestamp_field", ["started_at", "completed_at"])
+def test_publish_lease_rejects_timestamped_future_step_before_provider_write(
+    tmp_path: Path, timestamp_field: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def timestamp_future_step(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        step = _publish_test_step(publish, broker.PUBLISH_FENCED_BLOCKER_STEP)
+        step["status"] = "pending"
+        step[timestamp_field] = "2026-08-26T12:00:01Z"
+
+    api.jobs_mutator = timestamp_future_step
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="started before publish lease"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize(
+    ("step_name", "status", "conclusion", "message"),
+    [
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "in_progress",
+            None,
+            "started before publish lease",
+            id="fenced-blocker-started",
+        ),
+        pytest.param(
+            broker.PUBLISH_REASSERT_STEP,
+            "in_progress",
+            None,
+            "started before publish lease",
+            id="lease-reassert-started",
+        ),
+        pytest.param(
+            broker.PUBLISH_UPLOAD_STEP,
+            "in_progress",
+            None,
+            "started before publish lease",
+            id="upload-started",
+        ),
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "completed",
+            "success",
+            "started before publish lease",
+            id="future-step-completed",
+        ),
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "pending",
+            "success",
+            "started before publish lease",
+            id="future-step-string-conclusion",
+        ),
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "pending",
+            1,
+            "started before publish lease",
+            id="future-step-nonstring-conclusion",
+        ),
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "waiting",
+            None,
+            "started before publish lease",
+            id="waiting-is-not-unstarted",
+        ),
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "requested",
+            None,
+            "started before publish lease",
+            id="requested-is-not-unstarted",
+        ),
+        pytest.param(
+            broker.PUBLISH_FENCED_BLOCKER_STEP,
+            "unknown-provider-state",
+            None,
+            "started before publish lease",
+            id="unknown-is-not-unstarted",
+        ),
+    ],
+)
+def test_publish_lease_rejects_started_or_inexact_future_step_before_provider_write(
+    tmp_path: Path,
+    step_name: str,
+    status: str,
+    conclusion: object | None,
+    message: str,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def expose_invalid_state(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        step = _publish_test_step(publish, step_name)
+        step["status"] = status
+        step["conclusion"] = conclusion
+
+    api.jobs_mutator = expose_invalid_state
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match=message):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_publish_lease_rejects_missing_or_duplicate_critical_step_before_provider_write(
+    tmp_path: Path, mutation: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def mutate_inventory(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        step = _publish_test_step(publish, broker.PUBLISH_REASSERT_STEP)
+        if mutation == "missing":
+            publish["steps"].remove(step)
+        else:
+            duplicate = dict(step)
+            duplicate["number"] = 99
+            publish["steps"].append(duplicate)
+
+    api.jobs_mutator = mutate_inventory
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="step identity is not unique"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        pytest.param("non-list", "steps are malformed", id="non-list"),
+        pytest.param("non-object", "steps are malformed", id="non-object"),
+        pytest.param("duplicate-number", "duplicate numbers", id="duplicate-number"),
+        pytest.param("zero-number", "step number must be a positive integer", id="zero-number"),
+    ],
+)
+def test_publish_lease_rejects_malformed_boundary_inventory_before_provider_write(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def mutate_inventory(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        if mutation == "non-list":
+            publish["steps"] = "not-a-list"
+        elif mutation == "non-object":
+            publish["steps"].append("not-an-object")
+        elif mutation == "duplicate-number":
+            publish["steps"].append(_publish_step("Duplicate number", 6, "queued"))
+        else:
+            publish["steps"].append(_publish_step("Zero number", 0, "queued"))
+
+    api.jobs_mutator = mutate_inventory
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match=message):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+def test_publish_lease_rejects_critical_step_before_wait_before_provider_write(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def reorder_critical_step(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        upload = _publish_test_step(publish, broker.PUBLISH_UPLOAD_STEP)
+        upload["number"] = 4
+        upload["status"] = "completed"
+        upload["conclusion"] = "success"
+
+    api.jobs_mutator = reorder_critical_step
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    with pytest.raises(broker.BrokerError, match="do not follow the publish-lease wait"):
+        _publish_controller(api, spool).reconcile(provider_now=NOW, settings_token="settings-token")
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [
+        pytest.param("queued", None, id="queued"),
+        pytest.param("pending", None, id="pending"),
+        pytest.param("in_progress", "failure", id="in-progress-with-conclusion"),
+        pytest.param("completed", "success", id="completed-success"),
+        pytest.param("completed", "failure", id="completed-failure"),
+    ],
+)
+def test_publish_lease_requires_the_exact_executing_wait_boundary(
+    tmp_path: Path, status: str, conclusion: str | None
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def move_wait_boundary(jobs: list[dict[str, Any]]) -> None:
+        publish = _publish_test_job(jobs, broker.PUBLISH_JOB)
+        wait = _publish_test_step(publish, broker.PUBLISH_WAIT_STEP)
+        wait["status"] = status
+        wait["conclusion"] = conclusion
+
+    api.jobs_mutator = move_wait_boundary
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    if status == "pending" or (status == "in_progress" and conclusion is not None):
+        message = "step status is invalid" if status == "pending" else "conclusion is inconsistent"
+        with pytest.raises(broker.BrokerError, match=message):
+            _publish_controller(api, spool).reconcile(
+                provider_now=NOW, settings_token="settings-token"
+            )
+    else:
+        assert not _publish_controller(api, spool).reconcile(
+            provider_now=NOW, settings_token="settings-token"
+        )
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+def test_publish_lease_rejects_wrong_production_job_identity_before_provider_write(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def rename_publish_job(jobs: list[dict[str, Any]]) -> None:
+        _publish_test_job(jobs, broker.PUBLISH_JOB)["name"] = "Publish something else"
+
+    api.jobs_mutator = rename_publish_job
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    assert not _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    _assert_no_publish_lease_mutation(api, spool)
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [broker.PUBLISH_VALIDATE_JOB, broker.PUBLISH_ARTIFACT_JOB],
+)
+def test_publish_lease_rejects_unsuccessful_prerequisite_before_provider_write(
+    tmp_path: Path, job_name: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+
+    def fail_prerequisite(jobs: list[dict[str, Any]]) -> None:
+        prerequisite = _publish_test_job(jobs, job_name)
+        prerequisite["conclusion"] = "failure"
+
+    api.jobs_mutator = fail_prerequisite
+    spool = broker.DurableSpool(tmp_path / "spool")
+
+    assert not _publish_controller(api, spool).reconcile(
+        provider_now=NOW, settings_token="settings-token"
+    )
+    _assert_no_publish_lease_mutation(api, spool)
+
+
 def test_publish_lease_identity_is_the_exact_read_only_consumer_contract() -> None:
     record = broker.PublishLeaseRecord.create(
         release_sha=HEAD_SHA,
@@ -5472,6 +5899,43 @@ def test_publish_lease_activation_restart_and_successful_reconciliation(tmp_path
         if call == ("PATCH", f"repos/{REPOSITORY}/check-runs/7001")
     )
     assert delete_index < success_index
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [broker.PUBLISH_VERIFY_JOB, broker.PUBLISH_RECONCILE_JOB],
+)
+def test_publish_lease_quarantines_pending_step_outside_publish_job_during_reconciliation(
+    tmp_path: Path, job_name: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    controller = _publish_controller(api, spool)
+
+    assert controller.reconcile(provider_now=NOW, settings_token="settings-token")
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active"
+    lease_ref = active.lease_ref
+    api.phase = "reconciling"
+
+    def append_pending_step(jobs: list[dict[str, Any]]) -> None:
+        job = _publish_test_job(jobs, job_name)
+        job["steps"].append(_publish_step("Unrelated pending reconciliation tail", 99, "pending"))
+
+    api.jobs_mutator = append_pending_step
+    calls_before = len(api.calls)
+
+    assert controller.reconcile(
+        provider_now=NOW + timedelta(minutes=10), settings_token="settings-token"
+    )
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {lease_ref: HEAD_SHA}
+    assert api.check is not None
+    assert api.check["status"] == "completed"
+    assert api.check["conclusion"] == "failure"
+    assert all(method != "DELETE" for method, _path in api.calls[calls_before:])
 
 
 def test_publish_lease_rejects_nonprovider_workflow_path_before_provider_write(
