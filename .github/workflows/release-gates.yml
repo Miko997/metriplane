@@ -28,7 +28,7 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_review') && github.event.pull_request.head.sha || github.sha }}
@@ -97,7 +97,7 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -130,7 +130,7 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -163,7 +163,7 @@ jobs:
         python-version: ["3.12", "3.13"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -556,7 +556,7 @@ jobs:
       METRIPLANE_V020_TAG: "v0.2.0"
       METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -662,7 +662,7 @@ jobs:
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
