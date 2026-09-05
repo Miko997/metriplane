@@ -328,8 +328,11 @@ the provider workflow ID, path, name, repository, `main` head, run ID and
 attempt, and both the dispatching and triggering actors to the canonical owner.
 It requires successful production-request, dispatch-time blocker-validation,
 and artifact-verification jobs. The environment-approved publication job must
-be in progress with its exact lease-wait step in progress and every later
-blocker, reassertion, and upload step still queued.
+be in progress with its exact lease-wait step in progress. At that pre-lease
+boundary, every later blocker, reassertion, and upload step must still be
+unstarted: GitHub may represent that exact state as `queued` or `pending`, and
+each step must have a null conclusion. Any started or completed later step, or
+any other status or conclusion, fails closed.
 
 The workflow, `tools/release_artifacts.py`, `tools/check_blockers.py`, and the
 blocker schema at the release commit must be byte-identical Git blobs to the

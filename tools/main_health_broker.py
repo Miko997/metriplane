@@ -75,6 +75,7 @@ PUBLISH_REASSERT_STEP = "Reassert the lease and exact main immediately before pu
 PUBLISH_UPLOAD_STEP = "Publish the verified distributions to PyPI"
 PUBLISH_RECONCILE_GUARD_STEP = "Retain the lease after any ambiguous or failed publication"
 PUBLISH_RECONCILE_OBSERVE_STEP = "Observe exact main and the broker's terminal reconciliation"
+PUBLISH_UNSTARTED_STEP_STATUSES = {"pending", "queued"}
 PROVIDER_ACTION_STATUSES = {"completed", "in_progress", "pending", "queued", "requested", "waiting"}
 PROVIDER_PENDING_ACTION_STATUSES = PROVIDER_ACTION_STATUSES - {"completed"}
 CORE_CHECKS = (
@@ -3221,7 +3222,7 @@ def _named_publish_step(job: dict[str, Any], name: str) -> dict[str, Any]:
             raise BrokerError("production workflow step inventory contains duplicate numbers")
         numbers.add(number)
         status = step.get("status")
-        if status not in {"completed", "in_progress", "queued"}:
+        if status not in {"completed", "in_progress", *PUBLISH_UNSTARTED_STEP_STATUSES}:
             raise BrokerError("production workflow step status is invalid")
         if (status == "completed") != isinstance(step.get("conclusion"), str):
             raise BrokerError("production workflow step conclusion is inconsistent")
@@ -3233,6 +3234,12 @@ def _named_publish_step(job: dict[str, Any], name: str) -> dict[str, Any]:
 
 def _completed_success(value: dict[str, Any]) -> bool:
     return value.get("status") == "completed" and value.get("conclusion") == "success"
+
+
+def _unstarted_publish_step(value: dict[str, Any]) -> bool:
+    return (
+        value.get("status") in PUBLISH_UNSTARTED_STEP_STATUSES and value.get("conclusion") is None
+    )
 
 
 def _publish_phase(jobs: list[dict[str, Any]]) -> tuple[str, datetime | None]:
@@ -3260,11 +3267,11 @@ def _publish_phase(jobs: list[dict[str, Any]]) -> tuple[str, datetime | None]:
         return "failed", None
     started_raw = wait_step.get("started_at")
     wait_started = _timestamp(started_raw) if isinstance(started_raw, str) else None
-    if (
-        publish_job.get("status") == "in_progress"
-        and wait_step.get("status") == "in_progress"
-        and all(step.get("status") == "queued" for step in ordered_steps[1:])
-    ):
+    if publish_job.get("status") == "in_progress" and wait_step.get("status") == "in_progress":
+        if publish_job.get("conclusion") is not None or wait_step.get("conclusion") is not None:
+            raise BrokerError("production publish-lease boundary conclusion is inconsistent")
+        if not all(_unstarted_publish_step(step) for step in ordered_steps[1:]):
+            raise BrokerError("production protected step started before publish lease")
         if wait_started is None:
             raise BrokerError("production publish-lease wait step has no start time")
         return "awaiting", wait_started
@@ -3274,6 +3281,8 @@ def _publish_phase(jobs: list[dict[str, Any]]) -> tuple[str, datetime | None]:
             return "failed", wait_started
         return "not_ready", wait_started
 
+    if any(step.get("status") == "pending" for step in ordered_steps):
+        raise BrokerError("production workflow step remained pending after publish-lease wait")
     ranks = {"queued": 0, "in_progress": 1, "completed": 2}
     ordered_ranks = [ranks[str(step["status"])] for step in ordered_steps]
     if ordered_ranks != sorted(ordered_ranks, reverse=True):
