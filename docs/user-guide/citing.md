@@ -9,17 +9,19 @@ Choose the citation that matches what you actually used. The current product,
 the frozen research artifact, and the manuscript are separate objects with
 separate version boundaries.
 
-## Exact v0.4.0 software release
+## Exact v0.4.0.post1 software release
 
-Metriplane v0.4.0 is the reduced Truth Recovery core release and has no DOI.
-Cite the exact `v0.4.0` GitHub software release;
+Metriplane v0.4.0.post1 is the corrected publication identity for the reduced
+Truth Recovery core release and has no DOI. Cite the exact `v0.4.0.post1` GitHub software release;
 if a citation style requires a release date, use the date shown on the release
 record:
 
-> Parkkinen, Miko. *Metriplane v0.4.0* [Computer software].
-> GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.4.0
+> Parkkinen, Miko. *Metriplane v0.4.0.post1* [Computer software].
+> GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.4.0.post1
 
-No v0.4.0 DOI exists. Do not use the v0.2.0 DOI for v0.4.0.
+No v0.4.0.post1 DOI exists. Do not use the v0.2.0 DOI for v0.4.0.post1.
+The immutable `v0.4.0` tag records the failed publication attempt and is not a
+published package or GitHub Release.
 
 ## Prior v0.3.0 software release
 
@@ -44,7 +46,7 @@ exact archived artifact, cite:
 > Observability for Workcell Evidence, Replay, and Regression Testing*
 > [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.20736619
 
-Use the exact `v0.2.0` tag for reproduction. Do not attribute v0.4.0 or v0.3.0
+Use the exact `v0.2.0` tag for reproduction. Do not attribute v0.4.0.post1 or v0.3.0
 behavior, outputs, compatibility, or measurements to this DOI.
 
 ## Manuscript

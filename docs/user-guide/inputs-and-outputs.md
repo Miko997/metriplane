@@ -45,7 +45,7 @@ For the current bounded-workcell incident path:
 
 Positions do **not** automatically derive zone labels in this interface. Your
 upstream estimator or conversion step must preclassify the zone consistently.
-The v0.4.0 workflow does not accept raw video, ROS bags, rosbag2, or MCAP files.
+The v0.4.0.post1 workflow does not accept raw video, ROS bags, rosbag2, or MCAP files.
 
 ## Process-rule input
 

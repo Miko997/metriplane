@@ -15,10 +15,10 @@ Metriplane turns replayed or calibrated workcell state into an incident timeline
 a human-readable report, a checksummed evidence bundle, local verification, and a
 repeatable regression check.
 
-The v0.4.0 release path is:
+The v0.4.0.post1 release path is:
 
 ```bash
-python -m pip install "metriplane==0.4.0"
+python -m pip install "metriplane==0.4.0.post1"
 metriplane demo --open
 ```
 
@@ -31,11 +31,13 @@ a camera, GPU, ROS 2, Docker, or browser-test tooling.
 - `v0.2.0` remains the immutable DOI-archived research artifact for the
   SoftwareX submission.
 - `v0.2.1` is the published packaging predecessor; its release record remains
-  historical and is not a v0.3.0 or v0.4.0 research boundary.
+  historical and is not a v0.3.0 or v0.4.0.post1 research boundary.
 - `v0.3.0` is the usability and adoption software release. It does not establish
   a new research measurement or DOI boundary.
-- `v0.4.0` is the reduced Truth Recovery core release. It has no DOI and does
-  not establish a new research measurement boundary.
+- `v0.4.0.post1` is the corrected publication identity for the reduced Truth
+  Recovery core release. It has no DOI and does not establish a new research
+  measurement boundary. The immutable `v0.4.0` tag records the failed attempt
+  that stopped before registry publication.
 - New and actively maintained product-facing text uses **Metriplane**. Historical
   frozen artifacts are not rewritten solely to change capitalization.
 - Package names, imports, commands, URLs, schema identifiers, and environment
@@ -67,7 +69,7 @@ release artifacts; v0.3.0 is a separate software release.
 The v0.3.0 release incorporates that merged baseline and its own version and
 release-copy changes.
 
-The v0.4.0 release advances the bounded, local, observe-only Truth Recovery
+The v0.4.0.post1 release advances the bounded, local, observe-only Truth Recovery
 core without rewriting the v0.3.0 usability record or the frozen research
 boundaries above.
 
@@ -164,7 +166,7 @@ Completion gate:
 - A contributor can set up tests, choose an issue, and prepare a pull request from the
   documented path.
 
-## Phase 5: one ecosystem wedge (future; outside v0.4.0)
+## Phase 5: one ecosystem wedge (future; outside v0.4.0.post1)
 
 Goal: let teams apply Metriplane to recorded data they already have.
 

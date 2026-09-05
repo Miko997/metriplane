@@ -13,7 +13,34 @@ All notable changes to Metriplane are documented here.
 
 No additional changes are recorded.
 
-## [0.4.0] — 2026-09-02 — Reduced Truth Recovery core
+## [0.4.0.post1] — 2026-09-04 — Reduced Truth Recovery publication recovery
+
+### Publication recovery
+
+- Reproduces release qualification and build tooling from the repository's
+  canonical lock, including the pinned browser/runtime path, instead of
+  independently resolving governed tools.
+- Uses `0.4.0.post1` / `v0.4.0.post1` as the corrected publication identity and
+  accepts that exact PEP 440 post-release version in current external-fixture
+  manifests without weakening package/version equality.
+- Preserves `v0.4.0` at commit
+  `6a87936b5471c320efa6bcd7f5d1fe5569ca57b9` as history of the failed attempt.
+  Its release qualification failed before registry publication because the tag
+  workflow did not reproduce the locked environment; no 0.4.0 package or GitHub
+  Release was published, and no artifact from that run is reused.
+
+### Scope and deferred assurance
+
+- This post-release publishes the existing reduced Truth Recovery core scope.
+  It adds no product capability or assurance claim.
+- MP2-007 and MP2-014 through MP2-017 remain deferred to v0.4.1 Assurance
+  Hardening; they are not completed, waived, or implied by this release.
+
+## [0.4.0] — 2026-09-02 — Failed publication attempt
+
+This immutable tag contains the reduced Truth Recovery candidate described
+below, but its publication qualification failed before registry publication.
+It is not a published package or GitHub Release.
 
 ### Added
 
@@ -67,7 +94,7 @@ No additional changes are recorded.
 
 ### Scope and deferred assurance
 
-- v0.4.0 is the reduced Truth Recovery core release. MP2-007 and MP2-014 through
+- The v0.4.0 candidate carries the reduced Truth Recovery core scope. MP2-007 and MP2-014 through
   MP2-017 remain deferred to v0.4.1 Assurance Hardening; they are not completed,
   waived, or implied by this release.
 - Static inventory and deterministic replay results do not establish production
@@ -79,7 +106,7 @@ No additional changes are recorded.
 
 ### Research scope
 
-- v0.4.0 does not replace or modify the frozen v0.2.0 SoftwareX artifact, its
+- The v0.4.0 candidate does not replace or modify the frozen v0.2.0 SoftwareX artifact, its
   DOI, checksums, or measurements, and it does not change the TIM evaluated
   software boundary at v0.1.3. No v0.4.0 DOI is claimed.
 

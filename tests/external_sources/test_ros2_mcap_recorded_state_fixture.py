@@ -645,7 +645,7 @@ def test_root_package_contract_and_source_neutrality_remain_frozen() -> None:
     project = tomllib.loads((REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert (REPOSITORY_ROOT / "metriplane" / "__init__.py").read_text(
         encoding="utf-8"
-    ).splitlines()[5] == '__version__ = "0.4.0"'
+    ).splitlines()[5] == '__version__ = "0.4.0.post1"'
     assert project["tool"]["setuptools"]["packages"]["find"]["include"] == [
         "metriplane*",
         "integrations*",

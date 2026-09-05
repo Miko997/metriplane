@@ -111,7 +111,7 @@ jobs:
       - name: Sync locked release environment
         run: |
           uv --no-config lock --check
-          uv --no-config sync --frozen --all-groups --no-build-isolation
+          uv --no-config sync --frozen --all-groups
           uv --no-config pip check
 
       - name: Prove exact release toolchain
