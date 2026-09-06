@@ -60,7 +60,7 @@ Metriplane is observe-only. It does not:
 - stop a process or enforce a contract;
 - certify safety, regulatory compliance, or product quality;
 - infer zones from coordinates in this recorded-run path;
-- ingest raw video, rosbag, or MCAP files through the v0.4.0.post1 workflow;
+- ingest raw video, rosbag, or MCAP files through the v0.4.0.post2 workflow;
 - prove that a deterministic result is physically correct.
 
 The technical category is **open-source robotics incident replay and regression

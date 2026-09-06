@@ -630,7 +630,7 @@
           "kind": "baseline",
           "path": "examples/external_sources/minimal",
           "fixture_id": "synthetic-inspection-bench-v1",
-          "fixture_fingerprint": "8bf099a78622dfe9fd6e665d0877c8b76267489e8bc71ac800d5e5cc682a1cc5",
+          "fixture_fingerprint": "73e482c0f672d9030e27615df011f9c8d60faf154830d652019d7127e94a9624",
           "session_sha256": "79e5cb801fce1df9e1c54535f578ab9cd416493703fc4e9ca865aff52f1b056c",
           "expected": {
             "frame_count": 4,

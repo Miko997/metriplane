@@ -7,15 +7,15 @@ SPDX-License-Identifier: MIT
 
 ## Artifact identity
 
-Metriplane v0.4.0.post1 is the corrected publication identity for the reduced
+Metriplane v0.4.0.post2 is the replacement publication identity for the reduced
 Truth Recovery core software release. The immutable v0.4.0 tag records the
 failed attempt that stopped before registry publication.
 Metriplane v0.3.0 remains the prior usability and adoption software release,
 v0.2.0 remains the frozen DOI-archived research artifact, and v0.2.1 remains the
-historical packaging predecessor. The v0.4.0.post1 and v0.3.0 software releases do
+historical packaging predecessor. The v0.4.0.post2 and v0.3.0 software releases do
 not modify the v0.2.0 evidence or the v0.1.3 measurements.
 
-- Reduced Truth Recovery core software release: `v0.4.0.post1` (no DOI)
+- Reduced Truth Recovery core software release: `v0.4.0.post2` (no DOI)
 - Usability and adoption software release: `v0.3.0` (no DOI)
 - Published packaging predecessor: `v0.2.1`
 - Frozen research artifact: `v0.2.0`
@@ -131,7 +131,7 @@ Large JSONL sessions may be archived outside Git. When a session is absent from 
 - Atlas USD/Isaac, external pilots, hardware appliance packaging, production Docker runtime, and network connectors remain future work unless separately evidenced. The v0.2.0 paper package Docker evidence is local replay/demo smoke only.
 - Zone dwell/transitions are applied analytics, not a full manually annotated ground-truth zone-detection benchmark.
 - Large JSONL sessions may be archived outside Git if applicable.
-- The frozen DOI-archived research release is v0.2.0 at [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619), record [`20736619`](https://zenodo.org/records/20736619). The historical DOI-archived baseline is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). No DOI is claimed for v0.4.0.post1. No DOI is claimed for v0.4.0. No DOI is claimed for v0.3.0.
+- The frozen DOI-archived research release is v0.2.0 at [`10.5281/zenodo.20736619`](https://doi.org/10.5281/zenodo.20736619), record [`20736619`](https://zenodo.org/records/20736619). The historical DOI-archived baseline is v0.1.4 at [`10.5281/zenodo.20631037`](https://doi.org/10.5281/zenodo.20631037). No DOI is claimed for v0.4.0.post2. No DOI is claimed for v0.4.0. No DOI is claimed for v0.3.0.
 
 ## Versioning and provenance
 

@@ -10,12 +10,12 @@ Report, a verified evidence bundle, and a passing repeatable regression check.
 It needs Python 3.12 or 3.13, but no camera, GPU, Docker, ROS, or network
 connection after installation.
 
-## Install Metriplane v0.4.0.post1
+## Install Metriplane v0.4.0.post2
 
 In a supported Python environment, install the exact release and run the demo:
 
 ```bash
-python -m pip install "metriplane==0.4.0.post1"
+python -m pip install "metriplane==0.4.0.post2"
 metriplane demo --open
 ```
 

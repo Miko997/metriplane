@@ -53,7 +53,7 @@ integrity-verified evidence bundle, and a repeatable regression check.
 ## Quickstart
 
 ```bash
-python -m pip install "metriplane==0.4.0.post1"
+python -m pip install "metriplane==0.4.0.post2"
 metriplane demo --open
 ```
 
@@ -122,9 +122,12 @@ Use Metriplane to:
 
 ## Published versions
 
-- Current installable software release: `v0.4.0.post1` — corrected publication
+- Current installable software release: `v0.4.0.post2` — replacement publication
   identity for the reduced Truth Recovery core release; no DOI and no new
   research measurement boundary
+- Retired unpublished production candidate: `v0.4.0.post1` — locked
+  qualification and TestPyPI staging passed, but production stopped before
+  lease creation or upload and no post1 bytes reached PyPI
 - Preserved failed publication tag: `v0.4.0` — immutable history of the attempt
   that stopped before any registry package or GitHub Release was published
 - Prior usability and adoption software release: `v0.3.0` (no DOI)
@@ -147,7 +150,7 @@ Metriplane source code is preserved in the Software Heritage Archive.
 - SciCrunch registry: [Metriplane (RRID:SCR_028813)](https://scicrunch.org/resolver/RRID%3ASCR_028813)
 - Python package: https://pypi.org/project/metriplane/
 - ROS 2 Jazzy package index: https://index.ros.org/p/metriplane_ros/#jazzy
-- v0.4.0.post1 reduced Truth Recovery core release: https://github.com/Miko997/metriplane/releases/tag/v0.4.0.post1
+- v0.4.0.post2 reduced Truth Recovery core release: https://github.com/Miko997/metriplane/releases/tag/v0.4.0.post2
 - v0.3.0 usability and adoption release: https://github.com/Miko997/metriplane/releases/tag/v0.3.0
 - Product roadmap: [ROADMAP.md](ROADMAP.md)
 - 3-minute v0.2.0 demo: https://www.youtube.com/watch?v=7U5nbBbGGbw
