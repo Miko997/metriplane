@@ -119,7 +119,7 @@ Keep the exported directory as a working template and make changes in a copy:
    generated bundle or regression.
 
 The supported boundary begins with already-estimated object states. There is no
-v0.4.0.post1 raw-video, rosbag, rosbag2, or MCAP importer, and positions alone do not
+v0.4.0.post2 raw-video, rosbag, rosbag2, or MCAP importer, and positions alone do not
 derive zone labels.
 
 A compatible run may correctly produce zero incidents. In that case, inspect the

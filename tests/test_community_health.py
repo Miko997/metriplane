@@ -130,7 +130,7 @@ def test_support_asks_for_reproducible_non_sensitive_information() -> None:
         "metriplane doctor",
         "metriplane demo",
         "smallest synthetic input",
-        "No fresh v0.4.0.post1 WSL2 or native-Windows validation is claimed",
+        "No fresh v0.4.0.post2 WSL2 or native-Windows validation is claimed",
         "Raw or generic ROS 2",
         "v0.2.0",
         "v0.1.3",

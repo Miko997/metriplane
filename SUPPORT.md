@@ -48,13 +48,13 @@ suite; macOS receives the camera-free suite and installed-wheel demo.
 
 The retained WSL2 Ubuntu 24.04/Python 3.12.3 installed-wheel record and the
 owner-reported native-Windows bundled-demo observation describe v0.3.0 only.
-No fresh v0.4.0.post1 WSL2 or native-Windows validation is claimed. Automatic browser
+No fresh v0.4.0.post2 WSL2 or native-Windows validation is claimed. Automatic browser
 opening remains environment-dependent; omit `--open` or open the printed report
 path manually. A missing camera or GPU does not make the bundled demo
 unavailable.
 
 Raw or generic ROS 2, rosbag, MCAP, Isaac Sim, and generic 3D ingestion are not
-part of the v0.4.0.post1 release promise. v0.4.0.post1 does support its strict,
+part of the v0.4.0.post2 release promise. v0.4.0.post2 does support its strict,
 already-normalized External Source Contract workflow and the repository's
 bounded source-specific fixture cases; those cases do not establish generic
 format or ecosystem compatibility. Robot control, safety logic, and quality

@@ -13,14 +13,14 @@ All notable changes to Metriplane are documented here.
 
 No additional changes are recorded.
 
-## [0.4.0.post1] — 2026-09-04 — Reduced Truth Recovery publication recovery
+## [0.4.0.post2] — 2026-09-06 — Reduced Truth Recovery publication recovery
 
 ### Publication recovery
 
 - Reproduces release qualification and build tooling from the repository's
   canonical lock, including the pinned browser/runtime path, instead of
   independently resolving governed tools.
-- Uses `0.4.0.post1` / `v0.4.0.post1` as the corrected publication identity and
+- Uses `0.4.0.post2` / `v0.4.0.post2` as the replacement publication identity and
   accepts that exact PEP 440 post-release version in current external-fixture
   manifests without weakening package/version equality.
 - Preserves `v0.4.0` at commit
@@ -28,6 +28,12 @@ No additional changes are recorded.
   Its release qualification failed before registry publication because the tag
   workflow did not reproduce the locked environment; no 0.4.0 package or GitHub
   Release was published, and no artifact from that run is reused.
+- Preserves `v0.4.0.post1` at commit
+  `69f3d88c0779ff19962c455637a12701ff043876` as the retired unpublished
+  production candidate. Its locked qualification and TestPyPI staging passed,
+  but production stopped before lease creation or upload when GitHub exposed a
+  narrow future-step status mismatch. The broker repair advanced protected main,
+  so no post1 bytes are reused or published to production.
 
 ### Scope and deferred assurance
 
@@ -35,6 +41,19 @@ No additional changes are recorded.
   It adds no product capability or assurance claim.
 - MP2-007 and MP2-014 through MP2-017 remain deferred to v0.4.1 Assurance
   Hardening; they are not completed, waived, or implied by this release.
+
+## [0.4.0.post1] — 2026-09-05 — Retired unpublished production candidate
+
+- Locked qualification and exact retained-artifact TestPyPI staging passed.
+- Production workflow `33963231781` stopped before publication-lease creation,
+  fenced blocker execution, final artifact rehash, PyPI upload, or production
+  verification because GitHub represented future publication steps as
+  `pending` at the exact lease-wait boundary.
+- The fail-closed broker repair was merged through protected main before any
+  production upload. That required main advancement retired post1 under the
+  release contract. The annotated tag, retained artifacts and hashes, TestPyPI
+  files, and cancelled-run evidence remain immutable; no post1 package or
+  GitHub Release was published to production.
 
 ## [0.4.0] — 2026-09-02 — Failed publication attempt
 

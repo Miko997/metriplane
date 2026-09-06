@@ -346,7 +346,7 @@ def test_root_package_boundary_and_frozen_contract() -> None:
     assert project["tool"]["setuptools"]["dynamic"]["version"] == {"attr": "metriplane.__version__"}
     assert (REPOSITORY_ROOT / "metriplane" / "__init__.py").read_text(
         encoding="utf-8"
-    ).splitlines()[5] == '__version__ = "0.4.0.post1"'
+    ).splitlines()[5] == '__version__ = "0.4.0.post2"'
     dependencies = "\n".join(project["project"]["dependencies"]).lower()
     lock = (REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
     prohibited = (
