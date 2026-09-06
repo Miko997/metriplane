@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -184,7 +184,7 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Record checked-out source
@@ -212,7 +212,7 @@ jobs:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Record checked-out source
@@ -249,7 +249,7 @@ jobs:
         "macos-regressions":{"result":"${{ needs.macos-regressions.result }}","sha":"${{ needs.macos-regressions.outputs.source_sha }}"},
         "linux-python313":{"result":"${{ needs.linux-python313.result }}","sha":"${{ needs.linux-python313.outputs.source_sha }}"}}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate exact aggregate result
