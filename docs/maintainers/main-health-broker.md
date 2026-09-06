@@ -355,11 +355,17 @@ The lease expires two hours after the workflow enters its wait step.
 The durable fence suppresses every later broker-mediated `main` merge. The
 broker accepts normal progression only through fenced blocker validation,
 lease reassertion, upload, production verification, and the in-progress
-reconciliation observer. It repeats workflow, source-authority, current-main,
-and hosted-ruleset proof before release. It records `releasing`, deletes and
-read-back-proves absence of the exact ref, and only then completes the same
-check ID with `success`. Those mutation boundaries make both crash points
-restart-safe.
+reconciliation observer. The shared workflow-step parser remains strict. Only
+after the exact reconciliation job, completed-success quarantine guard, and
+in-progress terminal observer with a start time have been proved may later raw
+generated or cleanup steps be either `queued` or `pending`, with null
+conclusions and no timestamps. Every earlier step must be completed-success;
+any other use of `pending`, any started later step, or an inexact critical-step
+inventory fails closed. The broker repeats workflow, source-authority,
+current-main, and hosted-ruleset proof before release. It records `releasing`,
+deletes and read-back-proves absence of the exact ref, and only then completes
+the same check ID with `success`. Those mutation boundaries make both crash
+points restart-safe.
 
 A failed job, identity mutation, main drift, missing provider object, or expiry
 completes the exact acknowledgment with `failure` but retains any lease ref and
@@ -368,6 +374,46 @@ and terminates the broker cycle. Neither condition is auto-deleted: it is a
 release incident requiring independent exact-byte and provider reconciliation
 during a controlled settings freeze. A reservation that is proved to have made
 no provider mutation may be abandoned automatically.
+
+An already quarantined publication lease is never resumed by the normal
+broker loop. A separately qualified broker binary can expose the explicit
+`recover-publish-quarantine` operator path for one exact incident. Stop the
+normal service, atomically back up its durable spool, and first run the command
+with `--dry-run` and every retained identity supplied explicitly:
+
+~~~bash
+python -m tools.main_health_broker recover-publish-quarantine \
+  --config /etc/metriplane/main-health-broker.json \
+  --dry-run \
+  --run-id <production-run-id> \
+  --run-attempt <attempt> \
+  --release-sha <40hex-release-commit> \
+  --release-tag <annotated-release-tag> \
+  --lease-ref refs/heads/release-leases/pypi-<run-id>-<attempt> \
+  --check-run-id <existing-App-check-id> \
+  --expected-quarantine-reason '<exact retained reason>' \
+  --manifest </absolute/path/to/retained/SHA256SUMS> \
+  --manifest-sha256 <64hex> \
+  --wheel-sha256 <64hex> \
+  --sdist-sha256 <64hex>
+~~~
+
+The dry run performs no provider or durable-state transition. It requires the
+exact quarantined durable fence, sole provider lease ref, same App check and
+reason, annotated tag, protected main and green state, two identical reads of
+all seven rulesets, exact owner-dispatched terminal workflow evidence, no
+active production workflow in any provider-active status, retained-manifest
+and production-PyPI hash equality, and a fresh installed-package smoke and
+evidence proof. Independently inspect that safe proof before replacing
+`--dry-run` with `--execute` for the single authorized invocation.
+
+Execution writes immutable recovery audit records, moves only the exact
+durable incident to `releasing`, deletes and read-back-proves absence of only
+its bound lease ref, updates and reads back the same check ID as canonical
+`released`/`success`, proves the ref remains absent, and only then records
+`released` and clears the fence. It cannot create or upload package bytes. A
+delete ambiguity or rejected same-check update retains the durable fence and
+requires the operator to stop; generic quarantine transitions remain terminal.
 
 ## Red-state repair
 
