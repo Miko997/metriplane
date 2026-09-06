@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import os
 import sqlite3
@@ -16,6 +17,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Self
@@ -5104,6 +5106,7 @@ class FakePublishLeaseApi(broker.GitHubApi):
         self.authority_mutation: str | None = None
         self.ambiguous_check_create = False
         self.ambiguous_ref_delete = False
+        self.reject_check_update = False
         self.reconciliation_failed = False
         self.jobs_mutator: Callable[[list[dict[str, Any]]], None] | None = None
         self.refs: dict[str, str] = {}
@@ -5169,14 +5172,17 @@ class FakePublishLeaseApi(broker.GitHubApi):
                 ("queued", None),
                 ("queued", None),
                 ("queued", None),
+                ("queued", None),
             ),
             "publishing": (
                 ("completed", "success"),
                 ("in_progress", None),
                 ("queued", None),
                 ("queued", None),
+                ("queued", None),
             ),
             "verifying": (
+                ("completed", "success"),
                 ("completed", "success"),
                 ("completed", "success"),
                 ("completed", "success"),
@@ -5187,12 +5193,14 @@ class FakePublishLeaseApi(broker.GitHubApi):
                 ("completed", "success"),
                 ("completed", "success"),
                 ("completed", "success"),
+                ("completed", "success"),
             ),
         }[self.phase]
         critical_names = (
             broker.PUBLISH_WAIT_STEP,
             broker.PUBLISH_FENCED_BLOCKER_STEP,
             broker.PUBLISH_REASSERT_STEP,
+            broker.PUBLISH_REHASH_STEP,
             broker.PUBLISH_UPLOAD_STEP,
         )
         critical = [
@@ -5244,7 +5252,9 @@ class FakePublishLeaseApi(broker.GitHubApi):
                 _publish_step(
                     broker.PUBLISH_RECONCILE_OBSERVE_STEP,
                     2,
-                    "in_progress",
+                    "completed" if self.reconciliation_failed else "in_progress",
+                    conclusion="failure" if self.reconciliation_failed else None,
+                    started_at=self.wait_started_at,
                 ),
             ]
         reconcile = _publish_job(
@@ -5277,7 +5287,11 @@ class FakePublishLeaseApi(broker.GitHubApi):
             ]
         if "actions/workflows/publish-pypi.yml/runs" in path:
             assert key == "workflow_runs"
-            return [dict(run) for run in self.runs]
+            runs = [dict(run) for run in self.runs]
+            if "status=" in path:
+                expected_status = path.split("status=", 1)[1].split("&", 1)[0]
+                runs = [run for run in runs if run.get("status") == expected_status]
+            return runs
         if "/attempts/" in path and path.endswith("/jobs"):
             assert key == "jobs"
             run_id = int(path.split("/runs/", 1)[1].split("/", 1)[0])
@@ -5351,6 +5365,25 @@ class FakePublishLeaseApi(broker.GitHubApi):
                 200,
                 {"object": {"sha": self.main_sha, "type": "commit"}, "ref": "refs/heads/main"},
             )
+        if path == f"repos/{REPOSITORY}/git/ref/tags/v0.4.0.post2":
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "object": {"sha": "e" * 40, "type": "tag"},
+                    "ref": "refs/tags/v0.4.0.post2",
+                },
+            )
+        if path == f"repos/{REPOSITORY}/git/tags/{'e' * 40}":
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "object": {"sha": HEAD_SHA, "type": "commit"},
+                    "sha": "e" * 40,
+                    "tag": "v0.4.0.post2",
+                },
+            )
         if path == f"repos/{REPOSITORY}/git/matching-refs/heads/release-leases/":
             return broker.ApiResult(
                 {},
@@ -5412,6 +5445,8 @@ class FakePublishLeaseApi(broker.GitHubApi):
             return broker.ApiResult({}, 201, dict(self.check))
         if path == f"repos/{REPOSITORY}/check-runs/7001" and method == "PATCH":
             assert payload is not None and self.check is not None
+            if self.reject_check_update:
+                raise broker.ProviderError("check update refused", status=422)
             self.check.update(payload)
             return broker.ApiResult({}, 200, dict(self.check))
         raise AssertionError((method, path, expected))
@@ -5466,7 +5501,6 @@ def test_shared_publish_step_parser_remains_strict_for_pending() -> None:
         broker.PUBLISH_VALIDATE_JOB,
         broker.PUBLISH_ARTIFACT_JOB,
         broker.PUBLISH_VERIFY_JOB,
-        broker.PUBLISH_RECONCILE_JOB,
     ],
 )
 def test_publish_lease_rejects_pending_step_outside_publication_job_before_provider_write(
@@ -5902,8 +5936,411 @@ def test_publish_lease_activation_restart_and_successful_reconciliation(tmp_path
 
 
 @pytest.mark.parametrize(
+    "tail_statuses",
+    [
+        pytest.param(("queued", "queued", "queued"), id="all-queued"),
+        pytest.param(("pending", "pending", "pending"), id="run-34045289769-pending"),
+        pytest.param(("queued", "pending", "queued"), id="mixed-unstarted"),
+    ],
+)
+def test_publish_lease_accepts_exact_unstarted_reconciliation_tail(
+    tmp_path: Path, tail_statuses: tuple[str, str, str]
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.runs = [api._run(34045289769, 1)]
+    spool = broker.DurableSpool(tmp_path / "spool")
+    controller = _publish_controller(api, spool)
+
+    assert controller.reconcile(provider_now=NOW, settings_token="settings-token")
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active"
+    api.phase = "reconciling"
+
+    def expose_generated_reconciliation_tail(jobs: list[dict[str, Any]]) -> None:
+        reconcile = _publish_test_job(jobs, broker.PUBLISH_RECONCILE_JOB)
+        reconcile["steps"].extend(
+            _publish_step(name, number, status)
+            for name, number, status in zip(
+                ("Post Install uv", "Post setup-python", "Post checkout"),
+                (20, 21, 22),
+                tail_statuses,
+                strict=True,
+            )
+        )
+
+    api.jobs_mutator = expose_generated_reconciliation_tail
+
+    assert not controller.reconcile(
+        provider_now=NOW + timedelta(minutes=10), settings_token="settings-token"
+    )
+    assert spool.publish_lease_fence() is None
+    assert api.refs == {}
+    assert api.check is not None
+    assert api.check["id"] == 7001
+    assert api.check["status"] == "completed"
+    assert api.check["conclusion"] == "success"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "pending-before-observer",
+        "observer-queued",
+        "observer-completed",
+        "observer-completed-at",
+        "observer-invalid-start",
+        "guard-failed",
+        "tail-in-progress",
+        "tail-completed",
+        "tail-conclusion",
+        "missing-observer",
+        "duplicate-observer",
+    ],
+)
+def test_publish_lease_rejects_inexact_reconciliation_boundary(
+    tmp_path: Path, mutation: str
+) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    controller = _publish_controller(api, spool)
+
+    assert controller.reconcile(provider_now=NOW, settings_token="settings-token")
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active"
+    lease_ref = active.lease_ref
+    api.phase = "reconciling"
+
+    def mutate_reconciliation(jobs: list[dict[str, Any]]) -> None:
+        reconcile = _publish_test_job(jobs, broker.PUBLISH_RECONCILE_JOB)
+        guard = _publish_test_step(reconcile, broker.PUBLISH_RECONCILE_GUARD_STEP)
+        observer = _publish_test_step(reconcile, broker.PUBLISH_RECONCILE_OBSERVE_STEP)
+        if mutation == "pending-before-observer":
+            guard["number"] = 2
+            observer["number"] = 5
+            reconcile["steps"].append(_publish_step("Unexpected pending prefix", 3, "pending"))
+        elif mutation == "observer-queued":
+            observer.update({"started_at": None, "status": "queued"})
+        elif mutation == "observer-completed":
+            observer.update({"conclusion": "success", "status": "completed"})
+        elif mutation == "observer-completed-at":
+            observer["completed_at"] = "2026-08-26T12:00:01Z"
+        elif mutation == "observer-invalid-start":
+            observer["started_at"] = "not-a-timestamp"
+        elif mutation == "guard-failed":
+            guard["conclusion"] = "failure"
+        elif mutation == "tail-in-progress":
+            reconcile["steps"].append(_publish_step("Post checkout", 20, "in_progress"))
+        elif mutation == "tail-completed":
+            reconcile["steps"].append(
+                _publish_step("Post checkout", 20, "completed", conclusion="success")
+            )
+        elif mutation == "tail-conclusion":
+            reconcile["steps"].append(
+                _publish_step("Post checkout", 20, "pending", conclusion="success")
+            )
+        elif mutation == "missing-observer":
+            reconcile["steps"].remove(observer)
+        else:
+            duplicate = dict(observer)
+            duplicate["number"] = 20
+            reconcile["steps"].append(duplicate)
+
+    api.jobs_mutator = mutate_reconciliation
+    calls_before = len(api.calls)
+
+    assert controller.reconcile(
+        provider_now=NOW + timedelta(minutes=10), settings_token="settings-token"
+    )
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {lease_ref: HEAD_SHA}
+    assert api.check is not None and api.check["conclusion"] == "failure"
+    assert all(method != "DELETE" for method, _path in api.calls[calls_before:])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["head-sha", "job-name", "run-id", "workflow-name"],
+)
+def test_publish_lease_rejects_reconciliation_identity_drift(tmp_path: Path, mutation: str) -> None:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    spool = broker.DurableSpool(tmp_path / "spool")
+    controller = _publish_controller(api, spool)
+
+    assert controller.reconcile(provider_now=NOW, settings_token="settings-token")
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active"
+    lease_ref = active.lease_ref
+    api.phase = "reconciling"
+
+    def mutate_reconciliation(jobs: list[dict[str, Any]]) -> None:
+        reconcile = _publish_test_job(jobs, broker.PUBLISH_RECONCILE_JOB)
+        if mutation == "head-sha":
+            reconcile["head_sha"] = "f" * 40
+        elif mutation == "job-name":
+            reconcile["name"] = "Observe a different reconciliation"
+        elif mutation == "run-id":
+            reconcile["run_id"] = 99
+        else:
+            reconcile["workflow_name"] = "Different workflow"
+
+    api.jobs_mutator = mutate_reconciliation
+    calls_before = len(api.calls)
+
+    assert controller.reconcile(
+        provider_now=NOW + timedelta(minutes=10), settings_token="settings-token"
+    )
+    fenced = spool.publish_lease_fence()
+    expected_status = "active" if mutation == "job-name" else "quarantined"
+    assert fenced is not None and fenced.status == expected_status
+    assert api.refs == {lease_ref: HEAD_SHA}
+    assert api.check is not None
+    expected_conclusion = None if mutation == "job-name" else "failure"
+    assert api.check["conclusion"] == expected_conclusion
+    assert all(method != "DELETE" for method, _path in api.calls[calls_before:])
+
+
+def _controlled_recovery_request(tmp_path: Path) -> broker.ControlledPublishRecoveryRequest:
+    wheel_sha256 = "a" * 64
+    sdist_sha256 = "b" * 64
+    manifest = tmp_path / "SHA256SUMS"
+    manifest.write_text(
+        f"{wheel_sha256}  metriplane-0.4.0.post2-py3-none-any.whl\n"
+        f"{sdist_sha256}  metriplane-0.4.0.post2.tar.gz\n",
+        encoding="ascii",
+    )
+    return broker.ControlledPublishRecoveryRequest.create(
+        check_run_id=7001,
+        expected_quarantine_reason="production workflow step status is invalid",
+        lease_ref=f"{broker.PUBLISH_LEASE_REF_PREFIX}34045289769-1",
+        manifest_path=manifest,
+        manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        release_sha=HEAD_SHA,
+        release_tag="v0.4.0.post2",
+        run_attempt=1,
+        run_id=34045289769,
+        sdist_sha256=sdist_sha256,
+        wheel_sha256=wheel_sha256,
+    )
+
+
+def _quarantined_recovery_controller(
+    tmp_path: Path,
+) -> tuple[
+    FakePublishLeaseApi,
+    broker.DurableSpool,
+    broker.ControlledPublishLeaseRecovery,
+    broker.ControlledPublishRecoveryRequest,
+]:
+    config = _config(tmp_path)
+    api = FakePublishLeaseApi(config)
+    api.runs = [api._run(34045289769, 1)]
+    spool = broker.DurableSpool(tmp_path / "spool")
+    controller = _publish_controller(api, spool)
+    assert controller.reconcile(provider_now=NOW, settings_token="settings-token")
+    active = spool.publish_lease_fence()
+    assert active is not None and active.status == "active"
+    controller._quarantine(
+        active,
+        provider_now=NOW + timedelta(minutes=5),
+        reason="production workflow step status is invalid",
+    )
+    api.phase = "reconciling"
+    api.reconciliation_failed = True
+    api.runs[0]["status"] = "completed"
+    api.runs[0]["conclusion"] = "failure"
+    api.runs[0]["updated_at"] = "2026-08-26T12:10:00Z"
+    request = _controlled_recovery_request(tmp_path)
+    recovery = broker.ControlledPublishLeaseRecovery(
+        api=api,
+        config=config,
+        health_verifier=lambda _now: {
+            "generation": 39,
+            "last_good_sha": HEAD_SHA,
+            "state_commit": "d" * 40,
+            "status": "green",
+        },
+        install_verifier=lambda version: {
+            "bundle": "pass",
+            "doctor": "pass",
+            "regression": "pass",
+            "version": version,
+        },
+        registry_verifier=broker._controlled_recovery_manifest,
+        settings_token="settings-token",
+        spool=spool,
+        token="token",
+    )
+    return api, spool, recovery, request
+
+
+def test_controlled_quarantine_recovery_dry_run_is_read_only(tmp_path: Path) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+    calls_before = len(api.calls)
+
+    proof = recovery.recover(dry_run=True, provider_now=NOW, request=request)
+
+    assert proof["mode"] == "dry-run"
+    assert proof["mutations"] == 0
+    assert proof["run_id"] == 34045289769
+    assert proof["check_run_id"] == 7001
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {request.lease_ref: HEAD_SHA}
+    assert api.check is not None and api.check["conclusion"] == "failure"
+    assert all(method == "GET" for method, _path in api.calls[calls_before:])
+    assert not list(spool.root.glob("publish-recovery-*.json"))
+
+
+def test_controlled_quarantine_recovery_releases_exact_existing_fence(tmp_path: Path) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+    recovery.recover(dry_run=True, provider_now=NOW, request=request)
+    calls_before = len(api.calls)
+
+    proof = recovery.recover(
+        dry_run=False, provider_now=NOW + timedelta(minutes=1), request=request
+    )
+
+    assert proof["mode"] == "execute"
+    assert proof["mutations"] == 2
+    assert api.refs == {}
+    assert api.check is not None
+    assert api.check["id"] == request.check_run_id
+    assert api.check["status"] == "completed"
+    assert api.check["conclusion"] == "success"
+    assert api.check["output"]["title"] == "Production publication lease released"
+    assert spool.publish_lease_fence() is None
+    released = spool.publish_lease_record(request.external_id)
+    assert released is not None and released.status == "released"
+    assert len(list(spool.root.glob("publish-recovery-*.json"))) == 2
+    mutations = [call for call in api.calls[calls_before:] if call[0] != "GET"]
+    assert mutations == [
+        (
+            "DELETE",
+            f"repos/{REPOSITORY}/git/refs/heads/release-leases/pypi-34045289769-1",
+        ),
+        ("PATCH", f"repos/{REPOSITORY}/check-runs/7001"),
+    ]
+
+
+def test_controlled_quarantine_recovery_rejects_an_unrelated_incident(
+    tmp_path: Path,
+) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+    unrelated = replace(request, expected_quarantine_reason="another quarantine reason")
+    calls_before = len(api.calls)
+
+    with pytest.raises(broker.BrokerError, match="quarantine reason is not exact"):
+        recovery.recover(dry_run=True, provider_now=NOW, request=unrelated)
+
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert api.refs == {request.lease_ref: HEAD_SHA}
+    assert all(method == "GET" for method, _path in api.calls[calls_before:])
+
+
+def test_controlled_quarantine_recovery_check_refusal_keeps_durable_fence(
+    tmp_path: Path,
+) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+    api.reject_check_update = True
+    calls_before = len(api.calls)
+
+    with pytest.raises(broker.ProviderError, match="check update refused"):
+        recovery.recover(dry_run=False, provider_now=NOW, request=request)
+
+    releasing = spool.publish_lease_fence()
+    assert releasing is not None and releasing.status == "releasing"
+    assert api.refs == {}
+    assert api.check is not None and api.check["id"] == request.check_run_id
+    assert api.check["conclusion"] == "failure"
+    assert all(method != "POST" for method, _path in api.calls[calls_before:])
+
+
+def test_controlled_quarantine_recovery_ambiguous_delete_keeps_durable_fence(
+    tmp_path: Path,
+) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+    api.ambiguous_ref_delete = True
+
+    with pytest.raises(broker.ProviderTransportError, match="ambiguous ref deletion"):
+        recovery.recover(dry_run=False, provider_now=NOW, request=request)
+
+    releasing = spool.publish_lease_fence()
+    assert releasing is not None and releasing.status == "releasing"
+    assert api.refs == {}
+    assert api.check is not None and api.check["conclusion"] == "failure"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "active-in-progress",
+        "active-pending",
+        "active-queued",
+        "active-requested",
+        "active-waiting",
+        "check-id",
+        "main",
+        "second-lease",
+    ],
+)
+def test_controlled_quarantine_recovery_precondition_drift_is_read_only(
+    tmp_path: Path, mutation: str
+) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+    if mutation.startswith("active-"):
+        active = api._run(34045289999, 1)
+        active["status"] = mutation.removeprefix("active-").replace("-", "_")
+        api.runs.append(active)
+    elif mutation == "check-id":
+        assert api.check is not None
+        api.check["id"] = 7999
+    elif mutation == "main":
+        api.main_sha = "f" * 40
+    else:
+        api.refs[f"{broker.PUBLISH_LEASE_REF_PREFIX}9999-1"] = HEAD_SHA
+    calls_before = len(api.calls)
+
+    with pytest.raises(broker.BrokerError):
+        recovery.recover(dry_run=True, provider_now=NOW, request=request)
+
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert all(method == "GET" for method, _path in api.calls[calls_before:])
+
+
+def test_controlled_quarantine_recovery_rejects_main_drift_after_install_proof(
+    tmp_path: Path,
+) -> None:
+    api, spool, recovery, request = _quarantined_recovery_controller(tmp_path)
+
+    def drift_main_after_install(version: str) -> dict[str, Any]:
+        api.main_sha = "f" * 40
+        return {
+            "bundle": "pass",
+            "doctor": "pass",
+            "regression": "pass",
+            "version": version,
+        }
+
+    recovery.install_verifier = drift_main_after_install
+    calls_before = len(api.calls)
+
+    with pytest.raises(broker.BrokerError, match="main changed during"):
+        recovery.recover(dry_run=True, provider_now=NOW, request=request)
+
+    quarantined = spool.publish_lease_fence()
+    assert quarantined is not None and quarantined.status == "quarantined"
+    assert all(method == "GET" for method, _path in api.calls[calls_before:])
+
+
+@pytest.mark.parametrize(
     "job_name",
-    [broker.PUBLISH_VERIFY_JOB, broker.PUBLISH_RECONCILE_JOB],
+    [broker.PUBLISH_VERIFY_JOB],
 )
 def test_publish_lease_quarantines_pending_step_outside_publish_job_during_reconciliation(
     tmp_path: Path, job_name: str

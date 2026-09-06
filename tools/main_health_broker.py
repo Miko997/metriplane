@@ -17,6 +17,7 @@ import socket
 import sqlite3
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -72,6 +73,7 @@ PUBLISH_DISPATCH_BLOCKER_STEP = "Revalidate release blockers at production dispa
 PUBLISH_WAIT_STEP = "Wait for the App-owned main-update lease"
 PUBLISH_FENCED_BLOCKER_STEP = "Revalidate release blockers while main updates are fenced"
 PUBLISH_REASSERT_STEP = "Reassert the lease and exact main immediately before publish"
+PUBLISH_REHASH_STEP = "Rehash the exact artifact set immediately before publish"
 PUBLISH_UPLOAD_STEP = "Publish the verified distributions to PyPI"
 PUBLISH_RECONCILE_GUARD_STEP = "Retain the lease after any ambiguous or failed publication"
 PUBLISH_RECONCILE_OBSERVE_STEP = "Observe exact main and the broker's terminal reconciliation"
@@ -455,6 +457,81 @@ class PublishLeaseRecord:
         )
         _validate_publish_lease_record(record)
         return record
+
+
+@dataclass(frozen=True)
+class ControlledPublishRecoveryRequest:
+    check_run_id: int
+    expected_quarantine_reason: str
+    external_id: str
+    lease_ref: str
+    manifest_path: Path
+    manifest_sha256: str
+    release_sha: str
+    release_tag: str
+    run_attempt: int
+    run_id: int
+    sdist_sha256: str
+    wheel_sha256: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        check_run_id: int,
+        expected_quarantine_reason: str,
+        lease_ref: str,
+        manifest_path: Path,
+        manifest_sha256: str,
+        release_sha: str,
+        release_tag: str,
+        run_attempt: int,
+        run_id: int,
+        sdist_sha256: str,
+        wheel_sha256: str,
+    ) -> ControlledPublishRecoveryRequest:
+        release_sha = _require_sha(release_sha, "controlled recovery release SHA")
+        run_id = _require_positive_int(run_id, "controlled recovery run ID")
+        run_attempt = _require_positive_int(run_attempt, "controlled recovery run attempt")
+        check_run_id = _require_positive_int(check_run_id, "controlled recovery check-run ID")
+        expected_ref = f"{PUBLISH_LEASE_REF_PREFIX}{run_id}-{run_attempt}"
+        if lease_ref != expected_ref:
+            raise BrokerError("controlled recovery lease ref is not derived from the run")
+        external_id = f"{PUBLISH_LEASE_EXTERNAL_PREFIX}:{run_id}:{run_attempt}:{release_sha}"
+        if not isinstance(expected_quarantine_reason, str) or not expected_quarantine_reason:
+            raise BrokerError("controlled recovery quarantine reason is empty")
+        if not isinstance(release_tag, str) or not re.fullmatch(
+            r"v[0-9]+\.[0-9]+\.[0-9]+(?:\.post[1-9][0-9]*)?", release_tag
+        ):
+            raise BrokerError("controlled recovery release tag is invalid")
+        hashes = {
+            "manifest": manifest_sha256,
+            "sdist": sdist_sha256,
+            "wheel": wheel_sha256,
+        }
+        for label, value in hashes.items():
+            if not isinstance(value, str) or DIGEST_RE.fullmatch(value) is None:
+                raise BrokerError(f"controlled recovery {label} SHA-256 is invalid")
+        if not manifest_path.is_absolute():
+            raise BrokerError("controlled recovery manifest path must be absolute")
+        return cls(
+            check_run_id=check_run_id,
+            expected_quarantine_reason=expected_quarantine_reason,
+            external_id=external_id,
+            lease_ref=lease_ref,
+            manifest_path=manifest_path,
+            manifest_sha256=manifest_sha256,
+            release_sha=release_sha,
+            release_tag=release_tag,
+            run_attempt=run_attempt,
+            run_id=run_id,
+            sdist_sha256=sdist_sha256,
+            wheel_sha256=wheel_sha256,
+        )
+
+    @property
+    def version(self) -> str:
+        return self.release_tag.removeprefix("v")
 
 
 def _validate_publish_lease_record(record: PublishLeaseRecord) -> None:
@@ -1145,6 +1222,20 @@ class DurableSpool:
             raise BrokerError("durable spool contains concurrent publish leases")
         return None if not rows else self._publish_lease_from_row(rows[0])
 
+    def publish_lease_record(self, external_id: str) -> PublishLeaseRecord | None:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT external_id, run_id, run_attempt, release_sha, lease_ref,
+                       check_run_id, status, created_at, expires_at, updated_at, reason
+                FROM publish_leases WHERE external_id = ?
+                """,
+                (external_id,),
+            ).fetchall()
+        if len(rows) > 1:
+            raise BrokerError("durable spool contains duplicate publish-lease history")
+        return None if not rows else self._publish_lease_from_row(rows[0])
+
     def begin_publish_lease(self, record: PublishLeaseRecord) -> PublishLeaseRecord:
         _validate_publish_lease_record(record)
         if record.status != "creating" or record.check_run_id is not None:
@@ -1248,6 +1339,165 @@ class DurableSpool:
                 ),
             )
         return next_record
+
+    def _controlled_recovery_audit_path(self, event: str, external_id: str) -> Path:
+        if event not in {"provider-verified", "started"}:
+            raise BrokerError("controlled recovery audit event is invalid")
+        identity = hashlib.sha256(external_id.encode("utf-8")).hexdigest()
+        return self.root / f"publish-recovery-{identity}-{event}.json"
+
+    def _write_controlled_recovery_audit(
+        self,
+        *,
+        event: str,
+        request: ControlledPublishRecoveryRequest,
+        proof_sha256: str,
+        recorded_at: str,
+    ) -> None:
+        if DIGEST_RE.fullmatch(proof_sha256) is None:
+            raise BrokerError("controlled recovery proof SHA-256 is invalid")
+        _timestamp(recorded_at)
+        value = {
+            "check_run_id": request.check_run_id,
+            "event": event,
+            "expected_quarantine_reason": request.expected_quarantine_reason,
+            "external_id": request.external_id,
+            "lease_ref": request.lease_ref,
+            "manifest_sha256": request.manifest_sha256,
+            "proof_sha256": proof_sha256,
+            "recorded_at": recorded_at,
+            "release_sha": request.release_sha,
+            "release_tag": request.release_tag,
+            "run_attempt": request.run_attempt,
+            "run_id": request.run_id,
+            "schema_version": 1,
+            "sdist_sha256": request.sdist_sha256,
+            "wheel_sha256": request.wheel_sha256,
+        }
+        content = canonical_bytes(value)
+        path = self._controlled_recovery_audit_path(event, request.external_id)
+        try:
+            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError as exc:
+            try:
+                existing = path.read_bytes()
+            except OSError as read_exc:
+                raise BrokerError("controlled recovery audit cannot be read") from read_exc
+            if existing != content:
+                raise BrokerError("controlled recovery audit identity changed") from exc
+            return
+        try:
+            view = memoryview(content)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise OSError("controlled recovery audit write made no progress")
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        directory_descriptor = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+
+    @staticmethod
+    def _require_controlled_recovery_record(
+        record: PublishLeaseRecord | None,
+        request: ControlledPublishRecoveryRequest,
+        *,
+        statuses: set[str],
+    ) -> PublishLeaseRecord:
+        if record is None:
+            raise BrokerError("controlled recovery durable lease is missing")
+        if (
+            record.external_id != request.external_id
+            or record.run_id != request.run_id
+            or record.run_attempt != request.run_attempt
+            or record.release_sha != request.release_sha
+            or record.lease_ref != request.lease_ref
+            or record.check_run_id != request.check_run_id
+            or record.status not in statuses
+        ):
+            raise BrokerError("controlled recovery durable lease identity is not exact")
+        if record.status == "quarantined" and record.reason != request.expected_quarantine_reason:
+            raise BrokerError("controlled recovery quarantine reason is not exact")
+        return record
+
+    def begin_controlled_publish_recovery(
+        self,
+        *,
+        provider_now: datetime,
+        proof_sha256: str,
+        request: ControlledPublishRecoveryRequest,
+    ) -> PublishLeaseRecord:
+        recorded_at = _format_timestamp(provider_now)
+        record = self._require_controlled_recovery_record(
+            self.publish_lease_fence(), request, statuses={"quarantined", "releasing"}
+        )
+        self._write_controlled_recovery_audit(
+            event="started",
+            request=request,
+            proof_sha256=proof_sha256,
+            recorded_at=recorded_at,
+        )
+        if record.status == "quarantined":
+            with self._connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                result = connection.execute(
+                    """
+                    UPDATE publish_leases
+                    SET status = 'releasing', updated_at = ?, reason = NULL, fence_slot = 1
+                    WHERE external_id = ? AND run_id = ? AND run_attempt = ?
+                      AND release_sha = ? AND lease_ref = ? AND check_run_id = ?
+                      AND status = 'quarantined' AND reason = ? AND fence_slot = 1
+                    """,
+                    (
+                        recorded_at,
+                        request.external_id,
+                        request.run_id,
+                        request.run_attempt,
+                        request.release_sha,
+                        request.lease_ref,
+                        request.check_run_id,
+                        request.expected_quarantine_reason,
+                    ),
+                )
+                if result.rowcount != 1:
+                    raise BrokerError("controlled recovery durable transition was not exact")
+            updated_record = self.publish_lease_fence()
+            return self._require_controlled_recovery_record(
+                updated_record, request, statuses={"releasing"}
+            )
+        return self._require_controlled_recovery_record(record, request, statuses={"releasing"})
+
+    def finish_controlled_publish_recovery(
+        self,
+        *,
+        provider_now: datetime,
+        proof_sha256: str,
+        request: ControlledPublishRecoveryRequest,
+    ) -> PublishLeaseRecord:
+        self._require_controlled_recovery_record(
+            self.publish_lease_fence(), request, statuses={"releasing"}
+        )
+        recorded_at = _format_timestamp(provider_now)
+        self._write_controlled_recovery_audit(
+            event="provider-verified",
+            request=request,
+            proof_sha256=proof_sha256,
+            recorded_at=recorded_at,
+        )
+        released = self.transition_publish_lease(
+            external_id=request.external_id,
+            status="released",
+            updated_at=recorded_at,
+            check_run_id=request.check_run_id,
+        )
+        if self.publish_lease_fence() is not None:
+            raise BrokerError("controlled recovery durable fence did not clear")
+        return released
 
 
 def _ruleset_view(value: dict[str, Any]) -> dict[str, Any]:
@@ -3301,13 +3551,48 @@ def _prelease_publish_boundary(
     return wait_started
 
 
+def _reconciliation_publish_boundary(reconcile_job: dict[str, Any]) -> bool:
+    if reconcile_job.get("status") != "in_progress" or reconcile_job.get("conclusion") is not None:
+        return False
+    steps = _publish_step_inventory(reconcile_job)
+    guard_step = _required_publish_step(steps, PUBLISH_RECONCILE_GUARD_STEP)
+    observe_step = _required_publish_step(steps, PUBLISH_RECONCILE_OBSERVE_STEP)
+    if not _completed_success(guard_step):
+        return False
+    if observe_step.get("status") != "in_progress" or observe_step.get("conclusion") is not None:
+        return False
+    observe_started = observe_step.get("started_at")
+    if not isinstance(observe_started, str):
+        raise BrokerError("production reconciliation observer has no start time")
+    _timestamp(observe_started)
+    if observe_step.get("completed_at") is not None:
+        raise BrokerError("production reconciliation observer is already complete")
+    guard_number = _require_positive_int(
+        guard_step.get("number"), "production workflow step number"
+    )
+    observe_number = _require_positive_int(
+        observe_step.get("number"), "production workflow step number"
+    )
+    if guard_number >= observe_number:
+        raise BrokerError("production reconciliation guard does not precede the observer")
+    for step in steps:
+        number = _require_positive_int(step.get("number"), "production workflow step number")
+        if number < observe_number:
+            if not _completed_success(step):
+                raise BrokerError("production workflow step before reconciliation is incomplete")
+        elif number > observe_number and not _unstarted_publish_step(step):
+            raise BrokerError("production workflow step after reconciliation observer has started")
+    return True
+
+
 def _publish_phase(jobs: list[dict[str, Any]]) -> tuple[str, datetime | None]:
     validate_job = _named_publish_job(jobs, PUBLISH_VALIDATE_JOB)
     artifact_job = _named_publish_job(jobs, PUBLISH_ARTIFACT_JOB)
     publish_job = _named_publish_job(jobs, PUBLISH_JOB)
+    reconcile_job = _named_publish_job(jobs, PUBLISH_RECONCILE_JOB, required=False)
     assert validate_job is not None and artifact_job is not None and publish_job is not None
     for job in jobs:
-        if job is not publish_job:
+        if job is not publish_job and job is not reconcile_job:
             _strict_publish_steps(job)
     blocker_dispatch = _named_publish_step(validate_job, PUBLISH_DISPATCH_BLOCKER_STEP)
     prerequisites = (validate_job, artifact_job, blocker_dispatch)
@@ -3356,17 +3641,17 @@ def _publish_phase(jobs: list[dict[str, Any]]) -> tuple[str, datetime | None]:
         return "verifying", wait_started
     if not _completed_success(verify_job):
         return "failed", wait_started
-    reconcile_job = _named_publish_job(jobs, PUBLISH_RECONCILE_JOB, required=False)
-    if reconcile_job is None or reconcile_job.get("status") in (
-        PROVIDER_PENDING_ACTION_STATUSES - {"in_progress"}
-    ):
+    if reconcile_job is None:
+        return "verifying", wait_started
+    if _reconciliation_publish_boundary(reconcile_job):
+        return "reconciling", wait_started
+    _strict_publish_steps(reconcile_job)
+    if reconcile_job.get("status") in (PROVIDER_PENDING_ACTION_STATUSES - {"in_progress"}):
         return "verifying", wait_started
     if reconcile_job.get("status") == "completed":
         return ("completed" if _completed_success(reconcile_job) else "failed"), wait_started
     guard_step = _named_publish_step(reconcile_job, PUBLISH_RECONCILE_GUARD_STEP)
     observe_step = _named_publish_step(reconcile_job, PUBLISH_RECONCILE_OBSERVE_STEP)
-    if _completed_success(guard_step) and observe_step.get("status") == "in_progress":
-        return "reconciling", wait_started
     if guard_step.get("status") == "completed" and not _completed_success(guard_step):
         return "failed", wait_started
     if (
@@ -4310,6 +4595,529 @@ class PublishLeaseController:
             reason=f"production workflow entered terminal phase {phase!r} before reconciliation",
         )
         return True
+
+
+def _controlled_recovery_manifest(
+    request: ControlledPublishRecoveryRequest,
+) -> dict[str, str]:
+    try:
+        stat_result = request.manifest_path.lstat()
+        content = request.manifest_path.read_bytes()
+    except OSError as exc:
+        raise BrokerError("controlled recovery manifest cannot be read") from exc
+    if not stat.S_ISREG(stat_result.st_mode) or request.manifest_path.is_symlink():
+        raise BrokerError("controlled recovery manifest is not a regular file")
+    if hashlib.sha256(content).hexdigest() != request.manifest_sha256:
+        raise BrokerError("controlled recovery manifest SHA-256 differs")
+    try:
+        lines = content.decode("ascii").splitlines()
+    except UnicodeDecodeError as exc:
+        raise BrokerError("controlled recovery manifest is not ASCII") from exc
+    expected_names = {
+        f"metriplane-{request.version}-py3-none-any.whl": request.wheel_sha256,
+        f"metriplane-{request.version}.tar.gz": request.sdist_sha256,
+    }
+    actual: dict[str, str] = {}
+    for line in lines:
+        match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9_.+-]+)", line)
+        if match is None or match.group(2) in actual:
+            raise BrokerError("controlled recovery manifest inventory is malformed")
+        actual[match.group(2)] = match.group(1)
+    if actual != expected_names:
+        raise BrokerError("controlled recovery manifest identity is not exact")
+    return actual
+
+
+def _controlled_recovery_registry(
+    request: ControlledPublishRecoveryRequest,
+) -> dict[str, str]:
+    url = f"https://pypi.org/pypi/metriplane/{urllib.parse.quote(request.version)}/json"
+    try:
+        with urllib.request.urlopen(  # noqa: S310 -- fixed trusted PyPI origin
+            urllib.request.Request(url, headers={"User-Agent": "metriplane-quarantine-recovery"}),
+            timeout=30,
+        ) as response:
+            raw = response.read(2_000_001)
+    except (OSError, urllib.error.URLError) as exc:
+        raise BrokerError("controlled recovery could not read production PyPI") from exc
+    if len(raw) > 2_000_000:
+        raise BrokerError("controlled recovery PyPI response exceeds the bound")
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BrokerError("controlled recovery PyPI response is not JSON") from exc
+    if not isinstance(value, dict) or not isinstance(value.get("info"), dict):
+        raise BrokerError("controlled recovery PyPI response is malformed")
+    if value["info"].get("version") != request.version:
+        raise BrokerError("controlled recovery PyPI version differs")
+    urls = value.get("urls")
+    if not isinstance(urls, list) or not all(isinstance(item, dict) for item in urls):
+        raise BrokerError("controlled recovery PyPI file inventory is malformed")
+    actual: dict[str, str] = {}
+    for item in urls:
+        filename = item.get("filename")
+        digests = item.get("digests")
+        if (
+            not isinstance(filename, str)
+            or filename in actual
+            or not isinstance(digests, dict)
+            or not isinstance(digests.get("sha256"), str)
+            or item.get("yanked") is not False
+        ):
+            raise BrokerError("controlled recovery PyPI file identity is malformed")
+        actual[filename] = digests["sha256"]
+    if actual != _controlled_recovery_manifest(request):
+        raise BrokerError("controlled recovery PyPI hashes differ from the retained manifest")
+    return actual
+
+
+def _controlled_recovery_fresh_install(version: str) -> dict[str, Any]:
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:\.post[1-9][0-9]*)?", version):
+        raise BrokerError("controlled recovery install version is invalid")
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.pop("VIRTUAL_ENV", None)
+
+    def run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode != 0:
+            raise BrokerError(
+                f"controlled recovery fresh-install command failed: {Path(command[0]).name}"
+            )
+        return result
+
+    with tempfile.TemporaryDirectory(prefix="metriplane-pypi-recovery-") as raw_root:
+        root = Path(raw_root)
+        venv = root / "venv"
+        run([sys.executable, "-m", "venv", str(venv)], cwd=root)
+        python = venv / "bin" / "python"
+        cli = venv / "bin" / "metriplane"
+        run([str(python), "-m", "pip", "install", "--upgrade", "pip"], cwd=root)
+        run(
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--no-cache-dir",
+                f"metriplane=={version}",
+            ],
+            cwd=root,
+        )
+        run([str(python), "-m", "pip", "check"], cwd=root)
+        if run([str(cli), "--version"], cwd=root).stdout.strip() != f"metriplane {version}":
+            raise BrokerError("controlled recovery fresh-install version differs")
+        if "demo" not in run([str(cli), "--help"], cwd=root).stdout:
+            raise BrokerError("controlled recovery fresh-install help is incomplete")
+        doctor = run([str(cli), "doctor"], cwd=root).stdout
+        if "Ready for the bundled camera-free demo." not in doctor:
+            raise BrokerError("controlled recovery fresh-install doctor failed")
+        demo_root = root / "demo"
+        demo = run([str(cli), "demo", "--out", str(demo_root)], cwd=root).stdout
+        if "PASS  Incident report: 1 incident" not in demo:
+            raise BrokerError("controlled recovery fresh-install demo failed")
+        bundle = run(
+            [
+                str(cli),
+                "atlas",
+                "bundle",
+                "verify",
+                str(demo_root / "evidence_bundles" / "INC-0001.zip"),
+            ],
+            cwd=root,
+        ).stdout
+        regression = run(
+            [
+                str(cli),
+                "atlas",
+                "test",
+                str(demo_root / "regression_tests" / "INC-0001.yaml"),
+                "--json",
+            ],
+            cwd=root,
+        ).stdout
+        try:
+            bundle_value = json.loads(bundle)
+            regression_value = json.loads(regression)
+        except json.JSONDecodeError as exc:
+            raise BrokerError("controlled recovery fresh-install proof is not JSON") from exc
+        if bundle_value.get("pass") is not True or regression_value.get("pass") is not True:
+            raise BrokerError("controlled recovery fresh-install evidence proof failed")
+    return {"bundle": "pass", "doctor": "pass", "regression": "pass", "version": version}
+
+
+def _controlled_recovery_active_runs(
+    api: GitHubApi, *, config: BrokerConfig, token: str
+) -> list[dict[str, Any]]:
+    active: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    for status in sorted(PROVIDER_PENDING_ACTION_STATUSES):
+        runs = api.list_items(
+            (
+                f"repos/{config.repository}/actions/workflows/publish-pypi.yml/runs"
+                f"?event=workflow_dispatch&status={status}"
+            ),
+            key="workflow_runs",
+            token=token,
+        )
+        for run in runs:
+            run_id = _require_positive_int(
+                run.get("id"), "controlled recovery active production run ID"
+            )
+            if run.get("status") != status or run_id in seen_ids:
+                raise BrokerError("controlled recovery active workflow inventory is inconsistent")
+            seen_ids.add(run_id)
+            active.append(run)
+    return active
+
+
+class ControlledPublishLeaseRecovery:
+    def __init__(
+        self,
+        *,
+        api: GitHubApi,
+        config: BrokerConfig,
+        health_verifier: Callable[[datetime], dict[str, Any]] | None = None,
+        install_verifier: Callable[[str], dict[str, Any]] = _controlled_recovery_fresh_install,
+        registry_verifier: Callable[
+            [ControlledPublishRecoveryRequest], dict[str, str]
+        ] = _controlled_recovery_registry,
+        settings_token: str,
+        spool: DurableSpool,
+        token: str,
+    ) -> None:
+        self.api = api
+        self.config = config
+        self.health_verifier = health_verifier
+        self.install_verifier = install_verifier
+        self.registry_verifier = registry_verifier
+        self.settings_token = settings_token
+        self.spool = spool
+        self.token = token
+
+    def _release_tag(self, request: ControlledPublishRecoveryRequest) -> str:
+        encoded_tag = urllib.parse.quote(request.release_tag, safe="")
+        ref_result = self.api.request(
+            f"repos/{self.config.repository}/git/ref/tags/{encoded_tag}", token=self.token
+        )
+        ref = ref_result.value
+        if not isinstance(ref, dict) or ref.get("ref") != f"refs/tags/{request.release_tag}":
+            raise BrokerError("controlled recovery release-tag ref is malformed")
+        provider_object = ref.get("object")
+        if not isinstance(provider_object, dict) or provider_object.get("type") != "tag":
+            raise BrokerError("controlled recovery release tag is not annotated")
+        tag_object_sha = _require_sha(
+            provider_object.get("sha"), "controlled recovery tag-object SHA"
+        )
+        tag_result = self.api.request(
+            f"repos/{self.config.repository}/git/tags/{tag_object_sha}", token=self.token
+        )
+        tag = tag_result.value
+        target = tag.get("object") if isinstance(tag, dict) else None
+        if (
+            not isinstance(tag, dict)
+            or tag.get("sha") != tag_object_sha
+            or tag.get("tag") != request.release_tag
+            or not isinstance(target, dict)
+            or target.get("type") != "commit"
+            or target.get("sha") != request.release_sha
+        ):
+            raise BrokerError("controlled recovery annotated-tag identity is not exact")
+        return tag_object_sha
+
+    def _completed_publication(
+        self,
+        *,
+        owner_id: int,
+        request: ControlledPublishRecoveryRequest,
+        workflow_id: int,
+    ) -> dict[str, int]:
+        result = self.api.request(
+            f"repos/{self.config.repository}/actions/runs/{request.run_id}", token=self.token
+        )
+        run = result.value
+        if not isinstance(run, dict):
+            raise BrokerError("controlled recovery production run is malformed")
+        run_id, run_attempt, _started_at = _publish_run_identity(
+            run,
+            config=self.config,
+            main_sha=request.release_sha,
+            owner_id=owner_id,
+            workflow_id=workflow_id,
+        )
+        if (
+            run_id != request.run_id
+            or run_attempt != request.run_attempt
+            or run.get("status") != "completed"
+            or run.get("conclusion") != "failure"
+        ):
+            raise BrokerError("controlled recovery production run terminal state is not exact")
+        provisional = PublishLeaseRecord.create(
+            release_sha=request.release_sha,
+            run_attempt=request.run_attempt,
+            run_id=request.run_id,
+            created_at=str(run["run_started_at"]),
+            expires_at=_format_timestamp(
+                _timestamp(str(run["run_started_at"])) + PUBLISH_REQUEST_MAX_AGE
+            ),
+        )
+        jobs = _publish_jobs(self.api, config=self.config, lease=provisional, token=self.token)
+        for job in jobs:
+            _strict_publish_steps(job)
+        validate_job = _named_publish_job(jobs, PUBLISH_VALIDATE_JOB)
+        artifact_job = _named_publish_job(jobs, PUBLISH_ARTIFACT_JOB)
+        publish_job = _named_publish_job(jobs, PUBLISH_JOB)
+        verify_job = _named_publish_job(jobs, PUBLISH_VERIFY_JOB)
+        reconcile_job = _named_publish_job(jobs, PUBLISH_RECONCILE_JOB)
+        assert validate_job is not None
+        assert artifact_job is not None
+        assert publish_job is not None
+        assert verify_job is not None
+        assert reconcile_job is not None
+        if not all(
+            _completed_success(value)
+            for value in (validate_job, artifact_job, publish_job, verify_job)
+        ):
+            raise BrokerError("controlled recovery successful production jobs are not exact")
+        required_successes = (
+            _named_publish_step(validate_job, PUBLISH_DISPATCH_BLOCKER_STEP),
+            _named_publish_step(publish_job, PUBLISH_WAIT_STEP),
+            _named_publish_step(publish_job, PUBLISH_FENCED_BLOCKER_STEP),
+            _named_publish_step(publish_job, PUBLISH_REASSERT_STEP),
+            _named_publish_step(publish_job, PUBLISH_REHASH_STEP),
+            _named_publish_step(publish_job, PUBLISH_UPLOAD_STEP),
+        )
+        if not all(_completed_success(step) for step in required_successes):
+            raise BrokerError("controlled recovery protected publication step did not succeed")
+        guard = _named_publish_step(reconcile_job, PUBLISH_RECONCILE_GUARD_STEP)
+        observer = _named_publish_step(reconcile_job, PUBLISH_RECONCILE_OBSERVE_STEP)
+        if (
+            reconcile_job.get("status") != "completed"
+            or reconcile_job.get("conclusion") != "failure"
+            or not _completed_success(guard)
+            or observer.get("status") != "completed"
+            or observer.get("conclusion") != "failure"
+        ):
+            raise BrokerError("controlled recovery reconciliation failure is not exact")
+        failures = [
+            (job.get("name"), step.get("name"))
+            for job in jobs
+            for step in _publish_step_inventory(job)
+            if step.get("conclusion") == "failure"
+        ]
+        if failures != [(PUBLISH_RECONCILE_JOB, PUBLISH_RECONCILE_OBSERVE_STEP)]:
+            raise BrokerError("controlled recovery workflow contains another failed step")
+        return {
+            "artifact_job_id": _require_positive_int(
+                artifact_job.get("id"), "controlled recovery artifact job ID"
+            ),
+            "publish_job_id": _require_positive_int(
+                publish_job.get("id"), "controlled recovery publish job ID"
+            ),
+            "reconcile_job_id": _require_positive_int(
+                reconcile_job.get("id"), "controlled recovery reconcile job ID"
+            ),
+            "validate_job_id": _require_positive_int(
+                validate_job.get("id"), "controlled recovery validation job ID"
+            ),
+            "verify_job_id": _require_positive_int(
+                verify_job.get("id"), "controlled recovery verification job ID"
+            ),
+        }
+
+    def _current_health(self, provider_now: datetime) -> dict[str, Any]:
+        if self.health_verifier is not None:
+            return self.health_verifier(provider_now)
+        state_branch = StateBranch(api=self.api, config=self.config, token=self.token)
+        reconciler = HealthReconciler(
+            api=self.api,
+            config=self.config,
+            spool=self.spool,
+            state_branch=state_branch,
+            token=self.token,
+        )
+        return reconciler.verify_current_health(provider_now)
+
+    def verify(
+        self,
+        *,
+        provider_now: datetime,
+        request: ControlledPublishRecoveryRequest,
+    ) -> dict[str, Any]:
+        owner_id = _validate_runtime_repository(self.api, config=self.config, token=self.token)
+        workflow_id = _validate_publish_workflow(self.api, config=self.config, token=self.token)
+        record = DurableSpool._require_controlled_recovery_record(
+            self.spool.publish_lease_fence(), request, statuses={"quarantined"}
+        )
+        controller = PublishLeaseController(
+            api=self.api, config=self.config, spool=self.spool, token=self.token
+        )
+        controller._validate_live_authority(record, settings_token=self.settings_token)
+        first_rulesets = validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=self.settings_token),
+        )
+        second_rulesets = validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=self.settings_token),
+        )
+        if first_rulesets != second_rulesets:
+            raise BrokerError("controlled recovery rulesets changed between reads")
+        tag_object_sha = self._release_tag(request)
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        if refs != {request.lease_ref: request.release_sha}:
+            raise BrokerError("controlled recovery provider lease identity is not exact")
+        check = _publish_lease_check(self.api, config=self.config, record=record, token=self.token)
+        _validate_publish_lease_check(
+            check,
+            config=self.config,
+            record=record,
+            state="quarantined",
+            reason=request.expected_quarantine_reason,
+        )
+        jobs = self._completed_publication(
+            owner_id=owner_id, request=request, workflow_id=workflow_id
+        )
+        active_runs = _controlled_recovery_active_runs(
+            self.api, config=self.config, token=self.token
+        )
+        if active_runs:
+            raise BrokerError("controlled recovery found an active production workflow")
+        health = self._current_health(provider_now)
+        if health.get("status") != "green" or health.get("last_good_sha") != request.release_sha:
+            raise BrokerError("controlled recovery protected state is not green and current")
+        registry = self.registry_verifier(request)
+        install = self.install_verifier(request.version)
+        if _main_ref(self.api, config=self.config, token=self.token) != request.release_sha:
+            raise BrokerError("main changed during controlled recovery verification")
+        final_rulesets = validate_hosted_rulesets(
+            config=self.config,
+            rulesets=_rulesets(self.api, config=self.config, token=self.settings_token),
+        )
+        if final_rulesets != first_rulesets:
+            raise BrokerError("controlled recovery rulesets changed during verification")
+        if self._release_tag(request) != tag_object_sha:
+            raise BrokerError("controlled recovery release tag changed during verification")
+        final_jobs = self._completed_publication(
+            owner_id=owner_id, request=request, workflow_id=workflow_id
+        )
+        if final_jobs != jobs:
+            raise BrokerError("controlled recovery workflow evidence changed during verification")
+        if _controlled_recovery_active_runs(self.api, config=self.config, token=self.token):
+            raise BrokerError("controlled recovery found a new active production workflow")
+        final_health = self._current_health(provider_now)
+        if final_health != health:
+            raise BrokerError("controlled recovery protected state changed during verification")
+        final_refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        final_check = _publish_lease_check(
+            self.api, config=self.config, record=record, token=self.token
+        )
+        if final_refs != refs or final_check != check:
+            raise BrokerError("controlled recovery provider fence changed between reads")
+        proof = {
+            "active_production_runs": 0,
+            "check_run_id": request.check_run_id,
+            "external_id": request.external_id,
+            "fresh_install": install,
+            "jobs": jobs,
+            "lease_ref": request.lease_ref,
+            "manifest_sha256": request.manifest_sha256,
+            "mode": "verified",
+            "pypi_files": registry,
+            "release_sha": request.release_sha,
+            "release_tag": request.release_tag,
+            "ruleset_digests": first_rulesets,
+            "run_attempt": request.run_attempt,
+            "run_id": request.run_id,
+            "schema_version": 1,
+            "state_commit": health.get("state_commit"),
+            "state_generation": health.get("generation"),
+            "tag_object_sha": tag_object_sha,
+        }
+        return proof
+
+    def recover(
+        self,
+        *,
+        dry_run: bool,
+        provider_now: datetime,
+        request: ControlledPublishRecoveryRequest,
+    ) -> dict[str, Any]:
+        proof = self.verify(provider_now=provider_now, request=request)
+        proof_sha256 = digest(proof)
+        if dry_run:
+            return {**proof, "mode": "dry-run", "mutations": 0, "proof_sha256": proof_sha256}
+        record = self.spool.begin_controlled_publish_recovery(
+            provider_now=provider_now,
+            proof_sha256=proof_sha256,
+            request=request,
+        )
+        check = _publish_lease_check(self.api, config=self.config, record=record, token=self.token)
+        _validate_publish_lease_check(
+            check,
+            config=self.config,
+            record=record,
+            state="quarantined",
+            reason=request.expected_quarantine_reason,
+        )
+        refs = _publish_lease_refs(self.api, config=self.config, token=self.token)
+        if refs != {request.lease_ref: request.release_sha}:
+            raise BrokerError("controlled recovery lease changed before deletion")
+        encoded_ref = urllib.parse.quote(request.lease_ref.removeprefix("refs/"), safe="/")
+        self.api.request(
+            f"repos/{self.config.repository}/git/refs/{encoded_ref}",
+            token=self.token,
+            method="DELETE",
+            expected=(204,),
+        )
+        if _publish_lease_refs(self.api, config=self.config, token=self.token):
+            raise BrokerError("controlled recovery lease deletion was not read back exactly")
+        released_check = _complete_publish_lease_check(
+            self.api,
+            config=self.config,
+            record=record,
+            state="released",
+            provider_now=provider_now,
+            token=self.token,
+        )
+        if (
+            _require_positive_int(
+                released_check.get("id"), "controlled recovery released check-run ID"
+            )
+            != request.check_run_id
+        ):
+            raise BrokerError("controlled recovery created a replacement acknowledgment")
+        final_check = _publish_lease_check(
+            self.api, config=self.config, record=record, token=self.token
+        )
+        _validate_publish_lease_check(
+            final_check,
+            config=self.config,
+            record=record,
+            state="released",
+        )
+        if _publish_lease_refs(self.api, config=self.config, token=self.token):
+            raise BrokerError("controlled recovery lease ref reappeared")
+        released = self.spool.finish_controlled_publish_recovery(
+            provider_now=provider_now,
+            proof_sha256=proof_sha256,
+            request=request,
+        )
+        return {
+            **proof,
+            "durable_status": released.status,
+            "mode": "execute",
+            "mutations": 2,
+            "proof_sha256": proof_sha256,
+        }
 
 
 def validate_clock(
@@ -6521,9 +7329,47 @@ def _acquire_lock(root: Path) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("once", "run", "validate-config"))
+    parser.add_argument(
+        "command",
+        choices=("once", "recover-publish-quarantine", "run", "validate-config"),
+    )
     parser.add_argument("--config", type=Path, required=True)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--execute", action="store_true")
+    parser.add_argument("--run-id", type=int)
+    parser.add_argument("--run-attempt", type=int)
+    parser.add_argument("--release-sha")
+    parser.add_argument("--lease-ref")
+    parser.add_argument("--check-run-id", type=int)
+    parser.add_argument("--expected-quarantine-reason")
+    parser.add_argument("--release-tag")
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--manifest-sha256")
+    parser.add_argument("--wheel-sha256")
+    parser.add_argument("--sdist-sha256")
     return parser
+
+
+def _controlled_recovery_request_from_args(
+    args: argparse.Namespace,
+) -> ControlledPublishRecoveryRequest:
+    values = {
+        "check_run_id": args.check_run_id,
+        "expected_quarantine_reason": args.expected_quarantine_reason,
+        "lease_ref": args.lease_ref,
+        "manifest_path": args.manifest,
+        "manifest_sha256": args.manifest_sha256,
+        "release_sha": args.release_sha,
+        "release_tag": args.release_tag,
+        "run_attempt": args.run_attempt,
+        "run_id": args.run_id,
+        "sdist_sha256": args.sdist_sha256,
+        "wheel_sha256": args.wheel_sha256,
+    }
+    if any(value is None for value in values.values()):
+        raise BrokerError("controlled recovery invocation is missing an exact identity")
+    return ControlledPublishRecoveryRequest.create(**values)
 
 
 def _fatal(message: str) -> NoReturn:
@@ -6564,11 +7410,56 @@ def main() -> int:
         spool = DurableSpool(config.state_root)
         lock_descriptor = _acquire_lock(config.state_root)
         api = GitHubApi()
+        authenticator = AppAuthenticator(api, config)
+        settings_authenticator = AppAuthenticator(api, config, purpose="settings")
+        if args.command == "recover-publish-quarantine":
+            if args.dry_run == args.execute:
+                raise BrokerError(
+                    "controlled recovery requires exactly one of --dry-run or --execute"
+                )
+            request = _controlled_recovery_request_from_args(args)
+            installation = authenticator.mint()
+            token = installation.token
+            provider_now = api.provider_now(token)
+            validate_clock(
+                local_now=datetime.now(UTC),
+                provider_now=provider_now,
+                max_clock_skew_seconds=config.max_clock_skew_seconds,
+            )
+            if installation.expires_at - provider_now < timedelta(minutes=10):
+                raise BrokerError("installation token lifetime is unexpectedly short")
+            settings_installation = settings_authenticator.mint()
+            settings_token = settings_installation.token
+            settings_now = api.provider_now(settings_token)
+            validate_clock(
+                local_now=datetime.now(UTC),
+                provider_now=settings_now,
+                max_clock_skew_seconds=config.max_clock_skew_seconds,
+            )
+            if settings_installation.expires_at - settings_now < timedelta(minutes=10):
+                raise BrokerError("ruleset-witness token lifetime is unexpectedly short")
+            recovery = ControlledPublishLeaseRecovery(
+                api=api,
+                config=config,
+                settings_token=settings_token,
+                spool=spool,
+                token=token,
+            )
+            try:
+                result = recovery.recover(
+                    dry_run=args.dry_run,
+                    provider_now=api.provider_now(token),
+                    request=request,
+                )
+                print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+                return 0
+            finally:
+                os.close(lock_descriptor)
         broker = Broker(
             api=api,
-            authenticator=AppAuthenticator(api, config),
+            authenticator=authenticator,
             config=config,
-            settings_authenticator=AppAuthenticator(api, config, purpose="settings"),
+            settings_authenticator=settings_authenticator,
             spool=spool,
         )
         try:
