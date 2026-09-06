@@ -25,6 +25,21 @@ check.
 | WSL2 Ubuntu 24.04 | Historical v0.3.0 observation; no v0.4.0.post2 claim | The retained v0.3.0 owner run used Python 3.12.3 and an installed wheel. No fresh exact-v0.4.0.post2 WSL2 run is recorded. Automatic browser opening remains environment-dependent; omit `--open` or open the printed report path manually. |
 | Native Windows | Historical v0.3.0 observation; no v0.4.0.post2 claim | The retained v0.3.0 owner report covers one bundled camera-free demo from Command Prompt. No fresh exact-v0.4.0.post2 environment record, full suite, or wheel matrix is claimed. |
 
+## Potential multi-vendor replay use case
+
+Discussing offline replay of multi-vendor AMR status data, Zachary Dydek offered
+the following personal perspective:
+
+> “I expect that people will want to build dashboards for live (and replay)
+> views of deployed AMR fleets from multiple vendors.”
+
+— Zachary Dydek, Ph.D., speaking in a personal capacity (August 2026; quoted
+with permission).
+
+This observation identifies a potential use case. It does not change the
+support statuses above and does not constitute Metriplane adoption, technical
+validation, conformance, or endorsement by any organization.
+
 The authoritative platform matrix is
 [Supported Environments](https://github.com/Miko997/metriplane/blob/main/docs/SUPPORTED_ENVIRONMENTS.md).
 The larger
