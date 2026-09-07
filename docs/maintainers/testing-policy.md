@@ -57,6 +57,17 @@ is explicitly reopened under its governing policy. Imports from that excluded
 namespace are treated as an external frozen boundary (`follow_imports = "skip"`),
 not silenced with `ignore_errors` or per-diagnostic ignores.
 
+MET-162 explicitly reopens the current Atlas assessment, run assessment,
+process-model observer, improvement comparison, run manifest, runtime, report,
+and bundle files. Its source-family freeze test names those eight paths exactly
+and compares the preexisting evaluator methods, apart from the observer-wrapped
+`update`, against the frozen baseline AST. All other Atlas paths and the archived
+fixtures, proofs, external contract schema, and source specifications retain
+their existing freeze checks. This bounded reopening does not extend the
+historical SoftwareX or TIM claims. The root quality exclusions above are
+unchanged; functional, compatibility, installed-artifact, and evidence tests
+validate this change.
+
 ## Source profile
 
 The canonical source command uses an empty Playwright browser cache so the
@@ -80,9 +91,9 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 2,682 items. In the exact core
+The ordered node-id stream must contain exactly 2,733 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the integrated source profile has 2,666 passed and 16 expected skips.
+cache, the integrated source profile has 2,717 passed and 16 expected skips.
 Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and

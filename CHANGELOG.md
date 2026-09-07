@@ -11,7 +11,26 @@ All notable changes to Metriplane are documented here.
 
 ## [Unreleased]
 
-No additional changes are recorded.
+### Fixed
+
+- Prevented Atlas before/after comparisons from claiming an improvement when
+  process rules, evaluation context, or observation coverage do not support a
+  like-for-like comparison. Legacy runs without assessment metadata report
+  insufficient evidence, and opposing wait/incident changes report a tradeoff.
+- Added explicit satisfied, violated, unresolved, and not-exercised outcomes to
+  recorded-run reports and a versioned, checksummed requirement assessment.
+  True observed wait is separate from the retained legacy deviation metric;
+  unfinished intervals remain lower bounds. Incident bundles retain the new
+  assessment while old bundles remain readable.
+- Documented the existing sampled missing-state policy, including completion
+  at equality and a first arrival observed after the threshold without a prior
+  sampled deviation. Detector events and regression semantics are preserved.
+
+### Validation
+
+- Added focused failure-path and compatibility tests plus an installed-package
+  before/after reproduction runner for MET-162. These changes are unreleased;
+  they do not alter frozen research evidence or claim external adoption.
 
 ## [0.4.0.post2] — 2026-09-06 — Reduced Truth Recovery publication recovery
 
