@@ -297,7 +297,7 @@ def test_v030_release_copy_and_draft_materials_are_separated() -> None:
     assert "no passing human-validation claim is made" in notes
 
 
-def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> None:
+def test_v040_postpublication_materials_record_exact_release_and_incident() -> None:
     index = (RELEASES / "README.md").read_text(encoding="utf-8")
     migration = V040_MIGRATION.read_text(encoding="utf-8")
     notes = V040_NOTES.read_text(encoding="utf-8")
@@ -320,18 +320,24 @@ def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> No
     assert all(heading in migration for heading in migration_headings)
 
     assert "# Metriplane v0.4.0.post2 release notes" in notes
-    assert "**DRAFT — UNPUBLISHED**" in notes
+    assert "DRAFT — UNPUBLISHED" not in notes
     assert "v0.4.0.post2 DOI: none" in notes
     normalized_notes = " ".join(notes.split())
     assert "production run `33963231781` stopped before lease creation" in normalized_notes
     assert "retiring post1 unpublished" in normalized_notes
     assert "Post2 adds no product capability or assurance claim" in normalized_notes
+    assert "98ad98c57198aaa78bbf8e9d94c699cd02c72da7" in notes
+    assert "23178d0e9e9d571a198dc692b3d74fbbfe1eed2b" in notes
+    assert "34043220748" in notes
+    assert "34045289769" in notes
+    assert "101519549031" in notes
+    assert "publication-successful but not\nglobally green" in notes
     for placeholder in (
         "<fill-after-production-verification>",
         "<fill-from-approved-final-main>",
         "<fill-from-retained-build-once-manifest>",
     ):
-        assert placeholder in notes
+        assert placeholder not in notes
     notes_headings = (
         "## Install and run",
         "## Reduced Truth Recovery core",
@@ -339,18 +345,20 @@ def test_v040_candidate_materials_keep_durable_and_draft_claims_separate() -> No
         "## Supported environments",
         "## Known limitations and deferred work",
         "## Research boundary",
+        "## Publication reconciliation incident",
     )
     assert all(heading in notes for heading in notes_headings)
 
-    assert "# v0.4.0.post2 launch materials" in launch
-    assert "**DRAFT — UNPUBLISHED**" in launch
+    assert "# v0.4.0.post2 launch and finalization record" in launch
+    assert "DRAFT — UNPUBLISHED" not in launch
     assert "metriplane-0.4.0.post2-py3-none-any.whl" in launch
     assert "metriplane-0.4.0.post2.tar.gz" in launch
     assert "v0.4.0.post2 DOI: none" in launch
     assert "## Zenodo stop gate" in launch
+    assert "no Zenodo release hook" in launch
     checklist = [line for line in launch.splitlines() if line.startswith("- [")]
     assert checklist
-    assert all(line.startswith("- [ ]") for line in checklist)
+    assert all(line.startswith("- [x]") for line in checklist)
 
     for text in (migration, notes, launch):
         assert "reduced Truth Recovery core" in " ".join(text.split())
