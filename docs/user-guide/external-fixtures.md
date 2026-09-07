@@ -91,6 +91,11 @@ This document uses schema version `metriplane.external_run_summary.v1`. It nests
 the complete validation result and reports the Atlas counts, generated artifact
 paths, evidence verification, regression results, and provenance identity.
 
+The summary's `pass` reports execution and artifact checks, not universal
+requirement satisfaction. For the unreleased MET-162 candidate, read the
+additional [requirement outcomes and comparison context](atlas-assessment.md)
+through `atlas_manifest.json`. The strict external summary v1 shape is unchanged.
+
 An explicit run identity and Atlas's existing overwrite control are optional:
 
 ```bash

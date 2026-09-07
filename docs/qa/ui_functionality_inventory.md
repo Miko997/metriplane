@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `922efd3be3c49255cc1b52d27f473f6f4351dfa0912c9c13dd185dfe4b7359bf`
+Canonical projection SHA-256: `98111018cccafe409b568e9d16068e70ce728f6ff98751838667f72d169248cb`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 159 |
+| actions | 160 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -305,6 +305,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
+| tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |
 | tool.ws_replay_jsonl | tool | Ws Replay Jsonl | python tools/ws_replay_jsonl.py |

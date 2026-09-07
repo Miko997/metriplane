@@ -33,6 +33,7 @@ from metriplane.atlas.models import (
 from metriplane.atlas.process_model import AssetObservation, ProcessEvaluator
 from metriplane.atlas.reality_graph import RealityGraph
 from metriplane.atlas.reports import render_markdown, write_report
+from metriplane.atlas.run_assessment import write_run_assessment
 from metriplane.atlas.run_references import (
     DOMAIN_PACK_RUN_PATH,
     STATE_SEGMENT_RUN_PATH,
@@ -491,10 +492,17 @@ def _run_atlas_in_place(
             external_source_provenance,
         )
 
+    _copy_pack_configs(pack, paths.out_dir)
+    requirement_assessment = evaluator.assessment()
+    assessment_sha256 = write_run_assessment(
+        paths.out_dir, requirement_assessment.model_dump(mode="json")
+    )
+
     def artifact_path(path: Path) -> str:
         return path.relative_to(paths.out_dir).as_posix()
 
     artifacts = {
+        "requirement_assessment": "requirement_assessment.json",
         "physical_event_log": artifact_path(paths.event_log),
         "deviations": artifact_path(paths.deviations),
         "incidents": artifact_path(paths.incidents),
@@ -529,11 +537,14 @@ def _run_atlas_in_place(
         incident_count=len(evaluator.incidents),
         artifacts=artifacts,
         external_source_provenance=external_provenance_reference,
+        requirement_assessment_sha256=assessment_sha256,
     )
 
-    report_md = render_markdown(manifest, events, evaluator.deviations, evaluator.incidents, metrics, actions)
+    report_md = render_markdown(
+        manifest, events, evaluator.deviations, evaluator.incidents, metrics, actions,
+        assessment=requirement_assessment,
+    )
     write_report(paths.report_md, paths.report_html, report_md)
-    _copy_pack_configs(pack, paths.out_dir)
 
     _json_dump(paths.manifest, manifest.model_dump(exclude_none=True))
 

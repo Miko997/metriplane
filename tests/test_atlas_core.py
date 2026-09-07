@@ -160,6 +160,15 @@ def test_atlas_regression_replays_mutated_state_segment(tmp_path: Path) -> None:
     create_regression_from_bundle(bundle_dir, spec_path)
     assert run_regression(spec_path)["pass"] is True
 
+    # Exercise the legacy bundle replay boundary. New assessment-bearing bundles
+    # reject this contradiction earlier through their state binding; that path
+    # is covered by test_atlas_assessment_integration.py.
+    (bundle_dir / "requirement_assessment.json").unlink()
+    manifest_path = bundle_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["required_files"].remove("requirement_assessment.json")
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+
     rows = []
     for line in (bundle_dir / "state_segment.jsonl").read_text(encoding="utf-8").splitlines():
         if not line.strip():

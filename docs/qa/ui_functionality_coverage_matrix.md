@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `922efd3be3c49255cc1b52d27f473f6f4351dfa0912c9c13dd185dfe4b7359bf`
+Canonical projection SHA-256: `98111018cccafe409b568e9d16068e70ce728f6ff98751838667f72d169248cb`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -164,6 +164,7 @@ Canonical projection SHA-256: `922efd3be3c49255cc1b52d27f473f6f4351dfa0912c9c13d
 | tool.stop_the_line | Stop The Line | tools/stop_the_line.py | python tools/stop_the_line.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.ui_safe_cleanup | Ui Safe Cleanup | tools/ui_safe_cleanup.py | python tools/ui_safe_cleanup.py | metriplane/runner/allowlist.py | runner action | ui_full | P1 | Covered by a runner allowlist command. |
 | tool.validate-replay | Validate Replay | tools/validate-replay.sh | tools/validate-replay.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_atlas_assessment | Validate Atlas Assessment | tools/validate_atlas_assessment.py | python tools/validate_atlas_assessment.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m1_m6 | Verify M1 M6 | tools/verify_m1_m6.sh | tools/verify_m1_m6.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m6_offline | Verify M6 Offline | tools/verify_m6_offline.sh | tools/verify_m6_offline.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.ws_replay_jsonl | Ws Replay Jsonl | tools/ws_replay_jsonl.py | python tools/ws_replay_jsonl.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

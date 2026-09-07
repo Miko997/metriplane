@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from metriplane.atlas.assessment import AssessmentObserver, RequirementAssessment
 from metriplane.atlas.models import (
     AssetModel,
     AtlasDeviation,
@@ -38,6 +39,10 @@ class ProcessEvaluator:
     emitted_delay_for_step: set[str] = field(default_factory=set)
     deviations: list[AtlasDeviation] = field(default_factory=list)
     incidents: list[AtlasIncident] = field(default_factory=list)
+    _assessment_observer: AssessmentObserver = field(default_factory=AssessmentObserver, init=False, repr=False)
+
+    def assessment(self) -> RequirementAssessment:
+        return self._assessment_observer.assessment(self.process, self.run_id, self.work_order_id)
 
     def _next_event_id(self) -> str:
         self._event_counter += 1
@@ -52,6 +57,7 @@ class ProcessEvaluator:
         return f"INC-{self._incident_counter:04d}"
 
     def update(self, observations: list[AssetObservation], ts: float, frame_id: int) -> list[AtlasEvent]:
+        self._assessment_observer.observe_sample(ts)
         events: list[AtlasEvent] = []
         by_type: dict[str, list[AssetObservation]] = {}
         by_asset: dict[str, AssetObservation] = {}
@@ -63,6 +69,12 @@ class ProcessEvaluator:
             if step.step_id in self.completed_steps:
                 continue
             step_events = self._evaluate_step(step, by_type, by_asset, ts, frame_id)
+            self._assessment_observer.observe_step(
+                step, step_events, ts, frame_id,
+                eligible=bool(self._find_step_asset(step, by_type)) or not step.expected_asset_types,
+                trigger_observed=any(by_type.get(asset_type) for asset_type in step.expected_asset_types),
+                unobserved_required_assets=[asset_id for asset_id in step.required_assets if asset_id not in by_asset],
+            )
             events.extend(step_events)
             break
         return events
