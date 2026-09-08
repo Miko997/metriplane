@@ -91,9 +91,9 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 2,733 items. In the exact core
+The ordered node-id stream must contain exactly 3,091 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the integrated source profile has 2,717 passed and 16 expected skips.
+cache, the integrated source profile requires 3,075 passed and 16 expected skips.
 Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and
@@ -101,6 +101,70 @@ two functional-inventory cases require their governed retained-evidence and
 non-editable installed-package profiles.
 The frozen MP2-000 1,194-item snapshot is a historical artifact and is not
 updated by this policy.
+
+## Iteration and hosted qualification
+
+Finish a coherent slice locally before pushing: inspect its producers, consumers,
+schemas, migrations, failure paths and platform behavior; run affected tests,
+Ruff, format, mypy, compilation and deterministic inventory checks; complete an
+independent review and resolve its findings. Package behavior changes also need
+separate installed wheel and sdist smoke checks. Ordinary correction cycles do
+not run the complete platform matrix. Finalize the substantive PR body before
+creating the qualified candidate.
+
+CI first runs fast source validation. Only a successful prerequisite admits the
+complete Linux 3.12 and 3.13 jobs and the complete macOS 3.12 and 3.13 collection.
+The current protected merge contract still requires all four environments for
+every stable merge candidate; the final v0.4.1 candidate must also satisfy the
+complete platform requirement. This change does not substitute sentinels for
+that requirement. PR concurrency cancels a superseded generation for the same PR;
+main generations remain separate and are not cancelled by a PR update.
+
+Each macOS Python version uses four fresh runners. The runner collects every
+node, rejects duplicate or filtered collection, and partitions the final normal
+pytest order by zero-based index modulo four. It records both the selected nodes
+and their actual execution order. Selection lives in a plugin object in the
+outer invocation, so nested pytest fixture processes retain their own normal
+collection. No xdist or in-process parallel execution is enabled.
+
+Each suite uploads its original stdout, stderr, JUnit XML and strict JSON report.
+The report binds the exact checkout commit and tree, SHA-256 of the exact
+`git ls-tree -r -z HEAD` inventory bytes, workflow, run and attempt,
+Python and runner image, canonical collection, selected nodes, every phase
+outcome and duration, governed skip reason, and before/after source identity.
+The aggregate accepts exactly ten artifact directories for that run and attempt:
+two complete Linux reports and eight macOS shards. It verifies their original
+bytes, identical full collection, disjoint complete coverage in each environment,
+actual execution order, per-environment pass/skip/fail totals derived from the
+original outcomes, and all required successful jobs. Missing reports,
+selector drift, unexpected skips, xfails, xpasses, warnings, interruptions,
+source drift and extra evidence all fail closed. The single existing
+`Metriplane / required` terminal depends on this aggregate.
+
+Hosted Linux installs Chromium and expects the fifteen remaining governed skips.
+Hosted macOS uses the empty browser cache and expects seventeen: the sixteen
+source-profile skips above plus the Linux `/proc`-specific case. Skip identities
+and exact reasons are enforced by `tools/check_required_terminal.py`; a selector
+cannot silently remove them. Collection-only checks prove inventory identity;
+they are never reported as full-suite passes.
+
+The lightweight `PR contract` workflow validates fresh metadata using the trusted
+base validator. The heavy workflow temporarily retains its `edited` event until
+the reviewed broker metadata checks are merged, normally deployed, and read back.
+Only that later activation removes the heavy body-edit trigger. Neither the
+lightweight metadata check nor provider readback can impersonate a source test
+result or make evidence for an old SHA qualify a new one.
+
+Retain exact identities and outcomes for each expensive result. Before another
+complete run, record which source or relevant environment changed and why the
+existing evidence is invalid. During iteration, test the affected subset; defer
+the next full matrix until the corrected candidate is stable. Body wording,
+comments, evidence uploads, unchanged readbacks and restarted monitors alone do
+not invalidate source tests. Track full-suite executions by Python/platform,
+full-matrix generations, cumulative runner time, implementation-to-merge wall
+clock and every rerun reason. Historical evidence lacking a node collection must
+say that it is unavailable. Benchmark the first four-shard hosted run against
+retained original timings before claiming a macOS speedup.
 
 ## Installed profiles
 

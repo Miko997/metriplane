@@ -37,7 +37,7 @@ or research claims? Describe the impact and tests, or write `None`.
 ### Tests
 
 - Focused tests run:
-- Complete suite result:
+- Complete hosted qualification (exact candidate, run/attempt, or pending):
 - Manual checks, if any:
 
 ### Documentation
@@ -56,7 +56,7 @@ data. Do not disclose a vulnerability in this pull request.
 
 - [ ] The pull request is focused and its diff has been reviewed.
 - [ ] New or changed behavior has tests, including a relevant failure path.
-- [ ] Focused tests and the complete suite pass locally, or an exception is explained.
+- [ ] Focused checks pass locally; required complete qualification must be green for the exact candidate before merge.
 - [ ] User-facing commands, support boundaries, and documentation remain truthful.
 - [ ] Third-party material has compatible licensing and required attribution.
 - [ ] No credentials, private recordings, personal data, or identifying workcell data were added.

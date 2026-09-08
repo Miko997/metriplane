@@ -130,8 +130,47 @@ AI-style detection.
 For an oversized body, the CI validator reads GitHub reviews and requires an
 `APPROVED` review on the exact current head from a non-author, with body prefix
 `MP2-004 compact-body exception sha256=<body-sha256>:` and a non-empty reason.
-Editing the pull-request body retriggers CI validation and invalidates an approval
-whose digest no longer names the exact body bytes.
+Editing the pull-request body invalidates an approval whose digest no longer
+names the exact body bytes. The lightweight `PR contract` workflow validates
+metadata independently of the source qualification result. The trusted deployed
+broker also revalidates the current body and complete reviews at admission seals.
+During staged deployment, heavy CI retains its `edited` trigger; removal requires
+actual protected-main broker deployment and first-cycle readback proof. The
+previous eight-obligation checklist remains accepted for existing open PRs;
+the current template describes focused local checks and mandatory complete
+qualification for the exact candidate before merge.
+
+## Qualification boundaries
+
+Implement the complete coherent slice locally, inspect every owned producer and
+consumer, finish schemas/migrations/generated outputs, and batch all known
+review findings before pushing. Iterate with affected tests, lint, format,
+types, compilation and deterministic generation. Package behavior changes also
+need installed wheel/sdist checks. Independently review the complete corrected
+diff before freezing a candidate for its required full hosted qualification.
+
+One stable candidate receives one full Linux/macOS qualification. The final
+integrated release candidate still requires the complete platform matrix.
+Requalification needs a concrete source or environment invalidation under the
+exact identity contract; metadata, evidence upload, monitoring or unchanged
+provider readback alone do not invalidate source execution. Never transfer
+old-SHA proof to changed source. Progress belongs in issue/checkpoint updates;
+finalize the substantive PR body before qualification.
+
+CI cancels superseded PR generations while preserving protected-main and deep
+health observations. Fast checks run before full suites. Deterministic macOS
+shards use separate fresh runners and retain complete canonical collections,
+exact membership, every terminal disposition and actual source/environment
+identity. The existing required aggregate succeeds only after every required
+job and complete evidence set succeeds. This changes neither the four protected
+terminal names nor the full release platform requirement.
+
+Normal administrative renewal uses a new owner request on the same qualified
+head only after authentic prior requests expire and the broker proves the head
+has never entered a durable merge transaction. Preserve old reviews, exact
+head/base/paths, new nonce/digest uniqueness, current state/rulesets and closed
+provider readback. Expired, spent, rejected or uncertain transactions are never
+reset to unused. See [the broker contract](main-health-broker.md).
 
 ## Stop conditions
 
@@ -140,3 +179,13 @@ scope expansion, compatibility removal, evidence rewrite, or self-approved repai
 Preserve retained evidence even when reverting code. A failed unmerged candidate
 does not falsify global main health; a genuine protected-main or scheduled failure
 does.
+
+## MP2-007 implementation slices before permanent materialization
+
+For MP2-007 implementation slices before the permanent MP2-016 materializer exists, the coordinator may prepare an immutable implementation-slice manifest bound to the owner's retained instruction to continue implementation. This is a separate, expressly named engineering interpretation; it does not change the packet's MP2-000-only provider-authenticated assignment wrapper or assert compliance with that wrapper. The engineering manifest must identify its owner-instruction provenance and actual executor, exact dependency-complete base SHA/tree, current tracked instructions and PR phase, live issue/catalog identities, finite owned EXISTING/CREATE paths and whole-file adoptions, sole producers/consumers, schemas, algorithms, exact commands/environments, applicable tests, acceptance trace, resource applicability, retained evidence and stop rules. All original A01–A13 remain required for final acceptance.
+
+A separately instantiated technical reviewer must independently recompute the manifest and return READY_IMPLEMENTATION_SLICE for the specified offline effects only. That disposition satisfies this start gate only for the named prospective MP2-007 engineering mode and exact manifest bytes. Drift in the bound base, dependency inputs, original tracked instructions, issue/relation authority, ownership or adoption identities; a missing required slice input; or a source change outside the reviewed write set invalidates it. Ordinary implementation edits within the approved write set, including the specifically reviewed instruction/count amendments and generated projections, are authorized under that fixed base and receive final diff review. The initial clean-state check runs before the first edit; it does not require erasing authorized work mid-slice. A complete source diff is reviewed again before normal protected merge, bound to the original baseline plus the resulting implementation head/tree. Preserve all source work and no-overwrite evidence during rematerialization; never reset user work to satisfy a stale clean-state check. Neither review represents a human/non-author release signature, hosted approval or an authority to mutate release targets, stores, protected settings or deployed services.
+
+Resource applicability is per actual effect. Synthetic fixtures may exercise the production algorithms and transport abstractions in isolated test namespaces, while retaining synthetic provenance. A release signer, independent payload store, CAS namespace or LKG binding that the slice does not contact is UNBOUND_LIVE_ACCEPTANCE_REQUIRED and NOT_USED_BY_THIS_SLICE, not AVAILABLE. Its absence does not bar that independent engineering. A resource actually needed for an attempted live effect must be authenticated and bound, or that effect remains blocked. An absent software producer/validator/registry stays a named implementation gap and cannot be mislabeled a credentials-only blocker.
+
+This exception does not authorize tagging, publication, repository settings, deployment, tracker closure, evidence rewriting, a new release state-machine owner, a second build/publication path, approval self-signing or broad changes outside the exact manifest. Current broker, state backend, seven-ruleset protection and merge procedures remain controlling. The temporary manifest is coordinator evidence, not a new production release registry, validator or state backend. MP2-016 replaces this temporary form with its owned permanent materialization contract, preserving the prior lineage; no parallel permanent authority is created.

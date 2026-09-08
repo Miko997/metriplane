@@ -239,8 +239,66 @@ Provider reviews that carry an owner-request marker but are anchored to a prior
 head remain immutable audit history and cannot authorize the current head. The
 broker ignores those prior-head requests during current-head selection and
 retained post-merge evidence reconstruction, while a malformed review anchor or
-any marker review anchored to the current head must still pass the complete
-request and live-context validation.
+any marker review anchored to the current head must still pass complete
+authentication and structural validation. For owner-normal admission, only the
+selected fresh request must match the current mutable provider context.
+
+### Renewing an expired, never-admitted owner request
+
+An expired owner-normal request may be followed by a genuinely new request on
+the same qualified source SHA and unchanged base. Preserve the original review,
+body, expiry and nonce. The new request needs a unique nonce and request digest,
+and every earlier current-head request must have expired before its submission.
+All historical requests still bind the exact repository, PR, owner, base, head
+and changed paths. Their former state, collaboration and ruleset digests remain
+history; the selected request binds the current verified values. An invalid
+newest request never falls back to an older request. The complete authenticated
+history is compared again at the admission boundaries.
+
+Every owner-normal candidate, including one with only a single visible review,
+must have no durable admitted transaction for that head. This covers missing
+provider reviews, another PR using the same head, and every transaction status:
+`merging`, `uncertain`, `merged` and `rejected`. The actual canonical App check
+must also read back as closed failure; a merge/consumed identity blocks renewal
+even after spool restoration. After reservation, the final seal permits only
+this exact request's own `merging` row and matching App success. No schema,
+ledger status, replay rule or expiry is reset.
+
+Scheduled deep-health overlap and transient closure still block admission.
+After health is verified again, a request that never entered the transaction
+can be replaced without an identical-tree source commit or duplicate source
+qualification. Expiration after reservation remains subject to the original
+orphan/uncertain handling; it cannot be treated as never admitted. A requester
+can check public eligibility but cannot attest to the private durable ledger.
+
+### Fresh metadata and staged activation
+
+At each full admission snapshot and immediately before the merge PUT, the
+broker calls its deployed `tools.check_pr_contract` on the actual PR body and
+complete reviews. It binds the exact UTF-8 body, author/head/base, review digests
+and trusted validator identity. Invalid bodies, revoked exact-body exceptions,
+or even a different valid body during the transaction stop admission. Unrelated
+provider update timestamps do not change this binding. The final provider
+read is not an atomic body-digest lock: GitHub's merge operation conditions only
+on the exact source SHA.
+
+The separate `PR contract` workflow provides lightweight metadata feedback and
+emits none of the four required terminals. Stage A deliberately retains the
+heavy CI `edited` trigger until this broker capability is actually deployed.
+For an already-running seven-rule broker, first qualify and merge the capability
+through the normal protected process. Preserve the deployed executable,
+configuration and spool, stop the service under the normal controlled freeze,
+install the exact independently reviewed protected-main revision, and read back
+its control modules including `tools/check_pr_contract.py`. Validate the unchanged
+configuration and all seven rulesets, then require actual first-cycle readiness.
+A failure leaves stage B inactive and requires the preserved normal recovery
+procedure. No setting, credential, scheduler, lease or state reset is involved.
+
+Only after that deployment proof may a subsequent coherent source change remove
+heavy `edited` triggering. Existing open PR bodies may retain the former eight
+checklist obligations during trusted-base transition; new bodies describe
+focused local checks and mandatory exact-candidate complete qualification before
+merge. A body-only check never erases or impersonates a source test result.
 
 The broker accepts only the reviewer's latest decisive provider review, so a
 later changes-requested, dismissal, or differently bound approval revokes an
