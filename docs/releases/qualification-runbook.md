@@ -33,6 +33,12 @@ intent, sequence, diagnostics and exact output digests. Missing or incomplete
 terminal evidence blocks consumption, including after a supervisor is killed.
 Retain the entire run directory and partial evidence during recovery.
 
+A started worker group remains unsettled until the supervisor observes that it
+no longer exists. Group cleanup retries for at most five seconds, including
+transient permission errors while macOS reaps exited children. A permission
+error alone never proves shutdown. Unconfirmed cleanup retains an incomplete
+invocation and cannot install canonical artifacts or write a terminal record.
+
 The artifact builder uses the single recipe in `metriplane.release_control` and
 the installed backend pinned by `pyproject.toml` and `uv.lock`. It builds one
 wheel and one sdist with `python -m build --no-isolation --sdist --wheel`, checks

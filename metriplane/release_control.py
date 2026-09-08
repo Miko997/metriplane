@@ -6840,16 +6840,16 @@ def _worker_command(context: ReleaseInvocation) -> list[str]:
 
 def _stop_worker_group(pid: int) -> bool:
     """Stop inherited build children before output/diagnostic hashes are accepted."""
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         try:
-            os.killpg(pid, 0)
+            os.killpg(pid, signal.SIGKILL)
         except ProcessLookupError:
             return True
+        except PermissionError:
+            # macOS can report EPERM while a zombie-only group is being reaped.
+            # Permission failure is unresolved: only ESRCH proves group absence.
+            pass
         time.sleep(0.05)
     return False
 
@@ -6886,6 +6886,7 @@ def _supervise_release_invocation(
                 stderr=stderr,
                 start_new_session=True,
             )
+            group_settled = False
             try:
                 return_code = process.wait()
             except KeyboardInterrupt:

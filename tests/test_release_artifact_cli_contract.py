@@ -518,7 +518,7 @@ def test_worker_death_preserves_flushed_build_child_logs_and_stops_its_group(
     tmp_path: Path,
 ) -> None:
     fixture = _record_inputs(tmp_path)
-    child = "import os,signal,sys,time; from pathlib import Path\np=Path(sys.argv[1]); (p/'child-pid').write_text(str(os.getpid()))\nprint('flushed child stdout',flush=True); print('flushed child stderr',file=sys.stderr,flush=True)\nos.kill(os.getppid(),signal.SIGKILL)\nwhile True:\n (p/'heartbeat').write_text(str(time.monotonic_ns()))\n time.sleep(0.01)"
+    child = "import os,signal,sys,time; from pathlib import Path\np=Path(sys.argv[1]); (p/'child-pid').write_text(str(os.getpid()))\nprint('flushed child stdout',flush=True); print('flushed child stderr',file=sys.stderr,flush=True)\n(p/'heartbeat').write_text(str(time.monotonic_ns()))\nos.kill(os.getppid(),signal.SIGKILL)\nwhile True:\n (p/'heartbeat').write_text(str(time.monotonic_ns()))\n time.sleep(0.01)"
     patch = (
         "import sys; from tools import build_release_artifacts as a\nreal_run=a.subprocess.run\ndef streamed(argv,**kwargs):\n if len(argv)>2 and argv[1:3]==['-m','build']:\n  return real_run([sys.executable,'-c',"
         + repr(child)
@@ -536,11 +536,66 @@ def test_worker_death_preserves_flushed_build_child_logs_and_stops_its_group(
     assert "flushed child stderr" in (directory / "stderr").read_text()
     assert _terminal(fixture)["status"] == "CANCELLED"
     before = {p.name: p.read_bytes() for p in (directory / "staged/artifacts").iterdir()}
+    assert {"child-pid", "heartbeat"} <= before.keys()
     import time
 
     time.sleep(0.1)
     assert before == {p.name: p.read_bytes() for p in (directory / "staged/artifacts").iterdir()}
     control._validate_terminal(control._validate_intent(directory))
+
+
+@pytest.mark.parametrize(
+    "outcome", ["permission-then-absent", "kill-then-absent", "denied", "present"]
+)
+def test_worker_group_requires_observed_absence(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    elapsed = [0.0]
+    calls = []
+
+    def advance(seconds: float) -> None:
+        elapsed[0] += seconds
+
+    def signal_group(pid: int, signum: int) -> None:
+        calls.append((pid, signum))
+        if outcome.endswith("then-absent") and len(calls) == 2:
+            raise ProcessLookupError("group has disappeared")
+        if outcome in {"permission-then-absent", "denied"}:
+            raise PermissionError("group cannot currently be signalled")
+
+    monkeypatch.setattr(control.os, "killpg", signal_group)
+    monkeypatch.setattr(control.time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(control.time, "sleep", advance)
+    assert control._stop_worker_group(12345) is outcome.endswith("then-absent")
+    assert all(call == (12345, signal.SIGKILL) for call in calls)
+    if outcome.endswith("then-absent"):
+        assert len(calls) == 2 and elapsed[0] == 0.05
+    else:
+        assert 5 <= elapsed[0] < 5.1
+
+
+@pytest.mark.parametrize("fault", ["permission", "unexpected-error"])
+def test_unconfirmed_worker_group_cannot_finalize_or_install(tmp_path: Path, fault: str) -> None:
+    fixture = _record_inputs(tmp_path)
+    exception = "PermissionError" if fault == "permission" else "OSError"
+    parent_patch = (
+        "def unavailable_group(pid,signum):\n raise "
+        + exception
+        + "('injected group observation failure')\nc.os.killpg=unavailable_group"
+    )
+    result = _run_build(
+        fixture,
+        bootstrap=_bootstrap(worker_patch=_deterministic_build_patch(), parent_patch=parent_patch),
+    )
+    directory = fixture["run"] / "invocations/artifact-build/001"
+    assert result.returncode == 3, (result.stdout, result.stderr)
+    assert (directory / "worker-result.json").is_file()
+    assert (directory / "staged/artifact-manifest.json").is_file()
+    assert not (directory / "invocation.json").exists()
+    assert not (fixture["run"] / "artifacts").exists()
+    assert not (fixture["run"] / "artifact-manifest.json").exists()
+    with pytest.raises(control.ReleaseControlError):
+        control._validate_terminal(control._validate_intent(directory))
 
 
 @pytest.mark.parametrize("fault", ["prior-diagnostic", "prior-partial"])
