@@ -130,8 +130,47 @@ AI-style detection.
 For an oversized body, the CI validator reads GitHub reviews and requires an
 `APPROVED` review on the exact current head from a non-author, with body prefix
 `MP2-004 compact-body exception sha256=<body-sha256>:` and a non-empty reason.
-Editing the pull-request body retriggers CI validation and invalidates an approval
-whose digest no longer names the exact body bytes.
+Editing the pull-request body invalidates an approval whose digest no longer
+names the exact body bytes. The lightweight `PR contract` workflow validates
+metadata independently of the source qualification result. The trusted deployed
+broker also revalidates the current body and complete reviews at admission seals.
+During staged deployment, heavy CI retains its `edited` trigger; removal requires
+actual protected-main broker deployment and first-cycle readback proof. The
+previous eight-obligation checklist remains accepted for existing open PRs;
+the current template describes focused local checks and mandatory complete
+qualification for the exact candidate before merge.
+
+## Qualification boundaries
+
+Implement the complete coherent slice locally, inspect every owned producer and
+consumer, finish schemas/migrations/generated outputs, and batch all known
+review findings before pushing. Iterate with affected tests, lint, format,
+types, compilation and deterministic generation. Package behavior changes also
+need installed wheel/sdist checks. Independently review the complete corrected
+diff before freezing a candidate for its required full hosted qualification.
+
+One stable candidate receives one full Linux/macOS qualification. The final
+integrated release candidate still requires the complete platform matrix.
+Requalification needs a concrete source or environment invalidation under the
+exact identity contract; metadata, evidence upload, monitoring or unchanged
+provider readback alone do not invalidate source execution. Never transfer
+old-SHA proof to changed source. Progress belongs in issue/checkpoint updates;
+finalize the substantive PR body before qualification.
+
+CI cancels superseded PR generations while preserving protected-main and deep
+health observations. Fast checks run before full suites. Deterministic macOS
+shards use separate fresh runners and retain complete canonical collections,
+exact membership, every terminal disposition and actual source/environment
+identity. The existing required aggregate succeeds only after every required
+job and complete evidence set succeeds. This changes neither the four protected
+terminal names nor the full release platform requirement.
+
+Normal administrative renewal uses a new owner request on the same qualified
+head only after authentic prior requests expire and the broker proves the head
+has never entered a durable merge transaction. Preserve old reviews, exact
+head/base/paths, new nonce/digest uniqueness, current state/rulesets and closed
+provider readback. Expired, spent, rejected or uncertain transactions are never
+reset to unused. See [the broker contract](main-health-broker.md).
 
 ## Stop conditions
 

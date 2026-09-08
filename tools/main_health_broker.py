@@ -30,7 +30,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn
 
-from tools import observe_main_health, stop_the_line
+from tools import check_pr_contract, observe_main_health, stop_the_line
 
 APP_INTEGRATION_ID = 4722589
 ACTIONS_INTEGRATION_ID = 15368
@@ -1086,6 +1086,45 @@ class DurableSpool:
             raise BrokerError("durable request spool contains an invalid status")
         return status
 
+    def request_inventory(self) -> list[dict[str, Any]]:
+        """Read every canonical transaction, including requests absent from reviews."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT request_digest, nonce, pull_request, request_json, status "
+                "FROM requests ORDER BY request_digest"
+            ).fetchall()
+        inventory = []
+        for request_digest, nonce, pull_request, request_json, status in rows:
+            try:
+                request = json.loads(request_json)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise BrokerError("durable request inventory contains malformed JSON") from exc
+            if (
+                not isinstance(request, dict)
+                or canonical_bytes(request).decode().rstrip("\n") != request_json
+                or digest(request) != request_digest
+                or request.get("nonce") != nonce
+                or request.get("pull_request") != pull_request
+                or status not in REQUEST_STATUSES
+                or not isinstance(nonce, str)
+                or NONCE_RE.fullmatch(nonce) is None
+            ):
+                raise BrokerError("durable request inventory identity is inconsistent")
+            _require_positive_int(pull_request, "durable request pull request")
+            _require_positive_int(request.get("pull_request"), "durable request JSON pull request")
+            _require_sha(request.get("head_sha"), "durable request head SHA")
+            _require_sha(request.get("base_sha"), "durable request base SHA")
+            inventory.append(
+                {
+                    "request_digest": request_digest,
+                    "nonce": nonce,
+                    "pull_request": pull_request,
+                    "request": request,
+                    "status": status,
+                }
+            )
+        return inventory
+
     def record_request(
         self,
         *,
@@ -1780,6 +1819,8 @@ def parse_owner_request(body: Any, *, reviewer_id: int) -> dict[str, Any]:
         raise BrokerError("owner merge request review JSON is invalid") from exc
     if not isinstance(value, dict) or set(value) != OWNER_REQUEST_FIELDS:
         raise BrokerError("owner merge request review fields are not exact")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        raise BrokerError("owner merge request schema version is invalid")
     if lines[1] != canonical_bytes(value).decode().rstrip("\n"):
         raise BrokerError("owner merge request review JSON is not canonical")
     parse_merge_request(
@@ -1980,6 +2021,8 @@ def _select_owner_admission(
     marker = OWNER_REPAIR_REQUEST_MARKER if repair else OWNER_REQUEST_MARKER
     parser = parse_owner_repair_request if repair else parse_owner_request
     requests: list[tuple[int, datetime, dict[str, Any], int, str]] = []
+    if not repair:
+        _provider_review_snapshot(reviews)
     for review in reviews:
         body = review.get("body")
         if not isinstance(body, str) or not body.startswith(marker):
@@ -2007,12 +2050,14 @@ def _select_owner_admission(
             or requester_id != owner_context["owner_id"]
             or requester_login != str(owner_context["owner_login"]).casefold()
             or request["changed_paths_digest"] != owner_context["changed_paths_digest"]
-            or request["collaboration_digest"] != owner_context["collaboration_digest"]
-            or request["ruleset_digests"] != owner_context["ruleset_digests"]
-            or request["state_commit"] != owner_context["state_commit"]
         ):
             raise BrokerError("owner request does not bind the live provider context")
         if repair:
+            if any(
+                request[field] != owner_context[field]
+                for field in ("collaboration_digest", "ruleset_digests", "state_commit")
+            ):
+                raise BrokerError("owner request does not bind the live provider context")
             if state is None:
                 raise BrokerError("owner repair request has no red-state context")
             if _timestamp(request["expires_at"]) > _timestamp(
@@ -2034,6 +2079,22 @@ def _select_owner_admission(
     )
     if now < submitted_at - timedelta(seconds=60) or now >= _timestamp(request["expires_at"]):
         raise BrokerError("single-maintainer owner request is not currently valid")
+    if not repair:
+        if any(
+            request[field] != owner_context[field]
+            for field in ("collaboration_digest", "ruleset_digests", "state_commit")
+        ):
+            raise BrokerError("owner request does not bind the live provider context")
+        nonces = [item[2]["nonce"] for item in requests]
+        request_digests = [digest(item[2]) for item in requests]
+        if len(set(nonces)) != len(nonces) or len(set(request_digests)) != len(request_digests):
+            raise BrokerError("owner request history reuses a nonce or request digest")
+        if any(
+            _timestamp(prior["expires_at"]) > submitted_at
+            for identifier, _time, prior, _actor, _login in requests
+            if identifier != request_review_id
+        ):
+            raise BrokerError("prior owner request had not expired before the new submission")
     result = {
         "approval_review_id": request_review_id,
         "approver_id": requester_id,
@@ -2068,6 +2129,20 @@ def _select_owner_admission(
         )
     else:
         result["health_generation"] = request["health_generation"]
+        # Historical mutable context authorizes nothing. Bind the complete,
+        # authenticated original history so every later seal sees its changes.
+        by_id = _provider_review_snapshot(reviews)
+        result["owner_request_history"] = [
+            {
+                "review_id": identifier,
+                "review_digest": by_id[identifier],
+                "request_digest": digest(historical),
+                "nonce": historical["nonce"],
+                "submitted_at": submitted.isoformat(),
+                "expires_at": historical["expires_at"],
+            }
+            for identifier, submitted, historical, _actor, _login in sorted(requests)
+        ]
     return result
 
 
@@ -5849,6 +5924,41 @@ def _provider_review_snapshot(reviews: list[dict[str, Any]]) -> dict[int, str]:
     return snapshot
 
 
+def _pr_metadata_binding(pull: dict[str, Any], reviews: list[dict[str, Any]]) -> dict[str, Any]:
+    """Validate fresh provider data through the trusted deployed contract owner."""
+    body = pull.get("body")
+    if not isinstance(body, str):
+        raise BrokerError("pull request metadata body is malformed")
+    review_snapshot = _provider_review_snapshot(reviews)
+    try:
+        owner_path = Path(check_pr_contract.__file__).resolve(strict=True)
+        expected_owner = Path(__file__).resolve(strict=True).with_name("check_pr_contract.py")
+        if owner_path != expected_owner or not owner_path.is_file():
+            raise BrokerError("pull request metadata validator is outside the trusted control tree")
+        verdict = check_pr_contract.validate_event({"pull_request": pull}, reviews)
+        return {
+            "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+            "author": {"id": pull["user"]["id"], "login": pull["user"]["login"]},
+            "base_sha": pull["base"]["sha"],
+            "head_sha": pull["head"]["sha"],
+            "pull_request": pull["number"],
+            "reviews": [
+                [identifier, value] for identifier, value in sorted(review_snapshot.items())
+            ],
+            "validator_sha256": hashlib.sha256(owner_path.read_bytes()).hexdigest(),
+            "validation": verdict,
+        }
+    except (
+        check_pr_contract.ContractError,
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OSError,
+    ) as exc:
+        raise BrokerError(f"pull request metadata contract failed: {exc}") from exc
+
+
 def _validate_state_for_admission(
     *,
     admission: dict[str, Any],
@@ -6297,6 +6407,72 @@ class Broker:
         self.sleep = sleep
         self.spool = spool
 
+    def _guard_owner_transaction(
+        self, *, admission: dict[str, Any], token: str, reserved: bool = False
+    ) -> None:
+        """Renew only never-admitted history; expiry never retires a transaction."""
+        if admission["kind"] != "owner-normal":
+            return
+        inventory = self.spool.request_inventory()
+        same_head = [
+            row for row in inventory if row["request"]["head_sha"] == admission["head_sha"]
+        ]
+        if reserved:
+            expected = [
+                {
+                    "request_digest": admission["request_digest"],
+                    "nonce": admission["nonce"],
+                    "pull_request": admission["pull_request"],
+                    "request": admission["request"],
+                    "status": "merging",
+                }
+            ]
+            if same_head != expected:
+                raise BrokerError("owner admission has a missing or foreign same-head reservation")
+        elif same_head:
+            raise BrokerError("owner admission head already has a durable transaction")
+        if any(
+            row["nonce"] == admission["nonce"]
+            and (not reserved or row["request_digest"] != admission["request_digest"])
+            for row in inventory
+        ):
+            raise BrokerError("owner admission nonce is already admitted")
+        check_id = self.spool.get_check_id(admission["head_sha"])
+        external_id = self.spool.get_check_external_id(admission["head_sha"])
+        if reserved:
+            expected_external = f"mhb1:merge:{admission['request_digest']}"
+            conclusion = "success"
+        else:
+            if (
+                not isinstance(external_id, str)
+                or re.fullmatch(r"mhb1:closed:[0-9a-f]{64}", external_id) is None
+            ):
+                raise BrokerError("owner admission lacks a never-admitted closed provider check")
+            expected_external = external_id
+            conclusion = "failure"
+        if check_id is None or external_id != expected_external:
+            raise BrokerError("owner admission canonical check identity changed")
+        runs = [
+            run
+            for run in _check_runs(
+                self.api, config=self.config, head_sha=admission["head_sha"], token=token
+            )
+            if run.get("name") == MAIN_HEALTH_CHECK
+            and isinstance(run.get("app"), dict)
+            and run["app"].get("id") == self.config.app_id
+        ]
+        if len(runs) != 1:
+            raise BrokerError("owner admission canonical provider check is missing or duplicated")
+        CheckController(
+            api=self.api, config=self.config, spool=self.spool, token=token
+        )._validate_response(
+            runs[0],
+            check_run_id=check_id,
+            conclusion=conclusion,
+            external_id=expected_external,
+            head_sha=admission["head_sha"],
+        )
+
     @staticmethod
     def _pull_is_merge_ready(*, admission: dict[str, Any], pull: dict[str, Any]) -> bool:
         base = pull.get("base")
@@ -6466,6 +6642,9 @@ class Broker:
             admission=admission, pull=final_pull.value
         ):
             raise BrokerError("provider merge readiness changed during the post-success seal")
+        if _pr_metadata_binding(final_pull.value, trailing_reviews) != admission["pr_metadata"]:
+            raise BrokerError("pull request metadata changed during the post-success seal")
+        self._guard_owner_transaction(admission=admission, token=token, reserved=True)
         provider_now = self.api.provider_now(token)
         if provider_now >= _timestamp(admission["request"]["expires_at"]):
             raise BrokerError("merge request expired during the post-success seal")
@@ -6745,6 +6924,34 @@ class Broker:
         state_branch: StateBranch,
         token: str,
     ) -> dict[str, Any]:
+        metadata = _pr_metadata_binding(pull, reviews)
+        admission = self._select_provider_authorization(
+            commits=commits,
+            provider_now=provider_now,
+            pull=pull,
+            reviewer_permissions=reviewer_permissions,
+            reviews=reviews,
+            settings_token=settings_token,
+            state=state,
+            state_branch=state_branch,
+            token=token,
+        )
+        admission["pr_metadata"] = metadata
+        return admission
+
+    def _select_provider_authorization(
+        self,
+        *,
+        commits: list[dict[str, Any]],
+        provider_now: datetime,
+        pull: dict[str, Any],
+        reviewer_permissions: dict[str, str],
+        reviews: list[dict[str, Any]],
+        settings_token: str,
+        state: dict[str, Any],
+        state_branch: StateBranch,
+        token: str,
+    ) -> dict[str, Any]:
         if state.get("status") == "green":
             try:
                 return select_admission(
@@ -6871,6 +7078,7 @@ class Broker:
         check_run_id = self.spool.get_check_id(admission["head_sha"])
         if check_run_id is None:
             raise BrokerError("pull request has no canonical failed broker check")
+        self._guard_owner_transaction(admission=admission, token=token)
         if admission["kind"] in {"normal", "owner-normal"}:
             _validate_state_for_admission(
                 admission=admission,
@@ -7080,6 +7288,7 @@ class Broker:
                 admission["manifest_expires_at"]
             ):
                 raise BrokerError("owner emergency manifest expired during admission seal")
+        self._guard_owner_transaction(admission=admission, token=token)
         self.spool.record_request(
             request_digest=admission["request_digest"],
             nonce=admission["nonce"],

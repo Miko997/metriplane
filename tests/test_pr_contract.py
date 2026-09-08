@@ -123,3 +123,38 @@ def test_ci_activates_validator_only_when_base_contains_the_contract() -> None:
     assert "${BASE_SHA}:tools/check_pr_contract.py" in workflow
     assert "MP2-004 transition PR uses the previous repository template" in workflow
     assert "pr-reviews.json" in workflow
+
+
+def test_old_and_new_qualification_obligations_remain_compatible() -> None:
+    body = _body()
+    current = "Focused checks pass locally; required complete qualification must be green for the exact candidate before merge."
+    old = "Focused tests and the complete suite pass locally, or an exception is explained."
+    assert current in body
+    assert validate_body(body, author="author")["verdict"] == "PASS"
+    assert validate_body(body.replace(current, old), author="author")["verdict"] == "PASS"
+    with pytest.raises(ContractError):
+        validate_body(body.replace(current, "Focused checks pass locally."), author="author")
+
+
+def test_metadata_workflow_uses_only_trusted_base_and_no_required_terminal() -> None:
+    import yaml
+
+    path = ROOT / ".github/workflows/pr-contract.yml"
+    workflow = yaml.safe_load(path.read_text())
+    trigger = workflow.get("on", workflow.get(True))
+    assert set(trigger) == {"pull_request_target", "pull_request_review"}
+    assert "edited" in trigger["pull_request_target"]["types"]
+    assert trigger["pull_request_review"]["types"] == ["submitted", "edited", "dismissed"]
+    assert workflow["permissions"] == {"contents": "read", "pull-requests": "read"}
+    job = workflow["jobs"]["validate"]
+    assert job["steps"][0]["with"] == {
+        "ref": "${{ github.event.pull_request.base.sha }}",
+        "persist-credentials": False,
+    }
+    script = job["steps"][1]["run"]
+    assert "python -S tools/check_pr_contract.py" in script
+    assert "--paginate --slurp" in script
+    assert "pr-current.json" in script and "pr-readback.json" in script
+    assert "pull_request.body ==" in script and "pull_request.head.sha ==" in script
+    assert "pip install" not in script and "uv run" not in script
+    assert " / required" not in path.read_text()

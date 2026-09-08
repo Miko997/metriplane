@@ -67,3 +67,45 @@ integration, fifth protected release terminal and reviewed deployment all remain
 required software or acceptance work. No private key, independent signer, Store A,
 Store B or CAS/lock/LKG backend has been bound by this segment. The owner’s
 protected-main merge path and existing release criteria remain in force.
+
+## Qualification boundaries and provider administration
+
+Prepare and independently review a complete compatible slice before its hosted
+qualification. The target is one full platform matrix per stable coherent PR
+candidate and one final integrated v0.4.1 release-candidate matrix. Additional
+complete runs require a recorded source or environment invalidation under the
+exact-identity contract. CI's four fresh macOS shards retain the complete test
+collection and all outcomes; its aggregate is source qualification evidence,
+not a release gate-input, signed approval, publication or deployment record.
+
+Keep an efficiency ledger with the exact commit and tree, source digest,
+workflow/run/attempt, Python/platform and runner image, ordered collection,
+pass/skip/fail counts, runner duration and rerun reason. Preserve original
+reports and distinguish full-suite execution time from total workflow runner
+time and elapsed wall clock. A cancelled or failed generation remains visible.
+The first sharded hosted candidate supplies the measured after result; local
+registry benchmarks and focused tests cannot prove macOS performance.
+
+A fresh provider request for the same qualified source can avoid an
+administrative-only commit once the reviewed normal broker policy is deployed.
+The older request stays retained and expired; it is never reused. The new
+request needs a unique nonce and digest, current exact head/base, current state,
+collaborators and rulesets, a fresh valid lease, and an unspent canonical closed
+check. An earlier admitted request, including a failed or incomplete admitted
+transaction, prevents this renewal path. Scheduled deep-health overlap and
+transient admission closure remain fail-closed conditions; read back the live
+state before a new request. Provider-only readback cannot override qualification.
+
+Broker policy source must be normally merged before deployment. Continue using
+the deployed trusted control code for that merge, with candidate source bound
+separately and never imported as live control code. Deploy the reviewed broker
+and its exact validator dependencies, prove their file origins and hashes, then
+read back protected-main state, all rulesets and terminal producers before
+activating the lightweight-only metadata trigger. No deployment or renewal
+capability is claimed before that proof.
+
+All remaining CLI routes, non-author approval, two independent durable stores,
+CAS/lock/LKG backend and deployment/readback remain acceptance work. A local
+fixture or same-host directory pair cannot satisfy those bindings. Keep MET-163
+In Progress and retain the explicit v0.4.1 publication/tag hold throughout this
+work; neither CI efficiency nor completion of one source segment closes it.

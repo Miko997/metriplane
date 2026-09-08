@@ -27,7 +27,7 @@ H3 = [
 CHECKLIST_MARKERS = [
     "focused and its diff has been reviewed",
     "relevant failure path",
-    "complete suite pass locally",
+    "required complete qualification",
     "documentation remain truthful",
     "compatible licensing",
     "No credentials, private recordings",
@@ -116,7 +116,13 @@ def validate_body(
     if len(checklist) != 8:
         raise ContractError("the checklist must contain exactly eight obligations")
     for marker in CHECKLIST_MARKERS:
-        if not any(marker in item for item in checklist):
+        alternatives = (marker,)
+        if marker == "required complete qualification":
+            # Existing open PRs retain the old eight-obligation template during
+            # trusted-base workflow deployment. Hosted exact-source qualification
+            # remains enforced independently by the protected CI aggregate.
+            alternatives += ("complete suite pass locally",)
+        if not any(value in item for item in checklist for value in alternatives):
             raise ContractError(f"missing checklist obligation containing {marker!r}")
     size = len(body.encode("utf-8"))
     if size > max_bytes:

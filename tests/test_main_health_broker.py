@@ -267,6 +267,7 @@ def _reviews(*, approver_id: int = 40, approver_login: str = "reviewer") -> list
 def _pull() -> dict[str, Any]:
     return {
         "base": {"ref": "main", "sha": BASE_SHA},
+        "body": (ROOT / ".github/PULL_REQUEST_TEMPLATE.md").read_text(encoding="utf-8"),
         "commits": 1,
         "draft": False,
         "head": {"repo": {"full_name": REPOSITORY}, "sha": HEAD_SHA},
@@ -2141,6 +2142,21 @@ class FakeOwnerTransactionApi(FakeTransactionApi):
         self.collaborator_inventory_calls = 0
         self.file_inventory_calls = 0
         self.review_change_during_owner_seal = False
+        self.owner_check = {
+            "app": {"id": config.app_id, "slug": config.app_slug},
+            "conclusion": "failure",
+            "external_id": "mhb1:closed:" + "0" * 64,
+            "head_sha": HEAD_SHA,
+            "id": 42,
+            "name": broker.MAIN_HEALTH_CHECK,
+            "status": "completed",
+        }
+
+    def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+        rows = super().list_items(path, key=key, token=token)
+        if key == "check_runs":
+            rows.append(copy.deepcopy(self.owner_check))
+        return rows
 
     def request(
         self,
@@ -2306,9 +2322,15 @@ class FakeRepairTransactionApi(FakeTransactionApi):
 
 
 class FakeAdmissionChecks:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        owner_api: FakeOwnerTransactionApi | None = None,
+        spool: broker.DurableSpool | None = None,
+    ) -> None:
         self.failed: list[tuple[str, str]] = []
         self.succeeded: list[tuple[int, str, str]] = []
+        self.owner_api = owner_api
+        self.spool = spool
 
     def ensure_failed(self, *, head_sha: str, reason: str) -> int:
         self.failed.append((head_sha, reason))
@@ -2326,6 +2348,16 @@ class FakeAdmissionChecks:
         assert summary
         assert broker.digest(request) == request_digest
         self.succeeded.append((check_run_id, head_sha, request_digest))
+        if self.owner_api is not None:
+            assert self.spool is not None
+            external_id = f"mhb1:merge:{request_digest}"
+            self.owner_api.owner_check.update(conclusion="success", external_id=external_id)
+            self.spool.record_check(
+                head_sha=head_sha,
+                check_run_id=check_run_id,
+                external_id=external_id,
+                updated_at=self.owner_api.current_now.isoformat(),
+            )
         return {}
 
 
@@ -2593,7 +2625,7 @@ def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
     spool.record_check(
         head_sha=HEAD_SHA,
         check_run_id=42,
-        external_id="mhb1:closed:test",
+        external_id=api.owner_check["external_id"],
         updated_at="2026-08-26T12:00:00Z",
     )
     service = broker.Broker(
@@ -2602,7 +2634,7 @@ def test_single_maintainer_owner_request_uses_three_pass_app_transaction(
         config=config,
         spool=spool,
     )
-    checks = FakeAdmissionChecks()
+    checks = FakeAdmissionChecks(api, spool)
 
     proof = service._process_pull(
         check_controller=checks,  # type: ignore[arg-type]
@@ -2633,7 +2665,7 @@ def test_single_maintainer_review_change_during_final_context_blocks_merge(
     spool.record_check(
         head_sha=HEAD_SHA,
         check_run_id=42,
-        external_id="mhb1:closed:test",
+        external_id=api.owner_check["external_id"],
         updated_at="2026-08-26T12:00:00Z",
     )
     service = broker.Broker(
@@ -2642,7 +2674,7 @@ def test_single_maintainer_review_change_during_final_context_blocks_merge(
         config=config,
         spool=spool,
     )
-    checks = FakeAdmissionChecks()
+    checks = FakeAdmissionChecks(api, spool)
 
     with pytest.raises(broker.BrokerError, match="reviews changed during owner admission seal"):
         service._process_pull(
@@ -6737,3 +6769,545 @@ def test_run_once_never_processes_a_pull_while_publication_is_fenced(
 
     assert service.run_once() == []
     assert events == ["lease-fenced", "lease-fenced"]
+
+
+def _expired_owner_review(selected: dict[str, Any]) -> dict[str, Any]:
+    request = copy.deepcopy(selected)
+    request.update(
+        expires_at="2026-08-26T12:00:00Z",
+        nonce="8" * 32,
+        state_commit="9" * 40,
+        health_generation=1,
+        collaboration_digest="3" * 64,
+        ruleset_digests={key: "4" * 64 for key in request["ruleset_digests"]},
+    )
+    return {
+        "body": broker.OWNER_REQUEST_MARKER
+        + "\n"
+        + broker.canonical_bytes(request).decode().rstrip("\n"),
+        "commit_id": HEAD_SHA,
+        "id": 300,
+        "state": "COMMENTED",
+        "submitted_at": "2026-08-26T11:50:00Z",
+        "user": {"id": 10, "login": "Miko997"},
+    }
+
+
+def _select_renewal(reviews: list[dict[str, Any]]) -> dict[str, Any]:
+    return broker.select_admission(
+        commits=_commits(),
+        now=NOW + timedelta(minutes=2),
+        owner_context=_owner_context(),
+        pull=_owner_pull(),
+        repository=REPOSITORY,
+        reviewer_permissions={},
+        reviews=reviews,
+    )
+
+
+def test_owner_renewal_preserves_expired_context_and_exact_new_identity() -> None:
+    reviews = [_expired_owner_review(_owner_request()), *_owner_reviews()]
+    original = copy.deepcopy(reviews)
+    selected = _select_renewal(reviews)
+    assert selected == _select_renewal(list(reversed(reviews)))
+    assert reviews == original
+    assert selected["request"] == _owner_request()
+    assert [row["review_id"] for row in selected["owner_request_history"]] == [300, 301]
+    assert selected["owner_request_history"][0]["review_digest"] == broker.digest(reviews[0])
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("schema_version", True),
+        ("schema_version", 1.0),
+        ("schema_version", "1"),
+        ("repository", "Miko997/other"),
+        ("pull_request", 82),
+        ("base_ref", "other"),
+        ("base_sha", "c" * 40),
+        ("head_sha", "d" * 40),
+        ("requester_id", 11),
+        ("changed_paths_digest", "0" * 64),
+        ("changed_paths_digest", "bad"),
+        ("state_commit", "bad"),
+        ("health_generation", 0),
+        ("health_generation", True),
+        ("collaboration_digest", "bad"),
+        ("ruleset_digests", {}),
+        ("ruleset_digests", []),
+        ("nonce", "bad"),
+        ("nonce", "7" * 32),
+        ("expires_at", "2026-08-26T11:50:00Z"),
+        ("expires_at", "2026-08-26T12:00:00.000001Z"),
+        ("expires_at", "2026-08-26T12:01:00Z"),
+        ("authorization_mode", "owner-repair"),
+    ],
+)
+def test_owner_renewal_authenticates_expired_request_before_retirement(
+    field: str, value: Any
+) -> None:
+    old = _expired_owner_review(_owner_request())
+    request = broker.parse_owner_request(old["body"], reviewer_id=10)
+    request[field] = value
+    old["body"] = (
+        broker.OWNER_REQUEST_MARKER + "\n" + broker.canonical_bytes(request).decode().rstrip("\n")
+    )
+    with pytest.raises(broker.BrokerError):
+        _select_renewal([old, *_owner_reviews()])
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("state", "DISMISSED"),
+        ("state", "APPROVED"),
+        ("state", "PENDING"),
+        ("id", 301),
+        ("id", True),
+        ("id", 0),
+        ("commit_id", 1),
+        ("user", {"id": 11, "login": "Miko997"}),
+        ("user", {"id": 10, "login": "other"}),
+        ("submitted_at", None),
+        ("submitted_at", "invalid"),
+        ("submitted_at", "2026-08-26T12:00:01Z"),
+    ],
+)
+def test_owner_renewal_rejects_malformed_or_unauthenticated_old_review(
+    field: str, value: Any
+) -> None:
+    old = _expired_owner_review(_owner_request())
+    old[field] = value
+    with pytest.raises(broker.BrokerError):
+        _select_renewal([old, *_owner_reviews()])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "extra",
+        "missing",
+        "noncanonical",
+        "duplicate_key",
+        "duplicate_payload",
+        "expired_new",
+        "future_new",
+    ],
+)
+def test_owner_renewal_rejects_history_ambiguity_without_falling_back(mutation: str) -> None:
+    old = _expired_owner_review(_owner_request())
+    new = _owner_reviews()[0]
+    request = broker.parse_owner_request(old["body"], reviewer_id=10)
+    if mutation == "extra":
+        request["unexpected"] = True
+    elif mutation == "missing":
+        request.pop("nonce")
+    if mutation in {"extra", "missing"}:
+        old["body"] = (
+            broker.OWNER_REQUEST_MARKER
+            + "\n"
+            + broker.canonical_bytes(request).decode().rstrip("\n")
+        )
+    elif mutation == "noncanonical":
+        old["body"] += " "
+    elif mutation == "duplicate_key":
+        old["body"] = old["body"].replace(
+            '"schema_version":1', '"schema_version":1,"schema_version":1'
+        )
+    elif mutation == "duplicate_payload":
+        old["body"] = new["body"]
+        old["submitted_at"] = new["submitted_at"]
+    elif mutation == "expired_new":
+        new["body"] = old["body"]
+    elif mutation == "future_new":
+        new["submitted_at"] = "2026-08-26T12:04:00Z"
+    with pytest.raises(broker.BrokerError):
+        _select_renewal([old, new])
+
+
+def _owner_renewal_fixture(
+    tmp_path: Path, *, history: bool = True
+) -> tuple[broker.Broker, FakeOwnerTransactionApi, FakeAdmissionChecks, broker.DurableSpool]:
+    config = _config(tmp_path)
+    api = FakeOwnerTransactionApi(config, "success")
+    if history:
+        api.reviews.insert(0, _expired_owner_review(api.owner_request))
+    spool = broker.DurableSpool(tmp_path / "spool")
+    spool.record_check(
+        head_sha=HEAD_SHA,
+        check_run_id=42,
+        external_id=api.owner_check["external_id"],
+        updated_at=NOW.isoformat(),
+    )
+    service = broker.Broker(
+        api=api, authenticator=broker.AppAuthenticator(api, config), config=config, spool=spool
+    )
+    return service, api, FakeAdmissionChecks(api, spool), spool
+
+
+def _run_owner_renewal(
+    service: broker.Broker, checks: FakeAdmissionChecks
+) -> dict[str, Any] | None:
+    return service._process_pull(
+        check_controller=checks,
+        number=81,
+        provider_now=NOW + timedelta(minutes=2),
+        settings_token="token",
+        state_branch=FakeAdmissionState(),
+        token="token",  # type: ignore[arg-type]
+    )
+
+
+def test_owner_renewal_end_to_end_uses_same_head_and_never_reserves_old_request(
+    tmp_path: Path,
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    original = copy.deepcopy(api.reviews)
+    result = _run_owner_renewal(service, checks)
+    assert (
+        result is not None and result["head_sha"] == HEAD_SHA and result["merge_sha"] == MERGE_SHA
+    )
+    assert result["request_digest"] == broker.digest(api.owner_request)
+    assert api.reviews == original and api.merge_calls == 1 and len(checks.succeeded) == 1
+    assert len(spool.request_inventory()) == 1
+    assert spool.request_inventory()[0]["status"] == "merged"
+    assert (
+        spool.request_status(
+            broker.digest(broker.parse_owner_request(original[0]["body"], reviewer_id=10))
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("status", ["merging", "uncertain", "merged", "rejected"])
+@pytest.mark.parametrize("visible_history", [True, False])
+@pytest.mark.parametrize("other_pr", [False, True])
+def test_owner_renewal_rejects_any_same_head_admitted_transaction(
+    tmp_path: Path, status: str, visible_history: bool, other_pr: bool
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path, history=visible_history)
+    prior = broker.parse_owner_request(
+        _expired_owner_review(api.owner_request)["body"], reviewer_id=10
+    )
+    if other_pr:
+        prior["pull_request"] = 82
+    values = dict(
+        request_digest=broker.digest(prior),
+        nonce=prior["nonce"],
+        pull_request=prior["pull_request"],
+        request=prior,
+        updated_at=NOW.isoformat(),
+    )
+    spool.record_request(**values, status="merging")
+    spool.record_request(**values, status=status)
+    before = spool.request_inventory()
+    with pytest.raises(broker.BrokerError, match="already has a durable transaction"):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0 and checks.succeeded == [] and spool.request_inventory() == before
+
+
+@pytest.mark.parametrize(
+    "external_id",
+    ["mhb1:merge:" + "9" * 64, "mhb1:consumed:" + "9" * 64, "unknown", "mhb1:closed:bad"],
+)
+def test_owner_renewal_fails_closed_after_spool_restore_with_spent_provider_check(
+    tmp_path: Path, external_id: str
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    spool.record_check(
+        head_sha=HEAD_SHA, check_run_id=42, external_id=external_id, updated_at=NOW.isoformat()
+    )
+    api.owner_check["external_id"] = external_id
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0 and checks.succeeded == [] and spool.request_inventory() == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("id", 43),
+        ("head_sha", "c" * 40),
+        ("app", {"id": 1, "slug": "other"}),
+        ("app", {"id": broker.APP_INTEGRATION_ID, "slug": "other"}),
+        ("name", "Other check"),
+        ("conclusion", "success"),
+        ("status", "in_progress"),
+        ("external_id", "mhb1:consumed:" + "9" * 64),
+    ],
+)
+def test_owner_renewal_requires_actual_provider_bound_closed_check(
+    tmp_path: Path, field: str, value: Any
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    api.owner_check[field] = value
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0 and checks.succeeded == [] and spool.request_inventory() == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("request_json", "{bad"),
+        ("request_json", "{}"),
+        ("nonce", "0" * 32),
+        ("pull_request", 82),
+        ("status", "unknown"),
+        ("request_digest", "1" * 64),
+    ],
+)
+def test_owner_renewal_durable_inventory_rejects_corrupt_relations(
+    tmp_path: Path, field: str, value: Any
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    prior = broker.parse_owner_request(
+        _expired_owner_review(api.owner_request)["body"], reviewer_id=10
+    )
+    spool.record_request(
+        request_digest=broker.digest(prior),
+        nonce=prior["nonce"],
+        pull_request=81,
+        request=prior,
+        status="merging",
+        updated_at=NOW.isoformat(),
+    )
+    assert field in {"request_json", "nonce", "pull_request", "status", "request_digest"}
+    with closing(sqlite3.connect(spool.path)) as connection, connection:
+        connection.execute(f"UPDATE requests SET {field} = ?", (value,))
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0 and checks.succeeded == []
+
+
+@pytest.mark.parametrize("body", [None, 5, {}, "missing headings", "assistant: raw transcript"])
+def test_broker_metadata_invalid_initial_body_cannot_admit(
+    tmp_path: Path, body: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    original = api.request
+
+    def changed(path: str, **kwargs: Any) -> broker.ApiResult:
+        result = original(path, **kwargs)
+        if path.endswith("/pulls/81"):
+            result.value["body"] = body
+        return result
+
+    monkeypatch.setattr(api, "request", changed)
+    assert _run_owner_renewal(service, checks) is None
+    assert api.merge_calls == 0 and checks.succeeded == [] and spool.request_inventory() == []
+
+
+def test_broker_metadata_binding_ignores_unrelated_provider_timestamps() -> None:
+    pull = _pull()
+    original = broker._pr_metadata_binding(pull, _reviews())
+    pull.update(updated_at="2026-08-26T12:02:00Z", mergeable_state="unknown")
+    assert broker._pr_metadata_binding(pull, _reviews()) == original
+    pull["body"] += "\nA changed valid sentence.\n"
+    assert broker._pr_metadata_binding(pull, _reviews()) != original
+
+
+@pytest.mark.parametrize("post_success", [False, True])
+@pytest.mark.parametrize("valid_body", [False, True])
+def test_broker_metadata_body_change_during_admission_prevents_merge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, post_success: bool, valid_body: bool
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    original = api.request
+    pull_reads = 0
+
+    def changed(path: str, **kwargs: Any) -> broker.ApiResult:
+        nonlocal pull_reads
+        result = original(path, **kwargs)
+        if path.endswith("/pulls/81"):
+            pull_reads += 1
+            mutate = bool(checks.succeeded) if post_success else pull_reads >= 2
+            if mutate:
+                result.value["body"] = (
+                    result.value["body"] + "\nValid edit.\n" if valid_body else "invalid body"
+                )
+        return result
+
+    monkeypatch.setattr(api, "request", changed)
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0
+    assert bool(checks.succeeded) is post_success
+    assert spool.request_status(broker.digest(api.owner_request)) == (
+        "merging" if post_success else None
+    )
+
+
+@pytest.mark.parametrize("mutation", ["delete", "dismiss", "edit", "duplicate", "append"])
+@pytest.mark.parametrize("post_success", [False, True])
+def test_owner_renewal_history_change_during_admission_is_not_retired_silently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str, post_success: bool
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    original = api.request
+    review_reads = 0
+    mutated = False
+
+    def changed(path: str, **kwargs: Any) -> broker.ApiResult:
+        nonlocal review_reads, mutated
+        if "/pulls/81/reviews?" in path:
+            review_reads += 1
+            eligible = bool(checks.succeeded) if post_success else review_reads >= 2
+            if eligible and not mutated:
+                mutated = True
+                if mutation == "delete":
+                    api.reviews.pop(0)
+                elif mutation == "dismiss":
+                    api.reviews[-1]["state"] = "DISMISSED"
+                elif mutation == "edit":
+                    api.reviews[0]["submitted_at"] = "2026-08-26T11:51:00Z"
+                elif mutation == "duplicate":
+                    api.reviews.append(copy.deepcopy(api.reviews[0]))
+                else:
+                    api.reviews.append({**copy.deepcopy(api.reviews[-1]), "id": 302})
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(api, "request", changed)
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert mutated and api.merge_calls == 0 and bool(checks.succeeded) is post_success
+    assert spool.request_status(broker.digest(api.owner_request)) == (
+        "merging" if post_success else None
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["own_missing", "own_terminal", "foreign_row", "check_identity", "check_external_id"],
+)
+def test_owner_renewal_post_success_requires_only_its_exact_reservation(
+    tmp_path: Path, mutation: str
+) -> None:
+    service, api, _checks, spool = _owner_renewal_fixture(tmp_path)
+
+    class ChangedChecks(FakeAdmissionChecks):
+        def succeed(self, **kwargs: Any) -> dict[str, Any]:
+            result = super().succeed(**kwargs)
+            if mutation == "own_missing":
+                with closing(sqlite3.connect(spool.path)) as connection, connection:
+                    connection.execute("DELETE FROM requests")
+            elif mutation == "own_terminal":
+                request = api.owner_request
+                spool.record_request(
+                    request_digest=broker.digest(request),
+                    nonce=request["nonce"],
+                    pull_request=81,
+                    request=request,
+                    status="uncertain",
+                    updated_at=NOW.isoformat(),
+                )
+            elif mutation == "foreign_row":
+                request = broker.parse_owner_request(api.reviews[0]["body"], reviewer_id=10)
+                spool.record_request(
+                    request_digest=broker.digest(request),
+                    nonce=request["nonce"],
+                    pull_request=81,
+                    request=request,
+                    status="merging",
+                    updated_at=NOW.isoformat(),
+                )
+            elif mutation == "check_identity":
+                api.owner_check["id"] = 43
+            else:
+                api.owner_check["external_id"] = "mhb1:merge:" + "9" * 64
+            return result
+
+    checks = ChangedChecks(api, spool)
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert len(checks.succeeded) == 1 and api.merge_calls == 0
+
+
+def test_owner_renewal_reused_nonce_on_another_head_is_blocked_before_success(
+    tmp_path: Path,
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    request = {**api.owner_request, "head_sha": "e" * 40, "pull_request": 82}
+    spool.record_request(
+        request_digest=broker.digest(request),
+        nonce=request["nonce"],
+        pull_request=82,
+        request=request,
+        status="merging",
+        updated_at=NOW.isoformat(),
+    )
+    with pytest.raises(broker.BrokerError, match="nonce is already admitted"):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0 and checks.succeeded == []
+
+
+def test_owner_renewal_deep_overlap_stays_closed_and_later_same_source_can_admit(
+    tmp_path: Path,
+) -> None:
+    service, api, checks, spool = _owner_renewal_fixture(tmp_path)
+    api.nightly_status = "in_progress"
+    api.nightly_conclusion = None
+    original = copy.deepcopy(api.reviews)
+    with pytest.raises(broker.BrokerError):
+        _run_owner_renewal(service, checks)
+    assert api.merge_calls == 0 and checks.succeeded == [] and spool.request_inventory() == []
+    assert api.reviews == original
+    api.nightly_status = "completed"
+    api.nightly_conclusion = "success"
+    result = _run_owner_renewal(service, checks)
+    assert result is not None and result["head_sha"] == HEAD_SHA
+    assert api.merge_calls == 1 and len(checks.succeeded) == 1
+
+
+def test_broker_metadata_rejects_candidate_origin_before_executing_validator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    candidate = tmp_path / "check_pr_contract.py"
+    candidate.write_text("raise RuntimeError('candidate module must never execute')\n")
+    called = []
+    monkeypatch.setattr(broker.check_pr_contract, "__file__", str(candidate))
+    monkeypatch.setattr(
+        broker.check_pr_contract, "validate_event", lambda *_a, **_k: called.append(True)
+    )
+    with pytest.raises(broker.BrokerError, match="trusted control tree"):
+        broker._pr_metadata_binding(_pull(), _reviews())
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    "mutation", [None, "head", "body", "author", "dismissed", "changes_requested", "empty_reason"]
+)
+def test_broker_metadata_large_body_uses_exact_non_author_exception(mutation: str | None) -> None:
+    pull = _pull()
+    pull["body"] += "x" * 12_000
+    review = {
+        "body": "MP2-004 compact-body exception sha256="
+        + hashlib.sha256(pull["body"].encode()).hexdigest()
+        + ": Required retained table",
+        "commit_id": HEAD_SHA,
+        "id": 999,
+        "state": "APPROVED",
+        "submitted_at": NOW.isoformat(),
+        "user": {"id": 40, "login": "reviewer"},
+    }
+    if mutation == "head":
+        review["commit_id"] = BASE_SHA
+    elif mutation == "body":
+        pull["body"] += "changed"
+    elif mutation == "author":
+        review["user"] = pull["user"]
+    elif mutation == "dismissed":
+        review["state"] = "DISMISSED"
+    elif mutation == "changes_requested":
+        review["state"] = "CHANGES_REQUESTED"
+    elif mutation == "empty_reason":
+        review["body"] = review["body"].split(": ", 1)[0] + ": "
+    if mutation is None:
+        assert (
+            broker._pr_metadata_binding(pull, [review])["validation"]["exception_reviewer"]
+            == "reviewer"
+        )
+    else:
+        with pytest.raises(broker.BrokerError):
+            broker._pr_metadata_binding(pull, [review])

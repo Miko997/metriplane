@@ -321,80 +321,131 @@ def _repository_file(relative_path: str) -> Path:
 _GIT_FILE_MODES = frozenset({"100644", "100755", "120000"})
 
 
-def _git_index_stage_zero_entry(
-    relative_path: str, *, repository_root: Path | None = None
-) -> tuple[str, str]:
-    root = ROOT if repository_root is None else repository_root
-    expected_path = os.fsencode(relative_path)
-    assert expected_path and b"\0" not in expected_path
-
-    result = subprocess.run(
-        [
-            "git",
-            "--literal-pathspecs",
-            "ls-files",
-            "--stage",
-            "-z",
-            "--full-name",
-            "--",
-            relative_path,
-        ],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
-    records = result.stdout.split(b"\0")
-    assert records.pop() == b""
-    assert len(records) == 1
-
-    metadata, separator, indexed_path = records[0].partition(b"\t")
-    assert separator == b"\t"
-    assert indexed_path == expected_path
-    fields = metadata.split(b" ")
-    assert len(fields) == 3
-    raw_mode, raw_oid, raw_stage = fields
-    assert raw_stage == b"0"
-
-    mode = raw_mode.decode("ascii")
-    oid = raw_oid.decode("ascii")
-    assert mode in _GIT_FILE_MODES
-    assert len(oid) == 40 and all(character in "0123456789abcdef" for character in oid)
-    return mode, oid
+def _parse_git_index(raw: bytes) -> dict[bytes, tuple[str, str]]:
+    records = raw.split(b"\0")
+    assert records.pop() == b"", "unterminated Git index"
+    entries: dict[bytes, tuple[str, str]] = {}
+    for record in records:
+        metadata, separator, path = record.partition(b"\t")
+        assert separator and path and path not in entries
+        assert not path.startswith(b"/") and all(
+            part not in {b"", b".", b".."} for part in path.split(b"/")
+        )
+        fields = metadata.split(b" ")
+        assert len(fields) == 3
+        raw_mode, raw_oid, stage = fields
+        assert stage == b"0", "Git index contains an unresolved stage"
+        assert raw_mode in {value.encode("ascii") for value in _GIT_FILE_MODES}
+        assert len(raw_oid) == 40 and all(char in b"0123456789abcdef" for char in raw_oid)
+        mode = raw_mode.decode("ascii")
+        oid = raw_oid.decode("ascii")
+        entries[path] = (mode, oid)
+    return entries
 
 
-def _assert_git_blob_source_resolves(source: dict[str, Any]) -> None:
+def _parse_git_batch(raw: bytes, oids: list[str]) -> dict[str, bytes]:
+    assert oids == sorted(set(oids))
+    blobs: dict[str, bytes] = {}
+    cursor = 0
+    for expected in oids:
+        assert len(expected) == 40 and all(char in "0123456789abcdef" for char in expected)
+        end = raw.find(b"\n", cursor)
+        assert end >= cursor, "missing Git batch header"
+        fields = raw[cursor:end].split(b" ")
+        assert len(fields) == 3
+        oid, kind, raw_size = fields
+        assert oid == expected.encode("ascii") and kind == b"blob"
+        assert raw_size == b"0" or (raw_size[:1] in b"123456789" and raw_size.isdigit())
+        size = int(raw_size)
+        begin = end + 1
+        blob = raw[begin : begin + size]
+        assert len(blob) == size and raw[begin + size : begin + size + 1] == b"\n"
+        # Git's object ID binds the header and raw contents, including embedded
+        # newlines/NULs; a plausible response header alone does not prove bytes.
+        assert (
+            hashlib.sha1(
+                b"blob " + str(size).encode("ascii") + b"\0" + blob, usedforsecurity=False
+            ).hexdigest()
+            == expected
+        )
+        blobs[expected] = blob
+        cursor = begin + size + 1
+    assert cursor == len(raw), "unexpected trailing Git batch output"
+    return blobs
+
+
+class _GitSourceSnapshot:
+    """One validation's exact index and immutable blobs; never a cross-call cache."""
+
+    def __init__(self, sources: list[dict[str, Any]]) -> None:
+        self.root = ROOT.resolve(strict=True)
+        self.index_raw = self._index_bytes()
+        self.entries = _parse_git_index(self.index_raw)
+        paths = {
+            os.fsencode(source["path"])
+            for source in sources
+            if isinstance(source.get("locator"), str) and source["locator"].startswith("git-blob:")
+        }
+        assert paths <= set(self.entries), "source path missing from current Git index"
+        oids = sorted({self.entries[path][1] for path in paths})
+        raw = (
+            subprocess.run(
+                ["git", "cat-file", "--batch"],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                input="".join(oid + "\n" for oid in oids).encode("ascii"),
+            ).stdout
+            if oids
+            else b""
+        )
+        self.blobs = _parse_git_batch(raw, oids)
+        self.digests = {oid: hashlib.sha256(blob).hexdigest() for oid, blob in self.blobs.items()}
+        self.worktree: dict[bytes, tuple[Path, bytes]] = {}
+        for path in sorted(paths):
+            mode, oid = self.entries[path]
+            if mode != "120000":
+                self.worktree[path] = self._read_worktree(path)
+                assert self.worktree[path][1] == self.blobs[oid], (
+                    "ordinary worktree bytes differ from indexed blob"
+                )
+
+    def _index_bytes(self) -> bytes:
+        return subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--full-name"],
+            cwd=self.root,
+            check=True,
+            capture_output=True,
+        ).stdout
+
+    def _read_worktree(self, path: bytes) -> tuple[Path, bytes]:
+        original = self.root / os.fsdecode(path)
+        assert not original.is_symlink(), "ordinary indexed file became a symlink"
+        resolved = original.resolve(strict=True)
+        assert resolved.is_relative_to(self.root) and resolved.is_file()
+        return resolved, resolved.read_bytes()
+
+    def finish(self) -> None:
+        assert ROOT.resolve(strict=True) == self.root, "validation repository changed"
+        assert self._index_bytes() == self.index_raw, "Git index changed during validation"
+        for path, expected in self.worktree.items():
+            assert self._read_worktree(path) == expected, "worktree changed during validation"
+
+
+def _assert_git_blob_source_resolves(source: dict[str, Any], snapshot: _GitSourceSnapshot) -> None:
+    assert ROOT.resolve(strict=True) == snapshot.root
     locator_identity, separator, semantic_locator = source["locator"].partition(";")
-    assert separator == ";"
-    assert semantic_locator
+    assert separator == ";" and semantic_locator
     expected_oid = locator_identity.removeprefix("git-blob:")
     assert locator_identity == f"git-blob:{expected_oid}"
-    assert len(expected_oid) == 40
-    assert all(character in "0123456789abcdef" for character in expected_oid)
-
-    mode, indexed_oid = _git_index_stage_zero_entry(source["path"])
+    assert len(expected_oid) == 40 and all(char in "0123456789abcdef" for char in expected_oid)
+    path = os.fsencode(source["path"])
+    assert path in snapshot.entries
+    mode, indexed_oid = snapshot.entries[path]
     assert indexed_oid == expected_oid
-
-    object_type = subprocess.run(
-        ["git", "cat-file", "-t", indexed_oid],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-    )
-    assert object_type.stdout == b"blob\n"
-    blob = subprocess.run(
-        ["git", "cat-file", "blob", indexed_oid],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-    ).stdout
-    assert source["digest_sha256"] == hashlib.sha256(blob).hexdigest()
-
-    if mode == "120000":
-        return
-
-    assert mode in {"100644", "100755"}
-    source_path = _repository_file(source["path"])
-    assert source_path.read_bytes() == blob
+    assert source["digest_sha256"] == snapshot.digests[indexed_oid]
+    if mode != "120000":
+        assert snapshot.worktree[path][1] == snapshot.blobs[indexed_oid]
 
 
 @cache
@@ -442,7 +493,11 @@ def _assert_validator_id_resolves(identifier: str) -> None:
     assert selector in _python_symbol_paths(relative_path)
 
 
-def _assert_source_resolves(source: dict[str, Any], baseline: dict[str, Any]) -> None:
+def _assert_source_resolves(
+    source: dict[str, Any],
+    baseline: dict[str, Any],
+    snapshot: _GitSourceSnapshot | None = None,
+) -> None:
     if "json_pointer" in source:
         assert source["path"] == "docs/status/baseline-snapshot.v1.json"
         source_value = _resolve_pointer(baseline, source["json_pointer"])
@@ -453,7 +508,10 @@ def _assert_source_resolves(source: dict[str, Any], baseline: dict[str, Any]) ->
 
     locator = source.get("locator")
     if isinstance(locator, str) and locator.startswith("git-blob:"):
-        _assert_git_blob_source_resolves(source)
+        current = snapshot if snapshot is not None else _GitSourceSnapshot([source])
+        _assert_git_blob_source_resolves(source, current)
+        if snapshot is None:
+            current.finish()
         return
 
     source_path = _repository_file(source["path"])
@@ -845,6 +903,7 @@ def _assert_registry_pair(
     )
 
     profiles_by_id = {profile["id"]: profile for profile in profile_rows}
+    snapshot = _GitSourceSnapshot([item["source"] for item in [*rows, *profile_rows]])
     for row in rows:
         for values in (
             row["claim"]["limitation_ids"],
@@ -871,7 +930,7 @@ def _assert_registry_pair(
         assert criterion_tasks == {task}
         assert set(row["consumer_task_ids"]) <= known_tasks
         assert set(row["claim"]["limitation_ids"]) <= limitation_ids
-        _assert_source_resolves(row["source"], baseline)
+        _assert_source_resolves(row["source"], baseline, snapshot)
         for validator_id in row["validator_ids"]:
             _assert_validator_id_resolves(validator_id)
 
@@ -888,7 +947,7 @@ def _assert_registry_pair(
         if profile["test"]:
             assert _task_id(profile["test"]) == profile["owner"]
         assert set(profile["claim"]["limitation_ids"]) <= limitation_ids
-        _assert_source_resolves(profile["source"], baseline)
+        _assert_source_resolves(profile["source"], baseline, snapshot)
         if (
             profile["status"] == "active"
             and profile["claim"]["classification"] in MEASURED_CLAIM_CLASSIFICATIONS
@@ -903,6 +962,7 @@ def _assert_registry_pair(
         assert all(_task_id(criterion) == task for criterion in trace["criterion_ids"])
         assert all(_task_id(identifier) == task for identifier in trace["obligation_ids"])
         assert set(trace["downstream_task_ids"]) <= known_tasks
+    snapshot.finish()
 
 
 @obligation("MP2-010.OBL.SCHEMA_VALIDATION")
@@ -2140,3 +2200,161 @@ def test_git_blob_ordinary_file_rejects_unstaged_worktree_bytes(
 
     with pytest.raises(AssertionError):
         _assert_source_resolves(source, {})
+
+
+@pytest.mark.parametrize(
+    "path", [b"name with spaces", b"name\twith\ncontrol", "żółw.txt".encode(), b"literal[?]*.txt"]
+)
+def test_git_batch_index_preserves_exact_unusual_path_bytes(path: bytes) -> None:
+    assert _parse_git_index(b"100644 " + b"a" * 40 + b" 0\t" + path + b"\0") == {
+        path: ("100644", "a" * 40)
+    }
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"100644 " + b"a" * 40 + b" 0\tfile",
+        b"100644 " + b"a" * 40 + b" 0 file\0",
+        b"100644 " + b"a" * 40 + b" 1\tfile\0",
+        b"100644 " + b"a" * 40 + b" 2\tfile\0",
+        b"100644 " + b"a" * 40 + b" 3\tfile\0",
+        b"100644 " + b"a" * 40 + b" 00\tfile\0",
+        b"160000 " + b"a" * 40 + b" 0\tfile\0",
+        b"100644 " + b"A" * 40 + b" 0\tfile\0",
+        b"100644 " + b"a" * 39 + b" 0\tfile\0",
+        b"100644 " + b"a" * 40 + b" 0\t\0",
+        b"100644 " + b"a" * 40 + b" 0\t/absolute\0",
+        b"100644 " + b"a" * 40 + b" 0\t../escape\0",
+        b"100644 " + b"a" * 40 + b" 0\ta/./file\0",
+        b"100644 " + b"a" * 40 + b" 0\ta//file\0",
+        (b"100644 " + b"a" * 40 + b" 0\tfile\0") * 2,
+        b"100644 " + b"\xff" * 40 + b" 0\tfile\0",
+    ],
+)
+def test_git_batch_index_rejects_ambiguous_malformed_or_conflicted_entries(raw: bytes) -> None:
+    with pytest.raises(AssertionError):
+        _parse_git_index(raw)
+
+
+def _batch_frame(blob: bytes) -> tuple[str, bytes]:
+    oid = hashlib.sha1(
+        b"blob " + str(len(blob)).encode() + b"\0" + blob, usedforsecurity=False
+    ).hexdigest()
+    return oid, oid.encode() + b" blob " + str(len(blob)).encode() + b"\n" + blob + b"\n"
+
+
+@pytest.mark.parametrize("blob", [b"", b"one\ntwo\0three\n", bytes(range(256))])
+def test_git_batch_parser_uses_binary_framing_and_verifies_object_id(blob: bytes) -> None:
+    oid, raw = _batch_frame(blob)
+    assert _parse_git_batch(raw, [oid]) == {oid: blob}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "no_header",
+        "missing",
+        "wrong_oid",
+        "wrong_type",
+        "wrong_size",
+        "leading_zero",
+        "negative_size",
+        "no_separator",
+        "truncated",
+        "extra_frame",
+        "extra_byte",
+        "wrong_contents",
+        "duplicate_oid",
+    ],
+)
+def test_git_batch_parser_rejects_faulted_frames(mutation: str) -> None:
+    oid, raw = _batch_frame(b"binary\0payload\n")
+    oids = [oid]
+    if mutation == "no_header":
+        raw = b""
+    elif mutation == "missing":
+        raw = oid.encode() + b" missing\n"
+    elif mutation == "wrong_oid":
+        raw = b"a" * 40 + raw[40:]
+    elif mutation == "wrong_type":
+        raw = raw.replace(b" blob ", b" tree ")
+    elif mutation == "wrong_size":
+        raw = raw.replace(b" 15\n", b" 16\n")
+    elif mutation == "leading_zero":
+        raw = raw.replace(b" 15\n", b" 015\n")
+    elif mutation == "negative_size":
+        raw = raw.replace(b" 15\n", b" -15\n")
+    elif mutation == "no_separator":
+        raw = raw[:-1] + b"X"
+    elif mutation == "truncated":
+        raw = raw[:-2]
+    elif mutation == "extra_frame":
+        raw += raw
+    elif mutation == "extra_byte":
+        raw += b"X"
+    elif mutation == "wrong_contents":
+        raw = raw.replace(b"binary", b"BINARY")
+    elif mutation == "duplicate_oid":
+        oids *= 2
+    with pytest.raises(AssertionError):
+        _parse_git_batch(raw, oids)
+
+
+@pytest.mark.parametrize("mutation", ["index", "bytes", "path_symlink", "root"])
+def test_git_batch_snapshot_rejects_drift_before_return(
+    git_identity_repository: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    source = _git_identity_ordinary_source(
+        git_identity_repository, b"original", git_blob_locator=True
+    )
+    snapshot = _GitSourceSnapshot([source])
+    _assert_source_resolves(source, {}, snapshot)
+    path = git_identity_repository / _GIT_IDENTITY_ORDINARY_PATH
+    if mutation == "index":
+        path.write_bytes(b"new staged bytes")
+        _git_identity_command(git_identity_repository, "add", "--", path.name)
+    elif mutation == "bytes":
+        path.write_bytes(b"new unstaged bytes")
+    elif mutation == "path_symlink":
+        target = git_identity_repository / "other.txt"
+        target.write_bytes(b"original")
+        path.unlink()
+        path.symlink_to(target.name)
+    else:
+        other = git_identity_repository / "other-root"
+        other.mkdir()
+        monkeypatch.setattr(sys.modules[__name__], "ROOT", other)
+    with pytest.raises(AssertionError):
+        snapshot.finish()
+
+
+def test_git_batch_snapshot_is_fresh_for_each_call(git_identity_repository: Path) -> None:
+    old = _git_identity_ordinary_source(git_identity_repository, b"original", git_blob_locator=True)
+    _assert_source_resolves(old, {})
+    new = _git_identity_ordinary_source(git_identity_repository, b"changed", git_blob_locator=True)
+    with pytest.raises(AssertionError):
+        _assert_source_resolves(old, {})
+    _assert_source_resolves(new, {})
+
+
+def test_git_batch_snapshot_reads_each_unique_blob_once(
+    git_identity_repository: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = _git_identity_ordinary_source(
+        git_identity_repository, b"original", git_blob_locator=True
+    )
+    original = subprocess.run
+    commands: list[list[str]] = []
+
+    def observed(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        commands.append(command)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", observed)
+    snapshot = _GitSourceSnapshot([source] * 100)
+    for _ in range(100):
+        _assert_source_resolves(source, {}, snapshot)
+    snapshot.finish()
+    assert commands.count(["git", "cat-file", "--batch"]) == 1
+    assert len(commands) == 3

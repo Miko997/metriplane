@@ -11,16 +11,18 @@ on:
 
 permissions: read-all
 
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
+  fast-validation:
+    name: Fast source validation
     runs-on: ubuntu-latest
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      METRIPLANE_V020_TAG: "v0.2.0"
-      METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -30,7 +32,10 @@ jobs:
 
       - name: Record checked-out source
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -55,6 +60,8 @@ jobs:
       - name: Validate pull request contract
         if: github.event_name == 'pull_request'
         env:
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -62,12 +69,62 @@ jobs:
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews?per_page=100" \
               | jq 'add' > "$RUNNER_TEMP/pr-reviews.json"
-            uv run python tools/check_pr_contract.py \
-              --event "$GITHUB_EVENT_PATH" \
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              | jq '{pull_request: .}' > "$RUNNER_TEMP/pr-current.json"
+            jq -e --arg head "$EVENT_HEAD" \
+              '.pull_request.head.sha == $head and .pull_request.state == "open"' \
+              "$RUNNER_TEMP/pr-current.json"
+            uv run --frozen python tools/check_pr_contract.py \
+              --event "$RUNNER_TEMP/pr-current.json" \
               --reviews-file "$RUNNER_TEMP/pr-reviews.json"
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+              | jq '{pull_request: .}' > "$RUNNER_TEMP/pr-readback.json"
+            jq -e --slurpfile before "$RUNNER_TEMP/pr-current.json" \
+              '.pull_request.head.sha == $before[0].pull_request.head.sha and
+               .pull_request.body == $before[0].pull_request.body and
+               .pull_request.state == "open"' "$RUNNER_TEMP/pr-readback.json"
           else
             printf '%s\n' 'MP2-004 transition PR uses the previous repository template.'
           fi
+
+  test:
+    needs: fast-validation
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
+      METRIPLANE_V020_TAG: "v0.2.0"
+      METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Record checked-out source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked test environment
+        run: uv sync --locked --group dev
 
       - name: Install browser for E2E smoke
         run: uv run python -m playwright install chromium --with-deps
@@ -75,8 +132,18 @@ jobs:
       - name: Check required release fixtures
         run: uv run python -m pytest -q tests/test_release_fixture_integrity.py
 
-      - name: Run pytest tests
-        run: uv run python -m pytest -q
+      - name: Run complete Linux suite with original evidence
+        run: >-
+          uv run --frozen python tools/check_required_terminal.py shard-run
+          --platform linux --python-version 3.12 --shard-index 0 --shard-count 1
+          --report-dir "$RUNNER_TEMP/ci-suite"
+      - name: Retain Linux suite evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-suite-${{ github.run_id }}-${{ github.run_attempt }}-linux-py3.12-shard0
+          path: ${{ runner.temp }}/ci-suite
+          if-no-files-found: error
 
       - name: Run doctor
         run: uv run python -m metriplane.cli doctor
@@ -172,16 +239,17 @@ jobs:
         run: uv run python -c "import metriplane; print('ok')"
 
   macos-regressions:
-    name: macOS full suite (Python ${{ matrix.python-version }})
+    needs: fast-validation
+    name: macOS full suite (Python ${{ matrix.python-version }}, shard ${{ matrix.shard-index }})
     runs-on: macos-latest
-    outputs:
-      source_sha: ${{ steps.source.outputs.sha }}
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
+        shard-index: [0, 1, 2, 3]
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/empty-browser-cache
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -189,7 +257,10 @@ jobs:
           fetch-depth: 0
       - name: Record checked-out source
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
@@ -200,16 +271,30 @@ jobs:
           enable-cache: false
       - name: Sync locked test environment
         run: uv sync --locked --group dev --python ${{ matrix.python-version }}
-      - name: Run full camera-free suite
-        run: uv run --python ${{ matrix.python-version }} python -m pytest -q
+      - name: Run independently partitioned camera-free suite
+        run: >-
+          uv run --frozen --python ${{ matrix.python-version }}
+          python tools/check_required_terminal.py shard-run
+          --platform macos --python-version ${{ matrix.python-version }}
+          --shard-index ${{ matrix.shard-index }} --shard-count 4
+          --report-dir "$RUNNER_TEMP/ci-suite"
+      - name: Retain macOS shard evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-suite-${{ github.run_id }}-${{ github.run_attempt }}-macos-py${{ matrix.python-version }}-shard${{ matrix.shard-index }}
+          path: ${{ runner.temp }}/ci-suite
+          if-no-files-found: error
 
   linux-python313:
+    needs: fast-validation
     name: Linux full suite (Python 3.13)
     runs-on: ubuntu-latest
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -217,7 +302,10 @@ jobs:
           fetch-depth: 0
       - name: Record checked-out source
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
@@ -230,24 +318,65 @@ jobs:
         run: uv sync --locked --group dev --python 3.13
       - name: Install browser dependencies
         run: uv run --python 3.13 python -m playwright install chromium --with-deps
-      - name: Run full suite
-        run: uv run --python 3.13 python -m pytest -q
+      - name: Run complete Linux suite with original evidence
+        run: >-
+          uv run --frozen --python 3.13 python tools/check_required_terminal.py shard-run
+          --platform linux --python-version 3.13 --shard-index 0 --shard-count 1
+          --report-dir "$RUNNER_TEMP/ci-suite"
+      - name: Retain Linux suite evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-suite-${{ github.run_id }}-${{ github.run_attempt }}-linux-py3.13-shard0
+          path: ${{ runner.temp }}/ci-suite
+          if-no-files-found: error
+
+  suite-evidence:
+    name: Complete suite evidence
+    if: always()
+    needs: [test, linux-python313, macos-regressions]
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Require every suite job
+        env:
+          LINUX312: ${{ needs.test.result }}
+          LINUX313: ${{ needs.linux-python313.result }}
+          MACOS: ${{ needs.macos-regressions.result }}
+        run: test "$LINUX312" = success && test "$LINUX313" = success && test "$MACOS" = success
+      - name: Download this exact run and attempt
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: ci-suite-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: ${{ runner.temp }}/ci-suite-reports
+          merge-multiple: false
+      - name: Validate all ten complete reports
+        run: >-
+          python tools/check_required_terminal.py shard-aggregate
+          --reports-root "$RUNNER_TEMP/ci-suite-reports"
+          --expected-sha "$GITHUB_SHA" --expected-run-id "$GITHUB_RUN_ID"
+          --expected-run-attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Record verified checked-out source
+        id: source
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
 
   metriplane-required:
     name: Metriplane / required
     if: always()
-    needs:
-      - test
-      - macos-regressions
-      - linux-python313
+    needs: [fast-validation, test, linux-python313, suite-evidence]
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
       RESULTS_JSON: >-
-        {"test":{"result":"${{ needs.test.result }}","sha":"${{ needs.test.outputs.source_sha }}"},
-        "macos-regressions":{"result":"${{ needs.macos-regressions.result }}","sha":"${{ needs.macos-regressions.outputs.source_sha }}"},
-        "linux-python313":{"result":"${{ needs.linux-python313.result }}","sha":"${{ needs.linux-python313.outputs.source_sha }}"}}
+        {"fast-validation":{"result":"${{ needs.fast-validation.result }}","sha":"${{ needs.fast-validation.outputs.source_sha }}"},"test":{"result":"${{ needs.test.result }}","sha":"${{ needs.test.outputs.source_sha }}"},"linux-python313":{"result":"${{ needs.linux-python313.result }}","sha":"${{ needs.linux-python313.outputs.source_sha }}"},"suite-evidence":{"result":"${{ needs.suite-evidence.result }}","sha":"${{ needs.suite-evidence.outputs.source_sha }}"}}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -257,7 +386,8 @@ jobs:
           python tools/check_required_terminal.py aggregate
           --terminal "Metriplane / required"
           --expected-sha "$GITHUB_SHA"
+          --expected-dependency fast-validation
           --expected-dependency test
-          --expected-dependency macos-regressions
           --expected-dependency linux-python313
+          --expected-dependency suite-evidence
           --results-json "$RESULTS_JSON"
