@@ -201,11 +201,11 @@ def test_production_census_is_exact_and_family_closed(
     production_discovery: scanner.Discovery,
 ) -> None:
     assert dict(production_discovery.family_counts) == scanner.EXPECTED_FAMILY_COUNTS
-    assert len(production_discovery.rows) == 10_514
-    assert sum(production_discovery.family_counts.values()) == 10_514
-    assert production_discovery.family_counts["public_api"] == 2_444
+    assert len(production_discovery.rows) == 10_522
+    assert sum(production_discovery.family_counts.values()) == 10_522
+    assert production_discovery.family_counts["public_api"] == 2_445
     assert production_discovery.family_counts["manifest_keys"] == 3_734
-    assert production_discovery.family_counts["resources"] == 1_578
+    assert production_discovery.family_counts["resources"] == 1_583
 
 
 def test_two_discovery_runs_are_byte_deterministic(
@@ -408,8 +408,8 @@ def test_direct_script_loads_sibling_kernel_without_pythonpath() -> None:
 
     assert completed.returncode == 0, completed.stderr
     summary = json.loads(completed.stdout)
-    assert summary["rows"] == 10_514
-    assert summary["public_api"] == 2_444
+    assert summary["rows"] == 10_522
+    assert summary["public_api"] == 2_445
     assert summary["manifest_keys"] == 3_734
 
 
@@ -589,7 +589,7 @@ def test_report_binds_materialization_and_denies_runtime_claim(
     text = report.decode("utf-8")
 
     assert "Task: `MP2-013` / `MET-78`" in text
-    assert "Owned rows: `10514`" in text
+    assert "Owned rows: `10522`" in text
     assert "Materialization SHA-256" in text
     assert "no runtime, compatibility, or support claim" in text
     assert "| `manifest_keys` | `artifact_manifest_key` | 3734 |" in text

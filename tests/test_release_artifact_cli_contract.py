@@ -764,22 +764,27 @@ def _synthetic_readiness_shape_inputs(missing_from: str | None) -> dict[str, Any
         sequence=1,
         synthetic=True,
     )
+    candidate_data = {
+        "artifact_manifest_digest": sha256_json(artifact),
+        "artifact_set_digest": artifact_set_digest,
+        "build_invocation_id": "readiness-artifact-build",
+        "finalization_intent_digest": "3" * 64,
+        "control_journal_locator": "/synthetic-release/.control/readiness/invocations/candidate-finalization/001/invocation.json",
+        "evaluation_adoption_digest": None,
+        "evaluation_adoption_mode": "none",
+        "gate_input_digest": sha256_json(gate_input),
+        "milestone": "v0.4",
+        "package_version": "v0.4.0",
+        "predecessor_digest": sha256_json(predecessor),
+        "release_tag": "v0.4.0",
+        "source_freeze_digest": sha256_json(source_freeze),
+    }
+    candidate_digest = control._candidate_payload_digest(candidate_data)
+    candidate_data["candidate_digest"] = candidate_digest
+    candidate_data["final_directory"] = "/synthetic-release/v0.4.0/" + candidate_digest
     candidate = make_record(
         "release-candidate-identity",
-        {
-            "artifact_manifest_digest": sha256_json(artifact),
-            "artifact_set_digest": artifact_set_digest,
-            "build_invocation_id": "readiness-artifact-build",
-            "candidate_digest": "3" * 64,
-            "evaluation_adoption_digest": None,
-            "evaluation_adoption_mode": "none",
-            "gate_input_digest": sha256_json(gate_input),
-            "milestone": "v0.4",
-            "package_version": "v0.4.0",
-            "predecessor_digest": sha256_json(predecessor),
-            "release_tag": "v0.4.0",
-            "source_freeze_digest": sha256_json(source_freeze),
-        },
+        candidate_data,
         invocation_id="readiness-candidate",
         sequence=1,
         synthetic=True,
@@ -833,7 +838,7 @@ def _synthetic_readiness_shape_inputs(missing_from: str | None) -> dict[str, Any
     gate = make_record(
         "release-gate-instance",
         {
-            "candidate_digest": "3" * 64,
+            "candidate_digest": candidate_digest,
             "candidate_identity_digest": sha256_json(candidate),
             "environment_registry_digest": "7" * 64,
             "evidence_store_preflight_digest": "b" * 64,

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7b9b2d43c5ce4b8a`
+Canonical projection SHA-256: `296c2e17dbaeaf3336b03dfcfe9fa3d616ecec848dee565cc244b03b71fe5128`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 164 |
+| actions | 166 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -281,6 +281,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.docker_live_up | tool | Docker Live Up | tools/docker_live_up.sh |
 | tool.docker_smoke_test | tool | Docker Smoke Test | tools/docker_smoke_test.sh |
 | tool.docker_stop | tool | Docker Stop | tools/docker_stop.sh |
+| tool.finalize_release_candidate_identity | tool | Finalize Release Candidate Identity | python tools/finalize_release_candidate_identity.py |
 | tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
 | tool.list_cameras | tool | List Cameras | python tools/list_cameras.py |
@@ -309,6 +310,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
+| tool.validate_release_candidate_identity | tool | Validate Release Candidate Identity | python tools/validate_release_candidate_identity.py |
 | tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |

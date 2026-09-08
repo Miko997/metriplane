@@ -91,9 +91,9 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 3,091 items. In the exact core
+The ordered node-id stream must contain exactly 3,308 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
-cache, the integrated source profile requires 3,075 passed and 16 expected skips.
+cache, the integrated source profile requires 3,292 passed and 16 expected skips.
 Twelve result-schema cases run in the separate locked
 cross-adapter gate, one browser smoke case requires the separately installed
 Chromium binary, one GPU-equivalence case requires an optional CuPy extra, and
@@ -180,6 +180,15 @@ The installed check records the expected site-packages root, imports the core
 package modules, and rejects any imported `metriplane` module outside that
 root. It also proves that an unknown warning raises under the installed
 profile. Wheel and source-distribution results are separate retained checks.
+
+The MP2-007 finalization segment also runs the installed
+`TestInstalledFinalization` cases from `tests/test_release_candidate_finalization.py`
+against each distribution. An unrelated harness contains only `pyproject.toml`,
+the two conftests, the policy test and that release test module. It imports the
+installed common controller, exercises candidate creation and public validation,
+and verifies conflict recovery and tamper rejection. The harness must not import
+checkout tools or substitute a passing finalizer. Its input records and artifact
+fixture retain synthetic provenance; these checks grant no live release authority.
 
 ## Warning exceptions
 

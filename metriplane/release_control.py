@@ -1461,27 +1461,235 @@ def _require_canonical_string_inventory(
     return value
 
 
+_FINALIZER: Final[str] = "finalize_release_candidate_identity.py"
+_CANDIDATE_VALIDATOR: Final[str] = "validate_release_candidate_identity.py"
+_CANDIDATE_NAME: Final[str] = "candidate-identity.json"
+_FINALIZATION_INPUTS: Final[Mapping[str, str]] = {
+    "gate-input.json": "release-gate-input",
+    "source-freeze.json": "release-source-freeze",
+    "predecessor.json": "release-predecessor",
+    "artifact-manifest.json": "release-artifact-manifest",
+    "target-resolution.json": "release-target-resolution",
+}
+_CANDIDATE_FIELDS: Final[set[str]] = {
+    "artifact_manifest_digest",
+    "artifact_set_digest",
+    "build_invocation_id",
+    "candidate_digest",
+    "evaluation_adoption_digest",
+    "evaluation_adoption_mode",
+    "gate_input_digest",
+    "milestone",
+    "package_version",
+    "predecessor_digest",
+    "release_tag",
+    "source_freeze_digest",
+    "finalization_intent_digest",
+    "control_journal_locator",
+    "final_directory",
+}
+
+
+def _canonical_absolute_path(value: object, label: str) -> Path:
+    if not isinstance(value, str) or not value or "\\" in value:
+        raise ReleaseControlError(label + " is not an absolute canonical path")
+    path = Path(value)
+    if not path.is_absolute() or ".." in path.parts or str(path) != value:
+        raise ReleaseControlError(label + " is not an absolute canonical path")
+    return path
+
+
+def _candidate_payload_digest(data: Mapping[str, Any]) -> str:
+    return sha256_json(
+        {k: v for k, v in data.items() if k not in {"candidate_digest", "final_directory"}}
+    )
+
+
+def _validate_candidate_predecessor(
+    predecessor: Mapping[str, Any], gate: Mapping[str, Any]
+) -> None:
+    required = {"candidate_milestone", "closed_decision_digest", "lkg_digest", "version"}
+    later = {
+        "predecessor_milestone",
+        "qualification_digest",
+        "reconciliation_digest",
+        "chain_head",
+        "pointer_envelope_digest",
+        "pointer_index_receipt_digest",
+        "completion_digest",
+    }
+    milestone = gate["milestone"]
+    if milestone not in MILESTONES[:-1] or predecessor.get("candidate_milestone") != milestone:
+        raise ReleaseControlError("ordinary candidate predecessor milestone is invalid")
+    if not required <= set(predecessor) <= required | later:
+        raise ReleaseControlError("candidate predecessor shape is not closed")
+    expected = "v0.3" if milestone == "v0.4" else MILESTONES[MILESTONES.index(milestone) - 1]
+    version = predecessor["version"]
+    if (
+        gate["expected_predecessor_milestone"]
+        not in ({"v0.3", "v0.3.0"} if milestone == "v0.4" else {expected})
+        or not isinstance(version, str)
+        or re.fullmatch(re.escape(expected) + r"\.[0-9]+", version) is None
+    ):
+        raise ReleaseControlError("candidate predecessor version or gate binding is invalid")
+    if milestone == "v0.4":
+        if version != "v0.3.0" or set(predecessor) != required:
+            raise ReleaseControlError("v0.4 requires the exact four-field v0.3.0 predecessor")
+    elif (
+        set(predecessor) != required | later
+        or predecessor["predecessor_milestone"] != expected
+        or predecessor["completion_digest"] is not None
+    ):
+        raise ReleaseControlError(
+            "later candidate predecessor evidence/applicability is incomplete"
+        )
+    for key in set(predecessor) - {
+        "candidate_milestone",
+        "version",
+        "predecessor_milestone",
+        "completion_digest",
+    }:
+        _require_digest(predecessor[key], "candidate predecessor " + key)
+
+
+def _build_candidate_identity_payload(
+    gate: Mapping[str, Any],
+    source: Mapping[str, Any],
+    predecessor: Mapping[str, Any],
+    artifact: Mapping[str, Any],
+    target: Mapping[str, Any],
+    *,
+    finalization_intent_digest: str,
+    control_journal_locator: str,
+    release_root: Path,
+    no_evaluation_adoption: bool,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> dict[str, Any]:
+    """Compute the single candidate identity from fixed records and original intent."""
+    gate_data, target_data = _validate_release_source_inputs(
+        gate, target, live=live, attestation_verifier=attestation_verifier
+    )
+    typed = [
+        (source, "release-source-freeze"),
+        (predecessor, "release-predecessor"),
+        (artifact, "release-artifact-manifest"),
+    ]
+    for record, kind in typed:
+        _passing_record(record, kind, live=live, attestation_verifier=attestation_verifier)
+    if {r["synthetic"] for r in (gate, source, predecessor, artifact, target)} != {not live}:
+        raise ReleaseControlError("candidate inputs mix authority modes")
+    if no_evaluation_adoption is not True:
+        raise ReleaseControlError("ordinary candidate requires explicit no-evaluation-adoption")
+    _validate_candidate_predecessor(predecessor["data"], gate_data)
+    freeze = _release_data(
+        source,
+        {
+            "build_recipe_digest",
+            "dirty",
+            "freeze_digest",
+            "frozen_at",
+            "gate_input_digest",
+            "milestone",
+            "registry_inputs",
+            "release_notes_digest",
+            "source_sha",
+            "source_tree",
+            "version_metadata_digest",
+            "workflow_inputs",
+            "invocation_root_locator",
+            "producer_intent_digest",
+        },
+        "candidate source freeze",
+    )
+    if (
+        freeze["dirty"] is not False
+        or freeze["invocation_root_locator"] != "invocations"
+        or freeze["milestone"] != gate_data["milestone"]
+        or freeze["gate_input_digest"] != sha256_json(gate)
+        or freeze["freeze_digest"]
+        != sha256_json({k: v for k, v in freeze.items() if k != "freeze_digest"})
+        or freeze["build_recipe_digest"] != RELEASE_BUILD_RECIPE_DIGEST
+    ):
+        raise ReleaseControlError("candidate source freeze semantic binding mismatch")
+    _parse_utc_timestamp(freeze["frozen_at"], "candidate source freeze")
+    for key in ("source_sha", "source_tree"):
+        if not isinstance(freeze[key], str) or re.fullmatch(r"[0-9a-f]{40}", freeze[key]) is None:
+            raise ReleaseControlError("candidate source Git identity is invalid")
+    for key in ("release_notes_digest", "version_metadata_digest", "producer_intent_digest"):
+        _require_digest(freeze[key], "candidate source " + key)
+    for key in ("registry_inputs", "workflow_inputs"):
+        rows = freeze[key]
+        if not isinstance(rows, list) or not rows:
+            raise ReleaseControlError("candidate source inventory is missing")
+        names = []
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != {"path", "schema_id", "sha256"}:
+                raise ReleaseControlError("candidate source inventory is not closed")
+            _journal_path(Path("/"), row["path"])
+            _require_nonempty_string(row["schema_id"], "candidate source schema")
+            _require_digest(row["sha256"], "candidate source member")
+            names.append(row["path"])
+        if names != sorted(set(names)):
+            raise ReleaseControlError("candidate source inventory is not canonical")
+    manifest = artifact["data"]
+    _validate_artifact_manifest_payload(manifest, expected_milestone=gate_data["milestone"])
+    if (
+        manifest["source_freeze_digest"] != sha256_json(source)
+        or manifest["source_digest"] != freeze["freeze_digest"]
+        or manifest["build_recipe_digest"] != freeze["build_recipe_digest"]
+        or manifest["target_resolution_digest"] != sha256_json(target)
+    ):
+        raise ReleaseControlError("candidate artifact/source/target bindings differ")
+    release_root = _canonical_absolute_path(str(release_root), "release root")
+    locator = _canonical_absolute_path(control_journal_locator, "control journal locator")
+    run_id = gate_data["run_id"]
+    if (
+        not isinstance(run_id, str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", run_id) is None
+        or release_root.name != target_data["selected_release_tag"]
+        or locator
+        != release_root.parent
+        / ".control"
+        / run_id
+        / "invocations/candidate-finalization/001/invocation.json"
+    ):
+        raise ReleaseControlError("candidate release root, run or control locator mismatch")
+    data: dict[str, Any] = {
+        "artifact_manifest_digest": sha256_json(artifact),
+        "artifact_set_digest": manifest["artifact_set_digest"],
+        "build_invocation_id": manifest["build_invocation_id"],
+        "evaluation_adoption_digest": None,
+        "evaluation_adoption_mode": "none",
+        "gate_input_digest": sha256_json(gate),
+        "milestone": gate_data["milestone"],
+        "package_version": target_data["selected_package_version"],
+        "predecessor_digest": sha256_json(predecessor),
+        "release_tag": target_data["selected_release_tag"],
+        "source_freeze_digest": sha256_json(source),
+        "finalization_intent_digest": _require_digest(
+            finalization_intent_digest, "finalization intent"
+        ),
+        "control_journal_locator": str(locator),
+    }
+    data["candidate_digest"] = _candidate_payload_digest(data)
+    data["final_directory"] = str(release_root / data["candidate_digest"])
+    _validate_candidate_identity_payload(
+        data, expected_digest=data["candidate_digest"], expected_milestone=data["milestone"]
+    )
+    return data
+
+
 def _validate_candidate_identity_payload(
     candidate: Mapping[str, Any], *, expected_digest: str, expected_milestone: str
 ) -> None:
-    expected_fields = {
-        "artifact_manifest_digest",
-        "artifact_set_digest",
-        "build_invocation_id",
-        "candidate_digest",
-        "evaluation_adoption_digest",
-        "evaluation_adoption_mode",
-        "gate_input_digest",
-        "milestone",
-        "package_version",
-        "predecessor_digest",
-        "release_tag",
-        "source_freeze_digest",
-    }
+    expected_fields = _CANDIDATE_FIELDS
     if set(candidate) != expected_fields:
         raise ReleaseControlError("qualification candidate identity data shape is not closed")
     for field in expected_fields - {
         "build_invocation_id",
+        "control_journal_locator",
+        "final_directory",
         "evaluation_adoption_digest",
         "evaluation_adoption_mode",
         "milestone",
@@ -1507,6 +1715,20 @@ def _validate_candidate_identity_payload(
     ):
         raise ReleaseControlError("qualification candidate identity bindings are invalid")
     _require_invocation(candidate["build_invocation_id"])
+    if candidate["candidate_digest"] != _candidate_payload_digest(candidate):
+        raise ReleaseControlError("candidate semantic identity digest mismatch")
+    final = _canonical_absolute_path(candidate["final_directory"], "candidate final directory")
+    locator = _canonical_absolute_path(
+        candidate["control_journal_locator"], "candidate control locator"
+    )
+    if (
+        final.name != candidate["candidate_digest"]
+        or final.parent.name != candidate["release_tag"]
+        or locator.parts[-4:] != ("invocations", "candidate-finalization", "001", "invocation.json")
+        or locator.parents[4] != final.parent.parent / ".control"
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", locator.parents[3].name) is None
+    ):
+        raise ReleaseControlError("candidate final path or control locator binding mismatch")
 
 
 def _validate_artifact_manifest_payload(
@@ -3388,86 +3610,18 @@ def validate_release_candidate_identity_record(
     no_evaluation_adoption: bool,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
+    _active_invocation: ReleaseInvocation | None = None,
 ) -> None:
-    candidate = _passing_record(
+    """Recompute identity and require the original committed finalization evidence."""
+    _validate_candidate_public(
         record,
-        "release-candidate-identity",
+        predecessor_record=predecessor_record,
+        candidate_dir=candidate_dir,
+        no_evaluation_adoption=no_evaluation_adoption,
         live=live,
         attestation_verifier=attestation_verifier,
+        active_invocation=_active_invocation,
     )
-    predecessor = _passing_record(
-        predecessor_record,
-        "release-predecessor",
-        live=live,
-        attestation_verifier=attestation_verifier,
-    )
-    expected_fields = {
-        "artifact_manifest_digest",
-        "artifact_set_digest",
-        "build_invocation_id",
-        "candidate_digest",
-        "evaluation_adoption_digest",
-        "evaluation_adoption_mode",
-        "gate_input_digest",
-        "milestone",
-        "package_version",
-        "predecessor_digest",
-        "release_tag",
-        "source_freeze_digest",
-    }
-    if set(candidate) != expected_fields:
-        raise ReleaseControlError("release candidate identity data shape is not closed")
-    if candidate["predecessor_digest"] != sha256_json(predecessor_record):
-        raise ReleaseControlError("release candidate predecessor binding mismatch")
-    milestone = candidate["milestone"]
-    if (
-        milestone not in MILESTONES
-        or predecessor.get("candidate_milestone") != milestone
-        or not isinstance(candidate["package_version"], str)
-        or not candidate["package_version"].startswith(f"{milestone}.")
-        or candidate["release_tag"] != candidate["package_version"]
-    ):
-        raise ReleaseControlError("release candidate version bindings are invalid")
-    if no_evaluation_adoption and (
-        candidate["evaluation_adoption_mode"] != "none"
-        or candidate["evaluation_adoption_digest"] is not None
-    ):
-        raise ReleaseControlError("release candidate adopts unapproved evaluation authority")
-    if candidate_dir.is_symlink() or not candidate_dir.is_dir():
-        raise ReleaseControlError("release candidate directory is missing or unsafe")
-    entries = list(candidate_dir.iterdir())
-    if len(entries) != 2 or any(path.is_symlink() or not path.is_file() for path in entries):
-        raise ReleaseControlError("release candidate directory has no closed regular-file set")
-    artifact_rows: list[dict[str, Any]] = []
-    expected_media = {
-        ".whl": "application/vnd.pypa.wheel+zip",
-        ".tar.gz": "application/gzip",
-    }
-    observed_suffixes: set[str] = set()
-    for path in sorted(entries, key=lambda item: item.name):
-        suffix = ".tar.gz" if path.name.endswith(".tar.gz") else path.suffix
-        if suffix not in expected_media or suffix in observed_suffixes:
-            raise ReleaseControlError("release candidate directory is not one wheel and one sdist")
-        observed_suffixes.add(suffix)
-        artifact_rows.append(
-            {
-                "media_type": expected_media[suffix],
-                "path": path.name,
-                "sha256": _regular_file_digest(path),
-                "size": path.stat().st_size,
-            }
-        )
-    if candidate["artifact_set_digest"] != sha256_json(artifact_rows):
-        raise ReleaseControlError("release candidate directory differs from its artifact set")
-    for field in expected_fields - {
-        "build_invocation_id",
-        "evaluation_adoption_digest",
-        "evaluation_adoption_mode",
-        "milestone",
-        "package_version",
-        "release_tag",
-    }:
-        _require_digest(candidate[field], f"release candidate {field}")
 
 
 def _regular_file_digest(path: Path) -> str:
@@ -3842,24 +3996,7 @@ def build_release_readiness_record(
             },
             "gate instance",
         ),
-        (
-            candidate,
-            {
-                "artifact_manifest_digest",
-                "artifact_set_digest",
-                "build_invocation_id",
-                "candidate_digest",
-                "evaluation_adoption_digest",
-                "evaluation_adoption_mode",
-                "gate_input_digest",
-                "milestone",
-                "package_version",
-                "predecessor_digest",
-                "release_tag",
-                "source_freeze_digest",
-            },
-            "candidate identity",
-        ),
+        (candidate, _CANDIDATE_FIELDS, "candidate identity"),
         (
             linear,
             {
@@ -3956,6 +4093,11 @@ def build_release_readiness_record(
     for value, expected_fields, label in exact_shapes:
         if set(value) != expected_fields:
             raise ReleaseControlError(f"readiness {label} data shape is not closed")
+    _validate_candidate_identity_payload(
+        candidate,
+        expected_digest=candidate["candidate_digest"],
+        expected_milestone=candidate["milestone"],
+    )
     predecessor_required = {
         "candidate_milestone",
         "closed_decision_digest",
@@ -4475,22 +4617,14 @@ def validate_release_build_environment(repository: Path) -> None:
             raise ReleaseControlError(f"release build tool is not the locked identity: {name}")
 
 
-def _source_freeze_payload(
-    gate_path: Path,
-    source_sha: str,
+def _validate_release_source_inputs(
+    gate: Mapping[str, Any],
+    target: Mapping[str, Any],
     *,
-    repository: Path,
-    frozen_at: str,
-    producer_intent_digest: str,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None,
-) -> tuple[dict[str, Any], bool]:
-    tree = _source_state(repository, source_sha)
-    _parse_utc_timestamp(frozen_at, "source freeze clock")
-    _require_digest(producer_intent_digest, "source producer intent")
-    gate = _source_json(_safe_release_bytes(gate_path), "gate input")
-    target_path = gate_path.parent / "target-resolution.json"
-    target = _source_json(_safe_release_bytes(target_path), "target resolution")
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Share the exact gate/target wire validation across source and candidate owners."""
     gate_data = _passing_record(
         gate, "release-gate-input", live=live, attestation_verifier=attestation_verifier
     )
@@ -4592,6 +4726,29 @@ def _source_freeze_payload(
         if field == "prior_burn_digests":
             for value in rows:
                 _require_digest(value, "source prior burn")
+    return gate_data, target_data
+
+
+def _source_freeze_payload(
+    gate_path: Path,
+    source_sha: str,
+    *,
+    repository: Path,
+    frozen_at: str,
+    producer_intent_digest: str,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> tuple[dict[str, Any], bool]:
+    tree = _source_state(repository, source_sha)
+    _parse_utc_timestamp(frozen_at, "source freeze clock")
+    _require_digest(producer_intent_digest, "source producer intent")
+    gate = _source_json(_safe_release_bytes(gate_path), "gate input")
+    target_path = gate_path.parent / "target-resolution.json"
+    target = _source_json(_safe_release_bytes(target_path), "target resolution")
+    gate_data, target_data = _validate_release_source_inputs(
+        gate, target, live=live, attestation_verifier=attestation_verifier
+    )
+    milestone = gate_data["milestone"]
     registry_refs = []
     for field, name in sorted(_SOURCE_REGISTRY_INPUTS.items(), key=lambda row: row[1]):
         raw = _source_blob(repository, source_sha, name)
@@ -4722,6 +4879,8 @@ _INVOCATION_STAGES: Final[Mapping[str, str]] = {
     "build_release_artifacts.py": "artifact-build",
     "validate_release_source_freeze.py": "source-freeze-validation",
     "validate_release_artifact_manifest.py": "artifact-manifest-validation",
+    _FINALIZER: "candidate-finalization",
+    _CANDIDATE_VALIDATOR: "validate-release-candidate-identity",
 }
 _INTENT_FIELDS: Final[frozenset[str]] = frozenset(
     {
@@ -4765,6 +4924,1140 @@ class ReleaseInvocation:
     directory: Path
     root: Path
     intent: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class CandidateFinalizationInvocation(ReleaseInvocation):
+    """The exact finalizer owns external control and a separately derived subject root."""
+
+    @property
+    def staging_root(self) -> Path:
+        return Path(self.intent["finalization"]["staging_root"])
+
+    @property
+    def release_root(self) -> Path:
+        return Path(self.intent["finalization"]["release_root"])
+
+
+def _release_object_identity(path: Path) -> dict[str, int]:
+    _run_relative(path.parent, path)
+    value = path.stat(follow_symlinks=False)
+    if not stat.S_ISDIR(value.st_mode):
+        raise ReleaseControlError("release object is not a directory: " + str(path))
+    return {"device": value.st_dev, "inode": value.st_ino, "mode": stat.S_IMODE(value.st_mode)}
+
+
+def _candidate_inventory(root: Path) -> list[dict[str, Any]]:
+    """Read a closed tree without following links or accepting special files."""
+    _release_object_identity(root)
+    rows: list[dict[str, Any]] = []
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        before = _release_object_identity(directory)
+        for path in sorted(directory.iterdir()):
+            name = _run_relative(root, path)
+            info = path.stat(follow_symlinks=False)
+            if stat.S_ISDIR(info.st_mode):
+                rows.append({"path": name, "kind": "directory", **_release_object_identity(path)})
+                pending.append(path)
+            elif stat.S_ISREG(info.st_mode):
+                raw = _safe_release_bytes(path)
+                after = path.stat(follow_symlinks=False)
+                if (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns) != (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_mode,
+                    after.st_size,
+                    after.st_mtime_ns,
+                ):
+                    raise ReleaseControlError("candidate member changed during inventory")
+                rows.append(
+                    {
+                        "path": name,
+                        "kind": "file",
+                        "sha256": sha256_bytes(raw),
+                        "size": len(raw),
+                        "mode": stat.S_IMODE(info.st_mode),
+                    }
+                )
+            else:
+                raise ReleaseControlError("candidate tree contains a link or special file: " + name)
+        if before != _release_object_identity(directory):
+            raise ReleaseControlError("candidate directory changed during inventory")
+    return sorted(rows, key=lambda row: row["path"])
+
+
+def _candidate_open_directory(path: Path) -> int:
+    """Open each directory component without following a substituted ancestor."""
+    if not path.is_absolute() or ".." in path.parts:
+        raise ReleaseControlError("candidate directory path is not canonical absolute")
+    descriptor = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in path.parts[1:]:
+            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _finalization_witness(path: Path) -> dict[str, Any]:
+    """Observe opaque bytes through held directories; stop at the first unsafe object."""
+
+    def unreadable(value: os.stat_result | None) -> dict[str, Any]:
+        return {
+            "state": "UNREADABLE",
+            "sha256": None,
+            "size": None,
+            "object": None
+            if value is None
+            else {
+                "device": value.st_dev,
+                "inode": value.st_ino,
+                "mode": value.st_mode,
+                "size": value.st_size,
+                "mtime_ns": value.st_mtime_ns,
+            },
+        }
+
+    if not path.is_absolute() or ".." in path.parts:
+        return unreadable(None)
+    descriptor = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    value = None
+    try:
+        for index, name in enumerate(path.parts[1:], start=1):
+            try:
+                value = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            except FileNotFoundError:
+                return {"state": "ABSENT", "sha256": None, "size": None, "object": None}
+            if index != len(path.parts) - 1:
+                if not stat.S_ISDIR(value.st_mode):
+                    return unreadable(value)
+                child = os.open(
+                    name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor
+                )
+                actual = os.fstat(child)
+                if (actual.st_dev, actual.st_ino) != (value.st_dev, value.st_ino):
+                    os.close(child)
+                    return unreadable(value)
+                os.close(descriptor)
+                descriptor = child
+                continue
+            if not stat.S_ISREG(value.st_mode):
+                return unreadable(value)
+            child = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+            with os.fdopen(child, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    return unreadable(before)
+                raw = stream.read()
+                after = os.fstat(stream.fileno())
+            current = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                len(
+                    {
+                        (v.st_dev, v.st_ino, v.st_mode, v.st_size, v.st_mtime_ns)
+                        for v in (value, before, after, current)
+                    }
+                )
+                != 1
+                or len(raw) != current.st_size
+            ):
+                return unreadable(current)
+            return {"state": "RAW", "sha256": sha256_bytes(raw), "size": len(raw), "object": None}
+    except OSError:
+        return unreadable(value)
+    finally:
+        os.close(descriptor)
+    return unreadable(value)
+
+
+def _finalization_history(stage: Path, sequence: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "sequence": number,
+            "intent": _finalization_witness(stage / f"{number:03d}" / "intent.json"),
+            "terminal": _finalization_witness(stage / f"{number:03d}" / "invocation.json"),
+            "commit": _finalization_witness(stage / f"{number:03d}" / "terminal-commit.json"),
+        }
+        for number in range(1, sequence)
+    ]
+
+
+def _validate_finalization_context(context: CandidateFinalizationInvocation) -> None:
+    value = context.intent["finalization"]
+    fields = {
+        "schema_version",
+        "staging_root",
+        "release_root",
+        "identity_name",
+        "control_journal_locator",
+        "staging_identity",
+        "parent_identities",
+        "inventory",
+        "records",
+        "capture_error",
+        "history",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != fields
+        or value["schema_version"] != "metriplane.candidate-finalization-context.v1"
+        or context.intent["tool"] != _FINALIZER
+        or value["identity_name"] != _CANDIDATE_NAME
+    ):
+        raise ReleaseControlError("candidate finalization context is not closed")
+    staging = _canonical_absolute_path(value["staging_root"], "staging root")
+    release = _canonical_absolute_path(value["release_root"], "release root")
+    control = context.root
+    if (
+        staging.parent != release.parent / ".staging"
+        or control != release.parent / ".control" / staging.name
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", staging.name) is None
+        or value["control_journal_locator"]
+        != str(control / "invocations/candidate-finalization/001/invocation.json")
+        or re.fullmatch(r"v0\.[4-9]\.[0-9]+", release.name) is None
+    ):
+        raise ReleaseControlError("candidate finalization two-root layout differs")
+    if (
+        not isinstance(value["capture_error"], str)
+        or not isinstance(value["inventory"], list)
+        or not isinstance(value["parent_identities"], dict)
+        or not isinstance(value["records"], dict)
+        or not isinstance(value["history"], list)
+        or len(value["history"]) != context.intent["sequence"] - 1
+    ):
+        raise ReleaseControlError("candidate finalization snapshot shape is invalid")
+    names = []
+    for row in value["inventory"]:
+        if not isinstance(row, dict):
+            raise ReleaseControlError("candidate inventory row is invalid")
+        fields = (
+            {"path", "kind", "device", "inode", "mode"}
+            if row.get("kind") == "directory"
+            else {"path", "kind", "sha256", "size", "mode"}
+        )
+        if set(row) != fields or row["kind"] not in {"file", "directory"}:
+            raise ReleaseControlError("candidate inventory row is not closed")
+        _journal_path(Path("/"), row["path"])
+        for key in fields - {"path", "kind", "sha256"}:
+            if type(row[key]) is not int or row[key] < 0:
+                raise ReleaseControlError("candidate inventory numeric identity is invalid")
+        if row["kind"] == "file":
+            _require_digest(row["sha256"], "candidate inventory file")
+        names.append(row["path"])
+    if names != sorted(set(names)) or _CANDIDATE_NAME in names:
+        raise ReleaseControlError("candidate pre-effect inventory is not canonical")
+    if not value["capture_error"] and context.intent["sequence"] == 1:
+        for obj in [value["staging_identity"], *value["parent_identities"].values()]:
+            if (
+                not isinstance(obj, dict)
+                or set(obj) != {"device", "inode", "mode"}
+                or any(type(n) is not int or n < 0 for n in obj.values())
+            ):
+                raise ReleaseControlError("candidate object identity is invalid")
+        expected_parents = {str(staging.parent), str(release.parent), str(release), str(control)}
+        if set(value["parent_identities"]) != expected_parents:
+            raise ReleaseControlError("candidate parent identity set differs")
+        if (
+            len(
+                {
+                    obj["device"]
+                    for obj in [value["staging_identity"], *value["parent_identities"].values()]
+                }
+            )
+            != 1
+        ):
+            raise ReleaseControlError("candidate objects are not on the same filesystem")
+    for number, prior in enumerate(value["history"], 1):
+        if (
+            not isinstance(prior, dict)
+            or set(prior) != {"sequence", "intent", "terminal", "commit"}
+            or prior["sequence"] != number
+        ):
+            raise ReleaseControlError("candidate diagnostic history is not contiguous")
+        for name in ("intent", "terminal", "commit"):
+            witness = prior[name]
+            if (
+                not isinstance(witness, dict)
+                or set(witness) != {"state", "sha256", "size", "object"}
+                or witness["state"] not in {"RAW", "ABSENT", "UNREADABLE"}
+            ):
+                raise ReleaseControlError("candidate historical witness is not closed")
+            if witness["state"] == "RAW":
+                _require_digest(witness["sha256"], "candidate opaque history")
+                if (
+                    type(witness["size"]) is not int
+                    or witness["size"] < 0
+                    or witness["object"] is not None
+                ):
+                    raise ReleaseControlError("candidate raw witness is invalid")
+            elif witness["sha256"] is not None or witness["size"] is not None:
+                raise ReleaseControlError("non-raw candidate witness grants bytes")
+    prior = context.intent["predecessor"]
+    if context.intent["sequence"] > 1:
+        expected = {
+            "sequence": context.intent["sequence"] - 1,
+            "intent_digest": value["history"][-1]["intent"]["sha256"],
+            "terminal_digest": value["history"][-1]["terminal"]["sha256"],
+            "disposition": "FINALIZATION_DIAGNOSTIC",
+        }
+        if (
+            prior != expected
+            or context.intent["previous_invocation_digest"] != expected["terminal_digest"]
+        ):
+            raise ReleaseControlError("candidate diagnostic predecessor binding mismatch")
+
+
+def _begin_candidate_finalization(
+    tool: str, argv: Sequence[str], directory: Path
+) -> CandidateFinalizationInvocation:
+    from metriplane import __version__
+
+    staging = _canonical_absolute_path(_command_value(argv, "work-dir"), "staging root")
+    release = _canonical_absolute_path(_command_value(argv, "release-root"), "release root")
+    directory = _canonical_absolute_path(str(directory), "finalization invocation")
+    sequence = int(directory.name) if directory.name.isascii() and directory.name.isdecimal() else 0
+    if (
+        sequence < 1
+        or directory.name != f"{sequence:03d}"
+        or directory.parent.name != "candidate-finalization"
+        or directory.parent.parent.name != "invocations"
+        or staging.parent != release.parent / ".staging"
+        or directory.parents[2] != release.parent / ".control" / staging.name
+        or _command_value(argv, "identity-name") != _CANDIDATE_NAME
+    ):
+        raise ReleaseControlError("finalization arguments do not use the fixed protocol paths")
+    for path in (staging, release, directory):
+        _run_relative(path.parent, path)
+    for flag, name in [
+        ("gate-input", "gate-input.json"),
+        ("source-freeze", "source-freeze.json"),
+        ("predecessor", "predecessor.json"),
+        ("artifact-manifest", "artifact-manifest.json"),
+    ]:
+        if _canonical_absolute_path(_command_value(argv, flag), flag) != staging / name:
+            raise ReleaseControlError("finalization input is outside its fixed staging location")
+    existing = _journal_sequences(directory.parent)
+    if sequence != len(existing) + 1:
+        raise ReleaseControlError("finalization sequence collides or has gaps")
+    root = directory.parents[2]
+    # Exclusive reservation is retained even if capture or the intent write is interrupted.
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(mode=0o700)
+    history = _finalization_history(directory.parent, sequence)
+    snapshot: dict[str, Any] = {
+        "schema_version": "metriplane.candidate-finalization-context.v1",
+        "staging_root": str(staging),
+        "release_root": str(release),
+        "identity_name": _CANDIDATE_NAME,
+        "control_journal_locator": str(directory.parent / "001/invocation.json"),
+        "staging_identity": None,
+        "parent_identities": {},
+        "inventory": [],
+        "records": {},
+        "capture_error": "",
+        "history": history,
+    }
+    inputs = []
+    if sequence == 1:
+        try:
+            snapshot["staging_identity"] = _release_object_identity(staging)
+            snapshot["parent_identities"] = {
+                str(p): _release_object_identity(p)
+                for p in (staging.parent, release.parent, release, root)
+            }
+            snapshot["inventory"] = _candidate_inventory(staging)
+            for name, kind in _FINALIZATION_INPUTS.items():
+                raw = _safe_release_bytes(staging / name)
+                record = _source_json(raw, "captured " + name)
+                if raw != canonical_json(record):
+                    raise ReleaseControlError("captured finalization input is not canonical")
+                snapshot["records"][name] = record
+                inputs.append(
+                    {
+                        "path": str(staging / name),
+                        "schema_id": "metriplane." + kind + ".v1",
+                        "sha256": sha256_bytes(raw),
+                    }
+                )
+        except (OSError, ReleaseControlError) as exc:
+            snapshot["capture_error"] = str(exc)
+    predecessor = (
+        None
+        if not history
+        else {
+            "sequence": sequence - 1,
+            "intent_digest": history[-1]["intent"]["sha256"],
+            "terminal_digest": history[-1]["terminal"]["sha256"],
+            "disposition": "FINALIZATION_DIAGNOSTIC",
+        }
+    )
+    intent: dict[str, Any] = {
+        "schema_version": "metriplane.release-invocation-intent.v1",
+        "sequence": sequence,
+        "tool": tool,
+        "tool_version": __version__,
+        "argv": [tool, *argv],
+        "started_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "inputs": sorted(inputs, key=lambda row: row["path"]),
+        "environment": {
+            "working_directory": str(Path.cwd()),
+            "python": sys.version.split()[0],
+            "fixture_mode": "1"
+            if os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
+            else "0",
+            "source_date_epoch": os.environ.get("SOURCE_DATE_EPOCH", ""),
+            "python_hash_seed": os.environ.get("PYTHONHASHSEED", ""),
+        },
+        "planned_outputs": [
+            {"path": _CANDIDATE_NAME, "schema_id": "metriplane.release-candidate-identity.v1"}
+        ],
+        "previous_invocation_digest": None
+        if predecessor is None
+        else predecessor["terminal_digest"],
+        "predecessor": predecessor,
+        "finalization": snapshot,
+    }
+    intent["invocation_id"] = _intent_identity(intent)
+    _durable_json(directory / "intent.json", intent)
+    context = _validate_intent(directory)
+    if not isinstance(context, CandidateFinalizationInvocation):
+        raise ReleaseControlError("finalization intent did not create its typed context")
+    return context
+
+
+def _check_finalization_observation(context: CandidateFinalizationInvocation) -> None:
+    if context.intent["finalization"]["history"] != _finalization_history(
+        context.directory.parent, context.intent["sequence"]
+    ):
+        raise ReleaseControlError("candidate historical raw/absence/unreadability witness changed")
+
+
+def _finalization_history_contradictions(context: CandidateFinalizationInvocation) -> list[int]:
+    """Diagnose older contradictions without making the new observation unrecordable."""
+    contradicted = []
+    for row in context.intent["finalization"]["history"]:
+        directory = context.directory.parent / f"{row['sequence']:03d}"
+        try:
+            prior = _validate_intent(directory)
+        except (OSError, ReleaseControlError):
+            continue
+        if not isinstance(prior, CandidateFinalizationInvocation) or prior.intent["finalization"][
+            "history"
+        ] != _finalization_history(directory.parent, row["sequence"]):
+            contradicted.append(row["sequence"])
+    return contradicted
+
+
+def _check_finalization_history(context: CandidateFinalizationInvocation) -> None:
+    _check_finalization_observation(context)
+    if _finalization_history_contradictions(context):
+        raise ReleaseControlError("earlier candidate diagnostic witness was contradicted")
+
+
+def _candidate_identity_for_context(
+    context: CandidateFinalizationInvocation, source_root: Path | None = None
+) -> dict[str, Any]:
+    """Derive only from the safely parsed original pre-effect intent, never a retry."""
+    if context.intent["sequence"] != 1 or context.intent["finalization"]["capture_error"]:
+        raise ReleaseControlError("candidate identity requires complete original capture")
+    value = context.intent["finalization"]
+    records = value["records"]
+    if set(records) != set(_FINALIZATION_INPUTS):
+        raise ReleaseControlError("candidate original intent lacks its exact five records")
+    if source_root is not None:
+        for name in _FINALIZATION_INPUTS:
+            if _safe_release_bytes(source_root / name) != canonical_json(records[name]):
+                raise ReleaseControlError(
+                    "candidate input bytes differ from original intent: " + name
+                )
+    data = _build_candidate_identity_payload(
+        records["gate-input.json"],
+        records["source-freeze.json"],
+        records["predecessor.json"],
+        records["artifact-manifest.json"],
+        records["target-resolution.json"],
+        finalization_intent_digest=sha256_json(context.intent),
+        control_journal_locator=value["control_journal_locator"],
+        release_root=context.release_root,
+        no_evaluation_adoption="--no-evaluation-adoption" in context.intent["argv"],
+        live=context.intent["environment"]["fixture_mode"] != "1",
+    )
+    return make_record(
+        "release-candidate-identity",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=1,
+        synthetic=context.intent["environment"]["fixture_mode"] == "1",
+    )
+
+
+def _validate_finalization_bound(
+    context: CandidateFinalizationInvocation,
+    *,
+    outputs: list[dict[str, str]] | None = None,
+    output_root: Path | None = None,
+) -> None:
+    _check_finalization_history(context)
+    value = context.intent["finalization"]
+    if context.intent["sequence"] != 1:
+        raise ReleaseControlError("candidate finalizer retries are diagnostic only")
+    if value["capture_error"]:
+        raise ReleaseControlError("candidate input capture failed: " + value["capture_error"])
+    argv = context.intent["argv"][1:]
+    for flag, path in [
+        ("work-dir", context.staging_root),
+        ("release-root", context.release_root),
+        ("invocation-dir", context.directory),
+        *[
+            (name.removesuffix(".json"), context.staging_root / name)
+            for name in _FINALIZATION_INPUTS
+            if name != "target-resolution.json"
+        ],
+    ]:
+        if _command_value(argv, flag) != str(path):
+            raise ReleaseControlError("candidate historical argv differs from its captured roots")
+    if _command_value(argv, "identity-name") != _CANDIDATE_NAME:
+        raise ReleaseControlError("candidate identity basename differs")
+    expected_inputs = sorted(
+        [
+            {
+                "path": str(context.staging_root / name),
+                "schema_id": "metriplane." + kind + ".v1",
+                "sha256": sha256_json(value["records"][name]),
+            }
+            for name, kind in _FINALIZATION_INPUTS.items()
+        ],
+        key=lambda row: row["path"],
+    )
+    if context.intent["inputs"] != expected_inputs or context.intent["planned_outputs"] != [
+        {"path": _CANDIDATE_NAME, "schema_id": "metriplane.release-candidate-identity.v1"}
+    ]:
+        raise ReleaseControlError("candidate exact captured inputs/output plan differ")
+    record = _candidate_identity_for_context(context)
+    if outputs is not None:
+        expected = [
+            {
+                "path": _CANDIDATE_NAME,
+                "schema_id": "metriplane.release-candidate-identity.v1",
+                "sha256": sha256_json(record),
+            }
+        ]
+        root = Path(record["data"]["final_directory"]) if output_root is None else output_root
+        if outputs != expected or _safe_release_bytes(root / _CANDIDATE_NAME) != canonical_json(
+            record
+        ):
+            raise ReleaseControlError("candidate output differs from original computed identity")
+
+
+def _verify_finalization_source(context: CandidateFinalizationInvocation) -> dict[str, Any]:
+    _validate_finalization_bound(context)
+    value = context.intent["finalization"]
+    for name, identity in value["parent_identities"].items():
+        if _release_object_identity(Path(name)) != identity:
+            raise ReleaseControlError("candidate source/destination/control parent was substituted")
+    if _release_object_identity(context.staging_root) != value["staging_identity"]:
+        raise ReleaseControlError("candidate staging directory object was substituted")
+    if _candidate_inventory(context.staging_root) != value["inventory"]:
+        raise ReleaseControlError("candidate immutable staging inventory changed")
+    record = _candidate_identity_for_context(context, context.staging_root)
+    inputs = value["records"]
+    validate_release_producer_journal(
+        inputs["source-freeze.json"],
+        context.staging_root / "source-freeze.json",
+        producer="freeze_release_source.py",
+    )
+    validate_release_artifact_files(
+        inputs["artifact-manifest.json"],
+        context.staging_root / "artifacts",
+        live=context.intent["environment"]["fixture_mode"] != "1",
+    )
+    _validate_candidate_journal_tree(context.staging_root)
+    return record
+
+
+def _rename_candidate_exclusive(
+    source_parent_fd: int, source_name: str, destination_parent_fd: int, destination_name: str
+) -> None:
+    """One native same-device exclusive rename; no replacement or copy fallback."""
+    import ctypes
+
+    for name in (source_name, destination_name):
+        if not name or Path(name).name != name or name in {".", ".."} or "\\" in name:
+            raise ReleaseControlError("exclusive candidate rename requires basenames")
+    library = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "linux":
+        symbol, flag = "renameat2", 1  # Linux RENAME_NOREPLACE.
+    elif sys.platform == "darwin":
+        symbol, flag = "renameatx_np", 4  # Darwin RENAME_EXCL.
+    else:
+        raise ReleaseControlError("exclusive candidate rename is unsupported on this platform")
+    try:
+        operation = getattr(library, symbol)
+    except AttributeError as exc:
+        raise ReleaseControlError("native exclusive candidate rename is unavailable") from exc
+    operation.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    operation.restype = ctypes.c_int
+    if (
+        operation(
+            source_parent_fd,
+            os.fsencode(source_name),
+            destination_parent_fd,
+            os.fsencode(destination_name),
+            flag,
+        )
+        != 0
+    ):
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), source_name, None, destination_name)
+
+
+def _durable_candidate_identity(directory_fd: int, record: Mapping[str, Any]) -> None:
+    """Create only in the captured staging object, even if its namespace is replaced."""
+    descriptor = os.open(
+        _CANDIDATE_NAME,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o400,
+        dir_fd=directory_fd,
+    )
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(canonical_json(record))
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.fsync(directory_fd)
+
+
+def _fsync_candidate_tree(
+    root: Path,
+    *,
+    directory_fd: int,
+    expected_identity: Mapping[str, int],
+    inventory: Sequence[Mapping[str, Any]],
+) -> None:
+    if _release_object_identity(root) != expected_identity:
+        raise ReleaseControlError("candidate fsync root namespace was substituted")
+    root_fd = os.dup(directory_fd)
+    try:
+        info = os.fstat(root_fd)
+        if {
+            "device": info.st_dev,
+            "inode": info.st_ino,
+            "mode": stat.S_IMODE(info.st_mode),
+        } != expected_identity:
+            raise ReleaseControlError("candidate fsync root was substituted")
+        identities = {row["path"]: row for row in inventory if row["kind"] == "directory"}
+        # Each walk starts at the held original root and checks every intermediate inode.
+        for row in sorted(inventory, key=lambda v: len(Path(v["path"]).parts), reverse=True):
+            descriptor = os.dup(root_fd)
+            try:
+                parts = Path(row["path"]).parts
+                for index, name in enumerate(parts):
+                    leaf = index == len(parts) - 1
+                    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+                    if not leaf or row["kind"] == "directory":
+                        flags |= os.O_DIRECTORY
+                    child = os.open(name, flags, dir_fd=descriptor)
+                    os.close(descriptor)
+                    descriptor = child
+                    info = os.fstat(descriptor)
+                    if not leaf or row["kind"] == "directory":
+                        expected = identities[Path(*parts[: index + 1]).as_posix()]
+                        if {
+                            "device": info.st_dev,
+                            "inode": info.st_ino,
+                            "mode": stat.S_IMODE(info.st_mode),
+                        } != {key: expected[key] for key in ("device", "inode", "mode")}:
+                            raise ReleaseControlError("candidate fsync directory was substituted")
+                    else:
+                        if not stat.S_ISREG(info.st_mode):
+                            raise ReleaseControlError("candidate fsync subject is not regular")
+                        with os.fdopen(os.dup(descriptor), "rb") as stream:
+                            raw = stream.read()
+                        if (
+                            len(raw) != row["size"]
+                            or sha256_bytes(raw) != row["sha256"]
+                            or stat.S_IMODE(info.st_mode) != row["mode"]
+                        ):
+                            raise ReleaseControlError("candidate fsync bytes or mode differ")
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        os.fsync(root_fd)
+    finally:
+        os.close(root_fd)
+
+
+def _install_candidate_identity(
+    context: CandidateFinalizationInvocation, outputs: list[dict[str, str]]
+) -> None:
+    record = _verify_finalization_source(context)
+    _validate_finalization_bound(context, outputs=outputs, output_root=context.directory / "staged")
+    source = context.staging_root
+    destination = Path(record["data"]["final_directory"])
+    value = context.intent["finalization"]
+    descriptors = []
+    try:
+        for path in (source.parent, destination.parent, context.root):
+            fd = _candidate_open_directory(path)
+            descriptors.append(fd)
+            info = os.fstat(fd)
+            if {
+                "device": info.st_dev,
+                "inode": info.st_ino,
+                "mode": stat.S_IMODE(info.st_mode),
+            } != value["parent_identities"][str(path)]:
+                raise ReleaseControlError("opened candidate rename parent identity differs")
+        staging_fd = os.open(
+            source.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptors[0]
+        )
+        descriptors.append(staging_fd)
+        info = os.fstat(staging_fd)
+        if {
+            "device": info.st_dev,
+            "inode": info.st_ino,
+            "mode": stat.S_IMODE(info.st_mode),
+        } != value["staging_identity"]:
+            raise ReleaseControlError("opened candidate staging object differs")
+        _durable_candidate_identity(staging_fd, record)
+        expected = value["inventory"] + [
+            {
+                "path": _CANDIDATE_NAME,
+                "kind": "file",
+                "sha256": sha256_json(record),
+                "size": len(canonical_json(record)),
+                "mode": 0o400,
+            }
+        ]
+        if _candidate_inventory(source) != sorted(expected, key=lambda row: row["path"]):
+            raise ReleaseControlError("candidate source inventory changed before exclusive rename")
+        info = os.stat(source.name, dir_fd=descriptors[0], follow_symlinks=False)
+        if {
+            "device": info.st_dev,
+            "inode": info.st_ino,
+            "mode": stat.S_IMODE(info.st_mode),
+        } != value["staging_identity"]:
+            raise ReleaseControlError("candidate source basename was substituted")
+        for path in (source.parent, destination.parent):
+            if _release_object_identity(path) != value["parent_identities"][str(path)]:
+                raise ReleaseControlError("candidate parent changed before exclusive rename")
+        _rename_candidate_exclusive(descriptors[0], source.name, descriptors[1], destination.name)
+        _verify_finalized_candidate_inventory(context, record)
+        _fsync_candidate_tree(
+            destination,
+            directory_fd=staging_fd,
+            expected_identity=value["staging_identity"],
+            inventory=expected,
+        )
+        for fd in descriptors:
+            os.fsync(fd)
+        _fsync_candidate_tree(
+            context.root,
+            directory_fd=descriptors[2],
+            expected_identity=value["parent_identities"][str(context.root)],
+            inventory=_candidate_inventory(context.root),
+        )
+        _verify_finalized_candidate_inventory(context, record)
+    finally:
+        for fd in descriptors:
+            os.close(fd)
+
+
+def _candidate_success_line(record: Mapping[str, Any]) -> bytes:
+    data = record["data"]
+    return (
+        canonical_json(
+            {
+                "status": "PASS",
+                "candidate_id": data["candidate_digest"],
+                "candidate_dir": data["final_directory"],
+                "identity_record": str(Path(data["final_directory"]) / _CANDIDATE_NAME),
+            }
+        )
+        + b"\n"
+    )
+
+
+def _finalization_diagnostic(context: CandidateFinalizationInvocation) -> dict[str, Any]:
+    _check_finalization_observation(context)
+    contradicted = _finalization_history_contradictions(context)
+    witness = context.intent["finalization"]["history"][0]["terminal"]
+    result: dict[str, Any] = {
+        "schema_version": "metriplane.candidate-finalization-diagnostic.v1",
+        "status": "BLOCKED",
+        "classification": "UNTRUSTED_OR_INCOMPLETE_ORIGINAL_INTENT",
+        "original_intent": context.intent["finalization"]["history"][0]["intent"],
+        "original_terminal": {
+            "witness": witness,
+            "disposition": witness["state"]
+            if witness["state"] != "RAW"
+            else "UNVERIFIABLE_ORIGINAL_INTENT",
+        },
+        "history_consistency": "CONTRADICTED" if contradicted else "CONSISTENT",
+        "contradicted_sequences": contradicted,
+        "staging_observation": _finalization_witness(context.staging_root),
+        "candidate_id": None,
+        "candidate_dir": None,
+    }
+    if contradicted:
+        result["classification"] = "HISTORICAL_WITNESS_CONTRADICTION"
+        return result
+    try:
+        original = _validate_intent(context.directory.parent / "001")
+        if not isinstance(original, CandidateFinalizationInvocation):
+            return result
+        _validate_finalization_bound(original)
+        record = _candidate_identity_for_context(original)
+    except (OSError, ReleaseControlError):
+        return result
+    if witness["state"] == "RAW":
+        try:
+            terminal = _validate_terminal(original)
+            disposition = "VALID_" + terminal["status"]
+            if terminal["status"] == "PASS":
+                receipt = {
+                    "schema_version": "metriplane.candidate-terminal-commit.v1",
+                    "intent_sha256": sha256_json(original.intent),
+                    "terminal_sha256": sha256_json(terminal),
+                }
+                committed = _finalization_witness(original.directory / "terminal-commit.json")
+                disposition += (
+                    "_COMMITTED"
+                    if (
+                        committed["state"] == "RAW"
+                        and committed["sha256"] == sha256_json(receipt)
+                        and committed["size"] == len(canonical_json(receipt))
+                    )
+                    else "_UNCOMMITTED"
+                )
+        except (OSError, ReleaseControlError):
+            disposition = "INVALID_OR_PARTIAL"
+        result["original_terminal"]["disposition"] = disposition
+    final = Path(record["data"]["final_directory"])
+    result.update(candidate_id=record["data"]["candidate_digest"], candidate_dir=str(final))
+    staging_exists, final_exists = os.path.lexists(original.staging_root), os.path.lexists(final)
+    if staging_exists and final_exists:
+        result["classification"] = "BOTH_STAGING_AND_FINAL"
+    elif not staging_exists and not final_exists:
+        result["classification"] = "NEITHER_STAGING_NOR_FINAL"
+    else:
+        root = original.staging_root if staging_exists else final
+        try:
+            if (
+                _release_object_identity(root)
+                != original.intent["finalization"]["staging_identity"]
+            ):
+                raise ReleaseControlError("original directory object differs")
+            has_identity = os.path.lexists(root / _CANDIDATE_NAME)
+            expected = list(original.intent["finalization"]["inventory"])
+            if has_identity:
+                expected.append(
+                    {
+                        "path": _CANDIDATE_NAME,
+                        "kind": "file",
+                        "sha256": sha256_json(record),
+                        "size": len(canonical_json(record)),
+                        "mode": 0o400,
+                    }
+                )
+            if _candidate_inventory(root) != sorted(expected, key=lambda row: row["path"]):
+                raise ReleaseControlError("original inventory differs")
+            result["classification"] = (
+                ("STAGING_WITH_IDENTITY" if has_identity else "STAGING_WITHOUT_IDENTITY")
+                if staging_exists
+                else ("FINAL_WITH_IDENTITY" if has_identity else "CONFLICT")
+            )
+        except (OSError, ReleaseControlError):
+            result["classification"] = "CONFLICT"
+    return result
+
+
+_CANDIDATE_APPEND_STAGES: Final[Mapping[str, str]] = {
+    "source-freeze-validation": "validate_release_source_freeze.py",
+    "artifact-manifest-validation": "validate_release_artifact_manifest.py",
+    "validate-release-candidate-identity": _CANDIDATE_VALIDATOR,
+}
+
+
+def _validate_candidate_journal_tree(
+    root: Path,
+    active_invocation: ReleaseInvocation | None = None,
+    *,
+    captured_names: set[str] | None = None,
+) -> None:
+    journals = root / "invocations"
+    _release_object_identity(journals)
+    expected_stages = {
+        "source-freeze": "freeze_release_source.py",
+        "artifact-build": "build_release_artifacts.py",
+        **_CANDIDATE_APPEND_STAGES,
+    }
+    for stage in sorted(journals.iterdir()):
+        if stage.name not in expected_stages:
+            raise ReleaseControlError("candidate has an unknown invocation stage")
+        _release_object_identity(stage)
+        sequences = _journal_sequences(stage)
+        if not sequences:
+            raise ReleaseControlError("candidate has an empty invocation stage")
+        for directory in sequences:
+            context = _validate_intent(directory)
+            if context.intent["tool"] != expected_stages[stage.name] or context.root != root:
+                raise ReleaseControlError("candidate journal tool/root differs")
+            name = directory.relative_to(root).as_posix()
+            appended = captured_names is not None and name not in captured_names
+            if appended and stage.name not in _CANDIDATE_APPEND_STAGES:
+                raise ReleaseControlError("candidate appended a producer journal")
+            active = active_invocation is not None and directory == active_invocation.directory
+            if active:
+                if (
+                    context != active_invocation
+                    or context.intent["tool"] != _CANDIDATE_VALIDATOR
+                    or context.root != root
+                    or read_json(directory / "worker.pid") != {"pid": os.getpid()}
+                    or os.path.lexists(directory / "invocation.json")
+                ):
+                    raise ReleaseControlError(
+                        "candidate active validator context is not the exact current worker"
+                    )
+                _validate_bound_invocation(context)
+            else:
+                _validate_terminal(context)
+            if appended or active:
+                # Negative evidence is allowed only for this exact validator subject.
+                _validate_bound_invocation(context)
+                names = {p.name for p in directory.iterdir()}
+                required = {"intent.json", "stdout", "stderr"}
+                allowed = required | {
+                    "worker.pid",
+                    "staged",
+                    "worker-result.json",
+                    "invocation.json",
+                    "partial-files.json",
+                }
+                if not required <= names <= allowed or (
+                    not active and "invocation.json" not in names
+                ):
+                    raise ReleaseControlError("appended validator journal members are not closed")
+                terminal = None if active else read_json(directory / "invocation.json")
+                if (active or (terminal is not None and terminal["status"] == "PASS")) and not {
+                    "worker.pid",
+                    "staged",
+                } <= names:
+                    raise ReleaseControlError("passing or active validator lacks worker evidence")
+                if "worker.pid" in names:
+                    pid = read_json(directory / "worker.pid")
+                    if set(pid) != {"pid"} or type(pid["pid"]) is not int or pid["pid"] <= 0:
+                        raise ReleaseControlError("appended validator worker identity is invalid")
+                if "staged" in names:
+                    _release_object_identity(directory / "staged")
+                    if "worker.pid" not in names or list((directory / "staged").iterdir()):
+                        raise ReleaseControlError("read-only validator staged evidence is invalid")
+                if terminal is not None:
+                    code = terminal["data"]["exit_code"]
+                    expected_status = (
+                        "PASS"
+                        if code == 0
+                        else "CANCELLED"
+                        if code >= 128
+                        else "BLOCKED"
+                        if code == 3
+                        else "FAIL"
+                    )
+                    if (
+                        terminal["status"] != expected_status
+                        or terminal["data"]["outputs"] != []
+                        or (code != 0 and "partial-files.json" not in names)
+                        or (terminal["status"] == "FAIL" and "worker-result.json" not in names)
+                    ):
+                        raise ReleaseControlError("appended validator outcome evidence differs")
+                if "worker-result.json" in names:
+                    worker = read_json(directory / "worker-result.json")
+                    if (
+                        not {"worker.pid", "staged"} <= names
+                        or type(worker.get("exit_code")) is not int
+                        or worker["exit_code"] < 0
+                        or set(worker)
+                        != {"schema_version", "exit_code", "outputs", "producer_intent_digest"}
+                        or worker["schema_version"] != "metriplane.release-worker-result.v1"
+                        or worker["outputs"] != []
+                        or worker["producer_intent_digest"] != sha256_json(context.intent)
+                        or (
+                            terminal is not None
+                            and terminal["status"] not in {"BLOCKED", "CANCELLED"}
+                            and worker["exit_code"] != terminal["data"]["exit_code"]
+                        )
+                    ):
+                        raise ReleaseControlError("appended validator worker evidence differs")
+                elif terminal is not None and terminal["status"] == "PASS":
+                    raise ReleaseControlError("passing validator lacks its worker verdict")
+
+
+def _verify_finalized_candidate_inventory(
+    context: CandidateFinalizationInvocation,
+    record: Mapping[str, Any],
+    *,
+    allow_appended: bool = False,
+    active_invocation: ReleaseInvocation | None = None,
+) -> None:
+    expected_record = _candidate_identity_for_context(context)
+    if record != expected_record:
+        raise ReleaseControlError("final candidate identity differs from original computation")
+    root = Path(expected_record["data"]["final_directory"])
+    value = context.intent["finalization"]
+    if os.path.lexists(context.staging_root):
+        raise ReleaseControlError("candidate staging location remains after finalization")
+    if _release_object_identity(root) != value["staging_identity"]:
+        raise ReleaseControlError("candidate final directory object differs from captured staging")
+    for name, identity in value["parent_identities"].items():
+        if _release_object_identity(Path(name)) != identity:
+            raise ReleaseControlError("candidate parent identity changed after finalization")
+    expected = list(value["inventory"]) + [
+        {
+            "path": _CANDIDATE_NAME,
+            "kind": "file",
+            "sha256": sha256_json(record),
+            "size": len(canonical_json(record)),
+            "mode": 0o400,
+        }
+    ]
+    expected.sort(key=lambda row: row["path"])
+    actual = _candidate_inventory(root)
+    if not allow_appended:
+        if actual != expected:
+            raise ReleaseControlError(
+                "final candidate inventory differs from its exact captured tree"
+            )
+    else:
+        original = {row["path"]: row for row in expected}
+        current = {row["path"]: row for row in actual}
+        if any(current.get(name) != row for name, row in original.items()):
+            raise ReleaseControlError("captured candidate member was removed or mutated")
+        for name in current.keys() - original.keys():
+            parts = Path(name).parts
+            if (
+                len(parts) < 2
+                or parts[0] != "invocations"
+                or parts[1] not in _CANDIDATE_APPEND_STAGES
+            ):
+                raise ReleaseControlError("candidate contains an unauthorized appended member")
+            if len(parts) >= 3 and "/".join(parts[:3]) in original:
+                raise ReleaseControlError("a captured invocation acquired an unbound member")
+        _validate_candidate_journal_tree(root, active_invocation, captured_names=set(original))
+    _candidate_identity_for_context(context, root)
+    records = value["records"]
+    validate_release_producer_journal(
+        records["source-freeze.json"],
+        root / "source-freeze.json",
+        producer="freeze_release_source.py",
+    )
+    validate_release_artifact_files(
+        records["artifact-manifest.json"],
+        root / "artifacts",
+        live=context.intent["environment"]["fixture_mode"] != "1",
+    )
+
+
+def _validate_finalization_completion(context: CandidateFinalizationInvocation) -> None:
+    if context.intent["sequence"] != 1:
+        raise ReleaseControlError("only original finalization can complete")
+    required = {
+        "intent.json",
+        "stdout",
+        "stderr",
+        "worker.pid",
+        "staged",
+        "worker-result.json",
+        "invocation.json",
+        "terminal-commit.json",
+    }
+    if {path.name for path in context.directory.iterdir()} != required:
+        raise ReleaseControlError("original finalization control members are not closed")
+    if {path.name for path in (context.directory / "staged").iterdir()} != {_CANDIDATE_NAME}:
+        raise ReleaseControlError("original finalization staged evidence is not closed")
+    if {path.name for path in context.root.iterdir()} != {"invocations"} or {
+        path.name for path in (context.root / "invocations").iterdir()
+    } != {"candidate-finalization"}:
+        raise ReleaseControlError("original finalization control root has unknown members")
+    terminal = _validate_terminal(context)
+    if terminal["status"] != "PASS":
+        raise ReleaseControlError("candidate original finalization did not pass")
+    expected = {
+        "schema_version": "metriplane.candidate-terminal-commit.v1",
+        "intent_sha256": sha256_json(context.intent),
+        "terminal_sha256": sha256_json(terminal),
+    }
+    if _safe_release_bytes(context.directory / "terminal-commit.json") != canonical_json(expected):
+        raise ReleaseControlError("candidate terminal durability receipt is missing or differs")
+    record = _candidate_identity_for_context(context)
+    if _safe_release_bytes(context.directory / "stdout") != _candidate_success_line(record):
+        raise ReleaseControlError(
+            "candidate retained success result differs from committed identity"
+        )
+    for directory in _journal_sequences(context.directory.parent)[1:]:
+        later = _validate_intent(directory)
+        if not isinstance(later, CandidateFinalizationInvocation):
+            raise ReleaseControlError("candidate control acquired an unknown invocation")
+        _check_finalization_history(later)
+        if _validate_terminal(later)["status"] != "BLOCKED":
+            raise ReleaseControlError("candidate recovery journal grants unexpected authority")
+
+
+def _validate_candidate_public(
+    record: Mapping[str, Any],
+    *,
+    predecessor_record: Mapping[str, Any],
+    candidate_dir: Path,
+    no_evaluation_adoption: bool,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+    active_invocation: ReleaseInvocation | None,
+) -> None:
+    candidate = _passing_record(
+        record, "release-candidate-identity", live=live, attestation_verifier=attestation_verifier
+    )
+    _passing_record(
+        predecessor_record,
+        "release-predecessor",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    _validate_candidate_identity_payload(
+        candidate,
+        expected_digest=candidate.get("candidate_digest", ""),
+        expected_milestone=candidate.get("milestone", ""),
+    )
+    root = _canonical_absolute_path(str(candidate_dir), "supplied candidate directory")
+    if (
+        no_evaluation_adoption is not True
+        or candidate["evaluation_adoption_mode"] != "none"
+        or candidate["evaluation_adoption_digest"] is not None
+        or str(root) != candidate["final_directory"]
+        or candidate["predecessor_digest"] != sha256_json(predecessor_record)
+    ):
+        raise ReleaseControlError("candidate supplied inputs or evaluation policy differ")
+    locator = _canonical_absolute_path(
+        candidate["control_journal_locator"], "candidate control locator"
+    )
+    context = _validate_intent(locator.parent)
+    if (
+        not isinstance(context, CandidateFinalizationInvocation)
+        or sha256_json(context.intent) != candidate["finalization_intent_digest"]
+        or _candidate_identity_for_context(context) != record
+    ):
+        raise ReleaseControlError("candidate original intent/identity binding differs")
+    _validate_finalization_completion(context)
+    _verify_finalized_candidate_inventory(
+        context, record, allow_appended=True, active_invocation=active_invocation
+    )
 
 
 def _invocation_stage(tool: str) -> str:
@@ -4839,7 +6132,12 @@ def _validate_intent(directory: Path) -> ReleaseInvocation:
     raw = _safe_release_bytes(directory / "intent.json")
     intent = _source_json(raw, "invocation intent")
     if (
-        set(intent) != _INTENT_FIELDS
+        set(intent)
+        != (
+            _INTENT_FIELDS | {"finalization"}
+            if intent.get("tool") == _FINALIZER
+            else _INTENT_FIELDS
+        )
         or intent["schema_version"] != "metriplane.release-invocation-intent.v1"
     ):
         raise ReleaseControlError("invocation intent shape is not closed")
@@ -4895,6 +6193,14 @@ def _validate_intent(directory: Path) -> ReleaseInvocation:
         if names != sorted(set(names)):
             raise ReleaseControlError("invocation references are not canonical")
     predecessor = intent["predecessor"]
+    if intent["tool"] == _FINALIZER:
+        context = CandidateFinalizationInvocation(directory, directory.parents[2], intent)
+        if sequence == 1 and (
+            predecessor is not None or intent["previous_invocation_digest"] is not None
+        ):
+            raise ReleaseControlError("original candidate has a predecessor")
+        _validate_finalization_context(context)
+        return context
     if sequence == 1:
         if predecessor is not None or intent["previous_invocation_digest"] is not None:
             raise ReleaseControlError("initial invocation has an unexpected predecessor")
@@ -4966,7 +6272,14 @@ def _validate_terminal_entry(context: ReleaseInvocation) -> dict[str, Any]:
                 raise ReleaseControlError("terminal invocation reference is not closed")
             _require_nonempty_string(row["schema_id"], "terminal reference type")
             _require_digest(row["sha256"], "terminal reference digest")
-            path = _journal_path(context.root, row["path"])
+            root = context.root
+            if isinstance(context, CandidateFinalizationInvocation) and key == "outputs":
+                if row["path"] != _CANDIDATE_NAME:
+                    raise ReleaseControlError(
+                        "finalization output reference is not the identity basename"
+                    )
+                root = Path(_candidate_identity_for_context(context)["data"]["final_directory"])
+            path = _journal_path(root, row["path"])
             if row["path"] in seen or sha256_bytes(_safe_release_bytes(path)) != row["sha256"]:
                 raise ReleaseControlError(
                     "terminal invocation reference bytes or uniqueness mismatch"
@@ -4983,6 +6296,12 @@ def _validate_terminal_entry(context: ReleaseInvocation) -> dict[str, Any]:
 
 def _validate_terminal(context: ReleaseInvocation) -> dict[str, Any]:
     """Read every predecessor with a strictly decreasing, nonrecursive sequence."""
+    if isinstance(context, CandidateFinalizationInvocation):
+        actual = _validate_intent(context.directory)
+        if actual != context:
+            raise ReleaseControlError("finalization intent changed during terminal readback")
+        _check_finalization_observation(context)
+        return _validate_terminal_entry(context)
     _journal_sequences(context.directory.parent)
     current = context
     required_terminal = True
@@ -5021,6 +6340,9 @@ def _validate_bound_invocation(
     """
     if _safe_release_bytes(context.directory / "intent.json") != canonical_json(context.intent):
         raise ReleaseControlError("reserved invocation intent changed before use")
+    if isinstance(context, CandidateFinalizationInvocation):
+        _validate_finalization_bound(context, outputs=outputs, output_root=output_root)
+        return
     tool = context.intent["tool"]
     if tool not in _INVOCATION_STAGES:
         return
@@ -5056,6 +6378,17 @@ def _validate_bound_invocation(
             ("manifest", "artifact-manifest.json", "release-artifact-manifest"),
             ("out-dir", "artifacts", "release-artifact-directory"),
         ]
+    elif tool == _CANDIDATE_VALIDATOR:
+        declared = [
+            ("record", "candidate-identity.json", "release-candidate-identity"),
+            ("predecessor", "predecessor.json", "release-predecessor"),
+        ]
+        implicit, planned = [], []
+        if (
+            historical_path("candidate-dir") != historical_root
+            or "--no-evaluation-adoption" not in argv
+        ):
+            raise ReleaseControlError("candidate validator root or evaluation policy differs")
     else:
         kind = (
             "release-source-freeze"
@@ -5153,6 +6486,8 @@ def begin_release_invocation(
     planned_outputs: Sequence[tuple[Path, str]],
 ) -> ReleaseInvocation:
     """Exclusively reserve a fixed-stage sequence before worker/canonical effects."""
+    if tool == _FINALIZER:
+        return _begin_candidate_finalization(tool, argv, directory)
     from metriplane import __version__
 
     directory = directory.absolute()
@@ -6225,7 +7560,7 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
 
     if Path(args.invocation_dir).absolute() != context.directory:
         parser.error("invocation directory differs from the reserved intent")
-    if contract.output_flag is not None:
+    if contract.output_flag is not None and name != _FINALIZER:
         destination = getattr(args, _argument_destination(contract.output_flag), None)
         if destination is not None:
             relative = _run_relative(context.root, Path(destination))
@@ -6242,6 +7577,12 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
     fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
     try:
         attestation_verifier = _attestation_verifier_from_args(args, live=not fixture_mode)
+        if name == _FINALIZER:
+            if not isinstance(context, CandidateFinalizationInvocation):
+                raise ReleaseControlError("finalizer lacks its typed context")
+            result = _verify_finalization_source(context)
+            _durable_json(context.directory / "staged" / _CANDIDATE_NAME, result)
+            return 0
         if name == "freeze_release_source.py":
             if context.intent["sequence"] != 1:
                 raise ReleaseControlError("source producer retry requires a new staging run")
@@ -6456,6 +7797,7 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
                 no_evaluation_adoption=bool(args.no_evaluation_adoption),
                 live=not fixture_mode,
                 attestation_verifier=attestation_verifier,
+                _active_invocation=context,
             )
         elif contract.fixture_producer:
             result = _blocked_result(
@@ -6670,6 +8012,9 @@ def _install_release_outputs(
     *,
     artifact_installer: Callable[[Path, Path], list[tuple[Path, Path]]] | None = None,
 ) -> None:
+    if isinstance(context, CandidateFinalizationInvocation):
+        _install_candidate_identity(context, outputs)
+        return
     installed: list[tuple[Path, Path]] = []
     created_directories: list[Path] = []
     try:
@@ -6729,6 +8074,43 @@ def _terminal_inputs(context: ReleaseInvocation) -> list[dict[str, str]]:
             raise ReleaseControlError("retained partial file inventory or bytes changed")
         paths.append(
             (context.directory / "partial-files.json", "metriplane.release-partial-files.v1")
+        )
+    if isinstance(context, CandidateFinalizationInvocation):
+        _check_finalization_observation(context)
+        for row in context.intent["finalization"]["history"]:
+            previous = context.directory.parent / f"{row['sequence']:03d}"
+            for kind, name in [
+                ("intent", "intent.json"),
+                ("terminal", "invocation.json"),
+                ("commit", "terminal-commit.json"),
+            ]:
+                if row[kind]["state"] == "RAW":
+                    paths.append((previous / name, "application/octet-stream"))
+        if (context.directory / "classification.json").exists():
+            paths.append(
+                (
+                    context.directory / "classification.json",
+                    "metriplane.candidate-finalization-diagnostic.v1",
+                )
+            )
+        for name, kind in [
+            ("worker.pid", "application/json"),
+            ("worker-result.json", "metriplane.release-worker-result.v1"),
+            ("staged/candidate-identity.json", "metriplane.release-candidate-identity.v1"),
+        ]:
+            path = context.directory / name
+            if path.exists() and not path.is_symlink():
+                paths.append((path, kind))
+        return sorted(
+            [
+                {
+                    "path": _run_relative(context.root, path),
+                    "schema_id": kind,
+                    "sha256": sha256_bytes(_safe_release_bytes(path)),
+                }
+                for path, kind in paths
+            ],
+            key=lambda row: row["path"],
         )
     prior = context.intent["predecessor"]
     if prior is not None:
@@ -6827,6 +8209,18 @@ def _complete_invocation(
     )
     _durable_json(context.directory / "invocation.json", record)
     _validate_terminal(context)
+    if isinstance(context, CandidateFinalizationInvocation) and code == 0:
+        # Its existence proves the terminal's required fsync returned before creation.
+        # A complete-looking terminal left by a failed write/fsync has no receipt.
+        _durable_json(
+            context.directory / "terminal-commit.json",
+            {
+                "schema_version": "metriplane.candidate-terminal-commit.v1",
+                "intent_sha256": sha256_json(context.intent),
+                "terminal_sha256": sha256_json(record),
+            },
+        )
+        _validate_finalization_completion(context)
 
 
 def _worker_command(context: ReleaseInvocation) -> list[str]:
@@ -6867,9 +8261,23 @@ def _supervise_release_invocation(
         (context.directory / "stderr").open("xb") as stderr,
     ):
         try:
+            if (
+                isinstance(context, CandidateFinalizationInvocation)
+                and context.intent["sequence"] != 1
+            ):
+                diagnostic = _finalization_diagnostic(context)
+                _durable_json(context.directory / "classification.json", diagnostic)
+                raise ReleaseControlError(
+                    "original candidate finalization is immutable: " + diagnostic["classification"]
+                )
             _validate_bound_invocation(context)
             for planned in context.intent["planned_outputs"]:
-                destination = _journal_path(context.root, planned["path"])
+                destination = _journal_path(
+                    context.staging_root
+                    if isinstance(context, CandidateFinalizationInvocation)
+                    else context.root,
+                    planned["path"],
+                )
                 if destination.exists() or destination.is_symlink():
                     raise ReleaseControlError(
                         "canonical output already exists; a new staging run is required"
@@ -6913,10 +8321,16 @@ def _supervise_release_invocation(
                     )
                 if code == 0:
                     outputs = result["outputs"]
+                    if isinstance(context, CandidateFinalizationInvocation) and stdout.tell() != 0:
+                        raise ReleaseControlError(
+                            "candidate worker cannot announce finalization success"
+                        )
                     _verify_staged_outputs(context, outputs)
                     _install_release_outputs(
                         context, outputs, artifact_installer=artifact_installer
                     )
+            if code == 0 and isinstance(context, CandidateFinalizationInvocation):
+                stdout.write(_candidate_success_line(_candidate_identity_for_context(context)))
             stdout.flush()
             os.fsync(stdout.fileno())
             stderr.flush()
@@ -6941,6 +8355,9 @@ def _supervise_release_invocation(
                 validate_release_producer_journal(
                     read_json(path), path, producer=context.intent["tool"]
                 )
+    if code == 0 and isinstance(context, CandidateFinalizationInvocation):
+        sys.stdout.write(_safe_release_bytes(context.directory / "stdout").decode("utf-8"))
+        return 0
     print(
         canonical_json(
             {
@@ -6968,46 +8385,57 @@ def run_release_command(
         directory = Path(raw).absolute()
         root = directory.parents[2]
         contract = TOOL_CONTRACTS[tool]
-        inputs = []
-        for flag, kind in [
-            ("gate-input", "release-gate-input"),
-            ("target-resolution", "release-target-resolution"),
-            ("source-freeze", "release-source-freeze"),
-            ("record", _record_type_from_tool(tool)),
-        ]:
-            value = _command_value(argv, flag)
-            if value is not None:
-                inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
-        if tool == "freeze_release_source.py":
-            value = _command_value(argv, "gate-input")
-            if value is not None:
-                inputs.append(
-                    (
-                        Path(value).absolute().parent / "target-resolution.json",
-                        "metriplane.release-target-resolution.v1",
+        if tool == _FINALIZER:
+            context = begin_release_invocation(
+                tool, argv, directory, input_paths=[], planned_outputs=[]
+            )
+        else:
+            inputs = []
+            for flag, kind in [
+                ("gate-input", "release-gate-input"),
+                ("target-resolution", "release-target-resolution"),
+                ("source-freeze", "release-source-freeze"),
+                ("record", _record_type_from_tool(tool)),
+            ]:
+                value = _command_value(argv, flag)
+                if value is not None:
+                    inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            if tool == _CANDIDATE_VALIDATOR:
+                value = _command_value(argv, "predecessor")
+                if value is not None:
+                    inputs.append((Path(value).absolute(), "metriplane.release-predecessor.v1"))
+            if tool == "freeze_release_source.py":
+                value = _command_value(argv, "gate-input")
+                if value is not None:
+                    inputs.append(
+                        (
+                            Path(value).absolute().parent / "target-resolution.json",
+                            "metriplane.release-target-resolution.v1",
+                        )
                     )
-                )
-        outputs = []
-        if contract.output_flag is not None:
-            value = _command_value(argv, contract.output_flag)
-            if value is not None:
-                path = Path(value).absolute()
-                if path.parent != root:
-                    raise ReleaseControlError(
-                        "canonical record must be directly in its invocation run root"
+            outputs = []
+            if contract.output_flag is not None:
+                value = _command_value(argv, contract.output_flag)
+                if value is not None:
+                    path = Path(value).absolute()
+                    if path.parent != root:
+                        raise ReleaseControlError(
+                            "canonical record must be directly in its invocation run root"
+                        )
+                    outputs.append((path, "metriplane." + _record_type_from_tool(tool) + ".v1"))
+            if tool == "build_release_artifacts.py":
+                value = _command_value(argv, "out-dir")
+                if value is not None:
+                    if Path(value).absolute() != root / "artifacts":
+                        raise ReleaseControlError(
+                            "artifact output must be artifacts/ in the invocation run root"
+                        )
+                    outputs.append(
+                        (Path(value).absolute(), "metriplane.release-artifact-directory.v1")
                     )
-                outputs.append((path, "metriplane." + _record_type_from_tool(tool) + ".v1"))
-        if tool == "build_release_artifacts.py":
-            value = _command_value(argv, "out-dir")
-            if value is not None:
-                if Path(value).absolute() != root / "artifacts":
-                    raise ReleaseControlError(
-                        "artifact output must be artifacts/ in the invocation run root"
-                    )
-                outputs.append((Path(value).absolute(), "metriplane.release-artifact-directory.v1"))
-        context = begin_release_invocation(
-            tool, argv, directory, input_paths=inputs, planned_outputs=outputs
-        )
+            context = begin_release_invocation(
+                tool, argv, directory, input_paths=inputs, planned_outputs=outputs
+            )
     except (OSError, ReleaseControlError, IndexError) as exc:
         print(
             canonical_json({"status": "INVALID_INPUT", "reason": str(exc), "tool": tool}).decode()
