@@ -800,7 +800,23 @@ def test_ci_shards_and_fast_validation_preserve_required_closure() -> None:
     jobs = ci["jobs"]
     for name in ("test", "linux-python313", "macos-regressions"):
         assert jobs[name]["needs"] == "fast-validation"
-        assert "PLAYWRIGHT_BROWSERS_PATH" in jobs[name]["env"]
+        assert "PLAYWRIGHT_BROWSERS_PATH" not in jobs[name]["env"]
+        assert all("runner." not in str(value) for value in jobs[name]["env"].values())
+        steps = jobs[name]["steps"]
+        source_steps = [step for step in steps if step.get("id") == "source"]
+        assert len(source_steps) == 1
+        source = source_steps[0]
+        cache = "empty-browser-cache" if name == "macos-regressions" else "playwright-browsers"
+        export = (
+            f'printf \'%s\\n\' "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/{cache}" >> "$GITHUB_ENV"'
+        )
+        assert export in source["run"].splitlines()
+        source_index = steps.index(source)
+        for index, step in enumerate(steps):
+            if step is not source:
+                assert "PLAYWRIGHT_BROWSERS_PATH" not in str(step)
+            if "playwright install" in str(step) or "shard-run" in str(step):
+                assert index > source_index
         uploads = [
             s
             for s in jobs[name]["steps"]

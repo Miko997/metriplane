@@ -94,7 +94,6 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
       METRIPLANE_V020_TAG: "v0.2.0"
       METRIPLANE_V020_COMMIT: "8e35ed5bb20837f7dc46354777407b848d7ce17a"
 
@@ -111,6 +110,7 @@ jobs:
           source_sha="$(git rev-parse HEAD)"
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/playwright-browsers" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -249,7 +249,6 @@ jobs:
         shard-index: [0, 1, 2, 3]
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/empty-browser-cache
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -261,6 +260,7 @@ jobs:
           source_sha="$(git rev-parse HEAD)"
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/empty-browser-cache" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
@@ -294,7 +294,6 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright-browsers
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -306,6 +305,7 @@ jobs:
           source_sha="$(git rev-parse HEAD)"
           test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/playwright-browsers" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
