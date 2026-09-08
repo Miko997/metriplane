@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `98111018cccafe409b568e9d16068e70ce728f6ff98751838667f72d169248cb`
+Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7b9b2d43c5ce4b8a`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 160 |
+| actions | 164 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -257,6 +257,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.baseline_snapshot | tool | Baseline Snapshot | python tools/baseline_snapshot.py |
 | tool.build_external_source_family_matrix | tool | Build External Source Family Matrix | python tools/build_external_source_family_matrix.py |
 | tool.build_maniskill_pickcube_proof | tool | Build Maniskill Pickcube Proof | python tools/build_maniskill_pickcube_proof.py |
+| tool.build_release_artifacts | tool | Build Release Artifacts | python tools/build_release_artifacts.py |
 | tool.calibrate_intrinsics_chessboard | tool | Calibrate Intrinsics Chessboard | python tools/calibrate_intrinsics_chessboard.py |
 | tool.calibrate_planar_homography | tool | Calibrate Planar Homography | python tools/calibrate_planar_homography.py |
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
@@ -280,6 +281,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.docker_live_up | tool | Docker Live Up | tools/docker_live_up.sh |
 | tool.docker_smoke_test | tool | Docker Smoke Test | tools/docker_smoke_test.sh |
 | tool.docker_stop | tool | Docker Stop | tools/docker_stop.sh |
+| tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
 | tool.list_cameras | tool | List Cameras | python tools/list_cameras.py |
 | tool.main_health_broker | tool | Main Health Broker | python tools/main_health_broker.py |
@@ -306,6 +308,8 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
+| tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
+| tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |
 | tool.ws_replay_jsonl | tool | Ws Replay Jsonl | python tools/ws_replay_jsonl.py |

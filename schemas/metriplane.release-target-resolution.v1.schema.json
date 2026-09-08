@@ -1,0 +1,313 @@
+{
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$defs": {
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-target-resolution.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-target-resolution. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "burn_lineage_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "burn_target_ids": {
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "initial_package_version": {
+          "$ref": "#/$defs/version"
+        },
+        "initial_release_tag": {
+          "$ref": "#/$defs/version"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "observations_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "prior_burn_digests": {
+          "items": {
+            "$ref": "#/$defs/digest"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "requires_new_burn": {
+          "type": "boolean"
+        },
+        "resolution_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resolution_rule": {
+          "const": "next_unused_same_milestone_patch"
+        },
+        "selected_package_version": {
+          "$ref": "#/$defs/version"
+        },
+        "selected_release_tag": {
+          "$ref": "#/$defs/version"
+        }
+      },
+      "required": [
+        "burn_lineage_digest",
+        "burn_target_ids",
+        "initial_package_version",
+        "initial_release_tag",
+        "milestone",
+        "observations_digest",
+        "prior_burn_digests",
+        "requires_new_burn",
+        "resolution_digest",
+        "resolution_rule",
+        "selected_package_version",
+        "selected_release_tag"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-target-resolution"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "enum": [
+        "BLOCKED",
+        "CANCELLED",
+        "FAIL",
+        "INVALIDATED",
+        "OPEN",
+        "PASS",
+        "READY",
+        "SKIPPED"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-target-resolution record",
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ]
+}

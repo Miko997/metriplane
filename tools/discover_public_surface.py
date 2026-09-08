@@ -98,15 +98,15 @@ FAMILY_OBLIGATION = {
 }
 EXPECTED_FAMILY_COUNTS = {
     "configs": 167,
-    "current_claims": 313,
+    "current_claims": 317,
     "examples": 172,
     "jobs": 55,
-    "manifest_keys": 3581,
-    "model_fields": 1448,
-    "models": 235,
+    "manifest_keys": 3734,
+    "model_fields": 1465,
+    "models": 239,
     "proofs": 322,
-    "public_api": 2366,
-    "resources": 1564,
+    "public_api": 2444,
+    "resources": 1577,
     "workflows": 16,
 }
 
