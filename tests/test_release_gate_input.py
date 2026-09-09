@@ -15649,6 +15649,17 @@ def test_seed_staging_public_target_command_completes_and_is_consumable(
         "unused",
     }
     assert len(terminal["data"]["outputs"]) == len(context.intent["planned_outputs"])
+    witness_path = directory / "terminal-commit.json"
+    witness = json.loads(witness_path.read_bytes())
+    witness["terminal_sha256"] = "0" * 64
+    witness_path.chmod(384)
+    witness_path.write_bytes(release.canonical_json(witness))
+    with pytest.raises(release.ReleaseControlError, match="completion witness|terminal-commit"):
+        release.validate_release_producer_journal(
+            record,
+            record_path,
+            producer="capture_release_target_observations.py",
+        )
 
 
 @pytest.mark.parametrize("case", ["failure", "interruption", "replacement"])
@@ -16042,6 +16053,11 @@ def test_seed_staging_role_seed_uses_existing_signed_payload_and_original_proven
     expires = (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
     data.update(issued_at=issued, expires_at=expires)
     assign.update(valid_from=issued, valid_until=expires)
+    context_raw = (
+        json.dumps(json.loads((source / "context.json").read_bytes()), indent=2).encode() + b"\n"
+    )
+    (source / "context.json").write_bytes(context_raw)
+    data["release_context"].update(bytes=len(context_raw), sha256=release.sha256_bytes(context_raw))
     for role in ["operator", "non_author_reviewer", "infrastructure_owner", "publisher"]:
         binding = assign[role]
         value = {
@@ -16131,6 +16147,101 @@ def test_seed_staging_role_seed_uses_existing_signed_payload_and_original_proven
     assert all((not n.endswith("response.bin") for n, _ in plan.output_plan))
     assert all((json.loads(op)["response_path"].endswith(".bin") for op in plan.operations))
     assert not (root / "invocations").exists()
+    actual_interval = release._release_fixture_role_interval
+    observed_intervals = []
+
+    def observe_interval(bound: Any, completed_at: str) -> None:
+        observed_intervals.append((bound.original.intent["started_at"], completed_at))
+        actual_interval(bound, completed_at)
+
+    monkeypatch.setattr(release, "_release_fixture_role_interval", observe_interval)
+    assert release.run_release_command(argv[0], argv[1:]) == 0
+    directory = root / "invocations/record-release-role-assignments/001"
+    context = release._validate_intent(directory)
+    assert release._validate_terminal(context)["status"] == "PASS"
+    output = root / "primary.json"
+    result = json.loads(output.read_bytes())
+    release.validate_release_producer_journal(
+        result, output, producer="record_release_role_assignments.py"
+    )
+    names = sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+    captured = release._ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name in names],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
+    terminal = release._validate_terminal(context)
+    assert observed_intervals == [(context.intent["started_at"], terminal["data"]["completed_at"])]
+    replay = release._release_recorded_role_byte_replay(
+        output,
+        protected_path=root / "protected.json",
+        context_path=root / "context.json",
+        captured=captured,
+        expected_context_digest=selection["context_digest"],
+        expected_run_id="fixture-run",
+        expected_milestone="v0.4",
+        expected_assignment_policy_digest=selection["policy_digest"],
+        expected_authority_policy_digest=selection["authority_policy_digest"],
+        expected_keyring_digest=selection["keyring_digest"],
+        expected_producer_intent_digest=release.sha256_json(context.intent),
+        expected_invocation_id=context.intent["invocation_id"],
+        expected_sequence=context.intent["sequence"],
+        use_interval=(context.intent["started_at"], terminal["data"]["completed_at"]),
+        live=False,
+    )
+    assert replay["recorded_assignments"] == result
+    seed_source = root / Path(name).parent
+    second_seed_directory = seed_source.parent / "002"
+    shutil.copytree(seed_source, second_seed_directory)
+    second_argv = [
+        value.replace("/001", "/002").replace("/primary.json", "/primary-2.json") for value in argv
+    ]
+    second_seed = second_seed_directory / "seed.json"
+    second_seed_record = json.loads(second_seed.read_bytes())
+    second_seed_record["command_digest"] = release.sha256_json(
+        {"tool": argv[0], "argv": second_argv, "working_directory": str(Path.cwd())}
+    )
+    second_seed.write_bytes(json.dumps(second_seed_record, indent=2).encode() + b"\n")
+
+    def expire_before_completion(_: Any, __: str) -> None:
+        raise release.ReleaseControlError("role authority expired during supervised action")
+
+    monkeypatch.setattr(release, "_release_fixture_role_interval", expire_before_completion)
+    assert release.run_release_command(second_argv[0], second_argv[1:]) == 3
+    second_directory = root / "invocations/record-release-role-assignments/002"
+    second_context = release._validate_intent(second_directory)
+    second_terminal = release._validate_terminal(second_context)
+    assert second_terminal["status"] == "BLOCKED"
+    assert second_terminal["data"]["outputs"] == []
+    assert not (root / "primary-2.json").exists()
+    assert not (second_directory / "terminal-commit.json").exists()
+
+    third_seed_directory = seed_source.parent / "003"
+    shutil.copytree(seed_source, third_seed_directory)
+    third_argv = [
+        value.replace("/001", "/003").replace("/primary.json", "/primary-3.json") for value in argv
+    ]
+    third_seed = third_seed_directory / "seed.json"
+    third_seed_record = json.loads(third_seed.read_bytes())
+    third_seed_record["command_digest"] = release.sha256_json(
+        {"tool": argv[0], "argv": third_argv, "working_directory": str(Path.cwd())}
+    )
+    third_seed.write_bytes(json.dumps(third_seed_record, indent=2).encode() + b"\n")
+    monkeypatch.setattr(release, "_release_fixture_role_interval", actual_interval)
+    assert release.run_release_command(third_argv[0], third_argv[1:]) == 0
+    third_context = release._validate_intent(
+        root / "invocations/record-release-role-assignments/003"
+    )
+    assert third_context.intent["predecessor"]["terminal_digest"] == release.sha256_bytes(
+        (second_directory / "invocation.json").read_bytes()
+    )
+    assert release._validate_terminal(third_context)["status"] == "PASS"
+    (directory / "terminal-commit.json").unlink()
+    with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
+        release.validate_release_producer_journal(
+            result, output, producer="record_release_role_assignments.py"
+        )
 
 
 def test_seed_staging_cas_seed_uses_original_subject_graph_before_receipt_without_token_hash_alias(

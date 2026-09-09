@@ -7461,11 +7461,13 @@ def _validate_terminal_entry(
         )
     if data["terminal_status"] == "PASS":
         _validate_bound_invocation(context, outputs=data["outputs"])
-        if context.intent["tool"] == "validate_release_evidence_stores.py" and os.path.lexists(
-            context.directory / "worker-result.json"
-        ):
+        if context.intent["tool"] in {
+            "validate_release_evidence_stores.py",
+            "capture_release_target_observations.py",
+            "record_release_role_assignments.py",
+        } and os.path.lexists(context.directory / "worker-result.json"):
             witness_raw = _safe_release_bytes(context.directory / "terminal-commit.json")
-            witness = _source_json(witness_raw, "evidence-store terminal witness")
+            witness = _source_json(witness_raw, "native fixture terminal witness")
             expected_witness = {
                 "schema_version": "metriplane.gate-terminal-commit.v1",
                 "intent_sha256": sha256_json(context.intent),
@@ -7473,7 +7475,7 @@ def _validate_terminal_entry(
             }
             if witness_raw != canonical_json(witness) or witness != expected_witness:
                 raise ReleaseControlError(
-                    "evidence-store terminal lacks its durable completion witness"
+                    "native fixture terminal lacks its durable completion witness"
                 )
     return record
 
@@ -10053,6 +10055,7 @@ def run_release_command(
             in {
                 "validate_release_evidence_stores.py",
                 "capture_release_target_observations.py",
+                "record_release_role_assignments.py",
             }
             and os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
         ):
@@ -13704,6 +13707,7 @@ def _release_captured_journal_members(
             "prepare_release_gate_input.py",
             "validate_release_evidence_stores.py",
             "capture_release_target_observations.py",
+            "record_release_role_assignments.py",
         }
     ):
         allowed.add("terminal-commit.json")
@@ -13777,6 +13781,7 @@ def _release_captured_journal_members(
         if context.intent["tool"] in {
             "validate_release_evidence_stores.py",
             "capture_release_target_observations.py",
+            "record_release_role_assignments.py",
         }:
             witness = _release_closed_mapping(
                 _source_json(read("terminal-commit.json"), "prerequisite terminal witness"),
@@ -23782,12 +23787,17 @@ def _release_fixture_command_prepare(
     if tool not in {
         "validate_release_evidence_stores.py",
         "capture_release_target_observations.py",
+        "record_release_role_assignments.py",
     } or argv[:1] != [tool]:
         raise ReleaseControlError("fixture native command has another owner")
     root = directory.parents[2]
     arguments = _release_original_arguments(tool, argv)
     cwd = Path.cwd()
-    if tool == "capture_release_target_observations.py":
+    if tool == "record_release_role_assignments.py":
+        held, expected_inputs, input_types, selection = _release_fixture_role_command_inputs(
+            root, arguments, cwd
+        )
+    elif tool == "capture_release_target_observations.py":
         paths = {
             "release-context": (
                 "inputs/context.json",
@@ -23818,7 +23828,12 @@ def _release_fixture_command_prepare(
         }
         input_types = {name: schema for name, schema in paths.values()}
         selection = {
-            "context_digest": expected_inputs["release-context"][0]["sha256"],
+            "context_digest": sha256_json(
+                _source_json(
+                    held.read("inputs/context.json", kind="prerequisite-original"),
+                    "fixture target context",
+                )
+            ),
             "registry_digest": expected_inputs["targets"][0]["sha256"],
         }
     else:
@@ -23844,6 +23859,138 @@ def _release_fixture_command_prepare(
         ((intent_row[0], "prerequisite-original", *intent_row[2:]),),
     )
     return _release_fixture_seed_bind(original, plan=plan, original_intent_capture=intent_capture)
+
+
+def _release_fixture_role_command_inputs(
+    root: Path, arguments: Mapping[str, Any], cwd: Path
+) -> tuple[
+    _ReleaseCapturedFiles,
+    dict[str, list[dict[str, str]]],
+    dict[str, str],
+    dict[str, Any],
+]:
+    """Capture the signed fixture role envelope and every referenced original byte."""
+    flags = {
+        "signed-assignments": "metriplane.release-protected-input.v1",
+        "policy": "application/octet-stream",
+        "release-context": "metriplane.release-context.v1",
+    }
+    if "provider-attestation-keyring" in arguments:
+        flags["provider-attestation-keyring"] = "metriplane.provider-attestation-keyring.v1"
+    paths = {flag: _release_historical_path(arguments[flag], cwd) for flag in flags}
+    if any(not path.is_relative_to(root) or path == root for path in paths.values()):
+        raise ReleaseControlError("fixture role command input escapes its fixed run root")
+    protected_name = paths["signed-assignments"].relative_to(root).as_posix()
+    first = _ReleaseCapturedFiles.capture(
+        root,
+        [(protected_name, "prerequisite-original")],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
+    protected_raw = first.read(protected_name, kind="prerequisite-original")
+    protected = _source_json(protected_raw, "fixture protected role command input")
+    validate_record(protected, "release-protected-input")
+    data = _release_closed_mapping(
+        protected["data"],
+        {
+            "input_kind",
+            "assignment_kind",
+            "decision",
+            "authorized_role",
+            "conflicts",
+            "signer_identity",
+            "signing_method",
+            "issued_at",
+            "expires_at",
+            "authority_policy_digest",
+            "provider_attestation_keyring_digest",
+            "assignments",
+            "assignment_payload_digest",
+            "release_context",
+            "assignment_policy_registry",
+            "role_provenance_files",
+            "subject_digests",
+        },
+        "fixture protected role command data",
+    )
+    names = set()
+    for value in [
+        data["release_context"],
+        data["assignment_policy_registry"],
+        *(value for value in data["role_provenance_files"].values() if value is not None),
+    ]:
+        row = _release_closed_mapping(
+            value, {"path", "bytes", "sha256"}, "fixture role original reference"
+        )
+        suffix = _release_relative_suffix(row["path"], "fixture role original reference")
+        path = paths["signed-assignments"].parent / suffix
+        if not path.is_relative_to(root) or path == paths["signed-assignments"]:
+            raise ReleaseControlError("fixture role original reference escapes or aliases")
+        names.add(path.relative_to(root).as_posix())
+    for flag in ("policy", "release-context"):
+        if paths[flag].relative_to(root).as_posix() not in names:
+            raise ReleaseControlError("fixture role command flag differs from signed reference")
+    capture_names = sorted(
+        {
+            protected_name,
+            *names,
+            *(
+                path.relative_to(root).as_posix()
+                for flag, path in paths.items()
+                if flag == "provider-attestation-keyring"
+            ),
+        }
+    )
+    held = _ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name in capture_names],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+        expected_root_directories=first.root_directories,
+        expected_known_directories=first.rows[0][4],
+    )
+    if held.read(protected_name, kind="prerequisite-original") != protected_raw:
+        raise ReleaseControlError("fixture protected role input changed during capture")
+    expected_inputs = {
+        flag: [
+            {
+                "path": path.relative_to(root).as_posix(),
+                "schema_id": schema,
+                "sha256": sha256_bytes(
+                    held.read(path.relative_to(root).as_posix(), kind="prerequisite-original")
+                ),
+            }
+        ]
+        for flag, (path, schema) in {
+            flag: (paths[flag], schema) for flag, schema in flags.items()
+        }.items()
+    }
+    input_types = {name: "application/octet-stream" for name in capture_names}
+    input_types[protected_name] = flags["signed-assignments"]
+    input_types[paths["release-context"].relative_to(root).as_posix()] = flags["release-context"]
+    if "provider-attestation-keyring" in paths:
+        input_types[paths["provider-attestation-keyring"].relative_to(root).as_posix()] = flags[
+            "provider-attestation-keyring"
+        ]
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    assignments = data["assignments"]
+    selection = {
+        "context_digest": sha256_json(
+            _source_json(
+                held.read(
+                    paths["release-context"].relative_to(root).as_posix(),
+                    kind="prerequisite-original",
+                ),
+                "fixture role context",
+            )
+        ),
+        "policy_digest": expected_inputs["policy"][0]["sha256"],
+        "authority_policy_digest": data["authority_policy_digest"],
+        "keyring_digest": data["provider_attestation_keyring_digest"],
+        "independently_expected_operator": assignments["authorized_executor_id"],
+        "use_interval": (now, now),
+    }
+    return held, expected_inputs, input_types, selection
 
 
 def _release_fixture_preflight_command_inputs(
@@ -24002,6 +24149,36 @@ def _release_fixture_primary(
         return canonical_json(
             make_record(
                 "release-target-observations",
+                data,
+                invocation_id=original.intent["invocation_id"],
+                sequence=original.intent["sequence"],
+                synthetic=True,
+            )
+        )
+    if plan.tool == "record_release_role_assignments.py":
+        arguments = _release_original_arguments(plan.tool, list(plan.argv))
+        protected_path = _release_historical_path(
+            arguments["signed-assignments"], plan.working_directory
+        )
+        protected_name = protected_path.relative_to(plan.captured.root).as_posix()
+        protected_raw = plan.captured.read(protected_name, kind="prerequisite-original")
+        protected = _source_json(protected_raw, "fixture original protected roles")
+        assignments = protected["data"]["assignments"]
+        data = {
+            **assignments,
+            "kind": "recorded_assignments",
+            "original_protected_input": {
+                "path": protected_name,
+                "bytes": len(protected_raw),
+                "sha256": sha256_bytes(protected_raw),
+            },
+            "original_protected_input_digest": sha256_json(protected),
+            "producer_intent_digest": sha256_json(original.intent),
+            "invocation_root_locator": "invocations",
+        }
+        return canonical_json(
+            make_record(
+                "release-role-assignments",
                 data,
                 invocation_id=original.intent["invocation_id"],
                 sequence=original.intent["sequence"],
@@ -24270,6 +24447,8 @@ def _release_fixture_complete_at(
     outputs: list[dict[str, str]],
     diagnostic_identities: Mapping[str, tuple[int, ...]],
     completion_captures: Sequence[_ReleaseCapturedFiles],
+    *,
+    completed_at: str,
 ) -> None:
     """Commit a terminal and PASS witness through the original held journal."""
     context = bound.original
@@ -24309,7 +24488,7 @@ def _release_fixture_complete_at(
     )
     data: dict[str, Any] = {
         "argv": context.intent["argv"],
-        "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "completed_at": completed_at,
         "exit_code": code,
         "inputs": inputs,
         "outputs": outputs,
@@ -24394,6 +24573,74 @@ def _release_fixture_complete_at(
         capture.revalidate()
 
 
+def _release_fixture_role_interval(bound: _ReleaseFixtureSeedInvocation, completed_at: str) -> None:
+    """Recheck the signed role authority across the actual supervised action interval."""
+    if bound.plan.tool != "record_release_role_assignments.py":
+        raise ReleaseControlError("fixture role interval has another command owner")
+    arguments = _release_original_arguments(bound.plan.tool, list(bound.plan.argv))
+    protected_path = _release_historical_path(
+        arguments["signed-assignments"], bound.plan.working_directory
+    )
+    context_path = _release_historical_path(
+        arguments["release-context"], bound.plan.working_directory
+    )
+    policy_path = _release_historical_path(arguments["policy"], bound.plan.working_directory)
+    protected = _source_json(
+        bound.plan.captured.read(
+            protected_path.relative_to(bound.plan.captured.root).as_posix(),
+            kind="prerequisite-original",
+        ),
+        "fixture protected role interval",
+    )
+    data = protected["data"]
+    context = _source_json(
+        bound.plan.captured.read(
+            context_path.relative_to(bound.plan.captured.root).as_posix(),
+            kind="prerequisite-original",
+        ),
+        "fixture role interval context",
+    )
+    policy_raw = bound.plan.captured.read(
+        policy_path.relative_to(bound.plan.captured.root).as_posix(),
+        kind="prerequisite-original",
+    )
+    _release_original_role_byte_replay(
+        protected_path,
+        context_path=context_path,
+        captured=bound.plan.captured,
+        expected_context_digest=sha256_json(context),
+        expected_run_id=arguments["run-id"],
+        expected_milestone=arguments["milestone"],
+        expected_assignment_policy_digest=sha256_bytes(policy_raw),
+        expected_authority_policy_digest=data["authority_policy_digest"],
+        expected_keyring_digest=data["provider_attestation_keyring_digest"],
+        use_interval=(bound.original.intent["started_at"], completed_at),
+        live=False,
+    )
+    bound.revalidate()
+
+
+def _release_fixture_uninstall(
+    bound: _ReleaseFixtureSeedInvocation, installed: _ReleaseCapturedFiles
+) -> None:
+    """Remove only the exact installed identities after a late fail-closed check."""
+    installed.revalidate()
+    for name, _, _, identity, ancestors in reversed(installed.rows):
+        path = installed.root / name
+        descriptor = _release_gate_open_pinned_directory(path.parent, ancestors)
+        try:
+            current = _release_gate_file_identity(
+                os.stat(path.name, dir_fd=descriptor, follow_symlinks=False)
+            )
+            if current != identity:
+                raise ReleaseControlError("fixture late rollback output identity changed")
+            os.unlink(path.name, dir_fd=descriptor)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    bound.revalidate()
+
+
 def _release_fixture_command_supervise(bound: _ReleaseFixtureSeedInvocation) -> int:
     """Supervise one real child worker while retaining the original journal descriptor."""
     context = bound.original
@@ -24403,6 +24650,7 @@ def _release_fixture_command_supervise(bound: _ReleaseFixtureSeedInvocation) -> 
     outputs: list[dict[str, str]] = []
     completion_captures: list[_ReleaseCapturedFiles] = []
     code = 3
+    completed_at: str | None = None
     try:
         bound.revalidate()
         for name in ("stdout", "stderr"):
@@ -24532,6 +24780,16 @@ def _release_fixture_command_supervise(bound: _ReleaseFixtureSeedInvocation) -> 
                 expected_file_identities=staged_identities,
             )
             completion_captures.extend((installed, staged_capture, result_capture))
+            completed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            if bound.plan.tool == "record_release_role_assignments.py":
+                try:
+                    _release_fixture_role_interval(bound, completed_at)
+                except ReleaseControlError as exc:
+                    _release_fixture_uninstall(bound, installed)
+                    completion_captures = [staged_capture, result_capture]
+                    outputs = []
+                    code = 3
+                    os.write(stderr_fd, (str(exc) + "\n").encode())
         bound.revalidate()
         for descriptor in (stdout_fd, stderr_fd):
             os.fsync(descriptor)
@@ -24540,8 +24798,16 @@ def _release_fixture_command_supervise(bound: _ReleaseFixtureSeedInvocation) -> 
             for name, descriptor in (("stdout", stdout_fd), ("stderr", stderr_fd))
         }
         os.fsync(directory_fd)
+        if code != 0 or completed_at is None:
+            completed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         _release_fixture_complete_at(
-            bound, directory_fd, code, outputs, identities, completion_captures
+            bound,
+            directory_fd,
+            code,
+            outputs,
+            identities,
+            completion_captures,
+            completed_at=completed_at,
         )
     finally:
         errors: list[OSError] = []
