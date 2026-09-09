@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `641fe0eccf9acaf4f2d3662a26e83886f28a7c766385e427196cc587be9a8886`
+Canonical projection SHA-256: `842e905249f4c96d9218124119344de515b78973ce58cb960b638535e909d9f7`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 183 |
+| total_discovered_features | 186 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 97 |
+| cli_only_documented | 100 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -208,7 +208,9 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.proof_m8_fusion | Proof M8 Fusion | tools/proof_m8_fusion.sh | tools/proof_m8_fusion.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_role_assignments | Record Release Role Assignments | tools/record_release_role_assignments.py | python tools/record_release_role_assignments.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.record_release_target_burn | Record Release Target Burn | tools/record_release_target_burn.py | python tools/record_release_target_burn.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.resolve_release_target | Resolve Release Target | tools/resolve_release_target.py | python tools/resolve_release_target.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.retain_release_evidence | Retain Release Evidence | tools/retain_release_evidence.py | python tools/retain_release_evidence.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_demo_all | Run Demo All | tools/run_demo_all.sh | tools/run_demo_all.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_fusion_preview | Run Fusion Preview | tools/run_fusion_preview.py | python tools/run_fusion_preview.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -233,6 +235,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.validate_release_retention | Validate Release Retention | tools/validate_release_retention.py | python tools/validate_release_retention.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_role_assignments | Validate Release Role Assignments | tools/validate_release_role_assignments.py | python tools/validate_release_role_assignments.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_source_freeze | Validate Release Source Freeze | tools/validate_release_source_freeze.py | python tools/validate_release_source_freeze.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_target_resolution | Validate Release Target Resolution | tools/validate_release_target_resolution.py | python tools/validate_release_target_resolution.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m1_m6 | Verify M1 M6 | tools/verify_m1_m6.sh | tools/verify_m1_m6.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m6_offline | Verify M6 Offline | tools/verify_m6_offline.sh | tools/verify_m6_offline.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.ws_replay_jsonl | Ws Replay Jsonl | tools/ws_replay_jsonl.py | python tools/ws_replay_jsonl.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

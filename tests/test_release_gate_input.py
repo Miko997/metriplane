@@ -15716,6 +15716,463 @@ def test_seed_staging_public_target_command_completes_and_is_consumable(
         )
 
 
+def _seed_staging_empty_burn_lineage(root: Path) -> Path:
+    repository = Path(__file__).resolve().parents[1]
+    genesis = _fixture_native_genesis_raw()
+    genesis_path = root / "inputs/genesis.json"
+    stores_path = root / "inputs/stores.json"
+    _seed_staging_put(genesis_path, genesis)
+    _seed_staging_put(stores_path, release.canonical_json(_fixture_native_registry()))
+    genesis_digest = release.sha256_bytes(genesis)
+    genesis_data = json.loads(genesis)
+    response = release.canonical_json(
+        {
+            "backend_id": "attempt-index",
+            "genesis_digest": genesis_digest,
+            "namespace": genesis_data["namespace"],
+            "binding_digest": genesis_data["binding_digest"],
+            "through_head": genesis_digest,
+            "entries": [],
+        }
+    )
+
+    def execute(tool: str, argv: list[str], output: Path) -> None:
+        seed_root = root / "inputs/fixture-native" / release._invocation_stage(tool) / "001"
+        seed = {
+            "schema_version": release._RELEASE_FIXTURE_SEED_SCHEMA,
+            "synthetic": True,
+            "tool": tool,
+            "command_digest": release.sha256_json(
+                {"tool": tool, "argv": argv, "working_directory": str(repository)}
+            ),
+            "members": [
+                {
+                    "member_id": "readback",
+                    "path": "raw/readback.bin",
+                    "schema_id": "application/octet-stream",
+                    "bytes": len(response),
+                    "sha256": release.sha256_bytes(response),
+                }
+            ],
+            "data": {"response_member_ids": ["readback"]},
+        }
+        _seed_staging_put(seed_root / "raw/readback.bin", response)
+        _seed_staging_put(seed_root / "seed.json", json.dumps(seed, indent=2).encode() + b"\n")
+        completed = subprocess.run(
+            [sys.executable, str(repository / "tools" / tool), *argv[1:]],
+            cwd=repository,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        record = json.loads(output.read_bytes())
+        release.validate_release_producer_journal(record, output, producer=tool)
+
+    index_path = root / "index-export.json"
+    index_tool = "export_release_attempt_index.py"
+    index_argv = [
+        index_tool,
+        "--index-backend",
+        "attempt-index",
+        "--genesis",
+        str(genesis_path),
+        "--through-head",
+        genesis_digest,
+        "--stores",
+        str(stores_path),
+        "--read-back-all",
+        "--out",
+        str(index_path),
+        "--invocation-dir",
+        str(root / "invocations/export-release-attempt-index/001"),
+    ]
+    execute(index_tool, index_argv, index_path)
+    lineage_path = root / "burn-lineage.json"
+    lineage_tool = "export_release_burn_lineage.py"
+    lineage_argv = [
+        lineage_tool,
+        "--milestone",
+        "v0.4",
+        "--attempt-index-backend",
+        "attempt-index",
+        "--genesis",
+        str(genesis_path),
+        "--index-export",
+        str(index_path),
+        "--through-head",
+        genesis_digest,
+        "--read-back-all",
+        "--out",
+        str(lineage_path),
+        "--invocation-dir",
+        str(root / "invocations/export-release-burn-lineage/001"),
+    ]
+    execute(lineage_tool, lineage_argv, lineage_path)
+    return lineage_path
+
+
+def test_public_target_resolution_and_burn_commands_connect_retained_producers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, observation_argv, _, _, _ = _seed_staging_target_seed(
+        tmp_path, monkeypatch, generic=True, artifacts=True
+    )
+    repository = Path(__file__).resolve().parents[1]
+    observed = subprocess.run(
+        [sys.executable, str(repository / "tools" / observation_argv[0]), *observation_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert observed.returncode == 0, observed.stderr or observed.stdout
+    observations_path = root / "primary.json"
+    lineage_path = _seed_staging_empty_burn_lineage(root)
+    resolution_path = root / "target-resolution.json"
+    resolution_argv = [
+        "--milestone",
+        "v0.4",
+        "--initial-package-version",
+        "v0.4.1",
+        "--initial-release-tag",
+        "v0.4.1",
+        "--targets",
+        "inputs/targets.json",
+        "--live-target-observations",
+        "primary.json",
+        "--retained-burn-lineage",
+        "burn-lineage.json",
+        "--out",
+        "target-resolution.json",
+        "--invocation-dir",
+        "invocations/resolve-release-target/001",
+    ]
+    resolved = subprocess.run(
+        [sys.executable, str(repository / "tools/resolve_release_target.py"), *resolution_argv],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert resolved.returncode == 0, resolved.stderr or resolved.stdout
+    resolution = json.loads(resolution_path.read_bytes())
+    release.validate_release_producer_journal(
+        resolution, resolution_path, producer="resolve_release_target.py"
+    )
+    assert resolution_path.stat().st_nlink == 1
+    assert resolution["data"]["selected_package_version"] == "v0.4.2"
+    assert resolution["data"]["requires_new_burn"] is True
+
+    validated = subprocess.run(
+        [
+            sys.executable,
+            str(repository / "tools/validate_release_target_resolution.py"),
+            "--record",
+            str(resolution_path),
+            "--targets",
+            str(root / "inputs/targets.json"),
+            "--read-back-lineage",
+            "--invocation-dir",
+            str(root / "invocations/validate-release-target-resolution/001"),
+        ],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert validated.returncode == 0, validated.stderr or validated.stdout
+    validation = release._validate_terminal(
+        release._validate_intent(root / "invocations/validate-release-target-resolution/001")
+    )
+    assert validation["status"] == "PASS"
+    assert validation["data"]["outputs"] == []
+    validation_context = release._validate_intent(
+        root / "invocations/validate-release-target-resolution/001"
+    )
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            release,
+            "_validate_release_target_resolution_operation",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                release.ReleaseControlError("synthetic false-success worker")
+            ),
+        )
+        with pytest.raises(release.ReleaseControlError, match="false-success"):
+            release._verify_staged_outputs(validation_context, [])
+
+    burn_path = root / "target-burn.json"
+    burn_argv = [
+        "--target-observations",
+        str(observations_path),
+        "--burn-lineage",
+        str(lineage_path),
+        "--target-resolution",
+        str(resolution_path),
+        "--out",
+        str(burn_path),
+        "--invocation-dir",
+        str(root / "invocations/record-release-target-burn/001"),
+    ]
+    burned = subprocess.run(
+        [sys.executable, str(repository / "tools/record_release_target_burn.py"), *burn_argv],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert burned.returncode == 0, burned.stderr or burned.stdout
+    burn = json.loads(burn_path.read_bytes())
+    release.validate_release_producer_journal(
+        burn, burn_path, producer="record_release_target_burn.py"
+    )
+    assert burn_path.stat().st_nlink == 1
+    captured = release._ReleaseCapturedFiles.capture(
+        root,
+        [
+            ("target-resolution.json", "prerequisite-original"),
+            ("target-burn.json", "prerequisite-original"),
+        ],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
+    captured.revalidate()
+    assert burn["data"]["disposition"] == "new_burn"
+    assert burn["data"]["indexing_required"] is True
+    assert burn["data"]["resolved_package_version"] == "v0.4.2"
+    assert {row["version"] for row in burn["data"]["affected_targets"]} == {"0.4.1"}
+
+    original_resolution = resolution_path.read_bytes()
+    retry_argv = [
+        *resolution_argv[:-1],
+        str(root / "invocations/resolve-release-target/002"),
+    ]
+    retry = subprocess.run(
+        [sys.executable, str(repository / "tools/resolve_release_target.py"), *retry_argv],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert retry.returncode == 3
+    assert resolution_path.read_bytes() == original_resolution
+    retry_directory = root / "invocations/resolve-release-target/002"
+    retry_terminal = release._validate_terminal(release._validate_intent(retry_directory))
+    assert retry_terminal["status"] == "BLOCKED"
+    assert retry_terminal["data"]["outputs"] == []
+    assert not (retry_directory / "terminal-commit.json").exists()
+
+    substituted_resolution = root / "substituted-target-resolution.json"
+    substituted_resolution.write_bytes(resolution_path.read_bytes())
+    rejected_burn = root / "rejected-target-burn.json"
+    rejected = subprocess.run(
+        [
+            sys.executable,
+            str(repository / "tools/record_release_target_burn.py"),
+            "--target-observations",
+            str(observations_path),
+            "--burn-lineage",
+            str(lineage_path),
+            "--target-resolution",
+            str(substituted_resolution),
+            "--out",
+            str(rejected_burn),
+            "--invocation-dir",
+            str(root / "invocations/record-release-target-burn/002"),
+        ],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert rejected.returncode == 3
+    assert "BLOCKED_NOT_READY" in rejected.stdout
+    assert not rejected_burn.exists()
+    rejected_directory = root / "invocations/record-release-target-burn/002"
+    rejected_terminal = release._validate_terminal(release._validate_intent(rejected_directory))
+    assert rejected_terminal["status"] == "BLOCKED"
+    assert rejected_terminal["data"]["outputs"] == []
+    assert not (rejected_directory / "terminal-commit.json").exists()
+
+    for command_context, selected in [
+        (
+            release._validate_intent(root / "invocations/record-release-target-burn/001"),
+            lineage_path,
+        ),
+        (
+            release._validate_intent(root / "invocations/validate-release-target-resolution/001"),
+            root / "inputs/targets.json",
+        ),
+    ]:
+        selected.chmod(0o600)
+        original = selected.read_bytes()
+        selected.write_bytes(original + b" ")
+        with pytest.raises(release.ReleaseControlError):
+            release._validate_bound_invocation(command_context)
+        selected.write_bytes(original)
+        selected.chmod(0o400)
+
+    relocated = tmp_path / "relocated-target-run"
+    shutil.copytree(root, relocated)
+    shutil.rmtree(root)
+    relocated_resolution_path = relocated / "target-resolution.json"
+    relocated_burn_path = relocated / "target-burn.json"
+    release.validate_release_producer_journal(
+        json.loads(relocated_resolution_path.read_bytes()),
+        relocated_resolution_path,
+        producer="resolve_release_target.py",
+    )
+    release.validate_release_producer_journal(
+        json.loads(relocated_burn_path.read_bytes()),
+        relocated_burn_path,
+        producer="record_release_target_burn.py",
+    )
+    relocated_validation = subprocess.run(
+        [
+            sys.executable,
+            str(repository / "tools/validate_release_target_resolution.py"),
+            "--record",
+            str(relocated_resolution_path),
+            "--targets",
+            str(relocated / "inputs/targets.json"),
+            "--read-back-lineage",
+            "--invocation-dir",
+            str(relocated / "invocations/validate-release-target-resolution/002"),
+        ],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert relocated_validation.returncode == 0, (
+        relocated_validation.stderr or relocated_validation.stdout
+    )
+
+
+def test_target_resolution_rejects_input_replacement_after_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, observation_argv, _, _, _ = _seed_staging_target_seed(
+        tmp_path, monkeypatch, generic=True, artifacts=True
+    )
+    repository = Path(__file__).resolve().parents[1]
+    observed = subprocess.run(
+        [sys.executable, str(repository / "tools" / observation_argv[0]), *observation_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert observed.returncode == 0, observed.stderr or observed.stdout
+    lineage_path = _seed_staging_empty_burn_lineage(root)
+    out = root / "target-resolution.json"
+    argv = [
+        "--milestone",
+        "v0.4",
+        "--initial-package-version",
+        "v0.4.1",
+        "--initial-release-tag",
+        "v0.4.1",
+        "--targets",
+        str(root / "inputs/targets.json"),
+        "--live-target-observations",
+        str(root / "primary.json"),
+        "--retained-burn-lineage",
+        str(lineage_path),
+        "--out",
+        str(out),
+        "--invocation-dir",
+        str(root / "invocations/resolve-release-target/001"),
+    ]
+    context = release.begin_release_invocation(
+        "resolve_release_target.py",
+        argv,
+        root / "invocations/resolve-release-target/001",
+        input_paths=release._release_target_command_input_paths(
+            "resolve_release_target.py", argv, root
+        ),
+        planned_outputs=[(out, "metriplane.release-target-resolution.v1")],
+    )
+    lineage_path.chmod(0o600)
+    original = lineage_path.read_bytes()
+    lineage_path.write_bytes(original + b" ")
+    with pytest.raises(
+        release.ReleaseControlError, match="input identity changed after reservation"
+    ):
+        release._validate_bound_invocation(context)
+
+
+@pytest.mark.parametrize("case", ["observation", "lineage-witness"])
+def test_public_target_resolution_rejects_substituted_retained_history_before_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    root, observation_argv, _, _, _ = _seed_staging_target_seed(
+        tmp_path, monkeypatch, generic=True, artifacts=True
+    )
+    repository = Path(__file__).resolve().parents[1]
+    observed = subprocess.run(
+        [sys.executable, str(repository / "tools" / observation_argv[0]), *observation_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert observed.returncode == 0, observed.stderr or observed.stdout
+    observations_path = root / "primary.json"
+    lineage_path = _seed_staging_empty_burn_lineage(root)
+    if case == "observation":
+        observations_path.chmod(0o600)
+        value = json.loads(observations_path.read_bytes())
+        value["data"]["targets"][0]["state"] = "unused"
+        observations_path.write_bytes(release.canonical_json(value))
+    else:
+        lineage = json.loads(lineage_path.read_bytes())
+        directory = root / "invocations/export-release-burn-lineage/001"
+        witness_path = directory / "terminal-commit.json"
+        witness_path.chmod(0o600)
+        witness = json.loads(witness_path.read_bytes())
+        witness["terminal_sha256"] = "0" * 64
+        witness_path.write_bytes(release.canonical_json(witness))
+        assert lineage["record_type"] == "release-burn-lineage"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repository / "tools/resolve_release_target.py"),
+            "--milestone",
+            "v0.4",
+            "--initial-package-version",
+            "v0.4.1",
+            "--initial-release-tag",
+            "v0.4.1",
+            "--targets",
+            str(root / "inputs/targets.json"),
+            "--live-target-observations",
+            str(observations_path),
+            "--retained-burn-lineage",
+            str(lineage_path),
+            "--out",
+            str(root / "target-resolution.json"),
+            "--invocation-dir",
+            str(root / "invocations/resolve-release-target/001"),
+        ],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == (2 if case == "observation" else 3)
+    assert ("INVALID_INPUT" if case == "observation" else "BLOCKED_NOT_READY") in result.stdout
+    assert not (root / "target-resolution.json").exists()
+    invocation = root / "invocations/resolve-release-target/001"
+    if case == "observation":
+        assert not invocation.parent.exists()
+    else:
+        terminal = release._validate_terminal(release._validate_intent(invocation))
+        assert terminal["status"] == "BLOCKED"
+        assert terminal["data"]["outputs"] == []
+        assert not (invocation / "terminal-commit.json").exists()
+
+
 @pytest.mark.parametrize("case", ["failure", "interruption", "replacement"])
 def test_seed_staging_public_target_command_retains_nonpassing_lifecycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str

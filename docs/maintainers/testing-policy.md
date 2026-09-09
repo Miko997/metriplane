@@ -91,7 +91,7 @@ The policy test enforces canonical collection with:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest --collect-only -q -p no:cacheprovider
 ```
 
-The ordered node-id stream must contain exactly 5,522 items. In the exact core
+The ordered node-id stream must contain exactly 5,526 items. In the exact core
 environment above, without optional GPU extras and with the empty browser
 cache, the integrated source profile requires 5,505 passed and 17 expected skips.
 Twelve result-schema cases run in the separate locked
@@ -140,6 +140,12 @@ original outcomes, and all required successful jobs. Missing reports,
 selector drift, unexpected skips, xfails, xpasses, warnings, interruptions,
 source drift and extra evidence all fail closed. The single existing
 `Metriplane / required` terminal depends on this aggregate.
+
+Fresh shards must agree on the Python patch version, operating system,
+architecture and runner image family. Each report retains its exact runner image
+version independently because a hosted image rollout can legitimately occur
+between fresh runners in one matrix generation; that rollout does not erase or
+relabel any shard's recorded environment identity.
 
 Hosted Linux installs Chromium and expects the fifteen remaining governed skips.
 Hosted macOS uses the empty browser cache and expects seventeen: the sixteen
