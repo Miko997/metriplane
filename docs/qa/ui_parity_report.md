@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `1ea42d023a53000cce2a607c8b9eb9e87a6063938f381903c4a05690fdbfd346`
+Canonical projection SHA-256: `ea4c97646c100012b119ad0f80c576ec5980b3b36c03990e128c9bb348db2c8a`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 179 |
+| total_discovered_features | 180 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 93 |
+| cli_only_documented | 94 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -207,6 +207,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_role_assignments | Record Release Role Assignments | tools/record_release_role_assignments.py | python tools/record_release_role_assignments.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.retain_release_evidence | Retain Release Evidence | tools/retain_release_evidence.py | python tools/retain_release_evidence.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_demo_all | Run Demo All | tools/run_demo_all.sh | tools/run_demo_all.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_fusion_preview | Run Fusion Preview | tools/run_fusion_preview.py | python tools/run_fusion_preview.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_fusion_yaml | Run Fusion Yaml | tools/run_fusion_yaml.py | python tools/run_fusion_yaml.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

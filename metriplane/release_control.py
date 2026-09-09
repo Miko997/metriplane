@@ -7465,6 +7465,7 @@ def _validate_terminal_entry(
             "validate_release_evidence_stores.py",
             "capture_release_target_observations.py",
             "record_release_role_assignments.py",
+            "retain_release_evidence.py",
         } and os.path.lexists(context.directory / "worker-result.json"):
             witness_raw = _safe_release_bytes(context.directory / "terminal-commit.json")
             witness = _source_json(witness_raw, "native fixture terminal witness")
@@ -10056,6 +10057,7 @@ def run_release_command(
                 "validate_release_evidence_stores.py",
                 "capture_release_target_observations.py",
                 "record_release_role_assignments.py",
+                "retain_release_evidence.py",
             }
             and os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
         ):
@@ -13708,6 +13710,7 @@ def _release_captured_journal_members(
             "validate_release_evidence_stores.py",
             "capture_release_target_observations.py",
             "record_release_role_assignments.py",
+            "retain_release_evidence.py",
         }
     ):
         allowed.add("terminal-commit.json")
@@ -13782,6 +13785,7 @@ def _release_captured_journal_members(
             "validate_release_evidence_stores.py",
             "capture_release_target_observations.py",
             "record_release_role_assignments.py",
+            "retain_release_evidence.py",
         }:
             witness = _release_closed_mapping(
                 _source_json(read("terminal-commit.json"), "prerequisite terminal witness"),
@@ -23788,6 +23792,7 @@ def _release_fixture_command_prepare(
         "validate_release_evidence_stores.py",
         "capture_release_target_observations.py",
         "record_release_role_assignments.py",
+        "retain_release_evidence.py",
     } or argv[:1] != [tool]:
         raise ReleaseControlError("fixture native command has another owner")
     root = directory.parents[2]
@@ -23836,6 +23841,10 @@ def _release_fixture_command_prepare(
             ),
             "registry_digest": expected_inputs["targets"][0]["sha256"],
         }
+    elif tool == "retain_release_evidence.py":
+        held, expected_inputs, input_types, selection = _release_fixture_retention_command_inputs(
+            root, arguments, cwd
+        )
     else:
         held, expected_inputs, input_types, selection = _release_fixture_preflight_command_inputs(
             root, arguments, cwd
@@ -24073,6 +24082,64 @@ def _release_fixture_preflight_command_inputs(
     return held, expected_inputs, input_types, {"registry_digest": digest}
 
 
+def _release_fixture_retention_command_inputs(
+    root: Path, arguments: Mapping[str, Any], cwd: Path
+) -> tuple[
+    _ReleaseCapturedFiles,
+    dict[str, list[dict[str, str]]],
+    dict[str, str],
+    dict[str, Any],
+]:
+    """Capture one fixture retention subject plus both stores' governed controls."""
+    if "through-stage" in arguments:
+        raise ReleaseControlError(
+            "RETENTION_THROUGH_STAGE_CUSTODY_REQUIRED: public fixture retention needs the complete original journal graph"
+        )
+    held, expected_inputs, input_types, selection = _release_fixture_preflight_command_inputs(
+        root, arguments, cwd
+    )
+    values: dict[str, list[str]] = {}
+    if "manifest" in arguments:
+        values["manifest"] = [arguments["manifest"]]
+    if "input" in arguments:
+        values["input"] = list(arguments["input"])
+    names: list[tuple[str, str]] = []
+    for flag, paths in values.items():
+        for value in paths:
+            path = _release_historical_path(value, cwd)
+            if not path.is_relative_to(root) or path == root:
+                raise ReleaseControlError("fixture retention subject escapes its fixed run root")
+            name = path.relative_to(root).as_posix()
+            if name in input_types or any(name == existing for existing, _ in names):
+                raise ReleaseControlError("fixture retention subject aliases another input")
+            names.append((name, flag))
+    subjects = _ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name, _ in names],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+        expected_root_directories=held.root_directories,
+        expected_known_directories=held.rows[0][4],
+    )
+    combined = _ReleaseCapturedFiles(
+        root, held.root_directories, tuple(sorted((*held.rows, *subjects.rows)))
+    )
+    for flag in values:
+        expected_inputs[flag] = [
+            {
+                "path": name,
+                "schema_id": "application/octet-stream",
+                "sha256": sha256_bytes(combined.read(name, kind="prerequisite-original")),
+            }
+            for name, role in names
+            if role == flag
+        ]
+    input_types.update({name: "application/octet-stream" for name, _ in names})
+    selection["fixture_run_id"] = root.name
+    combined.revalidate()
+    return combined, expected_inputs, input_types, selection
+
+
 def _release_fixture_primary(
     emulation: _ReleaseFixtureEmulation,
 ) -> bytes:
@@ -24179,6 +24246,66 @@ def _release_fixture_primary(
         return canonical_json(
             make_record(
                 "release-role-assignments",
+                data,
+                invocation_id=original.intent["invocation_id"],
+                sequence=original.intent["sequence"],
+                synthetic=True,
+            )
+        )
+    if plan.tool == "retain_release_evidence.py":
+        sidecars = {name: raw for name, _, raw in emulation.sidecars}
+
+        def native_ref(name: str) -> dict[str, Any]:
+            raw = sidecars[name]
+            return {"path": name, "bytes": len(raw), "sha256": sha256_bytes(raw)}
+
+        stores = []
+        for start in (0, 3):
+            request = operations[start]["request"]["arguments"]
+            stores.append(
+                {
+                    "store_id": request["store_id"],
+                    "content_digest": request["subject_digest"],
+                    "read_back_digest": request["subject_digest"],
+                    "put_receipt_digest": native_ref(operations[start]["paths"]["response"])[
+                        "sha256"
+                    ],
+                    "hold_receipt_digest": native_ref(operations[start + 1]["paths"]["response"])[
+                        "sha256"
+                    ],
+                    "namespace": request["namespace"],
+                    "object_key": request["object_key"],
+                    "independence_group": request["administration_identity"],
+                    "backend_binding_digest": request["binding_digest"],
+                    "native_proofs": {
+                        "put": native_ref(operations[start]["paths"]["response"]),
+                        "hold": native_ref(operations[start + 1]["paths"]["response"]),
+                        "read_back": native_ref(operations[start + 2]["paths"]["response"]),
+                    },
+                }
+            )
+        registry_raw = plan.captured.read("inputs/stores.json", kind="prerequisite-original")
+        data = {
+            "producer_intent_digest": sha256_json(original.intent),
+            "invocation_root_locator": "invocations",
+            "all_content_equal": True,
+            "input_digest": _source_json(plan.subject, "fixture retention subject")[
+                "subject_digest"
+            ],
+            "original_registry": {
+                "path": "inputs/stores.json",
+                "bytes": len(registry_raw),
+                "sha256": sha256_bytes(registry_raw),
+            },
+            "phase": _release_original_arguments(plan.tool, list(plan.argv))["phase"],
+            "retained_at": emulation.operation_times[-1][1],
+            "stores": stores,
+            "receipt_set_digest": sha256_json(stores),
+        }
+        _release_retention_content(data)
+        return canonical_json(
+            make_record(
+                "release-retention-receipts",
                 data,
                 invocation_id=original.intent["invocation_id"],
                 sequence=original.intent["sequence"],

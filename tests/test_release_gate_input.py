@@ -29,6 +29,7 @@ from metriplane import release_control as release
         "capture_release_target_observations.py",
         "check_release_readiness.py",
         "record_release_role_assignments.py",
+        "retain_release_evidence.py",
         "validate_release_evidence_stores.py",
         "validate_publication_reconciliation.py",
         "validate_release_approval.py",
@@ -13459,7 +13460,7 @@ def test_fixture_native_retention_original_R_subject_policy(form: Any) -> None:
         original_manifest=manifest,
         registry_raw=store,
         expected_registry_digest=release.sha256_bytes(store),
-        fixture_run_id="fixture-run",
+        fixture_run_id="run",
         backend_controls=_fixture_native_backend_controls(),
     )
     expected = (
@@ -16040,7 +16041,7 @@ def test_seed_staging_retention_complete_seed_binds_original_raw_subject_and_six
         original_manifest=ordinary.get("inputs/manifest.json"),
         registry_raw=raw,
         expected_registry_digest=release.sha256_bytes(raw),
-        fixture_run_id="fixture-run",
+        fixture_run_id="run",
         backend_controls=controls,
     )
     responses = {}
@@ -16074,11 +16075,40 @@ def test_seed_staging_retention_complete_seed_binds_original_raw_subject_and_six
         {"response_member_ids": list(responses)},
         responses,
         types,
-        {"registry_digest": release.sha256_bytes(raw), "fixture_run_id": "fixture-run"},
+        {"registry_digest": release.sha256_bytes(raw), "fixture_run_id": "run"},
     )
     plan = release._release_fixture_seed_prepare(argv[0], argv, **kw)
     assert len(plan.operations) == 6 and len(plan.output_plan) == 19
     assert json.loads(plan.subject)["subject_digest"] == release.sha256_bytes(retained)
+    repository = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(repository / "tools" / argv[0]), *argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    record_path = root / "primary.json"
+    record = json.loads(record_path.read_bytes())
+    release.validate_release_producer_journal(
+        record, record_path, producer="retain_release_evidence.py"
+    )
+    native = release._release_fixture_native_plan(
+        tool=argv[0],
+        sequence=1,
+        subject=json.loads(plan.subject),
+        operations=[json.loads(value) for value in plan.operations],
+    )
+    assert record["data"]["all_content_equal"] is True
+    assert record["data"]["input_digest"] == release.sha256_bytes(retained)
+    assert (root / native[2]["paths"]["response"]).read_bytes() == retained
+    assert (root / native[5]["paths"]["response"]).read_bytes() == retained
+    (root / "invocations/retain-release-evidence/001/terminal-commit.json").unlink()
+    with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
+        release.validate_release_producer_journal(
+            record, record_path, producer="retain_release_evidence.py"
+        )
 
 
 def test_seed_staging_role_seed_uses_existing_signed_payload_and_original_provenance_without_copies(

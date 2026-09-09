@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `1ea42d023a53000cce2a607c8b9eb9e87a6063938f381903c4a05690fdbfd346`
+Canonical projection SHA-256: `ea4c97646c100012b119ad0f80c576ec5980b3b36c03990e128c9bb348db2c8a`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 179 |
+| actions | 180 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -301,6 +301,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.record_release_role_assignments | tool | Record Release Role Assignments | python tools/record_release_role_assignments.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |
 | tool.report_alignment | tool | Report Alignment | python tools/report_alignment.py |
+| tool.retain_release_evidence | tool | Retain Release Evidence | python tools/retain_release_evidence.py |
 | tool.run_demo_all | tool | Run Demo All | tools/run_demo_all.sh |
 | tool.run_fusion_preview | tool | Run Fusion Preview | python tools/run_fusion_preview.py |
 | tool.run_fusion_yaml | tool | Run Fusion Yaml | python tools/run_fusion_yaml.py |
