@@ -30,12 +30,14 @@ from metriplane import release_control as release
         "check_release_readiness.py",
         "export_release_attempt_index.py",
         "record_release_role_assignments.py",
+        "resolve_release_predecessor.py",
         "retain_release_evidence.py",
         "update_release_attempt_index.py",
         "validate_release_evidence_stores.py",
         "validate_publication_reconciliation.py",
         "validate_release_approval.py",
         "validate_release_gate_instance.py",
+        "validate_release_predecessor.py",
         "validate_release_qualification.py",
         "validate_release_qualification_plan.py",
         "validate_release_retention.py",
@@ -53,6 +55,50 @@ def test_implemented_release_route_has_actual_public_adapter(tool: str) -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert "section 9.B" in completed.stdout
+
+
+@pytest.mark.parametrize(
+    ("tool", "form_number"),
+    [
+        ("resolve_release_predecessor.py", 0),
+        ("resolve_release_predecessor.py", 1),
+        ("validate_release_predecessor.py", 0),
+        ("validate_release_predecessor.py", 1),
+    ],
+)
+def test_v04_predecessor_contract_exposes_genesis_and_reconciled_lkg_forms(
+    tool: str, form_number: int
+) -> None:
+    contract = release.TOOL_CONTRACTS[tool]
+    form = contract.forms[form_number]
+    equals = dict(form.equals)
+    argv = [tool]
+    for flag in sorted(form.required):
+        argv.append("--" + flag)
+        if flag not in contract.boolean:
+            argv.append(sorted(equals.get(flag, {"synthetic-input"}))[0])
+    arguments = release._release_original_arguments(tool, argv)
+    assert arguments["milestone"] == "v0.4"
+    genesis_flag = (
+        "genesis-only" if tool == "resolve_release_predecessor.py" else "validate-genesis-only"
+    )
+    lkg_flag = "require-prior-lkg" if tool == "resolve_release_predecessor.py" else "read-back-lkg"
+    assert (genesis_flag in arguments) is (form_number == 0)
+    assert (lkg_flag in arguments) is (form_number == 1)
+
+
+def test_v04_predecessor_contract_rejects_mixed_genesis_and_lkg_authority() -> None:
+    contract = release.TOOL_CONTRACTS["resolve_release_predecessor.py"]
+    form = contract.forms[0]
+    equals = dict(form.equals)
+    argv = ["resolve_release_predecessor.py"]
+    for flag in sorted(form.required):
+        argv.append("--" + flag)
+        if flag not in contract.boolean:
+            argv.append(sorted(equals.get(flag, {"synthetic-input"}))[0])
+    argv.extend(["--require-prior-lkg", "--require-prior-decision-closed", "--project-id", "p"])
+    with pytest.raises(release.ReleaseControlError, match="exactly one complete command form"):
+        release._release_original_arguments("resolve_release_predecessor.py", argv)
 
 
 def _gate_input_plan_fixture(

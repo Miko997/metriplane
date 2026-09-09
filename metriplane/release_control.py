@@ -8564,6 +8564,9 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "milestone=v0.4 expected-predecessor-milestone chain-backend chain-genesis "
         "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
         "genesis-only out",
+        "milestone=v0.4 expected-predecessor-milestone chain-backend chain-genesis "
+        "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
+        "require-prior-lkg project-id require-prior-decision-closed out",
         "milestone=v0.5,v0.6,v0.7,v0.8,v0.9 expected-predecessor-milestone "
         "chain-backend chain-genesis lkg-backend attempt-index-backend "
         "attempt-index-genesis stores v0.4-genesis require-prior-lkg project-id "
@@ -8749,6 +8752,8 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     ),
     "validate_release_predecessor.py": _tool_contract(
         "record milestone=v0.4 validate-genesis-only",
+        "record milestone=v0.4 read-back-chain read-back-lkg read-back-pointer-index "
+        "require-embedded-prior-decision-closed-observation",
         "record milestone=v0.5,v0.6,v0.7,v0.8,v0.9 read-back-chain read-back-lkg "
         "read-back-pointer-index require-embedded-prior-decision-closed-observation",
         "record milestone=v1.0 read-back-chain read-back-lkg read-back-pointer-index "
