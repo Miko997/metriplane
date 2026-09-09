@@ -16288,6 +16288,179 @@ def _release_predecessor_decision_authority(
     return identity
 
 
+def _release_predecessor_raw_proof(
+    root: Path, proof: Mapping[str, Any], *, purpose: str
+) -> tuple[dict[str, Any], bytes]:
+    matches = [
+        row
+        for row in proof["raw_proofs"]
+        if isinstance(row, dict) and row.get("purpose") == purpose
+    ]
+    if len(matches) != 1:
+        raise ReleaseControlError("predecessor raw proof is absent or ambiguous: " + purpose)
+    row = _release_closed_mapping(
+        matches[0], {"kind", "purpose", "original_file"}, "predecessor raw proof"
+    )
+    ref = _release_closed_mapping(
+        row["original_file"], {"path", "bytes", "sha256"}, "predecessor raw proof bytes"
+    )
+    raw = _safe_release_bytes(
+        root / _release_relative_suffix(ref["path"], "predecessor raw proof path")
+    )
+    if len(raw) != ref["bytes"] or sha256_bytes(raw) != ref["sha256"]:
+        raise ReleaseControlError("predecessor raw proof bytes differ: " + purpose)
+    return dict(ref), raw
+
+
+def _release_predecessor_closed_decision(
+    root: Path,
+    proof: Mapping[str, Any],
+    originals: Mapping[tuple[str, str], tuple[Path, dict[str, Any]]],
+    *,
+    closed_digest: str,
+    candidate_full_digest: str,
+    close_root_digest: str,
+    decision_identity: Mapping[str, str],
+) -> None:
+    """Replay the synthetic Closed envelope and its exact original provider/policy bytes."""
+    record = _release_predecessor_original_record(
+        originals, "release-protected-input", closed_digest, "selected signed Closed decision"
+    )
+    data = _release_closed_mapping(
+        record["data"],
+        {
+            "input_kind",
+            "transition_kind",
+            "decision",
+            "authorized_role",
+            "conflicts",
+            "signer_identity",
+            "signing_method",
+            "authority_policy_digest",
+            "provider_attestation_keyring_digest",
+            "issued_at",
+            "expires_at",
+            "provider_event",
+            "original_provider_close_event",
+            "task_state_policy_registry",
+            "subject_digests",
+        },
+        "selected signed Closed decision data",
+    )
+    if {
+        "input_kind": data["input_kind"],
+        "transition_kind": data["transition_kind"],
+        "decision": data["decision"],
+        "authorized_role": data["authorized_role"],
+        "conflicts": data["conflicts"],
+        "signing_method": data["signing_method"],
+    } != {
+        "input_kind": "task_state_transition",
+        "transition_kind": "release_decision_closed",
+        "decision": "CLOSED",
+        "authorized_role": "release_operator",
+        "conflicts": [],
+        "signing_method": "provider-attestation-v1",
+    }:
+        raise ReleaseControlError("selected Closed decision weakens its transition authority")
+    for field in ("authority_policy_digest", "provider_attestation_keyring_digest"):
+        _require_digest(data[field], "selected Closed " + field)
+    issued = _parse_utc_timestamp(data["issued_at"], "selected Closed issue time")
+    expires = _parse_utc_timestamp(data["expires_at"], "selected Closed expiry time")
+    if expires <= issued:
+        raise ReleaseControlError("selected Closed authorization interval is invalid")
+    event = _release_closed_mapping(
+        data["provider_event"],
+        {
+            "provider",
+            "api_version",
+            "team_id",
+            "project_id",
+            "issue_id",
+            "issue_identifier",
+            "event_id",
+            "actor_id",
+            "before_state_id",
+            "after_state_id",
+            "before_state_key",
+            "after_state_key",
+            "server_timestamp",
+        },
+        "selected Closed provider event",
+    )
+    event_identity = {key: event[key] for key in decision_identity}
+    event_time = _parse_utc_timestamp(event["server_timestamp"], "selected Closed provider event")
+    if (
+        canonical_json(event_identity) != canonical_json(decision_identity)
+        or event["provider"] != "linear"
+        or event["before_state_key"] != "open_finalizing"
+        or event["after_state_key"] != "closed"
+        or not issued <= event_time < expires
+        or data["signer_identity"] != event["actor_id"]
+    ):
+        raise ReleaseControlError("selected Closed provider event changes its issue or transition")
+    for field in ("before_state_id", "after_state_id"):
+        _release_linear_uuid(event[field], "selected Closed " + field)
+    for field in ("api_version", "event_id", "actor_id", "signer_identity"):
+        _require_nonempty_string(
+            event[field] if field in event else data[field], "selected Closed " + field
+        )
+
+    event_ref, event_raw = _release_predecessor_raw_proof(
+        root, proof, purpose="original_provider_close_event"
+    )
+    policy_ref, policy_raw = _release_predecessor_raw_proof(
+        root, proof, purpose="task_state_policy_registry"
+    )
+    if (
+        canonical_json(data["original_provider_close_event"]) != canonical_json(event_ref)
+        or canonical_json(data["task_state_policy_registry"]) != canonical_json(policy_ref)
+        or canonical_json(_source_json(event_raw, "selected original provider close event"))
+        != canonical_json(event)
+    ):
+        raise ReleaseControlError("selected Closed original provider or policy bytes differ")
+    _release_task_state_policy_projection(policy_raw, expected_digest=sha256_bytes(policy_raw))
+
+    subjects = data["subject_digests"]
+    expected_names = [
+        "predecessor_candidate_identity",
+        "decision_identity",
+        "role_assignments",
+        "task_state_policy_registry",
+        "durable_close_root",
+        "original_provider_close_event",
+    ]
+    if (
+        not isinstance(subjects, list)
+        or len(subjects) != len(expected_names)
+        or any(
+            not isinstance(row, dict) or set(row) != {"subject", "sha256"} or row["subject"] != name
+            for row, name in zip(subjects, expected_names, strict=True)
+        )
+    ):
+        raise ReleaseControlError("selected Closed decision lacks its ordered subjects")
+    values = {row["subject"]: row["sha256"] for row in subjects}
+    if (
+        values["predecessor_candidate_identity"] != candidate_full_digest
+        or values["decision_identity"] != sha256_json(decision_identity)
+        or values["durable_close_root"] != close_root_digest
+        or values["task_state_policy_registry"] != sha256_bytes(policy_raw)
+        or values["original_provider_close_event"] != sha256_bytes(event_raw)
+    ):
+        raise ReleaseControlError("selected Closed decision changes an original subject")
+    role_record = _release_predecessor_original_record(
+        originals,
+        "release-role-assignments",
+        values["role_assignments"],
+        "selected Closed role assignments",
+    )
+    if role_record["status"] != "PASS":
+        raise ReleaseControlError("selected Closed role assignments are not passing")
+    signers = _validated_record_signers(record, live=False)
+    if signers != {("test-fixture", data["signer_identity"])}:
+        raise ReleaseControlError("selected Closed decision has another authenticated signer")
+
+
 def _release_predecessor_reconciled_graph(
     originals: Mapping[tuple[str, str], tuple[Path, dict[str, Any]]],
     *,
@@ -16741,6 +16914,25 @@ def _release_predecessor_control_operation(
         originals,
         subject=subject,
         candidate_milestone=args.milestone,
+        decision_identity=decision_identity,
+    )
+    candidate_full_digest, _candidate_record = _release_predecessor_unique_record(
+        originals,
+        "release-candidate-identity",
+        lambda record: (
+            record.get("status") == "PASS"
+            and record.get("data", {}).get("milestone") == subject["framework_milestone"]
+            and record.get("data", {}).get("release_tag") == subject["release_tag"]
+        ),
+        "policy-selected predecessor candidate",
+    )
+    _release_predecessor_closed_decision(
+        root,
+        proof,
+        originals,
+        closed_digest=linked["closed_decision_digest"],
+        candidate_full_digest=candidate_full_digest,
+        close_root_digest=linked["close_root_digest"],
         decision_identity=decision_identity,
     )
     chain_record = _release_predecessor_original_record(

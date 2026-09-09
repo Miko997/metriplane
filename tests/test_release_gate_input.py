@@ -11322,25 +11322,87 @@ def _connected_predecessor_command_fixture(
         ],
     )
     close_root_digest = index("release-task-finalizing", close_manifest_digest, "e" * 64, 2)
-    record(
-        "release-protected-input",
-        {
-            "input_kind": "task_state_transition",
-            "transition_kind": "release_decision_closed",
-            "decision": "CLOSED",
-            "subject_digests": [
-                {"subject": "predecessor_candidate_identity", "sha256": candidate_full_digest},
-                {
-                    "subject": "decision_identity",
-                    "sha256": release.sha256_json(decision_identity),
-                },
-                {"subject": "role_assignments", "sha256": "2" * 64},
-                {"subject": "task_state_policy_registry", "sha256": "3" * 64},
-                {"subject": "durable_close_root", "sha256": close_root_digest},
-                {"subject": "original_provider_close_event", "sha256": "4" * 64},
-            ],
-        },
+    role_digest, _ = record(
+        "release-role-assignments",
+        {"milestone": "v0.4", "operator": "historical-operator"},
     )
+    task_policy_raw = Path("docs/status/release-task-state-policy.json").read_bytes()
+    provider_event = {
+        **decision_identity,
+        "api_version": "fixture-v1",
+        "event_id": "historical-close-event",
+        "actor_id": "historical-operator",
+        "before_state_id": "00000000-0000-0000-0000-000000000010",
+        "after_state_id": "00000000-0000-0000-0000-000000000011",
+        "before_state_key": "open_finalizing",
+        "after_state_key": "closed",
+        "server_timestamp": "2026-01-01T00:01:00Z",
+    }
+    provider_event_raw = release.canonical_json(provider_event)
+    closed_data = {
+        "input_kind": "task_state_transition",
+        "transition_kind": "release_decision_closed",
+        "decision": "CLOSED",
+        "authorized_role": "release_operator",
+        "conflicts": [],
+        "signer_identity": "historical-operator",
+        "signing_method": "provider-attestation-v1",
+        "authority_policy_digest": "a" * 64,
+        "provider_attestation_keyring_digest": "b" * 64,
+        "issued_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2026-01-01T00:02:00Z",
+        "provider_event": provider_event,
+        "original_provider_close_event": _predecessor_content_ref(
+            "original/provider-close-event.json", provider_event_raw
+        ),
+        "task_state_policy_registry": _predecessor_content_ref(
+            "original/task-state-policy.json", task_policy_raw
+        ),
+        "subject_digests": [
+            {"subject": "predecessor_candidate_identity", "sha256": candidate_full_digest},
+            {
+                "subject": "decision_identity",
+                "sha256": release.sha256_json(decision_identity),
+            },
+            {"subject": "role_assignments", "sha256": role_digest},
+            {
+                "subject": "task_state_policy_registry",
+                "sha256": release.sha256_bytes(task_policy_raw),
+            },
+            {"subject": "durable_close_root", "sha256": close_root_digest},
+            {
+                "subject": "original_provider_close_event",
+                "sha256": release.sha256_bytes(provider_event_raw),
+            },
+        ],
+    }
+    unsigned_closed = release.make_record(
+        "release-protected-input",
+        closed_data,
+        invocation_id="historical-closed-decision",
+        sequence=1,
+        synthetic=True,
+    )
+    signature_subject = release.signature_subject_digest(unsigned_closed)
+    closed_signature = {
+        "actor_id": "historical-operator",
+        "algorithm": "test-sha256-v1",
+        "provider": "test-fixture",
+        "subject_digest": signature_subject,
+        "synthetic": True,
+        "signature": release.sha256_json(
+            {"actor_id": "historical-operator", "subject_digest": signature_subject}
+        ),
+    }
+    closed = release.make_record(
+        "release-protected-input",
+        closed_data,
+        invocation_id="historical-closed-decision",
+        sequence=1,
+        synthetic=True,
+        signatures=[closed_signature],
+    )
+    records.append((release.sha256_json(closed), closed))
     linear_digest = release.sha256_json(linear)
     records.append((linear_digest, linear))
 
@@ -11349,6 +11411,8 @@ def _connected_predecessor_command_fixture(
         "inputs/context.json": release.canonical_json(context),
         "inputs/policy.json": policy_raw,
         "original/historical-policy.json": historical_registry_raw,
+        "original/provider-close-event.json": provider_event_raw,
+        "original/task-state-policy.json": task_policy_raw,
         "gate-input.json": release.canonical_json(gate),
         "target-resolution.json": release.canonical_json(target),
         "artifacts/wheel": wheel_raw,
@@ -11379,6 +11443,24 @@ def _connected_predecessor_command_fixture(
             "original_file": _predecessor_content_ref("readiness.json", readiness_raw),
         }
     ]
+    raw_rows.extend(
+        [
+            {
+                "kind": "original_provider_event",
+                "purpose": "original_provider_close_event",
+                "original_file": _predecessor_content_ref(
+                    "original/provider-close-event.json", provider_event_raw
+                ),
+            },
+            {
+                "kind": "original_role_key_policy",
+                "purpose": "task_state_policy_registry",
+                "original_file": _predecessor_content_ref(
+                    "original/task-state-policy.json", task_policy_raw
+                ),
+            },
+        ]
+    )
     for name in (
         "provider_state",
         "provider_event_history",
