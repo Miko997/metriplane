@@ -16662,6 +16662,34 @@ def _release_predecessor_reconciled_graph(
         or chain["previous_head"] != chain["expected_head"]
     ):
         raise ReleaseControlError("selected success-chain transition is not an exact CAS append")
+    ancestry_head = chain["previous_head"]
+    ancestry_generation = chain["generation"] - 1
+    seen_chain_heads = {chain["committed_head"]}
+    while ancestry_generation:
+        _prior_digest, prior_record = _release_predecessor_unique_record(
+            originals,
+            "release-evidence-chain",
+            lambda record, head=ancestry_head, generation=ancestry_generation: (
+                record.get("status") == "PASS"
+                and record.get("data", {}).get("backend_id") == "success-chain"
+                and record.get("data", {}).get("committed_head") == head
+                and record.get("data", {}).get("read_back_digest") == head
+                and record.get("data", {}).get("generation") == generation
+            ),
+            "selected prior success-chain transition",
+        )
+        prior = prior_record["data"]
+        if (
+            prior.get("committed_head") in seen_chain_heads
+            or prior.get("previous_head") != prior.get("expected_head")
+            or prior.get("disposition") not in {"committed", "idempotent"}
+        ):
+            raise ReleaseControlError("selected success-chain ancestry has a cycle or fork")
+        seen_chain_heads.add(prior["committed_head"])
+        ancestry_head = prior.get("previous_head")
+        ancestry_generation -= 1
+    if ancestry_head is not None:
+        raise ReleaseControlError("selected success-chain ancestry does not reach genesis")
     evidence_manifest_digest = _require_digest(
         chain["evidence_manifest_digest"], "selected final evidence manifest"
     )
@@ -16697,6 +16725,32 @@ def _release_predecessor_reconciled_graph(
         or final_retention["data"].get("input_digest") != evidence_manifest_digest
     ):
         raise ReleaseControlError("selected final retention does not retain the final manifest")
+
+    prior_lkg_digest = lkg["previous_release_digest"]
+    prior_lkg_generation = lkg["expected_generation"]
+    seen_lkg_digests = {lkg_digest}
+    while prior_lkg_generation:
+        prior_lkg_record = _release_predecessor_original_record(
+            originals,
+            "release-last-known-good",
+            prior_lkg_digest,
+            "selected prior last-known-good transition",
+        )
+        prior_lkg = prior_lkg_record["data"]
+        if (
+            prior_lkg_record["status"] != "PASS"
+            or prior_lkg.get("backend_id") != "last-known-good"
+            or prior_lkg.get("state") != "LKG"
+            or prior_lkg.get("new_generation") != prior_lkg_generation
+            or prior_lkg.get("expected_generation") != prior_lkg_generation - 1
+            or prior_lkg_digest in seen_lkg_digests
+        ):
+            raise ReleaseControlError("selected last-known-good ancestry has a gap or cycle")
+        seen_lkg_digests.add(prior_lkg_digest)
+        prior_lkg_digest = prior_lkg.get("previous_release_digest")
+        prior_lkg_generation -= 1
+    if prior_lkg_digest is not None:
+        raise ReleaseControlError("selected last-known-good ancestry does not reach genesis")
 
     pointer_transition_retention_digest, pointer_transition_retention = (
         _release_predecessor_unique_record(
@@ -16842,8 +16896,17 @@ def _release_predecessor_reconciled_graph(
         raise ReleaseControlError("selected Closed decision changes its candidate or durable root")
 
     for (_kind, _digest), (_path, record) in originals.items():
+        if (
+            record.get("record_type") == "release-evidence-chain"
+            and record.get("data", {}).get("previous_head") == chain["committed_head"]
+        ):
+            raise ReleaseControlError("selected predecessor success chain has a later successor")
         if record.get("record_type") == "release-last-known-good":
             data = record.get("data", {})
+            if data.get("previous_release_digest") == lkg_digest:
+                raise ReleaseControlError(
+                    "selected predecessor last-known-good has a later successor"
+                )
             if (
                 data.get("state") == "INVALIDATED"
                 and data.get("previous_release_digest") == lkg_digest

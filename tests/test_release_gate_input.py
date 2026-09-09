@@ -10963,6 +10963,10 @@ def test_predecessor_reconciled_graph_follows_complete_linked_history(
         "final-manifest-substitution",
         "final-retention-substitution",
         "close-retention-substitution",
+        "missing-chain-ancestry",
+        "missing-lkg-ancestry",
+        "later-chain-successor",
+        "later-lkg-successor",
         "invalidation",
     ],
 )
@@ -11027,6 +11031,37 @@ def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
             and record["data"].get("phase") == "release-task-finalizing"
         )
         retention["data"]["input_digest"] = "9" * 64
+    elif mutation == "missing-chain-ancestry":
+        chain = originals[("release-evidence-chain", expected["chain_receipt_digest"])][1]
+        chain["data"].update(generation=2, expected_head="9" * 64, previous_head="9" * 64)
+    elif mutation == "missing-lkg-ancestry":
+        lkg = originals[("release-last-known-good", expected["lkg_digest"])][1]
+        lkg["data"].update(
+            expected_generation=1, new_generation=2, previous_release_digest="9" * 64
+        )
+    elif mutation == "later-chain-successor":
+        prior = originals[("release-evidence-chain", expected["chain_receipt_digest"])][1]
+        successor = copy.deepcopy(prior)
+        successor["data"].update(
+            committed_head="9" * 64,
+            read_back_digest="9" * 64,
+            expected_head=prior["data"]["committed_head"],
+            previous_head=prior["data"]["committed_head"],
+            generation=2,
+        )
+        digest = release.sha256_json(successor)
+        originals[("release-evidence-chain", digest)] = (Path("/retained") / digest, successor)
+    elif mutation == "later-lkg-successor":
+        prior = originals[("release-last-known-good", expected["lkg_digest"])][1]
+        successor = copy.deepcopy(prior)
+        successor["data"].update(
+            expected_generation=1,
+            new_generation=2,
+            previous_release_digest=expected["lkg_digest"],
+            operation_id="later-lkg",
+        )
+        digest = release.sha256_json(successor)
+        originals[("release-last-known-good", digest)] = (Path("/retained") / digest, successor)
     else:
         invalidated = copy.deepcopy(
             originals[("release-last-known-good", expected["lkg_digest"])][1]
