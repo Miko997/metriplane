@@ -8622,17 +8622,21 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "target-observations burn-lineage target-resolution out"
     ),
     "resolve_release_predecessor.py": _tool_contract(
-        "milestone=v0.4 expected-predecessor-milestone chain-backend chain-genesis "
+        "milestone=v0.4 expected-predecessor-milestone release-context predecessor-policy "
+        "prerequisite-proofs chain-backend chain-genesis "
         "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
         "genesis-only out",
-        "milestone=v0.4 expected-predecessor-milestone chain-backend chain-genesis "
+        "milestone=v0.4 expected-predecessor-milestone release-context predecessor-policy "
+        "prerequisite-proofs chain-backend chain-genesis "
         "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
         "require-prior-lkg project-id require-prior-decision-closed out",
-        "milestone=v0.5,v0.6,v0.7,v0.8,v0.9 expected-predecessor-milestone "
+        "milestone=v0.5,v0.6,v0.7,v0.8,v0.9 expected-predecessor-milestone release-context "
+        "predecessor-policy prerequisite-proofs "
         "chain-backend chain-genesis lkg-backend attempt-index-backend "
         "attempt-index-genesis stores v0.4-genesis require-prior-lkg project-id "
         "require-prior-decision-closed out",
-        "milestone=v1.0 expected-predecessor-milestone chain-backend chain-genesis "
+        "milestone=v1.0 expected-predecessor-milestone release-context predecessor-policy "
+        "prerequisite-proofs chain-backend chain-genesis "
         "lkg-backend attempt-index-backend attempt-index-genesis stores v0.4-genesis "
         "require-prior-lkg require-prior-completion project-id "
         "require-prior-decision-closed out",
@@ -8812,12 +8816,12 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         record_flag="record",
     ),
     "validate_release_predecessor.py": _tool_contract(
-        "record milestone=v0.4 validate-genesis-only",
-        "record milestone=v0.4 read-back-chain read-back-lkg read-back-pointer-index "
+        "record milestone=v0.4 release-context predecessor-policy validate-genesis-only",
+        "record milestone=v0.4 release-context predecessor-policy read-back-chain read-back-lkg read-back-pointer-index "
         "require-embedded-prior-decision-closed-observation",
-        "record milestone=v0.5,v0.6,v0.7,v0.8,v0.9 read-back-chain read-back-lkg "
+        "record milestone=v0.5,v0.6,v0.7,v0.8,v0.9 release-context predecessor-policy read-back-chain read-back-lkg "
         "read-back-pointer-index require-embedded-prior-decision-closed-observation",
-        "record milestone=v1.0 read-back-chain read-back-lkg read-back-pointer-index "
+        "record milestone=v1.0 release-context predecessor-policy read-back-chain read-back-lkg read-back-pointer-index "
         "read-back-required-completion require-embedded-prior-decision-closed-observation",
         boolean="validate-genesis-only read-back-chain read-back-lkg "
         "read-back-pointer-index read-back-required-completion "

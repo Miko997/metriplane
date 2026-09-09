@@ -79,6 +79,9 @@ def test_v04_predecessor_contract_exposes_genesis_and_reconciled_lkg_forms(
             argv.append(sorted(equals.get(flag, {"synthetic-input"}))[0])
     arguments = release._release_original_arguments(tool, argv)
     assert arguments["milestone"] == "v0.4"
+    assert {"release-context", "predecessor-policy"} <= arguments.keys()
+    if tool == "resolve_release_predecessor.py":
+        assert "prerequisite-proofs" in arguments
     genesis_flag = (
         "genesis-only" if tool == "resolve_release_predecessor.py" else "validate-genesis-only"
     )
