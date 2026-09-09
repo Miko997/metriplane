@@ -117,6 +117,73 @@ stage or member, incomplete other invocation, or mutation of a captured journal
 blocks public consumption. Only the exact currently executing candidate
 validator worker receives the bounded active-invocation exception.
 
+## Target control semantics under implementation
+
+Target observations use normalized package versions such as `0.4.1`. The existing
+target-resolution and burn records retain their explicit `v0.4.1` package-version
+wire values and matching release tags. Artifact construction validates that exact
+pair before projecting the package version to `0.4.1`. Aliases, leading zeros and
+new `.post` identities are invalid. Historical `.post` observations remain part of
+the unchanged original history.
+
+Every occupied or partial provider/version pair belongs in a burn record's
+`affected_targets` array, with the digest of its full original observation row.
+The newly affected subset excludes only pairs already present in the independently
+verified complete burn history. An empty newly affected subset means
+`no_new_burn`, a null burn ID and no index append. Its affected array can still be
+nonempty. A new burn retains every affected pair and requires the existing
+manifest, two independent store readbacks and index transaction. A later selected
+patch never replaces the originally occupied version in these rows.
+
+One original index receipt identifies one burn operation. Its scope-local sequence,
+manifest digest and observation digest must agree across all expanded rows.
+Different operations may reuse or restart scope-local sequence numbers. Their order
+comes from the complete original native index chain; sorting sequence numbers does
+not establish it. Burn-manifest subjects are full evidence-manifest record digests,
+distinct from the burn record digest and burn ID.
+
+Under the exact-target policy, a successfully recorded control preserves the
+owner-selected identity and its burn obligations. That recording does not mean the
+target is usable. A current conflict or any indexed historical burn for the requested
+identity blocks gate admission, including after durable retention or a later provider
+response reporting absence. The operator must obtain a new owner release-identity
+decision before selecting a different target. Under a separately approved generic
+patch policy, the original search must cover each consecutive same-milestone patch
+from the initial identity through the first fully observed unused identity. Missing,
+unknown, reordered or incomplete observations block selection.
+
+The shared projections enforce these semantics, but native provider authentication,
+complete index and receipt replay, original producer journals and gate admission
+remain required software integration. A schema-valid control or a synthetic test
+does not establish those facts or authorize publication.
+
+## Private fixture staging and gate completion
+
+Private native fixtures use the fixed seed slot
+`inputs/fixture-native/<invocation-stage>/<sequence>/seed.json`. The seed and
+all declared raw members are original typed inputs, fixed before reservation.
+The synthetic interpreter preserves supplied observation times; emulation and
+historical replay cannot make an old observation fresh. These fixtures exercise
+the protocol and do not establish provider identity, independent storage or
+non-author approval.
+
+Staging and installation retain the original created directory and file
+identities through verification and copying. The complete native graph, original
+producer and validator journals, worker quiescence and full output inventory
+remain necessary before success. A private byte-copy result is not admission.
+
+A passing gate journal also requires `terminal-commit.json`, which binds the
+canonical original intent and terminal digests after the complete held output
+prefix has been synced. The witness is outside both records' digest inputs, so
+it does not create a future-digest cycle. Completion and later consumption must
+still reject changed original objects and unowned staged or journal members.
+Failure retains partial bytes and any already-created witness; a surviving
+prefix witness alone does not make a failed command or changed journal pass.
+
+The actual common worker, complete prerequisite graph and public gate consumers
+must be connected before the fixture producer can emit consumable PASS results.
+Live adapters and release approval remain separate acceptance requirements.
+
 ## Remaining acceptance work
 
 MP2-007 retains all original A01–A13. Remaining work includes signed roles and
@@ -141,7 +208,7 @@ Prepare and independently review a complete compatible slice before its hosted
 qualification. The target is one full platform matrix per stable coherent PR
 candidate and one final integrated v0.4.1 release-candidate matrix. Additional
 complete runs require a recorded source or environment invalidation under the
-exact-identity contract. CI's four fresh macOS shards retain the complete test
+exact-identity contract. CI's four fresh macOS shards per Python version (eight total) retain the complete test
 collection and all outcomes; its aggregate is source qualification evidence,
 not a release gate-input, signed approval, publication or deployment record.
 

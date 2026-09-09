@@ -1,0 +1,3406 @@
+{
+  "$comment": "PROPOSED_ONLY. Reconcile original three raw registries, all seven exact slots, the five-field slot-specific unit identity and original completed co-producer journal. Use semantic-contract.md.",
+  "$defs": {
+    "argument": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "binding"
+            },
+            "name": {
+              "$ref": "#/$defs/runtime_slot"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "attestation_input_bundle": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "bindings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "record": {
+                "$ref": "#/$defs/raw_file"
+              },
+              "record_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "record_type": {
+                "$ref": "#/$defs/attestation_record_type"
+              },
+              "required_role": {
+                "$ref": "#/$defs/attestation_role"
+              },
+              "slot": {
+                "const": "attestation_record"
+              },
+              "unit_id": {
+                "pattern": "^release-unit-sha256-[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "unit_id",
+              "slot",
+              "record_type",
+              "required_role",
+              "record",
+              "record_digest"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cell_id": {
+          "$ref": "#/$defs/id"
+        },
+        "plan_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "schema_version": {
+          "const": "metriplane.release-attestation-inputs.v1"
+        }
+      },
+      "required": [
+        "schema_version",
+        "candidate_digest",
+        "plan_digest",
+        "attempt_id",
+        "cell_id",
+        "bindings"
+      ],
+      "type": "object"
+    },
+    "attestation_record_type": {
+      "pattern": "^release-[a-z][a-z0-9-]+$",
+      "type": "string"
+    },
+    "attestation_role": {
+      "enum": [
+        "release_operator",
+        "non_author_reviewer",
+        "infrastructure_owner",
+        "publisher",
+        "independent_assurance_verifier"
+      ]
+    },
+    "attestation_slot": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_binding": {
+          "const": "VALIDATED_ROLES_AND_INDEPENDENTLY_PINNED_EXISTING_KEYRING_POLICY"
+        },
+        "binding_owner": {
+          "const": "common_invocation"
+        },
+        "expected_record_type": {
+          "$ref": "#/$defs/attestation_record_type"
+        },
+        "kind": {
+          "const": "signed_release_record"
+        },
+        "must_exist_before_execution": {
+          "const": true
+        },
+        "name": {
+          "const": "attestation_record"
+        },
+        "record_schema_source_id": {
+          "$ref": "#/$defs/id"
+        },
+        "required_role": {
+          "$ref": "#/$defs/attestation_role"
+        },
+        "subject_binding": {
+          "const": "EXISTING_RECORD_VALIDATOR_CURRENT_EXECUTION_CONTEXT"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "binding_owner",
+        "must_exist_before_execution",
+        "expected_record_type",
+        "record_schema_source_id",
+        "required_role",
+        "subject_binding",
+        "authority_binding"
+      ],
+      "type": "object"
+    },
+    "authority_link": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "json_pointer": {
+          "pattern": "^(?:|/.*)$",
+          "type": "string"
+        },
+        "source_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "source_id",
+        "json_pointer",
+        "canonical_subject_digest"
+      ],
+      "type": "object"
+    },
+    "authority_source": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "FIXTURE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authority_scope": {
+                "const": "SYNTHETIC_ONLY"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "GOVERNED_SOURCE",
+                  "RETAINED_PR88_DECLARATION"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "git": {
+                "$ref": "#/$defs/git_binding"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "authority_scope": {
+          "enum": [
+            "PLANNING_ONLY",
+            "CURRENT_POLICY",
+            "OBLIGATION_IDENTITY",
+            "REVIEWED_SUPERSESSION",
+            "SYNTHETIC_ONLY"
+          ]
+        },
+        "git": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/git_binding"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "ORIGINAL_PACKET",
+            "RETAINED_PR88_DECLARATION",
+            "GOVERNED_SOURCE",
+            "GOVERNED_OBLIGATION_LEDGER",
+            "APPROVED_SUPERSESSION",
+            "FIXTURE"
+          ]
+        },
+        "raw_file": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "raw_file",
+        "git",
+        "authority_scope"
+      ],
+      "type": "object"
+    },
+    "catalog_coverage_reason": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_ids": {
+          "items": {
+            "$ref": "#/$defs/criterion_id"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "family_ids": {
+          "items": {
+            "$ref": "#/$defs/family"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "obligation_id": {
+          "$ref": "#/$defs/obligation_id"
+        },
+        "source_declarations": {
+          "items": {
+            "$ref": "#/$defs/catalog_source_ref"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "obligation_id",
+        "criterion_ids",
+        "family_ids",
+        "source_declarations"
+      ],
+      "type": "object"
+    },
+    "catalog_expansion_step": {
+      "additionalProperties": false,
+      "properties": {
+        "direct_children": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "scenario_id": {
+                "$ref": "#/$defs/id"
+              },
+              "selection_milestone": {
+                "$ref": "#/$defs/milestone"
+              }
+            },
+            "required": [
+              "scenario_id",
+              "selection_milestone"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "rule": {
+          "enum": [
+            "LEAF",
+            "GROUP",
+            "ALL_PRIOR_REQUIRED",
+            "COMPLETE_CURRENT_CUMULATIVE"
+          ]
+        },
+        "scenario_id": {
+          "$ref": "#/$defs/id"
+        },
+        "selection_milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "source_declaration": {
+          "$ref": "#/$defs/catalog_source_ref"
+        }
+      },
+      "required": [
+        "scenario_id",
+        "selection_milestone",
+        "rule",
+        "direct_children",
+        "source_declaration"
+      ],
+      "type": "object"
+    },
+    "catalog_root_expansion": {
+      "additionalProperties": false,
+      "properties": {
+        "execution_unit_ids": {
+          "items": {
+            "$ref": "#/$defs/catalog_unit_id"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "leaf_scenario_ids": {
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "root_scenario_id": {
+          "$ref": "#/$defs/id"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/catalog_expansion_step"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "unresolved_declarations": {
+          "items": {
+            "$ref": "#/$defs/catalog_unknown"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "root_scenario_id",
+        "steps",
+        "leaf_scenario_ids",
+        "execution_unit_ids",
+        "unresolved_declarations"
+      ],
+      "type": "object"
+    },
+    "catalog_slot": {
+      "additionalProperties": false,
+      "properties": {
+        "expansions": {
+          "additionalProperties": false,
+          "properties": {
+            "postpublication": {
+              "items": {
+                "$ref": "#/$defs/catalog_root_expansion"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "publication_reconciliation": {
+              "items": {
+                "$ref": "#/$defs/catalog_root_expansion"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "qualification": {
+              "items": {
+                "$ref": "#/$defs/catalog_root_expansion"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "qualification",
+            "publication_reconciliation",
+            "postpublication"
+          ],
+          "type": "object"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "original_scenario_ids": {
+          "additionalProperties": false,
+          "properties": {
+            "postpublication": {
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "publication_reconciliation": {
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "qualification": {
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "qualification",
+            "publication_reconciliation",
+            "postpublication"
+          ],
+          "type": "object"
+        },
+        "qualification_attempts_required": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "json_pointer": {
+              "pattern": "^/release_slots/[0-6]$",
+              "type": "string"
+            },
+            "raw_registry_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "raw_registry_path": {
+              "const": "docs/status/release-scenarios.json"
+            }
+          },
+          "required": [
+            "raw_registry_path",
+            "raw_registry_digest",
+            "json_pointer"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "milestone",
+        "qualification_attempts_required",
+        "source",
+        "original_scenario_ids",
+        "expansions"
+      ],
+      "type": "object"
+    },
+    "catalog_source_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "json_pointer": {
+          "pattern": "^/(environments|scenarios|executors|obligations|criterion_requirements)/(0|[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "raw_registry_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "raw_registry_path": {
+          "enum": [
+            "docs/status/supported-environments.json",
+            "docs/status/release-scenarios.json",
+            "docs/status/release-test-obligations.json"
+          ]
+        }
+      },
+      "required": [
+        "raw_registry_path",
+        "raw_registry_digest",
+        "json_pointer"
+      ],
+      "type": "object"
+    },
+    "catalog_unit": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage_reasons": {
+          "items": {
+            "$ref": "#/$defs/catalog_coverage_reason"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "environment_id": {
+          "$ref": "#/$defs/id"
+        },
+        "executor_id": {
+          "$ref": "#/$defs/id"
+        },
+        "expected_subject": {
+          "additionalProperties": false,
+          "properties": {
+            "fault_id": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/id"
+                }
+              ]
+            },
+            "scope": {
+              "enum": [
+                "production_operation",
+                "isolated_fault_subject"
+              ]
+            },
+            "verdict": {
+              "$ref": "#/$defs/scenario_verdict"
+            }
+          },
+          "required": [
+            "scope",
+            "verdict",
+            "fault_id"
+          ],
+          "type": "object"
+        },
+        "first_required_release": {
+          "$ref": "#/$defs/milestone"
+        },
+        "obligation_ids": {
+          "items": {
+            "$ref": "#/$defs/obligation_id"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "phase": {
+          "$ref": "#/$defs/phase"
+        },
+        "prerequisite_unit_ids": {
+          "items": {
+            "$ref": "#/$defs/catalog_unit_id"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        },
+        "qualification_unit_terminal_on_verified_expectation": {
+          "const": "PASS"
+        },
+        "recipe": {
+          "$ref": "#/$defs/execution_recipe"
+        },
+        "retry_policy": {
+          "enum": [
+            "no_automatic_retry",
+            "fresh_invocation_preserve_all_attempts",
+            "new_candidate_full_restart",
+            "new_owner_release_identity",
+            "existing_fenced_operation_reconstruction"
+          ]
+        },
+        "scenario_id": {
+          "$ref": "#/$defs/id"
+        },
+        "slot_milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "source_declarations": {
+          "items": {
+            "$ref": "#/$defs/catalog_source_ref"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "unit_id": {
+          "$ref": "#/$defs/catalog_unit_id"
+        }
+      },
+      "required": [
+        "unit_id",
+        "slot_milestone",
+        "scenario_id",
+        "executor_id",
+        "environment_id",
+        "profile_id",
+        "first_required_release",
+        "phase",
+        "obligation_ids",
+        "coverage_reasons",
+        "prerequisite_unit_ids",
+        "expected_subject",
+        "qualification_unit_terminal_on_verified_expectation",
+        "recipe",
+        "retry_policy",
+        "source_declarations"
+      ],
+      "type": "object"
+    },
+    "catalog_unit_id": {
+      "pattern": "^release-unit-sha256-[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "catalog_unknown": {
+      "additionalProperties": false,
+      "properties": {
+        "field_pointer": {
+          "pattern": "^/.*$",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "source_declaration": {
+          "$ref": "#/$defs/catalog_source_ref"
+        },
+        "stable_id": {
+          "$ref": "#/$defs/id"
+        },
+        "unresolved_dependency_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_declaration",
+        "stable_id",
+        "field_pointer",
+        "unresolved_dependency_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "configuration_authority": {
+      "$comment": "Either C of the original selected JSON value or the exact candidate_source_blob raw configuration reference. This reference alone grants no policy authority: caller-owned field role/path/parser and independently expected original-source identities must be replayed from captured bytes, then source-freeze proves actual candidate membership. Historical git_binding alone and caller-selected source authority are forbidden.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/authority_link"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "const": "candidate_source_blob"
+            },
+            "git_blob": {
+              "$ref": "#/$defs/git_oid"
+            },
+            "git_mode": {
+              "enum": [
+                "100644",
+                "100755"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "repository": {
+              "const": "Miko997/metriplane"
+            },
+            "source_bytes": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "binding",
+            "repository",
+            "path",
+            "git_blob",
+            "git_mode",
+            "source_bytes"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "coverage_mapping": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "known_obligation_ids": {
+              "items": {
+                "$ref": "#/$defs/obligation_id"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "UNRESOLVED"
+            }
+          },
+          "required": [
+            "state",
+            "known_obligation_ids",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "obligation_ids": {
+              "items": {
+                "$ref": "#/$defs/obligation_id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "const": "MAPPED"
+            }
+          },
+          "required": [
+            "state",
+            "obligation_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "criterion_id": {
+      "pattern": "^MP2-[0-9]{3}\\.A[0-9]{2}$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "environment_pair": {
+      "additionalProperties": false,
+      "properties": {
+        "environment_id": {
+          "$ref": "#/$defs/id"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "environment_id",
+        "profile_id"
+      ],
+      "type": "object"
+    },
+    "environment_variable": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/argument"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "execution_recipe": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "required_operation_owner": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "effect_class": {
+                "const": "existing_release_mutation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required_operation_owner": {
+                "$ref": "#/$defs/owner_entry"
+              }
+            }
+          }
+        },
+        {
+          "else": {
+            "properties": {
+              "input_slots": {
+                "not": {
+                  "contains": {
+                    "$ref": "#/$defs/attestation_slot"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "launch": {
+                "properties": {
+                  "kind": {
+                    "const": "supplied_attestation"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input_slots": {
+                "contains": {
+                  "$ref": "#/$defs/attestation_slot"
+                },
+                "maxContains": 1,
+                "minContains": 1
+              },
+              "owner": {
+                "properties": {
+                  "kind": {
+                    "const": "supplied_attestation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "cleanliness": {
+          "additionalProperties": false,
+          "properties": {
+            "process_or_file_leak": {
+              "const": "FAIL"
+            },
+            "unexpected_skip": {
+              "const": "FAIL"
+            },
+            "unexpected_warnings": {
+              "const": "FAIL"
+            },
+            "unexpected_xfail": {
+              "const": "FAIL"
+            },
+            "unrecorded_retry": {
+              "const": "FAIL"
+            }
+          },
+          "required": [
+            "unexpected_warnings",
+            "unexpected_skip",
+            "unexpected_xfail",
+            "unrecorded_retry",
+            "process_or_file_leak"
+          ],
+          "type": "object"
+        },
+        "effect_class": {
+          "enum": [
+            "read_only",
+            "scratch_only",
+            "existing_release_mutation"
+          ]
+        },
+        "expected_outputs": {
+          "items": {
+            "$ref": "#/$defs/output_expectation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expected_process_exits": {
+          "items": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "input_sidecars": {
+          "items": {
+            "$ref": "#/$defs/raw_file"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "input_slots": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "binding_owner": {
+                    "enum": [
+                      "environment_observation",
+                      "common_invocation",
+                      "candidate_identity"
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "executable",
+                      "directory",
+                      "artifact"
+                    ]
+                  },
+                  "must_exist_before_execution": {
+                    "const": true
+                  },
+                  "name": {
+                    "$ref": "#/$defs/runtime_slot"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "binding_owner",
+                  "must_exist_before_execution"
+                ],
+                "type": "object"
+              },
+              {
+                "$ref": "#/$defs/attestation_slot"
+              }
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "launch": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "argv": {
+                  "items": {
+                    "$ref": "#/$defs/argument"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "cwd": {
+                  "enum": [
+                    "checkout_root",
+                    "installed_harness_root",
+                    "candidate_root",
+                    "execution_output_root"
+                  ]
+                },
+                "environment": {
+                  "items": {
+                    "$ref": "#/$defs/environment_variable"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "kind": {
+                  "const": "argv"
+                },
+                "shell": {
+                  "const": false
+                },
+                "unset_environment": {
+                  "items": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "kind",
+                "argv",
+                "cwd",
+                "environment",
+                "unset_environment",
+                "shell"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dispatch_owner": {
+                  "$ref": "#/$defs/owner_entry"
+                },
+                "job_id": {
+                  "$ref": "#/$defs/id"
+                },
+                "kind": {
+                  "const": "workflow_job"
+                },
+                "matrix": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "key": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "value": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "workflow_source": {
+                  "$ref": "#/$defs/source_binding"
+                }
+              },
+              "required": [
+                "kind",
+                "workflow_source",
+                "job_id",
+                "matrix",
+                "dispatch_owner"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "input_slot": {
+                  "const": "attestation_record"
+                },
+                "kind": {
+                  "const": "supplied_attestation"
+                },
+                "required_role": {
+                  "$ref": "#/$defs/attestation_role"
+                },
+                "validator_owner": {
+                  "$ref": "#/$defs/owner_entry"
+                }
+              },
+              "required": [
+                "kind",
+                "input_slot",
+                "validator_owner",
+                "required_role"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/owner_entry"
+        },
+        "required_operation_owner": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/owner_entry"
+            }
+          ]
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/resource_requirement"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "terminal_owner": {
+          "const": "metriplane/release_control.py"
+        },
+        "thresholds": {
+          "items": {
+            "$ref": "#/$defs/threshold"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "timeout_seconds": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner",
+        "launch",
+        "input_slots",
+        "input_sidecars",
+        "resources",
+        "timeout_seconds",
+        "expected_process_exits",
+        "expected_outputs",
+        "thresholds",
+        "cleanliness",
+        "effect_class",
+        "required_operation_owner",
+        "terminal_owner"
+      ],
+      "type": "object"
+    },
+    "executor": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "required_owner_paths": {
+                  "items": {
+                    "$ref": "#/$defs/relative_path"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "state": {
+                  "const": "UNRESOLVED"
+                }
+              },
+              "required": [
+                "state",
+                "required_owner_paths",
+                "reason"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "recipe": {
+                  "$ref": "#/$defs/execution_recipe"
+                },
+                "state": {
+                  "const": "CONFIGURED"
+                }
+              },
+              "required": [
+                "state",
+                "recipe"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "phase": {
+          "$ref": "#/$defs/phase"
+        }
+      },
+      "required": [
+        "id",
+        "phase",
+        "authority",
+        "binding"
+      ],
+      "type": "object"
+    },
+    "family": {
+      "enum": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "BOUNDARY",
+        "DETERMINISM",
+        "FAULT",
+        "INSTALLED",
+        "COMPAT",
+        "SECURITY",
+        "PERFORMANCE",
+        "TRACE",
+        "CLEAN",
+        "PARSER",
+        "SEMANTIC",
+        "UI",
+        "PROFILE",
+        "RELEASE",
+        "EXTERNAL",
+        "DOCS"
+      ]
+    },
+    "git_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "commit": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "repository": {
+          "const": "Miko997/metriplane"
+        },
+        "tree": {
+          "$ref": "#/$defs/git_oid"
+        }
+      },
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "path",
+        "blob"
+      ],
+      "type": "object"
+    },
+    "git_oid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "implementation_mapping": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "UNRESOLVED"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "executor_ids": {
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "const": "CONFIGURED"
+            }
+          },
+          "required": [
+            "state",
+            "executor_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "obligation_id": {
+      "pattern": "^MP2-[0-9]{3}\\.OBL\\.[A-Z0-9_]+$",
+      "type": "string"
+    },
+    "output_expectation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "media_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "minimum_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "required": {
+          "const": true
+        },
+        "root": {
+          "const": "execution_output_root"
+        },
+        "schema_source_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "validator_owner": {
+          "$ref": "#/$defs/owner_entry"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "path",
+        "media_type",
+        "schema_source_id",
+        "minimum_bytes",
+        "validator_owner",
+        "required"
+      ],
+      "type": "object"
+    },
+    "owner_entry": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pytest_node"
+            },
+            "node_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "node_id",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "python_entry"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "symbol": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "symbol",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "$ref": "#/$defs/id"
+            },
+            "kind": {
+              "const": "workflow_job"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "job_id",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "supplied_attestation"
+            },
+            "required_role": {
+              "$ref": "#/$defs/id"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "validator_source_path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "validator_symbol": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "validator_source_path",
+            "validator_symbol",
+            "source",
+            "required_role"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "phase": {
+      "enum": [
+        "qualification",
+        "publication_reconciliation",
+        "postpublication"
+      ]
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "required_release": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0",
+        "post-v1.0"
+      ]
+    },
+    "resource_requirement": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "state": {
+                  "const": "UNRESOLVED"
+                }
+              },
+              "required": [
+                "state",
+                "reason"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "configuration": {
+                  "$ref": "#/$defs/raw_file"
+                },
+                "state": {
+                  "const": "CONFIGURED"
+                }
+              },
+              "required": [
+                "state",
+                "configuration"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "fixture",
+            "hardware",
+            "service",
+            "credential_channel",
+            "human_authority",
+            "store",
+            "cas"
+          ]
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "profile_id",
+        "authority",
+        "binding"
+      ],
+      "type": "object"
+    },
+    "runtime_slot": {
+      "enum": [
+        "python_executable",
+        "checkout_root",
+        "installed_harness_root",
+        "candidate_root",
+        "invocation_dir",
+        "execution_output_root",
+        "fixture_root",
+        "wheel_path",
+        "sdist_path"
+      ]
+    },
+    "scenario_verdict": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED",
+        "RECOVER",
+        "BURN"
+      ]
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "source_binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/git_binding"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "const": "candidate_source_blob"
+            },
+            "git_blob": {
+              "$ref": "#/$defs/git_oid"
+            },
+            "git_mode": {
+              "enum": [
+                "100644",
+                "100755"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "repository": {
+              "const": "Miko997/metriplane"
+            },
+            "source_bytes": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "binding",
+            "repository",
+            "path",
+            "git_blob",
+            "git_mode",
+            "source_bytes"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "task_id": {
+      "pattern": "^MP2-[0-9]{3}$",
+      "type": "string"
+    },
+    "terminal": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    "threshold": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "comparator": {
+          "enum": [
+            "eq",
+            "le",
+            "ge"
+          ]
+        },
+        "metric_id": {
+          "$ref": "#/$defs/id"
+        },
+        "unit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric_id",
+        "comparator",
+        "value",
+        "unit",
+        "authority"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-scenario-catalog.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Concrete schema proposal only. Static configured units and expected PASS are not executed results, signatures or release qualification.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "declarations": {
+          "additionalProperties": false,
+          "properties": {
+            "criteria": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "json_pointer": {
+                        "pattern": "^/criterion_requirements/(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      },
+                      "raw_registry_digest": {
+                        "$ref": "#/$defs/digest"
+                      },
+                      "raw_registry_path": {
+                        "const": "docs/status/release-test-obligations.json"
+                      }
+                    },
+                    "required": [
+                      "raw_registry_path",
+                      "raw_registry_digest",
+                      "json_pointer"
+                    ],
+                    "type": "object"
+                  },
+                  "value": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "authority": {
+                        "items": {
+                          "$ref": "#/$defs/authority_link"
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "criterion_id": {
+                        "$ref": "#/$defs/criterion_id"
+                      },
+                      "first_required_release": {
+                        "$ref": "#/$defs/required_release"
+                      },
+                      "mapping": {
+                        "$ref": "#/$defs/coverage_mapping"
+                      },
+                      "predicate": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "predicate_digest": {
+                        "$ref": "#/$defs/digest"
+                      },
+                      "required_family_ids": {
+                        "items": {
+                          "$ref": "#/$defs/family"
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "task_id": {
+                        "$ref": "#/$defs/task_id"
+                      }
+                    },
+                    "required": [
+                      "task_id",
+                      "criterion_id",
+                      "predicate",
+                      "predicate_digest",
+                      "first_required_release",
+                      "required_family_ids",
+                      "mapping",
+                      "authority"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "source",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "maxItems": 280,
+              "minItems": 280,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "environments": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "json_pointer": {
+                        "pattern": "^/environments/(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      },
+                      "raw_registry_digest": {
+                        "$ref": "#/$defs/digest"
+                      },
+                      "raw_registry_path": {
+                        "const": "docs/status/supported-environments.json"
+                      }
+                    },
+                    "required": [
+                      "raw_registry_path",
+                      "raw_registry_digest",
+                      "json_pointer"
+                    ],
+                    "type": "object"
+                  },
+                  "value": {
+                    "$comment": "Missing original fields may be null/empty only under closed UNRESOLVED execution with nonempty reason and not_measured disposition. Known original facts remain unchanged. Current REQUIRED cells remain required before any missing-field filter. CONFIGURED retains the entire original profile/platform/runtime contract. authority_link remains C of an original selected JSON value; TOML/YAML bytes cannot be substituted. configuration_authority permits the existing exact candidate_source_blob byte branch as a distinct source kind, with closed field-specific trusted replay; it does not convert raw YAML/TOML into JSON authority or permit an arbitrary source/configuration override.",
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "declaration": {
+                              "const": "REQUIRED"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "first_required_release": {
+                              "$ref": "#/$defs/milestone"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "declaration": {
+                              "const": "HISTORICAL_PROPOSAL"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "execution": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "reason": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "const": "UNRESOLVED"
+                                }
+                              },
+                              "required": [
+                                "state",
+                                "reason"
+                              ],
+                              "type": "object"
+                            },
+                            "support_disposition": {
+                              "const": "not_measured"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "else": {
+                          "properties": {
+                            "platform": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "architecture": {
+                                  "enum": [
+                                    "x64",
+                                    "arm64"
+                                  ]
+                                },
+                                "os_family": {
+                                  "enum": [
+                                    "linux",
+                                    "macos",
+                                    "windows"
+                                  ]
+                                },
+                                "os_release": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "runner_kind": {
+                                  "enum": [
+                                    "github-hosted",
+                                    "self-hosted",
+                                    "local",
+                                    "external"
+                                  ]
+                                },
+                                "runner_labels": {
+                                  "items": {
+                                    "$ref": "#/$defs/id"
+                                  },
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                }
+                              },
+                              "required": [
+                                "os_family",
+                                "os_release",
+                                "architecture",
+                                "runner_kind",
+                                "runner_labels"
+                              ],
+                              "type": "object"
+                            },
+                            "profile_id": {
+                              "$ref": "#/$defs/id"
+                            },
+                            "runtime": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "dependency_extras": {
+                                  "items": {
+                                    "$ref": "#/$defs/id"
+                                  },
+                                  "minItems": 0,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                },
+                                "dependency_groups": {
+                                  "items": {
+                                    "$ref": "#/$defs/id"
+                                  },
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                },
+                                "implementation": {
+                                  "const": "CPython"
+                                },
+                                "lock_source": {
+                                  "$ref": "#/$defs/configuration_authority"
+                                },
+                                "python_minor": {
+                                  "pattern": "^3\\.[0-9]+$",
+                                  "type": "string"
+                                },
+                                "python_patch_policy": {
+                                  "const": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT"
+                                },
+                                "toolchain_sources": {
+                                  "items": {
+                                    "$ref": "#/$defs/configuration_authority"
+                                  },
+                                  "minItems": 1,
+                                  "type": "array",
+                                  "uniqueItems": true
+                                }
+                              },
+                              "required": [
+                                "implementation",
+                                "python_minor",
+                                "python_patch_policy",
+                                "toolchain_sources",
+                                "lock_source",
+                                "dependency_groups",
+                                "dependency_extras"
+                              ],
+                              "type": "object"
+                            }
+                          }
+                        },
+                        "if": {
+                          "properties": {
+                            "execution": {
+                              "properties": {
+                                "state": {
+                                  "const": "UNRESOLVED"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "execution"
+                          ]
+                        },
+                        "then": {
+                          "properties": {
+                            "support_disposition": {
+                              "const": "not_measured"
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "authority": {
+                        "items": {
+                          "$ref": "#/$defs/configuration_authority"
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "declaration": {
+                        "enum": [
+                          "REQUIRED",
+                          "GOVERNED_OPTIONAL",
+                          "HISTORICAL_PROPOSAL"
+                        ]
+                      },
+                      "execution": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "reason": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "state": {
+                                "const": "UNRESOLVED"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "reason"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "configuration_sources": {
+                                "items": {
+                                  "$ref": "#/$defs/configuration_authority"
+                                },
+                                "minItems": 1,
+                                "type": "array",
+                                "uniqueItems": true
+                              },
+                              "executor_ids": {
+                                "items": {
+                                  "$ref": "#/$defs/id"
+                                },
+                                "minItems": 1,
+                                "type": "array",
+                                "uniqueItems": true
+                              },
+                              "owner": {
+                                "$ref": "#/$defs/owner_entry"
+                              },
+                              "state": {
+                                "const": "CONFIGURED"
+                              }
+                            },
+                            "required": [
+                              "state",
+                              "owner",
+                              "configuration_sources",
+                              "executor_ids"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "first_required_release": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/$defs/milestone"
+                          }
+                        ]
+                      },
+                      "id": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "platform": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "architecture": {
+                            "oneOf": [
+                              {
+                                "enum": [
+                                  "x64",
+                                  "arm64"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "os_family": {
+                            "enum": [
+                              "linux",
+                              "macos",
+                              "windows"
+                            ]
+                          },
+                          "os_release": {
+                            "oneOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "runner_kind": {
+                            "enum": [
+                              "github-hosted",
+                              "self-hosted",
+                              "local",
+                              "external"
+                            ]
+                          },
+                          "runner_labels": {
+                            "items": {
+                              "$ref": "#/$defs/id"
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "os_family",
+                          "os_release",
+                          "architecture",
+                          "runner_kind",
+                          "runner_labels"
+                        ],
+                        "type": "object"
+                      },
+                      "profile_id": {
+                        "oneOf": [
+                          {
+                            "$ref": "#/$defs/id"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "runtime": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "dependency_extras": {
+                            "oneOf": [
+                              {
+                                "items": {
+                                  "$ref": "#/$defs/id"
+                                },
+                                "minItems": 0,
+                                "type": "array",
+                                "uniqueItems": true
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dependency_groups": {
+                            "items": {
+                              "$ref": "#/$defs/id"
+                            },
+                            "minItems": 0,
+                            "type": "array",
+                            "uniqueItems": true
+                          },
+                          "implementation": {
+                            "oneOf": [
+                              {
+                                "const": "CPython"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lock_source": {
+                            "oneOf": [
+                              {
+                                "$ref": "#/$defs/configuration_authority"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "python_minor": {
+                            "pattern": "^3\\.[0-9]+$",
+                            "type": "string"
+                          },
+                          "python_patch_policy": {
+                            "const": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT"
+                          },
+                          "toolchain_sources": {
+                            "items": {
+                              "$ref": "#/$defs/configuration_authority"
+                            },
+                            "minItems": 0,
+                            "type": "array",
+                            "uniqueItems": true
+                          }
+                        },
+                        "required": [
+                          "implementation",
+                          "python_minor",
+                          "python_patch_policy",
+                          "toolchain_sources",
+                          "lock_source",
+                          "dependency_groups",
+                          "dependency_extras"
+                        ],
+                        "type": "object"
+                      },
+                      "support_disposition": {
+                        "enum": [
+                          "not_measured",
+                          "unsupported",
+                          "supported"
+                        ]
+                      },
+                      "terminal_results": {
+                        "const": [
+                          "PASS",
+                          "FAIL",
+                          "BLOCKED",
+                          "CANCELLED",
+                          "SKIPPED"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "profile_id",
+                      "declaration",
+                      "support_disposition",
+                      "first_required_release",
+                      "authority",
+                      "platform",
+                      "runtime",
+                      "execution",
+                      "terminal_results"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "source",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "executors": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "json_pointer": {
+                        "pattern": "^/executors/(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      },
+                      "raw_registry_digest": {
+                        "$ref": "#/$defs/digest"
+                      },
+                      "raw_registry_path": {
+                        "enum": [
+                          "docs/status/supported-environments.json",
+                          "docs/status/release-scenarios.json",
+                          "docs/status/release-test-obligations.json"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "raw_registry_path",
+                      "raw_registry_digest",
+                      "json_pointer"
+                    ],
+                    "type": "object"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/executor"
+                  }
+                },
+                "required": [
+                  "source",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "obligations": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "json_pointer": {
+                        "pattern": "^/obligations/(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      },
+                      "raw_registry_digest": {
+                        "$ref": "#/$defs/digest"
+                      },
+                      "raw_registry_path": {
+                        "const": "docs/status/release-test-obligations.json"
+                      }
+                    },
+                    "required": [
+                      "raw_registry_path",
+                      "raw_registry_digest",
+                      "json_pointer"
+                    ],
+                    "type": "object"
+                  },
+                  "value": {
+                    "$comment": "Explicit empty mapping arrays are representable only for UNRESOLVED implementation. They confer no coverage. Determine current applicability from complete authoritative BOM/owner/first-required release before inspecting mappings; retain a blocker per missing dimension and prohibit dependent unit/coverage materialization. CONFIGURED requires every mapping nonempty.",
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "else": {
+                          "properties": {
+                            "superseded_by": {
+                              "minItems": 1
+                            },
+                            "supersession_authority": {
+                              "minItems": 1
+                            }
+                          }
+                        },
+                        "if": {
+                          "properties": {
+                            "lifecycle": {
+                              "const": "active"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "superseded_by": {
+                              "maxItems": 0
+                            },
+                            "supersession_authority": {
+                              "maxItems": 0
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "else": {
+                          "properties": {
+                            "criterion_ids": {
+                              "minItems": 1
+                            },
+                            "environment_ids": {
+                              "minItems": 1
+                            },
+                            "family_ids": {
+                              "minItems": 1
+                            },
+                            "profile_ids": {
+                              "minItems": 1
+                            },
+                            "scenario_ids": {
+                              "minItems": 1
+                            }
+                          }
+                        },
+                        "if": {
+                          "properties": {
+                            "implementation": {
+                              "properties": {
+                                "state": {
+                                  "const": "UNRESOLVED"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "implementation"
+                          ]
+                        },
+                        "then": {}
+                      }
+                    ],
+                    "properties": {
+                      "authority": {
+                        "items": {
+                          "$ref": "#/$defs/authority_link"
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "capability_ids": {
+                        "items": {
+                          "$ref": "#/$defs/id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "criterion_ids": {
+                        "items": {
+                          "$ref": "#/$defs/criterion_id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "environment_ids": {
+                        "items": {
+                          "$ref": "#/$defs/id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "family_ids": {
+                        "items": {
+                          "$ref": "#/$defs/family"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "first_required_release": {
+                        "$ref": "#/$defs/required_release"
+                      },
+                      "id": {
+                        "$ref": "#/$defs/obligation_id"
+                      },
+                      "implementation": {
+                        "$ref": "#/$defs/implementation_mapping"
+                      },
+                      "lifecycle": {
+                        "enum": [
+                          "active",
+                          "retired_with_reviewed_supersession"
+                        ]
+                      },
+                      "owner_task_id": {
+                        "$ref": "#/$defs/task_id"
+                      },
+                      "profile_ids": {
+                        "items": {
+                          "$ref": "#/$defs/id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "scenario_ids": {
+                        "items": {
+                          "$ref": "#/$defs/id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "superseded_by": {
+                        "items": {
+                          "$ref": "#/$defs/obligation_id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "supersession_authority": {
+                        "items": {
+                          "$ref": "#/$defs/authority_link"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "owner_task_id",
+                      "lifecycle",
+                      "first_required_release",
+                      "authority",
+                      "criterion_ids",
+                      "family_ids",
+                      "capability_ids",
+                      "profile_ids",
+                      "environment_ids",
+                      "scenario_ids",
+                      "implementation",
+                      "superseded_by",
+                      "supersession_authority"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "source",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "scenarios": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "source": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "json_pointer": {
+                        "pattern": "^/scenarios/(0|[1-9][0-9]*)$",
+                        "type": "string"
+                      },
+                      "raw_registry_digest": {
+                        "$ref": "#/$defs/digest"
+                      },
+                      "raw_registry_path": {
+                        "const": "docs/status/release-scenarios.json"
+                      }
+                    },
+                    "required": [
+                      "raw_registry_path",
+                      "raw_registry_digest",
+                      "json_pointer"
+                    ],
+                    "type": "object"
+                  },
+                  "value": {
+                    "$comment": "Empty environment_pairs or covers_stages preserve a missing original mapping only with a nonempty existing UNRESOLVED coverage reason and never a CONFIGURED leaf. They are not wildcards or zero-cell/zero-stage success. Select current applicability before emptiness; emit an exact blocker per missing field and prohibit dependent units/coverage. Preserve every original known stage/pair mapping.",
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "kind": {
+                              "const": "fault_rehearsal"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "expected_subject": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "fault_id": {
+                                  "$ref": "#/$defs/id"
+                                },
+                                "scope": {
+                                  "const": "isolated_fault_subject"
+                                },
+                                "verdict": {
+                                  "$ref": "#/$defs/scenario_verdict"
+                                }
+                              },
+                              "required": [
+                                "scope",
+                                "verdict",
+                                "fault_id"
+                              ],
+                              "type": "object"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "kind": {
+                              "const": "inheritance_selector"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "expansion": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "const": "cumulative"
+                                },
+                                "rule": {
+                                  "enum": [
+                                    "ALL_PRIOR_REQUIRED",
+                                    "COMPLETE_CURRENT_CUMULATIVE"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "rule"
+                              ],
+                              "type": "object"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "else": {
+                          "properties": {
+                            "covers_stages": {
+                              "minItems": 1
+                            },
+                            "environment_pairs": {
+                              "minItems": 1
+                            }
+                          }
+                        },
+                        "if": {
+                          "properties": {
+                            "required_obligations": {
+                              "properties": {
+                                "state": {
+                                  "const": "UNRESOLVED"
+                                }
+                              },
+                              "required": [
+                                "state"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "required_obligations"
+                          ]
+                        },
+                        "then": {}
+                      },
+                      {
+                        "if": {
+                          "allOf": [
+                            {
+                              "properties": {
+                                "expansion": {
+                                  "properties": {
+                                    "kind": {
+                                      "const": "leaf"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "expansion"
+                              ]
+                            },
+                            {
+                              "properties": {
+                                "expansion": {
+                                  "properties": {
+                                    "implementation": {
+                                      "properties": {
+                                        "state": {
+                                          "const": "CONFIGURED"
+                                        }
+                                      },
+                                      "required": [
+                                        "state"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "implementation"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "expansion"
+                              ]
+                            }
+                          ]
+                        },
+                        "then": {
+                          "properties": {
+                            "covers_stages": {
+                              "minItems": 1
+                            },
+                            "environment_pairs": {
+                              "minItems": 1
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "authority": {
+                        "items": {
+                          "$ref": "#/$defs/authority_link"
+                        },
+                        "minItems": 1,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "covers_stages": {
+                        "items": {
+                          "enum": [
+                            "roles",
+                            "task-state",
+                            "staging",
+                            "targets",
+                            "predecessor",
+                            "source-freeze",
+                            "candidate",
+                            "qualification",
+                            "approval",
+                            "prepromotion",
+                            "promotion",
+                            "reconciliation",
+                            "retention",
+                            "closed"
+                          ]
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "environment_pairs": {
+                        "items": {
+                          "$ref": "#/$defs/environment_pair"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "expansion": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "implementation": {
+                                "$ref": "#/$defs/implementation_mapping"
+                              },
+                              "kind": {
+                                "const": "leaf"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "implementation"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "group"
+                              },
+                              "scenario_ids": {
+                                "items": {
+                                  "$ref": "#/$defs/id"
+                                },
+                                "minItems": 1,
+                                "type": "array",
+                                "uniqueItems": true
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "scenario_ids"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "const": "cumulative"
+                              },
+                              "rule": {
+                                "enum": [
+                                  "ALL_PRIOR_REQUIRED",
+                                  "COMPLETE_CURRENT_CUMULATIVE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "rule"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "expected_subject": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fault_id": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/$defs/id"
+                              }
+                            ]
+                          },
+                          "scope": {
+                            "enum": [
+                              "production_operation",
+                              "isolated_fault_subject"
+                            ]
+                          },
+                          "verdict": {
+                            "$ref": "#/$defs/scenario_verdict"
+                          }
+                        },
+                        "required": [
+                          "scope",
+                          "verdict",
+                          "fault_id"
+                        ],
+                        "type": "object"
+                      },
+                      "first_required_release": {
+                        "$ref": "#/$defs/milestone"
+                      },
+                      "id": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "kind": {
+                        "enum": [
+                          "release_requirement",
+                          "fault_rehearsal",
+                          "inheritance_selector"
+                        ]
+                      },
+                      "phase": {
+                        "$ref": "#/$defs/phase"
+                      },
+                      "prerequisite_scenario_ids": {
+                        "items": {
+                          "$ref": "#/$defs/id"
+                        },
+                        "minItems": 0,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "qualification_unit_terminal_on_verified_expectation": {
+                        "const": "PASS"
+                      },
+                      "required_obligations": {
+                        "$ref": "#/$defs/coverage_mapping"
+                      },
+                      "retry_policy": {
+                        "enum": [
+                          "no_automatic_retry",
+                          "fresh_invocation_preserve_all_attempts",
+                          "new_candidate_full_restart",
+                          "new_owner_release_identity",
+                          "existing_fenced_operation_reconstruction"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "phase",
+                      "authority",
+                      "first_required_release",
+                      "covers_stages",
+                      "expansion",
+                      "prerequisite_scenario_ids",
+                      "environment_pairs",
+                      "required_obligations",
+                      "expected_subject",
+                      "qualification_unit_terminal_on_verified_expectation",
+                      "retry_policy"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "source",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "environments",
+            "scenarios",
+            "obligations",
+            "criteria",
+            "executors"
+          ],
+          "type": "object"
+        },
+        "environment_registry_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "execution_units": {
+          "items": {
+            "$ref": "#/$defs/catalog_unit"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expansion_contract": {
+          "const": "metriplane.scenario-expansion.v1"
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "obligation_registry_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "release_slots": {
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v0.4"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v0.5"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v0.6"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v0.7"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v0.8"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v0.9"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "milestone": {
+                    "const": "v1.0"
+                  }
+                },
+                "required": [
+                  "milestone"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/catalog_slot"
+          },
+          "maxItems": 7,
+          "minItems": 7,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "run_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "scenario_registry_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "unresolved_declarations": {
+          "items": {
+            "$ref": "#/$defs/catalog_unknown"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "catalog_digest",
+        "expansion_contract",
+        "producer_intent_digest",
+        "invocation_root_locator",
+        "run_id",
+        "scenario_registry_digest",
+        "environment_registry_digest",
+        "obligation_registry_digest",
+        "declarations",
+        "release_slots",
+        "execution_units",
+        "unresolved_declarations"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-scenario-catalog"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Prospective immutable gate-produced scenario catalog",
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "Recompute original envelope, self/data and full-record foreign digests using the single release_control owner.",
+    "Each raw registry digest is sha256_bytes of exact frozen source bytes; declarations, pointers, unknowns, slot arrays and complete expansion must reproduce those files in both directions.",
+    "unit_id is release-unit-sha256- plus C({slot_milestone,scenario_id,executor_id,environment_id,profile_id}); no unit or prerequisite belongs to a different slot.",
+    "The typed static attestation and candidate-source byte declarations resolve only under their phase-specific existing owners; no future record is embedded in catalog data.",
+    "Pair with gate-input.json under one original intent and two planned outputs; only both exact outputs and the complete original PASS terminal permit public acceptance.",
+    "Retain all declarations and original slot requirements. Known later unresolved rows are explicit; every selected current required unresolved mapping blocks the gate/plan."
+  ]
+}

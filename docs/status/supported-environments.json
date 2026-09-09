@@ -1,0 +1,557 @@
+{
+  "authority_sources": [
+    {
+      "authority_scope": "PLANNING_ONLY",
+      "git": {
+        "blob": "b3718cb64554de298123a018d506320b9840c267",
+        "commit": "860d5e930f3339fb4471b67740f044e2460cf6cb",
+        "path": "docs/status/supported-environments.json",
+        "repository": "Miko997/metriplane",
+        "tree": "d2cce65d525e6a0291cabfa4800491bb46f4b343"
+      },
+      "id": "original-pr88-environments",
+      "kind": "RETAINED_PR88_DECLARATION",
+      "raw_file": {
+        "bytes": 2049,
+        "path": "authority/pr88/supported-environments.json",
+        "sha256": "97ad5c011e5a46e442c02db8d5d986e5dee2709ae9a4b1426c3500e41471ed81"
+      }
+    }
+  ],
+  "environments": [
+    {
+      "authority": [
+        {
+          "binding": "candidate_source_blob",
+          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_mode": "100644",
+          "path": ".github/workflows/ci.yml",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 15782,
+            "path": "authority/configuration/.github/workflows/ci.yml",
+            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+          }
+        }
+      ],
+      "declaration": "REQUIRED",
+      "execution": {
+        "reason": "Existing governed test job requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": "v0.4",
+      "id": "current-ci-linux-py312",
+      "platform": {
+        "architecture": null,
+        "os_family": "linux",
+        "os_release": null,
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "ubuntu-latest"
+        ]
+      },
+      "profile_id": null,
+      "runtime": {
+        "dependency_extras": [],
+        "dependency_groups": [
+          "dev"
+        ],
+        "implementation": "CPython",
+        "lock_source": {
+          "binding": "candidate_source_blob",
+          "git_blob": "89028c5d0b8aeb1ec6f0cafb63f005fc23be95d2",
+          "git_mode": "100644",
+          "path": "uv.lock",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 215691,
+            "path": "authority/configuration/uv.lock",
+            "sha256": "e4c1baa0e634fe3e85894bfa2ce8f2866cff4a03c65fa4c19f98627c98495403"
+          }
+        },
+        "python_minor": "3.12",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": [
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "cdf5757850fcae1f167adad33626252452f3cf4d",
+            "git_mode": "100644",
+            "path": "pyproject.toml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 3718,
+              "path": "authority/configuration/pyproject.toml",
+              "sha256": "5a9515cfdf20c2b211a7aec7b57611ce60e5e7f0b74f51c9a51e946ae2e2728c"
+            }
+          },
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_mode": "100644",
+            "path": ".github/workflows/ci.yml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 15782,
+              "path": "authority/configuration/.github/workflows/ci.yml",
+              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            }
+          }
+        ]
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "binding": "candidate_source_blob",
+          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_mode": "100644",
+          "path": ".github/workflows/ci.yml",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 15782,
+            "path": "authority/configuration/.github/workflows/ci.yml",
+            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+          }
+        }
+      ],
+      "declaration": "REQUIRED",
+      "execution": {
+        "reason": "Existing governed linux-python313 job requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": "v0.4",
+      "id": "current-ci-linux-py313",
+      "platform": {
+        "architecture": null,
+        "os_family": "linux",
+        "os_release": null,
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "ubuntu-latest"
+        ]
+      },
+      "profile_id": null,
+      "runtime": {
+        "dependency_extras": [],
+        "dependency_groups": [
+          "dev"
+        ],
+        "implementation": "CPython",
+        "lock_source": {
+          "binding": "candidate_source_blob",
+          "git_blob": "89028c5d0b8aeb1ec6f0cafb63f005fc23be95d2",
+          "git_mode": "100644",
+          "path": "uv.lock",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 215691,
+            "path": "authority/configuration/uv.lock",
+            "sha256": "e4c1baa0e634fe3e85894bfa2ce8f2866cff4a03c65fa4c19f98627c98495403"
+          }
+        },
+        "python_minor": "3.13",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": [
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "cdf5757850fcae1f167adad33626252452f3cf4d",
+            "git_mode": "100644",
+            "path": "pyproject.toml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 3718,
+              "path": "authority/configuration/pyproject.toml",
+              "sha256": "5a9515cfdf20c2b211a7aec7b57611ce60e5e7f0b74f51c9a51e946ae2e2728c"
+            }
+          },
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_mode": "100644",
+            "path": ".github/workflows/ci.yml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 15782,
+              "path": "authority/configuration/.github/workflows/ci.yml",
+              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            }
+          }
+        ]
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "binding": "candidate_source_blob",
+          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_mode": "100644",
+          "path": ".github/workflows/ci.yml",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 15782,
+            "path": "authority/configuration/.github/workflows/ci.yml",
+            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+          }
+        }
+      ],
+      "declaration": "REQUIRED",
+      "execution": {
+        "reason": "Existing governed macos-regressions job requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": "v0.4",
+      "id": "current-ci-macos-py312",
+      "platform": {
+        "architecture": null,
+        "os_family": "macos",
+        "os_release": null,
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "macos-latest"
+        ]
+      },
+      "profile_id": null,
+      "runtime": {
+        "dependency_extras": [],
+        "dependency_groups": [
+          "dev"
+        ],
+        "implementation": "CPython",
+        "lock_source": {
+          "binding": "candidate_source_blob",
+          "git_blob": "89028c5d0b8aeb1ec6f0cafb63f005fc23be95d2",
+          "git_mode": "100644",
+          "path": "uv.lock",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 215691,
+            "path": "authority/configuration/uv.lock",
+            "sha256": "e4c1baa0e634fe3e85894bfa2ce8f2866cff4a03c65fa4c19f98627c98495403"
+          }
+        },
+        "python_minor": "3.12",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": [
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "cdf5757850fcae1f167adad33626252452f3cf4d",
+            "git_mode": "100644",
+            "path": "pyproject.toml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 3718,
+              "path": "authority/configuration/pyproject.toml",
+              "sha256": "5a9515cfdf20c2b211a7aec7b57611ce60e5e7f0b74f51c9a51e946ae2e2728c"
+            }
+          },
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_mode": "100644",
+            "path": ".github/workflows/ci.yml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 15782,
+              "path": "authority/configuration/.github/workflows/ci.yml",
+              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            }
+          }
+        ]
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "binding": "candidate_source_blob",
+          "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+          "git_mode": "100644",
+          "path": ".github/workflows/ci.yml",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 15782,
+            "path": "authority/configuration/.github/workflows/ci.yml",
+            "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+          }
+        }
+      ],
+      "declaration": "REQUIRED",
+      "execution": {
+        "reason": "Existing governed macos-regressions job requires this platform/minor cell. Its floating runner label does not bind actual OS image, architecture, measured support profile or complete executor/obligation mappings; these remain required before qualification.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": "v0.4",
+      "id": "current-ci-macos-py313",
+      "platform": {
+        "architecture": null,
+        "os_family": "macos",
+        "os_release": null,
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "macos-latest"
+        ]
+      },
+      "profile_id": null,
+      "runtime": {
+        "dependency_extras": [],
+        "dependency_groups": [
+          "dev"
+        ],
+        "implementation": "CPython",
+        "lock_source": {
+          "binding": "candidate_source_blob",
+          "git_blob": "89028c5d0b8aeb1ec6f0cafb63f005fc23be95d2",
+          "git_mode": "100644",
+          "path": "uv.lock",
+          "repository": "Miko997/metriplane",
+          "source_bytes": {
+            "bytes": 215691,
+            "path": "authority/configuration/uv.lock",
+            "sha256": "e4c1baa0e634fe3e85894bfa2ce8f2866cff4a03c65fa4c19f98627c98495403"
+          }
+        },
+        "python_minor": "3.13",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": [
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "cdf5757850fcae1f167adad33626252452f3cf4d",
+            "git_mode": "100644",
+            "path": "pyproject.toml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 3718,
+              "path": "authority/configuration/pyproject.toml",
+              "sha256": "5a9515cfdf20c2b211a7aec7b57611ce60e5e7f0b74f51c9a51e946ae2e2728c"
+            }
+          },
+          {
+            "binding": "candidate_source_blob",
+            "git_blob": "746ec18da3d9d16e51256fdbe8a351894d4b34c5",
+            "git_mode": "100644",
+            "path": ".github/workflows/ci.yml",
+            "repository": "Miko997/metriplane",
+            "source_bytes": {
+              "bytes": 15782,
+              "path": "authority/configuration/.github/workflows/ci.yml",
+              "sha256": "6debc799844d98f4618315df17af7d06b8ab1ff77297dcd7975d92322b617a49"
+            }
+          }
+        ]
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "06781dfb4ed90828589416023133129d92f1a5ee79baf7f3a675b4669f6f690f",
+          "json_pointer": "/environments/2",
+          "source_id": "original-pr88-environments"
+        }
+      ],
+      "declaration": "HISTORICAL_PROPOSAL",
+      "execution": {
+        "reason": "Retained PR88 proposal, not current measured support or an approved executable recipe. Original runtime installation, lock, dependency and executor bindings are absent.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": null,
+      "id": "macos-15-py312",
+      "platform": {
+        "architecture": "arm64",
+        "os_family": "macos",
+        "os_release": "macOS 15",
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "macos-15"
+        ]
+      },
+      "profile_id": "full-camera-free",
+      "runtime": {
+        "dependency_extras": null,
+        "dependency_groups": [],
+        "implementation": null,
+        "lock_source": null,
+        "python_minor": "3.12",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": []
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "f33c5b0da29afd449485c0423687204de083a90666ff79e861347d977c51abc2",
+          "json_pointer": "/environments/0",
+          "source_id": "original-pr88-environments"
+        }
+      ],
+      "declaration": "HISTORICAL_PROPOSAL",
+      "execution": {
+        "reason": "Retained PR88 proposal, not current measured support or an approved executable recipe. Original runtime installation, lock, dependency and executor bindings are absent.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": null,
+      "id": "ubuntu-24.04-py312",
+      "platform": {
+        "architecture": "x64",
+        "os_family": "linux",
+        "os_release": "Ubuntu 24.04",
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      "profile_id": "full-camera-free",
+      "runtime": {
+        "dependency_extras": null,
+        "dependency_groups": [],
+        "implementation": null,
+        "lock_source": null,
+        "python_minor": "3.12",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": []
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "d70ddb28b887932c339251a65c15b3367428f9eba9ff4d59a40a392787714a8b",
+          "json_pointer": "/environments/1",
+          "source_id": "original-pr88-environments"
+        }
+      ],
+      "declaration": "HISTORICAL_PROPOSAL",
+      "execution": {
+        "reason": "Retained PR88 proposal, not current measured support or an approved executable recipe. Original runtime installation, lock, dependency and executor bindings are absent.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": null,
+      "id": "ubuntu-24.04-py313",
+      "platform": {
+        "architecture": "x64",
+        "os_family": "linux",
+        "os_release": "Ubuntu 24.04",
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      "profile_id": "full-camera-free",
+      "runtime": {
+        "dependency_extras": null,
+        "dependency_groups": [],
+        "implementation": null,
+        "lock_source": null,
+        "python_minor": "3.13",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": []
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    {
+      "authority": [
+        {
+          "canonical_subject_digest": "9213905b52e66ab3b1fa21b1ff654884e4a8a14f8690a8943a8e8dccf85b46ea",
+          "json_pointer": "/environments/3",
+          "source_id": "original-pr88-environments"
+        }
+      ],
+      "declaration": "HISTORICAL_PROPOSAL",
+      "execution": {
+        "reason": "Retained PR88 proposal, not current measured support or an approved executable recipe. Original runtime installation, lock, dependency and executor bindings are absent.",
+        "state": "UNRESOLVED"
+      },
+      "first_required_release": null,
+      "id": "windows-2025-py312",
+      "platform": {
+        "architecture": "x64",
+        "os_family": "windows",
+        "os_release": "Windows Server 2025",
+        "runner_kind": "github-hosted",
+        "runner_labels": [
+          "windows-2025"
+        ]
+      },
+      "profile_id": "full-camera-free",
+      "runtime": {
+        "dependency_extras": null,
+        "dependency_groups": [],
+        "implementation": null,
+        "lock_source": null,
+        "python_minor": "3.12",
+        "python_patch_policy": "RESOLVE_EXACT_PATCH_AND_EXECUTABLE_HASH_PER_ATTEMPT",
+        "toolchain_sources": []
+      },
+      "support_disposition": "not_measured",
+      "terminal_results": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    }
+  ],
+  "evidence_policy": {
+    "attempt_index_required": true,
+    "first_attempt_retained": true,
+    "terminal_coordinator_required": true,
+    "two_independent_stores_required": true
+  },
+  "executors": [],
+  "owner": "MP2-007",
+  "population_status": "UNRESOLVED",
+  "schema_version": "metriplane.release-supported-environments.v3"
+}

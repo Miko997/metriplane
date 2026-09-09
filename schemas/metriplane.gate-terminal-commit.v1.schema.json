@@ -1,0 +1,30 @@
+{
+  "$comment": "Finite durable-prefix witness binding the original intent and terminal canonical digests. Current complete journal, original input/output custody and native semantic replay remain mandatory. This is not an approval signature.",
+  "$id": "https://metriplane.com/schemas/metriplane.gate-terminal-commit.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "intent_sha256": {
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "metriplane.gate-terminal-commit.v1"
+    },
+    "terminal_sha256": {
+      "maxLength": 64,
+      "minLength": 64,
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "intent_sha256",
+    "terminal_sha256"
+  ],
+  "title": "Metriplane private gate terminal completion receipt",
+  "type": "object"
+}

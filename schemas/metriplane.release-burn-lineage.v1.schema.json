@@ -1,8 +1,26 @@
 {
-  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$comment": "Prospective S3A supplied-input/schema projection. No native implementation, live approval or release qualification is claimed.",
   "$defs": {
+    "canonical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
     "digest": {
       "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "historical_release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
       "type": "string"
     },
     "live_signature": {
@@ -55,6 +73,57 @@
     "nonempty": {
       "minLength": 1,
       "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "record_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
       "type": "string"
     },
     "signature": {
@@ -151,7 +220,7 @@
       "type": "string"
     }
   },
-  "$id": "https://metriplane.com/schemas/metriplane.release-target-resolution.v1.schema.json",
+  "$id": "https://metriplane.com/schemas/metriplane.release-burn-lineage.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "allOf": [
@@ -178,86 +247,113 @@
       }
     }
   ],
-  "description": "Closed subject-specific contract for release-target-resolution. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "description": "Closed subject-specific contract for release-burn-lineage. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
   "properties": {
     "data": {
       "additionalProperties": false,
       "properties": {
-        "burn_lineage_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "burn_target_ids": {
+        "burns": {
           "items": {
-            "$ref": "#/$defs/nonempty"
+            "additionalProperties": false,
+            "properties": {
+              "burn_manifest_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "index_receipt_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "observation_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "package_version": {
+                "$ref": "#/$defs/historical_package_version"
+              },
+              "release_tag": {
+                "$ref": "#/$defs/historical_release_tag"
+              },
+              "sequence": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "target_id": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "required": [
+              "burn_manifest_digest",
+              "index_receipt_digest",
+              "observation_digest",
+              "package_version",
+              "release_tag",
+              "sequence",
+              "target_id"
+            ],
+            "type": "object"
           },
           "minItems": 0,
           "type": "array",
           "uniqueItems": true
         },
-        "initial_package_version": {
-          "$ref": "#/$defs/version"
+        "index_backend_id": {
+          "const": "attempt-index"
         },
-        "initial_release_tag": {
-          "$ref": "#/$defs/version"
+        "index_genesis_digest": {
+          "$ref": "#/$defs/digest"
         },
         "invocation_root_locator": {
           "const": "invocations"
         },
+        "lineage_digest": {
+          "$ref": "#/$defs/digest"
+        },
         "milestone": {
           "$ref": "#/$defs/milestone"
         },
-        "observations_digest": {
-          "$ref": "#/$defs/digest"
+        "original_genesis": {
+          "$ref": "#/$defs/record_file"
         },
-        "prior_burn_digests": {
-          "items": {
-            "$ref": "#/$defs/digest"
+        "original_index_export": {
+          "additionalProperties": false,
+          "properties": {
+            "original_file": {
+              "$ref": "#/$defs/record_file"
+            },
+            "record_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "record_type": {
+              "const": "release-attempt-index"
+            }
           },
-          "minItems": 0,
-          "type": "array",
-          "uniqueItems": true
+          "required": [
+            "record_type",
+            "record_digest",
+            "original_file"
+          ],
+          "type": "object"
         },
         "producer_intent_digest": {
           "$ref": "#/$defs/digest"
         },
-        "release_context_digest": {
+        "read_back_complete": {
+          "const": true
+        },
+        "through_head": {
           "$ref": "#/$defs/digest"
-        },
-        "requires_new_burn": {
-          "type": "boolean"
-        },
-        "resolution_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "resolution_rule": {
-          "enum": [
-            "next_unused_same_milestone_patch",
-            "owner_approved_exact_target"
-          ]
-        },
-        "selected_package_version": {
-          "$ref": "#/$defs/version"
-        },
-        "selected_release_tag": {
-          "$ref": "#/$defs/version"
         }
       },
       "required": [
-        "burn_lineage_digest",
-        "burn_target_ids",
-        "initial_package_version",
-        "initial_release_tag",
+        "burns",
+        "index_backend_id",
+        "index_genesis_digest",
+        "invocation_root_locator",
+        "lineage_digest",
         "milestone",
-        "observations_digest",
-        "prior_burn_digests",
-        "release_context_digest",
-        "requires_new_burn",
-        "resolution_digest",
-        "resolution_rule",
-        "selected_package_version",
-        "selected_release_tag",
+        "original_genesis",
+        "original_index_export",
         "producer_intent_digest",
-        "invocation_root_locator"
+        "read_back_complete",
+        "through_head"
       ],
       "type": "object"
     },
@@ -272,7 +368,7 @@
       "$ref": "#/$defs/digest"
     },
     "record_type": {
-      "const": "release-target-resolution"
+      "const": "release-burn-lineage"
     },
     "schema_version": {
       "const": "metriplane.release-record.v1"
@@ -285,16 +381,7 @@
       "const": []
     },
     "status": {
-      "enum": [
-        "BLOCKED",
-        "CANCELLED",
-        "FAIL",
-        "INVALIDATED",
-        "OPEN",
-        "PASS",
-        "READY",
-        "SKIPPED"
-      ]
+      "const": "PASS"
     },
     "synthetic": {
       "type": "boolean"
@@ -312,13 +399,20 @@
     "status",
     "synthetic"
   ],
-  "title": "Metriplane release-target-resolution record",
+  "title": "Metriplane release-burn-lineage record",
   "type": "object",
+  "x-metriplane-origin": {
+    "kind": "CLI_PRODUCED_RECORD",
+    "producer": "export_release_burn_lineage.py",
+    "production_implementation": false,
+    "stage": "export-release-burn-lineage",
+    "terminal_digest_in_output": false
+  },
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
     "signature.subject_digest == sha256(canonical_json(decision_envelope))",
-    "all referenced digests resolve to the exact retained subject bytes",
-    "release_context_digest is the canonical complete supplied upstream release-context record; resolve it through exact journal/supplied-input bindings and validate its original governed registry and frozen project evidence"
-  ]
+    "all referenced digests resolve to the exact retained subject bytes"
+  ],
+  "x-metriplane-semantic-contract": "semantic-contract.md; full current controller integration and original native proof replay required; structure alone is insufficient"
 }

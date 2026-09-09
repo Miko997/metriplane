@@ -1,0 +1,934 @@
+{
+  "$comment": "Prospective raw configuration schema only. BOUND_CONFIGURED is not PREFLIGHT_VALIDATED or approval. The seven logical backends keep their existing owner/capability/namespace policy; two labels never establish independent administration. Exact typed authority/configuration sidecars are pre-effect inputs.",
+  "$defs": {
+    "binding_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_id": {
+          "$ref": "#/$defs/text"
+        },
+        "binding_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "backend_id",
+        "binding_digest"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "live_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "$ref": "#/$defs/text"
+        },
+        "administration_identity": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "durability_retention_policy": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "namespace_policy": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "owner_binding_authority": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "provider_resource_identity": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "public_configuration": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "public_configuration",
+        "owner_binding_authority",
+        "provider_resource_identity",
+        "administration_identity",
+        "durability_retention_policy",
+        "namespace_policy"
+      ],
+      "type": "object"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "text": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-evidence-store-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attempt_index": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/binding_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backend_id": {
+          "const": "attempt-index"
+        },
+        "cas_required": {
+          "const": true
+        },
+        "read_back_required": {
+          "const": true
+        }
+      },
+      "required": [
+        "backend_id",
+        "backend",
+        "cas_required",
+        "read_back_required"
+      ],
+      "type": "object"
+    },
+    "backends": {
+      "items": false,
+      "maxItems": 7,
+      "minItems": 7,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "payload-store-a"
+            },
+            "backend_kind": {
+              "const": "immutable_payload"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "strong_read_after_write"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_RELEASE_PAYLOAD_STORE_A_CREDENTIAL"
+              }
+            },
+            "independence_group": {
+              "const": "release-evidence-primary"
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/payload-a",
+                "production": "metriplane/releases/{milestone}/{candidate_id}",
+                "test": "metriplane/release-tests/{run_id}/payload-a"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "immutable_put",
+                "read",
+                "sha256_read_back",
+                "hold"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "independence_group",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "payload-store-b"
+            },
+            "backend_kind": {
+              "const": "immutable_payload"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "strong_read_after_write"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_RELEASE_PAYLOAD_STORE_B_CREDENTIAL"
+              }
+            },
+            "independence_group": {
+              "const": "release-evidence-secondary"
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/payload-b",
+                "production": "metriplane/releases/{milestone}/{candidate_id}",
+                "test": "metriplane/release-tests/{run_id}/payload-b"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "immutable_put",
+                "read",
+                "sha256_read_back",
+                "hold"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "independence_group",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "attempt-index"
+            },
+            "backend_kind": {
+              "const": "compare_and_swap_log"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "linearizable_compare_and_swap"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_RELEASE_ATTEMPT_INDEX_CREDENTIAL"
+              }
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/attempt-index",
+                "production": "metriplane/release-control/attempt-index",
+                "test": "metriplane/release-tests/{run_id}/attempt-index"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "read",
+                "compare_and_swap",
+                "stale_conflict",
+                "idempotent_operation",
+                "read_back"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "success-chain"
+            },
+            "backend_kind": {
+              "const": "compare_and_swap_log"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "linearizable_compare_and_swap"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_RELEASE_SUCCESS_CHAIN_CREDENTIAL"
+              }
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/success-chain",
+                "production": "metriplane/release-control/success-chain",
+                "test": "metriplane/release-tests/{run_id}/success-chain"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "read",
+                "compare_and_swap",
+                "stale_conflict",
+                "idempotent_operation",
+                "read_back"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "last-known-good"
+            },
+            "backend_kind": {
+              "const": "compare_and_swap_register"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "linearizable_compare_and_swap"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_RELEASE_LKG_CREDENTIAL"
+              }
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/last-known-good",
+                "production": "metriplane/release-control/last-known-good",
+                "test": "metriplane/release-tests/{run_id}/last-known-good"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "read",
+                "compare_and_swap",
+                "stale_conflict",
+                "monotonic_generation",
+                "read_back"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "main-health-state"
+            },
+            "backend_kind": {
+              "const": "compare_and_swap_register"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "linearizable_compare_and_swap"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_MAIN_HEALTH_STATE_CREDENTIAL"
+              }
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/main-health-state",
+                "production": "metriplane/release-control/main-health-state",
+                "test": "metriplane/release-tests/{run_id}/main-health-state"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "read",
+                "compare_and_swap",
+                "stale_conflict",
+                "monotonic_generation",
+                "read_back"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "UNRESOLVED"
+                },
+                "live_binding": {
+                  "type": "null"
+                }
+              }
+            },
+            {
+              "properties": {
+                "binding_status": {
+                  "const": "BOUND_CONFIGURED"
+                },
+                "live_binding": {
+                  "$ref": "#/$defs/live_binding"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "backend_id": {
+              "const": "main-health-summary"
+            },
+            "backend_kind": {
+              "const": "compare_and_swap_log"
+            },
+            "binding_status": {
+              "enum": [
+                "UNRESOLVED",
+                "BOUND_CONFIGURED"
+              ]
+            },
+            "consistency": {
+              "const": "linearizable_compare_and_swap"
+            },
+            "credential_reference": {
+              "const": {
+                "kind": "approved_environment",
+                "name": "METRIPLANE_MAIN_HEALTH_SUMMARY_CREDENTIAL"
+              }
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/live_binding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namespaces": {
+              "const": {
+                "preflight": "metriplane/release-preflight/{scope}/main-health-summary",
+                "production": "metriplane/release-control/main-health-summary",
+                "test": "metriplane/release-tests/{run_id}/main-health-summary"
+              }
+            },
+            "required_capabilities": {
+              "const": [
+                "immutable_append",
+                "read",
+                "compare_and_swap",
+                "sha256_read_back",
+                "stale_conflict"
+              ]
+            },
+            "retention": {
+              "const": {
+                "deletion": "forbidden",
+                "hold": "governance_hold_required",
+                "minimum_days": null,
+                "mode": "retain_indefinitely"
+              }
+            },
+            "token_format": {
+              "const": "generation:<unsigned-integer>;head:sha256:<64-lowercase-hex>"
+            }
+          },
+          "required": [
+            "backend_id",
+            "backend_kind",
+            "consistency",
+            "credential_reference",
+            "namespaces",
+            "required_capabilities",
+            "retention",
+            "token_format",
+            "binding_status",
+            "live_binding"
+          ],
+          "type": "object"
+        }
+      ],
+      "type": "array"
+    },
+    "live_status": {
+      "enum": [
+        "BLOCKED_NOT_READY",
+        "BOUND_CONFIGURED"
+      ]
+    },
+    "owner": {
+      "const": "MP2-007"
+    },
+    "schema_version": {
+      "const": "metriplane.release-evidence-stores.v1"
+    },
+    "secrets_embedded": {
+      "const": false
+    },
+    "stores": {
+      "items": false,
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "backend_id": {
+              "const": "payload-store-a"
+            },
+            "id": {
+              "const": "payload-store-a"
+            },
+            "independence_group": {
+              "const": "release-evidence-primary"
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/binding_ref"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "backend_id",
+            "id",
+            "independence_group",
+            "live_binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "backend_id": {
+              "const": "payload-store-b"
+            },
+            "id": {
+              "const": "payload-store-b"
+            },
+            "independence_group": {
+              "const": "release-evidence-secondary"
+            },
+            "live_binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/binding_ref"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "backend_id",
+            "id",
+            "independence_group",
+            "live_binding"
+          ],
+          "type": "object"
+        }
+      ],
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "owner",
+    "secrets_embedded",
+    "live_status",
+    "attempt_index",
+    "backends",
+    "stores"
+  ],
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "UNRESOLVED requires null binding and blocks live consumption; every binding reference must resolve to the exact backend live_binding C digest.",
+    "Bound adapter_id must name a separately implemented/reviewed existing-owner adapter; a string cannot dynamically select executable code or establish supported service semantics.",
+    "All original sidecars are enumerated, safe regular files and raw-hash bound under the supplied bundle before effects. Configuration contains references to credentials, never secret values.",
+    "Owner approval must be independently expected and authentic; neither adjacent files, two independence_group strings nor two same-host directories establish independent durable stores.",
+    "Payload A/B actual administration, resource identity, retention, failure and revocation domains must satisfy the original owner-approved independence policy with original proof.",
+    "Preflight outputs bind immutable raw registry bytes; no preflight/receipt digest is written back into that registry, avoiding registry/preflight cycles.",
+    "attempt-index also fences promotion-lock operations under the existing owner; success-chain/LKG namespaces remain distinct. No separate unbound lock or second release state machine.",
+    "Main-health backend labels refer only to existing governed main-health owners and protected state. A binding cannot redirect or independently mutate protected main-health branches.",
+    "Isolated preflight/test and production namespaces cannot alias; preflight never mutates production heads. Complete per-capability operation/readback evidence remains mandatory."
+  ]
+}

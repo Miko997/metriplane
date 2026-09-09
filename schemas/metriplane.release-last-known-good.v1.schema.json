@@ -1,8 +1,14 @@
 {
-  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$comment": "Prospective corrected original LKG transition receipt only. Later pointer envelope/retention/index bind this immutable receipt; only the downstream predecessor selection contains their references. No reverse refs or parallel LKG owner.",
   "$defs": {
     "digest": {
       "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
       "type": "string"
     },
     "live_signature": {
@@ -56,6 +62,16 @@
       "minLength": 1,
       "pattern": ".*\\S.*",
       "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "signature": {
       "additionalProperties": false,
@@ -145,13 +161,9 @@
         "synthetic"
       ],
       "type": "object"
-    },
-    "version": {
-      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
-      "type": "string"
     }
   },
-  "$id": "https://metriplane.com/schemas/metriplane.release-target-resolution.v1.schema.json",
+  "$id": "https://metriplane.com/schemas/metriplane.release-last-known-good.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "allOf": [
@@ -178,86 +190,110 @@
       }
     }
   ],
-  "description": "Closed subject-specific contract for release-target-resolution. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "description": "Closed subject-specific contract for release-last-known-good. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
   "properties": {
     "data": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "INVALIDATED"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "invalidation_decision_digest": {
+                "$ref": "#/$defs/digest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "LKG"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "invalidation_decision_digest": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
       "properties": {
-        "burn_lineage_digest": {
+        "backend_id": {
+          "const": "last-known-good"
+        },
+        "candidate_digest": {
           "$ref": "#/$defs/digest"
         },
-        "burn_target_ids": {
-          "items": {
-            "$ref": "#/$defs/nonempty"
-          },
-          "minItems": 0,
-          "type": "array",
-          "uniqueItems": true
+        "chain_head": {
+          "$ref": "#/$defs/digest"
         },
-        "initial_package_version": {
-          "$ref": "#/$defs/version"
+        "committed_token": {
+          "$ref": "#/$defs/nonempty"
         },
-        "initial_release_tag": {
-          "$ref": "#/$defs/version"
+        "expected_generation": {
+          "minimum": 0,
+          "type": "integer"
         },
-        "invocation_root_locator": {
-          "const": "invocations"
+        "invalidation_decision_digest": {
+          "$ref": "#/$defs/nullable_digest"
         },
         "milestone": {
           "$ref": "#/$defs/milestone"
         },
-        "observations_digest": {
+        "new_generation": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "previous_release_digest": {
+          "$ref": "#/$defs/nullable_digest"
+        },
+        "read_back_digest": {
           "$ref": "#/$defs/digest"
         },
-        "prior_burn_digests": {
-          "items": {
-            "$ref": "#/$defs/digest"
-          },
-          "minItems": 0,
-          "type": "array",
-          "uniqueItems": true
-        },
-        "producer_intent_digest": {
+        "reconciliation_digest": {
           "$ref": "#/$defs/digest"
         },
-        "release_context_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "requires_new_burn": {
-          "type": "boolean"
-        },
-        "resolution_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "resolution_rule": {
+        "state": {
           "enum": [
-            "next_unused_same_milestone_patch",
-            "owner_approved_exact_target"
+            "LKG",
+            "INVALIDATED"
           ]
-        },
-        "selected_package_version": {
-          "$ref": "#/$defs/version"
-        },
-        "selected_release_tag": {
-          "$ref": "#/$defs/version"
         }
       },
       "required": [
-        "burn_lineage_digest",
-        "burn_target_ids",
-        "initial_package_version",
-        "initial_release_tag",
+        "backend_id",
+        "candidate_digest",
+        "chain_head",
+        "committed_token",
+        "expected_generation",
+        "invalidation_decision_digest",
         "milestone",
-        "observations_digest",
-        "prior_burn_digests",
-        "release_context_digest",
-        "requires_new_burn",
-        "resolution_digest",
-        "resolution_rule",
-        "selected_package_version",
-        "selected_release_tag",
-        "producer_intent_digest",
-        "invocation_root_locator"
+        "new_generation",
+        "operation_id",
+        "previous_release_digest",
+        "read_back_digest",
+        "reconciliation_digest",
+        "state"
       ],
       "type": "object"
     },
@@ -272,7 +308,7 @@
       "$ref": "#/$defs/digest"
     },
     "record_type": {
-      "const": "release-target-resolution"
+      "const": "release-last-known-good"
     },
     "schema_version": {
       "const": "metriplane.release-record.v1"
@@ -282,19 +318,15 @@
       "type": "integer"
     },
     "signatures": {
-      "const": []
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
     },
     "status": {
-      "enum": [
-        "BLOCKED",
-        "CANCELLED",
-        "FAIL",
-        "INVALIDATED",
-        "OPEN",
-        "PASS",
-        "READY",
-        "SKIPPED"
-      ]
+      "const": "PASS"
     },
     "synthetic": {
       "type": "boolean"
@@ -312,13 +344,17 @@
     "status",
     "synthetic"
   ],
-  "title": "Metriplane release-target-resolution record",
+  "title": "Metriplane release-last-known-good record",
   "type": "object",
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
     "signature.subject_digest == sha256(canonical_json(decision_envelope))",
     "all referenced digests resolve to the exact retained subject bytes",
-    "release_context_digest is the canonical complete supplied upstream release-context record; resolve it through exact journal/supplied-input bindings and validate its original governed registry and frozen project evidence"
+    "Read original expected/current backend generation and exact operation token; require new_generation=expected_generation+1 or exact immutable idempotent reconstruction of the same prior transition.",
+    "previous_release_digest identifies C(complete previous LKG transition receipt), or null only at independently bound actual genesis; never the current predecessor output, future pointer envelope or current candidate receipt.",
+    "read_back_digest is R(exact original backend readback bytes), interpreted under the fixed approved adapter wire and original operation ID/token; not C(the receipt that includes it).",
+    "state INVALIDATED requires the one non_author_lkg_invalidation approval-decision subtype and exact selected original target receipt; state LKG requires null invalidation decision.",
+    "PASS means that this CAS transition was read back; INVALIDATED state remains fenced and can never satisfy predecessor selection."
   ]
 }

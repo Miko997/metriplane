@@ -1,0 +1,2446 @@
+{
+  "$comment": "PROPOSED existing-registry extension, not populated authority. Exact historical 93-task/seven-slot projections are immutable; current provider bindings are separate. Whole selected release_contexts entry supplies context_policy_digest.",
+  "$defs": {
+    "bom_row": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_first_required_release": {
+          "oneOf": [
+            {
+              "enum": [
+                "v0.4",
+                "v0.5",
+                "v0.6",
+                "v0.7",
+                "v0.8",
+                "v0.9",
+                "v1.0",
+                "post-v1.0"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "catalog_task_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/catalog_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inclusion_reasons": {
+          "items": {
+            "enum": [
+              "cumulative_catalog",
+              "prior_roadmap_decision",
+              "current_decision",
+              "context_direct_gate",
+              "blocking_dependency"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "issue": {
+          "$ref": "#/$defs/issue"
+        },
+        "role": {
+          "enum": [
+            "implementation",
+            "release_decision",
+            "context_direct_gate",
+            "transitive_dependency"
+          ]
+        }
+      },
+      "required": [
+        "catalog_task_id",
+        "catalog_first_required_release",
+        "role",
+        "inclusion_reasons",
+        "issue"
+      ],
+      "type": "object"
+    },
+    "catalog_id": {
+      "pattern": "^MP2-[0-9]{3}$",
+      "type": "string"
+    },
+    "context_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment_authority": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "binding_status": {
+          "enum": [
+            "UNRESOLVED",
+            "RESOLVED"
+          ]
+        },
+        "comparison_baseline_policy": {
+          "additionalProperties": false,
+          "properties": {
+            "normalized_package_version": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "release_tag": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "sdist_sha256": {
+              "$ref": "#/$defs/digest"
+            },
+            "source_commit": {
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            },
+            "source_tree": {
+              "pattern": "^[0-9a-f]{40}$",
+              "type": "string"
+            },
+            "wheel_sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          },
+          "required": [
+            "normalized_package_version",
+            "release_tag",
+            "source_commit",
+            "source_tree",
+            "wheel_sha256",
+            "sdist_sha256"
+          ],
+          "type": "object"
+        },
+        "context_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "decision": {
+          "additionalProperties": false,
+          "properties": {
+            "issue_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "issue_identifier": {
+              "$ref": "#/$defs/issue_identifier"
+            },
+            "project_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "provider": {
+              "const": "linear"
+            },
+            "team_id": {
+              "$ref": "#/$defs/uuid"
+            }
+          },
+          "required": [
+            "issue_id",
+            "issue_identifier",
+            "project_id",
+            "provider",
+            "team_id"
+          ],
+          "type": "object"
+        },
+        "direct_gate_issues": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "issue_id": {
+                "$ref": "#/$defs/uuid"
+              },
+              "issue_identifier": {
+                "$ref": "#/$defs/issue_identifier"
+              },
+              "project_id": {
+                "$ref": "#/$defs/uuid"
+              },
+              "provider": {
+                "const": "linear"
+              },
+              "team_id": {
+                "$ref": "#/$defs/uuid"
+              }
+            },
+            "required": [
+              "issue_id",
+              "issue_identifier",
+              "project_id",
+              "provider",
+              "team_id"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "framework_milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "predecessor_requirement": {
+          "const": "VALIDATE_ORIGINAL_GENESIS_OR_RECONCILED_LKG_GRAPH_UNDER_BOUND_POLICY"
+        },
+        "preserve_original_cumulative_bom": {
+          "const": true
+        },
+        "provider_milestone": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "name": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "project_id": {
+              "$ref": "#/$defs/uuid"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "project_id"
+          ],
+          "type": "object"
+        },
+        "roadmap_catalog_task_id": {
+          "oneOf": [
+            {
+              "pattern": "^MP2-[0-9]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_policy": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "conflict_disposition": {
+                  "const": "BLOCKED_REQUIRES_NEW_OWNER_RELEASE_IDENTITY"
+                },
+                "resolution_mode": {
+                  "const": "owner_approved_exact_target"
+                }
+              }
+            },
+            {
+              "properties": {
+                "conflict_disposition": {
+                  "const": "DURABLE_BURN_THEN_SAME_MILESTONE_PATCH"
+                },
+                "resolution_mode": {
+                  "const": "next_unused_same_milestone_patch"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "conflict_disposition": {
+              "enum": [
+                "BLOCKED_REQUIRES_NEW_OWNER_RELEASE_IDENTITY",
+                "DURABLE_BURN_THEN_SAME_MILESTONE_PATCH"
+              ]
+            },
+            "initial_normalized_package_version": {
+              "$ref": "#/$defs/package_version"
+            },
+            "initial_release_tag": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "resolution_mode": {
+              "enum": [
+                "owner_approved_exact_target",
+                "next_unused_same_milestone_patch"
+              ]
+            }
+          },
+          "required": [
+            "conflict_disposition",
+            "initial_normalized_package_version",
+            "initial_release_tag",
+            "resolution_mode"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "context_id",
+        "framework_milestone",
+        "decision",
+        "direct_gate_issues",
+        "provider_milestone",
+        "roadmap_catalog_task_id",
+        "target_policy",
+        "binding_status",
+        "assignment_authority",
+        "comparison_baseline_policy",
+        "predecessor_requirement",
+        "preserve_original_cumulative_bom"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "git_oid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "identifier": {
+      "pattern": "^[A-Z][A-Z0-9]*-[1-9][0-9]*$",
+      "type": "string"
+    },
+    "identity": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "issue_identifier": {
+          "$ref": "#/$defs/identifier"
+        },
+        "project_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "const": "linear"
+        },
+        "team_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "issue_id",
+        "issue_identifier",
+        "provider",
+        "team_id",
+        "project_id"
+      ],
+      "type": "object"
+    },
+    "issue": {
+      "additionalProperties": false,
+      "properties": {
+        "archived_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assignee_ids": {
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "blocked_by": {
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "canceled_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completed_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "description": {
+          "type": "string"
+        },
+        "detail_observation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "duplicate_of": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/relation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "index_observation_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "parent": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/relation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "project_milestone": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/milestone_identity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "related_to": {
+          "items": {
+            "$ref": "#/$defs/relation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "started_at": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "identity",
+        "title",
+        "description",
+        "project_milestone",
+        "parent",
+        "state",
+        "assignee_ids",
+        "created_at",
+        "updated_at",
+        "archived_at",
+        "completed_at",
+        "started_at",
+        "canceled_at",
+        "blocks",
+        "blocked_by",
+        "related_to",
+        "duplicate_of",
+        "detail_observation_id",
+        "index_observation_ids"
+      ],
+      "type": "object"
+    },
+    "issue_binding": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "binding_status": {
+                "const": "RESOLVED"
+              }
+            },
+            "required": [
+              "binding_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "identity": {
+                "$ref": "#/$defs/identity"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "assignment_authority": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "binding_status": {
+          "enum": [
+            "UNRESOLVED",
+            "RESOLVED"
+          ]
+        },
+        "catalog_task_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/catalog_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_milestone": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/milestone_identity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "identity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issue_identifier": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "issue_identifier",
+        "catalog_task_id",
+        "binding_status",
+        "identity",
+        "expected_milestone",
+        "assignment_authority"
+      ],
+      "type": "object"
+    },
+    "issue_identifier": {
+      "pattern": "^[A-Z][A-Z0-9]*-[1-9][0-9]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "milestone_identity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "project_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "project_id"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "observation": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_list_issues"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "fields": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "includeArchived": {
+                    "const": true
+                  },
+                  "limit": {
+                    "const": 250
+                  },
+                  "orderBy": {
+                    "const": "createdAt"
+                  },
+                  "project": {
+                    "$ref": "#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "project",
+                  "includeArchived",
+                  "limit",
+                  "orderBy",
+                  "fields"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_get_issue"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "includeRelations": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "id",
+                  "includeRelations"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_list_issue_statuses"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "team": {
+                    "$ref": "#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "team"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tool": {
+                "const": "mcp__codex_apps__linear_list_milestones"
+              }
+            },
+            "required": [
+              "tool"
+            ]
+          },
+          "then": {
+            "properties": {
+              "arguments": {
+                "additionalProperties": false,
+                "properties": {
+                  "project": {
+                    "$ref": "#/$defs/uuid"
+                  }
+                },
+                "required": [
+                  "project"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "arguments": {},
+        "capture_status": {
+          "const": "SUCCESS"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "extracted_json_pointer": {
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "payload_encoding": {
+          "enum": [
+            "native_json",
+            "json_text"
+          ]
+        },
+        "response": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "round": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "tool": {
+          "enum": [
+            "mcp__codex_apps__linear_list_issues",
+            "mcp__codex_apps__linear_get_issue",
+            "mcp__codex_apps__linear_list_issue_statuses",
+            "mcp__codex_apps__linear_list_milestones"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "round",
+        "tool",
+        "arguments",
+        "started_at",
+        "completed_at",
+        "response",
+        "extracted_json_pointer",
+        "capture_status",
+        "payload_encoding"
+      ],
+      "type": "object"
+    },
+    "package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "project_milestones": {
+      "additionalProperties": false,
+      "properties": {
+        "milestones": {
+          "items": {
+            "$ref": "#/$defs/milestone_identity"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "observation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "project_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "project_id",
+        "observation_id",
+        "milestones"
+      ],
+      "type": "object"
+    },
+    "project_scan": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_ids": {
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "page_observation_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "project_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "round": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "terminal_has_next_page": {
+          "const": false
+        }
+      },
+      "required": [
+        "project_id",
+        "round",
+        "page_observation_ids",
+        "issue_ids",
+        "terminal_has_next_page"
+      ],
+      "type": "object"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relation": {
+      "additionalProperties": false,
+      "properties": {
+        "issue_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "issue_identifier": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "required": [
+        "issue_id",
+        "issue_identifier"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "state": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "team_statuses": {
+      "additionalProperties": false,
+      "properties": {
+        "observation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "states": {
+          "items": {
+            "$ref": "#/$defs/state"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "team_id": {
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "required": [
+        "team_id",
+        "observation_id",
+        "states"
+      ],
+      "type": "object"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T.*(?:Z|[+-]\\d{2}:\\d{2})$",
+      "type": "string"
+    },
+    "uuid": {
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-readiness-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "blockers": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "required_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolved_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolver": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "resolver"
+        ],
+        "type": "object"
+      },
+      "minItems": 0,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "catalog_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "release_slots_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "snapshot_role": {
+          "const": "UNCHANGED_PLANNING_AUTHORITY_NOT_CURRENT_PROVIDER_FACTS"
+        },
+        "source": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "task_registry_sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "source",
+        "task_registry_sha256",
+        "release_slots_sha256",
+        "snapshot_role"
+      ],
+      "type": "object"
+    },
+    "evidence_resolution": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_synthetic": {
+          "const": false
+        },
+        "allow_temporary_ci_artifact_as_retention": {
+          "const": false
+        },
+        "required_result_count": {
+          "const": 13
+        },
+        "resolved_result_count": {
+          "maximum": 13,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "BLOCKED_NOT_READY",
+            "IMPLEMENTED_UNQUALIFIED",
+            "READY"
+          ]
+        }
+      },
+      "required": [
+        "allow_synthetic",
+        "allow_temporary_ci_artifact_as_retention",
+        "required_result_count",
+        "resolved_result_count",
+        "status"
+      ],
+      "type": "object"
+    },
+    "first_release": {
+      "const": "v0.4"
+    },
+    "framework": {
+      "enum": [
+        "BLOCKED_NOT_READY",
+        "IMPLEMENTED_UNQUALIFIED",
+        "READY"
+      ]
+    },
+    "last_release": {
+      "const": "v1.0"
+    },
+    "linear_capture_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "follow_cross_project_blockers": {
+          "const": true
+        },
+        "include_all_catalog_tasks": {
+          "const": true
+        },
+        "include_all_roadmap_gate_slots": {
+          "const": true
+        },
+        "include_archived": {
+          "const": true
+        },
+        "nonblocking_relation_disposition": {
+          "const": "RETAIN_ENDPOINTS_NOT_AUTOMATIC_BOM"
+        },
+        "provider_snapshot_atomicity": {
+          "const": "not_claimed"
+        },
+        "provider_transport_binding": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "require_reciprocal_blocking_relations": {
+          "const": true
+        },
+        "root_project_ids": {
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "stable_complete_rounds": {
+          "const": 2
+        },
+        "unknown_dependency_disposition": {
+          "const": "BLOCKED_REQUIRES_EXPLICIT_POLICY_BINDING"
+        }
+      },
+      "required": [
+        "root_project_ids",
+        "include_archived",
+        "include_all_catalog_tasks",
+        "include_all_roadmap_gate_slots",
+        "follow_cross_project_blockers",
+        "require_reciprocal_blocking_relations",
+        "unknown_dependency_disposition",
+        "nonblocking_relation_disposition",
+        "stable_complete_rounds",
+        "provider_snapshot_atomicity",
+        "provider_transport_binding"
+      ],
+      "type": "object"
+    },
+    "live_release": {
+      "enum": [
+        "BLOCKED_NOT_READY",
+        "IMPLEMENTED_UNQUALIFIED",
+        "READY"
+      ]
+    },
+    "main_health": {
+      "additionalProperties": false,
+      "properties": {
+        "max_age_seconds": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "state_branch": {
+          "const": "metriplane-main-health-state"
+        },
+        "validator": {
+          "const": "tools/stop_the_line.py candidate"
+        }
+      },
+      "required": [
+        "max_age_seconds",
+        "state_branch",
+        "validator"
+      ],
+      "type": "object"
+    },
+    "modes": {
+      "additionalProperties": false,
+      "properties": {
+        "post-publication": {
+          "enum": [
+            "BLOCKED_NOT_READY",
+            "IMPLEMENTED_UNQUALIFIED",
+            "READY"
+          ]
+        },
+        "pr-merge-control": {
+          "enum": [
+            "BLOCKED_NOT_READY",
+            "IMPLEMENTED_UNQUALIFIED",
+            "READY"
+          ]
+        },
+        "release-qualification": {
+          "enum": [
+            "BLOCKED_NOT_READY",
+            "IMPLEMENTED_UNQUALIFIED",
+            "READY"
+          ]
+        }
+      },
+      "required": [
+        "post-publication",
+        "pr-merge-control",
+        "release-qualification"
+      ],
+      "type": "object"
+    },
+    "owner": {
+      "const": "MP2-007"
+    },
+    "provider_issue_bindings": {
+      "items": {
+        "$ref": "#/$defs/issue_binding"
+      },
+      "minItems": 93,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "release_contexts": {
+      "items": {
+        "$ref": "#/$defs/context_policy"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "release_gate_slots": {
+      "const": [
+        {
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "linear_release_decision_issue": "MET-155",
+          "postpublication_scenario_ids": [],
+          "publication_reconciliation_scenario_ids": [],
+          "qualification_attempts_required": 1,
+          "qualification_scenario_ids": [
+            "GENESIS_V0_3_0",
+            "BASELINE_INVENTORY",
+            "BASELINE_CHARACTERIZATION",
+            "ROOT_ADAPTER_INTEGRATION_CUMULATIVE",
+            "INSTALLED_CORE",
+            "PROTECTION_AND_MAIN_HEALTH_MUTATIONS",
+            "LOCAL_FAKE_RELEASE"
+          ],
+          "release_decision_task": "MP2-018",
+          "required_development_tasks": [
+            "MP2-000",
+            "MP2-001",
+            "MP2-002",
+            "MP2-003",
+            "MP2-004",
+            "MP2-005",
+            "MP2-006",
+            "MP2-007",
+            "MP2-010",
+            "MP2-011",
+            "MP2-012",
+            "MP2-013",
+            "MP2-014",
+            "MP2-015",
+            "MP2-016",
+            "MP2-017"
+          ],
+          "required_scenario_ids": [
+            "GENESIS_V0_3_0",
+            "BASELINE_INVENTORY",
+            "BASELINE_CHARACTERIZATION",
+            "ROOT_ADAPTER_INTEGRATION_CUMULATIVE",
+            "INSTALLED_CORE",
+            "PROTECTION_AND_MAIN_HEALTH_MUTATIONS",
+            "LOCAL_FAKE_RELEASE"
+          ],
+          "version": "v0.4"
+        },
+        {
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "linear_release_decision_issue": "MET-156",
+          "postpublication_scenario_ids": [],
+          "publication_reconciliation_scenario_ids": [],
+          "qualification_attempts_required": 1,
+          "qualification_scenario_ids": [
+            "INHERITED_ALL",
+            "INSTALLED_PRODUCT_FAMILY",
+            "UPGRADE",
+            "FAILED_UPGRADE",
+            "DOWNGRADE_NO_MODIFY",
+            "ROLLBACK",
+            "TWO_BUILDER_REPRODUCIBILITY"
+          ],
+          "release_decision_task": "MP2-049",
+          "required_development_tasks": [
+            "MP2-020",
+            "MP2-021",
+            "MP2-022",
+            "MP2-023",
+            "MP2-024",
+            "MP2-025",
+            "MP2-026",
+            "MP2-027",
+            "MP2-028",
+            "MP2-029",
+            "MP2-030",
+            "MP2-031",
+            "MP2-040",
+            "MP2-041",
+            "MP2-042",
+            "MP2-043",
+            "MP2-044",
+            "MP2-045",
+            "MP2-046",
+            "MP2-047",
+            "MP2-048"
+          ],
+          "required_scenario_ids": [
+            "INHERITED_ALL",
+            "INSTALLED_PRODUCT_FAMILY",
+            "UPGRADE",
+            "FAILED_UPGRADE",
+            "DOWNGRADE_NO_MODIFY",
+            "ROLLBACK",
+            "TWO_BUILDER_REPRODUCIBILITY"
+          ],
+          "version": "v0.5"
+        },
+        {
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "linear_release_decision_issue": "MET-157",
+          "postpublication_scenario_ids": [],
+          "publication_reconciliation_scenario_ids": [],
+          "qualification_attempts_required": 1,
+          "qualification_scenario_ids": [
+            "INHERITED_ALL",
+            "CANONICAL_CONTRACTS",
+            "LEGACY_NEW_DIFFERENTIAL",
+            "CAPSULE_SEPARATE_CANDIDATE",
+            "CAPSULE_FIVE_VERDICTS",
+            "BOUNDED_SOURCE_NEUTRALITY"
+          ],
+          "release_decision_task": "MP2-132",
+          "required_development_tasks": [
+            "MP2-100",
+            "MP2-101",
+            "MP2-110",
+            "MP2-111",
+            "MP2-112",
+            "MP2-120",
+            "MP2-121",
+            "MP2-122",
+            "MP2-123",
+            "MP2-124",
+            "MP2-125",
+            "MP2-130",
+            "MP2-131"
+          ],
+          "required_scenario_ids": [
+            "INHERITED_ALL",
+            "CANONICAL_CONTRACTS",
+            "LEGACY_NEW_DIFFERENTIAL",
+            "CAPSULE_SEPARATE_CANDIDATE",
+            "CAPSULE_FIVE_VERDICTS",
+            "BOUNDED_SOURCE_NEUTRALITY"
+          ],
+          "version": "v0.6"
+        },
+        {
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "linear_release_decision_issue": "MET-158",
+          "postpublication_scenario_ids": [],
+          "publication_reconciliation_scenario_ids": [],
+          "qualification_attempts_required": 1,
+          "qualification_scenario_ids": [
+            "INHERITED_ALL",
+            "ARTIFACT_PARITY",
+            "CLI_API_SERVICE_UI_PARITY",
+            "ALL_DISCOVERED_ACTIONS",
+            "BROWSER_ACCESSIBILITY",
+            "LIFECYCLE_SHUTDOWN_LEAKS"
+          ],
+          "release_decision_task": "MP2-155",
+          "required_development_tasks": [
+            "MP2-140",
+            "MP2-141",
+            "MP2-142",
+            "MP2-143",
+            "MP2-144",
+            "MP2-145",
+            "MP2-150",
+            "MP2-151",
+            "MP2-152",
+            "MP2-153",
+            "MP2-154"
+          ],
+          "required_scenario_ids": [
+            "INHERITED_ALL",
+            "ARTIFACT_PARITY",
+            "CLI_API_SERVICE_UI_PARITY",
+            "ALL_DISCOVERED_ACTIONS",
+            "BROWSER_ACCESSIBILITY",
+            "LIFECYCLE_SHUTDOWN_LEAKS"
+          ],
+          "version": "v0.7"
+        },
+        {
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "linear_release_decision_issue": "MET-159",
+          "postpublication_scenario_ids": [],
+          "publication_reconciliation_scenario_ids": [],
+          "qualification_attempts_required": 1,
+          "qualification_scenario_ids": [
+            "INHERITED_ALL",
+            "ADAPTER_CONFORMANCE",
+            "ROS_NATIVE_ROWS",
+            "SIMULATOR_NATIVE_ROWS",
+            "GPU_CONTAINER_NATIVE_ROWS",
+            "NAMED_HARDWARE_ROWS",
+            "TRUTHFUL_UNSUPPORTED_NOT_MEASURED"
+          ],
+          "release_decision_task": "MP2-169",
+          "required_development_tasks": [
+            "MP2-160",
+            "MP2-161",
+            "MP2-162",
+            "MP2-163",
+            "MP2-164",
+            "MP2-165",
+            "MP2-166",
+            "MP2-167",
+            "MP2-168"
+          ],
+          "required_scenario_ids": [
+            "INHERITED_ALL",
+            "ADAPTER_CONFORMANCE",
+            "ROS_NATIVE_ROWS",
+            "SIMULATOR_NATIVE_ROWS",
+            "GPU_CONTAINER_NATIVE_ROWS",
+            "NAMED_HARDWARE_ROWS",
+            "TRUTHFUL_UNSUPPORTED_NOT_MEASURED"
+          ],
+          "version": "v0.8"
+        },
+        {
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "linear_release_decision_issue": "MET-160",
+          "postpublication_scenario_ids": [
+            "ASSURANCE_PACKET_RESTORE"
+          ],
+          "publication_reconciliation_scenario_ids": [],
+          "qualification_attempts_required": 3,
+          "qualification_scenario_ids": [
+            "INHERITED_ALL",
+            "PROPERTY_MUTATION_FUZZ",
+            "CHAOS_RECOVERY",
+            "PERFORMANCE_BUDGETS",
+            "REPRODUCIBILITY",
+            "WORKFLOW_PARITY",
+            "PUBLICATION_STATE_REHEARSAL"
+          ],
+          "release_decision_task": "MP2-210",
+          "required_development_tasks": [
+            "MP2-200",
+            "MP2-201",
+            "MP2-202",
+            "MP2-203",
+            "MP2-204",
+            "MP2-205",
+            "MP2-206",
+            "MP2-207",
+            "MP2-208",
+            "MP2-209"
+          ],
+          "required_scenario_ids": [
+            "INHERITED_ALL",
+            "PROPERTY_MUTATION_FUZZ",
+            "CHAOS_RECOVERY",
+            "PERFORMANCE_BUDGETS",
+            "REPRODUCIBILITY",
+            "WORKFLOW_PARITY",
+            "PUBLICATION_STATE_REHEARSAL",
+            "ASSURANCE_PACKET_RESTORE"
+          ],
+          "version": "v0.9"
+        },
+        {
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "linear_release_decision_issue": "MET-149",
+          "postpublication_scenario_ids": [
+            "ONE_HUNDRED_GATE_RECOMPUTE",
+            "FINAL_PACKET_RESTORE"
+          ],
+          "publication_reconciliation_scenario_ids": [
+            "EXACT_BYTE_PUBLICATION"
+          ],
+          "qualification_attempts_required": 3,
+          "qualification_scenario_ids": [
+            "COMPLETE_CURRENT_CUMULATIVE",
+            "THREE_EXTERNAL_EVALUATIONS",
+            "NON_MAINTAINER_RERUN",
+            "USER_INITIATED_FOLLOW_UP"
+          ],
+          "release_decision_task": "MP2-225",
+          "required_development_tasks": [
+            "MP2-220",
+            "MP2-221",
+            "MP2-222",
+            "MP2-223",
+            "MP2-224"
+          ],
+          "required_scenario_ids": [
+            "COMPLETE_CURRENT_CUMULATIVE",
+            "THREE_EXTERNAL_EVALUATIONS",
+            "NON_MAINTAINER_RERUN",
+            "USER_INITIATED_FOLLOW_UP",
+            "EXACT_BYTE_PUBLICATION",
+            "ONE_HUNDRED_GATE_RECOMPUTE",
+            "FINAL_PACKET_RESTORE"
+          ],
+          "version": "v1.0"
+        }
+      ]
+    },
+    "required_terminal": {
+      "const": "Release / required"
+    },
+    "schema_version": {
+      "const": "metriplane.release-readiness.v2"
+    },
+    "task_catalog": {
+      "const": [
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-69",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-000"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-68",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-001"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-70",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-002"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-75",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-003"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-77",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-004"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-79",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-005"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-76",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-006"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-154",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-007"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-71",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-010"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-73",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-011"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-74",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-012"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-78",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-013"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-72",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-014"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-83",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-015"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-90",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-016"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-84",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "implementation",
+          "task": "MP2-017"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.4",
+          "linear_issue": "MET-155",
+          "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+          "role": "release_decision",
+          "task": "MP2-018"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-87",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-020"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-82",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-021"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-88",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-022"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-81",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-023"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-85",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-024"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-91",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-025"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-86",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-026"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-80",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-027"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-89",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-028"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-99",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-029"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-92",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-030"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-98",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-031"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-96",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-040"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-95",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-041"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-97",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-042"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-93",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-043"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-94",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-044"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-100",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-045"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-102",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-046"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-103",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-047"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-101",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "implementation",
+          "task": "MP2-048"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.5",
+          "linear_issue": "MET-156",
+          "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+          "role": "release_decision",
+          "task": "MP2-049"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-104",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-100"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-107",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-101"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-108",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-110"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-111",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-111"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-110",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-112"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-105",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-120"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-115",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-121"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-106",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-122"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-113",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-123"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-112",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-124"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-152",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-125"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-109",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-130"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-114",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "implementation",
+          "task": "MP2-131"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.6",
+          "linear_issue": "MET-157",
+          "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+          "role": "release_decision",
+          "task": "MP2-132"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-116",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-140"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-117",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-141"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-119",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-142"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-126",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-143"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-118",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-144"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-120",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-145"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-121",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-150"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-122",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-151"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-127",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-152"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-124",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-153"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-123",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "implementation",
+          "task": "MP2-154"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.7",
+          "linear_issue": "MET-158",
+          "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+          "role": "release_decision",
+          "task": "MP2-155"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-125",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-160"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-128",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-161"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-129",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-162"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-132",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-163"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-130",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-164"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-134",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-165"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-138",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-166"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-139",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-167"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-133",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "implementation",
+          "task": "MP2-168"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.8",
+          "linear_issue": "MET-159",
+          "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+          "role": "release_decision",
+          "task": "MP2-169"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-135",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-200"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-136",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-201"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-137",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-202"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-131",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-203"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-140",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-204"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-145",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-205"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-142",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-206"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-141",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-207"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-144",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-208"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-143",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "implementation",
+          "task": "MP2-209"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v0.9",
+          "linear_issue": "MET-160",
+          "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+          "role": "release_decision",
+          "task": "MP2-210"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v1.0",
+          "linear_issue": "MET-148",
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "role": "implementation",
+          "task": "MP2-220"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v1.0",
+          "linear_issue": "MET-147",
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "role": "implementation",
+          "task": "MP2-221"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v1.0",
+          "linear_issue": "MET-151",
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "role": "implementation",
+          "task": "MP2-222"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v1.0",
+          "linear_issue": "MET-150",
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "role": "implementation",
+          "task": "MP2-223"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v1.0",
+          "linear_issue": "MET-146",
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "role": "implementation",
+          "task": "MP2-224"
+        },
+        {
+          "blocks_release": true,
+          "first_required_release": "v1.0",
+          "linear_issue": "MET-149",
+          "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+          "role": "release_decision",
+          "task": "MP2-225"
+        },
+        {
+          "blocks_release": false,
+          "first_required_release": "post-v1.0",
+          "linear_issue": "MET-153",
+          "linear_milestone_id": "3f6c1d19-06c5-43b6-8481-a9e6c82b53c6",
+          "role": "post_release",
+          "task": "MP2-226"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "owner",
+    "blockers",
+    "evidence_resolution",
+    "first_release",
+    "last_release",
+    "framework",
+    "live_release",
+    "main_health",
+    "modes",
+    "required_terminal",
+    "catalog_binding",
+    "task_catalog",
+    "release_gate_slots",
+    "provider_issue_bindings",
+    "release_contexts",
+    "linear_capture_policy"
+  ],
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "Re-read exact original registry bytes for gate/source-freeze digest binding; never use reserialized parsed JSON as raw identity.",
+    "Preserve task_catalog/release_gate_slots exactly against retained packet09; require exact distinct task/issue IDs, all93 mapped issues and all7 roadmap slots.",
+    "UNRESOLVED is retained structural state, never live readiness. READY booleans require independent full evidence; a schema cannot grant authority.",
+    "Context project/team/milestone restrictions apply to their named issue bindings, not a global same-project rule.",
+    "Context actual decision may have null catalogue identity; no MP2 identity may be invented."
+  ]
+}

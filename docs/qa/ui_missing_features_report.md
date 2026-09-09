@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `296c2e17dbaeaf3336b03dfcfe9fa3d616ecec848dee565cc244b03b71fe5128`
+Canonical projection SHA-256: `67731f2da886aada85d1388ea4472e79d89a1110c941da9dfdccc70701121af3`
 
 - Missing features total: `14`
 - Release-blocking P0/P1 coverage rows: `19`

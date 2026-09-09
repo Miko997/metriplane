@@ -20,8 +20,11 @@ from metriplane.release_control import (
     MILESTONES,
     RELEASE_BUILD_RECIPE,
     RELEASE_BUILD_RECIPE_DIGEST,
+    ProviderAttestationVerifier,
     ReleaseInvocation,
     ReleaseControlError,
+    _attestation_verifier_from_args,
+    _release_version_pair,
     canonical_json,
     make_record,
     read_json,
@@ -52,7 +55,6 @@ else:
 ROOT: Final = Path(__file__).resolve().parents[1]
 _DIGEST: Final = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA: Final = re.compile(r"[0-9a-f]{40}")
-_VERSION: Final = re.compile(r"v(?:0\.[3-9]|1\.0)\.[0-9]+")
 _BUILD_RECIPE: Final = RELEASE_BUILD_RECIPE
 BUILD_RECIPE_DIGEST: Final = RELEASE_BUILD_RECIPE_DIGEST
 
@@ -86,6 +88,17 @@ def _path_argument(value: str) -> Path:
     return Path(value)
 
 
+def _keyring_argument(value: str) -> str:
+    _path_argument(value)
+    return value
+
+
+def _digest_argument(value: str) -> str:
+    if _DIGEST.fullmatch(value) is None:
+        raise argparse.ArgumentTypeError("digest must be a lowercase SHA-256 value")
+    return value
+
+
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         allow_abbrev=False,
@@ -100,6 +113,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--out-dir", type=_path_argument, required=True)
     parser.add_argument("--manifest", type=_path_argument, required=True)
     parser.add_argument("--invocation-dir", type=_path_argument, required=True)
+    parser.add_argument("--provider-attestation-keyring", type=_keyring_argument)
+    parser.add_argument("--provider-attestation-keyring-digest", type=_digest_argument)
+    parser.add_argument("--authority-policy-digest", type=_digest_argument)
     arguments = list(argv) if argv is not None else sys.argv[1:]
     accepted = {
         "--help",
@@ -108,6 +124,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--source-freeze",
         "--target-resolution",
         "--invocation-dir",
+        "--provider-attestation-keyring",
+        "--provider-attestation-keyring-digest",
+        "--authority-policy-digest",
     }
     unknown = [
         value
@@ -143,7 +162,16 @@ def _load_inputs(
     *,
     fixture_mode: bool,
     repository: Path | None = None,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+    expected_authority_policy_digest: str | None = None,
 ) -> BuildInputs:
+    if expected_authority_policy_digest is not None:
+        _required_string(
+            {"authority_policy_digest": expected_authority_policy_digest},
+            "authority_policy_digest",
+            _DIGEST,
+        )
+        raise ArtifactBuildBlocked("source-freeze authority-policy replay hook is not implemented")
     target_resolution = _read_record(target_resolution_path, "release-target-resolution")
     source_freeze = _read_record(source_freeze_path, "release-source-freeze")
     target_data = target_resolution["data"]
@@ -166,12 +194,25 @@ def _load_inputs(
     if source_data.get("dirty") is not False:
         raise ArtifactBuildBlocked("source freeze does not prove a clean tree")
 
-    selected_version = _required_string(target_data, "selected_package_version", _VERSION)
-    release_tag = _required_string(target_data, "selected_release_tag", _VERSION)
-    if selected_version.rsplit(".", 1)[0] != milestone:
+    selected_version = target_data.get("selected_package_version")
+    release_tag = target_data.get("selected_release_tag")
+    if not isinstance(selected_version, str) or not isinstance(release_tag, str):
+        raise ArtifactBuildBlocked(
+            "selected_package_version and selected_release_tag must be strings"
+        )
+    if not selected_version.startswith("v"):
+        raise ArtifactBuildBlocked("selected_package_version must retain its legacy v prefix")
+    # The target record retains its established v-prefixed wire value. Project
+    # exactly one prefix for the shared current-version grammar and build backend.
+    package_version = selected_version[1:]
+    try:
+        version_identity = _release_version_pair(package_version, release_tag)
+    except ReleaseControlError as exc:
+        raise ArtifactBuildBlocked(
+            "selected_package_version or selected_release_tag is invalid: " + str(exc)
+        ) from exc
+    if f"v{version_identity[0]}.{version_identity[1]}" != milestone:
         raise ArtifactBuildBlocked("selected package version is outside the resolved milestone")
-    if release_tag.rsplit(".", 1)[0] != milestone:
-        raise ArtifactBuildBlocked("selected release tag is outside the resolved milestone")
     source_sha = _required_string(source_data, "source_sha", _GIT_SHA)
     source_tree = _required_string(source_data, "source_tree", _GIT_SHA)
     source_digest = _required_string(source_data, "freeze_digest", _DIGEST)
@@ -183,7 +224,11 @@ def _load_inputs(
         Path(_git_output("rev-parse", "--show-toplevel")) if repository is None else repository
     )
     validate_release_source_freeze_record(
-        source_freeze, source_freeze_path.absolute(), repository=repository, live=not fixture_mode
+        source_freeze,
+        source_freeze_path.absolute(),
+        repository=repository,
+        live=not fixture_mode,
+        attestation_verifier=attestation_verifier,
     )
 
     return BuildInputs(
@@ -191,7 +236,7 @@ def _load_inputs(
         target_resolution=target_resolution,
         source_freeze=source_freeze,
         milestone=milestone,
-        package_version=selected_version.removeprefix("v"),
+        package_version=package_version,
         release_tag=release_tag,
         source_sha=source_sha,
         source_tree=source_tree,
@@ -428,10 +473,15 @@ def _execute(args: argparse.Namespace, *, context: ReleaseInvocation) -> None:
         raise ArtifactInputError(
             "artifact inputs must be the canonical records in the invocation run root"
         )
+    attestation_verifier = _attestation_verifier_from_args(
+        args, live=not fixture_mode, context=context
+    )
     inputs = _load_inputs(
         args.target_resolution,
         args.source_freeze,
         fixture_mode=fixture_mode,
+        attestation_verifier=attestation_verifier,
+        expected_authority_policy_digest=args.authority_policy_digest,
     )
     _validate_destinations(args.out_dir, args.manifest)
     source_date_epoch = _verify_frozen_source(inputs)

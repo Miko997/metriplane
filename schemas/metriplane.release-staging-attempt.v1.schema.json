@@ -1,9 +1,47 @@
 {
-  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$comment": "Prospective S3A supplied-input/schema projection. No native implementation, live approval or release qualification is claimed.",
   "$defs": {
+    "canonical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
     "digest": {
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "historical_release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "input_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "schema_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "schema_id"
+      ],
+      "type": "object"
     },
     "live_signature": {
       "additionalProperties": false,
@@ -55,6 +93,67 @@
     "nonempty": {
       "minLength": 1,
       "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "record_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
       "type": "string"
     },
     "signature": {
@@ -151,7 +250,7 @@
       "type": "string"
     }
   },
-  "$id": "https://metriplane.com/schemas/metriplane.release-target-resolution.v1.schema.json",
+  "$id": "https://metriplane.com/schemas/metriplane.release-staging-attempt.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "allOf": [
@@ -178,27 +277,35 @@
       }
     }
   ],
-  "description": "Closed subject-specific contract for release-target-resolution. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "description": "Closed subject-specific contract for release-staging-attempt. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
   "properties": {
     "data": {
       "additionalProperties": false,
       "properties": {
-        "burn_lineage_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "burn_target_ids": {
+        "available_inputs": {
           "items": {
-            "$ref": "#/$defs/nonempty"
+            "$ref": "#/$defs/input_ref"
           },
           "minItems": 0,
           "type": "array",
           "uniqueItems": true
         },
-        "initial_package_version": {
-          "$ref": "#/$defs/version"
+        "blockers": {
+          "items": {
+            "$ref": "#/$defs/nonempty"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
         },
-        "initial_release_tag": {
-          "$ref": "#/$defs/version"
+        "disposition": {
+          "enum": [
+            "TERMINAL",
+            "RECOVERABLE"
+          ]
+        },
+        "failed_invocation_digest": {
+          "$ref": "#/$defs/digest"
         },
         "invocation_root_locator": {
           "const": "invocations"
@@ -206,58 +313,68 @@
         "milestone": {
           "$ref": "#/$defs/milestone"
         },
-        "observations_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "prior_burn_digests": {
-          "items": {
-            "$ref": "#/$defs/digest"
-          },
-          "minItems": 0,
-          "type": "array",
-          "uniqueItems": true
-        },
         "producer_intent_digest": {
           "$ref": "#/$defs/digest"
         },
-        "release_context_digest": {
-          "$ref": "#/$defs/digest"
+        "recovery_envelope_digest": {
+          "$ref": "#/$defs/nullable_digest"
         },
-        "requires_new_burn": {
-          "type": "boolean"
-        },
-        "resolution_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "resolution_rule": {
+        "result": {
           "enum": [
-            "next_unused_same_milestone_patch",
-            "owner_approved_exact_target"
+            "FAIL",
+            "BLOCKED",
+            "CANCELLED"
           ]
         },
-        "selected_package_version": {
-          "$ref": "#/$defs/version"
+        "run_id": {
+          "$ref": "#/$defs/identifier"
         },
-        "selected_release_tag": {
-          "$ref": "#/$defs/version"
+        "sequence": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "stage": {
+          "enum": [
+            "role-resource-resolution",
+            "evidence-store-preflight",
+            "snapshot",
+            "release-metadata",
+            "target-observation",
+            "burn-lineage",
+            "target-resolution",
+            "target-burn",
+            "gate-input",
+            "source-freeze",
+            "impact",
+            "predecessor",
+            "delta",
+            "artifact-build",
+            "artifact-manifest",
+            "candidate-finalization",
+            "evaluation-adoption",
+            "attempt-index-update",
+            "attempt-index-validation",
+            "index-recovery"
+          ]
+        },
+        "stage_record_digest": {
+          "$ref": "#/$defs/nullable_digest"
         }
       },
       "required": [
-        "burn_lineage_digest",
-        "burn_target_ids",
-        "initial_package_version",
-        "initial_release_tag",
+        "available_inputs",
+        "blockers",
+        "disposition",
+        "failed_invocation_digest",
+        "invocation_root_locator",
         "milestone",
-        "observations_digest",
-        "prior_burn_digests",
-        "release_context_digest",
-        "requires_new_burn",
-        "resolution_digest",
-        "resolution_rule",
-        "selected_package_version",
-        "selected_release_tag",
         "producer_intent_digest",
-        "invocation_root_locator"
+        "recovery_envelope_digest",
+        "result",
+        "run_id",
+        "sequence",
+        "stage",
+        "stage_record_digest"
       ],
       "type": "object"
     },
@@ -272,7 +389,7 @@
       "$ref": "#/$defs/digest"
     },
     "record_type": {
-      "const": "release-target-resolution"
+      "const": "release-staging-attempt"
     },
     "schema_version": {
       "const": "metriplane.release-record.v1"
@@ -285,16 +402,7 @@
       "const": []
     },
     "status": {
-      "enum": [
-        "BLOCKED",
-        "CANCELLED",
-        "FAIL",
-        "INVALIDATED",
-        "OPEN",
-        "PASS",
-        "READY",
-        "SKIPPED"
-      ]
+      "const": "PASS"
     },
     "synthetic": {
       "type": "boolean"
@@ -312,13 +420,20 @@
     "status",
     "synthetic"
   ],
-  "title": "Metriplane release-target-resolution record",
+  "title": "Metriplane release-staging-attempt record",
   "type": "object",
+  "x-metriplane-origin": {
+    "kind": "CLI_PRODUCED_RECORD",
+    "producer": "record_release_staging_attempt.py",
+    "production_implementation": false,
+    "stage": "record-release-staging-attempt",
+    "terminal_digest_in_output": false
+  },
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
     "signature.subject_digest == sha256(canonical_json(decision_envelope))",
-    "all referenced digests resolve to the exact retained subject bytes",
-    "release_context_digest is the canonical complete supplied upstream release-context record; resolve it through exact journal/supplied-input bindings and validate its original governed registry and frozen project evidence"
-  ]
+    "all referenced digests resolve to the exact retained subject bytes"
+  ],
+  "x-metriplane-semantic-contract": "semantic-contract.md; full current controller integration and original native proof replay required; structure alone is insufficient"
 }

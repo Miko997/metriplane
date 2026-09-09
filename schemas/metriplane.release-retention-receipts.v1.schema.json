@@ -1,0 +1,501 @@
+{
+  "$comment": "Prospective S3A supplied-input/schema projection. No native implementation, live approval or release qualification is claimed.",
+  "$defs": {
+    "canonical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "historical_release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "record_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-retention-receipts.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-retention-receipts. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "all_content_equal": {
+          "const": true
+        },
+        "input_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "original_registry": {
+          "$ref": "#/$defs/record_file"
+        },
+        "phase": {
+          "enum": [
+            "assurance-closure",
+            "assurance-deliverable",
+            "assurance-packet",
+            "attempt",
+            "final",
+            "index-recovery",
+            "pointer-transition",
+            "pointer-transition-envelope",
+            "postpublication-conflict",
+            "prepublication",
+            "prepublication-blocker-attempt",
+            "release-completion",
+            "release-completion-task-state",
+            "release-finalizing-observation",
+            "release-task-finalizing",
+            "staging-failure",
+            "target-burn"
+          ]
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "receipt_set_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "retained_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "stores": {
+          "items": false,
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "backend_binding_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "content_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "hold_receipt_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "independence_group": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "namespace": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "native_proofs": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hold": {
+                      "$ref": "#/$defs/raw_file"
+                    },
+                    "put": {
+                      "$ref": "#/$defs/raw_file"
+                    },
+                    "read_back": {
+                      "$ref": "#/$defs/raw_file"
+                    }
+                  },
+                  "required": [
+                    "put",
+                    "hold",
+                    "read_back"
+                  ],
+                  "type": "object"
+                },
+                "object_key": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "put_receipt_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "read_back_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "store_id": {
+                  "const": "payload-store-a"
+                }
+              },
+              "required": [
+                "content_digest",
+                "hold_receipt_digest",
+                "independence_group",
+                "namespace",
+                "object_key",
+                "put_receipt_digest",
+                "read_back_digest",
+                "store_id",
+                "backend_binding_digest",
+                "native_proofs"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "backend_binding_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "content_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "hold_receipt_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "independence_group": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "namespace": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "native_proofs": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hold": {
+                      "$ref": "#/$defs/raw_file"
+                    },
+                    "put": {
+                      "$ref": "#/$defs/raw_file"
+                    },
+                    "read_back": {
+                      "$ref": "#/$defs/raw_file"
+                    }
+                  },
+                  "required": [
+                    "put",
+                    "hold",
+                    "read_back"
+                  ],
+                  "type": "object"
+                },
+                "object_key": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "put_receipt_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "read_back_digest": {
+                  "$ref": "#/$defs/digest"
+                },
+                "store_id": {
+                  "const": "payload-store-b"
+                }
+              },
+              "required": [
+                "content_digest",
+                "hold_receipt_digest",
+                "independence_group",
+                "namespace",
+                "object_key",
+                "put_receipt_digest",
+                "read_back_digest",
+                "store_id",
+                "backend_binding_digest",
+                "native_proofs"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "all_content_equal",
+        "input_digest",
+        "invocation_root_locator",
+        "original_registry",
+        "phase",
+        "producer_intent_digest",
+        "receipt_set_digest",
+        "retained_at",
+        "stores"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-retention-receipts"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "const": []
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-retention-receipts record",
+  "type": "object",
+  "x-metriplane-origin": {
+    "kind": "CLI_PRODUCED_RECORD",
+    "producer": "retain_release_evidence.py",
+    "production_implementation": false,
+    "stage": "retain-release-evidence",
+    "terminal_digest_in_output": false
+  },
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ],
+  "x-metriplane-semantic-contract": "semantic-contract.md; full current controller integration and original native proof replay required; structure alone is insufficient"
+}
