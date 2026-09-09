@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import hashlib
 import json
 import os
 import signal
@@ -10542,6 +10543,85 @@ def _predecessor_content_reseal(record: dict[str, Any]) -> None:
 
 def _predecessor_content_ref(path: str, raw: bytes) -> dict[str, Any]:
     return {"path": path, "bytes": len(raw), "sha256": release.sha256_bytes(raw)}
+
+
+def _predecessor_original_custody_fixture(root: Path) -> Path:
+    originals = {
+        "raw/provider.json": b"provider-state\n",
+        "git/blob": b"git object payload\n",
+        "artifacts/package.whl": b"wheel bytes\n",
+        "artifacts/package.tar.gz": b"sdist bytes\n",
+    }
+    for name, raw in originals.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    git_raw = originals["git/blob"]
+    git_oid = hashlib.sha1(
+        f"blob {len(git_raw)}\0".encode("ascii") + git_raw, usedforsecurity=False
+    ).hexdigest()
+    proof = {
+        "schema_version": "metriplane.release-predecessor-proof-index.v1",
+        "records": [],
+        "raw_proofs": [
+            {
+                "kind": "original_provider_state_readback",
+                "purpose": "fixture custody",
+                "original_file": _predecessor_content_ref(
+                    "raw/provider.json", originals["raw/provider.json"]
+                ),
+            }
+        ],
+        "git_objects": [
+            {
+                "kind": "original_git_object",
+                "object_type": "blob",
+                "git_object_id": git_oid,
+                "original_file": _predecessor_content_ref("git/blob", git_raw),
+            }
+        ],
+        "artifacts": [
+            {
+                "kind": "original_distribution_payload",
+                "artifact_kind": kind,
+                "filename": name,
+                "original_file": _predecessor_content_ref(path, originals[path]),
+            }
+            for kind, name, path in (
+                ("wheel", "package.whl", "artifacts/package.whl"),
+                ("sdist", "package.tar.gz", "artifacts/package.tar.gz"),
+            )
+        ],
+    }
+    path = root / "inputs/proof-index.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(release.canonical_json(proof))
+    return path
+
+
+def test_predecessor_original_custody_reads_every_exact_indexed_byte(tmp_path: Path) -> None:
+    proof_path = _predecessor_original_custody_fixture(tmp_path)
+    proof, records = release._release_predecessor_proof_originals(tmp_path, proof_path)
+    assert proof["schema_version"] == "metriplane.release-predecessor-proof-index.v1"
+    assert records == {}
+
+
+@pytest.mark.parametrize("mutation", ["bytes", "git-object", "alias"])
+def test_predecessor_original_custody_rejects_substitution(tmp_path: Path, mutation: str) -> None:
+    proof_path = _predecessor_original_custody_fixture(tmp_path)
+    if mutation == "bytes":
+        (tmp_path / "raw/provider.json").write_bytes(b"changed\n")
+    else:
+        proof = json.loads(proof_path.read_bytes())
+        if mutation == "git-object":
+            proof["git_objects"][0]["git_object_id"] = "0" * 40
+        else:
+            proof["artifacts"][1]["original_file"] = copy.deepcopy(
+                proof["artifacts"][0]["original_file"]
+            )
+        proof_path.write_bytes(release.canonical_json(proof))
+    with pytest.raises(release.ReleaseControlError):
+        release._release_predecessor_proof_originals(tmp_path, proof_path)
 
 
 def _predecessor_content_fixture(

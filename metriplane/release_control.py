@@ -7629,6 +7629,11 @@ def _validate_bound_invocation(
     }:
         _validate_release_target_bound_invocation(context, outputs=outputs, output_root=output_root)
         return
+    if tool in {"resolve_release_predecessor.py", "validate_release_predecessor.py"}:
+        _validate_release_predecessor_bound_invocation(
+            context, outputs=outputs, output_root=output_root
+        )
+        return
     if tool not in _INVOCATION_STAGES:
         return
     keyring_binding = (
@@ -10295,6 +10300,11 @@ def run_release_command(
                 inputs.extend(_release_target_command_input_paths(tool, argv, root))
             elif tool == "validate_release_target_resolution.py":
                 inputs.extend(_release_target_validation_input_paths(argv, root))
+            elif tool in {
+                "resolve_release_predecessor.py",
+                "validate_release_predecessor.py",
+            }:
+                inputs.extend(_release_predecessor_command_input_paths(tool, argv, root))
             else:
                 for flag, kind in [
                     ("gate-input", "release-gate-input"),
@@ -15673,6 +15683,309 @@ def _release_target_command_input_paths(
     if len({path for path, _ in result}) != len(result):
         raise ReleaseControlError("target control input paths alias")
     return result
+
+
+def _release_predecessor_command_input_paths(
+    tool: str, argv: Sequence[str], root: Path
+) -> list[tuple[Path, str]]:
+    """Close predecessor commands over every selected original byte before reservation."""
+    if tool not in {"resolve_release_predecessor.py", "validate_release_predecessor.py"}:
+        raise ReleaseControlError("predecessor input collector has another tool")
+    arguments = _release_original_arguments(tool, [tool, *argv])
+    cwd = _release_capture_absolute(Path.cwd())
+
+    def command_path(flag: str) -> Path:
+        path = _release_historical_path(arguments[flag], cwd)
+        if not path.is_relative_to(root) or path == root:
+            raise ReleaseControlError("predecessor command input escapes its run root: " + flag)
+        _release_relative_suffix(path.relative_to(root).as_posix(), "predecessor command input")
+        return path
+
+    if tool == "validate_release_predecessor.py":
+        record_path = command_path("record")
+        record = read_json(record_path)
+        validate_record(record, "release-predecessor")
+        producer_directory = (
+            root / "invocations/resolve-release-predecessor" / f"{record['sequence']:03d}"
+        )
+        producer = _validate_intent(producer_directory)
+        if producer.intent["invocation_id"] != record["invocation_id"]:
+            raise ReleaseControlError("predecessor validator selected another producer intent")
+        producer_cwd = _canonical_absolute_path(
+            producer.intent["environment"]["working_directory"],
+            "predecessor producer working directory",
+        )
+        producer_args = _release_original_arguments(
+            "resolve_release_predecessor.py", producer.intent["argv"]
+        )
+        original_directory = _release_historical_path(producer_args["invocation-dir"], producer_cwd)
+        original_root = original_directory.parents[2]
+        relocated: list[tuple[Path, str]] = [(record_path, "metriplane.release-predecessor.v1")]
+        for row in producer.intent["inputs"]:
+            original = _canonical_absolute_path(row["path"], "predecessor producer input")
+            try:
+                suffix = original.relative_to(original_root)
+            except ValueError as exc:
+                raise ReleaseControlError(
+                    "predecessor producer input escapes its run root"
+                ) from exc
+            relocated.append(
+                (
+                    root
+                    / _release_relative_suffix(
+                        suffix.as_posix(), "predecessor relocated producer input"
+                    ),
+                    row["schema_id"],
+                )
+            )
+        selected = {path for path, _ in relocated}
+        if any(
+            command_path(flag) not in selected for flag in ("release-context", "predecessor-policy")
+        ):
+            raise ReleaseControlError(
+                "predecessor validator selects inputs outside the original producer closure"
+            )
+        return relocated
+
+    fixed = (
+        ("release-context", "metriplane.release-context.v1"),
+        ("predecessor-policy", "application/octet-stream"),
+        ("prerequisite-proofs", "metriplane.release-predecessor-proof-index.v1"),
+        ("chain-genesis", "application/octet-stream"),
+        ("attempt-index-genesis", "application/octet-stream"),
+        ("stores", "metriplane.release-evidence-store-registry.v1"),
+        ("v0.4-genesis", "application/octet-stream"),
+    )
+    inputs = [(command_path(flag), schema) for flag, schema in fixed]
+    for name, schema in (
+        ("gate-input.json", "metriplane.release-gate-input.v1"),
+        ("target-resolution.json", "metriplane.release-target-resolution.v1"),
+    ):
+        path = root / name
+        if not path.is_file() or path.is_symlink():
+            raise ReleaseControlError("predecessor command lacks its bound " + name)
+        inputs.append((path, schema))
+
+    proof_path = command_path("prerequisite-proofs")
+    proof = _release_closed_mapping(
+        read_json(proof_path),
+        {"schema_version", "records", "raw_proofs", "git_objects", "artifacts"},
+        "predecessor command proof index",
+    )
+    if proof["schema_version"] != "metriplane.release-predecessor-proof-index.v1":
+        raise ReleaseControlError("predecessor command proof index type differs")
+    for group in ("records", "raw_proofs", "git_objects", "artifacts"):
+        rows = proof[group]
+        if not isinstance(rows, list):
+            raise ReleaseControlError("predecessor command proof group is not a list")
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("original_file"), dict):
+                raise ReleaseControlError("predecessor command proof row lacks original bytes")
+            reference = row["original_file"]
+            suffix = _release_relative_suffix(
+                reference.get("path"), "predecessor command proof original path"
+            )
+            schema = (
+                "metriplane." + str(row.get("record_type")) + ".v1"
+                if group == "records"
+                else "application/octet-stream"
+            )
+            inputs.append((root / suffix, schema))
+    selected: dict[Path, str] = {}
+    for path, schema in inputs:
+        if path in selected and selected[path] != schema:
+            raise ReleaseControlError("predecessor command aliases differently typed inputs")
+        selected[path] = schema
+    return sorted(selected.items(), key=lambda row: str(row[0]))
+
+
+def _release_predecessor_proof_originals(
+    root: Path, proof_path: Path
+) -> tuple[dict[str, Any], dict[tuple[str, str], tuple[Path, dict[str, Any]]]]:
+    """Read and authenticate every indexed predecessor original from one retained root."""
+    root = _release_capture_absolute(root)
+    proof_path = _release_capture_absolute(proof_path)
+    if not proof_path.is_relative_to(root):
+        raise ReleaseControlError("predecessor proof index escapes its retained root")
+    proof = _release_closed_mapping(
+        read_json(proof_path),
+        {"schema_version", "records", "raw_proofs", "git_objects", "artifacts"},
+        "predecessor proof index",
+    )
+    if proof["schema_version"] != "metriplane.release-predecessor-proof-index.v1":
+        raise ReleaseControlError("predecessor proof index type differs")
+    originals: dict[tuple[str, str], tuple[Path, dict[str, Any]]] = {}
+    paths: set[Path] = set()
+    for group in ("records", "raw_proofs", "git_objects", "artifacts"):
+        rows = proof[group]
+        if not isinstance(rows, list):
+            raise ReleaseControlError("predecessor proof group is not a list")
+        for value in rows:
+            if not isinstance(value, dict):
+                raise ReleaseControlError("predecessor proof row is not an object")
+            reference = _release_closed_mapping(
+                value.get("original_file"),
+                {"path", "bytes", "sha256"},
+                "predecessor indexed original",
+            )
+            path = root / _release_relative_suffix(
+                reference["path"], "predecessor indexed original path"
+            )
+            if path in paths:
+                raise ReleaseControlError("predecessor proof index aliases original paths")
+            paths.add(path)
+            raw = _safe_release_bytes(path)
+            if (
+                type(reference["bytes"]) is not int
+                or reference["bytes"] < 0
+                or len(raw) != reference["bytes"]
+                or sha256_bytes(raw)
+                != _require_digest(reference["sha256"], "predecessor indexed original R")
+            ):
+                raise ReleaseControlError("predecessor indexed original bytes differ")
+            if group == "records":
+                record_type = _require_nonempty_string(
+                    value.get("record_type"), "predecessor indexed record type"
+                )
+                record = _source_json(raw, "predecessor indexed record")
+                validate_record(record, record_type)
+                digest = _require_digest(value.get("record_digest"), "predecessor indexed record C")
+                if raw != canonical_json(record) or sha256_json(record) != digest:
+                    raise ReleaseControlError(
+                        "predecessor indexed record differs from its canonical identity"
+                    )
+                key = (record_type, digest)
+                if key in originals:
+                    raise ReleaseControlError("predecessor proof index repeats a record identity")
+                originals[key] = (path, record)
+            elif group == "git_objects":
+                object_type = value.get("object_type")
+                if object_type not in {"blob", "commit", "tag", "tree"}:
+                    raise ReleaseControlError("predecessor indexed Git object type differs")
+                oid = _release_git_oid(value.get("git_object_id"), "predecessor indexed Git object")
+                actual = hashlib.sha1(
+                    f"{object_type} {len(raw)}\0".encode("ascii") + raw,
+                    usedforsecurity=False,
+                ).hexdigest()
+                if actual != oid:
+                    raise ReleaseControlError("predecessor indexed Git object bytes differ")
+            elif group == "artifacts":
+                if value.get("artifact_kind") not in {"wheel", "sdist"}:
+                    raise ReleaseControlError("predecessor indexed artifact type differs")
+                _require_nonempty_string(
+                    value.get("filename"), "predecessor indexed artifact filename"
+                )
+    return proof, originals
+
+
+def _release_predecessor_context_path(context: ReleaseInvocation, value: object) -> Path:
+    """Relocate one original predecessor path into the current retained run root."""
+    cwd = _canonical_absolute_path(
+        context.intent["environment"]["working_directory"],
+        "predecessor command working directory",
+    )
+    arguments = _release_original_arguments(context.intent["tool"], context.intent["argv"])
+    original_directory = _release_historical_path(arguments["invocation-dir"], cwd)
+    if original_directory.parts[-3:] != (
+        "invocations",
+        _invocation_stage(context.intent["tool"]),
+        f"{context.intent['sequence']:03d}",
+    ):
+        raise ReleaseControlError(
+            "predecessor command invocation path changes its reserved sequence"
+        )
+    original_root = original_directory.parents[2]
+    original = _release_historical_path(value, cwd)
+    try:
+        suffix = original.relative_to(original_root)
+    except ValueError as exc:
+        raise ReleaseControlError(
+            "predecessor command input escapes its original run root"
+        ) from exc
+    return context.root / _release_relative_suffix(
+        suffix.as_posix(), "predecessor command input path"
+    )
+
+
+def _validate_release_predecessor_bound_invocation(
+    context: ReleaseInvocation,
+    *,
+    outputs: list[dict[str, str]] | None = None,
+    output_root: Path | None = None,
+) -> None:
+    """Replay predecessor reservation from its exact relocated closed input inventory."""
+    tool = context.intent["tool"]
+    if tool not in {"resolve_release_predecessor.py", "validate_release_predecessor.py"}:
+        raise ReleaseControlError("predecessor invocation binding has another tool")
+    expected_directory = (
+        context.root / "invocations" / _invocation_stage(tool) / f"{context.intent['sequence']:03d}"
+    )
+    if context.directory != expected_directory:
+        raise ReleaseControlError("predecessor invocation differs from its retained root")
+    arguments = _release_original_arguments(tool, context.intent["argv"])
+    if _release_predecessor_context_path(context, arguments["invocation-dir"]) != context.directory:
+        raise ReleaseControlError("predecessor invocation argument differs from its journal")
+    current: dict[Path, str] = {}
+    for row in context.intent["inputs"]:
+        path = _release_predecessor_context_path(context, row["path"])
+        schema = _require_nonempty_string(row["schema_id"], "predecessor captured input schema")
+        if path in current and current[path] != schema:
+            raise ReleaseControlError("predecessor captured inputs alias different types")
+        if sha256_bytes(_safe_release_bytes(path)) != _require_digest(
+            row["sha256"], "predecessor captured input R"
+        ):
+            raise ReleaseControlError("predecessor captured input changed after reservation")
+        current[path] = schema
+
+    if tool == "resolve_release_predecessor.py":
+        proof_path = _release_predecessor_context_path(context, arguments["prerequisite-proofs"])
+        proof, _ = _release_predecessor_proof_originals(context.root, proof_path)
+        required = {
+            _release_predecessor_context_path(context, arguments[flag])
+            for flag in (
+                "release-context",
+                "predecessor-policy",
+                "prerequisite-proofs",
+                "chain-genesis",
+                "attempt-index-genesis",
+                "stores",
+                "v0.4-genesis",
+            )
+        } | {context.root / "gate-input.json", context.root / "target-resolution.json"}
+        for group in ("records", "raw_proofs", "git_objects", "artifacts"):
+            required.update(
+                context.root
+                / _release_relative_suffix(
+                    row["original_file"]["path"], "predecessor required original path"
+                )
+                for row in proof[group]
+            )
+        if set(current) != required:
+            raise ReleaseControlError("predecessor captured input closure differs from proof graph")
+        expected_plan = [
+            {"path": Path(arguments["out"]).name, "schema_id": "metriplane.release-predecessor.v1"}
+        ]
+    else:
+        record_path = _release_predecessor_context_path(context, arguments["record"])
+        record = read_json(record_path)
+        validate_record(record, "release-predecessor")
+        validate_release_producer_journal(
+            record, record_path, producer="resolve_release_predecessor.py"
+        )
+        for flag in ("release-context", "predecessor-policy"):
+            if _release_predecessor_context_path(context, arguments[flag]) not in current:
+                raise ReleaseControlError("predecessor validator changed producer inputs")
+        expected_plan = []
+    if context.intent["planned_outputs"] != expected_plan:
+        raise ReleaseControlError("predecessor invocation output plan differs")
+    if outputs is not None:
+        root = context.root if output_root is None else output_root
+        expected_outputs = [
+            {**row, "sha256": sha256_bytes(_safe_release_bytes(root / row["path"]))}
+            for row in expected_plan
+        ]
+        if outputs != expected_outputs:
+            raise ReleaseControlError("predecessor output bytes differ from its plan")
 
 
 def _release_target_validation_input_paths(
