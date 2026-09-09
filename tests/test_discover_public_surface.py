@@ -201,11 +201,11 @@ def test_production_census_is_exact_and_family_closed(
     production_discovery: scanner.Discovery,
 ) -> None:
     assert dict(production_discovery.family_counts) == scanner.EXPECTED_FAMILY_COUNTS
-    assert len(production_discovery.rows) == 10_941
-    assert sum(production_discovery.family_counts.values()) == 10_941
+    assert len(production_discovery.rows) == 10_943
+    assert sum(production_discovery.family_counts.values()) == 10_943
     assert production_discovery.family_counts["public_api"] == 2_514
     assert production_discovery.family_counts["manifest_keys"] == 3_938
-    assert production_discovery.family_counts["resources"] == 1_633
+    assert production_discovery.family_counts["resources"] == 1_634
 
 
 def test_two_discovery_runs_are_byte_deterministic(

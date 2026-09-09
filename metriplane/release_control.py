@@ -7467,6 +7467,7 @@ def _validate_terminal_entry(
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
             "export_release_attempt_index.py",
+            "update_release_attempt_index.py",
         } and os.path.lexists(context.directory / "worker-result.json"):
             witness_raw = _safe_release_bytes(context.directory / "terminal-commit.json")
             witness = _source_json(witness_raw, "native fixture terminal witness")
@@ -8605,6 +8606,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "require-fresh-through-commit bind-live-refetch-in-receipt out",
         boolean="candidate-id-not-resolved provider-auth-from-approved-environment "
         "require-fresh-through-commit bind-live-refetch-in-receipt",
+        optional="scope-id",
         integer="sequence assurance-round",
         choices={
             "scope-kind": (
@@ -10060,6 +10062,7 @@ def run_release_command(
                 "record_release_role_assignments.py",
                 "retain_release_evidence.py",
                 "export_release_attempt_index.py",
+                "update_release_attempt_index.py",
             }
             and os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
         ):
@@ -13714,6 +13717,7 @@ def _release_captured_journal_members(
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
             "export_release_attempt_index.py",
+            "update_release_attempt_index.py",
         }
     ):
         allowed.add("terminal-commit.json")
@@ -13790,6 +13794,7 @@ def _release_captured_journal_members(
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
             "export_release_attempt_index.py",
+            "update_release_attempt_index.py",
         }:
             witness = _release_closed_mapping(
                 _source_json(read("terminal-commit.json"), "prerequisite terminal witness"),
@@ -22922,6 +22927,10 @@ def _release_fixture_seed_prepare(
             scope = _release_index_scope_content(
                 selection["expected_scope"], milestone=selection["expected_milestone"]
             )
+            if arguments.get("scope-id") not in {None, scope["scope_id"]}:
+                raise ReleaseControlError(
+                    "fixture original CAS command changes independent scope identity"
+                )
             for flag, value in {
                 "scope-kind": scope["kind"],
                 "stage": scope["stage"],
@@ -23798,6 +23807,7 @@ def _release_fixture_command_prepare(
         "record_release_role_assignments.py",
         "retain_release_evidence.py",
         "export_release_attempt_index.py",
+        "update_release_attempt_index.py",
     } or argv[:1] != [tool]:
         raise ReleaseControlError("fixture native command has another owner")
     root = directory.parents[2]
@@ -23853,6 +23863,10 @@ def _release_fixture_command_prepare(
     elif tool == "export_release_attempt_index.py":
         held, expected_inputs, input_types, selection = (
             _release_fixture_index_export_command_inputs(root, arguments, cwd)
+        )
+    elif tool == "update_release_attempt_index.py":
+        held, expected_inputs, input_types, selection = (
+            _release_fixture_index_update_command_inputs(root, arguments, cwd)
         )
     else:
         held, expected_inputs, input_types, selection = _release_fixture_preflight_command_inputs(
@@ -24193,6 +24207,155 @@ def _release_fixture_index_export_command_inputs(
     return held, expected_inputs, input_types, {"genesis_digest": genesis_digest}
 
 
+def _release_fixture_index_update_command_inputs(
+    root: Path, arguments: Mapping[str, Any], cwd: Path
+) -> tuple[
+    _ReleaseCapturedFiles,
+    dict[str, list[dict[str, str]]],
+    dict[str, str],
+    dict[str, Any],
+]:
+    """Capture one first-generation fixture CAS and its retained staging subject."""
+    if arguments["scope-kind"] != "release_staging" or arguments["stage"] not in {
+        "target-burn",
+        "staging-failure",
+    }:
+        raise ReleaseControlError(
+            "INDEX_UPDATE_SCOPE_GRAPH_REQUIRED: fixture CAS needs a release-staging subject"
+        )
+    paths = {
+        "entry-manifest": (
+            _release_historical_path(arguments["entry-manifest"], cwd),
+            "metriplane.release-evidence-manifest.v1",
+        ),
+        "entry-receipts": (
+            _release_historical_path(arguments["entry-receipts"], cwd),
+            "metriplane.release-retention-receipts.v1",
+        ),
+    }
+    if any(not path.is_relative_to(root) or path == root for path, _ in paths.values()):
+        raise ReleaseControlError("fixture CAS manifest or retention escapes its run root")
+    first = _ReleaseCapturedFiles.capture(
+        root,
+        [
+            *(
+                (path.relative_to(root).as_posix(), "prerequisite-original")
+                for path, _ in paths.values()
+            ),
+            ("inputs/genesis.json", "prerequisite-original"),
+        ],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
+    manifest_path = paths["entry-manifest"][0]
+    manifest_raw = first.read(
+        manifest_path.relative_to(root).as_posix(), kind="prerequisite-original"
+    )
+    manifest = _source_json(manifest_raw, "fixture CAS original manifest")
+    validate_record(manifest, "release-evidence-manifest")
+    if manifest["status"] != "PASS" or manifest["synthetic"] is not True:
+        raise ReleaseControlError("fixture CAS manifest is not passing synthetic evidence")
+    scope_id = _require_nonempty_string(
+        arguments.get("scope-id"), "fixture CAS independently selected scope"
+    )
+    scope = _release_index_scope_content(
+        {
+            "kind": "release_staging",
+            "scope_id": scope_id,
+            "stage": arguments["stage"],
+            "sequence": arguments["sequence"],
+            "milestone": arguments["milestone"],
+            "run_id": arguments["run-id"],
+            "release_tag": arguments["release-tag"],
+            "candidate_id": None,
+        },
+        milestone=arguments["milestone"],
+    )
+    role = (
+        "release-target-burn" if arguments["stage"] == "target-burn" else "release-staging-attempt"
+    )
+    entries = _release_evidence_manifest_content(manifest["data"])
+    matches = list(entries)
+    if len(matches) != 1:
+        raise ReleaseControlError("fixture CAS manifest does not select exactly one subject")
+    entry_root = _release_index_manifest_entry_root(
+        root=root, manifest_path=manifest_path, manifest=manifest, scope=scope
+    )
+    subject_path = entry_root / _release_relative_suffix(
+        matches[0]["path"], "fixture CAS manifest subject"
+    )
+    if not subject_path.is_relative_to(root):
+        raise ReleaseControlError("fixture CAS subject escapes its run root")
+    subject_name = subject_path.relative_to(root).as_posix()
+    subject_capture = _ReleaseCapturedFiles.capture(
+        root,
+        [(subject_name, "prerequisite-original")],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+        expected_root_directories=first.root_directories,
+        expected_known_directories=first.rows[0][4],
+    )
+    held = _ReleaseCapturedFiles(
+        root, first.root_directories, tuple(sorted((*first.rows, *subject_capture.rows)))
+    )
+    subject_raw = held.read(subject_name, kind="prerequisite-original")
+    if len(subject_raw) != matches[0]["size"] or sha256_bytes(subject_raw) != matches[0]["sha256"]:
+        raise ReleaseControlError("fixture CAS subject differs from its manifest")
+    subject_record = _source_json(subject_raw, "fixture CAS subject")
+    subject_kind = (
+        "release-target-burn" if role == "release-target-burn" else "release-staging-attempt"
+    )
+    validate_record(subject_record, subject_kind)
+    genesis_path = root / "inputs/genesis.json"
+    genesis_raw = held.read("inputs/genesis.json", kind="prerequisite-original")
+    genesis_digest = sha256_bytes(genesis_raw)
+    _release_fixture_index_genesis(genesis_raw)
+    if arguments["expected-head"] != genesis_digest:
+        raise ReleaseControlError(
+            "INDEX_UPDATE_PRIOR_HISTORY_REQUIRED: non-genesis CAS needs its prior index graph"
+        )
+    expected_inputs = {
+        flag: [
+            {
+                "path": path.relative_to(root).as_posix(),
+                "schema_id": schema,
+                "sha256": sha256_bytes(
+                    held.read(path.relative_to(root).as_posix(), kind="prerequisite-original")
+                ),
+            }
+        ]
+        for flag, (path, schema) in paths.items()
+    }
+    input_types = {
+        **{path.relative_to(root).as_posix(): schema for path, schema in paths.values()},
+        "inputs/genesis.json": "metriplane.release-fixture-index-genesis.v1",
+        subject_name: "metriplane." + subject_kind + ".v1",
+    }
+    held.revalidate()
+    return (
+        held,
+        expected_inputs,
+        input_types,
+        {
+            "genesis_path": genesis_path,
+            "genesis_digest": genesis_digest,
+            "expected_prior_generation": 0,
+            "subject_path": subject_path,
+            "subject_record": subject_record,
+            "expected_scope": scope,
+            "expected_operation_id": arguments["operation-id"],
+            "expected_milestone": arguments["milestone"],
+            "expected_release_tag": arguments["release-tag"],
+            "expected_index_backend": arguments["index-backend"],
+            "expected_prior_head": arguments["expected-head"],
+            "attempt_directory": None,
+            "expected_attempt_id": None,
+            "coordination_record": None,
+            "coordination_path": None,
+        },
+    )
+
+
 def _release_fixture_primary(
     emulation: _ReleaseFixtureEmulation,
 ) -> bytes:
@@ -24403,6 +24566,47 @@ def _release_fixture_primary(
             "producer_intent_digest": sha256_json(original.intent),
             "invocation_root_locator": "invocations",
         }
+        return canonical_json(
+            make_record(
+                "release-attempt-index",
+                data,
+                invocation_id=original.intent["invocation_id"],
+                sequence=original.intent["sequence"],
+                synthetic=True,
+            )
+        )
+    if plan.tool == "update_release_attempt_index.py":
+        response = _source_json(plan.response_payloads[0], "fixture CAS response")
+        entry = _release_index_entry_content(response["entry"])
+        scope = entry["scope"]
+        data = {
+            **{
+                field: entry[field]
+                for field in (
+                    "backend_id",
+                    "genesis_digest",
+                    "generation",
+                    "previous_head",
+                    "operation_id",
+                    "token",
+                    "milestone",
+                    "entry_manifest_digest",
+                    "entry_receipts_digest",
+                )
+            },
+            "committed_head": response["committed_head"],
+            "disposition": response["disposition"],
+            "read_back_digest": response["read_back_digest"],
+            "scope_id": scope["scope_id"],
+            "scope_kind": scope["kind"],
+            "sequence": scope["sequence"],
+            "stage": scope["stage"],
+            "kind": "update_receipt",
+            "entry_scope": scope,
+            "producer_intent_digest": sha256_json(original.intent),
+            "invocation_root_locator": "invocations",
+        }
+        _release_index_receipt_content(data)
         return canonical_json(
             make_record(
                 "release-attempt-index",

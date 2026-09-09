@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `2d5e2c2c161ce2faf6569f8ddaff9b7d25d53b7810a5493f41bef2af91d7f007`
+Canonical projection SHA-256: `35ce31afb166d5df0df012bbc60094c413c95c2dd6b26720ff3ef163618f41dc`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 181 |
+| actions | 182 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -313,6 +313,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.start_metriplane | tool | Start Metriplane | tools/start_metriplane.sh |
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
+| tool.update_release_attempt_index | tool | Update Release Attempt Index | python tools/update_release_attempt_index.py |
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
 | tool.validate_publication_reconciliation | tool | Validate Publication Reconciliation | python tools/validate_publication_reconciliation.py |

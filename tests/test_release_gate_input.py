@@ -31,6 +31,7 @@ from metriplane import release_control as release
         "export_release_attempt_index.py",
         "record_release_role_assignments.py",
         "retain_release_evidence.py",
+        "update_release_attempt_index.py",
         "validate_release_evidence_stores.py",
         "validate_publication_reconciliation.py",
         "validate_release_approval.py",
@@ -16392,6 +16393,7 @@ def test_seed_staging_cas_seed_uses_original_subject_graph_before_receipt_withou
         "entry-manifest": "manifest.json",
         "entry-receipts": "retention.json",
         "scope-kind": "release_staging",
+        "scope-id": selection["expected_scope"]["scope_id"],
         "stage": "target-burn",
         "sequence": "001",
         "release-tag": "v0.4.1",
@@ -16446,6 +16448,36 @@ def test_seed_staging_cas_seed_uses_original_subject_graph_before_receipt_withou
     )
     assert json.loads(plan.response_payloads[0])["entry"]["token"] != response["committed_head"]
     assert not (root / "invocations").exists()
+    public_arguments = release._release_original_arguments(argv[0], argv)
+    without_scope = dict(public_arguments)
+    without_scope.pop("scope-id")
+    with pytest.raises(release.ReleaseControlError, match="independently selected scope"):
+        release._release_fixture_index_update_command_inputs(root, without_scope, Path.cwd())
+    stale_head = dict(public_arguments)
+    stale_head["expected-head"] = "f" * 64
+    with pytest.raises(release.ReleaseControlError, match="prior index graph"):
+        release._release_fixture_index_update_command_inputs(root, stale_head, Path.cwd())
+    repository = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(repository / "tools" / argv[0]), *argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    record_path = root / "primary.json"
+    record = json.loads(record_path.read_bytes())
+    release.validate_release_producer_journal(
+        record, record_path, producer="update_release_attempt_index.py"
+    )
+    assert release._release_index_receipt_content(record["data"]) == entry
+    assert record["data"]["committed_head"] == release.sha256_json(entry)
+    (root / "invocations/update-release-attempt-index/001/terminal-commit.json").unlink()
+    with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
+        release.validate_release_producer_journal(
+            record, record_path, producer="update_release_attempt_index.py"
+        )
     with pytest.raises(release.ReleaseControlError):
         release._release_fixture_seed_prepare(
             argv[0],
