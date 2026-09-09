@@ -1,0 +1,923 @@
+{
+  "$comment": "Validators must recompute payload_digest and record_id, require every signature subject_digest to equal the canonical decision-envelope digest, and verify all referenced records by digest.",
+  "$defs": {
+    "complete_export_data": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "entries": {
+                "minItems": 1
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "generation": {
+                "const": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "entries": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "backend_binding_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "backend_id": {
+          "const": "attempt-index"
+        },
+        "capture_completed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "capture_started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/export_entry"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "generation": {
+          "$ref": "#/$defs/nonnegative"
+        },
+        "genesis": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "genesis_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "head_observation": {
+          "$ref": "#/$defs/head_observation"
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "kind": {
+          "const": "complete_export"
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "through_head": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "kind",
+        "backend_id",
+        "backend_binding_digest",
+        "genesis",
+        "genesis_digest",
+        "through_head",
+        "generation",
+        "capture_started_at",
+        "capture_completed_at",
+        "entries",
+        "head_observation",
+        "producer_intent_digest",
+        "invocation_root_locator"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "entry_scope": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "kind": {
+              "const": "release_staging"
+            },
+            "milestone": {
+              "$ref": "#/$defs/milestone"
+            },
+            "release_tag": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/nonempty"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "run_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "scope_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "sequence": {
+              "$ref": "#/$defs/positive"
+            },
+            "stage": {
+              "$ref": "#/$defs/nonempty"
+            }
+          },
+          "required": [
+            "scope_id",
+            "stage",
+            "sequence",
+            "kind",
+            "milestone",
+            "run_id",
+            "release_tag",
+            "candidate_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_id": {
+              "$ref": "#/$defs/digest"
+            },
+            "kind": {
+              "const": "release_candidate"
+            },
+            "release_tag": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "scope_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "sequence": {
+              "$ref": "#/$defs/positive"
+            },
+            "stage": {
+              "$ref": "#/$defs/nonempty"
+            }
+          },
+          "required": [
+            "scope_id",
+            "stage",
+            "sequence",
+            "kind",
+            "release_tag",
+            "candidate_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "evaluation_id": {
+              "type": "null"
+            },
+            "kind": {
+              "const": "evaluation_staging"
+            },
+            "milestone": {
+              "$ref": "#/$defs/milestone"
+            },
+            "run_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "scope_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "sequence": {
+              "$ref": "#/$defs/positive"
+            },
+            "stage": {
+              "$ref": "#/$defs/nonempty"
+            }
+          },
+          "required": [
+            "scope_id",
+            "stage",
+            "sequence",
+            "kind",
+            "milestone",
+            "run_id",
+            "evaluation_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "else": {
+                "properties": {
+                  "slot": {
+                    "type": "null"
+                  }
+                }
+              },
+              "if": {
+                "properties": {
+                  "stage": {
+                    "const": "external-evaluation"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "slot": {
+                    "$ref": "#/$defs/identifier"
+                  }
+                }
+              }
+            }
+          ],
+          "properties": {
+            "evaluation_id": {
+              "$ref": "#/$defs/digest"
+            },
+            "kind": {
+              "const": "evaluation_candidate"
+            },
+            "milestone": {
+              "$ref": "#/$defs/milestone"
+            },
+            "scope_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "sequence": {
+              "$ref": "#/$defs/positive"
+            },
+            "slot": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/identifier"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "stage": {
+              "$ref": "#/$defs/nonempty"
+            }
+          },
+          "required": [
+            "scope_id",
+            "stage",
+            "sequence",
+            "kind",
+            "milestone",
+            "evaluation_id",
+            "slot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "assurance_round": {
+              "$ref": "#/$defs/positive"
+            },
+            "candidate_id": {
+              "$ref": "#/$defs/digest"
+            },
+            "completion_manifest_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "kind": {
+              "const": "release_completion"
+            },
+            "release_tag": {
+              "$ref": "#/$defs/nonempty"
+            },
+            "scope_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "sequence": {
+              "$ref": "#/$defs/positive"
+            },
+            "stage": {
+              "const": "release-completion"
+            }
+          },
+          "required": [
+            "scope_id",
+            "stage",
+            "sequence",
+            "kind",
+            "release_tag",
+            "candidate_id",
+            "assurance_round",
+            "completion_manifest_digest"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "export_entry": {
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/native_entry_projection"
+        },
+        "entry_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "original_manifest": {
+          "$ref": "#/$defs/manifest_record_ref"
+        },
+        "original_native_response": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "original_receipt": {
+          "$ref": "#/$defs/receipt_record_ref"
+        },
+        "original_retention": {
+          "$ref": "#/$defs/retention_record_ref"
+        }
+      },
+      "required": [
+        "entry",
+        "entry_digest",
+        "original_native_response",
+        "original_receipt",
+        "original_manifest",
+        "original_retention"
+      ],
+      "type": "object"
+    },
+    "head_observation": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": {
+          "$ref": "#/$defs/nonnegative"
+        },
+        "head": {
+          "$ref": "#/$defs/digest"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "original_native_response": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "head",
+        "generation",
+        "observed_at",
+        "original_native_response"
+      ],
+      "type": "object"
+    },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "manifest_record_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "record_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "record_type": {
+          "const": "release-evidence-manifest"
+        }
+      },
+      "required": [
+        "record_type",
+        "record_digest",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "native_entry_projection": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_id": {
+          "const": "attempt-index"
+        },
+        "entry_manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "entry_receipts_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "generation": {
+          "$ref": "#/$defs/positive"
+        },
+        "genesis_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "previous_head": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schema_version": {
+          "const": "metriplane.release-attempt-index-entry.v1"
+        },
+        "scope": {
+          "$ref": "#/$defs/entry_scope"
+        },
+        "token": {
+          "$ref": "#/$defs/nonempty"
+        }
+      },
+      "required": [
+        "schema_version",
+        "backend_id",
+        "genesis_digest",
+        "generation",
+        "previous_head",
+        "operation_id",
+        "token",
+        "milestone",
+        "scope",
+        "entry_manifest_digest",
+        "entry_receipts_digest"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "nonnegative": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "positive": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "receipt_record_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "record_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "record_type": {
+          "const": "release-attempt-index"
+        }
+      },
+      "required": [
+        "record_type",
+        "record_digest",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "record_ref_base": {
+      "additionalProperties": false,
+      "properties": {
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "record_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "record_type": {
+          "$ref": "#/$defs/nonempty"
+        }
+      },
+      "required": [
+        "record_type",
+        "record_digest",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "retention_record_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "record_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "record_type": {
+          "const": "release-retention-receipts"
+        }
+      },
+      "required": [
+        "record_type",
+        "record_digest",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "update_receipt_data": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_id": {
+          "const": "attempt-index"
+        },
+        "committed_head": {
+          "$ref": "#/$defs/digest"
+        },
+        "disposition": {
+          "enum": [
+            "committed",
+            "idempotent"
+          ]
+        },
+        "entry_manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "entry_receipts_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "entry_scope": {
+          "$ref": "#/$defs/entry_scope"
+        },
+        "generation": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "genesis_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "kind": {
+          "const": "update_receipt"
+        },
+        "milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "previous_head": {
+          "$ref": "#/$defs/nullable_digest"
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "read_back_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scope_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "scope_kind": {
+          "enum": [
+            "release_staging",
+            "release_candidate",
+            "evaluation_staging",
+            "evaluation_candidate",
+            "release_completion"
+          ]
+        },
+        "sequence": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "stage": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "token": {
+          "$ref": "#/$defs/nonempty"
+        }
+      },
+      "required": [
+        "backend_id",
+        "committed_head",
+        "disposition",
+        "entry_manifest_digest",
+        "entry_receipts_digest",
+        "generation",
+        "milestone",
+        "operation_id",
+        "previous_head",
+        "read_back_digest",
+        "scope_id",
+        "scope_kind",
+        "sequence",
+        "stage",
+        "token",
+        "kind",
+        "genesis_digest",
+        "entry_scope",
+        "producer_intent_digest",
+        "invocation_root_locator"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-attempt-index.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-attempt-index. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/update_receipt_data"
+        },
+        {
+          "$ref": "#/$defs/complete_export_data"
+        }
+      ]
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-attempt-index"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-attempt-index record",
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes",
+    "Exactly update_receipt from update_release_attempt_index or complete_export from export_release_attempt_index; require their fixed producer/stage and complete original journal. Missing/mixed kinds or receipt-as-export are invalid.",
+    "genesis_digest=R(exact independently approved original genesis bytes). Generation0 through_head is this genesis digest. First committed previous_head is null only at generation1 with this independently bound genesis; later previous_head is the prior entry digest.",
+    "Each native entry projection is derived from original authenticated readback bytes by the exact approved existing adapter. entry_digest=C(complete normalized entry); each receipt committed_head and read_back_digest equal this identity. Native raw-file sha256 remains R(bytes), distinct from that entry identity.",
+    "Replay generations1..N and previous heads from original genesis without gaps, forks or duplicate logical operations; original idempotent replay does not allocate a generation. Bind every original receipt/manifest/retention and read back the complete immutable payload closure in both approved independent stores.",
+    "Final through_head/generation equal the last entry (or genuine empty genesis) and authenticated original head observation; capture interval encloses the observation. A stale or unbound snapshot cannot authorize a current absence/closure decision.",
+    "This complete export proves full index traversal/byte readback, not release qualification. Selected predecessor records still require all original type-specific semantic validators. Unsupported native wire, unknown stage/kind or missing retention/journal closure blocks instead of skipping it.",
+    "The ordinary S3A profile does not execute future evaluation/completion workflows; a required unimplemented stage proof remains explicitly blocked."
+  ]
+}

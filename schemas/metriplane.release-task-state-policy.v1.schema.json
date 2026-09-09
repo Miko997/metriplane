@@ -1,0 +1,562 @@
+{
+  "$comment": "Prospective S3A supplied-input/schema projection. No native implementation, live approval or release qualification is claimed.",
+  "$defs": {
+    "canonical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "historical_release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "record_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "release_tag": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "transition": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "from": {
+                  "const": "open_running"
+                },
+                "to": {
+                  "const": "open_finalizing"
+                }
+              }
+            },
+            {
+              "properties": {
+                "from": {
+                  "const": "open_finalizing"
+                },
+                "to": {
+                  "const": "closed"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "authorized_role": {
+          "const": "release_operator"
+        },
+        "from": {
+          "enum": [
+            "open_running",
+            "open_finalizing"
+          ]
+        },
+        "provider_event_required": {
+          "const": true
+        },
+        "to": {
+          "enum": [
+            "open_finalizing",
+            "closed"
+          ]
+        }
+      },
+      "required": [
+        "authorized_role",
+        "from",
+        "provider_event_required",
+        "to"
+      ],
+      "type": "object"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "workflow_state": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "key": {
+          "enum": [
+            "open_running",
+            "open_finalizing",
+            "closed"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "type": {
+          "enum": [
+            "started",
+            "completed"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "id",
+        "name",
+        "type"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-task-state-policy.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "signatures": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-task-state-policy. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_transitions": {
+          "const": [
+            {
+              "authorized_role": "release_operator",
+              "from": "open_running",
+              "provider_event_required": true,
+              "required_after": "latest_lkg_pointer_envelope_and_index_read_validated",
+              "to": "open_finalizing"
+            },
+            {
+              "authorized_role": "release_operator",
+              "from": "open_finalizing",
+              "provider_event_required": true,
+              "required_after": "applicable_durable_close_root_validated",
+              "to": "closed"
+            }
+          ]
+        },
+        "capture_clock_skew_seconds": {
+          "const": 30
+        },
+        "close_role": {
+          "const": "release_operator"
+        },
+        "cross_system_atomicity": {
+          "const": "not_claimed"
+        },
+        "original_registry": {
+          "$ref": "#/$defs/record_file"
+        },
+        "policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "prepromotion_freshness_seconds": {
+          "const": 300
+        },
+        "provider": {
+          "const": "linear"
+        },
+        "states": {
+          "items": false,
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "key": {
+                  "const": "open_running"
+                },
+                "name": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "type": {
+                  "const": "started"
+                }
+              },
+              "required": [
+                "key",
+                "id",
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "key": {
+                  "const": "open_finalizing"
+                },
+                "name": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "type": {
+                  "const": "started"
+                }
+              },
+              "required": [
+                "key",
+                "id",
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "key": {
+                  "const": "closed"
+                },
+                "name": {
+                  "$ref": "#/$defs/nonempty"
+                },
+                "type": {
+                  "const": "completed"
+                }
+              },
+              "required": [
+                "key",
+                "id",
+                "name",
+                "type"
+              ],
+              "type": "object"
+            }
+          ],
+          "type": "array",
+          "uniqueItems": true
+        },
+        "team_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "terminal_commit_clock_skew_seconds": {
+          "const": 30
+        },
+        "terminal_freshness_seconds": {
+          "const": 120
+        },
+        "transition_role": {
+          "const": "release_operator"
+        }
+      },
+      "required": [
+        "allowed_transitions",
+        "capture_clock_skew_seconds",
+        "close_role",
+        "cross_system_atomicity",
+        "original_registry",
+        "policy_digest",
+        "prepromotion_freshness_seconds",
+        "provider",
+        "states",
+        "team_id",
+        "terminal_commit_clock_skew_seconds",
+        "terminal_freshness_seconds",
+        "transition_role"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-task-state-policy"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-task-state-policy record",
+  "type": "object",
+  "x-metriplane-origin": {
+    "kind": "SUPPLIED_EXISTING_OWNER_RECORD",
+    "producer": null,
+    "production_implementation": false,
+    "stage": null,
+    "terminal_digest_in_output": false
+  },
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes"
+  ],
+  "x-metriplane-semantic-contract": "semantic-contract.md; full current controller integration and original native proof replay required; structure alone is insufficient"
+}

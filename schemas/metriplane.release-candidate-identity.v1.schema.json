@@ -5,6 +5,12 @@
       "pattern": "^[0-9a-f]{64}$",
       "type": "string"
     },
+    "identifier": {
+      "maxLength": 160,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "type": "string"
+    },
     "live_signature": {
       "additionalProperties": false,
       "properties": {
@@ -56,6 +62,16 @@
       "minLength": 1,
       "pattern": ".*\\S.*",
       "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "signature": {
       "additionalProperties": false,
@@ -147,11 +163,11 @@
       "type": "object"
     },
     "version": {
-      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.[0-9]+$",
       "type": "string"
     }
   },
-  "$id": "https://metriplane.com/schemas/metriplane.release-target-resolution.v1.schema.json",
+  "$id": "https://metriplane.com/schemas/metriplane.release-candidate-identity.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "allOf": [
@@ -178,86 +194,78 @@
       }
     }
   ],
-  "description": "Closed subject-specific contract for release-target-resolution. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "description": "Closed subject-specific contract for release-candidate-identity. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
   "properties": {
     "data": {
       "additionalProperties": false,
       "properties": {
-        "burn_lineage_digest": {
+        "artifact_manifest_digest": {
           "$ref": "#/$defs/digest"
         },
-        "burn_target_ids": {
-          "items": {
-            "$ref": "#/$defs/nonempty"
-          },
-          "minItems": 0,
-          "type": "array",
-          "uniqueItems": true
+        "artifact_set_digest": {
+          "$ref": "#/$defs/digest"
         },
-        "initial_package_version": {
-          "$ref": "#/$defs/version"
+        "build_invocation_id": {
+          "$ref": "#/$defs/identifier"
         },
-        "initial_release_tag": {
-          "$ref": "#/$defs/version"
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
         },
-        "invocation_root_locator": {
-          "const": "invocations"
+        "control_journal_locator": {
+          "pattern": "^/(?:[^\\\\\\\\]+/)?\\.control/[A-Za-z0-9][A-Za-z0-9._-]*/invocations/candidate-finalization/001/invocation\\.json$",
+          "type": "string"
+        },
+        "evaluation_adoption_digest": {
+          "$ref": "#/$defs/nullable_digest"
+        },
+        "evaluation_adoption_mode": {
+          "enum": [
+            "none",
+            "adopted"
+          ]
+        },
+        "final_directory": {
+          "pattern": "^/(?:[^\\\\\\\\]+/)?v0\\.[4-9]\\.[0-9]+/[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "finalization_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "gate_input_digest": {
+          "$ref": "#/$defs/digest"
         },
         "milestone": {
           "$ref": "#/$defs/milestone"
         },
-        "observations_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "prior_burn_digests": {
-          "items": {
-            "$ref": "#/$defs/digest"
-          },
-          "minItems": 0,
-          "type": "array",
-          "uniqueItems": true
-        },
-        "producer_intent_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "release_context_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "requires_new_burn": {
-          "type": "boolean"
-        },
-        "resolution_digest": {
-          "$ref": "#/$defs/digest"
-        },
-        "resolution_rule": {
-          "enum": [
-            "next_unused_same_milestone_patch",
-            "owner_approved_exact_target"
-          ]
-        },
-        "selected_package_version": {
+        "package_version": {
           "$ref": "#/$defs/version"
         },
-        "selected_release_tag": {
+        "predecessor_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "release_tag": {
           "$ref": "#/$defs/version"
+        },
+        "source_freeze_digest": {
+          "$ref": "#/$defs/digest"
         }
       },
       "required": [
-        "burn_lineage_digest",
-        "burn_target_ids",
-        "initial_package_version",
-        "initial_release_tag",
+        "artifact_manifest_digest",
+        "artifact_set_digest",
+        "build_invocation_id",
+        "candidate_digest",
+        "control_journal_locator",
+        "evaluation_adoption_digest",
+        "evaluation_adoption_mode",
+        "final_directory",
+        "finalization_intent_digest",
+        "gate_input_digest",
         "milestone",
-        "observations_digest",
-        "prior_burn_digests",
-        "release_context_digest",
-        "requires_new_burn",
-        "resolution_digest",
-        "resolution_rule",
-        "selected_package_version",
-        "selected_release_tag",
-        "producer_intent_digest",
-        "invocation_root_locator"
+        "package_version",
+        "predecessor_digest",
+        "release_tag",
+        "source_freeze_digest"
       ],
       "type": "object"
     },
@@ -272,7 +280,7 @@
       "$ref": "#/$defs/digest"
     },
     "record_type": {
-      "const": "release-target-resolution"
+      "const": "release-candidate-identity"
     },
     "schema_version": {
       "const": "metriplane.release-record.v1"
@@ -282,7 +290,12 @@
       "type": "integer"
     },
     "signatures": {
-      "const": []
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
     },
     "status": {
       "enum": [
@@ -312,13 +325,14 @@
     "status",
     "synthetic"
   ],
-  "title": "Metriplane release-target-resolution record",
+  "title": "Metriplane release-candidate-identity record",
   "type": "object",
   "x-metriplane-semantic-checks": [
     "payload_digest == sha256(canonical_json(data))",
     "record_id == sha256(canonical_json(record_without_record_id))",
     "signature.subject_digest == sha256(canonical_json(decision_envelope))",
     "all referenced digests resolve to the exact retained subject bytes",
-    "release_context_digest is the canonical complete supplied upstream release-context record; resolve it through exact journal/supplied-input bindings and validate its original governed registry and frozen project evidence"
+    "candidate_digest == sha256(canonical_json(data_without_candidate_digest_and_final_directory))",
+    "final_directory and control_journal_locator resolve only after independent original-intent recomputation"
   ]
 }

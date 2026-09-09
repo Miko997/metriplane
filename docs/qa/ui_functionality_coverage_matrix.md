@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7b9b2d43c5ce4b8a`
+Canonical projection SHA-256: `67731f2da886aada85d1388ea4472e79d89a1110c941da9dfdccc70701121af3`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -140,6 +140,7 @@ Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7
 | tool.docker_live_up | Docker Live Up | tools/docker_live_up.sh | tools/docker_live_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_smoke_test | Docker Smoke Test | tools/docker_smoke_test.sh | tools/docker_smoke_test.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_stop | Docker Stop | tools/docker_stop.sh | tools/docker_stop.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.finalize_release_candidate_identity | Finalize Release Candidate Identity | tools/finalize_release_candidate_identity.py | python tools/finalize_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.freeze_release_source | Freeze Release Source | tools/freeze_release_source.py | python tools/freeze_release_source.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.jetson_preflight | Jetson Preflight | tools/jetson_preflight.sh | tools/jetson_preflight.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
@@ -147,6 +148,7 @@ Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7
 | tool.mp | Mp | tools/mp.sh | tools/mp.sh | web/dashboard/* | mp.sh | ui_copy_command_only | P2 |  |
 | tool.observe_main_health | Observe Main Health | tools/observe_main_health.py | python tools/observe_main_health.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.plot_compute_backend_comparison | Plot Compute Backend Comparison | tools/plot_compute_backend_comparison.py | python tools/plot_compute_backend_comparison.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.prepare_release_gate_input | Prepare Release Gate Input | tools/prepare_release_gate_input.py | python tools/prepare_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay | Preview World Overlay | tools/preview_world_overlay.py | python tools/preview_world_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay_multi | Preview World Overlay Multi | tools/preview_world_overlay_multi.py | python tools/preview_world_overlay_multi.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay_multi_ws | Preview World Overlay Multi Ws | tools/preview_world_overlay_multi_ws.py | python tools/preview_world_overlay_multi_ws.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -168,6 +170,8 @@ Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7
 | tool.validate-replay | Validate Replay | tools/validate-replay.sh | tools/validate-replay.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_atlas_assessment | Validate Atlas Assessment | tools/validate_atlas_assessment.py | python tools/validate_atlas_assessment.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_artifact_manifest | Validate Release Artifact Manifest | tools/validate_release_artifact_manifest.py | python tools/validate_release_artifact_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_candidate_identity | Validate Release Candidate Identity | tools/validate_release_candidate_identity.py | python tools/validate_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_gate_input | Validate Release Gate Input | tools/validate_release_gate_input.py | python tools/validate_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_source_freeze | Validate Release Source Freeze | tools/validate_release_source_freeze.py | python tools/validate_release_source_freeze.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m1_m6 | Verify M1 M6 | tools/verify_m1_m6.sh | tools/verify_m1_m6.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m6_offline | Verify M6 Offline | tools/verify_m6_offline.sh | tools/verify_m6_offline.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

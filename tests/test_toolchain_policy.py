@@ -58,7 +58,7 @@ TOOLCHAIN = {
     "twine": "6.2.0",
     "types-PyYAML": "6.0.12.20260724",
 }
-EXPECTED_COLLECTION = 3091
+EXPECTED_COLLECTION = 5503
 EXPECTED_MYPY_SOURCES = 146
 POLICY_NOW = dt.datetime(2026, 8, 25, tzinfo=dt.UTC)
 
@@ -353,6 +353,7 @@ def test_active_profile_imports_only_expected_package() -> None:
         "metriplane.config",
         "metriplane.mapping",
         "metriplane.recording",
+        "metriplane.release_control",
     )
     for module in modules:
         importlib.import_module(module)
@@ -395,7 +396,7 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
 def test_canonical_collection_contract_is_documented() -> None:
     text = POLICY_DOC_PATH.read_text(encoding="utf-8")
     assert f"{EXPECTED_COLLECTION:,} items" in text
-    assert "3,075 passed" in text
+    assert "5,487 passed" in text
     assert "16 expected skips" in text
     assert "Twelve result-schema cases" in text
     assert "one browser smoke case" in text

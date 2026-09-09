@@ -1,0 +1,1494 @@
+{
+  "$comment": "Prospective ordinary predecessor output only. Current accepted candidate milestones v0.4-v0.9 require original bootstrap or actual reconciled ordinary predecessor through v0.8. Any completion/adoption-required case is explicitly BLOCKED under unimplemented MP2-207 dependency; no schema-only completion surrogate.",
+  "$defs": {
+    "artifact_proof_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_kind": {
+          "enum": [
+            "wheel",
+            "sdist"
+          ]
+        },
+        "filename": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "kind": {
+          "const": "original_distribution_payload"
+        },
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "kind",
+        "artifact_kind",
+        "filename",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "diagnostic_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "git_oid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "git_proof_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "git_object_id": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "kind": {
+          "const": "original_git_object"
+        },
+        "object_type": {
+          "enum": [
+            "commit",
+            "tree",
+            "tag",
+            "blob"
+          ]
+        },
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "kind",
+        "object_type",
+        "git_object_id",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "historical_decision_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "additionalProperties": false,
+          "properties": {
+            "canonical_row_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "json_pointer": {
+              "pattern": "^/.*$",
+              "type": "string"
+            },
+            "raw_registry": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "raw_registry",
+            "json_pointer",
+            "canonical_row_digest"
+          ],
+          "type": "object"
+        },
+        "identity": {
+          "additionalProperties": false,
+          "properties": {
+            "issue_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "issue_identifier": {
+              "pattern": "^MET-[0-9]+$",
+              "type": "string"
+            },
+            "project_id": {
+              "$ref": "#/$defs/uuid"
+            },
+            "provider": {
+              "const": "linear"
+            },
+            "team_id": {
+              "$ref": "#/$defs/uuid"
+            }
+          },
+          "required": [
+            "provider",
+            "team_id",
+            "project_id",
+            "issue_id",
+            "issue_identifier"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "identity",
+        "authority"
+      ],
+      "type": "object"
+    },
+    "historical_package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?:\\.post(?:0|[1-9][0-9]*))?(?![\\s\\S])",
+      "type": "string"
+    },
+    "issue_identifier": {
+      "pattern": "^[A-Z][A-Z0-9]*-[1-9][0-9]*$",
+      "type": "string"
+    },
+    "live_signature": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "const": "provider-attestation-v1"
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "const": false
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "nonempty": {
+      "minLength": 1,
+      "pattern": ".*\\S.*",
+      "type": "string"
+    },
+    "nullable_digest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ordinary_candidate_milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9"
+      ]
+    },
+    "ordinary_predecessor_milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8"
+      ]
+    },
+    "original_proof_index": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "artifact_kind": {
+                    "const": "wheel"
+                  }
+                },
+                "required": [
+                  "artifact_kind"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "artifact_kind": {
+                    "const": "sdist"
+                  }
+                },
+                "required": [
+                  "artifact_kind"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/artifact_proof_ref"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "git_objects": {
+          "items": {
+            "$ref": "#/$defs/git_proof_ref"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "raw_proofs": {
+          "items": {
+            "$ref": "#/$defs/raw_proof_ref"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/record_proof_ref"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "schema_version": {
+          "const": "metriplane.release-predecessor-proof-index.v1"
+        }
+      },
+      "required": [
+        "schema_version",
+        "records",
+        "raw_proofs",
+        "git_objects",
+        "artifacts"
+      ],
+      "type": "object"
+    },
+    "package_version": {
+      "pattern": "^(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    },
+    "policy_target": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "conflict_disposition": {
+              "const": "BLOCKED_REQUIRES_NEW_OWNER_RELEASE_IDENTITY"
+            },
+            "resolution_mode": {
+              "const": "owner_approved_exact_target"
+            }
+          }
+        },
+        {
+          "properties": {
+            "conflict_disposition": {
+              "const": "DURABLE_BURN_THEN_SAME_MILESTONE_PATCH"
+            },
+            "resolution_mode": {
+              "const": "next_unused_same_milestone_patch"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "conflict_disposition": {
+          "enum": [
+            "BLOCKED_REQUIRES_NEW_OWNER_RELEASE_IDENTITY",
+            "DURABLE_BURN_THEN_SAME_MILESTONE_PATCH"
+          ]
+        },
+        "initial_normalized_package_version": {
+          "$ref": "#/$defs/package_version"
+        },
+        "initial_release_tag": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "resolution_mode": {
+          "enum": [
+            "owner_approved_exact_target",
+            "next_unused_same_milestone_patch"
+          ]
+        }
+      },
+      "required": [
+        "conflict_disposition",
+        "initial_normalized_package_version",
+        "initial_release_tag",
+        "resolution_mode"
+      ],
+      "type": "object"
+    },
+    "predecessor_policy": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "allOf": [
+              {
+                "else": {
+                  "properties": {
+                    "proof_requirements": {
+                      "properties": {
+                        "indexed_release_completion": {
+                          "const": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "if": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "framework_milestone": {
+                          "const": "v1.0"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "expected_predecessor_subject": {
+                          "properties": {
+                            "framework_milestone": {
+                              "enum": [
+                                "v0.9",
+                                "v1.0"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "proof_requirements": {
+                      "properties": {
+                        "indexed_release_completion": {
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "properties": {
+              "expected_predecessor_decision": {
+                "$ref": "#/$defs/historical_decision_binding"
+              },
+              "expected_predecessor_subject": {
+                "properties": {
+                  "framework_milestone": {
+                    "$ref": "#/$defs/milestone"
+                  }
+                }
+              },
+              "proof_requirements": {
+                "properties": {
+                  "cas_lkg_transition_and_current_state": {
+                    "const": true
+                  },
+                  "complete_later_invalidation_conflict_recovery_walk": {
+                    "const": true
+                  },
+                  "exact_byte_reconciliation": {
+                    "const": true
+                  },
+                  "final_two_store_retention": {
+                    "const": true
+                  },
+                  "original_genesis": {
+                    "const": false
+                  },
+                  "original_signed_closed_decision_and_durable_root": {
+                    "const": true
+                  },
+                  "pointer_envelope_two_store_retention_and_index": {
+                    "const": true
+                  },
+                  "qualification": {
+                    "const": true
+                  },
+                  "success_chain_ancestry_and_current_head": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "lineage_mode": {
+                "const": "ORIGINAL_BOOTSTRAP"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "expected_predecessor_decision": {
+                "type": "null"
+              },
+              "expected_predecessor_subject": {
+                "properties": {
+                  "framework_milestone": {
+                    "type": "null"
+                  },
+                  "normalized_package_version": {
+                    "const": "0.3.0"
+                  },
+                  "release_tag": {
+                    "const": "v0.3.0"
+                  }
+                }
+              },
+              "framework_milestone": {
+                "const": "v0.4"
+              },
+              "proof_requirements": {
+                "const": {
+                  "cas_lkg_transition_and_current_state": false,
+                  "complete_later_invalidation_conflict_recovery_walk": false,
+                  "exact_byte_reconciliation": false,
+                  "final_two_store_retention": false,
+                  "indexed_release_completion": false,
+                  "original_genesis": true,
+                  "original_signed_closed_decision_and_durable_root": false,
+                  "pointer_envelope_two_store_retention_and_index": false,
+                  "qualification": false,
+                  "success_chain_ancestry_and_current_head": false
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "expected_predecessor_decision": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/historical_decision_binding"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expected_predecessor_subject": {
+          "$ref": "#/$defs/predecessor_subject"
+        },
+        "framework_milestone": {
+          "$ref": "#/$defs/milestone"
+        },
+        "lineage_mode": {
+          "enum": [
+            "ORIGINAL_BOOTSTRAP",
+            "RECONCILED_LKG"
+          ]
+        },
+        "owner": {
+          "const": "MP2-007"
+        },
+        "proof_requirements": {
+          "additionalProperties": false,
+          "properties": {
+            "cas_lkg_transition_and_current_state": {
+              "type": "boolean"
+            },
+            "complete_later_invalidation_conflict_recovery_walk": {
+              "type": "boolean"
+            },
+            "exact_byte_reconciliation": {
+              "type": "boolean"
+            },
+            "final_two_store_retention": {
+              "type": "boolean"
+            },
+            "indexed_release_completion": {
+              "type": "boolean"
+            },
+            "original_genesis": {
+              "type": "boolean"
+            },
+            "original_signed_closed_decision_and_durable_root": {
+              "type": "boolean"
+            },
+            "pointer_envelope_two_store_retention_and_index": {
+              "type": "boolean"
+            },
+            "qualification": {
+              "type": "boolean"
+            },
+            "success_chain_ancestry_and_current_head": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "original_genesis",
+            "qualification",
+            "exact_byte_reconciliation",
+            "final_two_store_retention",
+            "success_chain_ancestry_and_current_head",
+            "cas_lkg_transition_and_current_state",
+            "pointer_envelope_two_store_retention_and_index",
+            "original_signed_closed_decision_and_durable_root",
+            "complete_later_invalidation_conflict_recovery_walk",
+            "indexed_release_completion"
+          ],
+          "type": "object"
+        },
+        "readiness_context_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "repository": {
+          "const": "Miko997/metriplane"
+        },
+        "schema_version": {
+          "const": "metriplane.release-predecessor-policy.v1"
+        },
+        "selection_authority": {
+          "additionalProperties": false,
+          "properties": {
+            "context_policy_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "context_row_pointer": {
+              "pattern": "^/.*$",
+              "type": "string"
+            },
+            "readiness_registry": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "readiness_registry",
+            "context_row_pointer",
+            "context_policy_digest"
+          ],
+          "type": "object"
+        },
+        "target_policy": {
+          "$ref": "#/$defs/policy_target"
+        }
+      },
+      "required": [
+        "schema_version",
+        "owner",
+        "repository",
+        "readiness_context_id",
+        "framework_milestone",
+        "target_policy",
+        "lineage_mode",
+        "expected_predecessor_subject",
+        "selection_authority",
+        "proof_requirements",
+        "expected_predecessor_decision"
+      ],
+      "type": "object"
+    },
+    "predecessor_subject": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "kind": {
+                    "const": "wheel"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "kind": {
+                    "const": "sdist"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            }
+          ],
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "filename": {
+                "$ref": "#/$defs/nonempty"
+              },
+              "kind": {
+                "enum": [
+                  "wheel",
+                  "sdist"
+                ]
+              },
+              "readback": {
+                "$ref": "#/$defs/raw_file"
+              },
+              "sha256": {
+                "$ref": "#/$defs/digest"
+              }
+            },
+            "required": [
+              "bytes",
+              "filename",
+              "kind",
+              "readback",
+              "sha256"
+            ],
+            "type": "object"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "framework_milestone": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/milestone"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "normalized_package_version": {
+          "$ref": "#/$defs/historical_package_version"
+        },
+        "release_tag": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "source_commit": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "source_tree": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "tag_object": {
+          "$ref": "#/$defs/git_oid"
+        }
+      },
+      "required": [
+        "framework_milestone",
+        "normalized_package_version",
+        "release_tag",
+        "source_commit",
+        "source_tree",
+        "tag_object",
+        "artifacts"
+      ],
+      "type": "object"
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "raw_proof_ref": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "not": {
+                  "const": "original_stage_diagnostic"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "original_file": {
+                "$ref": "#/$defs/raw_file"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "original_genesis_authority",
+            "original_provider_event",
+            "original_provider_state_readback",
+            "original_provider_execution_capture",
+            "original_backend_entry",
+            "original_backend_state_readback",
+            "original_backend_operation_response",
+            "original_retained_payload",
+            "original_stage_intent",
+            "original_stage_terminal",
+            "original_stage_diagnostic",
+            "original_role_key_policy"
+          ]
+        },
+        "original_file": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/raw_file"
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/diagnostic_file"
+                },
+                {
+                  "properties": {
+                    "bytes": {
+                      "const": 0
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonempty"
+        }
+      },
+      "required": [
+        "kind",
+        "purpose",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "record_proof_ref": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "original_release_record"
+        },
+        "original_file": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "record_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "record_type": {
+          "enum": [
+            "release-context",
+            "release-candidate-identity",
+            "release-artifact-manifest",
+            "release-source-freeze",
+            "release-gate-input",
+            "release-gate-instance",
+            "release-role-assignments",
+            "release-task-state-policy",
+            "release-task-state-observation",
+            "release-protected-input",
+            "release-qualification-plan",
+            "release-qualification",
+            "release-attempt",
+            "release-cell-result",
+            "release-attempt-coordination",
+            "release-run-status-snapshot",
+            "release-warning-summary",
+            "release-approval",
+            "release-approval-decision",
+            "release-promotion-lock",
+            "release-promotion-plan",
+            "release-promotion",
+            "release-publication-observations",
+            "release-publication-reconciliation",
+            "release-retention-receipts",
+            "release-evidence-manifest",
+            "release-evidence-chain",
+            "release-last-known-good",
+            "release-attempt-index",
+            "release-index-recovery",
+            "release-postpublication-conflict",
+            "release-evidence-store",
+            "release-evidence-store-preflight",
+            "release-completion",
+            "release-predecessor"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "record_type",
+        "record_digest",
+        "original_file"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "selection_observations": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_index_readback": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "lkg_state_and_history_readback": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "provider_event_history": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "provider_state": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "success_chain_readback": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "observed_at",
+        "provider_state",
+        "provider_event_history",
+        "success_chain_readback",
+        "lkg_state_and_history_readback",
+        "attempt_index_readback"
+      ],
+      "type": "object"
+    },
+    "signature": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "test-sha256-v1"
+              },
+              "provider": {
+                "const": "test-fixture"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "synthetic": {
+                "const": false
+              }
+            },
+            "required": [
+              "synthetic"
+            ]
+          },
+          "then": {
+            "properties": {
+              "algorithm": {
+                "const": "provider-attestation-v1"
+              },
+              "provider": {
+                "enum": [
+                  "github",
+                  "linear"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/nonempty"
+        },
+        "algorithm": {
+          "enum": [
+            "provider-attestation-v1",
+            "test-sha256-v1"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "github",
+            "linear",
+            "test-fixture"
+          ]
+        },
+        "signature": {
+          "minLength": 16,
+          "type": "string"
+        },
+        "subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "actor_id",
+        "algorithm",
+        "provider",
+        "signature",
+        "subject_digest",
+        "synthetic"
+      ],
+      "type": "object"
+    },
+    "uuid": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^v(?:0\\.[3-9]|1\\.0)\\.(?:0|[1-9][0-9]*)(?![\\s\\S])",
+      "type": "string"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-predecessor.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": [
+          "synthetic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {},
+          "signatures": {
+            "items": {
+              "$ref": "#/$defs/live_signature"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Closed subject-specific contract for release-predecessor. Structural validation does not replace canonical digest recomputation, provider authentication, signature verification, compare-and-swap read-back, or cross-record semantic validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "chain_head": {
+                "$ref": "#/$defs/digest"
+              },
+              "chain_receipt_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "close_ready_observation_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "close_root_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "closed_decision_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "final_retention_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "genesis_authority_digest": {
+                "type": "null"
+              },
+              "lkg_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "pointer_envelope_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "pointer_index_receipt_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "pointer_retention_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "pointer_transition_retention_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "predecessor_milestone": {
+                "$ref": "#/$defs/ordinary_predecessor_milestone"
+              },
+              "qualification_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "reconciliation_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "selection_observations": {
+                "$ref": "#/$defs/selection_observations"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "lineage_mode": {
+                "const": "ORIGINAL_BOOTSTRAP"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidate_milestone": {
+                "const": "v0.4"
+              },
+              "chain_head": {
+                "type": "null"
+              },
+              "chain_receipt_digest": {
+                "type": "null"
+              },
+              "close_ready_observation_digest": {
+                "type": "null"
+              },
+              "close_root_digest": {
+                "type": "null"
+              },
+              "closed_decision_digest": {
+                "type": "null"
+              },
+              "final_retention_digest": {
+                "type": "null"
+              },
+              "genesis_authority_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "lkg_digest": {
+                "type": "null"
+              },
+              "package_version": {
+                "const": "0.3.0"
+              },
+              "pointer_envelope_digest": {
+                "type": "null"
+              },
+              "pointer_index_receipt_digest": {
+                "type": "null"
+              },
+              "pointer_retention_digest": {
+                "type": "null"
+              },
+              "pointer_transition_retention_digest": {
+                "type": "null"
+              },
+              "predecessor_milestone": {
+                "type": "null"
+              },
+              "qualification_digest": {
+                "type": "null"
+              },
+              "reconciliation_digest": {
+                "type": "null"
+              },
+              "selection_observations": {
+                "type": "null"
+              },
+              "version": {
+                "const": "v0.3.0"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "candidate_milestone": {
+          "$ref": "#/$defs/ordinary_candidate_milestone"
+        },
+        "chain_head": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chain_receipt_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "close_ready_observation_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "close_root_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closed_decision_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completion_digest": {
+          "type": "null"
+        },
+        "final_retention_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "genesis_authority_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "invocation_root_locator": {
+          "const": "invocations"
+        },
+        "lineage_mode": {
+          "enum": [
+            "ORIGINAL_BOOTSTRAP",
+            "RECONCILED_LKG"
+          ]
+        },
+        "lkg_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "package_version": {
+          "$ref": "#/$defs/historical_package_version"
+        },
+        "pointer_envelope_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pointer_index_receipt_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pointer_retention_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pointer_transition_retention_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predecessor_milestone": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ordinary_predecessor_milestone"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predecessor_policy": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "predecessor_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "predecessor_subject": {
+          "$ref": "#/$defs/predecessor_subject"
+        },
+        "predecessor_subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "producer_intent_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "proof_index": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "qualification_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reconciliation_digest": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release_context": {
+          "$ref": "#/$defs/raw_file"
+        },
+        "release_context_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "selection_observations": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/selection_observations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/nonempty"
+        }
+      },
+      "required": [
+        "lineage_mode",
+        "candidate_milestone",
+        "predecessor_milestone",
+        "version",
+        "package_version",
+        "release_context_digest",
+        "release_context",
+        "predecessor_policy_digest",
+        "predecessor_policy",
+        "predecessor_subject",
+        "predecessor_subject_digest",
+        "proof_index",
+        "producer_intent_digest",
+        "invocation_root_locator",
+        "genesis_authority_digest",
+        "completion_digest",
+        "selection_observations",
+        "qualification_digest",
+        "reconciliation_digest",
+        "final_retention_digest",
+        "chain_receipt_digest",
+        "chain_head",
+        "lkg_digest",
+        "pointer_transition_retention_digest",
+        "pointer_envelope_digest",
+        "pointer_retention_digest",
+        "pointer_index_receipt_digest",
+        "closed_decision_digest",
+        "close_ready_observation_digest",
+        "close_root_digest"
+      ],
+      "type": "object"
+    },
+    "invocation_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$",
+      "type": "string"
+    },
+    "payload_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_id": {
+      "$ref": "#/$defs/digest"
+    },
+    "record_type": {
+      "const": "release-predecessor"
+    },
+    "schema_version": {
+      "const": "metriplane.release-record.v1"
+    },
+    "sequence": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "signatures": {
+      "items": {
+        "$ref": "#/$defs/signature"
+      },
+      "maxItems": 16,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "const": "PASS"
+    },
+    "synthetic": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "data",
+    "invocation_id",
+    "payload_digest",
+    "record_id",
+    "record_type",
+    "schema_version",
+    "sequence",
+    "signatures",
+    "status",
+    "synthetic"
+  ],
+  "title": "Metriplane release-predecessor record",
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "payload_digest == sha256(canonical_json(data))",
+    "record_id == sha256(canonical_json(record_without_record_id))",
+    "signature.subject_digest == sha256(canonical_json(decision_envelope))",
+    "all referenced digests resolve to the exact retained subject bytes",
+    "Recompute exact policy/context/subject and every original graph edge, record/self/signature/byte/Git/backend identity using the fixed common semantic owners.",
+    "predecessor_subject_digest=C(complete embedded predecessor_subject); proof_index.sha256=R(exact original index bytes), not an authority claim.",
+    "completion_digest is null only because this accepted-output profile excludes every completion/adoption-required branch; never clear a true raw policy requirement to fit this schema.",
+    "Chain receipt C and actual backend chain_head are distinct. Pointer envelope/retention/index are later refs on this selection output, never reverse refs in LKG transition.",
+    "Current source/target/gate/candidate/readiness consumers must use this one context/policy/original-proof validator; milestone-only fallback and old four-field acceptance are forbidden."
+  ]
+}

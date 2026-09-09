@@ -1,0 +1,3306 @@
+{
+  "blockers": [
+    {
+      "code": "MP2_007_RESULT_EVIDENCE_ABSENT",
+      "required_count": 13,
+      "resolved_count": 0,
+      "resolver": "docs/status/release-test-obligations.json"
+    },
+    {
+      "code": "LIVE_NON_AUTHOR_APPROVAL_REQUIRED",
+      "resolver": "tools/validate_release_approval.py"
+    },
+    {
+      "code": "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED",
+      "resolver": "tools/validate_release_retention.py"
+    },
+    {
+      "code": "HOSTED_PROTECTION_AND_REAL_MERGE_PROOF_REQUIRED",
+      "resolver": "tools/validate_repository_protection.py"
+    },
+    {
+      "code": "MP2_018_POPULATED_INVENTORY_REQUIRED",
+      "resolver": "tools/check_release_readiness.py"
+    },
+    {
+      "code": "CURRENT_COMPLETE_PROVIDER_BINDINGS_AND_TWO_ROUND_SNAPSHOT_REQUIRED",
+      "resolver": "docs/status/release-readiness.json"
+    },
+    {
+      "code": "CURRENT_CUMULATIVE_SCENARIO_ENVIRONMENT_OBLIGATION_MAPPINGS_REQUIRED",
+      "resolver": "docs/status/release-test-obligations.json"
+    },
+    {
+      "code": "ORIGINAL_PREDECESSOR_GRAPH_REQUIRED",
+      "resolver": "tools/resolve_release_predecessor.py"
+    },
+    {
+      "code": "OWNER_TAG_AND_PUBLICATION_HOLD",
+      "resolver": "docs/status/release-readiness.json"
+    }
+  ],
+  "catalog_binding": {
+    "release_slots_sha256": "f4d9b7834d9cf0a0e3749b070d21028ab3f2b2f1aeb55129ce07b6e5ccd798c0",
+    "snapshot_role": "UNCHANGED_PLANNING_AUTHORITY_NOT_CURRENT_PROVIDER_FACTS",
+    "source": {
+      "bytes": 47199,
+      "path": "authority/09_RELEASE_READINESS_MAP.json",
+      "sha256": "a748dcfeadd292b5130f30b06174cad0cba92166b14bb2432124cd19b082406a"
+    },
+    "task_registry_sha256": "ed968f70412d1bf1512ec6f939012fa9877728e7e9d3b3f26dfe30ed1643efba"
+  },
+  "evidence_resolution": {
+    "allow_synthetic": false,
+    "allow_temporary_ci_artifact_as_retention": false,
+    "required_result_count": 13,
+    "resolved_result_count": 0,
+    "status": "BLOCKED_NOT_READY"
+  },
+  "first_release": "v0.4",
+  "framework": "BLOCKED_NOT_READY",
+  "last_release": "v1.0",
+  "linear_capture_policy": {
+    "follow_cross_project_blockers": true,
+    "include_all_catalog_tasks": true,
+    "include_all_roadmap_gate_slots": true,
+    "include_archived": true,
+    "nonblocking_relation_disposition": "RETAIN_ENDPOINTS_NOT_AUTOMATIC_BOM",
+    "provider_snapshot_atomicity": "not_claimed",
+    "provider_transport_binding": {
+      "bytes": 4003,
+      "path": "authority/linear-transport-declaration.json",
+      "sha256": "c08d4450ef3cd8b3266cd9cb57e32af4e79479d5d89c25232adf8fc4d9181cbc"
+    },
+    "require_reciprocal_blocking_relations": true,
+    "root_project_ids": [
+      "c4f0168c-3db5-42ed-ab2f-a9def912a191",
+      "cf53f98f-0965-4360-a66e-530457e40354"
+    ],
+    "stable_complete_rounds": 2,
+    "unknown_dependency_disposition": "BLOCKED_REQUIRES_EXPLICIT_POLICY_BINDING"
+  },
+  "live_release": "BLOCKED_NOT_READY",
+  "main_health": {
+    "max_age_seconds": 21600,
+    "state_branch": "metriplane-main-health-state",
+    "validator": "tools/stop_the_line.py candidate"
+  },
+  "modes": {
+    "post-publication": "BLOCKED_NOT_READY",
+    "pr-merge-control": "IMPLEMENTED_UNQUALIFIED",
+    "release-qualification": "BLOCKED_NOT_READY"
+  },
+  "owner": "MP2-007",
+  "provider_issue_bindings": [
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-000",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "df5f74b8-0824-40c0-8113-0bc081de3cd3",
+        "issue_identifier": "MET-69",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-69"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-001",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "4573b71c-b417-4dd6-9e8c-dc905cbc5de3",
+        "issue_identifier": "MET-68",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-68"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-002",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "d83ea520-c557-4f74-972a-55d95267b975",
+        "issue_identifier": "MET-70",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-70"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-003",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "3ff7f36f-51aa-4013-8387-173e83b21741",
+        "issue_identifier": "MET-75",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-75"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-004",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "75a4607b-62c4-4e2f-a26d-a65d26aa404b",
+        "issue_identifier": "MET-77",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-77"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-005",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "f4497365-7b8d-4e37-b329-dd50446023a9",
+        "issue_identifier": "MET-79",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-79"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-006",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "54f0dbee-e130-417f-9b3b-f8664aa18f7d",
+        "issue_identifier": "MET-76",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-76"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-007",
+      "expected_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "a140ae15-d062-46b8-9afb-b80f76e4a3ad",
+        "issue_identifier": "MET-154",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-154"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-010",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "ef562016-c75d-4ca3-85bc-bf43c8895ac0",
+        "issue_identifier": "MET-71",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-71"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-011",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "503a935b-df0a-4940-86bb-9efc61c40610",
+        "issue_identifier": "MET-73",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-73"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-012",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "ae7e357b-9900-4b47-b414-6a342bec734e",
+        "issue_identifier": "MET-74",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-74"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-013",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "521e6367-9261-463a-8b6b-cb4d4f1af366",
+        "issue_identifier": "MET-78",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-78"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-014",
+      "expected_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "e8320c14-c99a-4a54-9763-272239b0c661",
+        "issue_identifier": "MET-72",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-72"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-015",
+      "expected_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "827968e0-a46a-4a43-b08e-4bed2eb9acd8",
+        "issue_identifier": "MET-83",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-83"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-016",
+      "expected_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "daae7698-0e66-4f2c-b5c9-21c51d6de678",
+        "issue_identifier": "MET-90",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-90"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-017",
+      "expected_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "cf0a2986-8ffe-4aaa-b437-88cb2439caf7",
+        "issue_identifier": "MET-84",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-84"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-018",
+      "expected_milestone": {
+        "id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+        "name": "v0.4 \u2014 Truth Recovery",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "a10a773b-f6de-4ad5-b8dd-d65aaa9355e0",
+        "issue_identifier": "MET-155",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-155"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-020",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "00f1c12c-0dd5-4d2c-a814-bd86dfa098fb",
+        "issue_identifier": "MET-87",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-87"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-021",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "3578071c-8bea-47e3-9bdf-8b6ab5210468",
+        "issue_identifier": "MET-82",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-82"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-022",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "76cd26f7-88a7-45aa-b7fb-762e5567451e",
+        "issue_identifier": "MET-88",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-88"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-023",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "2694e5bb-143f-46ca-ad61-9c90c5be6816",
+        "issue_identifier": "MET-81",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-81"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-024",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "1cc4c986-0407-43d5-b8aa-4759d07aefc2",
+        "issue_identifier": "MET-85",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-85"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-025",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "9ca4c3a0-a51e-45db-9148-bb38d779cb72",
+        "issue_identifier": "MET-91",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-91"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-026",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "ea21a18e-c541-45d3-ac43-c7ad64747fcf",
+        "issue_identifier": "MET-86",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-86"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-027",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "cb2ef3b8-6830-44e9-94ba-554c16903472",
+        "issue_identifier": "MET-80",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-80"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-028",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "cc70a768-572d-42fb-b988-ac57167614cd",
+        "issue_identifier": "MET-89",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-89"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-029",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "a195b8bb-ab74-4322-b197-fdb168bfee81",
+        "issue_identifier": "MET-99",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-99"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-030",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "c48fee43-32bc-41bb-8958-ad497d4a0d67",
+        "issue_identifier": "MET-92",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-92"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-031",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "a460de89-876a-4ab3-9645-241b97219c35",
+        "issue_identifier": "MET-98",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-98"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-040",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "cdcfc26b-2e7d-4e1f-897e-28ccb7581f0c",
+        "issue_identifier": "MET-96",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-96"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-041",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "e6dd2567-39a5-438d-8879-f7ac94a0c87a",
+        "issue_identifier": "MET-95",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-95"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-042",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "9ea346d4-2e75-4a19-aa40-c5d142f6d3a7",
+        "issue_identifier": "MET-97",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-97"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-043",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "83d85630-5f21-43c3-9f85-243f498f53ed",
+        "issue_identifier": "MET-93",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-93"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-044",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "675d07e7-97c5-48e1-b333-643298a79e74",
+        "issue_identifier": "MET-94",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-94"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-045",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "a49a3d56-3fc3-4140-909f-58c4940d6398",
+        "issue_identifier": "MET-100",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-100"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-046",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "5780ed63-c74f-4f55-93fa-ec55ebc0eb88",
+        "issue_identifier": "MET-102",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-102"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-047",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "aa563d1a-82e1-4341-9476-20760632a484",
+        "issue_identifier": "MET-103",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-103"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-048",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "0226981f-1f1c-442b-b6ed-0f3a0e0b5708",
+        "issue_identifier": "MET-101",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-101"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-049",
+      "expected_milestone": {
+        "id": "59072253-8fb3-410f-987a-b35529400bb9",
+        "name": "v0.5 \u2014 Installable Family",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "c2cd952c-47bb-446e-b94d-410940e9c73a",
+        "issue_identifier": "MET-156",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-156"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-100",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "e3307aaf-fd40-4a4c-9505-b4b6c2808103",
+        "issue_identifier": "MET-104",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-104"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-101",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "4bf29df8-f7d4-4024-baee-f21d9f7289fd",
+        "issue_identifier": "MET-107",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-107"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-110",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "578251f1-4d15-43b4-b277-204e1ebb6102",
+        "issue_identifier": "MET-108",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-108"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-111",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "2b11fce1-eea0-4ff9-8e0f-5d0c1bd5b1a7",
+        "issue_identifier": "MET-111",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-111"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-112",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "4a4d6d36-04dc-43fd-afd4-4495b3eeec9a",
+        "issue_identifier": "MET-110",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-110"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-120",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "88d2c589-8f4f-4a67-aaaf-a24d315dbe07",
+        "issue_identifier": "MET-105",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-105"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-121",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "f6d5888e-4090-427a-a497-be2875e483b5",
+        "issue_identifier": "MET-115",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-115"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-122",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "19fa1802-b673-4473-b445-cdce66f3d611",
+        "issue_identifier": "MET-106",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-106"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-123",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "e2da121c-5b5f-4e19-8d6f-34da19fa2491",
+        "issue_identifier": "MET-113",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-113"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-124",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "8b020de9-ec04-4b25-94eb-88d3201508c8",
+        "issue_identifier": "MET-112",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-112"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-125",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "b5ac08ab-aa04-4d8a-bf40-bd3d189459be",
+        "issue_identifier": "MET-152",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-152"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-130",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "d3186ba5-6d36-40f6-9443-7e44b40e030f",
+        "issue_identifier": "MET-109",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-109"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-131",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "5da94a29-870f-4783-9d05-e8ddc966ca7f",
+        "issue_identifier": "MET-114",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-114"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-132",
+      "expected_milestone": {
+        "id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+        "name": "v0.6 \u2014 Canonical Semantics",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "b6469182-0092-4d68-8e7f-f11e7f63b9be",
+        "issue_identifier": "MET-157",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-157"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-140",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "af30b547-7471-42ae-abfc-95fb7298b8cc",
+        "issue_identifier": "MET-116",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-116"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-141",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "2a7a323a-1128-418e-bc61-3f20be3b3b07",
+        "issue_identifier": "MET-117",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-117"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-142",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "a9bf099c-04af-421f-8042-e8d871f45efc",
+        "issue_identifier": "MET-119",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-119"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-143",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "de3a110b-9f83-4b71-a0c0-e0e77d887ed6",
+        "issue_identifier": "MET-126",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-126"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-144",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "25abc0e7-2a58-4e76-aafe-da04b1f7267f",
+        "issue_identifier": "MET-118",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-118"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-145",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "5346a289-e778-41de-b620-d9c87731a5da",
+        "issue_identifier": "MET-120",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-120"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-150",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "c53adeb9-0017-47f4-9574-fb0e101569df",
+        "issue_identifier": "MET-121",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-121"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-151",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "c280be16-363e-400f-8c81-f8f05d2030f7",
+        "issue_identifier": "MET-122",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-122"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-152",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "91e607a4-3eeb-4a06-8514-7c488a0038db",
+        "issue_identifier": "MET-127",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-127"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-153",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "adbf6ec9-f5a0-4f8d-9e95-c8c7d4002963",
+        "issue_identifier": "MET-124",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-124"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-154",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "60a38b7c-854c-42be-bf50-068d8fcb3d37",
+        "issue_identifier": "MET-123",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-123"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-155",
+      "expected_milestone": {
+        "id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+        "name": "v0.7 \u2014 Unified UX and Operations",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "fbb97229-d324-418e-9c2a-5a4faaf750ab",
+        "issue_identifier": "MET-158",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-158"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-160",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "e67eb27c-5f27-4b7f-ba57-97d3ea462543",
+        "issue_identifier": "MET-125",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-125"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-161",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "836de193-b91d-4ab5-a9dc-7c80839fbd2a",
+        "issue_identifier": "MET-128",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-128"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-162",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "31007f8b-af8a-4628-bf54-3fb2b506de4f",
+        "issue_identifier": "MET-129",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-129"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-163",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "bf6bf596-4d02-4b5a-94e6-7aad608b51b2",
+        "issue_identifier": "MET-132",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-132"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-164",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "902ca21d-7738-47a0-87ea-2ec04c4324e4",
+        "issue_identifier": "MET-130",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-130"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-165",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "d23b6176-f9e2-470e-b867-6c14a9277d40",
+        "issue_identifier": "MET-134",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-134"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-166",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "f79ee689-1e74-4c14-9c2d-7cdd9ec3da46",
+        "issue_identifier": "MET-138",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-138"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-167",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "09864038-b045-4557-8c2c-07975637e527",
+        "issue_identifier": "MET-139",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-139"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-168",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "fc3371de-3ce1-47f2-bc29-352368d4dbb1",
+        "issue_identifier": "MET-133",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-133"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-169",
+      "expected_milestone": {
+        "id": "8185440c-0e04-4265-8db7-b0392b543276",
+        "name": "v0.8 \u2014 Integration Complete",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "0e45db87-be85-4e9e-9cb9-8f67c06fcbe0",
+        "issue_identifier": "MET-159",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-159"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-200",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "03ef1cb1-582f-432f-9eb4-86dc03a8f2d9",
+        "issue_identifier": "MET-135",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-135"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-201",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "eb407aaa-e071-4d40-9d31-eaa967c664e4",
+        "issue_identifier": "MET-136",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-136"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-202",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "91efb90d-a0f1-48d7-820c-267023be2dfb",
+        "issue_identifier": "MET-137",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-137"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-203",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "9d6f54c9-3499-4c1d-9f99-0215f07b9bf6",
+        "issue_identifier": "MET-131",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-131"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-204",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "b6a91cdf-8f6c-45db-97f5-e8778a4c7b34",
+        "issue_identifier": "MET-140",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-140"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-205",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "d6d804a8-d357-4a87-bd18-24d0ebdcf072",
+        "issue_identifier": "MET-145",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-145"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-206",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "127dca13-399b-4514-8b1a-8994b49239e9",
+        "issue_identifier": "MET-142",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-142"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-207",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "0c0ee66b-505a-46d7-94f1-ead14c140caf",
+        "issue_identifier": "MET-141",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-141"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-208",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "0a51d394-65c9-420b-bfe5-0097f8b2252e",
+        "issue_identifier": "MET-144",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-144"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-209",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "d0c91014-ab7e-4e49-8a5e-2776727a4941",
+        "issue_identifier": "MET-143",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-143"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-210",
+      "expected_milestone": {
+        "id": "8d66e520-651e-48b0-bee1-c3856092332d",
+        "name": "v0.9 \u2014 Assurance Candidate",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "d2773827-498e-40a4-8ec3-8de1859a58e3",
+        "issue_identifier": "MET-160",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-160"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-220",
+      "expected_milestone": {
+        "id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+        "name": "v1.0 \u2014 Governed Release",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "141dca0c-b2f7-4dd7-9720-b5101be876f6",
+        "issue_identifier": "MET-148",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-148"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-221",
+      "expected_milestone": {
+        "id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+        "name": "v1.0 \u2014 Governed Release",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "ba22a371-bf95-4d30-b030-9cbdce499695",
+        "issue_identifier": "MET-147",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-147"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-222",
+      "expected_milestone": {
+        "id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+        "name": "v1.0 \u2014 Governed Release",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "9f5ce182-8a54-4717-bc5b-dfb94514bc22",
+        "issue_identifier": "MET-151",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-151"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-223",
+      "expected_milestone": {
+        "id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+        "name": "v1.0 \u2014 Governed Release",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "44672f7d-904d-451a-94e1-404fbac90070",
+        "issue_identifier": "MET-150",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-150"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-224",
+      "expected_milestone": {
+        "id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+        "name": "v1.0 \u2014 Governed Release",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "3528bc30-1c73-4305-8253-ac902bc32c61",
+        "issue_identifier": "MET-146",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-146"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-225",
+      "expected_milestone": {
+        "id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+        "name": "v1.0 \u2014 Governed Release",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "60f737ef-0111-4950-89bf-dfe5e9fe981c",
+        "issue_identifier": "MET-149",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-149"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 68859,
+        "path": "authority/retained-linear-project-index.json",
+        "sha256": "ad9d57300da30d4bd38c55582096f67935f8e8ecbdc2fe7de4256bbc7edcfbee"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": "MP2-226",
+      "expected_milestone": {
+        "id": "3f6c1d19-06c5-43b6-8481-a9e6c82b53c6",
+        "name": "Post-v1.0 \u2014 Canonical Demo",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "511cd258-83e5-4d4f-8d1e-0350cba6785f",
+        "issue_identifier": "MET-153",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-153"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 20775,
+        "path": "authority/retained-linear-MET-162.json",
+        "sha256": "e509a2dc6a85bad37d56d7a17b8b8d131af95884e3d74e2c11672a3135191157"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": null,
+      "expected_milestone": null,
+      "identity": {
+        "issue_id": "e5ea1d6d-f085-48bc-abe7-304e5089a48e",
+        "issue_identifier": "MET-162",
+        "project_id": "c4f0168c-3db5-42ed-ab2f-a9def912a191",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-162"
+    },
+    {
+      "assignment_authority": {
+        "bytes": 12013,
+        "path": "authority/retained-linear-MET-163-assignment.json",
+        "sha256": "c616c3a155e3070eeb6aeb1b7cf3133ced626d0777ac63f04810bba53948db67"
+      },
+      "binding_status": "UNRESOLVED",
+      "catalog_task_id": null,
+      "expected_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "identity": {
+        "issue_id": "e1f7b460-8bfc-4805-b769-9694210e8638",
+        "issue_identifier": "MET-163",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "issue_identifier": "MET-163"
+    }
+  ],
+  "release_contexts": [
+    {
+      "assignment_authority": {
+        "bytes": 12013,
+        "path": "authority/retained-linear-MET-163-assignment.json",
+        "sha256": "c616c3a155e3070eeb6aeb1b7cf3133ced626d0777ac63f04810bba53948db67"
+      },
+      "binding_status": "UNRESOLVED",
+      "comparison_baseline_policy": {
+        "normalized_package_version": "0.4.0.post2",
+        "release_tag": "v0.4.0.post2",
+        "sdist_sha256": "579d2578126fbf3cad07e20e365549cda2d17f49b4bb7b57695fca778f14c0ba",
+        "source_commit": "98ad98c57198aaa78bbf8e9d94c699cd02c72da7",
+        "source_tree": "23178d0e9e9d571a198dc692b3d74fbbfe1eed2b",
+        "wheel_sha256": "2e206db012b16d2021ae98fc52a03a831d99746c4e4ff9a4bc7eefa5102a7f38"
+      },
+      "context_id": "MET-163",
+      "decision": {
+        "issue_id": "e1f7b460-8bfc-4805-b769-9694210e8638",
+        "issue_identifier": "MET-163",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+        "provider": "linear",
+        "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+      },
+      "direct_gate_issues": [
+        {
+          "issue_id": "e5ea1d6d-f085-48bc-abe7-304e5089a48e",
+          "issue_identifier": "MET-162",
+          "project_id": "c4f0168c-3db5-42ed-ab2f-a9def912a191",
+          "provider": "linear",
+          "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+        },
+        {
+          "issue_id": "a140ae15-d062-46b8-9afb-b80f76e4a3ad",
+          "issue_identifier": "MET-154",
+          "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+          "provider": "linear",
+          "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+        },
+        {
+          "issue_id": "e8320c14-c99a-4a54-9763-272239b0c661",
+          "issue_identifier": "MET-72",
+          "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+          "provider": "linear",
+          "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+        },
+        {
+          "issue_id": "827968e0-a46a-4a43-b08e-4bed2eb9acd8",
+          "issue_identifier": "MET-83",
+          "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+          "provider": "linear",
+          "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+        },
+        {
+          "issue_id": "daae7698-0e66-4f2c-b5c9-21c51d6de678",
+          "issue_identifier": "MET-90",
+          "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+          "provider": "linear",
+          "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+        },
+        {
+          "issue_id": "cf0a2986-8ffe-4aaa-b437-88cb2439caf7",
+          "issue_identifier": "MET-84",
+          "project_id": "cf53f98f-0965-4360-a66e-530457e40354",
+          "provider": "linear",
+          "team_id": "dbc5089a-318f-4cb5-9bdc-f91a3b79e030"
+        }
+      ],
+      "framework_milestone": "v0.4",
+      "predecessor_requirement": "VALIDATE_ORIGINAL_GENESIS_OR_RECONCILED_LKG_GRAPH_UNDER_BOUND_POLICY",
+      "preserve_original_cumulative_bom": true,
+      "provider_milestone": {
+        "id": "21b162de-593d-4a83-a7c4-79aa3034cd3c",
+        "name": "v0.4.1 \u2014 Assurance Hardening",
+        "project_id": "cf53f98f-0965-4360-a66e-530457e40354"
+      },
+      "roadmap_catalog_task_id": null,
+      "target_policy": {
+        "conflict_disposition": "BLOCKED_REQUIRES_NEW_OWNER_RELEASE_IDENTITY",
+        "initial_normalized_package_version": "0.4.1",
+        "initial_release_tag": "v0.4.1",
+        "resolution_mode": "owner_approved_exact_target"
+      }
+    }
+  ],
+  "release_gate_slots": [
+    {
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "linear_release_decision_issue": "MET-155",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "GENESIS_V0_3_0",
+        "BASELINE_INVENTORY",
+        "BASELINE_CHARACTERIZATION",
+        "ROOT_ADAPTER_INTEGRATION_CUMULATIVE",
+        "INSTALLED_CORE",
+        "PROTECTION_AND_MAIN_HEALTH_MUTATIONS",
+        "LOCAL_FAKE_RELEASE"
+      ],
+      "release_decision_task": "MP2-018",
+      "required_development_tasks": [
+        "MP2-000",
+        "MP2-001",
+        "MP2-002",
+        "MP2-003",
+        "MP2-004",
+        "MP2-005",
+        "MP2-006",
+        "MP2-007",
+        "MP2-010",
+        "MP2-011",
+        "MP2-012",
+        "MP2-013",
+        "MP2-014",
+        "MP2-015",
+        "MP2-016",
+        "MP2-017"
+      ],
+      "required_scenario_ids": [
+        "GENESIS_V0_3_0",
+        "BASELINE_INVENTORY",
+        "BASELINE_CHARACTERIZATION",
+        "ROOT_ADAPTER_INTEGRATION_CUMULATIVE",
+        "INSTALLED_CORE",
+        "PROTECTION_AND_MAIN_HEALTH_MUTATIONS",
+        "LOCAL_FAKE_RELEASE"
+      ],
+      "version": "v0.4"
+    },
+    {
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "linear_release_decision_issue": "MET-156",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "INSTALLED_PRODUCT_FAMILY",
+        "UPGRADE",
+        "FAILED_UPGRADE",
+        "DOWNGRADE_NO_MODIFY",
+        "ROLLBACK",
+        "TWO_BUILDER_REPRODUCIBILITY"
+      ],
+      "release_decision_task": "MP2-049",
+      "required_development_tasks": [
+        "MP2-020",
+        "MP2-021",
+        "MP2-022",
+        "MP2-023",
+        "MP2-024",
+        "MP2-025",
+        "MP2-026",
+        "MP2-027",
+        "MP2-028",
+        "MP2-029",
+        "MP2-030",
+        "MP2-031",
+        "MP2-040",
+        "MP2-041",
+        "MP2-042",
+        "MP2-043",
+        "MP2-044",
+        "MP2-045",
+        "MP2-046",
+        "MP2-047",
+        "MP2-048"
+      ],
+      "required_scenario_ids": [
+        "INHERITED_ALL",
+        "INSTALLED_PRODUCT_FAMILY",
+        "UPGRADE",
+        "FAILED_UPGRADE",
+        "DOWNGRADE_NO_MODIFY",
+        "ROLLBACK",
+        "TWO_BUILDER_REPRODUCIBILITY"
+      ],
+      "version": "v0.5"
+    },
+    {
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "linear_release_decision_issue": "MET-157",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "CANONICAL_CONTRACTS",
+        "LEGACY_NEW_DIFFERENTIAL",
+        "CAPSULE_SEPARATE_CANDIDATE",
+        "CAPSULE_FIVE_VERDICTS",
+        "BOUNDED_SOURCE_NEUTRALITY"
+      ],
+      "release_decision_task": "MP2-132",
+      "required_development_tasks": [
+        "MP2-100",
+        "MP2-101",
+        "MP2-110",
+        "MP2-111",
+        "MP2-112",
+        "MP2-120",
+        "MP2-121",
+        "MP2-122",
+        "MP2-123",
+        "MP2-124",
+        "MP2-125",
+        "MP2-130",
+        "MP2-131"
+      ],
+      "required_scenario_ids": [
+        "INHERITED_ALL",
+        "CANONICAL_CONTRACTS",
+        "LEGACY_NEW_DIFFERENTIAL",
+        "CAPSULE_SEPARATE_CANDIDATE",
+        "CAPSULE_FIVE_VERDICTS",
+        "BOUNDED_SOURCE_NEUTRALITY"
+      ],
+      "version": "v0.6"
+    },
+    {
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "linear_release_decision_issue": "MET-158",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "ARTIFACT_PARITY",
+        "CLI_API_SERVICE_UI_PARITY",
+        "ALL_DISCOVERED_ACTIONS",
+        "BROWSER_ACCESSIBILITY",
+        "LIFECYCLE_SHUTDOWN_LEAKS"
+      ],
+      "release_decision_task": "MP2-155",
+      "required_development_tasks": [
+        "MP2-140",
+        "MP2-141",
+        "MP2-142",
+        "MP2-143",
+        "MP2-144",
+        "MP2-145",
+        "MP2-150",
+        "MP2-151",
+        "MP2-152",
+        "MP2-153",
+        "MP2-154"
+      ],
+      "required_scenario_ids": [
+        "INHERITED_ALL",
+        "ARTIFACT_PARITY",
+        "CLI_API_SERVICE_UI_PARITY",
+        "ALL_DISCOVERED_ACTIONS",
+        "BROWSER_ACCESSIBILITY",
+        "LIFECYCLE_SHUTDOWN_LEAKS"
+      ],
+      "version": "v0.7"
+    },
+    {
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "linear_release_decision_issue": "MET-159",
+      "postpublication_scenario_ids": [],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 1,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "ADAPTER_CONFORMANCE",
+        "ROS_NATIVE_ROWS",
+        "SIMULATOR_NATIVE_ROWS",
+        "GPU_CONTAINER_NATIVE_ROWS",
+        "NAMED_HARDWARE_ROWS",
+        "TRUTHFUL_UNSUPPORTED_NOT_MEASURED"
+      ],
+      "release_decision_task": "MP2-169",
+      "required_development_tasks": [
+        "MP2-160",
+        "MP2-161",
+        "MP2-162",
+        "MP2-163",
+        "MP2-164",
+        "MP2-165",
+        "MP2-166",
+        "MP2-167",
+        "MP2-168"
+      ],
+      "required_scenario_ids": [
+        "INHERITED_ALL",
+        "ADAPTER_CONFORMANCE",
+        "ROS_NATIVE_ROWS",
+        "SIMULATOR_NATIVE_ROWS",
+        "GPU_CONTAINER_NATIVE_ROWS",
+        "NAMED_HARDWARE_ROWS",
+        "TRUTHFUL_UNSUPPORTED_NOT_MEASURED"
+      ],
+      "version": "v0.8"
+    },
+    {
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "linear_release_decision_issue": "MET-160",
+      "postpublication_scenario_ids": [
+        "ASSURANCE_PACKET_RESTORE"
+      ],
+      "publication_reconciliation_scenario_ids": [],
+      "qualification_attempts_required": 3,
+      "qualification_scenario_ids": [
+        "INHERITED_ALL",
+        "PROPERTY_MUTATION_FUZZ",
+        "CHAOS_RECOVERY",
+        "PERFORMANCE_BUDGETS",
+        "REPRODUCIBILITY",
+        "WORKFLOW_PARITY",
+        "PUBLICATION_STATE_REHEARSAL"
+      ],
+      "release_decision_task": "MP2-210",
+      "required_development_tasks": [
+        "MP2-200",
+        "MP2-201",
+        "MP2-202",
+        "MP2-203",
+        "MP2-204",
+        "MP2-205",
+        "MP2-206",
+        "MP2-207",
+        "MP2-208",
+        "MP2-209"
+      ],
+      "required_scenario_ids": [
+        "INHERITED_ALL",
+        "PROPERTY_MUTATION_FUZZ",
+        "CHAOS_RECOVERY",
+        "PERFORMANCE_BUDGETS",
+        "REPRODUCIBILITY",
+        "WORKFLOW_PARITY",
+        "PUBLICATION_STATE_REHEARSAL",
+        "ASSURANCE_PACKET_RESTORE"
+      ],
+      "version": "v0.9"
+    },
+    {
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "linear_release_decision_issue": "MET-149",
+      "postpublication_scenario_ids": [
+        "ONE_HUNDRED_GATE_RECOMPUTE",
+        "FINAL_PACKET_RESTORE"
+      ],
+      "publication_reconciliation_scenario_ids": [
+        "EXACT_BYTE_PUBLICATION"
+      ],
+      "qualification_attempts_required": 3,
+      "qualification_scenario_ids": [
+        "COMPLETE_CURRENT_CUMULATIVE",
+        "THREE_EXTERNAL_EVALUATIONS",
+        "NON_MAINTAINER_RERUN",
+        "USER_INITIATED_FOLLOW_UP"
+      ],
+      "release_decision_task": "MP2-225",
+      "required_development_tasks": [
+        "MP2-220",
+        "MP2-221",
+        "MP2-222",
+        "MP2-223",
+        "MP2-224"
+      ],
+      "required_scenario_ids": [
+        "COMPLETE_CURRENT_CUMULATIVE",
+        "THREE_EXTERNAL_EVALUATIONS",
+        "NON_MAINTAINER_RERUN",
+        "USER_INITIATED_FOLLOW_UP",
+        "EXACT_BYTE_PUBLICATION",
+        "ONE_HUNDRED_GATE_RECOMPUTE",
+        "FINAL_PACKET_RESTORE"
+      ],
+      "version": "v1.0"
+    }
+  ],
+  "required_terminal": "Release / required",
+  "schema_version": "metriplane.release-readiness.v2",
+  "task_catalog": [
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-69",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-000"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-68",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-001"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-70",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-002"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-75",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-003"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-77",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-004"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-79",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-005"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-76",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-006"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-154",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-007"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-71",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-010"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-73",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-011"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-74",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-012"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-78",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-013"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-72",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-014"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-83",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-015"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-90",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-016"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-84",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "implementation",
+      "task": "MP2-017"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.4",
+      "linear_issue": "MET-155",
+      "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
+      "role": "release_decision",
+      "task": "MP2-018"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-87",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-020"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-82",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-021"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-88",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-022"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-81",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-023"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-85",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-024"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-91",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-025"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-86",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-026"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-80",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-027"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-89",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-028"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-99",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-029"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-92",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-030"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-98",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-031"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-96",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-040"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-95",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-041"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-97",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-042"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-93",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-043"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-94",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-044"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-100",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-045"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-102",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-046"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-103",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-047"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-101",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "implementation",
+      "task": "MP2-048"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.5",
+      "linear_issue": "MET-156",
+      "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
+      "role": "release_decision",
+      "task": "MP2-049"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-104",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-100"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-107",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-101"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-108",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-110"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-111",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-111"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-110",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-112"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-105",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-120"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-115",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-121"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-106",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-122"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-113",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-123"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-112",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-124"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-152",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-125"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-109",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-130"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-114",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "implementation",
+      "task": "MP2-131"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.6",
+      "linear_issue": "MET-157",
+      "linear_milestone_id": "bd8156e2-7b8a-4346-9f34-e92de0c51cd9",
+      "role": "release_decision",
+      "task": "MP2-132"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-116",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-140"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-117",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-141"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-119",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-142"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-126",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-143"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-118",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-144"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-120",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-145"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-121",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-150"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-122",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-151"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-127",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-152"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-124",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-153"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-123",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "implementation",
+      "task": "MP2-154"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.7",
+      "linear_issue": "MET-158",
+      "linear_milestone_id": "666dfdb3-f799-4d33-aecf-5e55e19f6f9f",
+      "role": "release_decision",
+      "task": "MP2-155"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-125",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-160"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-128",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-161"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-129",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-162"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-132",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-163"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-130",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-164"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-134",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-165"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-138",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-166"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-139",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-167"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-133",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "implementation",
+      "task": "MP2-168"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.8",
+      "linear_issue": "MET-159",
+      "linear_milestone_id": "8185440c-0e04-4265-8db7-b0392b543276",
+      "role": "release_decision",
+      "task": "MP2-169"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-135",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-200"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-136",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-201"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-137",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-202"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-131",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-203"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-140",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-204"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-145",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-205"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-142",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-206"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-141",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-207"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-144",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-208"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-143",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "implementation",
+      "task": "MP2-209"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v0.9",
+      "linear_issue": "MET-160",
+      "linear_milestone_id": "8d66e520-651e-48b0-bee1-c3856092332d",
+      "role": "release_decision",
+      "task": "MP2-210"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v1.0",
+      "linear_issue": "MET-148",
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "role": "implementation",
+      "task": "MP2-220"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v1.0",
+      "linear_issue": "MET-147",
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "role": "implementation",
+      "task": "MP2-221"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v1.0",
+      "linear_issue": "MET-151",
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "role": "implementation",
+      "task": "MP2-222"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v1.0",
+      "linear_issue": "MET-150",
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "role": "implementation",
+      "task": "MP2-223"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v1.0",
+      "linear_issue": "MET-146",
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "role": "implementation",
+      "task": "MP2-224"
+    },
+    {
+      "blocks_release": true,
+      "first_required_release": "v1.0",
+      "linear_issue": "MET-149",
+      "linear_milestone_id": "9f3901a6-b188-49a8-8750-0e9531fd45e8",
+      "role": "release_decision",
+      "task": "MP2-225"
+    },
+    {
+      "blocks_release": false,
+      "first_required_release": "post-v1.0",
+      "linear_issue": "MET-153",
+      "linear_milestone_id": "3f6c1d19-06c5-43b6-8481-a9e6c82b53c6",
+      "role": "post_release",
+      "task": "MP2-226"
+    }
+  ]
+}

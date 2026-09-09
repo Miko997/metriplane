@@ -1,0 +1,1627 @@
+{
+  "$comment": "PROPOSED_RAW_REGISTRY_INTERFACE_ONLY. Structure never authenticates policy, support, execution or release qualification.",
+  "$defs": {
+    "argument": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "binding"
+            },
+            "name": {
+              "$ref": "#/$defs/runtime_slot"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "attestation_input_bundle": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "$ref": "#/$defs/id"
+        },
+        "bindings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "record": {
+                "$ref": "#/$defs/raw_file"
+              },
+              "record_digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "record_type": {
+                "$ref": "#/$defs/attestation_record_type"
+              },
+              "required_role": {
+                "$ref": "#/$defs/attestation_role"
+              },
+              "slot": {
+                "const": "attestation_record"
+              },
+              "unit_id": {
+                "pattern": "^release-unit-sha256-[0-9a-f]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "unit_id",
+              "slot",
+              "record_type",
+              "required_role",
+              "record",
+              "record_digest"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "candidate_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cell_id": {
+          "$ref": "#/$defs/id"
+        },
+        "plan_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "schema_version": {
+          "const": "metriplane.release-attestation-inputs.v1"
+        }
+      },
+      "required": [
+        "schema_version",
+        "candidate_digest",
+        "plan_digest",
+        "attempt_id",
+        "cell_id",
+        "bindings"
+      ],
+      "type": "object"
+    },
+    "attestation_record_type": {
+      "pattern": "^release-[a-z][a-z0-9-]+$",
+      "type": "string"
+    },
+    "attestation_role": {
+      "enum": [
+        "release_operator",
+        "non_author_reviewer",
+        "infrastructure_owner",
+        "publisher",
+        "independent_assurance_verifier"
+      ]
+    },
+    "attestation_slot": {
+      "additionalProperties": false,
+      "properties": {
+        "authority_binding": {
+          "const": "VALIDATED_ROLES_AND_INDEPENDENTLY_PINNED_EXISTING_KEYRING_POLICY"
+        },
+        "binding_owner": {
+          "const": "common_invocation"
+        },
+        "expected_record_type": {
+          "$ref": "#/$defs/attestation_record_type"
+        },
+        "kind": {
+          "const": "signed_release_record"
+        },
+        "must_exist_before_execution": {
+          "const": true
+        },
+        "name": {
+          "const": "attestation_record"
+        },
+        "record_schema_source_id": {
+          "$ref": "#/$defs/id"
+        },
+        "required_role": {
+          "$ref": "#/$defs/attestation_role"
+        },
+        "subject_binding": {
+          "const": "EXISTING_RECORD_VALIDATOR_CURRENT_EXECUTION_CONTEXT"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "binding_owner",
+        "must_exist_before_execution",
+        "expected_record_type",
+        "record_schema_source_id",
+        "required_role",
+        "subject_binding",
+        "authority_binding"
+      ],
+      "type": "object"
+    },
+    "authority_link": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_subject_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "json_pointer": {
+          "pattern": "^(?:|/.*)$",
+          "type": "string"
+        },
+        "source_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "source_id",
+        "json_pointer",
+        "canonical_subject_digest"
+      ],
+      "type": "object"
+    },
+    "authority_source": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "FIXTURE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authority_scope": {
+                "const": "SYNTHETIC_ONLY"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "GOVERNED_SOURCE",
+                  "RETAINED_PR88_DECLARATION"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "git": {
+                "$ref": "#/$defs/git_binding"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "authority_scope": {
+          "enum": [
+            "PLANNING_ONLY",
+            "CURRENT_POLICY",
+            "OBLIGATION_IDENTITY",
+            "REVIEWED_SUPERSESSION",
+            "SYNTHETIC_ONLY"
+          ]
+        },
+        "git": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/git_binding"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "ORIGINAL_PACKET",
+            "RETAINED_PR88_DECLARATION",
+            "GOVERNED_SOURCE",
+            "GOVERNED_OBLIGATION_LEDGER",
+            "APPROVED_SUPERSESSION",
+            "FIXTURE"
+          ]
+        },
+        "raw_file": {
+          "$ref": "#/$defs/raw_file"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "raw_file",
+        "git",
+        "authority_scope"
+      ],
+      "type": "object"
+    },
+    "coverage_mapping": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "known_obligation_ids": {
+              "items": {
+                "$ref": "#/$defs/obligation_id"
+              },
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "UNRESOLVED"
+            }
+          },
+          "required": [
+            "state",
+            "known_obligation_ids",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "obligation_ids": {
+              "items": {
+                "$ref": "#/$defs/obligation_id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "const": "MAPPED"
+            }
+          },
+          "required": [
+            "state",
+            "obligation_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "criterion_id": {
+      "pattern": "^MP2-[0-9]{3}\\.A[0-9]{2}$",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "environment_pair": {
+      "additionalProperties": false,
+      "properties": {
+        "environment_id": {
+          "$ref": "#/$defs/id"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "environment_id",
+        "profile_id"
+      ],
+      "type": "object"
+    },
+    "environment_variable": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/argument"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "execution_recipe": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "required_operation_owner": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "effect_class": {
+                "const": "existing_release_mutation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "required_operation_owner": {
+                "$ref": "#/$defs/owner_entry"
+              }
+            }
+          }
+        },
+        {
+          "else": {
+            "properties": {
+              "input_slots": {
+                "not": {
+                  "contains": {
+                    "$ref": "#/$defs/attestation_slot"
+                  }
+                }
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "launch": {
+                "properties": {
+                  "kind": {
+                    "const": "supplied_attestation"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "input_slots": {
+                "contains": {
+                  "$ref": "#/$defs/attestation_slot"
+                },
+                "maxContains": 1,
+                "minContains": 1
+              },
+              "owner": {
+                "properties": {
+                  "kind": {
+                    "const": "supplied_attestation"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "cleanliness": {
+          "additionalProperties": false,
+          "properties": {
+            "process_or_file_leak": {
+              "const": "FAIL"
+            },
+            "unexpected_skip": {
+              "const": "FAIL"
+            },
+            "unexpected_warnings": {
+              "const": "FAIL"
+            },
+            "unexpected_xfail": {
+              "const": "FAIL"
+            },
+            "unrecorded_retry": {
+              "const": "FAIL"
+            }
+          },
+          "required": [
+            "unexpected_warnings",
+            "unexpected_skip",
+            "unexpected_xfail",
+            "unrecorded_retry",
+            "process_or_file_leak"
+          ],
+          "type": "object"
+        },
+        "effect_class": {
+          "enum": [
+            "read_only",
+            "scratch_only",
+            "existing_release_mutation"
+          ]
+        },
+        "expected_outputs": {
+          "items": {
+            "$ref": "#/$defs/output_expectation"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "expected_process_exits": {
+          "items": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "input_sidecars": {
+          "items": {
+            "$ref": "#/$defs/raw_file"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "input_slots": {
+          "items": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "binding_owner": {
+                    "enum": [
+                      "environment_observation",
+                      "common_invocation",
+                      "candidate_identity"
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "executable",
+                      "directory",
+                      "artifact"
+                    ]
+                  },
+                  "must_exist_before_execution": {
+                    "const": true
+                  },
+                  "name": {
+                    "$ref": "#/$defs/runtime_slot"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "binding_owner",
+                  "must_exist_before_execution"
+                ],
+                "type": "object"
+              },
+              {
+                "$ref": "#/$defs/attestation_slot"
+              }
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "launch": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "argv": {
+                  "items": {
+                    "$ref": "#/$defs/argument"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "cwd": {
+                  "enum": [
+                    "checkout_root",
+                    "installed_harness_root",
+                    "candidate_root",
+                    "execution_output_root"
+                  ]
+                },
+                "environment": {
+                  "items": {
+                    "$ref": "#/$defs/environment_variable"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "kind": {
+                  "const": "argv"
+                },
+                "shell": {
+                  "const": false
+                },
+                "unset_environment": {
+                  "items": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "kind",
+                "argv",
+                "cwd",
+                "environment",
+                "unset_environment",
+                "shell"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "dispatch_owner": {
+                  "$ref": "#/$defs/owner_entry"
+                },
+                "job_id": {
+                  "$ref": "#/$defs/id"
+                },
+                "kind": {
+                  "const": "workflow_job"
+                },
+                "matrix": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "key": {
+                        "$ref": "#/$defs/id"
+                      },
+                      "value": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  "minItems": 0,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "workflow_source": {
+                  "$ref": "#/$defs/source_binding"
+                }
+              },
+              "required": [
+                "kind",
+                "workflow_source",
+                "job_id",
+                "matrix",
+                "dispatch_owner"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "input_slot": {
+                  "const": "attestation_record"
+                },
+                "kind": {
+                  "const": "supplied_attestation"
+                },
+                "required_role": {
+                  "$ref": "#/$defs/attestation_role"
+                },
+                "validator_owner": {
+                  "$ref": "#/$defs/owner_entry"
+                }
+              },
+              "required": [
+                "kind",
+                "input_slot",
+                "validator_owner",
+                "required_role"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/owner_entry"
+        },
+        "required_operation_owner": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/owner_entry"
+            }
+          ]
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/resource_requirement"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "terminal_owner": {
+          "const": "metriplane/release_control.py"
+        },
+        "thresholds": {
+          "items": {
+            "$ref": "#/$defs/threshold"
+          },
+          "minItems": 0,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "timeout_seconds": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner",
+        "launch",
+        "input_slots",
+        "input_sidecars",
+        "resources",
+        "timeout_seconds",
+        "expected_process_exits",
+        "expected_outputs",
+        "thresholds",
+        "cleanliness",
+        "effect_class",
+        "required_operation_owner",
+        "terminal_owner"
+      ],
+      "type": "object"
+    },
+    "executor": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "required_owner_paths": {
+                  "items": {
+                    "$ref": "#/$defs/relative_path"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "state": {
+                  "const": "UNRESOLVED"
+                }
+              },
+              "required": [
+                "state",
+                "required_owner_paths",
+                "reason"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "recipe": {
+                  "$ref": "#/$defs/execution_recipe"
+                },
+                "state": {
+                  "const": "CONFIGURED"
+                }
+              },
+              "required": [
+                "state",
+                "recipe"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "phase": {
+          "$ref": "#/$defs/phase"
+        }
+      },
+      "required": [
+        "id",
+        "phase",
+        "authority",
+        "binding"
+      ],
+      "type": "object"
+    },
+    "family": {
+      "enum": [
+        "BASELINE",
+        "POSITIVE",
+        "NEGATIVE",
+        "BOUNDARY",
+        "DETERMINISM",
+        "FAULT",
+        "INSTALLED",
+        "COMPAT",
+        "SECURITY",
+        "PERFORMANCE",
+        "TRACE",
+        "CLEAN",
+        "PARSER",
+        "SEMANTIC",
+        "UI",
+        "PROFILE",
+        "RELEASE",
+        "EXTERNAL",
+        "DOCS"
+      ]
+    },
+    "git_binding": {
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "commit": {
+          "$ref": "#/$defs/git_oid"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "repository": {
+          "const": "Miko997/metriplane"
+        },
+        "tree": {
+          "$ref": "#/$defs/git_oid"
+        }
+      },
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "path",
+        "blob"
+      ],
+      "type": "object"
+    },
+    "git_oid": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$",
+      "type": "string"
+    },
+    "implementation_mapping": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "state": {
+              "const": "UNRESOLVED"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "executor_ids": {
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "state": {
+              "const": "CONFIGURED"
+            }
+          },
+          "required": [
+            "state",
+            "executor_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "milestone": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0"
+      ]
+    },
+    "obligation_id": {
+      "pattern": "^MP2-[0-9]{3}\\.OBL\\.[A-Z0-9_]+$",
+      "type": "string"
+    },
+    "output_expectation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "media_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "minimum_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "required": {
+          "const": true
+        },
+        "root": {
+          "const": "execution_output_root"
+        },
+        "schema_source_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/id"
+            }
+          ]
+        },
+        "validator_owner": {
+          "$ref": "#/$defs/owner_entry"
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "path",
+        "media_type",
+        "schema_source_id",
+        "minimum_bytes",
+        "validator_owner",
+        "required"
+      ],
+      "type": "object"
+    },
+    "owner_entry": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pytest_node"
+            },
+            "node_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "node_id",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "python_entry"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "symbol": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "symbol",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "job_id": {
+              "$ref": "#/$defs/id"
+            },
+            "kind": {
+              "const": "workflow_job"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "source_path": {
+              "$ref": "#/$defs/relative_path"
+            }
+          },
+          "required": [
+            "kind",
+            "source_path",
+            "job_id",
+            "source"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "supplied_attestation"
+            },
+            "required_role": {
+              "$ref": "#/$defs/id"
+            },
+            "source": {
+              "$ref": "#/$defs/source_binding"
+            },
+            "validator_source_path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "validator_symbol": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "validator_source_path",
+            "validator_symbol",
+            "source",
+            "required_role"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "phase": {
+      "enum": [
+        "qualification",
+        "publication_reconciliation",
+        "postpublication"
+      ]
+    },
+    "raw_file": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "relative_path": {
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f]).+$",
+      "type": "string"
+    },
+    "required_release": {
+      "enum": [
+        "v0.4",
+        "v0.5",
+        "v0.6",
+        "v0.7",
+        "v0.8",
+        "v0.9",
+        "v1.0",
+        "post-v1.0"
+      ]
+    },
+    "resource_requirement": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "binding": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "state": {
+                  "const": "UNRESOLVED"
+                }
+              },
+              "required": [
+                "state",
+                "reason"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "configuration": {
+                  "$ref": "#/$defs/raw_file"
+                },
+                "state": {
+                  "const": "CONFIGURED"
+                }
+              },
+              "required": [
+                "state",
+                "configuration"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "fixture",
+            "hardware",
+            "service",
+            "credential_channel",
+            "human_authority",
+            "store",
+            "cas"
+          ]
+        },
+        "profile_id": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "profile_id",
+        "authority",
+        "binding"
+      ],
+      "type": "object"
+    },
+    "runtime_slot": {
+      "enum": [
+        "python_executable",
+        "checkout_root",
+        "installed_harness_root",
+        "candidate_root",
+        "invocation_dir",
+        "execution_output_root",
+        "fixture_root",
+        "wheel_path",
+        "sdist_path"
+      ]
+    },
+    "scenario_verdict": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED",
+        "RECOVER",
+        "BURN"
+      ]
+    },
+    "source_binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/git_binding"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "const": "candidate_source_blob"
+            },
+            "git_blob": {
+              "$ref": "#/$defs/git_oid"
+            },
+            "git_mode": {
+              "enum": [
+                "100644",
+                "100755"
+              ]
+            },
+            "path": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "repository": {
+              "const": "Miko997/metriplane"
+            },
+            "source_bytes": {
+              "$ref": "#/$defs/raw_file"
+            }
+          },
+          "required": [
+            "binding",
+            "repository",
+            "path",
+            "git_blob",
+            "git_mode",
+            "source_bytes"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "task_id": {
+      "pattern": "^MP2-[0-9]{3}$",
+      "type": "string"
+    },
+    "terminal": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "BLOCKED",
+        "CANCELLED",
+        "SKIPPED"
+      ]
+    },
+    "threshold": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "items": {
+            "$ref": "#/$defs/authority_link"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "comparator": {
+          "enum": [
+            "eq",
+            "le",
+            "ge"
+          ]
+        },
+        "metric_id": {
+          "$ref": "#/$defs/id"
+        },
+        "unit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "metric_id",
+        "comparator",
+        "value",
+        "unit",
+        "authority"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://metriplane.com/schemas/metriplane.release-obligation-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authority_sources": {
+      "items": {
+        "$ref": "#/$defs/authority_source"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "baseline_rule": {
+      "const": "FULL_CURRENT_CUMULATIVE_BOM_PLUS_RETAINED_BASELINE_AND_REVIEWED_DELTA"
+    },
+    "criterion_requirements": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "items": {
+              "$ref": "#/$defs/authority_link"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "criterion_id": {
+            "$ref": "#/$defs/criterion_id"
+          },
+          "first_required_release": {
+            "$ref": "#/$defs/required_release"
+          },
+          "mapping": {
+            "$ref": "#/$defs/coverage_mapping"
+          },
+          "predicate": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "predicate_digest": {
+            "$ref": "#/$defs/digest"
+          },
+          "required_family_ids": {
+            "items": {
+              "$ref": "#/$defs/family"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "task_id": {
+            "$ref": "#/$defs/task_id"
+          }
+        },
+        "required": [
+          "task_id",
+          "criterion_id",
+          "predicate",
+          "predicate_digest",
+          "first_required_release",
+          "required_family_ids",
+          "mapping",
+          "authority"
+        ],
+        "type": "object"
+      },
+      "maxItems": 280,
+      "minItems": 280,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "executors": {
+      "items": {
+        "$ref": "#/$defs/executor"
+      },
+      "minItems": 0,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "failure_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "empty_cumulative_baseline": {
+          "const": "BLOCKED"
+        },
+        "empty_verified_delta": {
+          "const": "ALLOW_EMPTY_DELTA_MAP_KEEP_BASELINE"
+        },
+        "missing_required_mapping": {
+          "const": "BLOCKED"
+        },
+        "product_failure": {
+          "const": "NEW_CANDIDATE_COMPLETE_QUALIFICATION_RESTART"
+        },
+        "service_retry": {
+          "const": "INDEPENDENT_CLASSIFICATION_PRESERVE_FIRST_ATTEMPT"
+        }
+      },
+      "required": [
+        "missing_required_mapping",
+        "empty_cumulative_baseline",
+        "empty_verified_delta",
+        "product_failure",
+        "service_retry"
+      ],
+      "type": "object"
+    },
+    "obligations": {
+      "items": {
+        "$comment": "Explicit empty mapping arrays are representable only for UNRESOLVED implementation. They confer no coverage. Determine current applicability from complete authoritative BOM/owner/first-required release before inspecting mappings; retain a blocker per missing dimension and prohibit dependent unit/coverage materialization. CONFIGURED requires every mapping nonempty.",
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "else": {
+              "properties": {
+                "superseded_by": {
+                  "minItems": 1
+                },
+                "supersession_authority": {
+                  "minItems": 1
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "lifecycle": {
+                  "const": "active"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "superseded_by": {
+                  "maxItems": 0
+                },
+                "supersession_authority": {
+                  "maxItems": 0
+                }
+              }
+            }
+          },
+          {
+            "else": {
+              "properties": {
+                "criterion_ids": {
+                  "minItems": 1
+                },
+                "environment_ids": {
+                  "minItems": 1
+                },
+                "family_ids": {
+                  "minItems": 1
+                },
+                "profile_ids": {
+                  "minItems": 1
+                },
+                "scenario_ids": {
+                  "minItems": 1
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "implementation": {
+                  "properties": {
+                    "state": {
+                      "const": "UNRESOLVED"
+                    }
+                  },
+                  "required": [
+                    "state"
+                  ]
+                }
+              },
+              "required": [
+                "implementation"
+              ]
+            },
+            "then": {}
+          }
+        ],
+        "properties": {
+          "authority": {
+            "items": {
+              "$ref": "#/$defs/authority_link"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "capability_ids": {
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "criterion_ids": {
+            "items": {
+              "$ref": "#/$defs/criterion_id"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "environment_ids": {
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "family_ids": {
+            "items": {
+              "$ref": "#/$defs/family"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "first_required_release": {
+            "$ref": "#/$defs/required_release"
+          },
+          "id": {
+            "$ref": "#/$defs/obligation_id"
+          },
+          "implementation": {
+            "$ref": "#/$defs/implementation_mapping"
+          },
+          "lifecycle": {
+            "enum": [
+              "active",
+              "retired_with_reviewed_supersession"
+            ]
+          },
+          "owner_task_id": {
+            "$ref": "#/$defs/task_id"
+          },
+          "profile_ids": {
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "scenario_ids": {
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "superseded_by": {
+            "items": {
+              "$ref": "#/$defs/obligation_id"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "supersession_authority": {
+            "items": {
+              "$ref": "#/$defs/authority_link"
+            },
+            "minItems": 0,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "owner_task_id",
+          "lifecycle",
+          "first_required_release",
+          "authority",
+          "criterion_ids",
+          "family_ids",
+          "capability_ids",
+          "profile_ids",
+          "environment_ids",
+          "scenario_ids",
+          "implementation",
+          "superseded_by",
+          "supersession_authority"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "owner": {
+      "const": "MP2-007"
+    },
+    "population_status": {
+      "enum": [
+        "UNRESOLVED",
+        "DECLARED_NOT_QUALIFIED"
+      ]
+    },
+    "schema_version": {
+      "const": "metriplane.release-test-obligations.v2"
+    }
+  },
+  "required": [
+    "schema_version",
+    "owner",
+    "population_status",
+    "authority_sources",
+    "criterion_requirements",
+    "obligations",
+    "executors",
+    "baseline_rule",
+    "failure_policy"
+  ],
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "O01-O07 in semantic-contract.md. Recompute all280 criterion rows/families from93 original task rows; count alone is insufficient.",
+    "Import actual stable obligation IDs or equal-or-stronger reviewed supersession from their existing owners. Missing MP2-014 ledger blocks affected live mappings; it does not license invented IDs.",
+    "No old materialization/result path or13 criterion placeholders are current cumulative result authority."
+  ]
+}

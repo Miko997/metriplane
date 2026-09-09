@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `e56da46766eeabec03a1a335da679cba48ad2ff0859ea7ec7b9b2d43c5ce4b8a`
+Canonical projection SHA-256: `67731f2da886aada85d1388ea4472e79d89a1110c941da9dfdccc70701121af3`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 164 |
+| actions | 168 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -281,6 +281,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.docker_live_up | tool | Docker Live Up | tools/docker_live_up.sh |
 | tool.docker_smoke_test | tool | Docker Smoke Test | tools/docker_smoke_test.sh |
 | tool.docker_stop | tool | Docker Stop | tools/docker_stop.sh |
+| tool.finalize_release_candidate_identity | tool | Finalize Release Candidate Identity | python tools/finalize_release_candidate_identity.py |
 | tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
 | tool.list_cameras | tool | List Cameras | python tools/list_cameras.py |
@@ -288,6 +289,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.mp | tool | Mp | tools/mp.sh |
 | tool.observe_main_health | tool | Observe Main Health | python tools/observe_main_health.py |
 | tool.plot_compute_backend_comparison | tool | Plot Compute Backend Comparison | python tools/plot_compute_backend_comparison.py |
+| tool.prepare_release_gate_input | tool | Prepare Release Gate Input | python tools/prepare_release_gate_input.py |
 | tool.preview_world_overlay | tool | Preview World Overlay | python tools/preview_world_overlay.py |
 | tool.preview_world_overlay_multi | tool | Preview World Overlay Multi | python tools/preview_world_overlay_multi.py |
 | tool.preview_world_overlay_multi_ws | tool | Preview World Overlay Multi Ws | python tools/preview_world_overlay_multi_ws.py |
@@ -309,6 +311,8 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
+| tool.validate_release_candidate_identity | tool | Validate Release Candidate Identity | python tools/validate_release_candidate_identity.py |
+| tool.validate_release_gate_input | tool | Validate Release Gate Input | python tools/validate_release_gate_input.py |
 | tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |

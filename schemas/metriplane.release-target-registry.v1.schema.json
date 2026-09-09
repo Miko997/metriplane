@@ -1,0 +1,231 @@
+{
+  "$comment": "Exact cumulative framework target policy. Actual patch context selects its comparison baseline and fixed target; historical predecessor labels here do not select accepted LKG or authorize publication.",
+  "$id": "https://metriplane.com/schemas/metriplane.release-target-registry.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "milestones": {
+      "items": false,
+      "maxItems": 7,
+      "minItems": 7,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v0.4"
+            },
+            "predecessor": {
+              "const": "v0.3.0"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v0.4.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v0.5"
+            },
+            "predecessor": {
+              "const": "v0.4"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v0.5.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v0.6"
+            },
+            "predecessor": {
+              "const": "v0.5"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v0.6.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v0.7"
+            },
+            "predecessor": {
+              "const": "v0.6"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v0.7.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v0.8"
+            },
+            "predecessor": {
+              "const": "v0.7"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v0.8.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v0.9"
+            },
+            "predecessor": {
+              "const": "v0.8"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v0.9.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "const": "v1.0"
+            },
+            "predecessor": {
+              "const": "v0.9"
+            },
+            "required_targets": {
+              "const": [
+                "github-release",
+                "pypi",
+                "testpypi"
+              ]
+            },
+            "version_line": {
+              "const": "v1.0.x"
+            }
+          },
+          "required": [
+            "id",
+            "predecessor",
+            "required_targets",
+            "version_line"
+          ],
+          "type": "object"
+        }
+      ],
+      "type": "array"
+    },
+    "owner": {
+      "const": "MP2-007"
+    },
+    "schema_version": {
+      "const": "metriplane.release-targets.v1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "owner",
+    "milestones"
+  ],
+  "type": "object",
+  "x-metriplane-semantic-checks": [
+    "Preserve all seven original framework rows and all three mandatory targets; no caller omission or shortened milestone list.",
+    "Read raw registry bytes for target_registry_digest; recomputed required targets are sorted and unique under the existing _required_release_targets owner.",
+    "Actual target identity comes from the validated context/target-resolution/retained burn graph. MET163 exact0.4.1 conflicts block for explicit owner identity decision.",
+    "Provider URLs, project identity, publisher workflow/environment and artifact rules are independently bound from the actual governed workflow and target-observation contract, never inferred from the target label alone.",
+    "Current tag/publication hold is enforced at action boundaries. Structural target policy cannot grant approval or rewrite historical target/predecessor evidence."
+  ]
+}
