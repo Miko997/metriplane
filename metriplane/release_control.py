@@ -10049,11 +10049,15 @@ def run_release_command(
         root = directory.parents[2]
         contract = TOOL_CONTRACTS[tool]
         if (
-            tool == "validate_release_evidence_stores.py"
+            tool
+            in {
+                "validate_release_evidence_stores.py",
+                "capture_release_target_observations.py",
+            }
             and os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
         ):
-            bound = _release_fixture_preflight_command_prepare(tool, [tool, *argv], directory)
-            return _release_fixture_preflight_command_supervise(bound)
+            bound = _release_fixture_command_prepare(tool, [tool, *argv], directory)
+            return _release_fixture_command_supervise(bound)
         if tool == "prepare_release_gate_input.py":
             held = _release_gate_prepare_inputs(argv, directory)
             context = begin_release_invocation(
@@ -13699,6 +13703,7 @@ def _release_captured_journal_members(
         in {
             "prepare_release_gate_input.py",
             "validate_release_evidence_stores.py",
+            "capture_release_target_observations.py",
         }
     ):
         allowed.add("terminal-commit.json")
@@ -13769,7 +13774,10 @@ def _release_captured_journal_members(
         outputs = terminal["data"]["outputs"]
         if worker is None or not os.path.lexists(context.directory / "staged"):
             raise ReleaseControlError("passing original journal lacks its complete worker evidence")
-        if context.intent["tool"] == "validate_release_evidence_stores.py":
+        if context.intent["tool"] in {
+            "validate_release_evidence_stores.py",
+            "capture_release_target_observations.py",
+        }:
             witness = _release_closed_mapping(
                 _source_json(read("terminal-commit.json"), "prerequisite terminal witness"),
                 {"schema_version", "intent_sha256", "terminal_sha256"},
@@ -13781,7 +13789,7 @@ def _release_captured_journal_members(
                 "terminal_sha256": sha256_json(terminal),
             }:
                 raise ReleaseControlError(
-                    "passing evidence-store prerequisite lacks its durable terminal witness"
+                    "passing native prerequisite lacks its durable terminal witness"
                 )
         if canonical_json(worker["outputs"]) != canonical_json(outputs):
             raise ReleaseControlError("original worker output plan differs from its PASS terminal")
@@ -23763,19 +23771,90 @@ def _release_fixture_reserve_invocation(
             ]
 
 
-def _release_fixture_preflight_command_prepare(
+def _release_fixture_command_prepare(
     tool: str, argv: list[str], directory: Path
 ) -> _ReleaseFixtureSeedInvocation:
-    """Bind the public preflight command to its complete supplied fixture seed.
+    """Bind a public native-fixture command to its complete supplied seed.
 
     The live path never enters this function.  The fixture seed remains test evidence;
     it supplies no release approval, durable-store binding or production authority.
     """
-    if tool != "validate_release_evidence_stores.py" or argv[:1] != [tool]:
-        raise ReleaseControlError("fixture preflight command has another owner")
+    if tool not in {
+        "validate_release_evidence_stores.py",
+        "capture_release_target_observations.py",
+    } or argv[:1] != [tool]:
+        raise ReleaseControlError("fixture native command has another owner")
     root = directory.parents[2]
     arguments = _release_original_arguments(tool, argv)
     cwd = Path.cwd()
+    if tool == "capture_release_target_observations.py":
+        paths = {
+            "release-context": (
+                "inputs/context.json",
+                "metriplane.release-context.v1",
+            ),
+            "targets": ("inputs/targets.json", "metriplane.release-targets.v1"),
+        }
+        for flag, (name, _) in paths.items():
+            if _release_historical_path(arguments[flag], cwd) != root / name:
+                raise ReleaseControlError(
+                    "fixture target command input has another fixed path: " + flag
+                )
+        held = _ReleaseCapturedFiles.capture(
+            root,
+            [(name, "prerequisite-original") for name, _ in paths.values()],
+            forbidden=(),
+            allowed_kinds=frozenset({"prerequisite-original"}),
+        )
+        expected_inputs = {
+            flag: [
+                {
+                    "path": name,
+                    "schema_id": schema,
+                    "sha256": sha256_bytes(held.read(name, kind="prerequisite-original")),
+                }
+            ]
+            for flag, (name, schema) in paths.items()
+        }
+        input_types = {name: schema for name, schema in paths.values()}
+        selection = {
+            "context_digest": expected_inputs["release-context"][0]["sha256"],
+            "registry_digest": expected_inputs["targets"][0]["sha256"],
+        }
+    else:
+        held, expected_inputs, input_types, selection = _release_fixture_preflight_command_inputs(
+            root, arguments, cwd
+        )
+    held.revalidate()
+    plan = _release_fixture_seed_prepare(
+        tool,
+        argv,
+        working_directory=cwd,
+        held_inputs=held,
+        expected_inputs=expected_inputs,
+        input_types=input_types,
+        selection=selection,
+        live=False,
+    )
+    original, written_intent = _release_fixture_reserve_invocation(plan)
+    intent_row = written_intent.rows[0]
+    intent_capture = _ReleaseCapturedFiles(
+        written_intent.root,
+        written_intent.root_directories,
+        ((intent_row[0], "prerequisite-original", *intent_row[2:]),),
+    )
+    return _release_fixture_seed_bind(original, plan=plan, original_intent_capture=intent_capture)
+
+
+def _release_fixture_preflight_command_inputs(
+    root: Path, arguments: Mapping[str, Any], cwd: Path
+) -> tuple[
+    _ReleaseCapturedFiles,
+    dict[str, list[dict[str, str]]],
+    dict[str, str],
+    dict[str, str],
+]:
+    """Capture the preflight registry and every referenced fixture control."""
     stores = _release_historical_path(arguments["stores"], cwd)
     if stores != root / "inputs/stores.json":
         raise ReleaseControlError("fixture preflight registry has another fixed input path")
@@ -23827,7 +23906,6 @@ def _release_fixture_preflight_command_prepare(
     held = _ReleaseCapturedFiles(
         root, first.root_directories, tuple(sorted((*first.rows, *controls.rows)))
     )
-    held.revalidate()
     expected_inputs = {
         "stores": [
             {
@@ -23845,27 +23923,10 @@ def _release_fixture_preflight_command_prepare(
         )
         for name, _, _, _, _ in held.rows
     }
-    plan = _release_fixture_seed_prepare(
-        tool,
-        argv,
-        working_directory=cwd,
-        held_inputs=held,
-        expected_inputs=expected_inputs,
-        input_types=input_types,
-        selection={"registry_digest": digest},
-        live=False,
-    )
-    original, written_intent = _release_fixture_reserve_invocation(plan)
-    intent_row = written_intent.rows[0]
-    intent_capture = _ReleaseCapturedFiles(
-        written_intent.root,
-        written_intent.root_directories,
-        ((intent_row[0], "prerequisite-original", *intent_row[2:]),),
-    )
-    return _release_fixture_seed_bind(original, plan=plan, original_intent_capture=intent_capture)
+    return held, expected_inputs, input_types, {"registry_digest": digest}
 
 
-def _release_fixture_preflight_primary(
+def _release_fixture_primary(
     emulation: _ReleaseFixtureEmulation,
 ) -> bytes:
     bound = emulation.bound
@@ -23873,9 +23934,82 @@ def _release_fixture_preflight_primary(
     operations = _release_fixture_native_plan(
         tool=plan.tool,
         sequence=original.intent["sequence"],
-        subject=_source_json(plan.subject, "fixture preflight subject"),
-        operations=[_source_json(raw, "fixture preflight operation") for raw in plan.operations],
+        subject=_source_json(plan.subject, "fixture native subject"),
+        operations=[_source_json(raw, "fixture native operation") for raw in plan.operations],
     )
+    if plan.tool == "capture_release_target_observations.py":
+        sidecars = {name: raw for name, _, raw in emulation.sidecars}
+
+        def ref(name: str) -> dict[str, Any]:
+            raw = sidecars[name]
+            return {"path": name, "bytes": len(raw), "sha256": sha256_bytes(raw)}
+
+        def original_ref(name: str) -> dict[str, Any]:
+            raw = plan.captured.read(name, kind="prerequisite-original")
+            return {"path": name, "bytes": len(raw), "sha256": sha256_bytes(raw)}
+
+        rows = []
+        for item, response_raw in zip(operations, plan.response_payloads, strict=True):
+            response = _source_json(response_raw, "fixture target response")
+            artifacts = []
+            for artifact in response["artifacts"]:
+                source = artifact["original_read_back"]["path"]
+                artifact_ref = ref(source)
+                if (
+                    artifact_ref["bytes"] != artifact["bytes"]
+                    or artifact_ref["sha256"] != artifact["sha256"]
+                ):
+                    raise ReleaseControlError(
+                        "fixture target artifact differs from its supplied original bytes"
+                    )
+                artifacts.append(
+                    {
+                        "name": artifact["name"],
+                        "expected_digest": None,
+                        "observed_digest": artifact["sha256"],
+                        "size": artifact["bytes"],
+                        "original_read_back": artifact_ref,
+                    }
+                )
+            rows.append(
+                {
+                    "target_id": response["target_id"],
+                    "version": response["normalized_package_version"],
+                    "state": response["state"],
+                    "raw_result_digest": ref(item["paths"]["response"])["sha256"],
+                    "artifacts": artifacts,
+                }
+            )
+        data = {
+            "producer_intent_digest": sha256_json(original.intent),
+            "invocation_root_locator": "invocations",
+            "api_version": _RELEASE_FIXTURE_API_VERSION,
+            "capture_phase": "prebuild",
+            "captured_at": emulation.operation_times[-1][1],
+            "provider": "test-fixture",
+            "tool": plan.tool,
+            "registry_digest": original_ref("inputs/targets.json")["sha256"],
+            "original_registry": original_ref("inputs/targets.json"),
+            "original_release_context": {
+                "record_type": "release-context",
+                "record_digest": original_ref("inputs/context.json")["sha256"],
+                "original_file": original_ref("inputs/context.json"),
+            },
+            "observations": [ref(item["paths"]["response"]) for item in operations],
+            "targets": rows,
+        }
+        data["observation_digest"] = sha256_json(data)
+        return canonical_json(
+            make_record(
+                "release-target-observations",
+                data,
+                invocation_id=original.intent["invocation_id"],
+                sequence=original.intent["sequence"],
+                synthetic=True,
+            )
+        )
+    if plan.tool != "validate_release_evidence_stores.py":
+        raise ReleaseControlError("fixture native primary has another owner")
     rows = []
     for item, proof_raw in zip(operations, emulation.proof_refs, strict=True):
         request = item["request"]["arguments"]
@@ -23983,7 +24117,7 @@ def _release_fixture_close_directories(
         ) from errors[0]
 
 
-def _release_fixture_preflight_worker(
+def _release_fixture_worker(
     bound: _ReleaseFixtureSeedInvocation,
     directory_fd: int,
     stdout_fd: int,
@@ -24023,13 +24157,14 @@ def _release_fixture_preflight_worker(
             _release_original_arguments(bound.plan.tool, list(bound.plan.argv))["out"],
             bound.plan.working_directory,
         ).name
-        primary_raw = _release_fixture_preflight_primary(emulation)
+        primary_schema = "metriplane." + _RELEASE_GATE_PREREQUISITES[bound.plan.tool][0] + ".v1"
+        primary_raw = _release_fixture_primary(emulation)
         primary = _release_fixture_write_set(
             staged,
             [
                 (
                     primary_name,
-                    "metriplane.release-evidence-store-preflight.v1",
+                    primary_schema,
                     primary_raw,
                 )
             ],
@@ -24046,13 +24181,8 @@ def _release_fixture_preflight_worker(
             original_staged_directory=staged,
             original_stage_files=staged_files,
         )
-        if (
-            collected.staged.read(
-                primary_name, kind="metriplane.release-evidence-store-preflight.v1"
-            )
-            != primary_raw
-        ):
-            raise ReleaseControlError("fixture preflight primary changed after semantic replay")
+        if collected.staged.read(primary_name, kind=primary_schema) != primary_raw:
+            raise ReleaseControlError("fixture native primary changed after semantic replay")
         run = _release_fixture_directory(
             context.root, expected=bound.plan.captured.root_directories
         )
@@ -24133,7 +24263,7 @@ def _release_fixture_preflight_worker(
             pass
 
 
-def _release_fixture_preflight_complete_at(
+def _release_fixture_complete_at(
     bound: _ReleaseFixtureSeedInvocation,
     directory_fd: int,
     code: int,
@@ -24264,7 +24394,7 @@ def _release_fixture_preflight_complete_at(
         capture.revalidate()
 
 
-def _release_fixture_preflight_command_supervise(bound: _ReleaseFixtureSeedInvocation) -> int:
+def _release_fixture_command_supervise(bound: _ReleaseFixtureSeedInvocation) -> int:
     """Supervise one real child worker while retaining the original journal descriptor."""
     context = bound.original
     ancestors = bound.intent_capture.rows[0][4]
@@ -24292,7 +24422,7 @@ def _release_fixture_preflight_command_supervise(bound: _ReleaseFixtureSeedInvoc
             try:
                 os.close(read_fd)
                 os.setsid()
-                worker_code = _release_fixture_preflight_worker(
+                worker_code = _release_fixture_worker(
                     bound, directory_fd, stdout_fd, stderr_fd, write_fd
                 )
             except BaseException:
@@ -24410,7 +24540,7 @@ def _release_fixture_preflight_command_supervise(bound: _ReleaseFixtureSeedInvoc
             for name, descriptor in (("stdout", stdout_fd), ("stderr", stderr_fd))
         }
         os.fsync(directory_fd)
-        _release_fixture_preflight_complete_at(
+        _release_fixture_complete_at(
             bound, directory_fd, code, outputs, identities, completion_captures
         )
     finally:

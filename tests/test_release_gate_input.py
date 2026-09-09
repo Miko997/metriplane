@@ -15622,6 +15622,108 @@ def test_seed_staging_target_complete_finite_artifact_plan_and_distinct_clocks(
         release._release_fixture_target_transcript_replay(relocated, **options)
 
 
+def test_seed_staging_public_target_command_completes_and_is_consumable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, argv, _, _, _ = _seed_staging_target_seed(
+        tmp_path, monkeypatch, generic=True, artifacts=True
+    )
+    assert release.run_release_command(argv[0], argv[1:]) == 0
+    directory = root / "invocations/capture-release-target-observations/001"
+    context = release._validate_intent(directory)
+    terminal = release._validate_terminal(context)
+    assert terminal["status"] == "PASS"
+    assert json.loads((directory / "worker.pid").read_bytes())["pid"] != os.getpid()
+    record_path = root / "primary.json"
+    record = json.loads(record_path.read_bytes())
+    release.validate_release_producer_journal(
+        record,
+        record_path,
+        producer="capture_release_target_observations.py",
+    )
+    assert record["data"]["observation_digest"] == release.sha256_json(
+        {key: value for key, value in record["data"].items() if key != "observation_digest"}
+    )
+    assert {row["state"] for row in record["data"]["targets"]} == {
+        "occupied",
+        "unused",
+    }
+    assert len(terminal["data"]["outputs"]) == len(context.intent["planned_outputs"])
+
+
+@pytest.mark.parametrize("case", ["failure", "interruption", "replacement"])
+def test_seed_staging_public_target_command_retains_nonpassing_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    root, argv, _, _, _ = _seed_staging_target_seed(tmp_path, monkeypatch)
+    if case == "failure":
+        monkeypatch.setattr(
+            release,
+            "_release_fixture_seed_emulate",
+            lambda _: (_ for _ in ()).throw(release.ReleaseControlError("worker failure")),
+        )
+    elif case == "interruption":
+        monkeypatch.setattr(
+            release,
+            "_release_fixture_seed_emulate",
+            lambda _: (_ for _ in ()).throw(KeyboardInterrupt()),
+        )
+    else:
+        collect = release._release_fixture_collect_staged
+
+        def replace(emulation: Any, **kwargs: Any) -> Any:
+            staged = kwargs["original_staged_directory"].path
+            saved = staged.with_name("staged-original")
+            staged.rename(saved)
+            shutil.copytree(saved, staged)
+            return collect(emulation, **kwargs)
+
+        monkeypatch.setattr(release, "_release_fixture_collect_staged", replace)
+    expected = 130 if case == "interruption" else 3
+    assert release.run_release_command(argv[0], argv[1:]) == expected
+    directory = root / "invocations/capture-release-target-observations/001"
+    terminal = release._validate_terminal(release._validate_intent(directory))
+    assert terminal["status"] == ("CANCELLED" if case == "interruption" else "BLOCKED")
+    assert terminal["data"]["outputs"] == []
+    assert not (root / "primary.json").exists()
+    assert (directory / "partial-files.json").exists()
+
+
+def test_seed_staging_public_target_command_recovers_in_next_original_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, argv, _, name, _ = _seed_staging_target_seed(tmp_path, monkeypatch)
+    emulate = release._release_fixture_seed_emulate
+    monkeypatch.setattr(
+        release,
+        "_release_fixture_seed_emulate",
+        lambda _: (_ for _ in ()).throw(release.ReleaseControlError("first operation failed")),
+    )
+    assert release.run_release_command(argv[0], argv[1:]) == 3
+    monkeypatch.setattr(release, "_release_fixture_seed_emulate", emulate)
+    second_argv = [value.replace("/001", "/002") for value in argv]
+    source = root / Path(name).parent
+    destination = source.parent / "002"
+    shutil.copytree(source, destination)
+    seed_path = destination / "seed.json"
+    seed = json.loads(seed_path.read_bytes())
+    seed["command_digest"] = release.sha256_json(
+        {"tool": argv[0], "argv": second_argv, "working_directory": str(Path.cwd())}
+    )
+    seed_path.write_bytes(json.dumps(seed, indent=2).encode() + b"\n")
+    assert release.run_release_command(second_argv[0], second_argv[1:]) == 0
+    first = release._validate_intent(root / "invocations/capture-release-target-observations/001")
+    second = release._validate_intent(root / "invocations/capture-release-target-observations/002")
+    terminal = release._validate_terminal(second)
+    assert terminal["status"] == "PASS"
+    assert second.intent["predecessor"]["intent_digest"] == release.sha256_bytes(
+        (first.directory / "intent.json").read_bytes()
+    )
+    assert second.intent["predecessor"]["terminal_digest"] == release.sha256_bytes(
+        (first.directory / "invocation.json").read_bytes()
+    )
+
+
 @pytest.mark.parametrize(
     "case",
     [
