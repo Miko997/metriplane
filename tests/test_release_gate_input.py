@@ -23,6 +23,35 @@ import pytest
 from metriplane import release_control as release
 
 
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "capture_release_target_observations.py",
+        "check_release_readiness.py",
+        "record_release_role_assignments.py",
+        "validate_release_evidence_stores.py",
+        "validate_publication_reconciliation.py",
+        "validate_release_approval.py",
+        "validate_release_gate_instance.py",
+        "validate_release_qualification.py",
+        "validate_release_qualification_plan.py",
+        "validate_release_retention.py",
+        "validate_release_role_assignments.py",
+    ],
+)
+def test_implemented_release_route_has_actual_public_adapter(tool: str) -> None:
+    repository = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(repository / "tools" / tool), "--help"],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "section 9.B" in completed.stdout
+
+
 def _gate_input_plan_fixture(
     root: Path, monkeypatch: pytest.MonkeyPatch, *, new_burn: bool = False, relative: bool = False
 ) -> tuple[release.ReleaseInvocation, dict[str, str]]:
@@ -14701,7 +14730,15 @@ def test_seed_staging_public_preflight_command_completes_connected_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root, argv, _, _, _ = _seed_staging_preflight_seed(tmp_path, monkeypatch)
-    assert release.run_release_command(argv[0], argv[1:]) == 0
+    repository = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(repository / "tools" / argv[0]), *argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
     directory = root / "invocations/validate-release-evidence-stores/001"
     context = release._validate_intent(directory)
     terminal = release._validate_terminal(context)
@@ -15628,7 +15665,15 @@ def test_seed_staging_public_target_command_completes_and_is_consumable(
     root, argv, _, _, _ = _seed_staging_target_seed(
         tmp_path, monkeypatch, generic=True, artifacts=True
     )
-    assert release.run_release_command(argv[0], argv[1:]) == 0
+    repository = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(repository / "tools" / argv[0]), *argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
     directory = root / "invocations/capture-release-target-observations/001"
     context = release._validate_intent(directory)
     terminal = release._validate_terminal(context)

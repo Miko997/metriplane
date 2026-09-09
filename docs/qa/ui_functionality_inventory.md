@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `67731f2da886aada85d1388ea4472e79d89a1110c941da9dfdccc70701121af3`
+Canonical projection SHA-256: `1ea42d023a53000cce2a607c8b9eb9e87a6063938f381903c4a05690fdbfd346`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 168 |
+| actions | 179 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -260,10 +260,12 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.build_release_artifacts | tool | Build Release Artifacts | python tools/build_release_artifacts.py |
 | tool.calibrate_intrinsics_chessboard | tool | Calibrate Intrinsics Chessboard | python tools/calibrate_intrinsics_chessboard.py |
 | tool.calibrate_planar_homography | tool | Calibrate Planar Homography | python tools/calibrate_planar_homography.py |
+| tool.capture_release_target_observations | tool | Capture Release Target Observations | python tools/capture_release_target_observations.py |
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
 | tool.check_blockers | tool | Check Blockers | python tools/check_blockers.py |
 | tool.check_met77_transition | tool | Check Met77 Transition | python tools/check_met77_transition.py |
 | tool.check_pr_contract | tool | Check Pr Contract | python tools/check_pr_contract.py |
+| tool.check_release_readiness | tool | Check Release Readiness | python tools/check_release_readiness.py |
 | tool.check_repository_protection | tool | Check Repository Protection | python tools/check_repository_protection.py |
 | tool.check_required_terminal | tool | Check Required Terminal | python tools/check_required_terminal.py |
 | tool.check_ros2_adapters | tool | Check Ros2 Adapters | python tools/check_ros2_adapters.py |
@@ -296,6 +298,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.preview_zones_overlay | tool | Preview Zones Overlay | python tools/preview_zones_overlay.py |
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
+| tool.record_release_role_assignments | tool | Record Release Role Assignments | python tools/record_release_role_assignments.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |
 | tool.report_alignment | tool | Report Alignment | python tools/report_alignment.py |
 | tool.run_demo_all | tool | Run Demo All | tools/run_demo_all.sh |
@@ -310,9 +313,17 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
+| tool.validate_publication_reconciliation | tool | Validate Publication Reconciliation | python tools/validate_publication_reconciliation.py |
+| tool.validate_release_approval | tool | Validate Release Approval | python tools/validate_release_approval.py |
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
 | tool.validate_release_candidate_identity | tool | Validate Release Candidate Identity | python tools/validate_release_candidate_identity.py |
+| tool.validate_release_evidence_stores | tool | Validate Release Evidence Stores | python tools/validate_release_evidence_stores.py |
 | tool.validate_release_gate_input | tool | Validate Release Gate Input | python tools/validate_release_gate_input.py |
+| tool.validate_release_gate_instance | tool | Validate Release Gate Instance | python tools/validate_release_gate_instance.py |
+| tool.validate_release_qualification | tool | Validate Release Qualification | python tools/validate_release_qualification.py |
+| tool.validate_release_qualification_plan | tool | Validate Release Qualification Plan | python tools/validate_release_qualification_plan.py |
+| tool.validate_release_retention | tool | Validate Release Retention | python tools/validate_release_retention.py |
+| tool.validate_release_role_assignments | tool | Validate Release Role Assignments | python tools/validate_release_role_assignments.py |
 | tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |
