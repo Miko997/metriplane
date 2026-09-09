@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `641fe0eccf9acaf4f2d3662a26e83886f28a7c766385e427196cc587be9a8886`
+Canonical projection SHA-256: `842e905249f4c96d9218124119344de515b78973ce58cb960b638535e909d9f7`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 183 |
+| actions | 186 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -301,8 +301,10 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
 | tool.record_release_role_assignments | tool | Record Release Role Assignments | python tools/record_release_role_assignments.py |
+| tool.record_release_target_burn | tool | Record Release Target Burn | python tools/record_release_target_burn.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |
 | tool.report_alignment | tool | Report Alignment | python tools/report_alignment.py |
+| tool.resolve_release_target | tool | Resolve Release Target | python tools/resolve_release_target.py |
 | tool.retain_release_evidence | tool | Retain Release Evidence | python tools/retain_release_evidence.py |
 | tool.run_demo_all | tool | Run Demo All | tools/run_demo_all.sh |
 | tool.run_fusion_preview | tool | Run Fusion Preview | python tools/run_fusion_preview.py |
@@ -329,6 +331,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate_release_retention | tool | Validate Release Retention | python tools/validate_release_retention.py |
 | tool.validate_release_role_assignments | tool | Validate Release Role Assignments | python tools/validate_release_role_assignments.py |
 | tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
+| tool.validate_release_target_resolution | tool | Validate Release Target Resolution | python tools/validate_release_target_resolution.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |
 | tool.ws_replay_jsonl | tool | Ws Replay Jsonl | python tools/ws_replay_jsonl.py |

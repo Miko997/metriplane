@@ -6018,6 +6018,9 @@ _INVOCATION_STAGES: Final[Mapping[str, str]] = {
     "validate_release_artifact_manifest.py": "artifact-manifest-validation",
     _FINALIZER: "candidate-finalization",
     _CANDIDATE_VALIDATOR: "validate-release-candidate-identity",
+    "resolve_release_target.py": "resolve-release-target",
+    "record_release_target_burn.py": "record-release-target-burn",
+    "validate_release_target_resolution.py": "validate-release-target-resolution",
 }
 _INTENT_FIELDS: Final[frozenset[str]] = frozenset(
     {
@@ -7558,6 +7561,13 @@ def _validate_bound_invocation(
         _validate_finalization_bound(context, outputs=outputs, output_root=output_root)
         return
     tool = context.intent["tool"]
+    if tool in {
+        "resolve_release_target.py",
+        "record_release_target_burn.py",
+        "validate_release_target_resolution.py",
+    }:
+        _validate_release_target_bound_invocation(context, outputs=outputs, output_root=output_root)
+        return
     if tool not in _INVOCATION_STAGES:
         return
     keyring_binding = (
@@ -8098,6 +8108,7 @@ def _record_type_from_tool(tool: str) -> str:
         "release_run_statuses": "release-run-status-snapshot",
         "release_task_state_observation": "release-task-state-observation",
         "release_target_observations": "release-target-observations",
+        "release_target": "release-target-resolution",
         "release_evidence_stores": "release-evidence-store-preflight",
         "release_retention": "release-retention-receipts",
         "release_evidence": "release-retention-receipts",
@@ -9137,6 +9148,15 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
     fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
     try:
         attestation_verifier = _attestation_verifier_from_args(args, live=not fixture_mode)
+        if name in {"resolve_release_target.py", "record_release_target_burn.py"}:
+            result = _release_target_control_operation(name, args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "validate_release_target_resolution.py":
+            result = _validate_release_target_resolution_operation(args, context)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == _FINALIZER:
             if not isinstance(context, CandidateFinalizationInvocation):
                 raise ReleaseControlError("finalizer lacks its typed context")
@@ -9590,10 +9610,22 @@ def _verify_staged_outputs(context: ReleaseInvocation, outputs: list[dict[str, s
         if tool in {"freeze_release_source.py", "build_release_artifacts.py"}
         else None
     )
+    if tool == "validate_release_target_resolution.py":
+        if outputs:
+            raise ReleaseControlError("target resolution validator cannot produce outputs")
+        parser = _build_tool_parser(tool, TOOL_CONTRACTS[tool])
+        arguments = parser.parse_args(context.intent["argv"][1:])
+        _validate_release_target_resolution_operation(arguments, context)
     for row in outputs:
         if not row["schema_id"].startswith("metriplane.release-"):
             continue
         record = read_json(context.directory / "staged" / row["path"])
+        if tool in {"resolve_release_target.py", "record_release_target_burn.py"}:
+            parser = _build_tool_parser(tool, TOOL_CONTRACTS[tool])
+            arguments = parser.parse_args(context.intent["argv"][1:])
+            expected_record = _release_target_control_operation(tool, arguments, context)
+            if canonical_json(record) != canonical_json(expected_record):
+                raise ReleaseControlError("target control supervisor recomputation differs")
         if (
             record["invocation_id"] != context.intent["invocation_id"]
             or record["sequence"] != context.intent["sequence"]
@@ -9647,6 +9679,93 @@ def _verify_staged_outputs(context: ReleaseInvocation, outputs: list[dict[str, s
                 raise ReleaseControlError("supervisor artifact output set differs from manifest")
 
 
+def _install_release_target_output_copy(
+    context: ReleaseInvocation, outputs: list[dict[str, str]]
+) -> None:
+    """Install one target record as an exclusive single-link immutable copy."""
+    tool = context.intent["tool"]
+    if tool not in {"resolve_release_target.py", "record_release_target_burn.py"}:
+        raise ReleaseControlError("target copy installer has another command owner")
+    _validate_release_target_bound_invocation(
+        context, outputs=outputs, output_root=context.directory / "staged"
+    )
+    if len(outputs) != 1 or outputs[0] != {
+        **context.intent["planned_outputs"][0],
+        "sha256": outputs[0].get("sha256"),
+    }:
+        raise ReleaseControlError("target copy installer requires one exact planned output")
+    row = outputs[0]
+    digest = _require_digest(row["sha256"], "target installed output")
+    name = _release_relative_suffix(row["path"], "target installed output path")
+    if len(name.parts) != 1:
+        raise ReleaseControlError("target installed output must be directly in its run root")
+    if os.path.lexists(context.directory / "invocation.json") or os.path.lexists(
+        context.directory / "terminal-commit.json"
+    ):
+        raise ReleaseControlError("target output installation cannot follow a terminal")
+
+    staged = context.directory / "staged" / name
+    source_fd = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(source_fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise ReleaseControlError("target staged output is not a single-link regular file")
+        chunks = []
+        while chunk := os.read(source_fd, 1024 * 1024):
+            chunks.append(chunk)
+        payload = b"".join(chunks)
+        after = os.fstat(source_fd)
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_mode,
+            before.st_nlink,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_mode,
+            after.st_nlink,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ) or len(payload) != before.st_size:
+            raise ReleaseControlError("target staged output changed during held readback")
+    finally:
+        os.close(source_fd)
+    if sha256_bytes(payload) != digest:
+        raise ReleaseControlError("target staged output differs from its worker digest")
+
+    root_fd = os.open(context.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open(
+            name.as_posix(),
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o400,
+            dir_fd=root_fd,
+        )
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o400)
+            os.fsync(stream.fileno())
+            installed = os.fstat(stream.fileno())
+            if (
+                not stat.S_ISREG(installed.st_mode)
+                or installed.st_nlink != 1
+                or installed.st_size != len(payload)
+            ):
+                raise ReleaseControlError("target canonical copy has unsafe file identity")
+        os.fsync(root_fd)
+    finally:
+        os.close(root_fd)
+    raw = _safe_release_bytes(context.root / name)
+    if raw != payload:
+        raise ReleaseControlError("target canonical copy differs from its staged bytes")
+
+
 def _install_release_outputs(
     context: ReleaseInvocation,
     outputs: list[dict[str, str]],
@@ -9663,6 +9782,12 @@ def _install_release_outputs(
         return _install_release_gate_pair(
             context, outputs, original_stage_capture=gate_stage_capture
         )
+    if context.intent["tool"] in {
+        "resolve_release_target.py",
+        "record_release_target_burn.py",
+    }:
+        _install_release_target_output_copy(context, outputs)
+        return None
     installed: list[tuple[Path, Path]] = []
     created_directories: list[Path] = []
     try:
@@ -10023,6 +10148,8 @@ def _supervise_release_invocation(
     if code == 0 and context.intent["tool"] in {
         "freeze_release_source.py",
         "build_release_artifacts.py",
+        "resolve_release_target.py",
+        "record_release_target_burn.py",
     }:
         for row in outputs:
             if row["schema_id"].startswith("metriplane."):
@@ -10094,15 +10221,20 @@ def run_release_command(
             )
         else:
             inputs = []
-            for flag, kind in [
-                ("gate-input", "release-gate-input"),
-                ("target-resolution", "release-target-resolution"),
-                ("source-freeze", "release-source-freeze"),
-                ("record", _record_type_from_tool(tool)),
-            ]:
-                value = _command_value(argv, flag)
-                if value is not None:
-                    inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            if tool in {"resolve_release_target.py", "record_release_target_burn.py"}:
+                inputs.extend(_release_target_command_input_paths(tool, argv, root))
+            elif tool == "validate_release_target_resolution.py":
+                inputs.extend(_release_target_validation_input_paths(argv, root))
+            else:
+                for flag, kind in [
+                    ("gate-input", "release-gate-input"),
+                    ("target-resolution", "release-target-resolution"),
+                    ("source-freeze", "release-source-freeze"),
+                    ("record", _record_type_from_tool(tool)),
+                ]:
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
             if tool == _CANDIDATE_VALIDATOR:
                 value = _command_value(argv, "predecessor")
                 if value is not None:
@@ -15348,6 +15480,475 @@ def _release_target_control_data(
         )
         payload["burn_id"] = sha256_json(payload) if selection["indexing_required"] else None
     return payload, bool(selection["target_usable"])
+
+
+def _release_target_original_file(
+    root: Path, reference: object, *, label: str
+) -> tuple[Path, bytes]:
+    row = _release_closed_mapping(reference, {"path", "bytes", "sha256"}, label + " original file")
+    suffix = _release_relative_suffix(row["path"], label + " original path")
+    path = root / suffix
+    raw = _safe_release_bytes(path)
+    if (
+        type(row["bytes"]) is not int
+        or row["bytes"] < 0
+        or len(raw) != row["bytes"]
+        or sha256_bytes(raw) != _require_digest(row["sha256"], label + " original digest")
+    ):
+        raise ReleaseControlError(label + " original byte identity differs")
+    return path, raw
+
+
+def _release_target_command_originals(
+    observations_path: Path, lineage_path: Path
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], bytes, list[str], list[str]]:
+    observations_path = observations_path.absolute()
+    lineage_path = lineage_path.absolute()
+    root = observations_path.parent
+    if lineage_path.parent != root:
+        raise ReleaseControlError("target control inputs do not share one retained run root")
+    observations = read_json(observations_path)
+    lineage = read_json(lineage_path)
+    validate_record(observations, "release-target-observations")
+    validate_record(lineage, "release-burn-lineage")
+    validate_release_producer_journal(
+        observations,
+        observations_path,
+        producer="capture_release_target_observations.py",
+    )
+    validate_release_producer_journal(
+        lineage, lineage_path, producer="export_release_burn_lineage.py"
+    )
+    observation_data = observations["data"]
+    context_link = _release_closed_mapping(
+        observation_data.get("original_release_context"),
+        {"record_type", "record_digest", "original_file"},
+        "target observation context link",
+    )
+    if context_link["record_type"] != "release-context":
+        raise ReleaseControlError("target observation context link has another type")
+    _, context_raw = _release_target_original_file(
+        root, context_link["original_file"], label="release context"
+    )
+    context = _source_json(context_raw, "target control original context")
+    validate_record(context, "release-context")
+    if sha256_json(context) != context_link["record_digest"]:
+        raise ReleaseControlError("target observation changes original context C")
+    _, registry_raw = _release_target_original_file(
+        root, observation_data.get("original_registry"), label="target registry"
+    )
+    versions = sorted(
+        {
+            _require_nonempty_string(row.get("version"), "observed target version")
+            for row in observation_data.get("targets", [])
+            if isinstance(row, dict)
+        },
+        key=lambda version: _release_version_pair(version, "v" + version),
+    )
+    operation_order: list[str] = []
+    for row in lineage["data"].get("burns", []):
+        if not isinstance(row, dict):
+            raise ReleaseControlError("burn lineage row is not an object")
+        receipt = _require_digest(row.get("index_receipt_digest"), "burn lineage index receipt")
+        if receipt not in operation_order:
+            operation_order.append(receipt)
+    return observations, lineage, context, registry_raw, versions, operation_order
+
+
+def _release_target_command_input_paths(
+    tool: str, argv: Sequence[str], root: Path
+) -> list[tuple[Path, str]]:
+    arguments = _release_original_arguments(tool, [tool, *argv])
+    observations_flag = (
+        "live-target-observations" if tool == "resolve_release_target.py" else "target-observations"
+    )
+    lineage_flag = (
+        "retained-burn-lineage" if tool == "resolve_release_target.py" else "burn-lineage"
+    )
+    observations_path = _release_historical_path(arguments[observations_flag], Path.cwd())
+    lineage_path = _release_historical_path(arguments[lineage_flag], Path.cwd())
+    if observations_path.parent != root or lineage_path.parent != root:
+        raise ReleaseControlError("target control inputs must be directly retained in its run root")
+    observations = read_json(observations_path)
+    validate_record(observations, "release-target-observations")
+    data = observations["data"]
+    context_link = _release_closed_mapping(
+        data.get("original_release_context"),
+        {"record_type", "record_digest", "original_file"},
+        "target command context link",
+    )
+    context_path, _ = _release_target_original_file(
+        root, context_link["original_file"], label="release context"
+    )
+    registry_path, _ = _release_target_original_file(
+        root, data.get("original_registry"), label="target registry"
+    )
+    result = [
+        (observations_path, "metriplane.release-target-observations.v1"),
+        (lineage_path, "metriplane.release-burn-lineage.v1"),
+        (context_path, "metriplane.release-context.v1"),
+        (registry_path, "metriplane.release-targets.v1"),
+    ]
+    if tool == "resolve_release_target.py":
+        supplied_registry = _release_historical_path(arguments["targets"], Path.cwd())
+        if supplied_registry != registry_path:
+            raise ReleaseControlError("target resolution selects another target registry")
+    else:
+        target_path = _release_historical_path(arguments["target-resolution"], Path.cwd())
+        if target_path.parent != root:
+            raise ReleaseControlError(
+                "target burn resolution must be directly retained in its run root"
+            )
+        result.append((target_path, "metriplane.release-target-resolution.v1"))
+    if len({path for path, _ in result}) != len(result):
+        raise ReleaseControlError("target control input paths alias")
+    return result
+
+
+def _release_target_validation_input_paths(
+    argv: Sequence[str], root: Path
+) -> list[tuple[Path, str]]:
+    arguments = _release_original_arguments(
+        "validate_release_target_resolution.py",
+        ["validate_release_target_resolution.py", *argv],
+    )
+    record_path = _release_historical_path(arguments["record"], Path.cwd())
+    if record_path.parent != root:
+        raise ReleaseControlError("target resolution validation record escapes its run root")
+    record = read_json(record_path)
+    validate_record(record, "release-target-resolution")
+    validate_release_producer_journal(record, record_path, producer="resolve_release_target.py")
+    producer_directory = root / "invocations/resolve-release-target" / f"{record['sequence']:03d}"
+    producer = _validate_intent(producer_directory)
+    if producer.intent["invocation_id"] != record["invocation_id"]:
+        raise ReleaseControlError("target resolution validation selects another producer intent")
+    producer_arguments = _release_original_arguments(
+        "resolve_release_target.py", producer.intent["argv"]
+    )
+    targets_path = _release_historical_path(arguments["targets"], Path.cwd())
+    producer_cwd = _canonical_absolute_path(
+        producer.intent["environment"]["working_directory"],
+        "target resolution producer working directory",
+    )
+    producer_directory = _release_historical_path(
+        producer_arguments["invocation-dir"], producer_cwd
+    )
+    producer_root = producer_directory.parents[2]
+    original_targets = _release_historical_path(producer_arguments["targets"], producer_cwd)
+    try:
+        target_suffix = original_targets.relative_to(producer_root)
+    except ValueError as exc:
+        raise ReleaseControlError(
+            "target resolution producer registry escapes its run root"
+        ) from exc
+    current_targets = root / _release_relative_suffix(
+        target_suffix.as_posix(), "target resolution producer registry"
+    )
+    if targets_path != current_targets:
+        raise ReleaseControlError("target resolution validation selects another target registry")
+    inputs = []
+    for row in producer.intent["inputs"]:
+        original = _canonical_absolute_path(row["path"], "target resolution producer input")
+        try:
+            suffix = original.relative_to(producer_root)
+        except ValueError as exc:
+            raise ReleaseControlError(
+                "target resolution producer input escapes its run root"
+            ) from exc
+        inputs.append(
+            (
+                root
+                / _release_relative_suffix(suffix.as_posix(), "target resolution producer input"),
+                row["schema_id"],
+            )
+        )
+    if record_path in {path for path, _ in inputs}:
+        raise ReleaseControlError("target validation record aliases an original producer input")
+    return [(record_path, "metriplane.release-target-resolution.v1"), *inputs]
+
+
+def _release_target_context_path(context: ReleaseInvocation, value: object) -> Path:
+    """Relocate one original command path into the context's retained run root."""
+    cwd = _canonical_absolute_path(
+        context.intent["environment"]["working_directory"], "target command working directory"
+    )
+    arguments = _release_original_arguments(context.intent["tool"], context.intent["argv"])
+    original_directory = _release_historical_path(arguments["invocation-dir"], cwd)
+    if original_directory.parts[-3:] != (
+        "invocations",
+        _invocation_stage(context.intent["tool"]),
+        f"{context.intent['sequence']:03d}",
+    ):
+        raise ReleaseControlError("target command invocation path changes its reserved sequence")
+    original_root = original_directory.parents[2]
+    original = _release_historical_path(value, cwd)
+    try:
+        suffix = original.relative_to(original_root)
+    except ValueError as exc:
+        raise ReleaseControlError("target command input escapes its original run root") from exc
+    _release_relative_suffix(suffix.as_posix(), "target command input path")
+    return context.root / suffix
+
+
+def _validate_release_target_bound_invocation(
+    context: ReleaseInvocation,
+    *,
+    outputs: list[dict[str, str]] | None = None,
+    output_root: Path | None = None,
+) -> None:
+    """Bind target lifecycle commands to their exact reserved input and output bytes."""
+    tool = context.intent["tool"]
+    if tool not in {
+        "resolve_release_target.py",
+        "record_release_target_burn.py",
+        "validate_release_target_resolution.py",
+    }:
+        raise ReleaseControlError("target invocation binding has another tool")
+    if context.directory != (
+        context.root / "invocations" / _invocation_stage(tool) / f"{context.intent['sequence']:03d}"
+    ):
+        raise ReleaseControlError("target invocation differs from its current retained root")
+    arguments = _release_original_arguments(tool, context.intent["argv"])
+    if _release_target_context_path(context, arguments["invocation-dir"]) != context.directory:
+        raise ReleaseControlError("target invocation argument differs from its retained journal")
+
+    if tool == "validate_release_target_resolution.py":
+        record_path = _release_target_context_path(context, arguments["record"])
+        record = read_json(record_path)
+        validate_record(record, "release-target-resolution")
+        validate_release_producer_journal(record, record_path, producer="resolve_release_target.py")
+        producer_directory = (
+            context.root / "invocations/resolve-release-target" / f"{record['sequence']:03d}"
+        )
+        producer = _validate_intent(producer_directory)
+        if producer.intent["invocation_id"] != record["invocation_id"]:
+            raise ReleaseControlError("target validator selected another producer intent")
+        producer_arguments = _release_original_arguments(
+            "resolve_release_target.py", producer.intent["argv"]
+        )
+        if _release_target_context_path(context, arguments["targets"]) != (
+            _release_target_context_path(producer, producer_arguments["targets"])
+        ):
+            raise ReleaseControlError("target validator selected another target registry")
+        current_inputs = [
+            (record_path, "metriplane.release-target-resolution.v1"),
+            *[
+                (
+                    _release_target_context_path(producer, row["path"]),
+                    row["schema_id"],
+                )
+                for row in producer.intent["inputs"]
+            ],
+        ]
+    else:
+        observations_flag = (
+            "live-target-observations"
+            if tool == "resolve_release_target.py"
+            else "target-observations"
+        )
+        lineage_flag = (
+            "retained-burn-lineage" if tool == "resolve_release_target.py" else "burn-lineage"
+        )
+        observations_path = _release_target_context_path(context, arguments[observations_flag])
+        lineage_path = _release_target_context_path(context, arguments[lineage_flag])
+        if observations_path.parent != context.root or lineage_path.parent != context.root:
+            raise ReleaseControlError("target command inputs leave their retained run root")
+        observations = read_json(observations_path)
+        validate_record(observations, "release-target-observations")
+        data = observations["data"]
+        context_link = _release_closed_mapping(
+            data.get("original_release_context"),
+            {"record_type", "record_digest", "original_file"},
+            "target command context link",
+        )
+        context_path, _ = _release_target_original_file(
+            context.root, context_link["original_file"], label="release context"
+        )
+        registry_path, _ = _release_target_original_file(
+            context.root, data.get("original_registry"), label="target registry"
+        )
+        current_inputs = [
+            (observations_path, "metriplane.release-target-observations.v1"),
+            (lineage_path, "metriplane.release-burn-lineage.v1"),
+            (context_path, "metriplane.release-context.v1"),
+            (registry_path, "metriplane.release-targets.v1"),
+        ]
+        if tool == "resolve_release_target.py":
+            if _release_target_context_path(context, arguments["targets"]) != registry_path:
+                raise ReleaseControlError("target resolution selected another target registry")
+        else:
+            current_inputs.append(
+                (
+                    _release_target_context_path(context, arguments["target-resolution"]),
+                    "metriplane.release-target-resolution.v1",
+                )
+            )
+
+    cwd = _canonical_absolute_path(
+        context.intent["environment"]["working_directory"], "target command working directory"
+    )
+    original_directory = _release_historical_path(arguments["invocation-dir"], cwd)
+    original_root = original_directory.parents[2]
+    expected_inputs = []
+    for path, schema_id in current_inputs:
+        suffix = path.relative_to(context.root)
+        expected_inputs.append(
+            {
+                "path": str(original_root / suffix),
+                "schema_id": schema_id,
+                "sha256": sha256_bytes(_safe_release_bytes(path)),
+            }
+        )
+    expected_inputs.sort(key=lambda row: row["path"])
+    if context.intent["inputs"] != expected_inputs:
+        raise ReleaseControlError("target invocation input identity changed after reservation")
+
+    expected_plan: list[dict[str, str]] = []
+    if tool != "validate_release_target_resolution.py":
+        record_type = (
+            "release-target-resolution"
+            if tool == "resolve_release_target.py"
+            else "release-target-burn"
+        )
+        output = _release_target_context_path(context, arguments["out"])
+        if output.parent != context.root:
+            raise ReleaseControlError("target command output leaves its retained run root")
+        expected_plan = [
+            {
+                "path": output.name,
+                "schema_id": f"metriplane.{record_type}.v1",
+            }
+        ]
+    if context.intent["planned_outputs"] != expected_plan:
+        raise ReleaseControlError("target invocation output plan differs from its contract")
+    if outputs is not None:
+        root = context.root if output_root is None else output_root
+        expected_outputs = [
+            {**row, "sha256": sha256_bytes(_safe_release_bytes(root / row["path"]))}
+            for row in expected_plan
+        ]
+        if outputs != expected_outputs:
+            raise ReleaseControlError("target invocation output bytes differ from its plan")
+
+
+def _release_target_control_operation(
+    tool: str, args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    if os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") != "1":
+        raise ReleaseControlError(
+            "live target control requires bound provider, index and release authority"
+        )
+    observations_flag = (
+        "live_target_observations" if tool == "resolve_release_target.py" else "target_observations"
+    )
+    lineage_flag = (
+        "retained_burn_lineage" if tool == "resolve_release_target.py" else "burn_lineage"
+    )
+    observations_path = _release_target_context_path(context, getattr(args, observations_flag))
+    lineage_path = _release_target_context_path(context, getattr(args, lineage_flag))
+    observations, lineage, original_context, registry_raw, versions, operation_order = (
+        _release_target_command_originals(observations_path, lineage_path)
+    )
+    expected_context_digest = sha256_json(original_context)
+    expected_registry_digest = sha256_bytes(registry_raw)
+    if tool == "resolve_release_target.py":
+        expected, _ = _release_target_control_data(
+            "release-target-resolution",
+            context=original_context,
+            observations=observations,
+            lineage=lineage,
+            expected_context_digest=expected_context_digest,
+            expected_observations_digest=sha256_json(observations),
+            expected_lineage_digest=sha256_json(lineage),
+            target_registry_raw=registry_raw,
+            expected_target_registry_digest=expected_registry_digest,
+            expected_versions=versions,
+            expected_operation_order=operation_order,
+            producer_intent_digest=sha256_json(context.intent),
+        )
+        if any(
+            getattr(args, flag) != expected[field]
+            for flag, field in (
+                ("milestone", "milestone"),
+                ("initial_package_version", "initial_package_version"),
+                ("initial_release_tag", "initial_release_tag"),
+            )
+        ):
+            raise ReleaseControlError("target resolution command changes approved target policy")
+        record_type = "release-target-resolution"
+    else:
+        target_path = _release_target_context_path(context, args.target_resolution)
+        if target_path.parent != observations_path.absolute().parent:
+            raise ReleaseControlError("target burn resolution escapes its retained run root")
+        target = read_json(target_path)
+        validate_record(target, "release-target-resolution")
+        validate_release_producer_journal(target, target_path, producer="resolve_release_target.py")
+        resolved, _ = _release_target_control_data(
+            "release-target-resolution",
+            context=original_context,
+            observations=observations,
+            lineage=lineage,
+            expected_context_digest=expected_context_digest,
+            expected_observations_digest=sha256_json(observations),
+            expected_lineage_digest=sha256_json(lineage),
+            target_registry_raw=registry_raw,
+            expected_target_registry_digest=expected_registry_digest,
+            expected_versions=versions,
+            expected_operation_order=operation_order,
+            producer_intent_digest=target["data"]["producer_intent_digest"],
+        )
+        _release_graph_primary_equal(target, resolved)
+        expected, _ = _release_target_control_data(
+            "release-target-burn",
+            context=original_context,
+            observations=observations,
+            lineage=lineage,
+            expected_context_digest=expected_context_digest,
+            expected_observations_digest=sha256_json(observations),
+            expected_lineage_digest=sha256_json(lineage),
+            target_registry_raw=registry_raw,
+            expected_target_registry_digest=expected_registry_digest,
+            expected_versions=versions,
+            expected_operation_order=operation_order,
+            producer_intent_digest=sha256_json(context.intent),
+        )
+        record_type = "release-target-burn"
+    return make_record(
+        record_type,
+        expected,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
+def _validate_release_target_resolution_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    if not args.read_back_lineage:
+        raise ReleaseControlError("target resolution validation requires complete lineage readback")
+    record_path = _release_target_context_path(context, args.record)
+    record = read_json(record_path)
+    validate_record(record, "release-target-resolution")
+    validate_release_producer_journal(record, record_path, producer="resolve_release_target.py")
+    producer_directory = (
+        context.root / "invocations/resolve-release-target" / f"{record['sequence']:03d}"
+    )
+    producer = _validate_intent(producer_directory)
+    if producer.intent["invocation_id"] != record["invocation_id"]:
+        raise ReleaseControlError("target resolution record has another producer intent")
+    producer_args = _build_tool_parser(
+        "resolve_release_target.py", TOOL_CONTRACTS["resolve_release_target.py"]
+    ).parse_args(producer.intent["argv"][1:])
+    expected = _release_target_control_operation(
+        "resolve_release_target.py", producer_args, producer
+    )
+    if canonical_json(record) != canonical_json(expected):
+        raise ReleaseControlError("target resolution differs from original inputs and lineage")
+    original_targets = _release_target_context_path(producer, producer_args.targets)
+    if _release_target_context_path(context, args.targets) != original_targets:
+        raise ReleaseControlError("target resolution validation uses another target registry")
+    return record
 
 
 def _release_original_artifact_descriptors(
