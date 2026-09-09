@@ -1597,47 +1597,108 @@ def _candidate_payload_digest(data: Mapping[str, Any]) -> str:
 def _validate_candidate_predecessor(
     predecessor: Mapping[str, Any], gate: Mapping[str, Any]
 ) -> None:
-    required = {"candidate_milestone", "closed_decision_digest", "lkg_digest", "version"}
-    later = {
-        "predecessor_milestone",
+    linked = {
         "qualification_digest",
         "reconciliation_digest",
-        "chain_head",
+        "final_retention_digest",
+        "chain_receipt_digest",
+        "lkg_digest",
+        "pointer_transition_retention_digest",
         "pointer_envelope_digest",
+        "pointer_retention_digest",
         "pointer_index_receipt_digest",
+        "closed_decision_digest",
+        "close_ready_observation_digest",
+        "close_root_digest",
+    }
+    required = linked | {
+        "lineage_mode",
+        "candidate_milestone",
+        "predecessor_milestone",
+        "version",
+        "package_version",
+        "release_context_digest",
+        "release_context",
+        "predecessor_policy_digest",
+        "predecessor_policy",
+        "predecessor_subject",
+        "predecessor_subject_digest",
+        "proof_index",
+        "producer_intent_digest",
+        "invocation_root_locator",
+        "genesis_authority_digest",
         "completion_digest",
+        "selection_observations",
+        "chain_head",
     }
     milestone = gate["milestone"]
     if milestone not in MILESTONES[:-1] or predecessor.get("candidate_milestone") != milestone:
         raise ReleaseControlError("ordinary candidate predecessor milestone is invalid")
-    if not required <= set(predecessor) <= required | later:
+    if set(predecessor) != required:
         raise ReleaseControlError("candidate predecessor shape is not closed")
-    expected = "v0.3" if milestone == "v0.4" else MILESTONES[MILESTONES.index(milestone) - 1]
+    if predecessor["completion_digest"] is not None:
+        raise ReleaseControlError("ordinary candidate predecessor cannot claim completion")
+    for name in ("release_context", "predecessor_policy", "proof_index"):
+        ref = _release_closed_mapping(
+            predecessor[name], {"path", "bytes", "sha256"}, "candidate predecessor " + name
+        )
+        _release_relative_suffix(ref["path"], "candidate predecessor original path")
+        if type(ref["bytes"]) is not int or ref["bytes"] < 1:
+            raise ReleaseControlError("candidate predecessor original byte count is invalid")
+        _require_digest(ref["sha256"], "candidate predecessor original R")
+    subject = _release_closed_mapping(
+        predecessor["predecessor_subject"],
+        {
+            "framework_milestone",
+            "normalized_package_version",
+            "release_tag",
+            "source_commit",
+            "source_tree",
+            "tag_object",
+            "artifacts",
+        },
+        "candidate predecessor subject",
+    )
+    if (
+        predecessor["predecessor_subject_digest"] != sha256_json(subject)
+        or predecessor["version"] != subject["release_tag"]
+        or predecessor["package_version"] != subject["normalized_package_version"]
+        or predecessor["predecessor_milestone"] != subject["framework_milestone"]
+        or predecessor["invocation_root_locator"] != "invocations"
+    ):
+        raise ReleaseControlError("candidate predecessor subject or producer binding differs")
+    for key in ("release_context_digest", "predecessor_policy_digest", "producer_intent_digest"):
+        _require_digest(predecessor[key], "candidate predecessor " + key)
+    if predecessor["lineage_mode"] == "ORIGINAL_BOOTSTRAP":
+        if (
+            milestone != "v0.4"
+            or gate["expected_predecessor_milestone"] not in {"v0.3", "v0.3.0"}
+            or predecessor["version"] != "v0.3.0"
+            or predecessor["package_version"] != "0.3.0"
+            or predecessor["predecessor_milestone"] is not None
+            or predecessor["selection_observations"] is not None
+            or predecessor["chain_head"] is not None
+            or predecessor["genesis_authority_digest"] is None
+            or any(predecessor[name] is not None for name in linked)
+        ):
+            raise ReleaseControlError("v0.4 bootstrap predecessor graph is incomplete")
+        _require_digest(predecessor["genesis_authority_digest"], "candidate predecessor genesis")
+        return
+    if predecessor["lineage_mode"] != "RECONCILED_LKG":
+        raise ReleaseControlError("candidate predecessor lineage mode is invalid")
+    expected = milestone if milestone == "v0.4" else MILESTONES[MILESTONES.index(milestone) - 1]
     version = predecessor["version"]
     if (
-        gate["expected_predecessor_milestone"]
-        not in ({"v0.3", "v0.3.0"} if milestone == "v0.4" else {expected})
+        predecessor["predecessor_milestone"] != expected
+        or gate["expected_predecessor_milestone"] != expected
         or not isinstance(version, str)
-        or re.fullmatch(re.escape(expected) + r"\.[0-9]+", version) is None
+        or re.fullmatch(re.escape(expected) + r"\.[0-9]+(?:\.post[0-9]+)?", version) is None
+        or predecessor["genesis_authority_digest"] is not None
+        or not isinstance(predecessor["selection_observations"], Mapping)
     ):
-        raise ReleaseControlError("candidate predecessor version or gate binding is invalid")
-    if milestone == "v0.4":
-        if version != "v0.3.0" or set(predecessor) != required:
-            raise ReleaseControlError("v0.4 requires the exact four-field v0.3.0 predecessor")
-    elif (
-        set(predecessor) != required | later
-        or predecessor["predecessor_milestone"] != expected
-        or predecessor["completion_digest"] is not None
-    ):
-        raise ReleaseControlError(
-            "later candidate predecessor evidence/applicability is incomplete"
-        )
-    for key in set(predecessor) - {
-        "candidate_milestone",
-        "version",
-        "predecessor_milestone",
-        "completion_digest",
-    }:
+        raise ReleaseControlError("candidate predecessor version or LKG applicability is invalid")
+    _require_digest(predecessor["chain_head"], "candidate predecessor chain head")
+    for key in linked:
         _require_digest(predecessor[key], "candidate predecessor " + key)
 
 

@@ -327,22 +327,90 @@ def _make_fixture(
         sequence=1,
         synthetic=True,
     )
+    predecessor_version = "v0.3.0" if milestone == "v0.4" else previous + ".0"
+    predecessor_milestone = None if milestone == "v0.4" else previous
+    raw_ref = {"path": "original/input.json", "bytes": 1, "sha256": "2" * 64}
+    predecessor_subject = {
+        "framework_milestone": predecessor_milestone,
+        "normalized_package_version": predecessor_version.removeprefix("v"),
+        "release_tag": predecessor_version,
+        "source_commit": "3" * 40,
+        "source_tree": "4" * 40,
+        "tag_object": "5" * 40,
+        "artifacts": [
+            {
+                "bytes": 1,
+                "filename": "metriplane-predecessor-py3-none-any.whl",
+                "kind": "wheel",
+                "readback": raw_ref,
+                "sha256": "6" * 64,
+            },
+            {
+                "bytes": 1,
+                "filename": "metriplane-predecessor.tar.gz",
+                "kind": "sdist",
+                "readback": raw_ref,
+                "sha256": "7" * 64,
+            },
+        ],
+    }
     predecessor_data: dict[str, Any] = {
+        "lineage_mode": "ORIGINAL_BOOTSTRAP" if milestone == "v0.4" else "RECONCILED_LKG",
         "candidate_milestone": milestone,
-        "closed_decision_digest": "a" * 64,
-        "lkg_digest": "b" * 64,
-        "version": "v0.3.0" if milestone == "v0.4" else previous + ".0",
+        "predecessor_milestone": predecessor_milestone,
+        "version": predecessor_version,
+        "package_version": predecessor_version.removeprefix("v"),
+        "release_context_digest": "8" * 64,
+        "release_context": raw_ref,
+        "predecessor_policy_digest": "9" * 64,
+        "predecessor_policy": raw_ref,
+        "predecessor_subject": predecessor_subject,
+        "predecessor_subject_digest": control.sha256_json(predecessor_subject),
+        "proof_index": raw_ref,
+        "producer_intent_digest": "a" * 64,
+        "invocation_root_locator": "invocations",
+        "genesis_authority_digest": "b" * 64 if milestone == "v0.4" else None,
+        "completion_digest": None,
+        "selection_observations": None,
+        "qualification_digest": None,
+        "reconciliation_digest": None,
+        "final_retention_digest": None,
+        "chain_receipt_digest": None,
+        "chain_head": None,
+        "lkg_digest": None,
+        "pointer_transition_retention_digest": None,
+        "pointer_envelope_digest": None,
+        "pointer_retention_digest": None,
+        "pointer_index_receipt_digest": None,
+        "closed_decision_digest": None,
+        "close_ready_observation_digest": None,
+        "close_root_digest": None,
     }
     if milestone != "v0.4":
-        predecessor_data.update(
-            predecessor_milestone=previous,
-            chain_head="c" * 64,
-            qualification_digest="d" * 64,
-            reconciliation_digest="e" * 64,
-            pointer_envelope_digest="f" * 64,
-            pointer_index_receipt_digest="1" * 64,
-            completion_digest=None,
-        )
+        predecessor_data["selection_observations"] = {
+            "observed_at": "2026-01-01T00:00:00Z",
+            "provider_state": raw_ref,
+            "provider_event_history": raw_ref,
+            "success_chain_readback": raw_ref,
+            "lkg_state_and_history_readback": raw_ref,
+            "attempt_index_readback": raw_ref,
+        }
+        for field in (
+            "qualification_digest",
+            "reconciliation_digest",
+            "final_retention_digest",
+            "chain_receipt_digest",
+            "chain_head",
+            "lkg_digest",
+            "pointer_transition_retention_digest",
+            "pointer_envelope_digest",
+            "pointer_retention_digest",
+            "pointer_index_receipt_digest",
+            "closed_decision_digest",
+            "close_ready_observation_digest",
+            "close_root_digest",
+        ):
+            predecessor_data[field] = control.sha256_json({"field": field})
     predecessor = control.make_record(
         "release-predecessor",
         predecessor_data,
