@@ -16666,16 +16666,22 @@ def _release_predecessor_reconciled_graph(
     ancestry_generation = chain["generation"] - 1
     seen_chain_heads = {chain["committed_head"]}
     while ancestry_generation:
+
+        def matches_prior_chain(record: Mapping[str, Any]) -> bool:
+            data = record.get("data", {})
+            return (
+                record.get("status") == "PASS"
+                and isinstance(data, dict)
+                and data.get("backend_id") == "success-chain"
+                and data.get("committed_head") == ancestry_head
+                and data.get("read_back_digest") == ancestry_head
+                and data.get("generation") == ancestry_generation
+            )
+
         _prior_digest, prior_record = _release_predecessor_unique_record(
             originals,
             "release-evidence-chain",
-            lambda record, head=ancestry_head, generation=ancestry_generation: (
-                record.get("status") == "PASS"
-                and record.get("data", {}).get("backend_id") == "success-chain"
-                and record.get("data", {}).get("committed_head") == head
-                and record.get("data", {}).get("read_back_digest") == head
-                and record.get("data", {}).get("generation") == generation
-            ),
+            matches_prior_chain,
             "selected prior success-chain transition",
         )
         prior = prior_record["data"]
