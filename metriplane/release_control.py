@@ -15760,9 +15760,10 @@ def _release_predecessor_command_input_paths(
                     row["schema_id"],
                 )
             )
-        selected = {path for path, _ in relocated}
+        selected_paths = {path for path, _ in relocated}
         if any(
-            command_path(flag) not in selected for flag in ("release-context", "predecessor-policy")
+            command_path(flag) not in selected_paths
+            for flag in ("release-context", "predecessor-policy")
         ):
             raise ReleaseControlError(
                 "predecessor validator selects inputs outside the original producer closure"
@@ -16882,12 +16883,15 @@ def _release_predecessor_control_operation(
         linear_digest,
         "predecessor current Linear snapshot",
     )
+    expected_context_id = _require_nonempty_string(
+        policy_source.get("readiness_context_id"), "predecessor readiness context"
+    )
     policy_inputs = {
         "readiness_registry_raw": readiness_raw,
         "expected_readiness_digest": readiness_ref["sha256"],
         "predecessor_policy_raw": policy_raw,
         "expected_predecessor_policy_digest": sha256_bytes(policy_raw),
-        "expected_context_id": policy_source.get("readiness_context_id"),
+        "expected_context_id": expected_context_id,
         "linear_snapshot": linear_record,
     }
     current = _release_context_policy_projection(context_record, **policy_inputs)
@@ -16896,7 +16900,7 @@ def _release_predecessor_control_operation(
         expected_digest=sha256_bytes(policy_raw),
         readiness_registry_raw=readiness_raw,
         expected_readiness_digest=readiness_ref["sha256"],
-        expected_context_id=policy_source.get("readiness_context_id"),
+        expected_context_id=expected_context_id,
     )
     subject = policy["expected_predecessor_subject"]
     if (
