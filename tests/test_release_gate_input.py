@@ -10668,18 +10668,30 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
     qualification_digest = add(
         "release-qualification", {"candidate_digest": candidate_id, "milestone": "v0.4"}
     )
+    evidence_manifest_digest = add(
+        "release-evidence-manifest",
+        {
+            "phase": "qualified-publication",
+            "candidate_digest": candidate_id,
+            "entries": [{"sha256": qualification_digest}],
+        },
+    )
     reconciliation_digest = add(
         "release-publication-reconciliation",
         {
             "candidate_digest": candidate_id,
             "milestone": "v0.4",
             "qualification_digest": qualification_digest,
+            "evidence_manifest_digest": evidence_manifest_digest,
             "result": "RECONCILED",
             "burn_required": False,
             "partial_targets": [],
         },
     )
-    final_retention_digest = add("release-retention-receipts", {"phase": "final"})
+    final_retention_digest = add(
+        "release-retention-receipts",
+        {"phase": "final", "input_digest": evidence_manifest_digest},
+    )
     chain_head = "2" * 64
     chain_digest = add(
         "release-evidence-chain",
@@ -10691,7 +10703,7 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
             "committed_head": chain_head,
             "read_back_digest": chain_head,
             "disposition": "committed",
-            "evidence_manifest_digest": "a" * 64,
+            "evidence_manifest_digest": evidence_manifest_digest,
             "expected_head": None,
             "generation": 1,
             "milestone": "v0.4",
@@ -10763,6 +10775,10 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
             ],
         },
     )
+    close_retention_digest = add(
+        "release-retention-receipts",
+        {"phase": "release-task-finalizing", "input_digest": close_manifest_digest},
+    )
     close_root_digest = add(
         "release-attempt-index",
         {
@@ -10770,7 +10786,7 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
             "scope_kind": "release_candidate",
             "stage": "release-task-finalizing",
             "entry_manifest_digest": close_manifest_digest,
-            "entry_receipts_digest": "4" * 64,
+            "entry_receipts_digest": close_retention_digest,
             "candidate_id": candidate_id,
         },
     )
@@ -10871,6 +10887,7 @@ def test_predecessor_reconciled_graph_follows_complete_linked_history(
         lambda data: {
             "scope": {"candidate_id": data["candidate_id"]},
             "entry_manifest_digest": data["entry_manifest_digest"],
+            "entry_receipts_digest": data["entry_receipts_digest"],
         },
     )
     assert (
@@ -10938,7 +10955,17 @@ def test_predecessor_reconciled_graph_follows_complete_linked_history(
         release._release_predecessor_decision_authority(tmp_path, decision, subject=subject)
 
 
-@pytest.mark.parametrize("mutation", ["competing-lkg", "pointer-substitution", "invalidation"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "competing-lkg",
+        "pointer-substitution",
+        "final-manifest-substitution",
+        "final-retention-substitution",
+        "close-retention-substitution",
+        "invalidation",
+    ],
+)
 def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
     monkeypatch: pytest.MonkeyPatch, mutation: str
 ) -> None:
@@ -10970,6 +10997,7 @@ def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
         lambda data: {
             "scope": {"candidate_id": data["candidate_id"]},
             "entry_manifest_digest": data["entry_manifest_digest"],
+            "entry_receipts_digest": data["entry_receipts_digest"],
         },
     )
     if mutation == "competing-lkg":
@@ -10980,6 +11008,25 @@ def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
     elif mutation == "pointer-substitution":
         manifest = originals[("release-evidence-manifest", expected["pointer_envelope_digest"])][1]
         manifest["data"]["entries"][0]["sha256"] = "9" * 64
+    elif mutation == "final-manifest-substitution":
+        manifest = next(
+            record
+            for (kind, _), (_, record) in originals.items()
+            if kind == "release-evidence-manifest"
+            and record["data"].get("phase") == "qualified-publication"
+        )
+        manifest["data"]["candidate_digest"] = "9" * 64
+    elif mutation == "final-retention-substitution":
+        retention = originals[("release-retention-receipts", expected["final_retention_digest"])][1]
+        retention["data"]["input_digest"] = "9" * 64
+    elif mutation == "close-retention-substitution":
+        retention = next(
+            record
+            for (kind, _), (_, record) in originals.items()
+            if kind == "release-retention-receipts"
+            and record["data"].get("phase") == "release-task-finalizing"
+        )
+        retention["data"]["input_digest"] = "9" * 64
     else:
         invalidated = copy.deepcopy(
             originals[("release-last-known-good", expected["lkg_digest"])][1]
@@ -11180,18 +11227,30 @@ def _connected_predecessor_command_fixture(
         "release-qualification",
         {"candidate_digest": candidate_data["candidate_digest"], "milestone": "v0.4"},
     )
+    evidence_manifest_digest, _ = record(
+        "release-evidence-manifest",
+        {
+            "phase": "qualified-publication",
+            "candidate_digest": candidate_data["candidate_digest"],
+            "entries": [{"sha256": qualification_digest}],
+        },
+    )
     reconciliation_digest, _ = record(
         "release-publication-reconciliation",
         {
             "candidate_digest": candidate_data["candidate_digest"],
             "milestone": "v0.4",
             "qualification_digest": qualification_digest,
+            "evidence_manifest_digest": evidence_manifest_digest,
             "result": "RECONCILED",
             "burn_required": False,
             "partial_targets": [],
         },
     )
-    final_retention_digest, _ = record("release-retention-receipts", {"phase": "final"})
+    final_retention_digest, _ = record(
+        "release-retention-receipts",
+        {"phase": "final", "input_digest": evidence_manifest_digest},
+    )
     chain_head = "8" * 64
     _chain_digest, _ = record(
         "release-evidence-chain",
@@ -11203,7 +11262,7 @@ def _connected_predecessor_command_fixture(
             "committed_head": chain_head,
             "read_back_digest": chain_head,
             "disposition": "committed",
-            "evidence_manifest_digest": "7" * 64,
+            "evidence_manifest_digest": evidence_manifest_digest,
             "expected_head": None,
             "generation": 1,
             "milestone": "v0.4",
@@ -11321,7 +11380,13 @@ def _connected_predecessor_command_fixture(
             ("history/pointer-index.json", pointer_index_digest),
         ],
     )
-    close_root_digest = index("release-task-finalizing", close_manifest_digest, "e" * 64, 2)
+    close_retention_digest, _ = record(
+        "release-retention-receipts",
+        {"phase": "release-task-finalizing", "input_digest": close_manifest_digest},
+    )
+    close_root_digest = index(
+        "release-task-finalizing", close_manifest_digest, close_retention_digest, 2
+    )
     role_digest, _ = record(
         "release-role-assignments",
         {"milestone": "v0.4", "operator": "historical-operator"},

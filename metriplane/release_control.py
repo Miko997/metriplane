@@ -16662,7 +16662,25 @@ def _release_predecessor_reconciled_graph(
         or chain["previous_head"] != chain["expected_head"]
     ):
         raise ReleaseControlError("selected success-chain transition is not an exact CAS append")
-    _require_digest(chain["evidence_manifest_digest"], "selected final evidence manifest")
+    evidence_manifest_digest = _require_digest(
+        chain["evidence_manifest_digest"], "selected final evidence manifest"
+    )
+    evidence_manifest_record = _release_predecessor_original_record(
+        originals,
+        "release-evidence-manifest",
+        evidence_manifest_digest,
+        "selected final evidence manifest",
+    )
+    evidence_manifest = evidence_manifest_record["data"]
+    if (
+        evidence_manifest_record["status"] != "PASS"
+        or evidence_manifest.get("phase") != "qualified-publication"
+        or evidence_manifest.get("candidate_digest") != candidate["candidate_digest"]
+        or reconciliation.get("evidence_manifest_digest") != evidence_manifest_digest
+    ):
+        raise ReleaseControlError(
+            "selected final evidence manifest is not the reconciled candidate"
+        )
     _require_nonempty_string(chain["operation_id"], "selected success-chain operation")
     final_retention_digest = _require_digest(
         chain.get("final_receipts_digest"), "selected final retention"
@@ -16673,8 +16691,12 @@ def _release_predecessor_reconciled_graph(
         final_retention_digest,
         "selected final retention",
     )
-    if final_retention["data"].get("phase") != "final":
-        raise ReleaseControlError("selected final retention has another lifecycle phase")
+    if (
+        final_retention["status"] != "PASS"
+        or final_retention["data"].get("phase") != "final"
+        or final_retention["data"].get("input_digest") != evidence_manifest_digest
+    ):
+        raise ReleaseControlError("selected final retention does not retain the final manifest")
 
     pointer_transition_retention_digest, pointer_transition_retention = (
         _release_predecessor_unique_record(
@@ -16749,6 +16771,21 @@ def _release_predecessor_reconciled_graph(
         close_manifest_digest,
         "selected close-ready manifest",
     )
+    close_retention_digest = _require_digest(
+        close_entry["entry_receipts_digest"], "selected close-ready retention"
+    )
+    close_retention = _release_predecessor_original_record(
+        originals,
+        "release-retention-receipts",
+        close_retention_digest,
+        "selected close-ready retention",
+    )
+    if (
+        close_retention["status"] != "PASS"
+        or close_retention["data"].get("phase") != "release-task-finalizing"
+        or close_retention["data"].get("input_digest") != close_manifest_digest
+    ):
+        raise ReleaseControlError("durable close root does not retain its exact manifest")
     close_ready_observation_digest, close_ready_observation = _release_predecessor_unique_record(
         originals,
         "release-task-state-observation",
