@@ -632,11 +632,16 @@ def test_suite_rejects_partial_stale_or_relabelled_results(tmp_path: Path, mutat
         _check_suite(root, source)
 
 
-def test_suite_rejects_shard_environment_drift(tmp_path: Path) -> None:
+def test_suite_distinguishes_runner_image_rollout_from_environment_drift(tmp_path: Path) -> None:
     root, source = _suite_fixture(tmp_path)
     path = root / "ci-suite-123-1-macos-py3.12-shard3" / "report.json"
     report = json.loads(path.read_text())
     report["identity"]["runner_image_version"] = "different-image"
+    path.write_text(json.dumps(report))
+    result = _check_suite(root, source)
+    assert result["result"] == "success"
+
+    report["identity"]["runner_arch"] = "X64-drift"
     path.write_text(json.dumps(report))
     with pytest.raises(TerminalValidationError, match="environments disagree"):
         _check_suite(root, source)

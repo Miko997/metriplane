@@ -551,7 +551,6 @@ def _validate_suite_reports(
                 "runner_os",
                 "runner_arch",
                 "runner_image",
-                "runner_image_version",
             )
         ]
         if key not in environments:
