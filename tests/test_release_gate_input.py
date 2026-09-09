@@ -28,6 +28,7 @@ from metriplane import release_control as release
     [
         "capture_release_target_observations.py",
         "check_release_readiness.py",
+        "export_release_attempt_index.py",
         "record_release_role_assignments.py",
         "retain_release_evidence.py",
         "validate_release_evidence_stores.py",
@@ -16004,6 +16005,25 @@ def test_seed_staging_seed_full_empty_index_read_inventory_before_intent(
     assert len(plan.operations) == 1 and len(plan.output_plan) == 4
     assert not (root / "invocations").exists()
     assert "original_index_export" not in json.loads(plan.response_payloads[0])
+    if tool == "export_release_attempt_index.py":
+        repository = Path(__file__).resolve().parents[1]
+        completed = subprocess.run(
+            [sys.executable, str(repository / "tools" / tool), *argv[1:]],
+            cwd=repository,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+        record_path = root / "primary.json"
+        record = json.loads(record_path.read_bytes())
+        release.validate_release_producer_journal(record, record_path, producer=tool)
+        assert record["data"]["entries"] == []
+        assert record["data"]["generation"] == 0
+        assert record["data"]["through_head"] == digest
+        (root / "invocations/export-release-attempt-index/001/terminal-commit.json").unlink()
+        with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
+            release.validate_release_producer_journal(record, record_path, producer=tool)
 
 
 @pytest.mark.parametrize("form", ["single", "multiple", "manifest"])

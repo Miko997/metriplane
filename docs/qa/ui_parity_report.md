@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `ea4c97646c100012b119ad0f80c576ec5980b3b36c03990e128c9bb348db2c8a`
+Canonical projection SHA-256: `2d5e2c2c161ce2faf6569f8ddaff9b7d25d53b7810a5493f41bef2af91d7f007`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 180 |
+| total_discovered_features | 181 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 94 |
+| cli_only_documented | 95 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -192,6 +192,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.docker_live_up | Docker Live Up | tools/docker_live_up.sh | tools/docker_live_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_smoke_test | Docker Smoke Test | tools/docker_smoke_test.sh | tools/docker_smoke_test.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_stop | Docker Stop | tools/docker_stop.sh | tools/docker_stop.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.export_release_attempt_index | Export Release Attempt Index | tools/export_release_attempt_index.py | python tools/export_release_attempt_index.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.finalize_release_candidate_identity | Finalize Release Candidate Identity | tools/finalize_release_candidate_identity.py | python tools/finalize_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.freeze_release_source | Freeze Release Source | tools/freeze_release_source.py | python tools/freeze_release_source.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.jetson_preflight | Jetson Preflight | tools/jetson_preflight.sh | tools/jetson_preflight.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

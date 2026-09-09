@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `ea4c97646c100012b119ad0f80c576ec5980b3b36c03990e128c9bb348db2c8a`
+Canonical projection SHA-256: `2d5e2c2c161ce2faf6569f8ddaff9b7d25d53b7810a5493f41bef2af91d7f007`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 180 |
+| actions | 181 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -283,6 +283,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.docker_live_up | tool | Docker Live Up | tools/docker_live_up.sh |
 | tool.docker_smoke_test | tool | Docker Smoke Test | tools/docker_smoke_test.sh |
 | tool.docker_stop | tool | Docker Stop | tools/docker_stop.sh |
+| tool.export_release_attempt_index | tool | Export Release Attempt Index | python tools/export_release_attempt_index.py |
 | tool.finalize_release_candidate_identity | tool | Finalize Release Candidate Identity | python tools/finalize_release_candidate_identity.py |
 | tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |

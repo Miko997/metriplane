@@ -7466,6 +7466,7 @@ def _validate_terminal_entry(
             "capture_release_target_observations.py",
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
+            "export_release_attempt_index.py",
         } and os.path.lexists(context.directory / "worker-result.json"):
             witness_raw = _safe_release_bytes(context.directory / "terminal-commit.json")
             witness = _source_json(witness_raw, "native fixture terminal witness")
@@ -10058,6 +10059,7 @@ def run_release_command(
                 "capture_release_target_observations.py",
                 "record_release_role_assignments.py",
                 "retain_release_evidence.py",
+                "export_release_attempt_index.py",
             }
             and os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
         ):
@@ -13711,6 +13713,7 @@ def _release_captured_journal_members(
             "capture_release_target_observations.py",
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
+            "export_release_attempt_index.py",
         }
     ):
         allowed.add("terminal-commit.json")
@@ -13786,6 +13789,7 @@ def _release_captured_journal_members(
             "capture_release_target_observations.py",
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
+            "export_release_attempt_index.py",
         }:
             witness = _release_closed_mapping(
                 _source_json(read("terminal-commit.json"), "prerequisite terminal witness"),
@@ -23793,6 +23797,7 @@ def _release_fixture_command_prepare(
         "capture_release_target_observations.py",
         "record_release_role_assignments.py",
         "retain_release_evidence.py",
+        "export_release_attempt_index.py",
     } or argv[:1] != [tool]:
         raise ReleaseControlError("fixture native command has another owner")
     root = directory.parents[2]
@@ -23844,6 +23849,10 @@ def _release_fixture_command_prepare(
     elif tool == "retain_release_evidence.py":
         held, expected_inputs, input_types, selection = _release_fixture_retention_command_inputs(
             root, arguments, cwd
+        )
+    elif tool == "export_release_attempt_index.py":
+        held, expected_inputs, input_types, selection = (
+            _release_fixture_index_export_command_inputs(root, arguments, cwd)
         )
     else:
         held, expected_inputs, input_types, selection = _release_fixture_preflight_command_inputs(
@@ -24140,6 +24149,50 @@ def _release_fixture_retention_command_inputs(
     return combined, expected_inputs, input_types, selection
 
 
+def _release_fixture_index_export_command_inputs(
+    root: Path, arguments: Mapping[str, Any], cwd: Path
+) -> tuple[
+    _ReleaseCapturedFiles,
+    dict[str, list[dict[str, str]]],
+    dict[str, str],
+    dict[str, str],
+]:
+    """Capture the independently selected fixture index genesis and store registry."""
+    paths = {
+        "genesis": ("inputs/genesis.json", "metriplane.release-fixture-index-genesis.v1"),
+        "stores": ("inputs/stores.json", "metriplane.release-evidence-stores.v1"),
+    }
+    for flag, (name, _) in paths.items():
+        if _release_historical_path(arguments[flag], cwd) != root / name:
+            raise ReleaseControlError("fixture index export input has another fixed path: " + flag)
+    held = _ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name, _ in paths.values()],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
+    genesis_raw = held.read("inputs/genesis.json", kind="prerequisite-original")
+    genesis_digest = sha256_bytes(genesis_raw)
+    _release_fixture_index_genesis(genesis_raw)
+    _release_fixture_backend_rows(
+        held.read("inputs/stores.json", kind="prerequisite-original"),
+        expected_digest=sha256_bytes(held.read("inputs/stores.json", kind="prerequisite-original")),
+    )
+    expected_inputs = {
+        flag: [
+            {
+                "path": name,
+                "schema_id": schema,
+                "sha256": sha256_bytes(held.read(name, kind="prerequisite-original")),
+            }
+        ]
+        for flag, (name, schema) in paths.items()
+    }
+    input_types = {name: schema for name, schema in paths.values()}
+    held.revalidate()
+    return held, expected_inputs, input_types, {"genesis_digest": genesis_digest}
+
+
 def _release_fixture_primary(
     emulation: _ReleaseFixtureEmulation,
 ) -> bytes:
@@ -24306,6 +24359,53 @@ def _release_fixture_primary(
         return canonical_json(
             make_record(
                 "release-retention-receipts",
+                data,
+                invocation_id=original.intent["invocation_id"],
+                sequence=original.intent["sequence"],
+                synthetic=True,
+            )
+        )
+    if plan.tool == "export_release_attempt_index.py":
+        response = _source_json(plan.response_payloads[0], "fixture index read response")
+        if response["entries"]:
+            raise ReleaseControlError(
+                "INDEX_EXPORT_ORIGINAL_GRAPH_REQUIRED: populated history needs its complete original receipt/manifest/retention graph"
+            )
+        response_path = operations[0]["paths"]["response"]
+        response_raw = {name: raw for name, _, raw in emulation.sidecars}[response_path]
+        index_native_ref = {
+            "path": response_path,
+            "bytes": len(response_raw),
+            "sha256": sha256_bytes(response_raw),
+        }
+        genesis_raw = plan.captured.read("inputs/genesis.json", kind="prerequisite-original")
+        data = {
+            "kind": "complete_export",
+            "backend_id": "attempt-index",
+            "backend_binding_digest": response["binding_digest"],
+            "genesis": {
+                "path": "inputs/genesis.json",
+                "bytes": len(genesis_raw),
+                "sha256": sha256_bytes(genesis_raw),
+            },
+            "genesis_digest": response["genesis_digest"],
+            "through_head": response["through_head"],
+            "generation": 0,
+            "capture_started_at": emulation.operation_times[0][0],
+            "capture_completed_at": emulation.operation_times[0][1],
+            "entries": [],
+            "head_observation": {
+                "head": response["through_head"],
+                "generation": 0,
+                "observed_at": emulation.operation_times[0][1],
+                "original_native_response": index_native_ref,
+            },
+            "producer_intent_digest": sha256_json(original.intent),
+            "invocation_root_locator": "invocations",
+        }
+        return canonical_json(
+            make_record(
+                "release-attempt-index",
                 data,
                 invocation_id=original.intent["invocation_id"],
                 sequence=original.intent["sequence"],
