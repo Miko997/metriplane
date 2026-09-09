@@ -2765,6 +2765,11 @@ def _release_index_scope_content(value: object, *, milestone: str) -> dict[str, 
     return scope
 
 
+def _release_index_scope_key(scope: Mapping[str, Any]) -> tuple[str, str, str, int]:
+    """Return the logical identity shared by CAS and complete-history replay."""
+    return (scope["kind"], scope["scope_id"], scope["stage"], scope["sequence"])
+
+
 def _release_index_entry_content(value: object) -> dict[str, Any]:
     """Check normalized content; only its original native adapter can authenticate it."""
     entry = _release_closed_mapping(
@@ -3001,7 +3006,7 @@ def _release_index_export_content(
         entry = _release_index_entry_content(row["entry"])
         digest = sha256_json(entry)
         scope = entry["scope"]
-        key = (scope["kind"], scope["scope_id"], scope["stage"], scope["sequence"])
+        key = _release_index_scope_key(scope)
         if (
             entry["generation"] != generation
             or entry["previous_head"] != previous
@@ -7467,6 +7472,7 @@ def _validate_terminal_entry(
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
             "export_release_attempt_index.py",
+            "export_release_burn_lineage.py",
             "update_release_attempt_index.py",
         } and os.path.lexists(context.directory / "worker-result.json"):
             witness_raw = _safe_release_bytes(context.directory / "terminal-commit.json")
@@ -8400,7 +8406,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         boolean="read-back-all",
     ),
     "export_release_burn_lineage.py": _tool_contract(
-        "milestone attempt-index-backend genesis through-head read-back-all out",
+        "milestone attempt-index-backend genesis index-export through-head read-back-all out",
         boolean="read-back-all",
         choices=_MILESTONE_CHOICES,
     ),
@@ -10062,6 +10068,7 @@ def run_release_command(
                 "record_release_role_assignments.py",
                 "retain_release_evidence.py",
                 "export_release_attempt_index.py",
+                "export_release_burn_lineage.py",
                 "update_release_attempt_index.py",
             }
             and os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
@@ -13497,7 +13504,7 @@ def _release_assert_original_journal_inventory(
 def _release_captured_partial_inventory(
     context: ReleaseInvocation, *, captured: _ReleaseCapturedFiles
 ) -> None:
-    """Recompute readable original failure payloads without opening unlisted files."""
+    """Replay readable bytes and unsafe partial metadata through a pinned journal."""
     _release_captured_original_context(context, captured=captured)
     name = (context.directory / "partial-files.json").relative_to(captured.root).as_posix()
     raw = captured.read(name, kind="prerequisite-original")
@@ -13506,47 +13513,30 @@ def _release_captured_partial_inventory(
         {"schema_version", "roots", "files", "unreadable"},
         "original partial inventory",
     )
-    if (
-        value["schema_version"] != "metriplane.release-partial-files.v1"
-        or value["unreadable"] != []
-        or raw != canonical_json(value)
+    if value["schema_version"] != "metriplane.release-partial-files.v1" or raw != canonical_json(
+        value
     ):
-        raise ReleaseControlError(
-            "original partial inventory has unresolved or noncanonical members"
-        )
-    roots = []
-    files: list[dict[str, Any]] = []
-    for part in ("staged", "workspace"):
-        directory = context.directory / part
-        present = os.path.lexists(directory)
-        if present:
-            _release_held_path(directory, directory=True)
-        roots.append(
-            {
-                "path": directory.relative_to(context.root).as_posix(),
-                "kind": "directory" if present else "absent",
-            }
-        )
-        for path, kind, _, _, _ in captured.rows:
-            member = captured.root / path
-            if not member.is_relative_to(directory):
-                continue
-            if not present or kind != "prerequisite-original":
-                raise ReleaseControlError("original partial member has no matching root/owner")
-            member_raw = captured.read(path, kind=kind)
-            files.append(
-                {
-                    "path": member.relative_to(context.root).as_posix(),
-                    "sha256": sha256_bytes(member_raw),
-                    "size": len(member_raw),
-                }
-            )
-    if canonical_json(value["roots"]) != canonical_json(roots) or canonical_json(
-        value["files"]
-    ) != canonical_json(sorted(files, key=lambda row: row["path"])):
+        raise ReleaseControlError("original partial inventory is noncanonical")
+    intent_name = (context.directory / "intent.json").relative_to(captured.root).as_posix()
+    intent_rows = [row for row in captured.rows if row[0] == intent_name]
+    if len(intent_rows) != 1:
+        raise ReleaseControlError("original partial inventory lacks its held journal")
+    directory_fd = _release_gate_open_pinned_directory(context.directory, intent_rows[0][4])
+    try:
+        projected = _release_gate_partial_projection_at(context, directory_fd)
+    finally:
+        os.close(directory_fd)
+    if canonical_json(value) != canonical_json(projected):
         raise ReleaseControlError(
             "original partial inventory differs from its complete retained payload"
         )
+    for file_row in value["files"]:
+        member = _release_closed_mapping(
+            file_row, {"path", "sha256", "size"}, "original partial readable file"
+        )
+        member_raw = captured.read(member["path"], kind="prerequisite-original")
+        if len(member_raw) != member["size"] or sha256_bytes(member_raw) != member["sha256"]:
+            raise ReleaseControlError("original partial readable bytes differ")
     captured.revalidate()
 
 
@@ -13717,6 +13707,7 @@ def _release_captured_journal_members(
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
             "export_release_attempt_index.py",
+            "export_release_burn_lineage.py",
             "update_release_attempt_index.py",
         }
     ):
@@ -13794,6 +13785,7 @@ def _release_captured_journal_members(
             "record_release_role_assignments.py",
             "retain_release_evidence.py",
             "export_release_attempt_index.py",
+            "export_release_burn_lineage.py",
             "update_release_attempt_index.py",
         }:
             witness = _release_closed_mapping(
@@ -20379,7 +20371,7 @@ def _release_fixture_native_response(
                     "fixture original index history is incomplete or replays an operation"
                 )
             scope = entry["scope"]
-            scope_key = (scope["kind"], scope["scope_id"], scope["stage"], scope["sequence"])
+            scope_key = _release_index_scope_key(scope)
             if scope_key in scopes:
                 raise ReleaseControlError("fixture index history reuses a logical scope sequence")
             scopes.add(scope_key)
@@ -20698,7 +20690,7 @@ def _release_fixture_native_original_inputs(
         "retain_release_evidence.py": {"stores", "manifest", "input"},
         "update_release_attempt_index.py": {"entry-manifest", "entry-receipts"},
         "export_release_attempt_index.py": {"genesis", "stores"},
-        "export_release_burn_lineage.py": {"genesis"},
+        "export_release_burn_lineage.py": {"genesis", "index-export"},
     }
     if tool not in flags:
         raise ReleaseControlError(
@@ -22668,7 +22660,7 @@ def _release_fixture_seed_prepare(
         "retain_release_evidence.py": {"stores", "input", "manifest"},
         "update_release_attempt_index.py": {"entry-manifest", "entry-receipts"},
         "export_release_attempt_index.py": {"genesis", "stores"},
-        "export_release_burn_lineage.py": {"genesis"},
+        "export_release_burn_lineage.py": {"genesis", "index-export"},
     }
     if tool not in allowed or set(expected_inputs) != allowed[tool] & set(arguments):
         raise ReleaseControlError("fixture seed original typed-input flag set differs")
@@ -23217,6 +23209,8 @@ def _release_fixture_seed_emulate(bound: _ReleaseFixtureSeedInvocation) -> _Rele
             raise ReleaseControlError("fixture actual emulation clock regressed")
         request = item["request"]
         _release_fixture_native_response(request["kind"], request["arguments"], raw)
+        if request["kind"] == "index.cas":
+            _release_fixture_index_cas_effect(bound, request["arguments"], raw)
         finished = datetime.now(UTC)
         if finished < started:
             raise ReleaseControlError("fixture actual operation clock regressed")
@@ -23275,6 +23269,208 @@ def _release_fixture_seed_emulate(bound: _ReleaseFixtureSeedInvocation) -> _Rele
         raise ReleaseControlError("fixture emulation changed its original complete sidecar plan")
     bound.revalidate()
     return _ReleaseFixtureEmulation(bound, tuple(sorted(values)), tuple(refs), tuple(times))
+
+
+def _release_fixture_index_cas_effect(
+    bound: _ReleaseFixtureSeedInvocation,
+    request: Mapping[str, Any],
+    response_raw: bytes,
+) -> None:
+    """Serialize the synthetic CAS with pinned state/lock custody and durable readback."""
+    bound.revalidate()
+    original = bound.original
+    response = _release_fixture_native_response("index.cas", request, response_raw)
+    state_path = original.root / ".fixture-native-state"
+    root = _release_fixture_directory(original.root, expected=bound.plan.captured.root_directories)
+    try:
+        try:
+            os.mkdir(state_path.name, mode=0o700, dir_fd=root.fd)
+            os.fsync(root.fd)
+        except FileExistsError:
+            info = os.stat(state_path.name, dir_fd=root.fd, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode):
+                raise ReleaseControlError("fixture CAS backend state directory is unsafe")
+        state_directory = _release_fixture_directory(state_path, expected=root.identities)
+        try:
+            lock_descriptor = os.open(
+                "attempt-index.lock",
+                os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=state_directory.fd,
+            )
+            with os.fdopen(lock_descriptor, "a+b") as lock:
+                lock_info = os.fstat(lock.fileno())
+                if not stat.S_ISREG(lock_info.st_mode) or lock_info.st_nlink != 1:
+                    raise ReleaseControlError(
+                        "fixture CAS backend lock is not one private regular file"
+                    )
+                if os.name == "nt":
+                    import msvcrt
+
+                    if os.fstat(lock.fileno()).st_size == 0:
+                        lock.write(b"\0")
+                        lock.flush()
+                        os.fsync(lock.fileno())
+                    lock.seek(0)
+                    msvcrt.locking(  # type: ignore[attr-defined]
+                        lock.fileno(),
+                        msvcrt.LK_LOCK,  # type: ignore[attr-defined]
+                        1,
+                    )
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+                lock_identity = _release_gate_file_identity(os.fstat(lock.fileno()))
+
+                def revalidate_lock() -> None:
+                    state_directory.revalidate()
+                    visible = os.stat(
+                        "attempt-index.lock",
+                        dir_fd=state_directory.fd,
+                        follow_symlinks=False,
+                    )
+                    if _release_gate_file_identity(visible) != lock_identity:
+                        raise ReleaseControlError("fixture CAS backend lock was substituted")
+
+                def read_state() -> bytes | None:
+                    revalidate_lock()
+                    try:
+                        descriptor = os.open(
+                            "attempt-index.json",
+                            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                            dir_fd=state_directory.fd,
+                        )
+                    except FileNotFoundError:
+                        return None
+                    with os.fdopen(descriptor, "rb") as stream:
+                        info = os.fstat(stream.fileno())
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                            raise ReleaseControlError(
+                                "fixture CAS backend state is not one private regular file"
+                            )
+                        before = _release_gate_file_identity(info)
+                        raw = stream.read()
+                        after = _release_gate_file_identity(os.fstat(stream.fileno()))
+                    visible = _release_gate_file_identity(
+                        os.stat(
+                            "attempt-index.json",
+                            dir_fd=state_directory.fd,
+                            follow_symlinks=False,
+                        )
+                    )
+                    if before != after or after != visible:
+                        raise ReleaseControlError("fixture CAS backend state was substituted")
+                    return raw
+
+                state_raw = read_state()
+                state = (
+                    _release_closed_mapping(
+                        _source_json(state_raw, "fixture CAS backend state"),
+                        {
+                            "schema_version",
+                            "genesis_digest",
+                            "head",
+                            "generation",
+                            "operations",
+                            "scopes",
+                        },
+                        "fixture CAS backend state",
+                    )
+                    if state_raw is not None
+                    else {
+                        "schema_version": "metriplane.release-fixture-index-state.v1",
+                        "genesis_digest": request["genesis_digest"],
+                        "head": request["genesis_digest"],
+                        "generation": 0,
+                        "operations": {},
+                        "scopes": {},
+                    }
+                )
+                if (
+                    state["schema_version"] != "metriplane.release-fixture-index-state.v1"
+                    or _require_digest(state["genesis_digest"], "fixture CAS state genesis")
+                    != request["genesis_digest"]
+                    or _require_digest(state["head"], "fixture CAS state head") != state["head"]
+                    or type(state["generation"]) is not int
+                    or state["generation"] < 0
+                    or not isinstance(state["operations"], dict)
+                    or not isinstance(state["scopes"], dict)
+                    or state["generation"] != len(state["operations"])
+                    or state["generation"] != len(state["scopes"])
+                    or any(
+                        not isinstance(key, str)
+                        or not key
+                        or _require_digest(value, "fixture CAS state operation") != value
+                        for key, value in state["operations"].items()
+                    )
+                    or any(
+                        _require_digest(key, "fixture CAS state scope") != key
+                        or _require_digest(value, "fixture CAS state scope entry") != value
+                        for key, value in state["scopes"].items()
+                    )
+                ):
+                    raise ReleaseControlError("fixture CAS backend state is invalid")
+                operation = request["operation_id"]
+                entry_digest = sha256_json(response["entry"])
+                scope_digest = sha256_json(_release_index_scope_key(response["entry"]["scope"]))
+                previous = state["operations"].get(operation)
+                if previous is not None:
+                    if previous != entry_digest or response["disposition"] != "idempotent":
+                        raise ReleaseControlError(
+                            "fixture CAS replay is not the exact idempotent original operation"
+                        )
+                    descriptor = os.open(
+                        "attempt-index.json",
+                        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                        dir_fd=state_directory.fd,
+                    )
+                    try:
+                        info = os.fstat(descriptor)
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                            raise ReleaseControlError(
+                                "fixture CAS backend state is not one private regular file"
+                            )
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
+                    os.fsync(state_directory.fd)
+                    if read_state() != state_raw:
+                        raise ReleaseControlError("fixture CAS idempotent state readback differs")
+                    bound.revalidate()
+                    return
+                if scope_digest in state["scopes"]:
+                    raise ReleaseControlError("fixture CAS rejected a reused logical scope")
+                if (
+                    request["expected_head"] != state["head"]
+                    or request["prior_generation"] != state["generation"]
+                    or response["disposition"] != "committed"
+                ):
+                    raise ReleaseControlError("fixture CAS rejected a stale or competing writer")
+                updated = {
+                    **state,
+                    "head": entry_digest,
+                    "generation": state["generation"] + 1,
+                    "operations": {**state["operations"], operation: entry_digest},
+                    "scopes": {**state["scopes"], scope_digest: entry_digest},
+                }
+                temporary = "attempt-index." + original.intent["invocation_id"] + ".tmp"
+                _release_gate_write_json_at(state_directory.fd, temporary, updated)
+                revalidate_lock()
+                os.replace(
+                    temporary,
+                    "attempt-index.json",
+                    src_dir_fd=state_directory.fd,
+                    dst_dir_fd=state_directory.fd,
+                )
+                os.fsync(state_directory.fd)
+                if read_state() != canonical_json(updated):
+                    raise ReleaseControlError("fixture CAS committed state readback differs")
+                bound.revalidate()
+        finally:
+            state_directory.close()
+    finally:
+        root.close()
 
 
 def _release_fixture_write_set(
@@ -23807,6 +24003,7 @@ def _release_fixture_command_prepare(
         "record_release_role_assignments.py",
         "retain_release_evidence.py",
         "export_release_attempt_index.py",
+        "export_release_burn_lineage.py",
         "update_release_attempt_index.py",
     } or argv[:1] != [tool]:
         raise ReleaseControlError("fixture native command has another owner")
@@ -23863,6 +24060,10 @@ def _release_fixture_command_prepare(
     elif tool == "export_release_attempt_index.py":
         held, expected_inputs, input_types, selection = (
             _release_fixture_index_export_command_inputs(root, arguments, cwd)
+        )
+    elif tool == "export_release_burn_lineage.py":
+        held, expected_inputs, input_types, selection = (
+            _release_fixture_burn_lineage_command_inputs(root, arguments, cwd)
         )
     elif tool == "update_release_attempt_index.py":
         held, expected_inputs, input_types, selection = (
@@ -24203,8 +24404,500 @@ def _release_fixture_index_export_command_inputs(
         for flag, (name, schema) in paths.items()
     }
     input_types = {name: schema for name, schema in paths.values()}
+    if arguments["through-head"] != genesis_digest:
+        held, history_types, _ = _release_fixture_index_export_history_capture(
+            root,
+            held=held,
+            genesis_raw=genesis_raw,
+            genesis_digest=genesis_digest,
+            through_head=arguments["through-head"],
+        )
+        input_types.update(history_types)
     held.revalidate()
     return held, expected_inputs, input_types, {"genesis_digest": genesis_digest}
+
+
+def _release_fixture_index_export_history_capture(
+    root: Path,
+    *,
+    held: _ReleaseCapturedFiles,
+    genesis_raw: bytes,
+    genesis_digest: str,
+    through_head: str,
+) -> tuple[_ReleaseCapturedFiles, dict[str, str], int]:
+    """Capture every passing first-party journal and record needed to explain one head."""
+    stage = root / "invocations/update-release-attempt-index"
+    journal_names: dict[str, str] = {}
+    if stage.exists():
+        for directory in _journal_sequences(stage):
+            for path in sorted(directory.rglob("*")):
+                relative_member = path.relative_to(directory)
+                partial_namespace = relative_member.parts[0] in {"staged", "workspace"}
+                info = path.lstat()
+                unsafe = (
+                    path.is_symlink()
+                    or not stat.S_ISREG(info.st_mode)
+                    or info.st_nlink != 1
+                    or not info.st_mode & stat.S_IRUSR
+                )
+                if unsafe and partial_namespace:
+                    continue
+                if unsafe:
+                    raise ReleaseControlError("fixture index ordinary journal member is unsafe")
+                if stat.S_ISREG(info.st_mode):
+                    journal_names[path.relative_to(root).as_posix()] = (
+                        "metriplane.release-journal-artifact.v1"
+                    )
+    if journal_names:
+        already = {row[0] for row in held.rows}
+        journal_capture = _ReleaseCapturedFiles.capture(
+            root,
+            [
+                (name, "prerequisite-original")
+                for name in sorted(journal_names)
+                if name not in already
+            ],
+            forbidden=(),
+            allowed_kinds=frozenset({"prerequisite-original"}),
+            expected_root_directories=held.root_directories,
+            expected_known_directories=held.rows[0][4],
+        )
+        held = _ReleaseCapturedFiles(
+            root, held.root_directories, tuple(sorted((*held.rows, *journal_capture.rows)))
+        )
+
+    contexts: dict[tuple[str, int], list[tuple[ReleaseInvocation, dict[str, Any] | None]]] = {}
+    if stage.is_dir() and not stage.is_symlink():
+        for directory in _journal_sequences(stage):
+            intent_name = (directory / "intent.json").relative_to(root).as_posix()
+            context = _validate_intent_bytes(
+                directory, held.read(intent_name, kind="prerequisite-original")
+            )
+            terminal_name = (directory / "invocation.json").relative_to(root).as_posix()
+            terminal = (
+                _source_json(
+                    held.read(terminal_name, kind="prerequisite-original"),
+                    "captured fixture index terminal",
+                )
+                if any(row[0] == terminal_name for row in held.rows)
+                else None
+            )
+            if terminal is not None:
+                validate_record(terminal, "release-stage-invocation")
+            key = (context.intent["invocation_id"], context.intent["sequence"])
+            contexts.setdefault(key, []).append((context, terminal))
+
+    terminal_outputs: set[str] = set()
+    for matches in contexts.values():
+        for _, terminal in matches:
+            if terminal is None:
+                continue
+            outputs = terminal.get("data", {}).get("outputs")
+            if not isinstance(outputs, list):
+                raise ReleaseControlError("fixture index terminal outputs are malformed")
+            for value in outputs:
+                output_row = _release_closed_mapping(
+                    value,
+                    {"path", "schema_id", "sha256"},
+                    "fixture index terminal output",
+                )
+                terminal_outputs.add(
+                    _release_relative_suffix(
+                        output_row["path"], "fixture index terminal output path"
+                    ).as_posix()
+                )
+    if terminal_outputs:
+        already = {row[0] for row in held.rows}
+        output_capture = _ReleaseCapturedFiles.capture(
+            root,
+            [
+                (name, "prerequisite-original")
+                for name in sorted(terminal_outputs)
+                if name not in already
+            ],
+            forbidden=(),
+            allowed_kinds=frozenset({"prerequisite-original"}),
+            expected_root_directories=held.root_directories,
+            expected_known_directories=held.rows[0][4],
+        )
+        held = _ReleaseCapturedFiles(
+            root, held.root_directories, tuple(sorted((*held.rows, *output_capture.rows)))
+        )
+    for matches in contexts.values():
+        for context, summary in matches:
+            if summary is None:
+                continue
+            replayed = _release_captured_journal_terminal(
+                context, captured=held, require_pass=False
+            )
+            if replayed["status"] != "PASS":
+                _release_captured_partial_inventory(context, captured=held)
+    held.revalidate()
+
+    candidates: dict[str, list[tuple[Path, dict[str, Any], dict[str, Any]]]] = {}
+    for path in sorted(root.rglob("*.json")):
+        relative = path.relative_to(root)
+        if relative.parts[0] in {
+            "inputs",
+            "invocations",
+            "native-fixture",
+            ".fixture-native-state",
+        }:
+            continue
+        try:
+            record = _source_json(_safe_release_bytes(path), "fixture candidate index receipt")
+            if (
+                record.get("record_type") != "release-attempt-index"
+                or record.get("data", {}).get("kind") != "update_receipt"
+            ):
+                continue
+            validate_record(record, "release-attempt-index")
+            entry = _release_index_receipt_content(record["data"])
+        except (OSError, ReleaseControlError):
+            continue
+        candidates.setdefault(sha256_json(entry), []).append((path, record, entry))
+
+    receipt_names = {
+        path.relative_to(root).as_posix() for rows in candidates.values() for path, _, _ in rows
+    }
+    if receipt_names:
+        already = {row[0] for row in held.rows}
+        receipt_capture = _ReleaseCapturedFiles.capture(
+            root,
+            [
+                (name, "prerequisite-original")
+                for name in sorted(receipt_names)
+                if name not in already
+            ],
+            forbidden=(),
+            allowed_kinds=frozenset({"prerequisite-original"}),
+            expected_root_directories=held.root_directories,
+            expected_known_directories=held.rows[0][4],
+        )
+        held = _ReleaseCapturedFiles(
+            root, held.root_directories, tuple(sorted((*held.rows, *receipt_capture.rows)))
+        )
+        held.revalidate()
+
+    chain: list[tuple[Path, dict[str, Any], dict[str, Any], ReleaseInvocation]] = []
+    cursor = _require_digest(through_head, "fixture selected index head")
+    while cursor != genesis_digest:
+        if any(sha256_json(row[2]) == cursor for row in chain):
+            raise ReleaseControlError("fixture index head lacks a complete acyclic receipt chain")
+        owners = candidates.get(cursor, [])
+        if not owners:
+            raise ReleaseControlError("fixture index head lacks a complete acyclic receipt chain")
+        passing = []
+        for path, receipt, entry in owners:
+            matches = contexts.get((receipt["invocation_id"], receipt["sequence"]), [])
+            if len(matches) != 1 or matches[0][1] is None or matches[0][1]["status"] != "PASS":
+                # An installed receipt from an interrupted producer is retained evidence,
+                # but cannot own a successful index generation.
+                continue
+            terminal = _release_captured_journal_terminal(
+                matches[0][0], captured=held, require_pass=True
+            )
+            witness_name = (
+                (matches[0][0].directory / "terminal-commit.json").relative_to(root).as_posix()
+            )
+            expected_witness = {
+                "schema_version": "metriplane.gate-terminal-commit.v1",
+                "intent_sha256": sha256_json(matches[0][0].intent),
+                "terminal_sha256": sha256_json(terminal),
+            }
+            if not any(row[0] == witness_name for row in held.rows) or held.read(
+                witness_name, kind="prerequisite-original"
+            ) != canonical_json(expected_witness):
+                raise ReleaseControlError(
+                    "fixture index passing journal lacks its durable terminal-commit witness"
+                )
+            receipt_name = path.relative_to(root).as_posix()
+            output_ref = {
+                "path": receipt_name,
+                "schema_id": "metriplane.release-attempt-index.v1",
+                "sha256": sha256_bytes(held.read(receipt_name, kind="prerequisite-original")),
+            }
+            if (
+                receipt["data"].get("invocation_root_locator") != "invocations"
+                or receipt["data"].get("producer_intent_digest")
+                != sha256_json(matches[0][0].intent)
+                or output_ref not in terminal["data"]["outputs"]
+            ):
+                raise ReleaseControlError(
+                    "fixture index receipt differs from its captured producer journal"
+                )
+            passing.append((path, receipt, entry, matches[0][0]))
+        committed = [row for row in passing if row[1]["data"]["disposition"] == "committed"]
+        if len(committed) > 1 or not passing:
+            raise ReleaseControlError(
+                "fixture index head lacks one original operation receipt lineage"
+            )
+        row = (
+            committed[0]
+            if committed
+            else min(passing, key=lambda value: (value[1]["sequence"], str(value[0])))
+        )
+        chain.append(row)
+        cursor = row[2]["previous_head"] or row[2]["genesis_digest"]
+    chain.reverse()
+    if [row[2]["generation"] for row in chain] != list(range(1, len(chain) + 1)):
+        raise ReleaseControlError("fixture index receipt generations are incomplete")
+
+    names: dict[str, str] = {
+        **journal_names,
+        **{
+            name: "metriplane.release-journal-artifact.v1"
+            for name in terminal_outputs | receipt_names
+        },
+    }
+    for receipt_path, receipt, entry, context in chain:
+        arguments = _release_original_arguments(context.intent["tool"], context.intent["argv"])
+        historical_cwd = Path(context.intent["environment"]["working_directory"])
+        historical_invocation = _release_historical_path(
+            arguments["invocation-dir"], historical_cwd
+        )
+        try:
+            historical_root = historical_invocation.parents[2]
+        except IndexError as exc:
+            raise ReleaseControlError(
+                "fixture index historical invocation root is incomplete"
+            ) from exc
+
+        def current_original(flag: str) -> Path:
+            historical = _release_historical_path(arguments[flag], historical_cwd)
+            try:
+                suffix = historical.relative_to(historical_root)
+            except ValueError as exc:
+                raise ReleaseControlError(
+                    "fixture index history input escapes its historical run root"
+                ) from exc
+            current = root / suffix
+            if not current.is_relative_to(root):
+                raise ReleaseControlError("fixture index history input escapes its run root")
+            return current
+
+        names[receipt_path.relative_to(root).as_posix()] = "metriplane.release-attempt-index.v1"
+        for path in sorted(context.directory.rglob("*")):
+            if path.is_file() and not path.is_symlink():
+                names.setdefault(
+                    path.relative_to(root).as_posix(),
+                    "application/vnd.metriplane.release-journal-evidence",
+                )
+        for flag, kind in (
+            ("entry-manifest", "release-evidence-manifest"),
+            ("entry-receipts", "release-retention-receipts"),
+        ):
+            path = current_original(flag)
+            names[path.relative_to(root).as_posix()] = "metriplane." + kind + ".v1"
+            if flag == "entry-manifest":
+                manifest = _source_json(
+                    _safe_release_bytes(path), "fixture index history original manifest"
+                )
+                validate_record(manifest, "release-evidence-manifest")
+                entry_root = _release_index_manifest_entry_root(
+                    root=root,
+                    manifest_path=path,
+                    manifest=manifest,
+                    scope=entry["scope"],
+                )
+                for member in _release_evidence_manifest_content(manifest["data"]):
+                    member_path = entry_root / _release_relative_suffix(
+                        member["path"], "fixture index history manifest member"
+                    )
+                    if not member_path.is_relative_to(root):
+                        raise ReleaseControlError(
+                            "fixture index history manifest member escapes its run root"
+                        )
+                    raw = _safe_release_bytes(member_path)
+                    if len(raw) != member["size"] or sha256_bytes(raw) != member["sha256"]:
+                        raise ReleaseControlError(
+                            "fixture index history manifest member bytes differ"
+                        )
+                    schema = "application/octet-stream"
+                    try:
+                        candidate = _source_json(raw, "fixture index history manifest record")
+                        record_type = candidate.get("record_type")
+                        if isinstance(record_type, str):
+                            validate_record(candidate, record_type)
+                            schema = "metriplane." + record_type + ".v1"
+                    except ReleaseControlError:
+                        pass
+                    names[member_path.relative_to(root).as_posix()] = schema
+        _, operations = _release_fixture_index_expectations(
+            arguments,
+            tool="update_release_attempt_index.py",
+            genesis_raw=genesis_raw,
+            expected_genesis_digest=genesis_digest,
+            original_entry=entry,
+            expected_prior_generation=entry["generation"] - 1,
+        )
+        plan = _release_fixture_native_plan(
+            tool="update_release_attempt_index.py",
+            sequence=context.intent["sequence"],
+            subject={
+                "kind": "index_scope",
+                "subject_digest": sha256_json(entry["scope"]),
+                "original_policy_digest": genesis_digest,
+            },
+            operations=operations,
+        )
+        names[plan[0]["paths"]["response"]] = "application/octet-stream"
+    already_held = {row[0] for row in held.rows}
+    extra = _ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name in sorted(names) if name not in already_held],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+        expected_root_directories=held.root_directories,
+        expected_known_directories=held.rows[0][4],
+    )
+    combined = _ReleaseCapturedFiles(
+        root, held.root_directories, tuple(sorted((*held.rows, *extra.rows)))
+    )
+    combined.revalidate()
+    return combined, names, len(chain)
+
+
+def _release_fixture_burn_lineage_command_inputs(
+    root: Path, arguments: Mapping[str, Any], cwd: Path
+) -> tuple[
+    _ReleaseCapturedFiles,
+    dict[str, list[dict[str, str]]],
+    dict[str, str],
+    dict[str, str],
+]:
+    """Capture one complete export and every retained original needed for burn replay."""
+    genesis_path = _release_historical_path(arguments["genesis"], cwd)
+    export_path = _release_historical_path(arguments["index-export"], cwd)
+    if genesis_path != root / "inputs/genesis.json" or not export_path.is_relative_to(root):
+        raise ReleaseControlError("fixture burn lineage input has another run or genesis")
+    names = {
+        "inputs/genesis.json": "metriplane.release-fixture-index-genesis.v1",
+        export_path.relative_to(root).as_posix(): "metriplane.release-attempt-index.v1",
+    }
+    held = _ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name in sorted(names)],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
+    genesis_raw = held.read("inputs/genesis.json", kind="prerequisite-original")
+    genesis_digest = sha256_bytes(genesis_raw)
+    _release_fixture_index_genesis(genesis_raw)
+    export_raw = held.read(export_path.relative_to(root).as_posix(), kind="prerequisite-original")
+    export = _source_json(export_raw, "fixture burn lineage original index export")
+    validate_record(export, "release-attempt-index")
+    data = export["data"]
+    if (
+        export["status"] != "PASS"
+        or export["synthetic"] is not True
+        or data.get("kind") != "complete_export"
+        or data.get("genesis_digest") != genesis_digest
+        or data.get("through_head") != arguments["through-head"]
+    ):
+        raise ReleaseControlError("fixture burn lineage selects another complete export")
+    held, history_types, generation = _release_fixture_index_export_history_capture(
+        root,
+        held=held,
+        genesis_raw=genesis_raw,
+        genesis_digest=genesis_digest,
+        through_head=arguments["through-head"],
+    )
+    names.update(history_types)
+    if data.get("generation") != generation or len(data.get("entries", [])) != generation:
+        raise ReleaseControlError("fixture burn lineage export generation differs from history")
+
+    extra_names: dict[str, str] = {}
+    for row in data["entries"]:
+        entry = _release_index_entry_content(row["entry"])
+        if entry["milestone"] != arguments["milestone"] or entry["scope"]["stage"] != "target-burn":
+            continue
+        manifest_ref = _release_closed_mapping(
+            row["original_manifest"],
+            {"record_type", "record_digest", "original_file"},
+            "fixture burn lineage manifest link",
+        )["original_file"]
+        manifest_file = _release_closed_mapping(
+            manifest_ref, {"path", "bytes", "sha256"}, "fixture burn manifest file"
+        )
+        manifest_name = _release_relative_suffix(
+            manifest_file["path"], "fixture burn manifest path"
+        ).as_posix()
+        manifest = _source_json(
+            held.read(manifest_name, kind="prerequisite-original"),
+            "fixture burn original manifest",
+        )
+        candidates = []
+        for member in _release_evidence_manifest_content(manifest["data"]):
+            subject_name = _release_relative_suffix(
+                member["path"], "fixture burn manifest subject"
+            ).as_posix()
+            subject_path = root / subject_name
+            if not subject_path.is_file() or subject_path.is_symlink():
+                continue
+            raw = _safe_release_bytes(subject_path)
+            if len(raw) != member["size"] or sha256_bytes(raw) != member["sha256"]:
+                raise ReleaseControlError("fixture burn manifest subject bytes differ")
+            try:
+                subject = _source_json(raw, "fixture burn subject")
+                validate_record(subject, "release-target-burn")
+            except ReleaseControlError:
+                continue
+            candidates.append(subject_name)
+        if len(candidates) != 1:
+            raise ReleaseControlError("fixture burn manifest lacks one exact retained burn")
+        extra_names[candidates[0]] = "metriplane.release-target-burn.v1"
+
+    export_stage = root / "invocations/export-release-attempt-index"
+    matches = []
+    if export_stage.is_dir() and not export_stage.is_symlink():
+        for directory in _journal_sequences(export_stage):
+            context = _validate_intent(directory)
+            if (
+                context.intent["invocation_id"] == export["invocation_id"]
+                and context.intent["sequence"] == export["sequence"]
+            ):
+                matches.append(context)
+    if len(matches) != 1 or _validate_terminal(matches[0])["status"] != "PASS":
+        raise ReleaseControlError("fixture burn lineage lacks its passing original export journal")
+    validate_release_producer_journal(
+        export,
+        export_path,
+        producer="export_release_attempt_index.py",
+    )
+    for path in sorted(matches[0].directory.rglob("*")):
+        if path.is_file() and not path.is_symlink():
+            extra_names.setdefault(path.relative_to(root).as_posix(), "application/octet-stream")
+    already = {row[0] for row in held.rows}
+    extra = _ReleaseCapturedFiles.capture(
+        root,
+        [(name, "prerequisite-original") for name in sorted(extra_names) if name not in already],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+        expected_root_directories=held.root_directories,
+        expected_known_directories=held.rows[0][4],
+    )
+    held = _ReleaseCapturedFiles(
+        root, held.root_directories, tuple(sorted((*held.rows, *extra.rows)))
+    )
+    names.update(extra_names)
+    expected_inputs = {
+        flag: [
+            {
+                "path": path.relative_to(root).as_posix(),
+                "schema_id": schema,
+                "sha256": sha256_bytes(
+                    held.read(path.relative_to(root).as_posix(), kind="prerequisite-original")
+                ),
+            }
+        ]
+        for flag, path, schema in (
+            ("genesis", genesis_path, "metriplane.release-fixture-index-genesis.v1"),
+            ("index-export", export_path, "metriplane.release-attempt-index.v1"),
+        )
+    }
+    held.revalidate()
+    return held, expected_inputs, names, {"genesis_digest": genesis_digest}
 
 
 def _release_fixture_index_update_command_inputs(
@@ -24310,10 +25003,6 @@ def _release_fixture_index_update_command_inputs(
     genesis_raw = held.read("inputs/genesis.json", kind="prerequisite-original")
     genesis_digest = sha256_bytes(genesis_raw)
     _release_fixture_index_genesis(genesis_raw)
-    if arguments["expected-head"] != genesis_digest:
-        raise ReleaseControlError(
-            "INDEX_UPDATE_PRIOR_HISTORY_REQUIRED: non-genesis CAS needs its prior index graph"
-        )
     expected_inputs = {
         flag: [
             {
@@ -24331,6 +25020,16 @@ def _release_fixture_index_update_command_inputs(
         "inputs/genesis.json": "metriplane.release-fixture-index-genesis.v1",
         subject_name: "metriplane." + subject_kind + ".v1",
     }
+    prior_generation = 0
+    if arguments["expected-head"] != genesis_digest:
+        held, history_types, prior_generation = _release_fixture_index_export_history_capture(
+            root,
+            held=held,
+            genesis_raw=genesis_raw,
+            genesis_digest=genesis_digest,
+            through_head=arguments["expected-head"],
+        )
+        input_types.update(history_types)
     held.revalidate()
     return (
         held,
@@ -24339,7 +25038,7 @@ def _release_fixture_index_update_command_inputs(
         {
             "genesis_path": genesis_path,
             "genesis_digest": genesis_digest,
-            "expected_prior_generation": 0,
+            "expected_prior_generation": prior_generation,
             "subject_path": subject_path,
             "subject_record": subject_record,
             "expected_scope": scope,
@@ -24528,12 +25227,8 @@ def _release_fixture_primary(
                 synthetic=True,
             )
         )
-    if plan.tool == "export_release_attempt_index.py":
+    if plan.tool in {"export_release_attempt_index.py", "export_release_burn_lineage.py"}:
         response = _source_json(plan.response_payloads[0], "fixture index read response")
-        if response["entries"]:
-            raise ReleaseControlError(
-                "INDEX_EXPORT_ORIGINAL_GRAPH_REQUIRED: populated history needs its complete original receipt/manifest/retention graph"
-            )
         response_path = operations[0]["paths"]["response"]
         response_raw = {name: raw for name, _, raw in emulation.sidecars}[response_path]
         index_native_ref = {
@@ -24542,6 +25237,218 @@ def _release_fixture_primary(
             "sha256": sha256_bytes(response_raw),
         }
         genesis_raw = plan.captured.read("inputs/genesis.json", kind="prerequisite-original")
+        typed = {name: schema for name, schema, _ in plan.input_plan}
+
+        def captured_ref(name: str) -> dict[str, Any]:
+            raw = plan.captured.read(name, kind="prerequisite-original")
+            return {"path": name, "bytes": len(raw), "sha256": sha256_bytes(raw)}
+
+        def records(kind: str) -> list[tuple[str, dict[str, Any]]]:
+            result = []
+            schema = "metriplane." + kind + ".v1"
+            for name, value in typed.items():
+                if value != schema:
+                    continue
+                record = _source_json(
+                    plan.captured.read(name, kind="prerequisite-original"),
+                    "fixture export original " + kind,
+                )
+                validate_record(record, kind)
+                result.append((name, record))
+            return result
+
+        if plan.tool == "export_release_burn_lineage.py":
+            export_records = [
+                (name, value)
+                for name, value in records("release-attempt-index")
+                if value["data"].get("kind") == "complete_export"
+            ]
+            if len(export_records) != 1:
+                raise ReleaseControlError("fixture burn lineage lacks one complete index export")
+            export_name, export = export_records[0]
+            if (
+                export["data"].get("kind") != "complete_export"
+                or export["data"].get("through_head") != response["through_head"]
+                or [row["entry"] for row in export["data"].get("entries", [])]
+                != response["entries"]
+            ):
+                raise ReleaseControlError("fixture burn lineage changes its complete index export")
+
+            def linked_record(value: object, kind: str) -> tuple[str, dict[str, Any]]:
+                link = _release_closed_mapping(
+                    value,
+                    {"record_type", "record_digest", "original_file"},
+                    "fixture burn indexed link",
+                )
+                raw_ref = _release_closed_mapping(
+                    link["original_file"],
+                    {"path", "bytes", "sha256"},
+                    "fixture burn indexed original",
+                )
+                name = _release_relative_suffix(
+                    raw_ref["path"], "fixture burn indexed path"
+                ).as_posix()
+                raw = plan.captured.read(name, kind="prerequisite-original")
+                record = _source_json(raw, "fixture burn indexed record")
+                validate_record(record, kind)
+                if (
+                    link["record_type"] != kind
+                    or link["record_digest"] != sha256_json(record)
+                    or raw_ref != {"path": name, "bytes": len(raw), "sha256": sha256_bytes(raw)}
+                ):
+                    raise ReleaseControlError("fixture burn indexed link differs")
+                return name, record
+
+            burns = []
+            seen: set[tuple[str, str]] = set()
+            arguments = _release_original_arguments(plan.tool, list(plan.argv))
+            for row in export["data"]["entries"]:
+                entry = _release_index_entry_content(row["entry"])
+                if (
+                    entry["milestone"] != arguments["milestone"]
+                    or entry["scope"]["stage"] != "target-burn"
+                ):
+                    continue
+                manifest_name, manifest = linked_record(
+                    row["original_manifest"], "release-evidence-manifest"
+                )
+                _, receipt = linked_record(row["original_receipt"], "release-attempt-index")
+                candidates = []
+                for name, burn in records("release-target-burn"):
+                    matches = [
+                        member
+                        for member in _release_evidence_manifest_content(manifest["data"])
+                        if (Path(manifest_name).parent / member["path"]).as_posix() == name
+                        or member["path"] == name
+                    ]
+                    if len(matches) != 1:
+                        continue
+                    raw = plan.captured.read(name, kind="prerequisite-original")
+                    if matches[0]["size"] != len(raw) or matches[0]["sha256"] != sha256_bytes(raw):
+                        raise ReleaseControlError("fixture burn manifest member differs")
+                    candidates.append(burn)
+                if len(candidates) != 1 or candidates[0]["data"].get("disposition") != "new_burn":
+                    raise ReleaseControlError("fixture burn entry lacks one retained new burn")
+                burn = candidates[0]["data"]
+                for target in sorted(
+                    burn["affected_targets"], key=lambda item: (item["target_id"], item["version"])
+                ):
+                    key = (target["target_id"], target["version"])
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    burns.append(
+                        {
+                            "burn_manifest_digest": sha256_json(manifest),
+                            "index_receipt_digest": sha256_json(receipt),
+                            "observation_digest": burn["observation_digest"],
+                            "package_version": target["version"],
+                            "release_tag": "v" + target["version"],
+                            "sequence": entry["scope"]["sequence"],
+                            "target_id": target["target_id"],
+                        }
+                    )
+            data = {
+                "burns": burns,
+                "index_backend_id": "attempt-index",
+                "index_genesis_digest": response["genesis_digest"],
+                "milestone": arguments["milestone"],
+                "original_genesis": captured_ref("inputs/genesis.json"),
+                "original_index_export": {
+                    "record_type": "release-attempt-index",
+                    "record_digest": sha256_json(export),
+                    "original_file": captured_ref(export_name),
+                },
+                "read_back_complete": True,
+                "through_head": response["through_head"],
+                "producer_intent_digest": sha256_json(original.intent),
+                "invocation_root_locator": "invocations",
+            }
+            data["lineage_digest"] = sha256_json(data)
+            return canonical_json(
+                make_record(
+                    "release-burn-lineage",
+                    data,
+                    invocation_id=original.intent["invocation_id"],
+                    sequence=original.intent["sequence"],
+                    synthetic=True,
+                )
+            )
+
+        receipt_records = records("release-attempt-index")
+        manifest_records = records("release-evidence-manifest")
+        retention_records = records("release-retention-receipts")
+        exported = []
+        for entry in response["entries"]:
+            entry = _release_index_entry_content(entry)
+            receipt_matches = [
+                (name, record)
+                for name, record in receipt_records
+                if record["data"].get("kind") == "update_receipt"
+                and canonical_json(_release_index_receipt_content(record["data"]))
+                == canonical_json(entry)
+            ]
+            manifest_matches = [
+                (name, record)
+                for name, record in manifest_records
+                if sha256_json(record) == entry["entry_manifest_digest"]
+            ]
+            retention_matches = [
+                (name, record)
+                for name, record in retention_records
+                if sha256_json(record) == entry["entry_receipts_digest"]
+            ]
+            native_matches = []
+            for name, schema in typed.items():
+                if schema != "application/octet-stream":
+                    continue
+                raw = plan.captured.read(name, kind="prerequisite-original")
+                try:
+                    value = _source_json(raw, "fixture export CAS candidate")
+                except ReleaseControlError:
+                    continue
+                if (
+                    canonical_json(value.get("entry")) == canonical_json(entry)
+                    and value.get("committed_head") == sha256_json(entry)
+                    and value.get("read_back_digest") == sha256_json(entry)
+                    and value.get("disposition") in {"committed", "idempotent"}
+                ):
+                    native_matches.append(name)
+            if any(
+                len(matches) != 1
+                for matches in (
+                    receipt_matches,
+                    manifest_matches,
+                    retention_matches,
+                    native_matches,
+                )
+            ):
+                raise ReleaseControlError(
+                    "fixture populated export lacks one exact receipt/manifest/retention/native link"
+                )
+
+            def record_link(match: tuple[str, dict[str, Any]], kind: str) -> dict[str, Any]:
+                name, record = match
+                return {
+                    "record_type": kind,
+                    "record_digest": sha256_json(record),
+                    "original_file": captured_ref(name),
+                }
+
+            exported.append(
+                {
+                    "entry": entry,
+                    "entry_digest": sha256_json(entry),
+                    "original_native_response": captured_ref(native_matches[0]),
+                    "original_receipt": record_link(receipt_matches[0], "release-attempt-index"),
+                    "original_manifest": record_link(
+                        manifest_matches[0], "release-evidence-manifest"
+                    ),
+                    "original_retention": record_link(
+                        retention_matches[0], "release-retention-receipts"
+                    ),
+                }
+            )
         data = {
             "kind": "complete_export",
             "backend_id": "attempt-index",
@@ -24553,13 +25460,13 @@ def _release_fixture_primary(
             },
             "genesis_digest": response["genesis_digest"],
             "through_head": response["through_head"],
-            "generation": 0,
+            "generation": len(exported),
             "capture_started_at": emulation.operation_times[0][0],
             "capture_completed_at": emulation.operation_times[0][1],
-            "entries": [],
+            "entries": exported,
             "head_observation": {
                 "head": response["through_head"],
-                "generation": 0,
+                "generation": len(exported),
                 "observed_at": emulation.operation_times[0][1],
                 "original_native_response": index_native_ref,
             },

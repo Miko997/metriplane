@@ -13358,6 +13358,12 @@ def test_fixture_native_index_scope_counters_and_empty_complete_history() -> Non
     )["entries"] == [e]
 
 
+def test_fixture_native_cas_and_export_share_the_same_logical_scope_key() -> None:
+    scope = _fixture_native_entry()["scope"]
+    rebound = {**scope, "release_tag": "v0.4.2"}
+    assert release._release_index_scope_key(scope) == release._release_index_scope_key(rebound)
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["generation", "head", "operation", "payload", "genesis", "readback", "disposition", "extra"],
@@ -15963,12 +15969,10 @@ def test_seed_staging_linear_full_original_transcript_fixes_pagination_and_graph
     )
 
 
-@pytest.mark.parametrize(
-    "tool", ["export_release_attempt_index.py", "export_release_burn_lineage.py"]
-)
 def test_seed_staging_seed_full_empty_index_read_inventory_before_intent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tool: Any
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    tool = "export_release_attempt_index.py"
     genesis = _fixture_native_genesis_raw()
     digest = release.sha256_bytes(genesis)
     ordinary = {"inputs/genesis.json": genesis}
@@ -15979,13 +15983,9 @@ def test_seed_staging_seed_full_empty_index_read_inventory_before_intent(
         "through-head": digest,
         "read-back-all": True,
     }
-    if tool == "export_release_attempt_index.py":
-        flags["stores"] = "inputs/stores.json"
-        ordinary["inputs/stores.json"] = release.canonical_json(_fixture_native_registry())
-        types["inputs/stores.json"] = "metriplane.release-evidence-stores.v1"
-    else:
-        flags["milestone"] = "v0.4"
-        flags["attempt-index-backend"] = flags.pop("index-backend")
+    flags["stores"] = "inputs/stores.json"
+    ordinary["inputs/stores.json"] = release.canonical_json(_fixture_native_registry())
+    types["inputs/stores.json"] = "metriplane.release-evidence-stores.v1"
     args = {**flags}
     subject, ops = release._release_fixture_index_expectations(
         args, tool=tool, genesis_raw=genesis, expected_genesis_digest=digest
@@ -16006,25 +16006,24 @@ def test_seed_staging_seed_full_empty_index_read_inventory_before_intent(
     assert len(plan.operations) == 1 and len(plan.output_plan) == 4
     assert not (root / "invocations").exists()
     assert "original_index_export" not in json.loads(plan.response_payloads[0])
-    if tool == "export_release_attempt_index.py":
-        repository = Path(__file__).resolve().parents[1]
-        completed = subprocess.run(
-            [sys.executable, str(repository / "tools" / tool), *argv[1:]],
-            cwd=repository,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert completed.returncode == 0, completed.stderr
-        record_path = root / "primary.json"
-        record = json.loads(record_path.read_bytes())
+    repository = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [sys.executable, str(repository / "tools" / tool), *argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    record_path = root / "primary.json"
+    record = json.loads(record_path.read_bytes())
+    release.validate_release_producer_journal(record, record_path, producer=tool)
+    assert record["data"]["entries"] == []
+    assert record["data"]["generation"] == 0
+    assert record["data"]["through_head"] == digest
+    (root / "invocations/export-release-attempt-index/001/terminal-commit.json").unlink()
+    with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
         release.validate_release_producer_journal(record, record_path, producer=tool)
-        assert record["data"]["entries"] == []
-        assert record["data"]["generation"] == 0
-        assert record["data"]["through_head"] == digest
-        (root / "invocations/export-release-attempt-index/001/terminal-commit.json").unlink()
-        with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
-            release.validate_release_producer_journal(record, record_path, producer=tool)
 
 
 @pytest.mark.parametrize("form", ["single", "multiple", "manifest"])
@@ -16455,7 +16454,7 @@ def test_seed_staging_cas_seed_uses_original_subject_graph_before_receipt_withou
         release._release_fixture_index_update_command_inputs(root, without_scope, Path.cwd())
     stale_head = dict(public_arguments)
     stale_head["expected-head"] = "f" * 64
-    with pytest.raises(release.ReleaseControlError, match="prior index graph"):
+    with pytest.raises(release.ReleaseControlError, match="complete acyclic receipt chain"):
         release._release_fixture_index_update_command_inputs(root, stale_head, Path.cwd())
     repository = Path(__file__).resolve().parents[1]
     completed = subprocess.run(
@@ -16473,11 +16472,466 @@ def test_seed_staging_cas_seed_uses_original_subject_graph_before_receipt_withou
     )
     assert release._release_index_receipt_content(record["data"]) == entry
     assert record["data"]["committed_head"] == release.sha256_json(entry)
+
+    def subsequent(
+        *,
+        journal_sequence: int,
+        operation_id: str,
+        scope_id: str,
+        expected_head: str,
+        token: str,
+        output_name: str,
+        generation: int = 2,
+        scope_sequence: int | None = None,
+        disposition: str = "committed",
+    ) -> tuple[list[str], dict[str, Any]]:
+        manifest_name = "manifest.json"
+        retention_name = "retention.json"
+        scope = {
+            **selection["expected_scope"],
+            "scope_id": scope_id,
+            "sequence": journal_sequence if scope_sequence is None else scope_sequence,
+        }
+        next_entry = {
+            **entry,
+            "generation": generation,
+            "previous_head": expected_head,
+            "operation_id": operation_id,
+            "token": token,
+            "scope": scope,
+        }
+        next_response = release.canonical_json(
+            {
+                "backend_id": "attempt-index",
+                "genesis_digest": gd,
+                "operation_id": operation_id,
+                "expected_head": expected_head,
+                "entry": next_entry,
+                "committed_head": release.sha256_json(next_entry),
+                "read_back_digest": release.sha256_json(next_entry),
+                "disposition": disposition,
+            }
+        )
+        next_argv = [
+            argv[0],
+            "--entry-manifest",
+            str(root / manifest_name),
+            "--entry-receipts",
+            str(root / retention_name),
+            "--scope-kind",
+            "release_staging",
+            "--scope-id",
+            scope_id,
+            "--stage",
+            "target-burn",
+            "--sequence",
+            str(scope["sequence"]),
+            "--release-tag",
+            "v0.4.1",
+            "--index-backend",
+            "attempt-index",
+            "--expected-head",
+            expected_head,
+            "--operation-id",
+            operation_id,
+            "--milestone",
+            "v0.4",
+            "--run-id",
+            selection["expected_scope"]["run_id"],
+            "--candidate-id-not-resolved",
+            "--out",
+            str(root / output_name),
+            "--invocation-dir",
+            str(root / f"invocations/update-release-attempt-index/{journal_sequence:03d}"),
+        ]
+        seed_name = (
+            f"inputs/fixture-native/update-release-attempt-index/{journal_sequence:03d}/seed.json"
+        )
+        seed_record = {
+            "schema_version": release._RELEASE_FIXTURE_SEED_SCHEMA,
+            "synthetic": True,
+            "tool": argv[0],
+            "command_digest": release.sha256_json(
+                {"tool": argv[0], "argv": next_argv, "working_directory": str(Path.cwd())}
+            ),
+            "members": [
+                {
+                    "member_id": "cas",
+                    "path": "raw/cas.bin",
+                    "schema_id": "application/octet-stream",
+                    "bytes": len(next_response),
+                    "sha256": release.sha256_bytes(next_response),
+                }
+            ],
+            "data": {"response_member_ids": ["cas"]},
+        }
+        seed_path = root / seed_name
+        _seed_staging_put(seed_path.parent / "raw/cas.bin", next_response)
+        _seed_staging_put(seed_path, json.dumps(seed_record, indent=2).encode() + b"\n")
+        return next_argv, next_entry
+
+    head1 = release.sha256_json(entry)
+    second_argv, entry2 = subsequent(
+        journal_sequence=2,
+        operation_id="second-original-operation",
+        scope_id="second-explicit-scope",
+        expected_head=head1,
+        token="opaque-second-fixture-backend-token",
+        output_name="primary-2.json",
+    )
+    second = subprocess.run(
+        [sys.executable, str(repository / "tools" / second_argv[0]), *second_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert second.returncode == 0, second.stderr or second.stdout
+    second_path = root / "primary-2.json"
+    second_record = json.loads(second_path.read_bytes())
+    release.validate_release_producer_journal(
+        second_record, second_path, producer="update_release_attempt_index.py"
+    )
+    assert release._release_index_receipt_content(second_record["data"]) == entry2
+
+    competing_argv, _ = subsequent(
+        journal_sequence=3,
+        operation_id="competing-original-operation",
+        scope_id="competing-explicit-scope",
+        expected_head=head1,
+        token="opaque-competing-fixture-backend-token",
+        output_name="competing.json",
+    )
+    competing = subprocess.run(
+        [sys.executable, str(repository / "tools" / competing_argv[0]), *competing_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert competing.returncode != 0
+    assert "BLOCKED_NOT_READY" in competing.stdout
+    assert (
+        b"stale or competing writer"
+        in (root / "invocations/update-release-attempt-index/003/stderr").read_bytes()
+    )
+    assert not (root / "competing.json").exists()
+    assert not (root / "invocations/update-release-attempt-index/003/terminal-commit.json").exists()
+
+    stores_raw = release.canonical_json(_fixture_native_registry())
+    (root / "inputs/stores.json").write_bytes(stores_raw)
+    export_tool = "export_release_attempt_index.py"
+    export_argv = [
+        export_tool,
+        "--index-backend",
+        "attempt-index",
+        "--genesis",
+        str(root / "inputs/genesis.json"),
+        "--through-head",
+        release.sha256_json(entry2),
+        "--stores",
+        str(root / "inputs/stores.json"),
+        "--read-back-all",
+        "--out",
+        str(root / "export.json"),
+        "--invocation-dir",
+        str(root / "invocations/export-release-attempt-index/001"),
+    ]
+    genesis_data = json.loads(genesis)
+    export_response = release.canonical_json(
+        {
+            "backend_id": "attempt-index",
+            "genesis_digest": gd,
+            "namespace": genesis_data["namespace"],
+            "binding_digest": genesis_data["binding_digest"],
+            "through_head": release.sha256_json(entry2),
+            "entries": [entry, entry2],
+        }
+    )
+    export_seed_name = "inputs/fixture-native/export-release-attempt-index/001/seed.json"
+    export_seed = {
+        "schema_version": release._RELEASE_FIXTURE_SEED_SCHEMA,
+        "synthetic": True,
+        "tool": export_tool,
+        "command_digest": release.sha256_json(
+            {"tool": export_tool, "argv": export_argv, "working_directory": str(Path.cwd())}
+        ),
+        "members": [
+            {
+                "member_id": "readback",
+                "path": "raw/readback.bin",
+                "schema_id": "application/octet-stream",
+                "bytes": len(export_response),
+                "sha256": release.sha256_bytes(export_response),
+            }
+        ],
+        "data": {"response_member_ids": ["readback"]},
+    }
+    _seed_staging_put(root / Path(export_seed_name).parent / "raw/readback.bin", export_response)
+    _seed_staging_put(root / export_seed_name, json.dumps(export_seed, indent=2).encode() + b"\n")
+    exported = subprocess.run(
+        [sys.executable, str(repository / "tools" / export_tool), *export_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert exported.returncode == 0, exported.stderr or exported.stdout
+    export_path = root / "export.json"
+    export_record = json.loads(export_path.read_bytes())
+    release.validate_release_producer_journal(export_record, export_path, producer=export_tool)
+    assert [row["entry"] for row in export_record["data"]["entries"]] == [entry, entry2]
+    assert export_record["data"]["generation"] == 2
+
+    burn_tool = "export_release_burn_lineage.py"
+    burn_argv = [
+        burn_tool,
+        "--milestone",
+        "v0.4",
+        "--attempt-index-backend",
+        "attempt-index",
+        "--genesis",
+        str(root / "inputs/genesis.json"),
+        "--index-export",
+        str(export_path),
+        "--through-head",
+        release.sha256_json(entry2),
+        "--read-back-all",
+        "--out",
+        str(root / "burn-lineage.json"),
+        "--invocation-dir",
+        str(root / "invocations/export-release-burn-lineage/001"),
+    ]
+    burn_seed_name = "inputs/fixture-native/export-release-burn-lineage/001/seed.json"
+    burn_seed = {
+        "schema_version": release._RELEASE_FIXTURE_SEED_SCHEMA,
+        "synthetic": True,
+        "tool": burn_tool,
+        "command_digest": release.sha256_json(
+            {"tool": burn_tool, "argv": burn_argv, "working_directory": str(Path.cwd())}
+        ),
+        "members": [
+            {
+                "member_id": "readback",
+                "path": "raw/readback.bin",
+                "schema_id": "application/octet-stream",
+                "bytes": len(export_response),
+                "sha256": release.sha256_bytes(export_response),
+            }
+        ],
+        "data": {"response_member_ids": ["readback"]},
+    }
+    _seed_staging_put(root / Path(burn_seed_name).parent / "raw/readback.bin", export_response)
+    _seed_staging_put(root / burn_seed_name, json.dumps(burn_seed, indent=2).encode() + b"\n")
+    burn_arguments = release._release_original_arguments(burn_tool, burn_argv)
+    canonical_export = export_path.read_bytes()
+    export_path.chmod(0o600)
+    export_path.write_bytes(json.dumps(export_record, indent=2).encode() + b"\n")
+    with pytest.raises(release.ReleaseControlError, match="producer|journal|output|bytes"):
+        release._release_fixture_burn_lineage_command_inputs(root, burn_arguments, Path.cwd())
+    export_path.write_bytes(canonical_export)
+    burned = subprocess.run(
+        [sys.executable, str(repository / "tools" / burn_tool), *burn_argv[1:]],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert burned.returncode == 0, burned.stderr or burned.stdout
+    burn_path = root / "burn-lineage.json"
+    burn_record = json.loads(burn_path.read_bytes())
+    release.validate_release_producer_journal(burn_record, burn_path, producer=burn_tool)
+    assert burn_record["data"]["through_head"] == release.sha256_json(entry2)
+    assert burn_record["data"]["read_back_complete"] is True
+    assert burn_record["data"]["burns"]
+
+    head2 = release.sha256_json(entry2)
+    interrupted_argv, entry3 = subsequent(
+        journal_sequence=4,
+        scope_sequence=3,
+        generation=3,
+        operation_id="interrupted-original-operation",
+        scope_id="interrupted-explicit-scope",
+        expected_head=head2,
+        token="opaque-interrupted-fixture-backend-token",
+        output_name="primary-3.json",
+    )
+    collect = release._release_fixture_collect_staged
+
+    def interrupt_with_unsafe_partial(*_: Any, original_staged_directory: Any, **__: Any) -> Any:
+        (original_staged_directory.path / "unsafe-link").symlink_to("missing-target")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        release,
+        "_release_fixture_collect_staged",
+        interrupt_with_unsafe_partial,
+    )
+    assert release.run_release_command(interrupted_argv[0], interrupted_argv[1:]) == 130
+    interrupted_dir = root / "invocations/update-release-attempt-index/004"
+    assert release._validate_terminal(release._validate_intent(interrupted_dir))["status"] == (
+        "CANCELLED"
+    )
+    assert not (root / "primary-3.json").exists()
+    assert not (interrupted_dir / "terminal-commit.json").exists()
+    assert (
+        "invocations/update-release-attempt-index/004/staged/unsafe-link"
+        in json.loads((interrupted_dir / "partial-files.json").read_bytes())["unreadable"]
+    )
+    (interrupted_dir / "invocation.json").unlink()
+    monkeypatch.setattr(release, "_release_fixture_collect_staged", collect)
+    retry_argv, retry_entry = subsequent(
+        journal_sequence=5,
+        scope_sequence=3,
+        generation=3,
+        disposition="idempotent",
+        operation_id="interrupted-original-operation",
+        scope_id="interrupted-explicit-scope",
+        expected_head=head2,
+        token="opaque-interrupted-fixture-backend-token",
+        output_name="primary-3.json",
+    )
+    assert retry_entry == entry3
+    assert release.run_release_command(retry_argv[0], retry_argv[1:]) == 0
+    recovered_path = root / "primary-3.json"
+    recovered = json.loads(recovered_path.read_bytes())
+    release.validate_release_producer_journal(
+        recovered, recovered_path, producer="update_release_attempt_index.py"
+    )
+    assert recovered["data"]["disposition"] == "idempotent"
+    assert release._release_index_receipt_content(recovered["data"]) == entry3
+    duplicate = release.make_record(
+        "release-attempt-index",
+        recovered["data"],
+        invocation_id=release._validate_intent(interrupted_dir).intent["invocation_id"],
+        sequence=4,
+        synthetic=True,
+    )
+    duplicate_path = root / "interrupted-installed-receipt.json"
+    duplicate_path.write_bytes(release.canonical_json(duplicate))
+    second_retry_argv, second_retry_entry = subsequent(
+        journal_sequence=6,
+        scope_sequence=3,
+        generation=3,
+        disposition="idempotent",
+        operation_id="interrupted-original-operation",
+        scope_id="interrupted-explicit-scope",
+        expected_head=head2,
+        token="opaque-interrupted-fixture-backend-token",
+        output_name="primary-3-copy.json",
+    )
+    assert second_retry_entry == entry3
+    assert release.run_release_command(second_retry_argv[0], second_retry_argv[1:]) == 0
+    second_recovered_path = root / "primary-3-copy.json"
+    second_recovered = json.loads(second_recovered_path.read_bytes())
+    release.validate_release_producer_journal(
+        second_recovered,
+        second_recovered_path,
+        producer="update_release_attempt_index.py",
+    )
+    reused_scope_argv, _ = subsequent(
+        journal_sequence=7,
+        scope_sequence=3,
+        generation=4,
+        operation_id="different-operation-reusing-scope",
+        scope_id="interrupted-explicit-scope",
+        expected_head=release.sha256_json(entry3),
+        token="opaque-reused-scope-token",
+        output_name="reused-scope.json",
+    )
+    assert release.run_release_command(reused_scope_argv[0], reused_scope_argv[1:]) == 3
+    assert (
+        b"reused logical scope"
+        in (root / "invocations/update-release-attempt-index/007/stderr").read_bytes()
+    )
+    assert not (root / "reused-scope.json").exists()
+    assert not (root / "invocations/update-release-attempt-index/007/terminal-commit.json").exists()
+
+    state_directory = root / ".fixture-native-state"
+    state_path = state_directory / "attempt-index.json"
+    retained_state = state_directory / "attempt-index.retained"
+    state_path.rename(retained_state)
+    os.mkfifo(state_path, mode=0o600)
+    fifo_argv, _ = subsequent(
+        journal_sequence=8,
+        scope_sequence=3,
+        generation=3,
+        disposition="idempotent",
+        operation_id="interrupted-original-operation",
+        scope_id="interrupted-explicit-scope",
+        expected_head=head2,
+        token="opaque-interrupted-fixture-backend-token",
+        output_name="fifo-state.json",
+    )
+    assert release.run_release_command(fifo_argv[0], fifo_argv[1:]) == 3
+    assert not (root / "fifo-state.json").exists()
+    witness_path = root / "invocations/update-release-attempt-index/008/terminal-commit.json"
+    assert not witness_path.exists()
+    state_path.unlink()
+    retained_state.rename(state_path)
+
+    lock_path = state_directory / "attempt-index.lock"
+    lock_alias = state_directory / "attempt-index.lock.alias"
+    os.link(lock_path, lock_alias)
+    hardlink_argv, _ = subsequent(
+        journal_sequence=9,
+        scope_sequence=3,
+        generation=3,
+        disposition="idempotent",
+        operation_id="interrupted-original-operation",
+        scope_id="interrupted-explicit-scope",
+        expected_head=head2,
+        token="opaque-interrupted-fixture-backend-token",
+        output_name="hardlink-lock.json",
+    )
+    assert release.run_release_command(hardlink_argv[0], hardlink_argv[1:]) == 3
+    assert not (root / "hardlink-lock.json").exists()
+    assert not (root / "invocations/update-release-attempt-index/009/terminal-commit.json").exists()
+    lock_alias.unlink()
+    relocated = root.with_name(root.name + "-relocated")
+    root.rename(relocated)
+    try:
+        relocated_held = release._ReleaseCapturedFiles.capture(
+            relocated,
+            [
+                ("inputs/genesis.json", "prerequisite-original"),
+                ("inputs/stores.json", "prerequisite-original"),
+            ],
+            forbidden=(),
+            allowed_kinds=frozenset({"prerequisite-original"}),
+        )
+        captured, _, generation = release._release_fixture_index_export_history_capture(
+            relocated,
+            held=relocated_held,
+            genesis_raw=genesis,
+            genesis_digest=gd,
+            through_head=release.sha256_json(entry3),
+        )
+        assert generation == 3
+        captured.revalidate()
+    finally:
+        relocated.rename(root)
+    for missing in (export_path, record_path, root / "target-burn.json"):
+        retained = missing.with_name(missing.name + ".retained")
+        missing.rename(retained)
+        try:
+            with pytest.raises(release.ReleaseControlError):
+                release._release_fixture_burn_lineage_command_inputs(
+                    root, burn_arguments, Path.cwd()
+                )
+        finally:
+            retained.rename(missing)
     (root / "invocations/update-release-attempt-index/001/terminal-commit.json").unlink()
     with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
         release.validate_release_producer_journal(
             record, record_path, producer="update_release_attempt_index.py"
         )
+    with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
+        release._release_fixture_burn_lineage_command_inputs(root, burn_arguments, Path.cwd())
+    burn_witness = root / "invocations/export-release-burn-lineage/001/terminal-commit.json"
+    burn_witness.unlink()
+    with pytest.raises(release.ReleaseControlError, match="terminal-commit|witness"):
+        release.validate_release_producer_journal(burn_record, burn_path, producer=burn_tool)
     with pytest.raises(release.ReleaseControlError):
         release._release_fixture_seed_prepare(
             argv[0],
