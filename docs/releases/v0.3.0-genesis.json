@@ -1,0 +1,9 @@
+{
+  "annotated_tag_object": "ef808e4b9bb7b47b550ce2bef2cd941984731239",
+  "authority": "historical-observation",
+  "commit": "e8ee6c63deaee47bd450c5d6c7523d5bd699852a",
+  "schema_version": "metriplane.release-genesis.v1",
+  "synthetic": false,
+  "tree": "93125794437408f2ff157a82024e1c7809136941",
+  "version": "v0.3.0"
+}

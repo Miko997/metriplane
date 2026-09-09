@@ -101,6 +101,36 @@ def test_v04_predecessor_contract_rejects_mixed_genesis_and_lkg_authority() -> N
         release._release_original_arguments("resolve_release_predecessor.py", argv)
 
 
+def test_canonical_release_geneses_are_closed_and_cross_bound() -> None:
+    root = Path(__file__).resolve().parents[1] / "docs/releases"
+    release_genesis = json.loads((root / "v0.3.0-genesis.json").read_bytes())
+    chain_genesis = json.loads((root / "release-evidence-chain-genesis.json").read_bytes())
+    attempt_genesis = json.loads((root / "release-attempt-index-genesis.json").read_bytes())
+    assert release_genesis == {
+        "annotated_tag_object": "ef808e4b9bb7b47b550ce2bef2cd941984731239",
+        "authority": "historical-observation",
+        "commit": "e8ee6c63deaee47bd450c5d6c7523d5bd699852a",
+        "schema_version": "metriplane.release-genesis.v1",
+        "synthetic": False,
+        "tree": "93125794437408f2ff157a82024e1c7809136941",
+        "version": "v0.3.0",
+    }
+    assert chain_genesis == {
+        "predecessor": None,
+        "release": "v0.3.0",
+        "release_genesis_digest": release.sha256_json(release_genesis),
+        "schema_version": "metriplane.release-evidence-chain-genesis.v1",
+        "sequence": 0,
+    }
+    assert attempt_genesis == {
+        "cas_required": True,
+        "entries": [],
+        "epoch": 0,
+        "no_overwrite": True,
+        "schema_version": "metriplane.release-attempt-index-genesis.v1",
+    }
+
+
 def _gate_input_plan_fixture(
     root: Path, monkeypatch: pytest.MonkeyPatch, *, new_burn: bool = False, relative: bool = False
 ) -> tuple[release.ReleaseInvocation, dict[str, str]]:
