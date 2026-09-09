@@ -15779,6 +15779,29 @@ def _release_predecessor_command_input_paths(
         ("v0.4-genesis", "application/octet-stream"),
     )
     inputs = [(command_path(flag), schema) for flag, schema in fixed]
+    policy = _source_json(
+        _safe_release_bytes(command_path("predecessor-policy")),
+        "predecessor command policy",
+    )
+    decision = policy.get("expected_predecessor_decision")
+    if isinstance(decision, dict):
+        authority = decision.get("authority")
+        if not isinstance(authority, dict):
+            raise ReleaseControlError("predecessor historical decision authority is malformed")
+        registry_ref = _release_closed_mapping(
+            authority.get("raw_registry"),
+            {"path", "bytes", "sha256"},
+            "predecessor historical decision registry",
+        )
+        inputs.append(
+            (
+                root
+                / _release_relative_suffix(
+                    registry_ref["path"], "predecessor historical decision registry path"
+                ),
+                "application/octet-stream",
+            )
+        )
     for name, schema in (
         ("gate-input.json", "metriplane.release-gate-input.v1"),
         ("target-resolution.json", "metriplane.release-target-resolution.v1"),
@@ -16220,11 +16243,57 @@ def _release_predecessor_static_authorities(
     return sha256_bytes(attempt_genesis_raw)
 
 
+def _release_predecessor_decision_authority(
+    root: Path, decision: Mapping[str, Any], *, subject: Mapping[str, Any]
+) -> dict[str, str]:
+    """Resolve the policy-selected historical issue from its original registry bytes."""
+    binding = _release_closed_mapping(
+        decision, {"identity", "authority"}, "historical predecessor decision binding"
+    )
+    identity = _release_linear_identity(binding["identity"], require_project=True)
+    authority = _release_closed_mapping(
+        binding["authority"],
+        {"raw_registry", "json_pointer", "canonical_row_digest"},
+        "historical predecessor decision authority",
+    )
+    ref = _release_closed_mapping(
+        authority["raw_registry"],
+        {"path", "bytes", "sha256"},
+        "historical predecessor decision registry",
+    )
+    path = root / _release_relative_suffix(
+        ref["path"], "historical predecessor decision registry path"
+    )
+    raw = _safe_release_bytes(path)
+    if len(raw) != ref["bytes"] or sha256_bytes(raw) != ref["sha256"]:
+        raise ReleaseControlError("historical predecessor decision registry bytes differ")
+    registry = _source_json(raw, "historical predecessor decision registry")
+    row = _release_closed_mapping(
+        _release_json_pointer(
+            registry,
+            authority["json_pointer"],
+            "historical predecessor decision registry pointer",
+        ),
+        {"identity", "framework_milestone", "release_tag"},
+        "historical predecessor decision row",
+    )
+    if (
+        sha256_json(row) != authority["canonical_row_digest"]
+        or canonical_json(_release_linear_identity(row["identity"], require_project=True))
+        != canonical_json(identity)
+        or row["framework_milestone"] != subject["framework_milestone"]
+        or row["release_tag"] != subject["release_tag"]
+    ):
+        raise ReleaseControlError("historical predecessor decision row changes its selection")
+    return identity
+
+
 def _release_predecessor_reconciled_graph(
     originals: Mapping[tuple[str, str], tuple[Path, dict[str, Any]]],
     *,
     subject: Mapping[str, Any],
     candidate_milestone: str,
+    decision_identity: Mapping[str, str],
 ) -> dict[str, Any]:
     """Resolve the selected historical success/closure graph by authenticated links.
 
@@ -16534,13 +16603,29 @@ def _release_predecessor_reconciled_graph(
         "selected signed Closed decision",
     )
     subjects = closed["data"].get("subject_digests")
-    if not isinstance(subjects, list):
+    subject_names = [
+        "predecessor_candidate_identity",
+        "decision_identity",
+        "role_assignments",
+        "task_state_policy_registry",
+        "durable_close_root",
+        "original_provider_close_event",
+    ]
+    if (
+        not isinstance(subjects, list)
+        or len(subjects) != len(subject_names)
+        or any(
+            not isinstance(row, dict) or set(row) != {"subject", "sha256"} or row["subject"] != name
+            for row, name in zip(subjects, subject_names, strict=True)
+        )
+    ):
         raise ReleaseControlError("selected Closed decision lacks its ordered subjects")
-    subject_rows = {
-        row.get("subject"): row.get("sha256") for row in subjects if isinstance(row, dict)
-    }
-    if len(subject_rows) != 6 or (
+    subject_rows = {row["subject"]: row["sha256"] for row in subjects}
+    for name, digest in subject_rows.items():
+        _require_digest(digest, "selected Closed " + name)
+    if (
         subject_rows.get("predecessor_candidate_identity") != candidate_full_digest
+        or subject_rows.get("decision_identity") != sha256_json(decision_identity)
         or subject_rows.get("durable_close_root") != close_root_digest
     ):
         raise ReleaseControlError("selected Closed decision changes its candidate or durable root")
@@ -16649,8 +16734,14 @@ def _release_predecessor_control_operation(
     ):
         raise ReleaseControlError("predecessor command changes its current policy selection")
     _release_predecessor_subject_originals(root, proof, subject)
+    decision_identity = _release_predecessor_decision_authority(
+        root, policy["expected_predecessor_decision"], subject=subject
+    )
     linked = _release_predecessor_reconciled_graph(
-        originals, subject=subject, candidate_milestone=args.milestone
+        originals,
+        subject=subject,
+        candidate_milestone=args.milestone,
+        decision_identity=decision_identity,
     )
     chain_record = _release_predecessor_original_record(
         originals,
@@ -16865,6 +16956,28 @@ def _validate_release_predecessor_bound_invocation(
                 "v0.4-genesis",
             )
         } | {context.root / "gate-input.json", context.root / "target-resolution.json"}
+        policy = _source_json(
+            _safe_release_bytes(
+                _release_predecessor_context_path(context, arguments["predecessor-policy"])
+            ),
+            "predecessor bound policy",
+        )
+        decision = policy.get("expected_predecessor_decision")
+        if isinstance(decision, dict):
+            authority = decision.get("authority")
+            if not isinstance(authority, dict):
+                raise ReleaseControlError("predecessor historical decision authority is malformed")
+            ref = _release_closed_mapping(
+                authority.get("raw_registry"),
+                {"path", "bytes", "sha256"},
+                "predecessor historical decision registry",
+            )
+            required.add(
+                context.root
+                / _release_relative_suffix(
+                    ref["path"], "predecessor historical decision registry path"
+                )
+            )
         for group in ("records", "raw_proofs", "git_objects", "artifacts"):
             required.update(
                 context.root

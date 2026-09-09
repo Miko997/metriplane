@@ -10774,6 +10774,13 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
             "candidate_id": candidate_id,
         },
     )
+    decision_identity = {
+        "provider": "linear",
+        "team_id": "00000000-0000-0000-0000-000000000001",
+        "project_id": "00000000-0000-0000-0000-000000000002",
+        "issue_id": "00000000-0000-0000-0000-000000000003",
+        "issue_identifier": "MET-3",
+    }
     closed_digest = add(
         "release-protected-input",
         {
@@ -10782,7 +10789,10 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
             "decision": "CLOSED",
             "subject_digests": [
                 {"subject": "predecessor_candidate_identity", "sha256": candidate_digest},
-                {"subject": "decision_identity", "sha256": "5" * 64},
+                {
+                    "subject": "decision_identity",
+                    "sha256": release.sha256_json(decision_identity),
+                },
                 {"subject": "role_assignments", "sha256": "6" * 64},
                 {"subject": "task_state_policy_registry", "sha256": "7" * 64},
                 {"subject": "durable_close_root", "sha256": close_root_digest},
@@ -10830,6 +10840,7 @@ def _predecessor_reconciled_graph_fixture() -> tuple[
 
 
 def test_predecessor_reconciled_graph_follows_complete_linked_history(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     originals, subject, expected = _predecessor_reconciled_graph_fixture()
@@ -10864,7 +10875,16 @@ def test_predecessor_reconciled_graph_follows_complete_linked_history(
     )
     assert (
         release._release_predecessor_reconciled_graph(
-            originals, subject=subject, candidate_milestone="v0.4"
+            originals,
+            subject=subject,
+            candidate_milestone="v0.4",
+            decision_identity={
+                "provider": "linear",
+                "team_id": "00000000-0000-0000-0000-000000000001",
+                "project_id": "00000000-0000-0000-0000-000000000002",
+                "issue_id": "00000000-0000-0000-0000-000000000003",
+                "issue_identifier": "MET-3",
+            },
         )
         == expected
     )
@@ -10887,6 +10907,35 @@ def test_predecessor_reconciled_graph_follows_complete_linked_history(
     static["stores_raw"] = release.canonical_json(substituted)
     with pytest.raises(release.ReleaseControlError, match="aliased"):
         release._release_predecessor_static_authorities(**static)
+    decision_identity = {
+        "provider": "linear",
+        "team_id": "00000000-0000-0000-0000-000000000001",
+        "project_id": "00000000-0000-0000-0000-000000000002",
+        "issue_id": "00000000-0000-0000-0000-000000000003",
+        "issue_identifier": "MET-3",
+    }
+    decision_row = {
+        "identity": decision_identity,
+        "framework_milestone": "v0.4",
+        "release_tag": "v0.4.0.post2",
+    }
+    registry_raw = release.canonical_json({"decision": decision_row})
+    (tmp_path / "decision.json").write_bytes(registry_raw)
+    decision = {
+        "identity": decision_identity,
+        "authority": {
+            "raw_registry": _predecessor_content_ref("decision.json", registry_raw),
+            "json_pointer": "/decision",
+            "canonical_row_digest": release.sha256_json(decision_row),
+        },
+    }
+    assert (
+        release._release_predecessor_decision_authority(tmp_path, decision, subject=subject)
+        == decision_identity
+    )
+    decision["identity"] = {**decision_identity, "issue_identifier": "MET-4"}
+    with pytest.raises(release.ReleaseControlError, match="changes its selection"):
+        release._release_predecessor_decision_authority(tmp_path, decision, subject=subject)
 
 
 @pytest.mark.parametrize("mutation", ["competing-lkg", "pointer-substitution", "invalidation"])
@@ -10945,7 +10994,16 @@ def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
         originals[("release-last-known-good", digest)] = (Path("/retained") / digest, invalidated)
     with pytest.raises(release.ReleaseControlError):
         release._release_predecessor_reconciled_graph(
-            originals, subject=subject, candidate_milestone="v0.4"
+            originals,
+            subject=subject,
+            candidate_milestone="v0.4",
+            decision_identity={
+                "provider": "linear",
+                "team_id": "00000000-0000-0000-0000-000000000001",
+                "project_id": "00000000-0000-0000-0000-000000000002",
+                "issue_id": "00000000-0000-0000-0000-000000000003",
+                "issue_identifier": "MET-3",
+            },
         )
 
 
@@ -10998,6 +11056,20 @@ def _connected_predecessor_command_fixture(
             },
         ],
     )
+    decision_identity = policy["expected_predecessor_decision"]["identity"]
+    historical_decision_row = {
+        "identity": decision_identity,
+        "framework_milestone": subject["framework_milestone"],
+        "release_tag": subject["release_tag"],
+    }
+    historical_registry_raw = release.canonical_json({"original_decision": historical_decision_row})
+    policy["expected_predecessor_decision"]["authority"] = {
+        "raw_registry": _predecessor_content_ref(
+            "original/historical-policy.json", historical_registry_raw
+        ),
+        "json_pointer": "/original_decision",
+        "canonical_row_digest": release.sha256_json(historical_decision_row),
+    }
     policy_raw = release.canonical_json(policy)
     context = json.loads(base["original_bytes"]["release_context"])
     context["data"]["predecessor_policy_digest"] = release.sha256_bytes(policy_raw)
@@ -11258,7 +11330,10 @@ def _connected_predecessor_command_fixture(
             "decision": "CLOSED",
             "subject_digests": [
                 {"subject": "predecessor_candidate_identity", "sha256": candidate_full_digest},
-                {"subject": "decision_identity", "sha256": "1" * 64},
+                {
+                    "subject": "decision_identity",
+                    "sha256": release.sha256_json(decision_identity),
+                },
                 {"subject": "role_assignments", "sha256": "2" * 64},
                 {"subject": "task_state_policy_registry", "sha256": "3" * 64},
                 {"subject": "durable_close_root", "sha256": close_root_digest},
@@ -11273,6 +11348,7 @@ def _connected_predecessor_command_fixture(
         "readiness.json": readiness_raw,
         "inputs/context.json": release.canonical_json(context),
         "inputs/policy.json": policy_raw,
+        "original/historical-policy.json": historical_registry_raw,
         "gate-input.json": release.canonical_json(gate),
         "target-resolution.json": release.canonical_json(target),
         "artifacts/wheel": wheel_raw,
