@@ -10624,6 +10624,872 @@ def test_predecessor_original_custody_rejects_substitution(tmp_path: Path, mutat
         release._release_predecessor_proof_originals(tmp_path, proof_path)
 
 
+def _predecessor_reconciled_graph_fixture() -> tuple[
+    dict[tuple[str, str], tuple[Path, dict[str, Any]]], dict[str, Any], dict[str, str]
+]:
+    originals: dict[tuple[str, str], tuple[Path, dict[str, Any]]] = {}
+
+    def add(record_type: str, data: dict[str, Any]) -> str:
+        record = {
+            "record_type": record_type,
+            "status": "PASS",
+            "synthetic": True,
+            "data": data,
+        }
+        digest = release.sha256_json(record)
+        originals[(record_type, digest)] = (Path("/retained") / digest, record)
+        return digest
+
+    candidate_id = "1" * 64
+    source_digest = add(
+        "release-source-freeze",
+        {
+            "dirty": False,
+            "milestone": "v0.4",
+            "source_sha": "a" * 40,
+            "source_tree": "b" * 40,
+        },
+    )
+    artifact_digest = add(
+        "release-artifact-manifest",
+        {"milestone": "v0.4", "artifacts": "validated-by-common-owner"},
+    )
+    candidate_digest = add(
+        "release-candidate-identity",
+        {
+            "candidate_digest": candidate_id,
+            "milestone": "v0.4",
+            "package_version": "v0.4.0.post2",
+            "release_tag": "v0.4.0.post2",
+            "source_freeze_digest": source_digest,
+            "artifact_manifest_digest": artifact_digest,
+        },
+    )
+    qualification_digest = add(
+        "release-qualification", {"candidate_digest": candidate_id, "milestone": "v0.4"}
+    )
+    reconciliation_digest = add(
+        "release-publication-reconciliation",
+        {
+            "candidate_digest": candidate_id,
+            "milestone": "v0.4",
+            "qualification_digest": qualification_digest,
+            "result": "RECONCILED",
+            "burn_required": False,
+            "partial_targets": [],
+        },
+    )
+    final_retention_digest = add("release-retention-receipts", {"phase": "final"})
+    chain_head = "2" * 64
+    chain_digest = add(
+        "release-evidence-chain",
+        {
+            "backend_id": "success-chain",
+            "candidate_digest": candidate_id,
+            "reconciliation_digest": reconciliation_digest,
+            "final_receipts_digest": final_retention_digest,
+            "committed_head": chain_head,
+            "read_back_digest": chain_head,
+            "disposition": "committed",
+            "evidence_manifest_digest": "a" * 64,
+            "expected_head": None,
+            "generation": 1,
+            "milestone": "v0.4",
+            "operation_id": "chain-1",
+            "previous_head": None,
+        },
+    )
+    lkg_digest = add(
+        "release-last-known-good",
+        {
+            "backend_id": "last-known-good",
+            "candidate_digest": candidate_id,
+            "chain_head": chain_head,
+            "committed_token": "token-1",
+            "expected_generation": 0,
+            "invalidation_decision_digest": None,
+            "milestone": "v0.4",
+            "new_generation": 1,
+            "operation_id": "lkg-1",
+            "previous_release_digest": None,
+            "read_back_digest": "3" * 64,
+            "reconciliation_digest": reconciliation_digest,
+            "state": "LKG",
+        },
+    )
+    transition_retention_digest = add(
+        "release-retention-receipts",
+        {"phase": "pointer-transition", "input_digest": lkg_digest},
+    )
+    pointer_manifest_digest = add(
+        "release-evidence-manifest",
+        {
+            "phase": "pointer-transition",
+            "candidate_digest": candidate_id,
+            "entries": [{"sha256": lkg_digest}, {"sha256": transition_retention_digest}],
+        },
+    )
+    pointer_retention_digest = add(
+        "release-retention-receipts",
+        {"phase": "pointer-transition-envelope", "input_digest": pointer_manifest_digest},
+    )
+    pointer_index_digest = add(
+        "release-attempt-index",
+        {
+            "kind": "update_receipt",
+            "scope_kind": "release_candidate",
+            "stage": "pointer-transition",
+            "entry_manifest_digest": pointer_manifest_digest,
+            "entry_receipts_digest": pointer_retention_digest,
+            "candidate_id": candidate_id,
+        },
+    )
+    observation_digest = add(
+        "release-task-state-observation",
+        {
+            "candidate_digest": candidate_id,
+            "latest_pointer_index_digest": pointer_index_digest,
+            "phase": "close-ready",
+        },
+    )
+    close_manifest_digest = add(
+        "release-evidence-manifest",
+        {
+            "phase": "release-finalizing-observation",
+            "candidate_digest": candidate_id,
+            "entries": [
+                {"sha256": observation_digest},
+                {"sha256": pointer_index_digest},
+            ],
+        },
+    )
+    close_root_digest = add(
+        "release-attempt-index",
+        {
+            "kind": "update_receipt",
+            "scope_kind": "release_candidate",
+            "stage": "release-task-finalizing",
+            "entry_manifest_digest": close_manifest_digest,
+            "entry_receipts_digest": "4" * 64,
+            "candidate_id": candidate_id,
+        },
+    )
+    closed_digest = add(
+        "release-protected-input",
+        {
+            "input_kind": "task_state_transition",
+            "transition_kind": "release_decision_closed",
+            "decision": "CLOSED",
+            "subject_digests": [
+                {"subject": "predecessor_candidate_identity", "sha256": candidate_digest},
+                {"subject": "decision_identity", "sha256": "5" * 64},
+                {"subject": "role_assignments", "sha256": "6" * 64},
+                {"subject": "task_state_policy_registry", "sha256": "7" * 64},
+                {"subject": "durable_close_root", "sha256": close_root_digest},
+                {"subject": "original_provider_close_event", "sha256": "8" * 64},
+            ],
+        },
+    )
+    expected = {
+        "qualification_digest": qualification_digest,
+        "reconciliation_digest": reconciliation_digest,
+        "final_retention_digest": final_retention_digest,
+        "chain_receipt_digest": chain_digest,
+        "chain_head": chain_head,
+        "lkg_digest": lkg_digest,
+        "pointer_transition_retention_digest": transition_retention_digest,
+        "pointer_envelope_digest": pointer_manifest_digest,
+        "pointer_retention_digest": pointer_retention_digest,
+        "pointer_index_receipt_digest": pointer_index_digest,
+        "closed_decision_digest": closed_digest,
+        "close_ready_observation_digest": observation_digest,
+        "close_root_digest": close_root_digest,
+    }
+    subject = {
+        "framework_milestone": "v0.4",
+        "normalized_package_version": "0.4.0.post2",
+        "release_tag": "v0.4.0.post2",
+        "source_commit": "a" * 40,
+        "source_tree": "b" * 40,
+        "artifacts": [
+            {
+                "kind": "wheel",
+                "filename": "metriplane-0.4.0.post2-py3-none-any.whl",
+                "bytes": 10,
+                "sha256": "a" * 64,
+            },
+            {
+                "kind": "sdist",
+                "filename": "metriplane-0.4.0.post2.tar.gz",
+                "bytes": 20,
+                "sha256": "b" * 64,
+            },
+        ],
+    }
+    return originals, subject, expected
+
+
+def test_predecessor_reconciled_graph_follows_complete_linked_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    originals, subject, expected = _predecessor_reconciled_graph_fixture()
+    monkeypatch.setattr(
+        release, "_release_predecessor_candidate_identity_payload", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        release,
+        "_validate_artifact_manifest_payload",
+        lambda *a, **kw: [
+            {
+                "path": "metriplane-0.4.0.post2-py3-none-any.whl",
+                "size": 10,
+                "sha256": "a" * 64,
+            },
+            {"path": "metriplane-0.4.0.post2.tar.gz", "size": 20, "sha256": "b" * 64},
+        ],
+    )
+    monkeypatch.setattr(
+        release,
+        "_release_original_artifact_descriptors",
+        lambda *a, **kw: {row["kind"]: row for row in subject["artifacts"]},
+    )
+    monkeypatch.setattr(release, "_release_evidence_manifest_content", lambda data: data["entries"])
+    monkeypatch.setattr(
+        release,
+        "_release_index_receipt_content",
+        lambda data: {
+            "scope": {"candidate_id": data["candidate_id"]},
+            "entry_manifest_digest": data["entry_manifest_digest"],
+        },
+    )
+    assert (
+        release._release_predecessor_reconciled_graph(
+            originals, subject=subject, candidate_milestone="v0.4"
+        )
+        == expected
+    )
+    static = {
+        "chain_genesis_raw": Path("docs/releases/release-evidence-chain-genesis.json").read_bytes(),
+        "attempt_genesis_raw": Path(
+            "docs/releases/release-attempt-index-genesis.json"
+        ).read_bytes(),
+        "release_genesis_raw": Path("docs/releases/v0.3.0-genesis.json").read_bytes(),
+        "stores_raw": Path("docs/status/release-evidence-stores.json").read_bytes(),
+        "chain_backend": "success-chain",
+        "attempt_index_backend": "attempt-index",
+        "lkg_backend": "last-known-good",
+    }
+    assert release._release_predecessor_static_authorities(**static) == release.sha256_bytes(
+        static["attempt_genesis_raw"]
+    )
+    substituted = json.loads(static["stores_raw"])
+    substituted["stores"][1]["independence_group"] = substituted["stores"][0]["independence_group"]
+    static["stores_raw"] = release.canonical_json(substituted)
+    with pytest.raises(release.ReleaseControlError, match="aliased"):
+        release._release_predecessor_static_authorities(**static)
+
+
+@pytest.mark.parametrize("mutation", ["competing-lkg", "pointer-substitution", "invalidation"])
+def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    originals, subject, expected = _predecessor_reconciled_graph_fixture()
+    monkeypatch.setattr(
+        release, "_release_predecessor_candidate_identity_payload", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        release,
+        "_validate_artifact_manifest_payload",
+        lambda *a, **kw: [
+            {
+                "path": "metriplane-0.4.0.post2-py3-none-any.whl",
+                "size": 10,
+                "sha256": "a" * 64,
+            },
+            {"path": "metriplane-0.4.0.post2.tar.gz", "size": 20, "sha256": "b" * 64},
+        ],
+    )
+    monkeypatch.setattr(
+        release,
+        "_release_original_artifact_descriptors",
+        lambda *a, **kw: {row["kind"]: row for row in subject["artifacts"]},
+    )
+    monkeypatch.setattr(release, "_release_evidence_manifest_content", lambda data: data["entries"])
+    monkeypatch.setattr(
+        release,
+        "_release_index_receipt_content",
+        lambda data: {
+            "scope": {"candidate_id": data["candidate_id"]},
+            "entry_manifest_digest": data["entry_manifest_digest"],
+        },
+    )
+    if mutation == "competing-lkg":
+        original = copy.deepcopy(originals[("release-last-known-good", expected["lkg_digest"])][1])
+        original["data"]["operation_id"] = "competing"
+        digest = release.sha256_json(original)
+        originals[("release-last-known-good", digest)] = (Path("/retained") / digest, original)
+    elif mutation == "pointer-substitution":
+        manifest = originals[("release-evidence-manifest", expected["pointer_envelope_digest"])][1]
+        manifest["data"]["entries"][0]["sha256"] = "9" * 64
+    else:
+        invalidated = copy.deepcopy(
+            originals[("release-last-known-good", expected["lkg_digest"])][1]
+        )
+        invalidated["data"].update(
+            state="INVALIDATED",
+            invalidation_decision_digest="9" * 64,
+            previous_release_digest=expected["lkg_digest"],
+            operation_id="invalidate-1",
+        )
+        digest = release.sha256_json(invalidated)
+        originals[("release-last-known-good", digest)] = (Path("/retained") / digest, invalidated)
+    with pytest.raises(release.ReleaseControlError):
+        release._release_predecessor_reconciled_graph(
+            originals, subject=subject, candidate_milestone="v0.4"
+        )
+
+
+def _connected_predecessor_command_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, list[str]]:
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    root = tmp_path / "predecessor-run"
+    root.mkdir()
+    base = _predecessor_content_fixture()
+    readiness_raw = base["context_policy_inputs"]["readiness_registry_raw"]
+    linear = base["context_policy_inputs"]["linear_snapshot"]
+    policy = json.loads(base["context_policy_inputs"]["predecessor_policy_raw"])
+    subject = policy["expected_predecessor_subject"]
+
+    wheel_raw = b"w" * 123
+    sdist_raw = b"s" * 123
+    git_raw = {
+        "commit": b"tree " + b"0" * 40 + b"\n",
+        "tree": b"100644 file\0" + b"1" * 20,
+        "tag": b"object " + b"0" * 40 + b"\ntype commit\ntag v0.4.0.post1\n",
+    }
+    subject.update(
+        source_commit=hashlib.sha1(
+            f"commit {len(git_raw['commit'])}\0".encode() + git_raw["commit"],
+            usedforsecurity=False,
+        ).hexdigest(),
+        source_tree=hashlib.sha1(
+            f"tree {len(git_raw['tree'])}\0".encode() + git_raw["tree"],
+            usedforsecurity=False,
+        ).hexdigest(),
+        tag_object=hashlib.sha1(
+            f"tag {len(git_raw['tag'])}\0".encode() + git_raw["tag"],
+            usedforsecurity=False,
+        ).hexdigest(),
+        artifacts=[
+            {
+                "kind": "wheel",
+                "filename": "metriplane-0.4.0.post1-py3-none-any.whl",
+                "bytes": len(wheel_raw),
+                "sha256": release.sha256_bytes(wheel_raw),
+                "readback": _predecessor_content_ref("artifacts/wheel", wheel_raw),
+            },
+            {
+                "kind": "sdist",
+                "filename": "metriplane-0.4.0.post1.tar.gz",
+                "bytes": len(sdist_raw),
+                "sha256": release.sha256_bytes(sdist_raw),
+                "readback": _predecessor_content_ref("artifacts/sdist", sdist_raw),
+            },
+        ],
+    )
+    policy_raw = release.canonical_json(policy)
+    context = json.loads(base["original_bytes"]["release_context"])
+    context["data"]["predecessor_policy_digest"] = release.sha256_bytes(policy_raw)
+    context["data"]["context_digest"] = release.sha256_json(
+        {k: v for k, v in context["data"].items() if k != "context_digest"}
+    )
+    context = release.make_record(
+        "release-context",
+        context["data"],
+        invocation_id=context["invocation_id"],
+        sequence=context["sequence"],
+        synthetic=True,
+    )
+    context_digest = release.sha256_json(context)
+    target = copy.deepcopy(base["target"])
+    target["data"]["release_context_digest"] = context_digest
+    _predecessor_content_reseal(target)
+    gate = release.make_record(
+        "release-gate-input",
+        {
+            "milestone": "v0.4",
+            "release_context_digest": context_digest,
+            "predecessor_policy_digest": release.sha256_bytes(policy_raw),
+            "expected_predecessor_milestone": "v0.4",
+            "target_resolution_digest": release.sha256_json(target),
+        },
+        invocation_id="connected-gate",
+        sequence=1,
+        synthetic=True,
+    )
+
+    records: list[tuple[str, dict[str, Any]]] = []
+
+    def record(record_type: str, data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        value = release.make_record(
+            record_type,
+            data,
+            invocation_id="historical-" + record_type.replace("release-", "")[:40],
+            sequence=1,
+            synthetic=True,
+        )
+        digest = release.sha256_json(value)
+        records.append((digest, value))
+        return digest, value
+
+    source_digest, _ = record(
+        "release-source-freeze",
+        {
+            "dirty": False,
+            "milestone": "v0.4",
+            "source_sha": subject["source_commit"],
+            "source_tree": subject["source_tree"],
+        },
+    )
+    artifact_rows = [
+        {
+            "media_type": "application/vnd.pypa.wheel+zip",
+            "path": subject["artifacts"][0]["filename"],
+            "sha256": subject["artifacts"][0]["sha256"],
+            "size": subject["artifacts"][0]["bytes"],
+        },
+        {
+            "media_type": "application/gzip",
+            "path": subject["artifacts"][1]["filename"],
+            "sha256": subject["artifacts"][1]["sha256"],
+            "size": subject["artifacts"][1]["bytes"],
+        },
+    ]
+    artifact_digest, _ = record(
+        "release-artifact-manifest",
+        {
+            "artifact_set_digest": release.sha256_json(artifact_rows),
+            "artifacts": artifact_rows,
+            "build_invocation_id": "historical-build",
+            "build_recipe_digest": "1" * 64,
+            "milestone": "v0.4",
+            "source_digest": "2" * 64,
+            "source_freeze_digest": source_digest,
+            "target_resolution_digest": "3" * 64,
+            "invocation_root_locator": "invocations",
+            "producer_intent_digest": "4" * 64,
+        },
+    )
+    candidate_data = {
+        "artifact_manifest_digest": artifact_digest,
+        "artifact_set_digest": release.sha256_json(artifact_rows),
+        "build_invocation_id": "historical-build",
+        "evaluation_adoption_digest": None,
+        "evaluation_adoption_mode": "none",
+        "gate_input_digest": "5" * 64,
+        "milestone": "v0.4",
+        "package_version": "v0.4.0.post1",
+        "predecessor_digest": "6" * 64,
+        "release_tag": "v0.4.0.post1",
+        "source_freeze_digest": source_digest,
+        "finalization_intent_digest": "7" * 64,
+        "control_journal_locator": str(
+            root
+            / "history/.control/historical-run/invocations/candidate-finalization/001/invocation.json"
+        ),
+    }
+    candidate_data["candidate_digest"] = release._candidate_payload_digest(candidate_data)
+    candidate_data["final_directory"] = str(
+        root / "history/v0.4.0.post1" / candidate_data["candidate_digest"]
+    )
+    candidate_full_digest, _ = record("release-candidate-identity", candidate_data)
+    qualification_digest, _ = record(
+        "release-qualification",
+        {"candidate_digest": candidate_data["candidate_digest"], "milestone": "v0.4"},
+    )
+    reconciliation_digest, _ = record(
+        "release-publication-reconciliation",
+        {
+            "candidate_digest": candidate_data["candidate_digest"],
+            "milestone": "v0.4",
+            "qualification_digest": qualification_digest,
+            "result": "RECONCILED",
+            "burn_required": False,
+            "partial_targets": [],
+        },
+    )
+    final_retention_digest, _ = record("release-retention-receipts", {"phase": "final"})
+    chain_head = "8" * 64
+    _chain_digest, _ = record(
+        "release-evidence-chain",
+        {
+            "backend_id": "success-chain",
+            "candidate_digest": candidate_data["candidate_digest"],
+            "reconciliation_digest": reconciliation_digest,
+            "final_receipts_digest": final_retention_digest,
+            "committed_head": chain_head,
+            "read_back_digest": chain_head,
+            "disposition": "committed",
+            "evidence_manifest_digest": "7" * 64,
+            "expected_head": None,
+            "generation": 1,
+            "milestone": "v0.4",
+            "operation_id": "historical-chain",
+            "previous_head": None,
+        },
+    )
+    lkg_digest, _ = record(
+        "release-last-known-good",
+        {
+            "backend_id": "last-known-good",
+            "candidate_digest": candidate_data["candidate_digest"],
+            "chain_head": chain_head,
+            "committed_token": "historical-token",
+            "expected_generation": 0,
+            "invalidation_decision_digest": None,
+            "milestone": "v0.4",
+            "new_generation": 1,
+            "operation_id": "historical-lkg",
+            "previous_release_digest": None,
+            "read_back_digest": "9" * 64,
+            "reconciliation_digest": reconciliation_digest,
+            "state": "LKG",
+        },
+    )
+    transition_retention_digest, _ = record(
+        "release-retention-receipts",
+        {"phase": "pointer-transition", "input_digest": lkg_digest},
+    )
+
+    def manifest(phase: str, required: list[tuple[str, str]]) -> tuple[str, dict[str, Any]]:
+        entries = [
+            {
+                "media_type": "application/json",
+                "path": path,
+                "role": "historical-record",
+                "sha256": digest,
+                "size": len(release.canonical_json(next(v for d, v in records if d == digest))),
+            }
+            for path, digest in sorted(required)
+        ]
+        journals = ["a" * 64]
+        return record(
+            "release-evidence-manifest",
+            {
+                "candidate_digest": candidate_data["candidate_digest"],
+                "entries": entries,
+                "invocation_journal_digests": journals,
+                "manifest_digest": release.sha256_json(
+                    {"entries": entries, "invocation_journal_digests": journals}
+                ),
+                "phase": phase,
+                "scope_id": candidate_data["candidate_digest"],
+                "scope_kind": "release_candidate",
+                "producer_intent_digest": "b" * 64,
+                "invocation_root_locator": "invocations",
+            },
+        )
+
+    pointer_manifest_digest, _ = manifest(
+        "pointer-transition",
+        [
+            ("history/lkg.json", lkg_digest),
+            ("history/lkg-retention.json", transition_retention_digest),
+        ],
+    )
+    pointer_retention_digest, _ = record(
+        "release-retention-receipts",
+        {"phase": "pointer-transition-envelope", "input_digest": pointer_manifest_digest},
+    )
+
+    def index(stage: str, manifest_digest: str, receipts_digest: str, sequence: int) -> str:
+        scope = {
+            "kind": "release_candidate",
+            "scope_id": "historical-" + stage,
+            "stage": stage,
+            "sequence": sequence,
+            "release_tag": "v0.4.0.post1",
+            "candidate_id": candidate_data["candidate_digest"],
+        }
+        entry = {
+            "schema_version": "metriplane.release-attempt-index-entry.v1",
+            "backend_id": "attempt-index",
+            "genesis_digest": release.sha256_bytes(
+                Path("docs/releases/release-attempt-index-genesis.json").read_bytes()
+            ),
+            "generation": sequence,
+            "previous_head": None if sequence == 1 else "d" * 64,
+            "operation_id": "historical-" + stage,
+            "token": "historical-index-token-" + str(sequence),
+            "milestone": "v0.4",
+            "scope": scope,
+            "entry_manifest_digest": manifest_digest,
+            "entry_receipts_digest": receipts_digest,
+        }
+        receipt = _index_receipt_fixture(entry)
+        digest, _ = record("release-attempt-index", receipt)
+        return digest
+
+    pointer_index_digest = index(
+        "pointer-transition", pointer_manifest_digest, pointer_retention_digest, 1
+    )
+    observation_digest, _ = record(
+        "release-task-state-observation",
+        {
+            "candidate_digest": candidate_data["candidate_digest"],
+            "latest_pointer_index_digest": pointer_index_digest,
+            "phase": "close-ready",
+        },
+    )
+    close_manifest_digest, _ = manifest(
+        "release-finalizing-observation",
+        [
+            ("history/close-observation.json", observation_digest),
+            ("history/pointer-index.json", pointer_index_digest),
+        ],
+    )
+    close_root_digest = index("release-task-finalizing", close_manifest_digest, "e" * 64, 2)
+    record(
+        "release-protected-input",
+        {
+            "input_kind": "task_state_transition",
+            "transition_kind": "release_decision_closed",
+            "decision": "CLOSED",
+            "subject_digests": [
+                {"subject": "predecessor_candidate_identity", "sha256": candidate_full_digest},
+                {"subject": "decision_identity", "sha256": "1" * 64},
+                {"subject": "role_assignments", "sha256": "2" * 64},
+                {"subject": "task_state_policy_registry", "sha256": "3" * 64},
+                {"subject": "durable_close_root", "sha256": close_root_digest},
+                {"subject": "original_provider_close_event", "sha256": "4" * 64},
+            ],
+        },
+    )
+    linear_digest = release.sha256_json(linear)
+    records.append((linear_digest, linear))
+
+    for path, raw in {
+        "readiness.json": readiness_raw,
+        "inputs/context.json": release.canonical_json(context),
+        "inputs/policy.json": policy_raw,
+        "gate-input.json": release.canonical_json(gate),
+        "target-resolution.json": release.canonical_json(target),
+        "artifacts/wheel": wheel_raw,
+        "artifacts/sdist": sdist_raw,
+        **{"git/" + kind: raw for kind, raw in git_raw.items()},
+    }.items():
+        output = root / path
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(raw)
+    record_rows = []
+    for sequence, (digest, value) in enumerate(records):
+        path = f"records/{sequence:03d}.json"
+        raw = release.canonical_json(value)
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_bytes(raw)
+        record_rows.append(
+            {
+                "kind": "original_release_record",
+                "record_type": value["record_type"],
+                "record_digest": digest,
+                "original_file": _predecessor_content_ref(path, raw),
+            }
+        )
+    raw_rows = [
+        {
+            "kind": "original_role_key_policy",
+            "purpose": "readiness_registry",
+            "original_file": _predecessor_content_ref("readiness.json", readiness_raw),
+        }
+    ]
+    for name in (
+        "provider_state",
+        "provider_event_history",
+        "success_chain_readback",
+        "lkg_state_and_history_readback",
+        "attempt_index_readback",
+    ):
+        raw = (name + "\n").encode()
+        path = "readbacks/" + name
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_bytes(raw)
+        raw_rows.append(
+            {
+                "kind": "original_provider_state_readback"
+                if name.startswith("provider")
+                else "original_backend_state_readback",
+                "purpose": name,
+                "original_file": _predecessor_content_ref(path, raw),
+            }
+        )
+    proof = {
+        "schema_version": "metriplane.release-predecessor-proof-index.v1",
+        "records": record_rows,
+        "raw_proofs": raw_rows,
+        "git_objects": [
+            {
+                "kind": "original_git_object",
+                "object_type": kind,
+                "git_object_id": subject[field],
+                "original_file": _predecessor_content_ref("git/" + kind, git_raw[kind]),
+            }
+            for kind, field in (
+                ("commit", "source_commit"),
+                ("tree", "source_tree"),
+                ("tag", "tag_object"),
+            )
+        ],
+        "artifacts": [
+            {
+                "kind": "original_distribution_payload",
+                "artifact_kind": row["kind"],
+                "filename": row["filename"],
+                "original_file": row["readback"],
+            }
+            for row in subject["artifacts"]
+        ],
+    }
+    proof_path = root / "inputs/proof-index.json"
+    proof_path.write_bytes(release.canonical_json(proof))
+    for name, source in (
+        ("chain-genesis.json", "docs/releases/release-evidence-chain-genesis.json"),
+        ("index-genesis.json", "docs/releases/release-attempt-index-genesis.json"),
+        ("v0.4-genesis.json", "docs/releases/v0.3.0-genesis.json"),
+        ("stores.json", "docs/status/release-evidence-stores.json"),
+    ):
+        (root / "inputs" / name).write_bytes(Path(source).read_bytes())
+    argv = [
+        "--milestone",
+        "v0.4",
+        "--expected-predecessor-milestone",
+        "v0.4",
+        "--release-context",
+        str(root / "inputs/context.json"),
+        "--predecessor-policy",
+        str(root / "inputs/policy.json"),
+        "--prerequisite-proofs",
+        str(proof_path),
+        "--chain-backend",
+        "success-chain",
+        "--chain-genesis",
+        str(root / "inputs/chain-genesis.json"),
+        "--lkg-backend",
+        "last-known-good",
+        "--attempt-index-backend",
+        "attempt-index",
+        "--attempt-index-genesis",
+        str(root / "inputs/index-genesis.json"),
+        "--stores",
+        str(root / "inputs/stores.json"),
+        "--v0.4-genesis",
+        str(root / "inputs/v0.4-genesis.json"),
+        "--require-prior-lkg",
+        "--project-id",
+        context["data"]["decision"]["project_id"],
+        "--require-prior-decision-closed",
+        "--out",
+        str(root / "predecessor.json"),
+        "--invocation-dir",
+        str(root / "invocations/resolve-release-predecessor/001"),
+    ]
+    return root, argv
+
+
+def test_public_predecessor_commands_connect_original_graph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, argv = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    assert release.run_release_command("resolve_release_predecessor.py", argv) == 0
+    output = root / "predecessor.json"
+    predecessor = json.loads(output.read_bytes())
+    release.validate_release_producer_journal(
+        predecessor, output, producer="resolve_release_predecessor.py"
+    )
+    validator = [
+        "--record",
+        str(output),
+        "--milestone",
+        "v0.4",
+        "--release-context",
+        str(root / "inputs/context.json"),
+        "--predecessor-policy",
+        str(root / "inputs/policy.json"),
+        "--read-back-chain",
+        "--read-back-lkg",
+        "--read-back-pointer-index",
+        "--require-embedded-prior-decision-closed-observation",
+        "--invocation-dir",
+        str(root / "invocations/validate-release-predecessor/001"),
+    ]
+    assert release.run_release_command("validate_release_predecessor.py", validator) == 0
+    terminal = release._validate_terminal(
+        release._validate_intent(root / "invocations/validate-release-predecessor/001")
+    )
+    assert terminal["status"] == "PASS" and terminal["data"]["outputs"] == []
+
+    original = (root / "readbacks/success_chain_readback").read_bytes()
+    (root / "readbacks/success_chain_readback").chmod(0o600)
+    (root / "readbacks/success_chain_readback").write_bytes(b"substituted\n")
+    with pytest.raises(release.ReleaseControlError):
+        release._validate_bound_invocation(
+            release._validate_intent(root / "invocations/resolve-release-predecessor/001")
+        )
+    (root / "readbacks/success_chain_readback").write_bytes(original)
+
+    relocated = tmp_path / "relocated-predecessor-run"
+    shutil.copytree(root, relocated)
+    shutil.rmtree(root)
+    relocated_validator = [
+        value.replace(str(root), str(relocated)).replace(
+            "validate-release-predecessor/001", "validate-release-predecessor/002"
+        )
+        for value in validator
+    ]
+    assert release.run_release_command("validate_release_predecessor.py", relocated_validator) == 0
+
+
+def test_public_predecessor_command_interruption_cannot_claim_success_and_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, argv = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    popen = release.subprocess.Popen
+
+    class InterruptedChild:
+        pid = 987654320
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def wait(self) -> int:
+            if hasattr(self, "killed"):
+                return -2
+            raise KeyboardInterrupt
+
+        def kill(self) -> None:
+            self.killed = True
+
+    monkeypatch.setattr(release.subprocess, "Popen", InterruptedChild)
+    monkeypatch.setattr(release, "_stop_worker_group", lambda _pid: True)
+    assert release.run_release_command("resolve_release_predecessor.py", argv) == 130
+    interrupted = root / "invocations/resolve-release-predecessor/001"
+    terminal = release._validate_terminal(release._validate_intent(interrupted))
+    assert terminal["status"] == "CANCELLED" and terminal["data"]["outputs"] == []
+    assert not (root / "predecessor.json").exists()
+    assert not (interrupted / "terminal-commit.json").exists()
+
+    monkeypatch.setattr(release.subprocess, "Popen", popen)
+    retry = [
+        value.replace("resolve-release-predecessor/001", "resolve-release-predecessor/002")
+        for value in argv
+    ]
+    assert release.run_release_command("resolve_release_predecessor.py", retry) == 0
+    output = root / "predecessor.json"
+    release.validate_release_producer_journal(
+        json.loads(output.read_bytes()), output, producer="resolve_release_predecessor.py"
+    )
+
+
 def _predecessor_content_fixture(
     *, bootstrap: bool = False, generic: bool = False, previous: str = "0.4.0.post1"
 ) -> dict[str, Any]:
