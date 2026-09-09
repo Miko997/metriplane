@@ -19637,8 +19637,8 @@ def _release_predecessor_content(
 
     The original capture/journal owner must supply these exact record, input-path,
     raw-byte and producer expectations. This helper does not read paths or infer
-    a trust root. Its return cannot authorize a candidate: native history, Closed,
-    backend and complete reachable graph replay are still missing dependencies.
+    a trust root. Its return cannot authorize a candidate; the connected command
+    owner separately replays the retained graph and external authorities.
     """
     if not isinstance(record, Mapping) or not isinstance(gate_data, Mapping):
         raise ReleaseControlError("predecessor record or already validated gate is not an object")
