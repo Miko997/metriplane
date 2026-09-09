@@ -1211,7 +1211,11 @@ def test_native_exclusive_rename_preserves_object_and_bytes_on_required_platform
     assert _snapshot(destination_parent / "destination") == before
 
 
-@pytest.mark.parametrize("error", [errno.EXDEV, errno.ENOSYS, errno.EINVAL, errno.ENOTSUP])
+@pytest.mark.parametrize(
+    "error",
+    [errno.EXDEV, errno.ENOSYS, errno.EINVAL, errno.ENOTSUP],
+    ids=["cross-device", "not-implemented", "invalid", "not-supported"],
+)
 def test_native_failure_has_no_fallback_or_false_terminal(
     prepared: dict[str, Any], error: int
 ) -> None:
