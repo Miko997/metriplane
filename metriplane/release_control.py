@@ -4533,6 +4533,200 @@ def validate_release_qualification_plan_record(
             raise ReleaseControlError(f"release qualification plan {label} binding mismatch")
 
 
+def build_release_qualification_plan_record(
+    *,
+    gate_instance: Mapping[str, Any],
+    candidate_identity_record: Mapping[str, Any],
+    predecessor: Mapping[str, Any],
+    readiness: Mapping[str, Any],
+    delta: Mapping[str, Any],
+    delta_test_map: Mapping[str, Any],
+    scenario_registry_raw: bytes,
+    scenario_catalog: Mapping[str, Any],
+    candidate_manifest: Mapping[str, Any],
+    invocation_id: str,
+    sequence: int,
+) -> dict[str, Any]:
+    """Build the exact qualification matrix from the gate's retained catalog."""
+
+    typed = (
+        (gate_instance, "release-gate-instance"),
+        (candidate_identity_record, "release-candidate-identity"),
+        (predecessor, "release-predecessor"),
+        (readiness, "release-readiness"),
+        (delta, "release-capability-delta"),
+        (delta_test_map, "release-delta-test-map"),
+        (scenario_catalog, "release-scenario-catalog"),
+        (candidate_manifest, "release-artifact-manifest"),
+    )
+    for record, kind in typed:
+        validate_record(record, kind)
+        if record["status"] not in {"PASS", "READY"}:
+            raise ReleaseControlError(f"{kind} is not passing qualification input")
+    synthetic_modes = {record["synthetic"] for record, _ in typed}
+    if len(synthetic_modes) != 1:
+        raise ReleaseControlError("qualification plan inputs mix authority modes")
+    if not isinstance(scenario_registry_raw, bytes) or not scenario_registry_raw:
+        raise ReleaseControlError("qualification scenario registry is empty")
+
+    gate = gate_instance["data"]
+    candidate = candidate_identity_record["data"]
+    prior = predecessor["data"]
+    ready = readiness["data"]
+    delta_data = delta["data"]
+    mapping = delta_test_map["data"]
+    catalog = scenario_catalog["data"]
+    manifest = candidate_manifest["data"]
+    if not all(
+        isinstance(value, Mapping)
+        for value in (gate, candidate, prior, ready, delta_data, mapping, catalog, manifest)
+    ):
+        raise ReleaseControlError("qualification plan input data is malformed")
+    milestone = gate.get("milestone")
+    if milestone not in MILESTONES:
+        raise ReleaseControlError("qualification plan milestone is invalid")
+    bindings = {
+        "candidate": (gate.get("candidate_digest"), candidate.get("candidate_digest")),
+        "predecessor": (gate.get("predecessor_digest"), sha256_json(predecessor)),
+        "readiness candidate": (ready.get("candidate_digest"), candidate.get("candidate_digest")),
+        "readiness gate": (ready.get("gate_instance_digest"), gate.get("instance_digest")),
+        "readiness predecessor": (ready.get("predecessor_digest"), sha256_json(predecessor)),
+        "readiness delta": (ready.get("delta_digest"), delta_data.get("delta_digest")),
+        "readiness delta map": (ready.get("delta_test_map_digest"), mapping.get("map_digest")),
+        "delta map": (mapping.get("delta_digest"), delta_data.get("delta_digest")),
+        "artifact manifest": (
+            candidate.get("artifact_manifest_digest"),
+            sha256_json(candidate_manifest),
+        ),
+        "scenario catalog": (
+            gate.get("scenario_catalog_digest"),
+            sha256_json(scenario_catalog),
+        ),
+        "scenario registry": (
+            catalog.get("scenario_registry_digest"),
+            sha256_bytes(scenario_registry_raw),
+        ),
+    }
+    for label, (observed, expected) in bindings.items():
+        if observed != expected:
+            raise ReleaseControlError(f"qualification plan {label} binding mismatch")
+    if (
+        ready.get("disposition") != "READY"
+        or ready.get("unresolved_blockers") != []
+        or mapping.get("unmapped_capabilities") != []
+        or candidate.get("milestone") != milestone
+        or prior.get("candidate_milestone") != milestone
+        or manifest.get("milestone") != milestone
+    ):
+        raise ReleaseControlError("qualification plan has unresolved or mismatched inputs")
+    slots = catalog.get("release_slots")
+    units = catalog.get("execution_units")
+    unresolved = catalog.get("unresolved_declarations")
+    unsigned_catalog = dict(catalog)
+    claimed_catalog_digest = unsigned_catalog.pop("catalog_digest", None)
+    if not isinstance(slots, list) or not isinstance(units, list) or unresolved != []:
+        raise ReleaseControlError("qualification scenario catalog is incomplete")
+    if claimed_catalog_digest != sha256_json(unsigned_catalog):
+        raise ReleaseControlError("qualification scenario catalog digest mismatch")
+    selected_slots = [
+        row for row in slots if isinstance(row, Mapping) and row.get("milestone") == milestone
+    ]
+    if len(selected_slots) != 1:
+        raise ReleaseControlError("qualification scenario catalog has no unique release slot")
+    slot = selected_slots[0]
+    attempt_count = slot.get("qualification_attempts_required")
+    if type(attempt_count) is not int or attempt_count < 1:
+        raise ReleaseControlError("qualification attempt count is invalid")
+    selected_units = [
+        unit
+        for unit in units
+        if isinstance(unit, Mapping)
+        and unit.get("slot_milestone") == milestone
+        and unit.get("phase") == "qualification"
+    ]
+    if not selected_units:
+        raise ReleaseControlError("qualification catalog has no executable cells")
+    selected_ids = {unit.get("unit_id") for unit in selected_units}
+    if len(selected_ids) != len(selected_units) or any(
+        not isinstance(unit_id, str) or not unit_id for unit_id in selected_ids
+    ):
+        raise ReleaseControlError("qualification catalog cell identities are invalid")
+    cells: list[dict[str, Any]] = []
+    for unit in sorted(selected_units, key=lambda value: str(value["unit_id"])):
+        prerequisites = _require_canonical_string_inventory(
+            unit.get("prerequisite_unit_ids"),
+            "qualification cell prerequisites",
+            nonempty=False,
+        )
+        if unit.get("qualification_unit_terminal_on_verified_expectation") != "PASS" or not set(
+            prerequisites
+        ).issubset(selected_ids):
+            raise ReleaseControlError("qualification cell is not terminally executable")
+        obligations = unit.get("obligation_ids")
+        scenario_id = unit.get("scenario_id")
+        environment_id = unit.get("environment_id")
+        profile_id = unit.get("profile_id")
+        if not all(
+            isinstance(value, str) and value for value in (scenario_id, environment_id, profile_id)
+        ):
+            raise ReleaseControlError("qualification cell identity is incomplete")
+        _require_canonical_string_inventory(obligations, "qualification cell obligations")
+        cells.append(
+            {
+                "cell_id": unit["unit_id"],
+                "environment_id": environment_id,
+                "obligation_ids": obligations,
+                "profile_id": profile_id,
+                "scenario_ids": [scenario_id],
+            }
+        )
+    mappings = mapping.get("mappings")
+    if not isinstance(mappings, list):
+        raise ReleaseControlError("qualification delta mapping inventory is malformed")
+    for row in mappings:
+        if not isinstance(row, Mapping):
+            raise ReleaseControlError("qualification delta mapping is malformed")
+        for field in ("environment_ids", "obligation_ids", "scenario_ids"):
+            _require_canonical_string_inventory(
+                row.get(field), "qualification delta mapping " + field
+            )
+        if not any(
+            cell["environment_id"] in row.get("environment_ids", [])
+            and set(row.get("obligation_ids", [])).issubset(cell["obligation_ids"])
+            and set(row.get("scenario_ids", [])).issubset(cell["scenario_ids"])
+            for cell in cells
+        ):
+            raise ReleaseControlError("qualification delta mapping has no executable cell")
+    data = {
+        "attempt_count": attempt_count,
+        "candidate_digest": candidate["candidate_digest"],
+        "candidate_manifest_digest": sha256_json(candidate_manifest),
+        "cells": cells,
+        "delta_digest": sha256_json(delta),
+        "delta_test_map_digest": sha256_json(delta_test_map),
+        "expected_terminal_result": "PASS",
+        "gate_instance_digest": sha256_json(gate_instance),
+        "milestone": milestone,
+        "predecessor_digest": sha256_json(predecessor),
+        "readiness_digest": sha256_json(readiness),
+        "scenario_catalog_digest": sha256_json(scenario_catalog),
+    }
+    data["plan_digest"] = sha256_json(data)
+    result = make_record(
+        "release-qualification-plan",
+        data,
+        invocation_id=invocation_id,
+        sequence=sequence,
+        synthetic=bool(next(iter(synthetic_modes))),
+    )
+    validate_release_qualification_plan_record(
+        result,
+        gate_instance=gate_instance,
+        live=False,
+    )
+    return result
+
+
 def _validate_release_approval_decision_record(
     record: Mapping[str, Any],
     *,
@@ -9386,6 +9580,56 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0 if result["data"]["disposition"] == "READY" else 3
+        if name == "plan_release_qualification.py":
+            candidate_root = Path(args.gate_instance).absolute().parent
+            candidate_inputs = {
+                "gate_instance": ("gate-instance.json", "release-gate-instance"),
+                "candidate_identity": ("candidate-identity.json", "release-candidate-identity"),
+                "predecessor": ("predecessor.json", "release-predecessor"),
+                "readiness": ("readiness.json", "release-readiness"),
+                "delta": ("delta.json", "release-capability-delta"),
+                "delta_test_map": ("delta-test-map.json", "release-delta-test-map"),
+                "candidate_manifest": ("artifact-manifest.json", "release-artifact-manifest"),
+            }
+            loaded: dict[str, dict[str, Any]] = {}
+            for argument, (filename, kind) in candidate_inputs.items():
+                path = Path(getattr(args, argument)).absolute()
+                if path != candidate_root / filename:
+                    raise ReleaseControlError(
+                        "qualification plan inputs do not share the canonical candidate root"
+                    )
+                if argument == "candidate_manifest":
+                    loaded[argument] = read_json(path)
+                    validate_record(loaded[argument], kind)
+                else:
+                    loaded[argument] = _release_input(
+                        path,
+                        kind,
+                        live=not fixture_mode,
+                        attestation_verifier=attestation_verifier,
+                    )
+            catalog = _release_input(
+                candidate_root / "scenario-catalog.json",
+                "release-scenario-catalog",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            result = build_release_qualification_plan_record(
+                gate_instance=loaded["gate_instance"],
+                candidate_identity_record=loaded["candidate_identity"],
+                predecessor=loaded["predecessor"],
+                readiness=loaded["readiness"],
+                delta=loaded["delta"],
+                delta_test_map=loaded["delta_test_map"],
+                scenario_registry_raw=_safe_release_bytes(Path(args.scenarios).absolute()),
+                scenario_catalog=catalog,
+                candidate_manifest=loaded["candidate_manifest"],
+                invocation_id=context.intent["invocation_id"],
+                sequence=context.intent["sequence"],
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_artifact_manifest.py":
             result = read_json(Path(args.record))
             validate_release_artifact_files(
@@ -10348,6 +10592,34 @@ def run_release_command(
                 "validate_release_predecessor.py",
             }:
                 inputs.extend(_release_predecessor_command_input_paths(tool, argv, root))
+            elif tool == "plan_release_qualification.py":
+                for flag, kind in (
+                    ("gate-instance", "release-gate-instance"),
+                    ("candidate-identity", "release-candidate-identity"),
+                    ("predecessor", "release-predecessor"),
+                    ("readiness", "release-readiness"),
+                    ("delta", "release-capability-delta"),
+                    ("delta-test-map", "release-delta-test-map"),
+                    ("scenarios", "release-scenario-registry"),
+                    ("candidate-manifest", "release-artifact-manifest"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+                inputs.append(
+                    (
+                        root / "scenario-catalog.json",
+                        "metriplane.release-scenario-catalog.v1",
+                    )
+                )
+            elif tool == "validate_release_qualification_plan.py":
+                for flag, kind in (
+                    ("record", "release-qualification-plan"),
+                    ("gate-instance", "release-gate-instance"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
             else:
                 for flag, kind in [
                     ("gate-input", "release-gate-input"),

@@ -58,7 +58,7 @@ TOOLCHAIN = {
     "twine": "6.2.0",
     "types-PyYAML": "6.0.12.20260724",
 }
-EXPECTED_COLLECTION = 5558
+EXPECTED_COLLECTION = 5565
 EXPECTED_MYPY_SOURCES = 146
 POLICY_NOW = dt.datetime(2026, 8, 25, tzinfo=dt.UTC)
 
@@ -396,7 +396,7 @@ def test_documentation_matches_toolchain_and_profile_commands() -> None:
 def test_canonical_collection_contract_is_documented() -> None:
     text = POLICY_DOC_PATH.read_text(encoding="utf-8")
     assert f"{EXPECTED_COLLECTION:,} items" in text
-    assert "5,543 passed" in text
+    assert "5,550 passed" in text
     assert "15 expected skips" in text
     assert "Twelve result-schema cases" in text
     assert "one browser smoke case" in text
