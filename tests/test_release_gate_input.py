@@ -4043,6 +4043,32 @@ def _gate_declared_capture_fixture(
         raw = ("explicit transport fixture: " + value["path"]).encode()
         value.update(ref(path, raw))
 
+    def raw_source(value: dict[str, Any]) -> None:
+        if value.get("binding") == "candidate_source_blob":
+            raw_authority(value["source_bytes"])
+
+    def raw_owner(value: dict[str, Any]) -> None:
+        raw_source(value["source"])
+
+    def raw_recipe(value: dict[str, Any]) -> None:
+        raw_owner(value["owner"])
+        if value["required_operation_owner"] is not None:
+            raw_owner(value["required_operation_owner"])
+        launch = value["launch"]
+        if launch["kind"] == "workflow_job":
+            raw_source(launch["workflow_source"])
+            raw_owner(launch["dispatch_owner"])
+        elif launch["kind"] == "supplied_attestation":
+            raw_owner(launch["validator_owner"])
+        for output in value["expected_outputs"]:
+            raw_owner(output["validator_owner"])
+        for sidecar in value["input_sidecars"]:
+            raw_authority(sidecar)
+        for resource in value["resources"]:
+            binding = resource["binding"]
+            if binding["state"] == "CONFIGURED":
+                raw_authority(binding["configuration"])
+
     files = {
         "readiness-registry": "release-readiness",
         "obligations": "release-test-obligations",
@@ -4064,6 +4090,10 @@ def _gate_declared_capture_fixture(
         if flag in {"obligations", "scenarios", "environments"}:
             for row in data["authority_sources"]:
                 raw_authority(row["raw_file"])
+            for executor in data["executors"]:
+                binding = executor["binding"]
+                if binding["state"] == "CONFIGURED":
+                    raw_recipe(binding["recipe"])
         if flag == "environments":
             for row in data["environments"]:
                 for item in [
@@ -4073,6 +4103,10 @@ def _gate_declared_capture_fixture(
                 ]:
                     if isinstance(item, dict) and item.get("source_bytes") is not None:
                         raw_authority(item["source_bytes"])
+                if row["execution"]["state"] == "CONFIGURED":
+                    raw_owner(row["execution"]["owner"])
+                    for item in row["execution"]["configuration_sources"]:
+                        raw_source(item)
         raw = release.canonical_json(data)
         ref(inputs / (flag + ".json"), raw)
         digests[flag] = release.sha256_bytes(raw)
@@ -8164,7 +8198,7 @@ def test_complete_migrated_catalog_keeps_all_unfinished_acceptance_work_blocking
             for trace in qualification
         )
     assert len(declarations["scenarios"]) == 66
-    assert len(declarations["obligations"]) == 37
+    assert len(declarations["obligations"]) == 46
     assert len(declarations["criteria"]) == 280
 
 
@@ -8198,7 +8232,7 @@ def test_scenario_catalog_payload_preserves_all_original_work_and_acyclic_identi
         {k: v for k, v in data.items() if k != "catalog_digest"}
     )
     assert len(data["declarations"]["criteria"]) == 280
-    assert len(data["declarations"]["obligations"]) == 37
+    assert len(data["declarations"]["obligations"]) == 46
     assert len(data["declarations"]["scenarios"]) == 66
     assert [slot["milestone"] for slot in data["release_slots"]] == list(release.MILESTONES)
     assert data["execution_units"] == [] and data["unresolved_declarations"]
