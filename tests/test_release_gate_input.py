@@ -11705,32 +11705,28 @@ def _connected_predecessor_command_fixture(
             {"cell_id": plan_cell["cell_id"], "result": "PASS", "result_digest": cell_digest}
         ],
         "coordination_digest": coordination_digest,
-        "index_receipt_digest": attempt_index_digest,
         "milestone": "v0.4",
         "qualification_plan_digest": plan_digest,
         "result": "PASS",
-        "retention_receipts_digest": attempt_retention_digest,
         "warning_summary_digest": "0" * 64,
     }
 
     def warning(subject: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        return record(
-            "release-warning-summary",
-            {
-                "candidate_digest": candidate_data["candidate_digest"],
-                "deselection_count": 0,
-                "policy_digest": "3" * 64,
-                "result": "PASS",
-                "retry_count": 0,
-                "skip_count": 0,
-                "subject_digest": release.sha256_json(subject),
-                "summary_digest": "4" * 64,
-                "unexpected_warning_count": 0,
-                "warnings": [],
-                "xfail_count": 0,
-                "xpass_count": 0,
-            },
-        )
+        warning_data = {
+            "candidate_digest": candidate_data["candidate_digest"],
+            "deselection_count": 0,
+            "policy_digest": "3" * 64,
+            "result": "PASS",
+            "retry_count": 0,
+            "skip_count": 0,
+            "subject_digest": release.sha256_json(subject),
+            "unexpected_warning_count": 0,
+            "warnings": [],
+            "xfail_count": 0,
+            "xpass_count": 0,
+        }
+        warning_data["summary_digest"] = release.sha256_json(warning_data)
+        return record("release-warning-summary", warning_data)
 
     attempt_subject = dict(attempt_data)
     del attempt_subject["warning_summary_digest"]
@@ -11738,14 +11734,20 @@ def _connected_predecessor_command_fixture(
     attempt_data["warning_summary_digest"] = attempt_warning_digest
     attempt_digest, _ = record("release-attempt", attempt_data)
     qualification_data = {
-        "attempt_digests": [attempt_digest],
-        "attempt_index_receipt_digests": [attempt_index_digest],
-        "attempt_retention_receipt_digests": [attempt_retention_digest],
+        "attempt_evidence": [
+            {
+                "attempt_digest": attempt_digest,
+                "attempt_id": attempt_id,
+                "index_receipt_digest": attempt_index_digest,
+                "manifest_digest": attempt_manifest_digest,
+                "retention_receipts_digest": attempt_retention_digest,
+            }
+        ],
         "candidate_digest": candidate_data["candidate_digest"],
         "executed_cell_ids": [plan_cell["cell_id"]],
         "expected_cell_ids": [plan_cell["cell_id"]],
         "plan_digest": plan_digest,
-        "qualification_digest": "5" * 64,
+        "qualification_digest": "0" * 64,
         "result": "PASS",
         "terminal_results": attempt_data["cells"],
         "unexpected_outcomes": [],
@@ -11753,8 +11755,12 @@ def _connected_predecessor_command_fixture(
     }
     qualification_subject = dict(qualification_data)
     del qualification_subject["warning_summary_digest"]
+    del qualification_subject["qualification_digest"]
     qualification_warning_digest, _ = warning(qualification_subject)
     qualification_data["warning_summary_digest"] = qualification_warning_digest
+    qualification_unsigned = dict(qualification_data)
+    del qualification_unsigned["qualification_digest"]
+    qualification_data["qualification_digest"] = release.sha256_json(qualification_unsigned)
     qualification_digest, _ = record("release-qualification", qualification_data)
     evidence_manifest_digest, _ = record(
         "release-evidence-manifest",
@@ -12409,6 +12415,9 @@ def test_predecessor_qualification_rejects_missing_planned_attempt(
         plan,
     )
     qualification["data"]["plan_digest"] = changed_plan_digest
+    qualification_unsigned = dict(qualification["data"])
+    del qualification_unsigned["qualification_digest"]
+    qualification["data"]["qualification_digest"] = release.sha256_json(qualification_unsigned)
     _predecessor_content_reseal(qualification)
     with pytest.raises(release.ReleaseControlError, match="plan cell inventory"):
         release._release_predecessor_qualification_originals(
