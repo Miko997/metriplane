@@ -11562,6 +11562,25 @@ def _connected_predecessor_command_fixture(
         "profile_id": "fixture-profile",
         "scenario_ids": ["fixture-scenario"],
     }
+    expected_subject = {"fixture": "historical-subject"}
+    recipe = {"fixture": "historical-recipe"}
+    catalog_data = {
+        "execution_units": [
+            {
+                "environment_id": plan_cell["environment_id"],
+                "expected_subject": expected_subject,
+                "obligation_ids": plan_cell["obligation_ids"],
+                "phase": "qualification",
+                "profile_id": plan_cell["profile_id"],
+                "recipe": recipe,
+                "scenario_id": plan_cell["scenario_ids"][0],
+                "slot_milestone": "v0.4",
+                "unit_id": plan_cell["cell_id"],
+            }
+        ]
+    }
+    catalog_data["catalog_digest"] = release.sha256_json(catalog_data)
+    catalog_digest, _ = record("release-scenario-catalog", catalog_data)
     plan_data = {
         "attempt_count": 1,
         "candidate_digest": candidate_data["candidate_digest"],
@@ -11574,7 +11593,7 @@ def _connected_predecessor_command_fixture(
         "milestone": "v0.4",
         "predecessor_digest": candidate_data["predecessor_digest"],
         "readiness_digest": "b" * 64,
-        "scenario_catalog_digest": "c" * 64,
+        "scenario_catalog_digest": catalog_digest,
     }
     plan_data["plan_digest"] = release.sha256_json(plan_data)
     plan_digest, _ = record("release-qualification-plan", plan_data)
@@ -11588,7 +11607,7 @@ def _connected_predecessor_command_fixture(
             "cell_id": plan_cell["cell_id"],
             "completed_at": "2026-01-01T00:00:20Z",
             "evidence": {
-                "expected_subject_digest": "d" * 64,
+                "expected_subject_digest": release.sha256_json(expected_subject),
                 "kind": "command",
                 "observed_process_exit": 0,
                 "outputs": [
@@ -11600,7 +11619,7 @@ def _connected_predecessor_command_fixture(
                         "size": 1,
                     }
                 ],
-                "recipe_digest": "f" * 64,
+                "recipe_digest": release.sha256_json(recipe),
             },
             "environment_id": plan_cell["environment_id"],
             "obligation_ids": plan_cell["obligation_ids"],

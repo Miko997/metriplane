@@ -22389,6 +22389,7 @@ def _release_predecessor_content(
             "release-task-state-policy",
             "release-task-state-observation",
             "release-protected-input",
+            "release-scenario-catalog",
             "release-qualification-plan",
             "release-qualification",
             "release-attempt",
