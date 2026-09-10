@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `34a2e5a469ca7be86817aa7a69e5397b9d06463ffe6c60890c88db5132db5f97`
+Canonical projection SHA-256: `d12de0a5d9e0695779d164a93051970ccf34382046aab08127466056eb297da6`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 189 |
+| total_discovered_features | 190 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 103 |
+| cli_only_documented | 104 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -192,6 +192,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.docker_live_up | Docker Live Up | tools/docker_live_up.sh | tools/docker_live_up.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_smoke_test | Docker Smoke Test | tools/docker_smoke_test.sh | tools/docker_smoke_test.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.docker_stop | Docker Stop | tools/docker_stop.sh | tools/docker_stop.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.execute_release_qualification | Execute Release Qualification | tools/execute_release_qualification.py | python tools/execute_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.export_release_attempt_index | Export Release Attempt Index | tools/export_release_attempt_index.py | python tools/export_release_attempt_index.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.export_release_burn_lineage | Export Release Burn Lineage | tools/export_release_burn_lineage.py | python tools/export_release_burn_lineage.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.finalize_release_candidate_identity | Finalize Release Candidate Identity | tools/finalize_release_candidate_identity.py | python tools/finalize_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

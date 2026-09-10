@@ -30,6 +30,7 @@ from metriplane import release_control as release
         "capture_release_target_observations.py",
         "check_release_readiness.py",
         "export_release_attempt_index.py",
+        "execute_release_qualification.py",
         "plan_release_qualification.py",
         "record_release_role_assignments.py",
         "resolve_release_predecessor.py",
