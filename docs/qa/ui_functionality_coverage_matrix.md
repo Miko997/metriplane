@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `842e905249f4c96d9218124119344de515b78973ce58cb960b638535e909d9f7`
+Canonical projection SHA-256: `7c23e3a4390153c39136a658f5ee426f39e3559c7d3cd6cd5ed448b8dab58369`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -163,6 +163,7 @@ Canonical projection SHA-256: `842e905249f4c96d9218124119344de515b78973ce58cb960
 | tool.record_release_target_burn | Record Release Target Burn | tools/record_release_target_burn.py | python tools/record_release_target_burn.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.report_alignment | Report Alignment | tools/report_alignment.py | python tools/report_alignment.py | web/dashboard/* | report_alignment.py | ui_copy_command_only | P2 |  |
+| tool.resolve_release_predecessor | Resolve Release Predecessor | tools/resolve_release_predecessor.py | python tools/resolve_release_predecessor.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.resolve_release_target | Resolve Release Target | tools/resolve_release_target.py | python tools/resolve_release_target.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.retain_release_evidence | Retain Release Evidence | tools/retain_release_evidence.py | python tools/retain_release_evidence.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.run_demo_all | Run Demo All | tools/run_demo_all.sh | tools/run_demo_all.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -185,6 +186,7 @@ Canonical projection SHA-256: `842e905249f4c96d9218124119344de515b78973ce58cb960
 | tool.validate_release_evidence_stores | Validate Release Evidence Stores | tools/validate_release_evidence_stores.py | python tools/validate_release_evidence_stores.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_gate_input | Validate Release Gate Input | tools/validate_release_gate_input.py | python tools/validate_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_gate_instance | Validate Release Gate Instance | tools/validate_release_gate_instance.py | python tools/validate_release_gate_instance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_predecessor | Validate Release Predecessor | tools/validate_release_predecessor.py | python tools/validate_release_predecessor.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_qualification | Validate Release Qualification | tools/validate_release_qualification.py | python tools/validate_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_qualification_plan | Validate Release Qualification Plan | tools/validate_release_qualification_plan.py | python tools/validate_release_qualification_plan.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_retention | Validate Release Retention | tools/validate_release_retention.py | python tools/validate_release_retention.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

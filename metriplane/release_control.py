@@ -3468,14 +3468,13 @@ def _validate_clean_warning_summary(
         raise ReleaseControlError(f"{label} warning inventory is not empty")
 
 
-def validate_release_qualification_record(
+def _release_qualification_summary_content(
     record: Mapping[str, Any],
     *,
-    evidence_root: Path,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
-    attempt_retention_readbacks: Mapping[str, Mapping[str, Path]] | None = None,
-) -> None:
+) -> dict[str, Any]:
+    """Validate the complete closed qualification summary before resolving originals."""
     data = _passing_record(
         record,
         "release-qualification",
@@ -3549,6 +3548,22 @@ def validate_release_qualification_record(
         "warning_summary_digest",
     ):
         _require_digest(data[field], f"release qualification {field}")
+    return data
+
+
+def validate_release_qualification_record(
+    record: Mapping[str, Any],
+    *,
+    evidence_root: Path,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+    attempt_retention_readbacks: Mapping[str, Mapping[str, Path]] | None = None,
+) -> None:
+    data = _release_qualification_summary_content(
+        record, live=live, attestation_verifier=attestation_verifier
+    )
+    expected_cells = data["expected_cell_ids"]
+    terminals = data["terminal_results"]
 
     indexed = _evidence_record_index(evidence_root)
     plan_record = _resolved_evidence_record(
@@ -9775,37 +9790,42 @@ def _verify_staged_outputs(context: ReleaseInvocation, outputs: list[dict[str, s
                 raise ReleaseControlError("supervisor artifact output set differs from manifest")
 
 
-def _install_release_target_output_copy(
+def _install_release_single_output_copy(
     context: ReleaseInvocation, outputs: list[dict[str, str]]
 ) -> None:
-    """Install one target record as an exclusive single-link immutable copy."""
+    """Install one capturable record as an exclusive single-link immutable copy."""
     tool = context.intent["tool"]
-    if tool not in {"resolve_release_target.py", "record_release_target_burn.py"}:
-        raise ReleaseControlError("target copy installer has another command owner")
-    _validate_release_target_bound_invocation(
-        context, outputs=outputs, output_root=context.directory / "staged"
-    )
+    if tool in {"resolve_release_target.py", "record_release_target_burn.py"}:
+        _validate_release_target_bound_invocation(
+            context, outputs=outputs, output_root=context.directory / "staged"
+        )
+    elif tool == "resolve_release_predecessor.py":
+        _validate_release_predecessor_bound_invocation(
+            context, outputs=outputs, output_root=context.directory / "staged"
+        )
+    else:
+        raise ReleaseControlError("single-output copy installer has another command owner")
     if len(outputs) != 1 or outputs[0] != {
         **context.intent["planned_outputs"][0],
         "sha256": outputs[0].get("sha256"),
     }:
-        raise ReleaseControlError("target copy installer requires one exact planned output")
+        raise ReleaseControlError("copy installer requires one exact planned output")
     row = outputs[0]
     digest = _require_digest(row["sha256"], "target installed output")
     name = _release_relative_suffix(row["path"], "target installed output path")
     if len(name.parts) != 1:
-        raise ReleaseControlError("target installed output must be directly in its run root")
+        raise ReleaseControlError("installed output must be directly in its run root")
     if os.path.lexists(context.directory / "invocation.json") or os.path.lexists(
         context.directory / "terminal-commit.json"
     ):
-        raise ReleaseControlError("target output installation cannot follow a terminal")
+        raise ReleaseControlError("output installation cannot follow a terminal")
 
     staged = context.directory / "staged" / name
     source_fd = os.open(staged, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         before = os.fstat(source_fd)
         if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-            raise ReleaseControlError("target staged output is not a single-link regular file")
+            raise ReleaseControlError("staged output is not a single-link regular file")
         chunks = []
         while chunk := os.read(source_fd, 1024 * 1024):
             chunks.append(chunk)
@@ -9828,11 +9848,11 @@ def _install_release_target_output_copy(
             after.st_mtime_ns,
             after.st_ctime_ns,
         ) or len(payload) != before.st_size:
-            raise ReleaseControlError("target staged output changed during held readback")
+            raise ReleaseControlError("staged output changed during held readback")
     finally:
         os.close(source_fd)
     if sha256_bytes(payload) != digest:
-        raise ReleaseControlError("target staged output differs from its worker digest")
+        raise ReleaseControlError("staged output differs from its worker digest")
 
     root_fd = os.open(context.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -9853,13 +9873,13 @@ def _install_release_target_output_copy(
                 or installed.st_nlink != 1
                 or installed.st_size != len(payload)
             ):
-                raise ReleaseControlError("target canonical copy has unsafe file identity")
+                raise ReleaseControlError("canonical copy has unsafe file identity")
         os.fsync(root_fd)
     finally:
         os.close(root_fd)
     raw = _safe_release_bytes(context.root / name)
     if raw != payload:
-        raise ReleaseControlError("target canonical copy differs from its staged bytes")
+        raise ReleaseControlError("canonical copy differs from its staged bytes")
 
 
 def _install_release_outputs(
@@ -9881,8 +9901,9 @@ def _install_release_outputs(
     if context.intent["tool"] in {
         "resolve_release_target.py",
         "record_release_target_burn.py",
+        "resolve_release_predecessor.py",
     }:
-        _install_release_target_output_copy(context, outputs)
+        _install_release_single_output_copy(context, outputs)
         return None
     installed: list[tuple[Path, Path]] = []
     created_directories: list[Path] = []
@@ -15982,6 +16003,7 @@ def _release_predecessor_subject_originals(
         "tag": subject.get("tag_object"),
     }
     observed_git: dict[str, str] = {}
+    observed_git_raw: dict[str, bytes] = {}
     for value in proof["git_objects"]:
         row = _release_closed_mapping(
             value,
@@ -15992,8 +16014,41 @@ def _release_predecessor_subject_originals(
         if object_type in observed_git:
             raise ReleaseControlError("predecessor proof repeats a selected Git object type")
         observed_git[object_type] = row["git_object_id"]
+        ref = _release_closed_mapping(
+            row["original_file"], {"path", "bytes", "sha256"}, "predecessor Git bytes"
+        )
+        path = root / _release_relative_suffix(ref["path"], "predecessor Git path")
+        raw = _safe_release_bytes(path)
+        if ref["bytes"] != len(raw) or ref["sha256"] != sha256_bytes(raw):
+            raise ReleaseControlError("predecessor Git original bytes differ")
+        observed_git_raw[object_type] = raw
     if observed_git != required_git:
         raise ReleaseControlError("predecessor Git originals differ from the policy subject")
+
+    def header(raw: bytes, name: bytes, label: str) -> bytes:
+        headers = raw.split(b"\n\n", 1)[0].splitlines()
+        matches = [line[len(name) + 1 :] for line in headers if line.startswith(name + b" ")]
+        if len(matches) != 1 or not matches[0]:
+            raise ReleaseControlError("predecessor " + label + " relationship differs")
+        return matches[0]
+
+    try:
+        commit_tree = header(observed_git_raw["commit"], b"tree", "commit-to-tree")
+        tag_commit = header(observed_git_raw["tag"], b"object", "tag-to-commit")
+        tag_type = header(observed_git_raw["tag"], b"type", "tag object type")
+        tag_name = header(observed_git_raw["tag"], b"tag", "tag name")
+        expected_tree = subject["source_tree"].encode("ascii")
+        expected_commit = subject["source_commit"].encode("ascii")
+        expected_tag = subject["release_tag"].encode("ascii")
+    except (AttributeError, KeyError, UnicodeEncodeError) as exc:
+        raise ReleaseControlError("predecessor Git relationship bytes are incomplete") from exc
+    if (
+        commit_tree != expected_tree
+        or tag_commit != expected_commit
+        or tag_type != b"commit"
+        or tag_name != expected_tag
+    ):
+        raise ReleaseControlError("predecessor annotated tag/commit/tree relationship differs")
 
     expected_artifacts = _release_original_artifact_descriptors(
         subject.get("artifacts"), package_version=subject["normalized_package_version"]
@@ -16040,9 +16095,15 @@ def _release_predecessor_original_ref(root: Path, path: Path) -> dict[str, Any]:
 
 
 def _release_predecessor_selection_observations(
-    root: Path, proof: Mapping[str, Any], *, observed_at: str
+    root: Path,
+    proof: Mapping[str, Any],
+    *,
+    observed_at: str,
+    linked: Mapping[str, str],
+    decision_identity: Mapping[str, str],
+    attempt_index_head: str,
 ) -> dict[str, Any]:
-    """Select each current readback once by its existing proof-index purpose."""
+    """Replay each complete normalized current-state readback before selection."""
     fields = (
         "provider_state",
         "provider_event_history",
@@ -16071,6 +16132,87 @@ def _release_predecessor_selection_observations(
     if set(selected) != set(fields):
         raise ReleaseControlError("predecessor proof lacks one exact current selection readback")
     _parse_utc_timestamp(observed_at, "predecessor selection observation time")
+
+    values = {
+        purpose: _release_closed_mapping(
+            _source_json(
+                _safe_release_bytes(
+                    root
+                    / _release_relative_suffix(
+                        selected[purpose]["path"], "predecessor selection replay path"
+                    )
+                ),
+                "predecessor " + purpose,
+            ),
+            {
+                "schema_version",
+                "complete",
+                *(
+                    {"decision_identity", "state", "closed_decision_digest"}
+                    if purpose == "provider_state"
+                    else {
+                        "decision_identity",
+                        "latest_state",
+                        "closed_decision_digest",
+                        "event_count",
+                    }
+                    if purpose == "provider_event_history"
+                    else {"backend_id", "head", "selected_record_digest"}
+                ),
+            },
+            "predecessor " + purpose,
+        )
+        for purpose in fields
+    }
+    provider_state = values["provider_state"]
+    provider_history = values["provider_event_history"]
+    if (
+        provider_state["schema_version"] != "metriplane.release-provider-state-readback.v1"
+        or provider_history["schema_version"]
+        != "metriplane.release-provider-event-history-readback.v1"
+        or provider_state["complete"] is not True
+        or provider_history["complete"] is not True
+        or provider_state["state"] != "CLOSED"
+        or provider_history["latest_state"] != "CLOSED"
+        or type(provider_history["event_count"]) is not int
+        or provider_history["event_count"] < 1
+        or canonical_json(provider_state["decision_identity"]) != canonical_json(decision_identity)
+        or canonical_json(provider_history["decision_identity"])
+        != canonical_json(decision_identity)
+        or provider_state["closed_decision_digest"] != linked["closed_decision_digest"]
+        or provider_history["closed_decision_digest"] != linked["closed_decision_digest"]
+    ):
+        raise ReleaseControlError("predecessor provider readback is incomplete or changed")
+    backend_expected = {
+        "success_chain_readback": (
+            "metriplane.release-success-chain-readback.v1",
+            "success-chain",
+            linked["chain_head"],
+            linked["chain_receipt_digest"],
+        ),
+        "lkg_state_and_history_readback": (
+            "metriplane.release-lkg-state-readback.v1",
+            "last-known-good",
+            linked["lkg_digest"],
+            linked["lkg_digest"],
+        ),
+        "attempt_index_readback": (
+            "metriplane.release-attempt-index-readback.v1",
+            "attempt-index",
+            attempt_index_head,
+            linked["close_root_digest"],
+        ),
+    }
+    for purpose, expected in backend_expected.items():
+        value = values[purpose]
+        if (
+            value["schema_version"] != expected[0]
+            or value["complete"] is not True
+            or value["backend_id"] != expected[1]
+            or value["head"] != expected[2]
+            or value["selected_record_digest"] != expected[3]
+        ):
+            raise ReleaseControlError("predecessor backend readback is incomplete or changed")
     return {"observed_at": observed_at, **selected}
 
 
@@ -16322,6 +16464,7 @@ def _release_predecessor_closed_decision(
     candidate_full_digest: str,
     close_root_digest: str,
     decision_identity: Mapping[str, str],
+    predecessor_milestone: str,
 ) -> None:
     """Replay the synthetic Closed envelope and its exact original provider/policy bytes."""
     record = _release_predecessor_original_record(
@@ -16457,9 +16600,187 @@ def _release_predecessor_closed_decision(
     )
     if role_record["status"] != "PASS":
         raise ReleaseControlError("selected Closed role assignments are not passing")
+    role_milestone = role_record["data"].get("milestone")
+    if role_milestone != predecessor_milestone:
+        raise ReleaseControlError("selected Closed role assignments lack their milestone")
+    roles = validate_role_assignments(
+        role_record,
+        live=False,
+        expected_milestone=role_milestone,
+        check_conflicts=True,
+    )
+    if roles["authorized_executor_id"] != ("test-fixture", data["signer_identity"]):
+        raise ReleaseControlError("selected Closed signer lacks its assigned operator role")
     signers = _validated_record_signers(record, live=False)
     if signers != {("test-fixture", data["signer_identity"])}:
         raise ReleaseControlError("selected Closed decision has another authenticated signer")
+
+
+def _release_predecessor_qualification_originals(
+    originals: Mapping[tuple[str, str], tuple[Path, dict[str, Any]]],
+    qualification_record: Mapping[str, Any],
+    *,
+    candidate_record: Mapping[str, Any],
+) -> None:
+    """Replay the complete retained qualification dependency closure for historical use."""
+    data = _release_qualification_summary_content(qualification_record, live=False)
+    indexed = {digest: [(path, record)] for (_kind, digest), (path, record) in originals.items()}
+    plan_record = _release_predecessor_original_record(
+        originals, "release-qualification-plan", data["plan_digest"], "selected qualification plan"
+    )
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    candidate = _passing_record(candidate_record, "release-candidate-identity", live=False)
+    plan_cells = _validate_qualification_plan_payload(plan, candidate=candidate)
+    if (
+        plan["attempt_count"] != len(data["attempt_digests"])
+        or list(plan_cells) != data["expected_cell_ids"]
+    ):
+        raise ReleaseControlError("selected qualification plan cell inventory differs")
+    observed_indexes: list[str] = []
+    observed_retentions: list[str] = []
+    latest_cells: list[dict[str, Any]] | None = None
+    for attempt_digest in data["attempt_digests"]:
+        attempt_record = _release_predecessor_original_record(
+            originals, "release-attempt", attempt_digest, "selected qualification attempt"
+        )
+        attempt = _release_data(
+            attempt_record,
+            {
+                "attempt_id",
+                "candidate_digest",
+                "cells",
+                "coordination_digest",
+                "index_receipt_digest",
+                "milestone",
+                "qualification_plan_digest",
+                "result",
+                "retention_receipts_digest",
+                "warning_summary_digest",
+            },
+            "selected qualification attempt",
+        )
+        if (
+            attempt_record["status"] != "PASS"
+            or attempt["result"] != "PASS"
+            or attempt["candidate_digest"] != data["candidate_digest"]
+            or attempt["qualification_plan_digest"] != data["plan_digest"]
+            or attempt["milestone"] != plan["milestone"]
+        ):
+            raise ReleaseControlError("selected qualification attempt binding differs")
+        cells = attempt["cells"]
+        if not isinstance(cells, list) or len(cells) != len(plan_cells):
+            raise ReleaseControlError("selected qualification attempt cells are incomplete")
+        for row in cells:
+            if not isinstance(row, dict) or set(row) != {"cell_id", "result", "result_digest"}:
+                raise ReleaseControlError("selected qualification attempt cell is malformed")
+            cell = _release_predecessor_original_record(
+                originals,
+                "release-cell-result",
+                row["result_digest"],
+                "selected qualification cell",
+            )
+            if row["cell_id"] not in plan_cells or row["result"] != "PASS":
+                raise ReleaseControlError("selected qualification attempt cell differs")
+            _validate_cell_result_payload(
+                cell,
+                plan_cell=plan_cells[row["cell_id"]],
+                attempt_id=attempt["attempt_id"],
+                candidate_digest=data["candidate_digest"],
+                plan_digest=data["plan_digest"],
+                live=False,
+            )
+        coordination = _release_predecessor_original_record(
+            originals,
+            "release-attempt-coordination",
+            attempt["coordination_digest"],
+            "selected qualification coordination",
+        )
+        terminations = _validate_attempt_coordination(
+            coordination,
+            indexed=indexed,
+            attempt=attempt,
+            expected_cell_ids=data["expected_cell_ids"],
+            live=False,
+        )
+        retention_digest = _require_digest(
+            attempt["retention_receipts_digest"], "selected qualification retention"
+        )
+        retention = _release_predecessor_original_record(
+            originals,
+            "release-retention-receipts",
+            retention_digest,
+            "selected qualification retention",
+        )
+        _release_retention_content(retention["data"])
+        index_digest = _require_digest(
+            attempt["index_receipt_digest"], "selected qualification index"
+        )
+        index_record = _release_predecessor_original_record(
+            originals, "release-attempt-index", index_digest, "selected qualification index"
+        )
+        entry = _release_index_receipt_content(index_record["data"])
+        manifest = _release_predecessor_original_record(
+            originals,
+            "release-evidence-manifest",
+            entry["entry_manifest_digest"],
+            "selected qualification manifest",
+        )
+        entries = _release_evidence_manifest_content(manifest["data"])
+        _release_manifest_record_raw_digests(
+            entries,
+            indexed,
+            {
+                data["plan_digest"],
+                attempt["coordination_digest"],
+                *terminations,
+                *[r["result_digest"] for r in cells],
+            },
+        )
+        if (
+            entry["entry_receipts_digest"] != retention_digest
+            or entry["scope"].get("stage") != "qualification-attempt"
+            or entry["scope"].get("candidate_id") != data["candidate_digest"]
+        ):
+            raise ReleaseControlError("selected qualification index changes its attempt")
+        attempt_subject = dict(attempt)
+        del attempt_subject["warning_summary_digest"]
+        warning = _release_predecessor_original_record(
+            originals,
+            "release-warning-summary",
+            attempt["warning_summary_digest"],
+            "selected attempt warning summary",
+        )
+        _validate_clean_warning_summary(
+            warning,
+            candidate_digest=data["candidate_digest"],
+            expected_subject_digest=sha256_json(attempt_subject),
+            label="selected attempt warning summary",
+            live=False,
+        )
+        observed_indexes.append(index_digest)
+        observed_retentions.append(retention_digest)
+        latest_cells = cells
+    if (
+        observed_indexes != data["attempt_index_receipt_digests"]
+        or observed_retentions != data["attempt_retention_receipt_digests"]
+        or latest_cells != data["terminal_results"]
+    ):
+        raise ReleaseControlError("selected qualification aggregate changes its final attempt")
+    qualification_subject = dict(data)
+    del qualification_subject["warning_summary_digest"]
+    warning = _release_predecessor_original_record(
+        originals,
+        "release-warning-summary",
+        data["warning_summary_digest"],
+        "selected qualification warning summary",
+    )
+    _validate_clean_warning_summary(
+        warning,
+        candidate_digest=data["candidate_digest"],
+        expected_subject_digest=sha256_json(qualification_subject),
+        label="selected qualification warning summary",
+        live=False,
+    )
 
 
 def _release_predecessor_reconciled_graph(
@@ -16618,9 +16939,11 @@ def _release_predecessor_reconciled_graph(
     if (
         qualification_record["status"] != "PASS"
         or qualification_record["data"].get("candidate_digest") != candidate["candidate_digest"]
-        or qualification_record["data"].get("milestone") != predecessor_milestone
     ):
         raise ReleaseControlError("selected qualification belongs to another candidate")
+    _release_predecessor_qualification_originals(
+        originals, qualification_record, candidate_record=candidate_record
+    )
 
     chain_receipt_digest, chain_record = _release_predecessor_unique_record(
         originals,
@@ -16731,6 +17054,7 @@ def _release_predecessor_reconciled_graph(
         or final_retention["data"].get("input_digest") != evidence_manifest_digest
     ):
         raise ReleaseControlError("selected final retention does not retain the final manifest")
+    _release_retention_content(final_retention["data"])
 
     prior_lkg_digest = lkg["previous_release_digest"]
     prior_lkg_generation = lkg["expected_generation"]
@@ -16770,6 +17094,7 @@ def _release_predecessor_reconciled_graph(
             "selected LKG transition retention",
         )
     )
+    _release_retention_content(pointer_transition_retention["data"])
     pointer_envelope_digest, pointer_envelope = _release_predecessor_unique_record(
         originals,
         "release-evidence-manifest",
@@ -16793,6 +17118,7 @@ def _release_predecessor_reconciled_graph(
         ),
         "selected pointer envelope retention",
     )
+    _release_retention_content(pointer_retention["data"])
     pointer_index_receipt_digest, pointer_index = _release_predecessor_unique_record(
         originals,
         "release-attempt-index",
@@ -16846,6 +17172,7 @@ def _release_predecessor_reconciled_graph(
         or close_retention["data"].get("input_digest") != close_manifest_digest
     ):
         raise ReleaseControlError("durable close root does not retain its exact manifest")
+    _release_retention_content(close_retention["data"])
     close_ready_observation_digest, close_ready_observation = _release_predecessor_unique_record(
         originals,
         "release-task-state-observation",
@@ -17026,6 +17353,12 @@ def _release_predecessor_control_operation(
         candidate_milestone=args.milestone,
         decision_identity=decision_identity,
     )
+    close_root_record = _release_predecessor_original_record(
+        originals,
+        "release-attempt-index",
+        linked["close_root_digest"],
+        "selected durable close root",
+    )
     candidate_full_digest, _candidate_record = _release_predecessor_unique_record(
         originals,
         "release-candidate-identity",
@@ -17044,6 +17377,7 @@ def _release_predecessor_control_operation(
         candidate_full_digest=candidate_full_digest,
         close_root_digest=linked["close_root_digest"],
         decision_identity=decision_identity,
+        predecessor_milestone=subject["framework_milestone"],
     )
     chain_record = _release_predecessor_original_record(
         originals,
@@ -17118,7 +17452,15 @@ def _release_predecessor_control_operation(
         "genesis_authority_digest": None,
         "completion_digest": None,
         "selection_observations": _release_predecessor_selection_observations(
-            root, proof, observed_at=context.intent["started_at"]
+            root,
+            proof,
+            observed_at=context.intent["started_at"],
+            linked=linked,
+            decision_identity=decision_identity,
+            attempt_index_head=_require_digest(
+                close_root_record["data"].get("committed_head"),
+                "selected durable close root committed head",
+            ),
         ),
         **linked,
     }
@@ -19846,6 +20188,7 @@ def _release_predecessor_content(
             "release-attempt",
             "release-cell-result",
             "release-attempt-coordination",
+            "provider-run-termination",
             "release-run-status-snapshot",
             "release-warning-summary",
             "release-approval",

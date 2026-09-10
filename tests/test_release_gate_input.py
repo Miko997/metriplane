@@ -10882,6 +10882,10 @@ def test_predecessor_reconciled_graph_follows_complete_linked_history(
     )
     monkeypatch.setattr(release, "_release_evidence_manifest_content", lambda data: data["entries"])
     monkeypatch.setattr(
+        release, "_release_predecessor_qualification_originals", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(release, "_release_retention_content", lambda *a, **kw: None)
+    monkeypatch.setattr(
         release,
         "_release_index_receipt_content",
         lambda data: {
@@ -10996,6 +11000,10 @@ def test_predecessor_reconciled_graph_rejects_unrelated_or_later_history(
     )
     monkeypatch.setattr(release, "_release_evidence_manifest_content", lambda data: data["entries"])
     monkeypatch.setattr(
+        release, "_release_predecessor_qualification_originals", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(release, "_release_retention_content", lambda *a, **kw: None)
+    monkeypatch.setattr(
         release,
         "_release_index_receipt_content",
         lambda data: {
@@ -11103,20 +11111,20 @@ def _connected_predecessor_command_fixture(
 
     wheel_raw = b"w" * 123
     sdist_raw = b"s" * 123
-    git_raw = {
-        "commit": b"tree " + b"0" * 40 + b"\n",
-        "tree": b"100644 file\0" + b"1" * 20,
-        "tag": b"object " + b"0" * 40 + b"\ntype commit\ntag v0.4.0.post1\n",
-    }
+    git_raw = {"tree": b"100644 file\0" + b"1" * 20}
+    source_tree = hashlib.sha1(
+        f"tree {len(git_raw['tree'])}\0".encode() + git_raw["tree"],
+        usedforsecurity=False,
+    ).hexdigest()
+    git_raw["commit"] = b"tree " + source_tree.encode() + b"\n"
+    source_commit = hashlib.sha1(
+        f"commit {len(git_raw['commit'])}\0".encode() + git_raw["commit"],
+        usedforsecurity=False,
+    ).hexdigest()
+    git_raw["tag"] = b"object " + source_commit.encode() + b"\ntype commit\ntag v0.4.0.post1\n"
     subject.update(
-        source_commit=hashlib.sha1(
-            f"commit {len(git_raw['commit'])}\0".encode() + git_raw["commit"],
-            usedforsecurity=False,
-        ).hexdigest(),
-        source_tree=hashlib.sha1(
-            f"tree {len(git_raw['tree'])}\0".encode() + git_raw["tree"],
-            usedforsecurity=False,
-        ).hexdigest(),
+        source_commit=source_commit,
+        source_tree=source_tree,
         tag_object=hashlib.sha1(
             f"tag {len(git_raw['tag'])}\0".encode() + git_raw["tag"],
             usedforsecurity=False,
@@ -11197,6 +11205,58 @@ def _connected_predecessor_command_fixture(
         records.append((digest, value))
         return digest, value
 
+    def retention(phase: str, input_digest: str) -> tuple[str, dict[str, Any]]:
+        stores = []
+        for store_id, group in (
+            ("payload-store-a", "fixture-independent-a"),
+            ("payload-store-b", "fixture-independent-b"),
+        ):
+            proofs = {
+                "put": _predecessor_content_ref(
+                    f"native/{store_id}-put", (store_id + "-put").encode()
+                ),
+                "hold": _predecessor_content_ref(
+                    f"native/{store_id}-hold", (store_id + "-hold").encode()
+                ),
+                "read_back": {
+                    "path": f"native/{store_id}-read-back",
+                    "bytes": 1,
+                    "sha256": input_digest,
+                },
+            }
+            stores.append(
+                {
+                    "store_id": store_id,
+                    "content_digest": input_digest,
+                    "read_back_digest": input_digest,
+                    "put_receipt_digest": proofs["put"]["sha256"],
+                    "hold_receipt_digest": proofs["hold"]["sha256"],
+                    "independence_group": group,
+                    "namespace": "fixture-history",
+                    "object_key": input_digest,
+                    "backend_binding_digest": release.sha256_json(
+                        {"store_id": store_id, "group": group}
+                    ),
+                    "native_proofs": proofs,
+                }
+            )
+        return record(
+            "release-retention-receipts",
+            {
+                "all_content_equal": True,
+                "input_digest": input_digest,
+                "phase": phase,
+                "receipt_set_digest": release.sha256_json(stores),
+                "retained_at": "2026-01-01T00:00:30Z",
+                "stores": stores,
+                "original_registry": _predecessor_content_ref(
+                    "original/stores.json", b"fixture stores\n"
+                ),
+                "invocation_root_locator": "invocations",
+                "producer_intent_digest": "f" * 64,
+            },
+        )
+
     source_digest, _ = record(
         "release-source-freeze",
         {
@@ -11258,10 +11318,207 @@ def _connected_predecessor_command_fixture(
         root / "history/v0.4.0.post1" / candidate_data["candidate_digest"]
     )
     candidate_full_digest, _ = record("release-candidate-identity", candidate_data)
-    qualification_digest, _ = record(
-        "release-qualification",
-        {"candidate_digest": candidate_data["candidate_digest"], "milestone": "v0.4"},
+    plan_cell = {
+        "cell_id": "fixture-cell",
+        "environment_id": "fixture-environment",
+        "obligation_ids": ["fixture-obligation"],
+        "profile_id": "fixture-profile",
+        "scenario_ids": ["fixture-scenario"],
+    }
+    plan_data = {
+        "attempt_count": 1,
+        "candidate_digest": candidate_data["candidate_digest"],
+        "candidate_manifest_digest": artifact_digest,
+        "cells": [plan_cell],
+        "delta_digest": "8" * 64,
+        "delta_test_map_digest": "9" * 64,
+        "expected_terminal_result": "PASS",
+        "gate_instance_digest": "a" * 64,
+        "milestone": "v0.4",
+        "predecessor_digest": candidate_data["predecessor_digest"],
+        "readiness_digest": "b" * 64,
+        "scenario_catalog_digest": "c" * 64,
+    }
+    plan_data["plan_digest"] = release.sha256_json(plan_data)
+    plan_digest, _ = record("release-qualification-plan", plan_data)
+    attempt_id = "historical-attempt"
+    cell_digest, _ = record(
+        "release-cell-result",
+        {
+            "artifact_digest": candidate_data["artifact_set_digest"],
+            "attempt_id": attempt_id,
+            "candidate_digest": candidate_data["candidate_digest"],
+            "cell_id": plan_cell["cell_id"],
+            "completed_at": "2026-01-01T00:00:20Z",
+            "counts": {
+                "deselected": 0,
+                "failed": 0,
+                "passed": 1,
+                "retried": 0,
+                "skipped": 0,
+                "xfailed": 0,
+                "xpassed": 0,
+            },
+            "environment_id": plan_cell["environment_id"],
+            "junit_digest": "d" * 64,
+            "obligation_ids": plan_cell["obligation_ids"],
+            "plan_digest": plan_digest,
+            "profile_id": plan_cell["profile_id"],
+            "result": "PASS",
+            "runner_identity": "fixture-runner",
+            "scenario_ids": plan_cell["scenario_ids"],
+            "started_at": "2026-01-01T00:00:10Z",
+            "stderr_digest": "e" * 64,
+            "stdout_digest": "f" * 64,
+            "unexpected_outcomes": [],
+        },
     )
+    termination_digest, _ = record(
+        "provider-run-termination",
+        {
+            "job_id": "fixture-job",
+            "provider_run_id": "fixture-run",
+            "state": "success",
+            "tool": "github-provider",
+        },
+    )
+    coordination_digest, _ = record(
+        "release-attempt-coordination",
+        {
+            "attempt_id": attempt_id,
+            "candidate_digest": candidate_data["candidate_digest"],
+            "cells": [
+                {
+                    "cell_id": plan_cell["cell_id"],
+                    "job_id": "fixture-job",
+                    "provider_run_id": "fixture-run",
+                    "provider_termination_digest": termination_digest,
+                    "status": "terminal",
+                }
+            ],
+            "coordination_result": "PASS",
+            "hard_runner_losses": [],
+            "milestone": "v0.4",
+            "provider": "github",
+            "qualification_plan_digest": plan_digest,
+        },
+    )
+    required_records = [
+        ("coordination.json", coordination_digest),
+        ("plan.json", plan_digest),
+        ("result.json", cell_digest),
+        ("termination.json", termination_digest),
+    ]
+    attempt_entries = [
+        {
+            "media_type": "application/json",
+            "path": path,
+            "role": "historical-record",
+            "sha256": digest,
+            "size": len(release.canonical_json(next(v for d, v in records if d == digest))),
+        }
+        for path, digest in required_records
+    ]
+    attempt_journals = ["1" * 64]
+    attempt_manifest_digest, _ = record(
+        "release-evidence-manifest",
+        {
+            "candidate_digest": candidate_data["candidate_digest"],
+            "entries": attempt_entries,
+            "invocation_journal_digests": attempt_journals,
+            "manifest_digest": release.sha256_json(
+                {"entries": attempt_entries, "invocation_journal_digests": attempt_journals}
+            ),
+            "phase": "attempt",
+            "scope_id": attempt_id,
+            "scope_kind": "release-attempt",
+            "producer_intent_digest": "2" * 64,
+            "invocation_root_locator": "invocations",
+        },
+    )
+    attempt_retention_digest, _ = retention("attempt", attempt_manifest_digest)
+    attempt_scope = {
+        "kind": "release_candidate",
+        "scope_id": attempt_id,
+        "stage": "qualification-attempt",
+        "sequence": 1,
+        "release_tag": candidate_data["release_tag"],
+        "candidate_id": candidate_data["candidate_digest"],
+    }
+    attempt_entry = {
+        "schema_version": "metriplane.release-attempt-index-entry.v1",
+        "backend_id": "attempt-index",
+        "genesis_digest": release.sha256_bytes(
+            Path("docs/releases/release-attempt-index-genesis.json").read_bytes()
+        ),
+        "generation": 1,
+        "previous_head": None,
+        "operation_id": "historical-qualification-attempt",
+        "token": "historical-qualification-token",
+        "milestone": "v0.4",
+        "scope": attempt_scope,
+        "entry_manifest_digest": attempt_manifest_digest,
+        "entry_receipts_digest": attempt_retention_digest,
+    }
+    attempt_index_digest, _ = record("release-attempt-index", _index_receipt_fixture(attempt_entry))
+    attempt_data = {
+        "attempt_id": attempt_id,
+        "candidate_digest": candidate_data["candidate_digest"],
+        "cells": [
+            {"cell_id": plan_cell["cell_id"], "result": "PASS", "result_digest": cell_digest}
+        ],
+        "coordination_digest": coordination_digest,
+        "index_receipt_digest": attempt_index_digest,
+        "milestone": "v0.4",
+        "qualification_plan_digest": plan_digest,
+        "result": "PASS",
+        "retention_receipts_digest": attempt_retention_digest,
+        "warning_summary_digest": "0" * 64,
+    }
+
+    def warning(subject: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        return record(
+            "release-warning-summary",
+            {
+                "candidate_digest": candidate_data["candidate_digest"],
+                "deselection_count": 0,
+                "policy_digest": "3" * 64,
+                "result": "PASS",
+                "retry_count": 0,
+                "skip_count": 0,
+                "subject_digest": release.sha256_json(subject),
+                "summary_digest": "4" * 64,
+                "unexpected_warning_count": 0,
+                "warnings": [],
+                "xfail_count": 0,
+                "xpass_count": 0,
+            },
+        )
+
+    attempt_subject = dict(attempt_data)
+    del attempt_subject["warning_summary_digest"]
+    attempt_warning_digest, _ = warning(attempt_subject)
+    attempt_data["warning_summary_digest"] = attempt_warning_digest
+    attempt_digest, _ = record("release-attempt", attempt_data)
+    qualification_data = {
+        "attempt_digests": [attempt_digest],
+        "attempt_index_receipt_digests": [attempt_index_digest],
+        "attempt_retention_receipt_digests": [attempt_retention_digest],
+        "candidate_digest": candidate_data["candidate_digest"],
+        "executed_cell_ids": [plan_cell["cell_id"]],
+        "expected_cell_ids": [plan_cell["cell_id"]],
+        "plan_digest": plan_digest,
+        "qualification_digest": "5" * 64,
+        "result": "PASS",
+        "terminal_results": attempt_data["cells"],
+        "unexpected_outcomes": [],
+        "warning_summary_digest": "0" * 64,
+    }
+    qualification_subject = dict(qualification_data)
+    del qualification_subject["warning_summary_digest"]
+    qualification_warning_digest, _ = warning(qualification_subject)
+    qualification_data["warning_summary_digest"] = qualification_warning_digest
+    qualification_digest, _ = record("release-qualification", qualification_data)
     evidence_manifest_digest, _ = record(
         "release-evidence-manifest",
         {
@@ -11282,10 +11539,7 @@ def _connected_predecessor_command_fixture(
             "partial_targets": [],
         },
     )
-    final_retention_digest, _ = record(
-        "release-retention-receipts",
-        {"phase": "final", "input_digest": evidence_manifest_digest},
-    )
+    final_retention_digest, _ = retention("final", evidence_manifest_digest)
     chain_head = "8" * 64
     _chain_digest, _ = record(
         "release-evidence-chain",
@@ -11323,10 +11577,7 @@ def _connected_predecessor_command_fixture(
             "state": "LKG",
         },
     )
-    transition_retention_digest, _ = record(
-        "release-retention-receipts",
-        {"phase": "pointer-transition", "input_digest": lkg_digest},
-    )
+    transition_retention_digest, _ = retention("pointer-transition", lkg_digest)
 
     def manifest(phase: str, required: list[tuple[str, str]]) -> tuple[str, dict[str, Any]]:
         entries = [
@@ -11364,10 +11615,7 @@ def _connected_predecessor_command_fixture(
             ("history/lkg-retention.json", transition_retention_digest),
         ],
     )
-    pointer_retention_digest, _ = record(
-        "release-retention-receipts",
-        {"phase": "pointer-transition-envelope", "input_digest": pointer_manifest_digest},
-    )
+    pointer_retention_digest, _ = retention("pointer-transition-envelope", pointer_manifest_digest)
 
     def index(stage: str, manifest_digest: str, receipts_digest: str, sequence: int) -> str:
         scope = {
@@ -11415,16 +11663,23 @@ def _connected_predecessor_command_fixture(
             ("history/pointer-index.json", pointer_index_digest),
         ],
     )
-    close_retention_digest, _ = record(
-        "release-retention-receipts",
-        {"phase": "release-task-finalizing", "input_digest": close_manifest_digest},
-    )
+    close_retention_digest, _ = retention("release-task-finalizing", close_manifest_digest)
     close_root_digest = index(
         "release-task-finalizing", close_manifest_digest, close_retention_digest, 2
     )
+    close_root_head = next(value for digest, value in records if digest == close_root_digest)[
+        "data"
+    ]["committed_head"]
     role_digest, _ = record(
         "release-role-assignments",
-        {"milestone": "v0.4", "operator": "historical-operator"},
+        {
+            "author_id": "historical-author",
+            "authorized_executor_id": "historical-operator",
+            "non_author_reviewer_id": "historical-reviewer",
+            "publisher_id": "historical-publisher",
+            "task_id": "MP2-007",
+            "milestone": "v0.4",
+        },
     )
     task_policy_raw = Path("docs/status/release-task-state-policy.json").read_bytes()
     provider_event = {
@@ -11502,7 +11757,8 @@ def _connected_predecessor_command_fixture(
         synthetic=True,
         signatures=[closed_signature],
     )
-    records.append((release.sha256_json(closed), closed))
+    closed_decision_digest = release.sha256_json(closed)
+    records.append((closed_decision_digest, closed))
     linear_digest = release.sha256_json(linear)
     records.append((linear_digest, linear))
 
@@ -11561,14 +11817,46 @@ def _connected_predecessor_command_fixture(
             },
         ]
     )
-    for name in (
-        "provider_state",
-        "provider_event_history",
-        "success_chain_readback",
-        "lkg_state_and_history_readback",
-        "attempt_index_readback",
-    ):
-        raw = (name + "\n").encode()
+    readback_values = {
+        "provider_state": {
+            "schema_version": "metriplane.release-provider-state-readback.v1",
+            "complete": True,
+            "decision_identity": decision_identity,
+            "state": "CLOSED",
+            "closed_decision_digest": closed_decision_digest,
+        },
+        "provider_event_history": {
+            "schema_version": "metriplane.release-provider-event-history-readback.v1",
+            "complete": True,
+            "decision_identity": decision_identity,
+            "latest_state": "CLOSED",
+            "closed_decision_digest": closed_decision_digest,
+            "event_count": 1,
+        },
+        "success_chain_readback": {
+            "schema_version": "metriplane.release-success-chain-readback.v1",
+            "complete": True,
+            "backend_id": "success-chain",
+            "head": chain_head,
+            "selected_record_digest": _chain_digest,
+        },
+        "lkg_state_and_history_readback": {
+            "schema_version": "metriplane.release-lkg-state-readback.v1",
+            "complete": True,
+            "backend_id": "last-known-good",
+            "head": lkg_digest,
+            "selected_record_digest": lkg_digest,
+        },
+        "attempt_index_readback": {
+            "schema_version": "metriplane.release-attempt-index-readback.v1",
+            "complete": True,
+            "backend_id": "attempt-index",
+            "head": close_root_head,
+            "selected_record_digest": close_root_digest,
+        },
+    }
+    for name, value in readback_values.items():
+        raw = release.canonical_json(value)
         path = "readbacks/" + name
         (root / path).parent.mkdir(parents=True, exist_ok=True)
         (root / path).write_bytes(raw)
@@ -11661,6 +11949,13 @@ def test_public_predecessor_commands_connect_original_graph(
     assert release.run_release_command("resolve_release_predecessor.py", argv) == 0
     output = root / "predecessor.json"
     predecessor = json.loads(output.read_bytes())
+    assert output.stat().st_nlink == 1
+    release._ReleaseCapturedFiles.capture(
+        root,
+        [("predecessor.json", "prerequisite-original")],
+        forbidden=(),
+        allowed_kinds=frozenset({"prerequisite-original"}),
+    )
     release.validate_release_producer_journal(
         predecessor, output, producer="resolve_release_predecessor.py"
     )
@@ -11705,6 +12000,219 @@ def test_public_predecessor_commands_connect_original_graph(
         for value in validator
     ]
     assert release.run_release_command("validate_release_predecessor.py", relocated_validator) == 0
+
+
+def test_predecessor_selection_rejects_semantically_incomplete_refreshed_readback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, argv = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    assert release.run_release_command("resolve_release_predecessor.py", argv) == 0
+    predecessor = json.loads((root / "predecessor.json").read_bytes())["data"]
+    proof = json.loads((root / "inputs/proof-index.json").read_bytes())
+    policy = json.loads((root / "inputs/policy.json").read_bytes())
+    row = next(
+        value for value in proof["raw_proofs"] if value.get("purpose") == "success_chain_readback"
+    )
+    path = root / row["original_file"]["path"]
+    changed = json.loads(path.read_bytes())
+    changed["complete"] = False
+    raw = release.canonical_json(changed)
+    path.write_bytes(raw)
+    row["original_file"] = _predecessor_content_ref(row["original_file"]["path"], raw)
+    linked = {
+        key: predecessor[key]
+        for key in (
+            "chain_head",
+            "chain_receipt_digest",
+            "lkg_digest",
+            "close_root_digest",
+            "closed_decision_digest",
+        )
+    }
+    with pytest.raises(release.ReleaseControlError, match="backend readback"):
+        release._release_predecessor_selection_observations(
+            root,
+            proof,
+            observed_at="2026-01-01T00:00:00Z",
+            linked=linked,
+            decision_identity=policy["expected_predecessor_decision"]["identity"],
+            attempt_index_head=json.loads((root / "readbacks/attempt_index_readback").read_bytes())[
+                "head"
+            ],
+        )
+
+
+def test_predecessor_closed_decision_rejects_signer_without_operator_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _ = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    proof, originals = release._release_predecessor_proof_originals(
+        root, root / "inputs/proof-index.json"
+    )
+    policy = json.loads((root / "inputs/policy.json").read_bytes())
+    candidate_digest = next(
+        digest for (kind, digest) in originals if kind == "release-candidate-identity"
+    )
+    close_root_digest = next(
+        digest
+        for (kind, digest), (_, record) in originals.items()
+        if kind == "release-attempt-index"
+        and record["data"].get("stage") == "release-task-finalizing"
+    )
+    closed_digest = next(
+        digest for (kind, digest) in originals if kind == "release-protected-input"
+    )
+    closed = copy.deepcopy(originals[("release-protected-input", closed_digest)][1])
+    role_row = next(
+        ((kind, digest), path, record)
+        for (kind, digest), (path, record) in originals.items()
+        if kind == "release-role-assignments"
+    )
+    role = copy.deepcopy(role_row[2])
+    role["data"]["authorized_executor_id"] = "different-operator"
+    _predecessor_content_reseal(role)
+    role_digest = release.sha256_json(role)
+    originals[("release-role-assignments", role_digest)] = (role_row[1], role)
+    next(row for row in closed["data"]["subject_digests"] if row["subject"] == "role_assignments")[
+        "sha256"
+    ] = role_digest
+    unsigned = release.make_record(
+        "release-protected-input",
+        closed["data"],
+        invocation_id=closed["invocation_id"],
+        sequence=closed["sequence"],
+        synthetic=True,
+    )
+    signature_subject = release.signature_subject_digest(unsigned)
+    closed = release.make_record(
+        "release-protected-input",
+        closed["data"],
+        invocation_id=closed["invocation_id"],
+        sequence=closed["sequence"],
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "historical-operator",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "subject_digest": signature_subject,
+                "synthetic": True,
+                "signature": release.sha256_json(
+                    {"actor_id": "historical-operator", "subject_digest": signature_subject}
+                ),
+            }
+        ],
+    )
+    changed_closed_digest = release.sha256_json(closed)
+    originals[("release-protected-input", changed_closed_digest)] = (
+        Path("/retained") / changed_closed_digest,
+        closed,
+    )
+    with pytest.raises(release.ReleaseControlError, match="operator role"):
+        release._release_predecessor_closed_decision(
+            root,
+            proof,
+            originals,
+            closed_digest=changed_closed_digest,
+            candidate_full_digest=candidate_digest,
+            close_root_digest=close_root_digest,
+            decision_identity=policy["expected_predecessor_decision"]["identity"],
+            predecessor_milestone="v0.4",
+        )
+
+
+def test_predecessor_qualification_rejects_missing_dependency_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _ = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    _proof, originals = release._release_predecessor_proof_originals(
+        root, root / "inputs/proof-index.json"
+    )
+    qualification = next(
+        record for (kind, _), (_, record) in originals.items() if kind == "release-qualification"
+    )
+    candidate = next(
+        record
+        for (kind, _), (_, record) in originals.items()
+        if kind == "release-candidate-identity"
+    )
+    plan_digest = qualification["data"]["plan_digest"]
+    del originals[("release-qualification-plan", plan_digest)]
+    with pytest.raises(release.ReleaseControlError, match="qualification plan"):
+        release._release_predecessor_qualification_originals(
+            originals, qualification, candidate_record=candidate
+        )
+
+
+def test_predecessor_qualification_rejects_missing_planned_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _ = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    _proof, originals = release._release_predecessor_proof_originals(
+        root, root / "inputs/proof-index.json"
+    )
+    qualification = next(
+        record for (kind, _), (_, record) in originals.items() if kind == "release-qualification"
+    )
+    candidate = next(
+        record
+        for (kind, _), (_, record) in originals.items()
+        if kind == "release-candidate-identity"
+    )
+    plan_digest = qualification["data"]["plan_digest"]
+    plan = originals.pop(("release-qualification-plan", plan_digest))[1]
+    plan["data"]["attempt_count"] = 2
+    unsigned = dict(plan["data"])
+    del unsigned["plan_digest"]
+    plan["data"]["plan_digest"] = release.sha256_json(unsigned)
+    _predecessor_content_reseal(plan)
+    changed_plan_digest = release.sha256_json(plan)
+    originals[("release-qualification-plan", changed_plan_digest)] = (
+        Path("/retained") / changed_plan_digest,
+        plan,
+    )
+    qualification["data"]["plan_digest"] = changed_plan_digest
+    _predecessor_content_reseal(qualification)
+    with pytest.raises(release.ReleaseControlError, match="plan cell inventory"):
+        release._release_predecessor_qualification_originals(
+            originals, qualification, candidate_record=candidate
+        )
+
+
+@pytest.mark.parametrize("broken_edge", ["commit-tree", "tag-commit", "tag-invalid-byte"])
+def test_predecessor_subject_originals_rejects_unrelated_git_edges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, broken_edge: str
+) -> None:
+    root, _ = _connected_predecessor_command_fixture(tmp_path, monkeypatch)
+    proof = json.loads((root / "inputs/proof-index.json").read_bytes())
+    policy = json.loads((root / "inputs/policy.json").read_bytes())
+    subject = policy["expected_predecessor_subject"]
+
+    if broken_edge == "commit-tree":
+        replacement = b"tree " + b"0" * 40 + b"\n"
+        kind, subject_field = "commit", "source_commit"
+    elif broken_edge == "tag-commit":
+        replacement = b"object " + b"0" * 40 + b"\ntype commit\ntag v0.4.0.post1\n"
+        kind, subject_field = "tag", "tag_object"
+    else:
+        replacement = (
+            b"object "
+            + subject["source_commit"].encode()
+            + b"\xff\ntype commit\ntag v0.4.0.post1\n"
+        )
+        kind, subject_field = "tag", "tag_object"
+    row = next(value for value in proof["git_objects"] if value["object_type"] == kind)
+    path = root / row["original_file"]["path"]
+    path.write_bytes(replacement)
+    oid = hashlib.sha1(
+        f"{kind} {len(replacement)}\0".encode() + replacement, usedforsecurity=False
+    ).hexdigest()
+    row["git_object_id"] = oid
+    row["original_file"] = _predecessor_content_ref(row["original_file"]["path"], replacement)
+    subject[subject_field] = oid
+
+    with pytest.raises(release.ReleaseControlError, match="relationship"):
+        release._release_predecessor_subject_originals(root, proof, subject)
 
 
 def test_public_predecessor_command_interruption_cannot_claim_success_and_retries(
