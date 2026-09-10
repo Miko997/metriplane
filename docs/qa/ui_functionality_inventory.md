@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `7c23e3a4390153c39136a658f5ee426f39e3559c7d3cd6cd5ed448b8dab58369`
+Canonical projection SHA-256: `34a2e5a469ca7be86817aa7a69e5397b9d06463ffe6c60890c88db5132db5f97`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 188 |
+| actions | 189 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -292,6 +292,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.main_health_broker | tool | Main Health Broker | python tools/main_health_broker.py |
 | tool.mp | tool | Mp | tools/mp.sh |
 | tool.observe_main_health | tool | Observe Main Health | python tools/observe_main_health.py |
+| tool.plan_release_qualification | tool | Plan Release Qualification | python tools/plan_release_qualification.py |
 | tool.plot_compute_backend_comparison | tool | Plot Compute Backend Comparison | python tools/plot_compute_backend_comparison.py |
 | tool.prepare_release_gate_input | tool | Prepare Release Gate Input | python tools/prepare_release_gate_input.py |
 | tool.preview_world_overlay | tool | Preview World Overlay | python tools/preview_world_overlay.py |

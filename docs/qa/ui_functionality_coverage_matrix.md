@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `7c23e3a4390153c39136a658f5ee426f39e3559c7d3cd6cd5ed448b8dab58369`
+Canonical projection SHA-256: `34a2e5a469ca7be86817aa7a69e5397b9d06463ffe6c60890c88db5132db5f97`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -151,6 +151,7 @@ Canonical projection SHA-256: `7c23e3a4390153c39136a658f5ee426f39e3559c7d3cd6cd5
 | tool.main_health_broker | Main Health Broker | tools/main_health_broker.py | python tools/main_health_broker.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.mp | Mp | tools/mp.sh | tools/mp.sh | web/dashboard/* | mp.sh | ui_copy_command_only | P2 |  |
 | tool.observe_main_health | Observe Main Health | tools/observe_main_health.py | python tools/observe_main_health.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.plan_release_qualification | Plan Release Qualification | tools/plan_release_qualification.py | python tools/plan_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.plot_compute_backend_comparison | Plot Compute Backend Comparison | tools/plot_compute_backend_comparison.py | python tools/plot_compute_backend_comparison.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.prepare_release_gate_input | Prepare Release Gate Input | tools/prepare_release_gate_input.py | python tools/prepare_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.preview_world_overlay | Preview World Overlay | tools/preview_world_overlay.py | python tools/preview_world_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

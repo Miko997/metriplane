@@ -30,6 +30,7 @@ from metriplane import release_control as release
         "capture_release_target_observations.py",
         "check_release_readiness.py",
         "export_release_attempt_index.py",
+        "plan_release_qualification.py",
         "record_release_role_assignments.py",
         "resolve_release_predecessor.py",
         "retain_release_evidence.py",
@@ -56,6 +57,241 @@ def test_implemented_release_route_has_actual_public_adapter(tool: str) -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert "section 9.B" in completed.stdout
+
+
+def _qualification_plan_command_fixture(
+    tmp_path: Path, *, mutation: str | None = None
+) -> tuple[Path, list[str]]:
+    root = tmp_path / "qualification-plan-run"
+    root.mkdir()
+    scenario_raw = release.canonical_json({"scenarios": [{"id": "SCN-1"}]})
+    manifest = release.make_record(
+        "release-artifact-manifest",
+        {"milestone": "v0.4"},
+        invocation_id="fixture-artifact-manifest",
+        sequence=1,
+        synthetic=True,
+    )
+    predecessor = release.make_record(
+        "release-predecessor",
+        {"candidate_milestone": "v0.4"},
+        invocation_id="fixture-predecessor",
+        sequence=1,
+        synthetic=True,
+    )
+    delta = release.make_record(
+        "release-capability-delta",
+        {"delta_digest": "1" * 64},
+        invocation_id="fixture-delta",
+        sequence=1,
+        synthetic=True,
+    )
+    delta_map_data = {
+        "delta_digest": delta["data"]["delta_digest"],
+        "map_digest": "2" * 64,
+        "mappings": [
+            {
+                "environment_ids": ["linux-py312"],
+                "obligation_ids": ["OBL-1"],
+                "scenario_ids": ["SCN-1"],
+            }
+        ],
+        "unmapped_capabilities": [],
+    }
+    if mutation == "unmapped-cell":
+        delta_map_data["mappings"][0]["scenario_ids"] = ["SCN-substituted"]
+    elif mutation == "malformed-mapping":
+        delta_map_data["mappings"][0]["environment_ids"] = "linux-py312"
+    delta_map = release.make_record(
+        "release-delta-test-map",
+        delta_map_data,
+        invocation_id="fixture-delta-map",
+        sequence=1,
+        synthetic=True,
+    )
+    catalog_data = {
+        "release_slots": [{"milestone": "v0.4", "qualification_attempts_required": 2}],
+        "execution_units": [
+            {
+                "unit_id": "v0.4:qualification:linux-py312:SCN-1",
+                "slot_milestone": "v0.4",
+                "phase": "qualification",
+                "environment_id": "linux-py312",
+                "profile_id": "release",
+                "scenario_id": "SCN-1",
+                "obligation_ids": ["OBL-1"],
+                "prerequisite_unit_ids": [],
+                "qualification_unit_terminal_on_verified_expectation": "PASS",
+            }
+        ],
+        "scenario_registry_digest": release.sha256_bytes(scenario_raw),
+        "unresolved_declarations": [],
+    }
+    if mutation == "unresolved-catalog":
+        catalog_data["unresolved_declarations"] = [{"id": "missing-executor"}]
+    catalog_data["catalog_digest"] = release.sha256_json(catalog_data)
+    catalog = release.make_record(
+        "release-scenario-catalog",
+        catalog_data,
+        invocation_id="fixture-scenario-catalog",
+        sequence=1,
+        synthetic=True,
+    )
+    candidate = release.make_record(
+        "release-candidate-identity",
+        {
+            "artifact_manifest_digest": release.sha256_json(manifest),
+            "candidate_digest": "3" * 64,
+            "milestone": "v0.4",
+        },
+        invocation_id="fixture-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    gate = release.make_record(
+        "release-gate-instance",
+        {
+            "candidate_digest": candidate["data"]["candidate_digest"],
+            "instance_digest": "4" * 64,
+            "milestone": "v0.4",
+            "predecessor_digest": release.sha256_json(predecessor),
+            "scenario_catalog_digest": release.sha256_json(catalog),
+        },
+        invocation_id="fixture-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    readiness = release.make_record(
+        "release-readiness",
+        {
+            "candidate_digest": candidate["data"]["candidate_digest"],
+            "delta_digest": delta["data"]["delta_digest"],
+            "delta_test_map_digest": delta_map["data"]["map_digest"],
+            "disposition": "READY",
+            "gate_instance_digest": gate["data"]["instance_digest"],
+            "predecessor_digest": release.sha256_json(predecessor),
+            "unresolved_blockers": [],
+        },
+        invocation_id="fixture-readiness",
+        sequence=1,
+        synthetic=True,
+    )
+    records = {
+        "artifact-manifest.json": manifest,
+        "candidate-identity.json": candidate,
+        "delta-test-map.json": delta_map,
+        "delta.json": delta,
+        "gate-instance.json": gate,
+        "predecessor.json": predecessor,
+        "readiness.json": readiness,
+        "scenario-catalog.json": catalog,
+    }
+    if mutation == "stale-manifest":
+        records["artifact-manifest.json"] = release.make_record(
+            "release-artifact-manifest",
+            {"milestone": "v0.4", "substituted": True},
+            invocation_id="fixture-artifact-manifest-substituted",
+            sequence=1,
+            synthetic=True,
+        )
+    for name, record in records.items():
+        (root / name).write_bytes(release.canonical_json(record))
+    (root / "scenarios.json").write_bytes(
+        b'{"scenarios":[{"id":"substituted"}]}'
+        if mutation == "raw-scenario-substitution"
+        else scenario_raw
+    )
+    argv = [
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--candidate-identity",
+        str(root / "candidate-identity.json"),
+        "--predecessor",
+        str(root / "predecessor.json"),
+        "--readiness",
+        str(root / "readiness.json"),
+        "--delta",
+        str(root / "delta.json"),
+        "--delta-test-map",
+        str(root / "delta-test-map.json"),
+        "--scenarios",
+        str(root / "scenarios.json"),
+        "--candidate-manifest",
+        str(root / "artifact-manifest.json"),
+        "--out",
+        str(root / "qualification-plan.json"),
+        "--invocation-dir",
+        str(root / "invocations/plan-release-qualification/001"),
+    ]
+    return root, argv
+
+
+def _run_release_tool(tool: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
+    repository = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    environment["METRIPLANE_RELEASE_FIXTURE_MODE"] = "1"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(repository), environment.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
+    return subprocess.run(
+        [sys.executable, str(repository / "tools" / tool), *argv],
+        cwd=repository,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_qualification_plan_public_command_produces_consumable_complete_plan(
+    tmp_path: Path,
+) -> None:
+    root, argv = _qualification_plan_command_fixture(tmp_path)
+    completed = _run_release_tool("plan_release_qualification.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    plan_path = root / "qualification-plan.json"
+    plan = release.read_json(plan_path)
+    assert plan["data"]["attempt_count"] == 2
+    assert [cell["cell_id"] for cell in plan["data"]["cells"]] == [
+        "v0.4:qualification:linux-py312:SCN-1"
+    ]
+    validator = _run_release_tool(
+        "validate_release_qualification_plan.py",
+        [
+            "--record",
+            str(plan_path),
+            "--gate-instance",
+            str(root / "gate-instance.json"),
+            "--invocation-dir",
+            str(root / "invocations/validate-release-qualification-plan/001"),
+        ],
+    )
+    assert validator.returncode == 0, validator.stderr or validator.stdout
+    original = plan_path.read_bytes()
+    retry_argv = list(argv)
+    retry_argv[-1] = str(root / "invocations/plan-release-qualification/002")
+    retry = _run_release_tool("plan_release_qualification.py", retry_argv)
+    assert retry.returncode != 0
+    assert plan_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "malformed-mapping",
+        "raw-scenario-substitution",
+        "stale-manifest",
+        "unmapped-cell",
+        "unresolved-catalog",
+    ],
+)
+def test_qualification_plan_public_command_rejects_substituted_or_incomplete_inputs(
+    tmp_path: Path, mutation: str
+) -> None:
+    root, argv = _qualification_plan_command_fixture(tmp_path, mutation=mutation)
+    completed = _run_release_tool("plan_release_qualification.py", argv)
+    assert completed.returncode != 0
+    assert not (root / "qualification-plan.json").exists()
 
 
 @pytest.mark.parametrize(
