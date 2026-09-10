@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `064e5040d14110638f39f18912eb24515232de43c2caecc3a071016ae7dc8eca`
+Canonical projection SHA-256: `f9958d42d68211ab31006bcbbb984fa58ad24fcef5af64aede807b6ee30c9ecd`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -165,6 +165,7 @@ Canonical projection SHA-256: `064e5040d14110638f39f18912eb24515232de43c2caecc3a
 | tool.preview_zones_overlay | Preview Zones Overlay | tools/preview_zones_overlay.py | python tools/preview_zones_overlay.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.proof_m8_fusion | Proof M8 Fusion | tools/proof_m8_fusion.sh | tools/proof_m8_fusion.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.record_release_approval | Record Release Approval | tools/record_release_approval.py | python tools/record_release_approval.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_role_assignments | Record Release Role Assignments | tools/record_release_role_assignments.py | python tools/record_release_role_assignments.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_target_burn | Record Release Target Burn | tools/record_release_target_burn.py | python tools/record_release_target_burn.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

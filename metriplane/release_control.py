@@ -776,6 +776,7 @@ def validate_role_assignments(
     check_conflicts: bool = False,
     check_freshness: bool = False,
     attestation_verifier: ProviderAttestationVerifier | None = None,
+    expected_context_digest: str | None = None,
 ) -> dict[str, tuple[str, str]]:
     validate_record(record, "release-role-assignments")
     if record["status"] != "PASS":
@@ -791,6 +792,7 @@ def validate_role_assignments(
         check_conflicts=check_conflicts,
         check_freshness=check_freshness,
         attestation_verifier=attestation_verifier,
+        expected_context_digest=expected_context_digest,
     )
     signers = {
         _validated_signature(
@@ -1387,6 +1389,23 @@ def _passing_record(
     return data
 
 
+def _derived_passing_record(
+    record: Mapping[str, Any], expected_type: str, *, live: bool
+) -> dict[str, Any]:
+    """Validate an unsigned record whose referenced authority is checked separately."""
+    validate_record(record, expected_type)
+    if record["status"] != "PASS":
+        raise ReleaseControlError(f"{expected_type} is not passing")
+    if live and record["synthetic"] is not False:
+        raise ReleaseControlError(f"synthetic {expected_type} cannot be used for a live release")
+    if record["signatures"] != []:
+        raise ReleaseControlError(f"derived {expected_type} must not impersonate signed authority")
+    data = record["data"]
+    if not isinstance(data, dict):
+        raise ReleaseControlError(f"{expected_type} data is not an object")
+    return data
+
+
 def _evidence_record_index(root: Path) -> dict[str, list[tuple[Path, dict[str, Any]]]]:
     if root.is_symlink() or not root.is_dir():
         raise ReleaseControlError("release evidence root is missing or unsafe")
@@ -1465,12 +1484,15 @@ def _resolved_evidence_record(
     matches = _release_evidence_originals(indexed, digest, identity_kind=identity_kind, label=label)
     records: list[dict[str, Any]] = []
     for _path, _raw, candidate in matches:
-        _passing_record(
-            candidate,
-            expected_type,
-            live=live,
-            attestation_verifier=attestation_verifier,
-        )
+        if expected_type == "release-approval":
+            _derived_passing_record(candidate, expected_type, live=live)
+        else:
+            _passing_record(
+                candidate,
+                expected_type,
+                live=live,
+                attestation_verifier=attestation_verifier,
+            )
         records.append(candidate)
     first = records[0]
     if any(canonical_json(candidate) != canonical_json(first) for candidate in records[1:]):
@@ -4157,11 +4179,8 @@ def validate_publication_reconciliation_record(
         attestation_verifier=attestation_verifier,
         attempt_retention_readbacks=attempt_retention_readbacks,
     )
-    approval = _passing_record(
-        dependencies["approval_digest"],
-        "release-approval",
-        live=live,
-        attestation_verifier=attestation_verifier,
+    approval = _derived_passing_record(
+        dependencies["approval_digest"], "release-approval", live=live
     )
     approval_decision = _resolved_evidence_record(
         indexed,
@@ -4954,12 +4973,7 @@ def validate_release_approval_record(
     expected_authority_policy_digest: str | None = None,
     attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> None:
-    approval = _passing_record(
-        record,
-        "release-approval",
-        live=live,
-        attestation_verifier=attestation_verifier,
-    )
+    approval = _derived_passing_record(record, "release-approval", live=live)
     gate = _passing_record(
         gate_instance,
         "release-gate-instance",
@@ -4997,6 +5011,7 @@ def validate_release_approval_record(
         check_conflicts=True,
         check_freshness=live,
         attestation_verifier=attestation_verifier,
+        expected_context_digest=gate.get("release_context_digest"),
     )
     author = approval["author_id"]
     reviewer = approval["reviewer_id"]
@@ -5031,17 +5046,87 @@ def validate_release_approval_record(
         attestation_verifier=attestation_verifier,
         expected_authority_policy_digest=expected_authority_policy_digest,
     )
-    signers = {
-        _validated_signature(
-            signature,
-            subject_digest=signature_subject_digest(record),
-            live=live,
-            attestation_verifier=attestation_verifier,
-        )
-        for signature in record["signatures"]
+
+
+def _record_release_approval_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    expected_authority_policy_digest: str | None,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    """Materialize a deterministic envelope around a signed reviewer decision."""
+    root = context.root
+    paths = {
+        "gate_instance": Path(args.gate_instance).absolute(),
+        "qualification": Path(args.qualification).absolute(),
+        "role_assignments": Path(args.role_assignments).absolute(),
+        "signed_decision": Path(args.signed_decision).absolute(),
     }
-    if reviewer_identity not in signers:
-        raise ReleaseControlError("release approval lacks reviewer-authenticated authority")
+    expected = {
+        "gate_instance": root / "gate-instance.json",
+        "qualification": root / "qualification.json",
+        "role_assignments": root / "role-assignments.json",
+        "signed_decision": root / "approval-decision.json",
+    }
+    if paths != expected:
+        raise ReleaseControlError("release approval inputs do not share the canonical run root")
+    gate_record = read_json(paths["gate_instance"])
+    qualification_record = read_json(paths["qualification"])
+    role_record = read_json(paths["role_assignments"])
+    decision_record = read_json(paths["signed_decision"])
+    if any(
+        record.get("synthetic") is not (not live)
+        for record in (gate_record, qualification_record, role_record, decision_record)
+    ):
+        raise ReleaseControlError("release approval inputs mix live and synthetic authority")
+    gate = _passing_record(
+        gate_record, "release-gate-instance", live=live, attestation_verifier=attestation_verifier
+    )
+    qualification = _passing_record(
+        qualification_record,
+        "release-qualification",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    decision = decision_record.get("data")
+    if not isinstance(decision, Mapping):
+        raise ReleaseControlError("release approval decision data is missing")
+    data = {
+        "approval_decision_digest": sha256_json(decision_record),
+        "author_id": decision.get("author_id"),
+        "candidate_digest": decision.get("candidate_digest"),
+        "conflicts": decision.get("conflicts"),
+        "decision": decision.get("decision"),
+        "gate_instance_digest": sha256_json(gate_record),
+        "qualification_digest": sha256_json(qualification_record),
+        "reviewer_id": decision.get("reviewer_id"),
+        "rubric_result_digest": decision.get("rubric_result_digest"),
+    }
+    if data["candidate_digest"] != gate.get("candidate_digest") or data[
+        "candidate_digest"
+    ] != qualification.get("candidate_digest"):
+        raise ReleaseControlError("release approval producer candidate binding mismatch")
+    result = make_record(
+        "release-approval",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=not live,
+    )
+    validate_release_approval_record(
+        result,
+        approval_decision=decision_record,
+        gate_instance=gate_record,
+        qualification=qualification_record,
+        role_assignments=role_record,
+        no_prepublication_rubric=bool(args.no_prepublication_rubric),
+        live=live,
+        expected_authority_policy_digest=expected_authority_policy_digest,
+        attestation_verifier=attestation_verifier,
+    )
+    return result
 
 
 def validate_release_candidate_identity_record(
@@ -8906,8 +8991,10 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         choices={"stage": _CONFLICT_STAGES},
     ),
     "record_release_approval.py": _tool_contract(
-        "gate-instance qualification no-prepublication-rubric signed-decision out",
+        "gate-instance qualification role-assignments no-prepublication-rubric signed-decision out",
+        optional="authority-policy-digest provider-attestation-keyring provider-attestation-keyring-digest",
         boolean="no-prepublication-rubric",
+        fixture_producer=False,
     ),
     "record_release_blocker_attempt.py": _tool_contract(
         "sequence stage disposition candidate-identity failed-invocation-dir out",
@@ -11013,6 +11100,17 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             return 0
         if name == "build_release_qualification.py":
             result = _build_release_qualification_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "record_release_approval.py":
+            result = _record_release_approval_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                expected_authority_policy_digest=args.authority_policy_digest,
+                attestation_verifier=attestation_verifier,
+            )
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0

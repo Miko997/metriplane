@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `064e5040d14110638f39f18912eb24515232de43c2caecc3a071016ae7dc8eca`
+Canonical projection SHA-256: `f9958d42d68211ab31006bcbbb984fa58ad24fcef5af64aede807b6ee30c9ecd`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 195 |
+| actions | 196 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -306,6 +306,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.preview_zones_overlay | tool | Preview Zones Overlay | python tools/preview_zones_overlay.py |
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
+| tool.record_release_approval | tool | Record Release Approval | python tools/record_release_approval.py |
 | tool.record_release_role_assignments | tool | Record Release Role Assignments | python tools/record_release_role_assignments.py |
 | tool.record_release_target_burn | tool | Record Release Target Burn | python tools/record_release_target_burn.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |

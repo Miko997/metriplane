@@ -32,6 +32,7 @@ from metriplane import release_control as release
         "export_release_attempt_index.py",
         "execute_release_qualification.py",
         "plan_release_qualification.py",
+        "record_release_approval.py",
         "record_release_role_assignments.py",
         "resolve_release_predecessor.py",
         "retain_release_evidence.py",
@@ -293,6 +294,152 @@ def test_qualification_plan_public_command_rejects_substituted_or_incomplete_inp
     completed = _run_release_tool("plan_release_qualification.py", argv)
     assert completed.returncode != 0
     assert not (root / "qualification-plan.json").exists()
+
+
+def test_public_approval_command_materializes_and_validates_signed_non_author_decision(
+    tmp_path: Path,
+) -> None:
+    roles = release.make_record(
+        "release-role-assignments",
+        {
+            "author_id": "fixture-author",
+            "authorized_executor_id": "fixture-operator",
+            "milestone": "v0.4",
+            "non_author_reviewer_id": "fixture-reviewer",
+            "publisher_id": "fixture-publisher",
+            "run_id": "fixture-approval-run",
+            "task_id": "MP2-007",
+        },
+        invocation_id="fixture-approval-roles",
+        sequence=1,
+        synthetic=True,
+    )
+    actors = release.validate_role_assignments(
+        roles,
+        live=False,
+    )
+    candidate_digest = "7" * 64
+    root = tmp_path / "approval-run"
+    root.mkdir()
+    gate = release.make_record(
+        "release-gate-instance",
+        {
+            "candidate_digest": candidate_digest,
+            "milestone": "v0.4",
+            "run_id": roles["data"]["run_id"],
+        },
+        invocation_id="fixture-approval-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    qualification = release.make_record(
+        "release-qualification",
+        {"candidate_digest": candidate_digest},
+        invocation_id="fixture-approval-qualification",
+        sequence=1,
+        synthetic=True,
+    )
+    decision_data = {
+        "approval_kind": "non_author_release_decision",
+        "author_id": actors["author_id"][1],
+        "authority_policy_digest": "8" * 64,
+        "candidate_digest": candidate_digest,
+        "conflicts": [],
+        "decision": "APPROVED",
+        "expires_at": "2026-01-01T01:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z",
+        "milestone": "v0.4",
+        "qualification_digest": release.sha256_json(qualification),
+        "reviewer_id": actors["non_author_reviewer_id"][1],
+        "rubric_result_digest": None,
+        "signing_method": "provider-attestation-v1",
+    }
+    unsigned = release.make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="fixture-signed-approval-decision",
+        sequence=1,
+        synthetic=True,
+    )
+    subject_digest = release.signature_subject_digest(unsigned)
+    signature = {
+        "actor_id": actors["non_author_reviewer_id"][1],
+        "algorithm": "test-sha256-v1",
+        "provider": "test-fixture",
+        "signature": release.sha256_json(
+            {"actor_id": actors["non_author_reviewer_id"][1], "subject_digest": subject_digest}
+        ),
+        "subject_digest": subject_digest,
+        "synthetic": True,
+    }
+    decision = release.make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="fixture-signed-approval-decision",
+        sequence=1,
+        synthetic=True,
+        signatures=[signature],
+    )
+    for name, record in {
+        "approval-decision.json": decision,
+        "gate-instance.json": gate,
+        "qualification.json": qualification,
+        "role-assignments.json": roles,
+    }.items():
+        (root / name).write_bytes(release.canonical_json(record))
+    argv = [
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--qualification",
+        str(root / "qualification.json"),
+        "--role-assignments",
+        str(root / "role-assignments.json"),
+        "--no-prepublication-rubric",
+        "--signed-decision",
+        str(root / "approval-decision.json"),
+        "--out",
+        str(root / "approval.json"),
+        "--invocation-dir",
+        str(root / "invocations/record-release-approval/001"),
+    ]
+    substituted = release.make_record(
+        "release-qualification",
+        {"candidate_digest": "9" * 64},
+        invocation_id="fixture-substituted-qualification",
+        sequence=1,
+        synthetic=True,
+    )
+    (root / "qualification.json").write_bytes(release.canonical_json(substituted))
+    rejected = _run_release_tool("record_release_approval.py", argv)
+    assert rejected.returncode != 0
+    assert not (root / "approval.json").exists()
+
+    (root / "qualification.json").write_bytes(release.canonical_json(qualification))
+    retry_argv = [
+        value.replace("record-release-approval/001", "record-release-approval/002")
+        for value in argv
+    ]
+    completed = _run_release_tool("record_release_approval.py", retry_argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    approval = release.read_json(root / "approval.json")
+    assert approval["signatures"] == []
+    release.validate_release_approval_record(
+        approval,
+        approval_decision=decision,
+        gate_instance=gate,
+        qualification=qualification,
+        role_assignments=roles,
+        no_prepublication_rubric=True,
+        live=False,
+    )
+    original = (root / "approval.json").read_bytes()
+    duplicate_argv = [
+        value.replace("record-release-approval/002", "record-release-approval/003")
+        for value in retry_argv
+    ]
+    duplicate = _run_release_tool("record_release_approval.py", duplicate_argv)
+    assert duplicate.returncode != 0
+    assert (root / "approval.json").read_bytes() == original
 
 
 @pytest.mark.parametrize(
