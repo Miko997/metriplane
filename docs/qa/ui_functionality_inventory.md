@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `842e905249f4c96d9218124119344de515b78973ce58cb960b638535e909d9f7`
+Canonical projection SHA-256: `7c23e3a4390153c39136a658f5ee426f39e3559c7d3cd6cd5ed448b8dab58369`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 186 |
+| actions | 188 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -304,6 +304,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.record_release_target_burn | tool | Record Release Target Burn | python tools/record_release_target_burn.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |
 | tool.report_alignment | tool | Report Alignment | python tools/report_alignment.py |
+| tool.resolve_release_predecessor | tool | Resolve Release Predecessor | python tools/resolve_release_predecessor.py |
 | tool.resolve_release_target | tool | Resolve Release Target | python tools/resolve_release_target.py |
 | tool.retain_release_evidence | tool | Retain Release Evidence | python tools/retain_release_evidence.py |
 | tool.run_demo_all | tool | Run Demo All | tools/run_demo_all.sh |
@@ -326,6 +327,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate_release_evidence_stores | tool | Validate Release Evidence Stores | python tools/validate_release_evidence_stores.py |
 | tool.validate_release_gate_input | tool | Validate Release Gate Input | python tools/validate_release_gate_input.py |
 | tool.validate_release_gate_instance | tool | Validate Release Gate Instance | python tools/validate_release_gate_instance.py |
+| tool.validate_release_predecessor | tool | Validate Release Predecessor | python tools/validate_release_predecessor.py |
 | tool.validate_release_qualification | tool | Validate Release Qualification | python tools/validate_release_qualification.py |
 | tool.validate_release_qualification_plan | tool | Validate Release Qualification Plan | python tools/validate_release_qualification_plan.py |
 | tool.validate_release_retention | tool | Validate Release Retention | python tools/validate_release_retention.py |
