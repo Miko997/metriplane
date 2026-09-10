@@ -7843,6 +7843,29 @@ def _validate_bound_invocation(
             context, outputs=outputs, output_root=output_root
         )
         return
+    if tool == "execute_release_qualification.py":
+        for row in context.intent["inputs"]:
+            if sha256_bytes(_safe_release_bytes(Path(row["path"]))) != row["sha256"]:
+                raise ReleaseControlError("qualification execution input bytes changed")
+        output_value = _command_value(context.intent["argv"][1:], "out")
+        if output_value is None:
+            raise ReleaseControlError("qualification execution output is missing")
+        expected_plan = [
+            {
+                "path": _run_relative(context.root, Path(output_value).absolute()),
+                "schema_id": "metriplane.release-cell-execution-directory.v1",
+            }
+        ]
+        if context.intent["planned_outputs"] != expected_plan:
+            raise ReleaseControlError("qualification execution output plan changed")
+        if outputs is not None:
+            root = context.root if output_root is None else output_root
+            destination = root / expected_plan[0]["path"]
+            if outputs != _collect_installed_qualification_outputs(
+                context, destination, inventory_root=root
+            ):
+                raise ReleaseControlError("qualification execution output bytes changed")
+        return
     if tool not in _INVOCATION_STAGES:
         return
     keyring_binding = (
@@ -8686,7 +8709,9 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     "collect_publication_observations.py": _tool_contract(
         "promotion promotion-lock-receipt artifact-manifest targets out"
     ),
-    "execute_release_qualification.py": _tool_contract("plan attempt-id cell artifacts out"),
+    "execute_release_qualification.py": _tool_contract(
+        "plan attempt-id cell artifacts out", fixture_producer=False
+    ),
     "export_release_attempt_index.py": _tool_contract(
         "index-backend genesis through-head stores read-back-all out",
         boolean="read-back-all",
@@ -9385,6 +9410,310 @@ def _legacy_internal_validator(tool: str, argv: Sequence[str]) -> int | None:
     return 0
 
 
+def _qualification_runtime_path(name: str, *, bindings: Mapping[str, Path]) -> str:
+    path = bindings.get(name)
+    if path is None:
+        raise ReleaseControlError("qualification runtime slot is unavailable: " + name)
+    return str(path)
+
+
+def _qualification_argument(value: object, *, bindings: Mapping[str, Path]) -> str:
+    row = (
+        _release_closed_mapping(value, {"kind", "value"}, "qualification literal")
+        if (isinstance(value, Mapping) and value.get("kind") == "literal")
+        else _release_closed_mapping(value, {"kind", "name"}, "qualification binding")
+    )
+    if row["kind"] == "literal":
+        return _require_nonempty_string(row["value"], "qualification literal")
+    if row["kind"] != "binding":
+        raise ReleaseControlError("qualification argument has an unknown kind")
+    return _qualification_runtime_path(
+        _require_nonempty_string(row["name"], "qualification binding"), bindings=bindings
+    )
+
+
+def _execute_release_qualification_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    """Execute one catalog-owned argv recipe and retain raw, non-authoritative facts."""
+    plan_path = Path(args.plan).absolute()
+    candidate_root = plan_path.parent
+    if context.root != candidate_root or plan_path != candidate_root / "qualification-plan.json":
+        raise ReleaseControlError("qualification execution plan is outside its candidate root")
+    attempt_id = _require_nonempty_string(args.attempt_id, "qualification attempt id")
+    cell_id = _require_nonempty_string(args.cell, "qualification cell id")
+    if any(
+        Path(value).name != value or value in {".", ".."} or "\\" in value
+        for value in (attempt_id, cell_id)
+    ):
+        raise ReleaseControlError("qualification attempt or cell id is not a safe path component")
+    declared_output_value = _command_value(context.intent["argv"][1:], "out")
+    if declared_output_value is None:
+        raise ReleaseControlError("qualification cell output is missing")
+    output = Path(declared_output_value).absolute()
+    expected_output = candidate_root / "attempts" / attempt_id / "cells" / cell_id
+    if output != expected_output:
+        raise ReleaseControlError("qualification cell output path is not canonical")
+    artifacts = Path(args.artifacts).absolute()
+    if artifacts != candidate_root / "artifacts":
+        raise ReleaseControlError("qualification artifacts are outside the candidate root")
+
+    fixture_mode = context.intent["environment"]["fixture_mode"] == "1"
+    plan_record = read_json(plan_path)
+    gate = read_json(candidate_root / "gate-instance.json")
+    validate_release_qualification_plan_record(
+        plan_record, gate_instance=gate, live=not fixture_mode
+    )
+    plan = plan_record["data"]
+    cells = _validate_qualification_plan_payload(plan)
+    if cell_id not in cells:
+        raise ReleaseControlError("qualification execution names an unknown plan cell")
+
+    catalog_record = read_json(candidate_root / "scenario-catalog.json")
+    validate_record(catalog_record, "release-scenario-catalog")
+    if (
+        catalog_record["status"] != "PASS"
+        or catalog_record["synthetic"] is not fixture_mode
+        or sha256_json(catalog_record) != plan["scenario_catalog_digest"]
+    ):
+        raise ReleaseControlError("qualification execution catalog binding mismatch")
+    units = catalog_record["data"].get("execution_units")
+    matches = (
+        [row for row in units if isinstance(row, Mapping) and row.get("unit_id") == cell_id]
+        if isinstance(units, list)
+        else []
+    )
+    if len(matches) != 1:
+        raise ReleaseControlError("qualification execution has no unique catalog unit")
+    unit = matches[0]
+    cell = cells[cell_id]
+    if (
+        unit.get("phase") != "qualification"
+        or unit.get("slot_milestone") != plan["milestone"]
+        or unit.get("environment_id") != cell["environment_id"]
+        or unit.get("profile_id") != cell["profile_id"]
+        or unit.get("obligation_ids") != cell["obligation_ids"]
+        or [unit.get("scenario_id")] != cell["scenario_ids"]
+    ):
+        raise ReleaseControlError("qualification execution cell differs from its catalog unit")
+
+    manifest_path = candidate_root / "artifact-manifest.json"
+    manifest_record = read_json(manifest_path)
+    if sha256_json(manifest_record) != plan["candidate_manifest_digest"]:
+        raise ReleaseControlError("qualification execution artifact manifest binding mismatch")
+    validate_release_artifact_files(
+        manifest_record, artifacts, live=not fixture_mode, record_path=manifest_path
+    )
+    artifact_rows = _validate_artifact_manifest_payload(
+        manifest_record["data"], expected_milestone=plan["milestone"]
+    )
+    wheels = [artifacts / row["path"] for row in artifact_rows if row["path"].endswith(".whl")]
+    sdists = [artifacts / row["path"] for row in artifact_rows if row["path"].endswith(".tar.gz")]
+    if len(wheels) != 1 or len(sdists) != 1:
+        raise ReleaseControlError("qualification execution requires one wheel and one sdist")
+
+    recipe = unit.get("recipe")
+    if not isinstance(recipe, Mapping):
+        raise ReleaseControlError("qualification execution recipe is missing")
+    launch = recipe.get("launch")
+    if (
+        not isinstance(launch, Mapping)
+        or launch.get("kind") != "argv"
+        or launch.get("shell") is not False
+    ):
+        raise ReleaseControlError(
+            "qualification execution requires an argv recipe in the matrix worker"
+        )
+    if recipe.get("effect_class") not in {"read_only", "scratch_only"}:
+        raise ReleaseControlError("qualification execution recipe may not mutate a release")
+
+    staged_output = context.directory / "staged" / output.relative_to(candidate_root)
+    if Path(args.out).absolute() != staged_output:
+        raise ReleaseControlError("qualification worker output differs from its reserved path")
+    staged_output.mkdir(parents=True)
+    bindings: dict[str, Path] = {
+        "python_executable": Path(sys.executable),
+        "checkout_root": Path(__file__).resolve().parents[1],
+        "candidate_root": candidate_root,
+        "invocation_dir": context.directory,
+        "execution_output_root": staged_output,
+        "wheel_path": wheels[0],
+        "sdist_path": sdists[0],
+    }
+    for slot_name, variable in (
+        ("installed_harness_root", "METRIPLANE_RELEASE_INSTALLED_HARNESS_ROOT"),
+        ("fixture_root", "METRIPLANE_RELEASE_FIXTURE_ROOT"),
+    ):
+        configured_root = os.environ.get(variable)
+        if configured_root:
+            bindings[slot_name] = Path(configured_root).absolute()
+    required_slots = recipe.get("input_slots")
+    if not isinstance(required_slots, list):
+        raise ReleaseControlError("qualification execution input slots are malformed")
+    for raw_slot in required_slots:
+        slot_row = _release_closed_mapping(
+            raw_slot,
+            {"name", "kind", "binding_owner", "must_exist_before_execution"},
+            "qualification input slot",
+        )
+        name = _require_nonempty_string(slot_row["name"], "qualification input slot")
+        path = Path(_qualification_runtime_path(name, bindings=bindings))
+        if slot_row["must_exist_before_execution"] is not True or not path.exists():
+            raise ReleaseControlError("qualification input slot is unavailable: " + name)
+
+    raw_argv = launch.get("argv")
+    if not isinstance(raw_argv, list) or not raw_argv:
+        raise ReleaseControlError("qualification argv recipe is empty")
+    command = [_qualification_argument(value, bindings=bindings) for value in raw_argv]
+    cwd_name = _require_nonempty_string(launch.get("cwd"), "qualification working directory")
+    cwd = Path(_qualification_runtime_path(cwd_name, bindings=bindings))
+    if not cwd.is_dir() or cwd.is_symlink():
+        raise ReleaseControlError("qualification working directory is unavailable or unsafe")
+    environment = dict(os.environ)
+    raw_unset = launch.get("unset_environment")
+    if not isinstance(raw_unset, list):
+        raise ReleaseControlError("qualification unset environment is malformed")
+    for name in raw_unset:
+        environment.pop(_require_nonempty_string(name, "qualification unset variable"), None)
+    raw_environment = launch.get("environment")
+    if not isinstance(raw_environment, list):
+        raise ReleaseControlError("qualification environment is malformed")
+    for raw_row in raw_environment:
+        row = _release_closed_mapping(raw_row, {"name", "value"}, "qualification environment")
+        environment[_require_nonempty_string(row["name"], "qualification environment name")] = (
+            _qualification_argument(row["value"], bindings=bindings)
+        )
+    timeout = recipe.get("timeout_seconds")
+    if type(timeout) is not int or timeout < 1:
+        raise ReleaseControlError("qualification timeout is invalid")
+
+    started = datetime.now(UTC)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        (staged_output / "stdout").write_bytes(exc.stdout or b"")
+        (staged_output / "stderr").write_bytes(exc.stderr or b"")
+        raise ReleaseControlError("qualification cell exceeded its declared timeout") from exc
+    completed_at = datetime.now(UTC)
+    (staged_output / "stdout").write_bytes(completed.stdout)
+    (staged_output / "stderr").write_bytes(completed.stderr)
+    expected_exits = recipe.get("expected_process_exits")
+    if (
+        not isinstance(expected_exits, list)
+        or completed.returncode not in expected_exits
+        or any(type(value) is not int for value in expected_exits)
+    ):
+        raise ReleaseControlError("qualification process exit differs from its recipe")
+
+    expected_outputs = recipe.get("expected_outputs")
+    if not isinstance(expected_outputs, list):
+        raise ReleaseControlError("qualification expected outputs are malformed")
+    retained_outputs = []
+    names = {"execution.json", "stdout", "stderr"}
+    output_ids: set[str] = set()
+    allowed_directories: set[str] = set()
+    for raw_expected in expected_outputs:
+        expected = _release_closed_mapping(
+            raw_expected,
+            {
+                "id",
+                "root",
+                "path",
+                "media_type",
+                "schema_source_id",
+                "minimum_bytes",
+                "validator_owner",
+                "required",
+            },
+            "qualification output expectation",
+        )
+        output_id = _require_nonempty_string(expected["id"], "qualification output id")
+        if (
+            expected["root"] != "execution_output_root"
+            or expected["required"] is not True
+            or output_id in output_ids
+        ):
+            raise ReleaseControlError("qualification output declaration is invalid")
+        relative = _release_relative_suffix(expected["path"], "qualification output path")
+        if relative.as_posix() in names:
+            raise ReleaseControlError("qualification recipe uses a reserved output name")
+        if any(parent.as_posix() in names for parent in relative.parents if parent != Path(".")):
+            raise ReleaseControlError("qualification output paths overlap")
+        path = staged_output / relative
+        output_bytes = _safe_release_bytes(path)
+        if (
+            type(expected["minimum_bytes"]) is not int
+            or len(output_bytes) < expected["minimum_bytes"]
+        ):
+            raise ReleaseControlError("qualification output is shorter than its declared minimum")
+        retained_outputs.append(
+            {
+                "id": output_id,
+                "media_type": expected["media_type"],
+                "path": relative.as_posix(),
+                "sha256": sha256_bytes(output_bytes),
+                "size": len(output_bytes),
+            }
+        )
+        names.add(relative.as_posix())
+        output_ids.add(output_id)
+        allowed_directories.update(
+            parent.as_posix() for parent in relative.parents if parent != Path(".")
+        )
+    observed: set[str] = set()
+    for path in staged_output.rglob("*"):
+        observed_relative = path.relative_to(staged_output).as_posix()
+        if path.is_symlink():
+            raise ReleaseControlError("qualification execution produced an unsafe link")
+        if path.is_dir():
+            if observed_relative not in allowed_directories:
+                raise ReleaseControlError(
+                    "qualification execution produced an undeclared directory"
+                )
+        elif path.is_file():
+            observed.add(observed_relative)
+        else:
+            raise ReleaseControlError("qualification execution produced an unsafe object")
+    if observed != names - {"execution.json"}:
+        raise ReleaseControlError("qualification execution produced undeclared files")
+
+    data = {
+        "attempt_id": attempt_id,
+        "candidate_digest": plan["candidate_digest"],
+        "cell_id": cell_id,
+        "completed_at": completed_at.isoformat().replace("+00:00", "Z"),
+        "environment_id": cell["environment_id"],
+        "expected_subject": unit.get("expected_subject"),
+        "observed_process_exit": completed.returncode,
+        "outputs": sorted(retained_outputs, key=lambda row: row["path"]),
+        "plan_digest": plan["plan_digest"],
+        "profile_id": cell["profile_id"],
+        "recipe_digest": sha256_json(recipe),
+        "scenario_ids": cell["scenario_ids"],
+        "started_at": started.isoformat().replace("+00:00", "Z"),
+        "stderr_digest": sha256_bytes(completed.stderr),
+        "stdout_digest": sha256_bytes(completed.stdout),
+    }
+    result = make_record(
+        "release-cell-execution",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=fixture_mode,
+    )
+    write_immutable_json(staged_output / "execution.json", result)
+    return result
+
+
 def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) -> int:
     """Run one exact section-9B adapter without inventing live authority."""
 
@@ -9419,7 +9748,7 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
         destination = getattr(args, _argument_destination(contract.output_flag), None)
         if destination is not None:
             relative = _run_relative(context.root, Path(destination))
-            if Path(relative).parent != Path("."):
+            if name != "execute_release_qualification.py" and Path(relative).parent != Path("."):
                 raise ReleaseControlError(
                     "canonical release record must be directly in its run root"
                 )
@@ -9630,6 +9959,10 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "execute_release_qualification.py":
+            result = _execute_release_qualification_operation(args, context)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_artifact_manifest.py":
             result = read_json(Path(args.record))
             validate_release_artifact_files(
@@ -9789,9 +10122,13 @@ def _collect_staged_outputs(context: ReleaseInvocation) -> list[dict[str, str]]:
     staged = context.directory / "staged"
     for planned in context.intent["planned_outputs"]:
         source = _journal_path(staged, planned["path"])
+        directory_kind = planned["schema_id"] in {
+            "metriplane.release-artifact-directory.v1",
+            "metriplane.release-cell-execution-directory.v1",
+        }
         paths = (
-            sorted(source.iterdir())
-            if planned["schema_id"] == "metriplane.release-artifact-directory.v1"
+            sorted(path for path in source.rglob("*") if path.is_file())
+            if directory_kind
             else [source]
         )
         if not paths:
@@ -9809,6 +10146,19 @@ def _collect_staged_outputs(context: ReleaseInvocation) -> list[dict[str, str]]:
                 )
                 if not kind:
                     raise ReleaseControlError("worker produced an unknown artifact")
+            elif kind == "metriplane.release-cell-execution-directory.v1":
+                kind = (
+                    "metriplane.release-cell-execution.v1"
+                    if path.relative_to(source).as_posix() == "execution.json"
+                    else "application/octet-stream"
+                )
+                if kind.startswith("metriplane."):
+                    record = _source_json(raw, "staged qualification execution")
+                    validate_record(record, "release-cell-execution")
+                    if raw != canonical_json(record):
+                        raise ReleaseControlError(
+                            "worker qualification execution record is not canonical"
+                        )
             else:
                 record = _source_json(raw, "staged output")
                 validate_record(record, kind.removeprefix("metriplane.").removesuffix(".v1"))
@@ -10142,6 +10492,81 @@ def _install_release_outputs(
         return _install_release_gate_pair(
             context, outputs, original_stage_capture=gate_stage_capture
         )
+    if context.intent["tool"] == "execute_release_qualification.py":
+        if len(context.intent["planned_outputs"]) != 1:
+            raise ReleaseControlError("qualification execution has an invalid output plan")
+        planned = context.intent["planned_outputs"][0]
+        if planned["schema_id"] != "metriplane.release-cell-execution-directory.v1":
+            raise ReleaseControlError("qualification execution output type is invalid")
+        destination = _journal_path(context.root, planned["path"])
+        source = _journal_path(context.directory / "staged", planned["path"])
+        if destination.exists() or destination.is_symlink():
+            raise ReleaseControlError("refusing to overwrite a qualification cell")
+        _, _, root_directories = _release_held_path(context.root, directory=True)
+        relative_parent = destination.parent.relative_to(context.root)
+        current = context.root
+        for part in relative_parent.parts:
+            current = current / part
+            if current.exists():
+                if current.is_symlink() or not current.is_dir():
+                    raise ReleaseControlError("qualification output parent is unsafe")
+            else:
+                current.mkdir(mode=0o700)
+        _release_held_path(context.root, directory=True, expected_directories=root_directories)
+        _, _, source_parent_directories = _release_held_path(
+            source.parent, directory=True, expected_prefix=root_directories
+        )
+        _, _, destination_parent_directories = _release_held_path(
+            destination.parent, directory=True, expected_prefix=root_directories
+        )
+        source_parent_fd = os.open(source.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        destination_parent_fd = os.open(
+            destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
+        try:
+            source_parent_identity = os.fstat(source_parent_fd)
+            destination_parent_identity = os.fstat(destination_parent_fd)
+            _rename_candidate_exclusive(
+                source_parent_fd, source.name, destination_parent_fd, destination.name
+            )
+            installed_identity = os.stat(
+                destination.name, dir_fd=destination_parent_fd, follow_symlinks=False
+            )
+            if (
+                not stat.S_ISDIR(installed_identity.st_mode)
+                or (source_parent_identity.st_dev, source_parent_identity.st_ino)
+                != (
+                    os.fstat(source_parent_fd).st_dev,
+                    os.fstat(source_parent_fd).st_ino,
+                )
+                or (destination_parent_identity.st_dev, destination_parent_identity.st_ino)
+                != (
+                    os.fstat(destination_parent_fd).st_dev,
+                    os.fstat(destination_parent_fd).st_ino,
+                )
+            ):
+                raise ReleaseControlError("qualification output directory custody changed")
+            os.fsync(destination_parent_fd)
+        finally:
+            os.close(source_parent_fd)
+            os.close(destination_parent_fd)
+        _release_held_path(
+            source.parent, directory=True, expected_directories=source_parent_directories
+        )
+        _release_held_path(
+            destination.parent,
+            directory=True,
+            expected_directories=destination_parent_directories,
+        )
+        if outputs != _collect_installed_qualification_outputs(context, destination):
+            raise ReleaseControlError("installed qualification cell bytes changed")
+        _release_held_path(
+            destination.parent,
+            directory=True,
+            expected_directories=destination_parent_directories,
+        )
+        _release_held_path(context.root, directory=True, expected_directories=root_directories)
+        return None
     if context.intent["tool"] in {
         "resolve_release_target.py",
         "record_release_target_burn.py",
@@ -10186,8 +10611,12 @@ def _install_release_outputs(
     except BaseException:
         for source, destination in reversed(installed):
             try:
-                origin, current = source.stat(), destination.stat(follow_symlinks=False)
-                if (origin.st_dev, origin.st_ino) == (current.st_dev, current.st_ino):
+                origin_stat = source.stat()
+                current_stat = destination.stat(follow_symlinks=False)
+                if (origin_stat.st_dev, origin_stat.st_ino) == (
+                    current_stat.st_dev,
+                    current_stat.st_ino,
+                ):
                     destination.unlink()
             except OSError:
                 pass
@@ -10199,6 +10628,31 @@ def _install_release_outputs(
         raise
 
     return None
+
+
+def _collect_installed_qualification_outputs(
+    context: ReleaseInvocation,
+    destination: Path,
+    *,
+    inventory_root: Path | None = None,
+) -> list[dict[str, str]]:
+    prefix = destination.relative_to(context.root if inventory_root is None else inventory_root)
+    result = []
+    for path in sorted(value for value in destination.rglob("*") if value.is_file()):
+        raw = _safe_release_bytes(path)
+        relative = path.relative_to(destination).as_posix()
+        result.append(
+            {
+                "path": (prefix / relative).as_posix(),
+                "schema_id": (
+                    "metriplane.release-cell-execution.v1"
+                    if relative == "execution.json"
+                    else "application/octet-stream"
+                ),
+                "sha256": sha256_bytes(raw),
+            }
+        )
+    return result
 
 
 def _terminal_inputs(context: ReleaseInvocation) -> list[dict[str, str]]:
@@ -10620,6 +11074,36 @@ def run_release_command(
                     value = _command_value(argv, flag)
                     if value is not None:
                         inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            elif tool == "execute_release_qualification.py":
+                plan_value = _command_value(argv, "plan")
+                artifacts_value = _command_value(argv, "artifacts")
+                if plan_value is not None:
+                    plan_path = Path(plan_value).absolute()
+                    candidate_root = plan_path.parent
+                    inputs.extend(
+                        [
+                            (plan_path, "metriplane.release-qualification-plan.v1"),
+                            (
+                                candidate_root / "gate-instance.json",
+                                "metriplane.release-gate-instance.v1",
+                            ),
+                            (
+                                candidate_root / "scenario-catalog.json",
+                                "metriplane.release-scenario-catalog.v1",
+                            ),
+                            (
+                                candidate_root / "artifact-manifest.json",
+                                "metriplane.release-artifact-manifest.v1",
+                            ),
+                        ]
+                    )
+                    if artifacts_value is not None:
+                        artifact_root = Path(artifacts_value).absolute()
+                        manifest = read_json(candidate_root / "artifact-manifest.json")
+                        for row in _validate_artifact_manifest_payload(
+                            manifest["data"], expected_milestone=manifest["data"]["milestone"]
+                        ):
+                            inputs.append((artifact_root / row["path"], row["media_type"]))
             else:
                 for flag, kind in [
                     ("gate-input", "release-gate-input"),
@@ -10648,7 +11132,16 @@ def run_release_command(
                         )
                     )
             outputs = []
-            if contract.output_flag is not None:
+            if tool == "execute_release_qualification.py":
+                value = _command_value(argv, "out")
+                if value is not None:
+                    outputs.append(
+                        (
+                            Path(value).absolute(),
+                            "metriplane.release-cell-execution-directory.v1",
+                        )
+                    )
+            elif contract.output_flag is not None:
                 value = _command_value(argv, contract.output_flag)
                 if value is not None:
                     path = Path(value).absolute()

@@ -721,6 +721,334 @@ def finalized(prepared: dict[str, Any]) -> tuple[dict[str, Any], Path]:
     return prepared, _success(prepared, _finalize(prepared))
 
 
+def _qualification_execution_fixture(
+    candidate: Path, *, behavior: str = "success", sequence: int = 1
+) -> list[str]:
+    """Bind one synthetic argv cell to genuine retained candidate artifacts."""
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+
+    def source(name: str) -> dict[str, Any]:
+        raw = ("synthetic qualification owner: " + name).encode()
+        return {
+            "binding": "candidate_source_blob",
+            "repository": "Miko997/metriplane",
+            "path": name,
+            "git_mode": "100644",
+            "git_blob": "1" * 40,
+            "source_bytes": {
+                "path": name,
+                "bytes": len(raw),
+                "sha256": control.sha256_bytes(raw),
+            },
+        }
+
+    def owner(name: str) -> dict[str, Any]:
+        return {
+            "kind": "python_entry",
+            "source_path": name,
+            "symbol": "run",
+            "source": source(name),
+        }
+
+    scripts = {
+        "success": (
+            "from pathlib import Path;import sys;"
+            "p=Path(sys.argv[1]);p.joinpath('result.json').write_text('fixture-result')"
+        ),
+        "exit": "raise SystemExit(7)",
+        "missing": "pass",
+        "extra": (
+            "from pathlib import Path;import sys;"
+            "p=Path(sys.argv[1]);p.joinpath('result.json').write_text('fixture-result');"
+            "p.joinpath('undeclared').write_text('unexpected')"
+        ),
+        "directory": (
+            "from pathlib import Path;import sys;"
+            "p=Path(sys.argv[1]);p.joinpath('result.json').write_text('fixture-result');"
+            "p.joinpath('undeclared-directory').mkdir()"
+        ),
+        "symlink": (
+            "from pathlib import Path;import sys;"
+            "p=Path(sys.argv[1]);p.joinpath('result.json').write_text('fixture-result');"
+            "p.joinpath('unsafe-link').symlink_to('result.json')"
+        ),
+        "timeout": (
+            "from pathlib import Path;import os,sys,time;"
+            "p=Path(sys.argv[1]);"
+            "p.joinpath('result.json').write_text('fixture-result') "
+            "if os.environ.get('METRIPLANE_QUALIFICATION_FIXTURE_RECOVER')=='1' "
+            "else time.sleep(5)"
+        ),
+    }
+    recipe = {
+        "owner": owner("tools/execute_release_qualification.py"),
+        "required_operation_owner": owner("metriplane/release_control.py"),
+        "terminal_owner": "metriplane/release_control.py",
+        "effect_class": "scratch_only",
+        "input_slots": [
+            {
+                "name": name,
+                "kind": kind,
+                "binding_owner": "common_invocation",
+                "must_exist_before_execution": True,
+            }
+            for name, kind in (
+                ("python_executable", "executable"),
+                ("candidate_root", "directory"),
+                ("execution_output_root", "directory"),
+            )
+        ],
+        "input_sidecars": [],
+        "resources": [],
+        "timeout_seconds": 1 if behavior == "timeout" else 10,
+        "expected_process_exits": [0],
+        "expected_outputs": [
+            {
+                "id": "fixture-result",
+                "root": "execution_output_root",
+                "path": "result.json",
+                "media_type": "text/plain",
+                "schema_source_id": None,
+                "minimum_bytes": 1,
+                "validator_owner": owner("tests/test_release_candidate_finalization.py"),
+                "required": True,
+            }
+        ],
+        "thresholds": [],
+        "cleanliness": {
+            key: "FAIL"
+            for key in (
+                "unexpected_warnings",
+                "unexpected_skip",
+                "unexpected_xfail",
+                "unrecorded_retry",
+                "process_or_file_leak",
+            )
+        },
+        "launch": {
+            "kind": "argv",
+            "argv": [
+                {"kind": "binding", "name": "python_executable"},
+                {"kind": "literal", "value": "-c"},
+                {"kind": "literal", "value": scripts[behavior]},
+                {"kind": "binding", "name": "execution_output_root"},
+            ],
+            "cwd": "candidate_root",
+            "environment": [],
+            "unset_environment": [],
+            "shell": False,
+        },
+    }
+    unit = {
+        "unit_id": cell_id,
+        "slot_milestone": "v0.4",
+        "phase": "qualification",
+        "environment_id": "linux-py312",
+        "profile_id": "release",
+        "scenario_id": "FIXTURE",
+        "obligation_ids": ["OBL-FIXTURE"],
+        "prerequisite_unit_ids": [],
+        "qualification_unit_terminal_on_verified_expectation": "PASS",
+        "expected_subject": {"fault_id": None, "scope": "fixture", "verdict": "PASS"},
+        "recipe": recipe,
+    }
+    catalog_data = {
+        "release_slots": [{"milestone": "v0.4", "qualification_attempts_required": 1}],
+        "execution_units": [unit],
+        "scenario_registry_digest": "2" * 64,
+        "unresolved_declarations": [],
+    }
+    catalog_data["catalog_digest"] = control.sha256_json(catalog_data)
+    catalog = control.make_record(
+        "release-scenario-catalog",
+        catalog_data,
+        invocation_id="synthetic-qualification-catalog",
+        sequence=1,
+        synthetic=True,
+    )
+    identity = control.read_json(candidate / IDENTITY)
+    predecessor = control.read_json(candidate / "predecessor.json")
+    manifest = control.read_json(candidate / "artifact-manifest.json")
+    gate_data = {
+        "candidate_digest": identity["data"]["candidate_digest"],
+        "instance_digest": "3" * 64,
+        "milestone": "v0.4",
+        "predecessor_digest": control.sha256_json(predecessor),
+        "scenario_catalog_digest": control.sha256_json(catalog),
+    }
+    gate = control.make_record(
+        "release-gate-instance",
+        gate_data,
+        invocation_id="synthetic-qualification-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    plan_data = {
+        "attempt_count": 1,
+        "candidate_digest": identity["data"]["candidate_digest"],
+        "candidate_manifest_digest": control.sha256_json(manifest),
+        "cells": [
+            {
+                "cell_id": cell_id,
+                "environment_id": "linux-py312",
+                "obligation_ids": ["OBL-FIXTURE"],
+                "profile_id": "release",
+                "scenario_ids": ["FIXTURE"],
+            }
+        ],
+        "delta_digest": "4" * 64,
+        "delta_test_map_digest": "5" * 64,
+        "expected_terminal_result": "PASS",
+        "gate_instance_digest": control.sha256_json(gate),
+        "milestone": "v0.4",
+        "predecessor_digest": control.sha256_json(predecessor),
+        "readiness_digest": "6" * 64,
+        "scenario_catalog_digest": control.sha256_json(catalog),
+    }
+    plan_data["plan_digest"] = control.sha256_json(plan_data)
+    plan = control.make_record(
+        "release-qualification-plan",
+        plan_data,
+        invocation_id="synthetic-qualification-plan",
+        sequence=1,
+        synthetic=True,
+    )
+    for name, record in (
+        ("scenario-catalog.json", catalog),
+        ("gate-instance.json", gate),
+        ("qualification-plan.json", plan),
+    ):
+        path = candidate / name
+        if path.exists():
+            assert path.read_bytes() == control.canonical_json(record)
+        else:
+            _write(path, record)
+    return [
+        "--plan",
+        str(candidate / "qualification-plan.json"),
+        "--attempt-id",
+        "001",
+        "--cell",
+        cell_id,
+        "--artifacts",
+        str(candidate / "artifacts"),
+        "--out",
+        str(candidate / "attempts/001/cells" / cell_id),
+        "--invocation-dir",
+        str(candidate / "invocations/execute-release-qualification" / f"{sequence:03d}"),
+    ]
+
+
+def test_public_qualification_executor_retains_exact_raw_cell_and_refuses_overwrite(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    argv = _qualification_execution_fixture(candidate)
+    result = _public(fixture, "execute_release_qualification.py", argv)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    output = candidate / "attempts/001/cells/v0.4:qualification:linux-py312:fixture"
+    record = control.read_json(output / "execution.json")
+    assert record["record_type"] == "release-cell-execution"
+    assert record["data"]["observed_process_exit"] == 0
+    assert record["data"]["outputs"] == [
+        {
+            "id": "fixture-result",
+            "media_type": "text/plain",
+            "path": "result.json",
+            "sha256": control.sha256_bytes(b"fixture-result"),
+            "size": len(b"fixture-result"),
+        }
+    ]
+    before = _snapshot(output)
+    retry = _public(
+        fixture,
+        "execute_release_qualification.py",
+        _qualification_execution_fixture(candidate, sequence=2),
+    )
+    assert retry.returncode != 0
+    _assert_preserved(before, output)
+
+
+@pytest.mark.parametrize("behavior", ["exit", "missing", "extra", "directory", "symlink"])
+def test_public_qualification_executor_rejects_failed_or_inconsistent_process(
+    finalized: tuple[dict[str, Any], Path], behavior: str
+) -> None:
+    fixture, candidate = finalized
+    result = _public(
+        fixture,
+        "execute_release_qualification.py",
+        _qualification_execution_fixture(candidate, behavior=behavior),
+    )
+    assert result.returncode != 0
+    assert not (candidate / "attempts/001/cells").exists()
+
+
+def test_public_qualification_executor_timeout_can_retry_without_false_success(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    timed_out = _public(
+        fixture,
+        "execute_release_qualification.py",
+        _qualification_execution_fixture(candidate, behavior="timeout"),
+    )
+    assert timed_out.returncode != 0
+    assert not (candidate / "attempts/001/cells").exists()
+    terminal = control.read_json(
+        candidate / "invocations/execute-release-qualification/001/invocation.json"
+    )
+    assert terminal["status"] != "PASS"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("METRIPLANE_QUALIFICATION_FIXTURE_RECOVER", "1")
+        retry = _public(
+            fixture,
+            "execute_release_qualification.py",
+            _qualification_execution_fixture(candidate, behavior="timeout", sequence=2),
+        )
+    assert retry.returncode == 0, (retry.stdout, retry.stderr)
+
+
+def test_public_qualification_executor_rejects_substituted_cell_binding(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    argv = _qualification_execution_fixture(candidate)
+    argv[argv.index("--cell") + 1] = "v0.4:qualification:linux-py312:substituted"
+    result = _public(fixture, "execute_release_qualification.py", argv)
+    assert result.returncode != 0
+    assert not (candidate / "attempts/001/cells").exists()
+
+
+@pytest.mark.parametrize("substitution", ["plan", "catalog", "artifact"])
+def test_public_qualification_executor_rejects_substituted_retained_input(
+    finalized: tuple[dict[str, Any], Path], substitution: str
+) -> None:
+    fixture, candidate = finalized
+    argv = _qualification_execution_fixture(candidate)
+    if substitution == "artifact":
+        artifact = next((candidate / "artifacts").glob("*.whl"))
+        _replace(artifact, artifact.read_bytes() + b"substituted")
+    else:
+        name = "qualification-plan.json" if substitution == "plan" else "scenario-catalog.json"
+        path = candidate / name
+        record = control.read_json(path)
+        data = copy.deepcopy(record["data"])
+        if substitution == "plan":
+            data["candidate_digest"] = "a" * 64
+            unsigned = dict(data)
+            unsigned.pop("plan_digest")
+            data["plan_digest"] = control.sha256_json(unsigned)
+        else:
+            data["execution_units"][0]["environment_id"] = "macos-py312"
+            unsigned = dict(data)
+            unsigned.pop("catalog_digest")
+            data["catalog_digest"] = control.sha256_json(unsigned)
+        _replace(path, control.canonical_json(_remake(record, data)))
+    result = _public(fixture, "execute_release_qualification.py", argv)
+    assert result.returncode != 0
+    assert not (candidate / "attempts/001/cells").exists()
+
+
 def test_real_locked_s1_build_finalization_and_public_validation(tmp_path: Path) -> None:
     fixture = _make_fixture(tmp_path, real_project=True, build=False)
     # Only this source test executes the genuine pinned build adapter/backend.

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `34a2e5a469ca7be86817aa7a69e5397b9d06463ffe6c60890c88db5132db5f97`
+Canonical projection SHA-256: `d12de0a5d9e0695779d164a93051970ccf34382046aab08127466056eb297da6`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 189 |
+| actions | 190 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -283,6 +283,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.docker_live_up | tool | Docker Live Up | tools/docker_live_up.sh |
 | tool.docker_smoke_test | tool | Docker Smoke Test | tools/docker_smoke_test.sh |
 | tool.docker_stop | tool | Docker Stop | tools/docker_stop.sh |
+| tool.execute_release_qualification | tool | Execute Release Qualification | python tools/execute_release_qualification.py |
 | tool.export_release_attempt_index | tool | Export Release Attempt Index | python tools/export_release_attempt_index.py |
 | tool.export_release_burn_lineage | tool | Export Release Burn Lineage | python tools/export_release_burn_lineage.py |
 | tool.finalize_release_candidate_identity | tool | Finalize Release Candidate Identity | python tools/finalize_release_candidate_identity.py |
