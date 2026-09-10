@@ -11587,17 +11587,22 @@ def _connected_predecessor_command_fixture(
             "candidate_digest": candidate_data["candidate_digest"],
             "cell_id": plan_cell["cell_id"],
             "completed_at": "2026-01-01T00:00:20Z",
-            "counts": {
-                "deselected": 0,
-                "failed": 0,
-                "passed": 1,
-                "retried": 0,
-                "skipped": 0,
-                "xfailed": 0,
-                "xpassed": 0,
+            "evidence": {
+                "expected_subject_digest": "d" * 64,
+                "kind": "command",
+                "observed_process_exit": 0,
+                "outputs": [
+                    {
+                        "id": "historical-result",
+                        "media_type": "application/json",
+                        "path": "result.json",
+                        "sha256": "e" * 64,
+                        "size": 1,
+                    }
+                ],
+                "recipe_digest": "f" * 64,
             },
             "environment_id": plan_cell["environment_id"],
-            "junit_digest": "d" * 64,
             "obligation_ids": plan_cell["obligation_ids"],
             "plan_digest": plan_digest,
             "profile_id": plan_cell["profile_id"],
@@ -11605,8 +11610,8 @@ def _connected_predecessor_command_fixture(
             "runner_identity": "fixture-runner",
             "scenario_ids": plan_cell["scenario_ids"],
             "started_at": "2026-01-01T00:00:10Z",
-            "stderr_digest": "e" * 64,
-            "stdout_digest": "f" * 64,
+            "stderr_digest": "1" * 64,
+            "stdout_digest": "2" * 64,
             "unexpected_outcomes": [],
         },
     )

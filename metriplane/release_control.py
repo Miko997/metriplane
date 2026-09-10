@@ -2034,9 +2034,8 @@ def _validate_cell_result_payload(
         "candidate_digest",
         "cell_id",
         "completed_at",
-        "counts",
+        "evidence",
         "environment_id",
-        "junit_digest",
         "obligation_ids",
         "plan_digest",
         "profile_id",
@@ -2065,7 +2064,6 @@ def _validate_cell_result_payload(
         raise ReleaseControlError("release qualification cell result binding mismatch")
     for field in (
         "artifact_digest",
-        "junit_digest",
         "plan_digest",
         "stderr_digest",
         "stdout_digest",
@@ -2074,24 +2072,49 @@ def _validate_cell_result_payload(
     _require_nonempty_string(cell["runner_identity"], "release qualification cell runner")
     _require_canonical_string_inventory(cell["obligation_ids"], "release cell obligations")
     _require_canonical_string_inventory(cell["scenario_ids"], "release cell scenarios")
-    counts = cell["counts"]
-    count_fields = {
-        "deselected",
-        "failed",
-        "passed",
-        "retried",
-        "skipped",
-        "xfailed",
-        "xpassed",
-    }
-    if (
-        not isinstance(counts, dict)
-        or set(counts) != count_fields
-        or any(type(counts[field]) is not int or counts[field] < 0 for field in count_fields)
-        or counts["passed"] < 1
-        or any(counts[field] != 0 for field in count_fields - {"passed"})
-    ):
-        raise ReleaseControlError("release qualification cell counts are not a clean PASS")
+    evidence = _release_closed_mapping(
+        cell["evidence"],
+        {
+            "expected_subject_digest",
+            "kind",
+            "observed_process_exit",
+            "outputs",
+            "recipe_digest",
+        },
+        "release qualification cell evidence",
+    )
+    if evidence["kind"] != "command" or evidence["observed_process_exit"] != 0:
+        raise ReleaseControlError("release qualification cell command did not pass")
+    for field in ("expected_subject_digest", "recipe_digest"):
+        _require_digest(evidence[field], "release qualification cell evidence " + field)
+    outputs = evidence["outputs"]
+    if not isinstance(outputs, list) or not outputs:
+        raise ReleaseControlError("release qualification cell has no exact command outputs")
+    paths: list[str] = []
+    output_ids: set[str] = set()
+    for value in outputs:
+        output = _release_closed_mapping(
+            value,
+            {"id", "media_type", "path", "sha256", "size"},
+            "release qualification command output",
+        )
+        output_id = _require_nonempty_string(
+            output["id"], "release qualification command output id"
+        )
+        _require_nonempty_string(
+            output["media_type"], "release qualification command output media type"
+        )
+        paths.append(
+            _release_relative_suffix(
+                output["path"], "release qualification command output path"
+            ).as_posix()
+        )
+        _require_digest(output["sha256"], "release qualification command output bytes")
+        if type(output["size"]) is not int or output["size"] < 1 or output_id in output_ids:
+            raise ReleaseControlError("release qualification command output size is invalid")
+        output_ids.add(output_id)
+    if paths != sorted(set(paths)):
+        raise ReleaseControlError("release qualification command outputs are not canonical")
     started_at = _parse_utc_timestamp(cell["started_at"], "release cell start")
     completed_at = _parse_utc_timestamp(cell["completed_at"], "release cell completion")
     if completed_at < started_at:
@@ -9996,17 +10019,14 @@ def _finalize_release_attempt_cells_operation(
                 "candidate_digest": plan["candidate_digest"],
                 "cell_id": cell_id,
                 "completed_at": execution["completed_at"],
-                "counts": {
-                    "deselected": 0,
-                    "failed": 0,
-                    "passed": 1,
-                    "retried": 0,
-                    "skipped": 0,
-                    "xfailed": 0,
-                    "xpassed": 0,
+                "evidence": {
+                    "expected_subject_digest": sha256_json(execution["expected_subject"]),
+                    "kind": "command",
+                    "observed_process_exit": execution["observed_process_exit"],
+                    "outputs": outputs,
+                    "recipe_digest": execution["recipe_digest"],
                 },
                 "environment_id": plan_cell["environment_id"],
-                "junit_digest": sha256_json(outputs),
                 "obligation_ids": plan_cell["obligation_ids"],
                 "plan_digest": plan["plan_digest"],
                 "profile_id": plan_cell["profile_id"],
