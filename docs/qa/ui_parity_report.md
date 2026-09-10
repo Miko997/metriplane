@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `d12de0a5d9e0695779d164a93051970ccf34382046aab08127466056eb297da6`
+Canonical projection SHA-256: `064e5040d14110638f39f18912eb24515232de43c2caecc3a071016ae7dc8eca`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 190 |
+| total_discovered_features | 195 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 104 |
+| cli_only_documented | 109 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -166,12 +166,15 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | runner.gpu-equivalence | GPU Equivalence Test | metriplane/runner/allowlist.py | ./tools/mp.sh gpu-equivalence | - | - | cli_only_documented | P1 | Requires visible ArUco markers in test session |
 | runner.health-degrade-cam1 | Health Degradation | metriplane/runner/allowlist.py | ./tools/mp.sh health-degrade-cam1 | - | - | cli_only_documented | P1 | Requires second capture-capable camera |
 | runner.run-fusion | Run Fusion | metriplane/runner/allowlist.py | ./tools/mp.sh run-fusion cpu 60 test | - | - | cli_only_documented | P1 | Hardware/configuration dependent - use CLI directly |
+| tool.aggregate_release_attempt | Aggregate Release Attempt | tools/aggregate_release_attempt.py | python tools/aggregate_release_attempt.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.analyze_session_metrics | Analyze Session Metrics | tools/analyze_session_metrics.py | python tools/analyze_session_metrics.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.audit_ui_functionality | Audit Ui Functionality | tools/audit_ui_functionality.py | python tools/audit_ui_functionality.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.baseline_snapshot | Baseline Snapshot | tools/baseline_snapshot.py | python tools/baseline_snapshot.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_external_source_family_matrix | Build External Source Family Matrix | tools/build_external_source_family_matrix.py | python tools/build_external_source_family_matrix.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_maniskill_pickcube_proof | Build Maniskill Pickcube Proof | tools/build_maniskill_pickcube_proof.py | python tools/build_maniskill_pickcube_proof.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_release_artifacts | Build Release Artifacts | tools/build_release_artifacts.py | python tools/build_release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.build_release_qualification | Build Release Qualification | tools/build_release_qualification.py | python tools/build_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.capture_release_run_statuses | Capture Release Run Statuses | tools/capture_release_run_statuses.py | python tools/capture_release_run_statuses.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.capture_release_target_observations | Capture Release Target Observations | tools/capture_release_target_observations.py | python tools/capture_release_target_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.capture_repository_protection | Capture Repository Protection | tools/capture_repository_protection.py | python tools/capture_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_blockers | Check Blockers | tools/check_blockers.py | python tools/check_blockers.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -195,6 +198,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.execute_release_qualification | Execute Release Qualification | tools/execute_release_qualification.py | python tools/execute_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.export_release_attempt_index | Export Release Attempt Index | tools/export_release_attempt_index.py | python tools/export_release_attempt_index.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.export_release_burn_lineage | Export Release Burn Lineage | tools/export_release_burn_lineage.py | python tools/export_release_burn_lineage.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.finalize_release_attempt_cells | Finalize Release Attempt Cells | tools/finalize_release_attempt_cells.py | python tools/finalize_release_attempt_cells.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.finalize_release_candidate_identity | Finalize Release Candidate Identity | tools/finalize_release_candidate_identity.py | python tools/finalize_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.freeze_release_source | Freeze Release Source | tools/freeze_release_source.py | python tools/freeze_release_source.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.jetson_preflight | Jetson Preflight | tools/jetson_preflight.sh | tools/jetson_preflight.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -229,6 +233,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.validate_publication_reconciliation | Validate Publication Reconciliation | tools/validate_publication_reconciliation.py | python tools/validate_publication_reconciliation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_approval | Validate Release Approval | tools/validate_release_approval.py | python tools/validate_release_approval.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_artifact_manifest | Validate Release Artifact Manifest | tools/validate_release_artifact_manifest.py | python tools/validate_release_artifact_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_attempt | Validate Release Attempt | tools/validate_release_attempt.py | python tools/validate_release_attempt.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_candidate_identity | Validate Release Candidate Identity | tools/validate_release_candidate_identity.py | python tools/validate_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_evidence_stores | Validate Release Evidence Stores | tools/validate_release_evidence_stores.py | python tools/validate_release_evidence_stores.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_gate_input | Validate Release Gate Input | tools/validate_release_gate_input.py | python tools/validate_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
