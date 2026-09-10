@@ -1647,8 +1647,15 @@ def test_attempt_finalizer_rejects_changed_output_then_recovers_without_false_su
     assert (attempt / "coordination.json").is_file()
 
 
-def test_attempt_finalizer_does_not_turn_provider_failure_into_success(
+@pytest.mark.parametrize(
+    ("conclusion", "terminal_status", "hard_loss"),
+    [("failure", "FAIL", False), ("cancelled", "CANCELLED", True)],
+)
+def test_attempt_finalizer_retains_provider_failure_without_false_success(
     finalized: tuple[dict[str, Any], Path],
+    conclusion: str,
+    terminal_status: str,
+    hard_loss: bool,
 ) -> None:
     fixture, candidate = finalized
     assert (
@@ -1677,8 +1684,9 @@ def test_attempt_finalizer_does_not_turn_provider_failure_into_success(
     status_path = attempt / "hosted-run-statuses.json"
     status = control.read_json(status_path)
     data = copy.deepcopy(status["data"])
-    data["cells"][0]["conclusion"] = "failure"
+    data["cells"][0]["conclusion"] = conclusion
     _replace(status_path, control.canonical_json(_remake(status, data)))
+    shutil.rmtree(attempt / "cells")
     result = _public(
         fixture,
         "finalize_release_attempt_cells.py",
@@ -1698,8 +1706,38 @@ def test_attempt_finalizer_does_not_turn_provider_failure_into_success(
             str(candidate / "invocations/finalize-release-attempt-cells/001"),
         ],
     )
-    assert result.returncode != 0
-    assert not (attempt / "coordination.json").exists()
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    coordination = control.read_json(attempt / "coordination.json")
+    assert coordination["status"] == "PASS"
+    assert coordination["data"]["coordination_result"] == terminal_status
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+    assert coordination["data"]["hard_runner_losses"] == ([cell_id] if hard_loss else [])
+    termination = control.read_json(
+        attempt / control._qualification_terminal_name(cell_id, "termination")
+    )
+    assert termination["data"]["state"] == conclusion
+    assert coordination["data"]["cells"][0]["provider_termination_digest"] == (
+        control.sha256_json(termination)
+    )
+    assert not (attempt / control._qualification_terminal_name(cell_id, "result")).exists()
+    aggregated = _public(
+        fixture,
+        "aggregate_release_attempt.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--coordination",
+            str(attempt / "coordination.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "attempt-summary.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/aggregate-release-attempt/001"),
+        ],
+    )
+    assert aggregated.returncode != 0
+    assert not (attempt / "attempt-summary.json").exists()
 
 
 def test_real_locked_s1_build_finalization_and_public_validation(tmp_path: Path) -> None:

@@ -9945,15 +9945,66 @@ def _finalize_release_attempt_cells_operation(
     )
     terminal_rows = []
     coordination_rows = []
+    coordination_result = "PASS"
+    hard_runner_losses: list[str] = []
     synthetic = True
     for cell_id, plan_cell in cells.items():
         status = status_by_cell[cell_id]
-        if (
-            status["status"] != "completed"
-            or status["conclusion"] != "success"
-            or status["provider_run_id"] != snapshot["provider_run_id"]
-        ):
-            raise ReleaseControlError("qualification cell lacks a successful terminal status")
+        if status["status"] != "completed":
+            raise ReleaseControlError("qualification cell lacks a terminal provider status")
+        if status["provider_run_id"] != snapshot["provider_run_id"]:
+            raise ReleaseControlError("qualification cell changes the provider run")
+        conclusion = _require_nonempty_string(
+            status["conclusion"], "qualification provider conclusion"
+        )
+        result_status = {
+            "success": "PASS",
+            "failure": "FAIL",
+            "timed_out": "FAIL",
+            "startup_failure": "FAIL",
+            "cancelled": "CANCELLED",
+            "skipped": "SKIPPED",
+            "neutral": "BLOCKED",
+            "stale": "BLOCKED",
+            "action_required": "BLOCKED",
+        }.get(conclusion)
+        if result_status is None:
+            raise ReleaseControlError("qualification provider conclusion is unsupported")
+        termination = make_record(
+            "provider-run-termination",
+            {
+                "job_id": _require_nonempty_string(status["job_id"], "provider job id"),
+                "provider_run_id": _require_nonempty_string(
+                    status["provider_run_id"], "provider run id"
+                ),
+                "state": conclusion,
+                "tool": "github-provider-fixture" if synthetic else "github-provider",
+            },
+            invocation_id=context.intent["invocation_id"],
+            sequence=context.intent["sequence"],
+            synthetic=synthetic,
+        )
+        termination_path = Path(args.out).parent / _qualification_terminal_name(
+            cell_id, "termination"
+        )
+        write_immutable_json(termination_path, termination)
+        coordination_rows.append(
+            {
+                "cell_id": cell_id,
+                "job_id": status["job_id"],
+                "provider_run_id": status["provider_run_id"],
+                "provider_termination_digest": sha256_json(termination),
+                "status": "terminal",
+            }
+        )
+        if result_status != "PASS":
+            priority = {"PASS": 0, "SKIPPED": 1, "BLOCKED": 2, "CANCELLED": 3, "FAIL": 4}
+            if priority[result_status] > priority[coordination_result]:
+                coordination_result = result_status
+            if conclusion in {"timed_out", "startup_failure", "cancelled", "stale"}:
+                hard_runner_losses.append(cell_id)
+            terminal_rows.append({"cell_id": cell_id, "result": result_status})
+            continue
         execution_path = attempt_dir / "cells" / cell_id / "execution.json"
         execution_record = read_json(execution_path)
         execution = _passing_record(execution_record, "release-cell-execution", live=False)
@@ -9993,24 +10044,6 @@ def _finalize_release_attempt_cells_operation(
                 or sha256_bytes(raw) != ref["sha256"]
             ):
                 raise ReleaseControlError("qualification output bytes changed")
-        termination = make_record(
-            "provider-run-termination",
-            {
-                "job_id": _require_nonempty_string(status["job_id"], "provider job id"),
-                "provider_run_id": _require_nonempty_string(
-                    status["provider_run_id"], "provider run id"
-                ),
-                "state": "success",
-                "tool": "github-provider-fixture" if synthetic else "github-provider",
-            },
-            invocation_id=context.intent["invocation_id"],
-            sequence=context.intent["sequence"],
-            synthetic=synthetic,
-        )
-        termination_path = Path(args.out).parent / _qualification_terminal_name(
-            cell_id, "termination"
-        )
-        write_immutable_json(termination_path, termination)
         result = make_record(
             "release-cell-result",
             {
@@ -10049,23 +10082,14 @@ def _finalize_release_attempt_cells_operation(
         terminal_rows.append(
             {"cell_id": cell_id, "result": "PASS", "result_digest": sha256_json(result)}
         )
-        coordination_rows.append(
-            {
-                "cell_id": cell_id,
-                "job_id": status["job_id"],
-                "provider_run_id": status["provider_run_id"],
-                "provider_termination_digest": sha256_json(termination),
-                "status": "terminal",
-            }
-        )
     coordination = make_record(
         "release-attempt-coordination",
         {
             "attempt_id": attempt_id,
             "candidate_digest": plan["candidate_digest"],
             "cells": coordination_rows,
-            "coordination_result": "PASS",
-            "hard_runner_losses": [],
+            "coordination_result": coordination_result,
+            "hard_runner_losses": hard_runner_losses,
             "milestone": plan["milestone"],
             "provider": "github",
             "qualification_plan_digest": plan["plan_digest"],
@@ -12065,17 +12089,32 @@ def run_release_command(
                         ]
                     )
                 if statuses_value is not None:
+                    statuses_path = Path(statuses_value).absolute()
                     inputs.append(
                         (
-                            Path(statuses_value).absolute(),
+                            statuses_path,
                             "metriplane.release-run-status-snapshot.v1",
                         )
                     )
                 if plan_value is not None and attempt_value is not None:
                     plan_record = read_json(Path(plan_value).absolute())
                     plan_cells = _validate_qualification_plan_payload(plan_record["data"])
+                    statuses = (
+                        read_json(statuses_path).get("data", {}).get("cells", [])
+                        if statuses_value is not None
+                        else []
+                    )
+                    successful_cells = {
+                        row.get("cell_id")
+                        for row in statuses
+                        if isinstance(row, dict)
+                        and row.get("status") == "completed"
+                        and row.get("conclusion") == "success"
+                    }
                     attempt_path = Path(attempt_value).absolute()
                     for cell_id in plan_cells:
+                        if cell_id not in successful_cells:
+                            continue
                         execution_path = attempt_path / "cells" / cell_id / "execution.json"
                         execution_record = read_json(execution_path)
                         execution = execution_record["data"]
@@ -12408,20 +12447,36 @@ def run_release_command(
                         if plan_value is None:
                             raise ReleaseControlError("attempt finalizer plan is missing")
                         plan_record = read_json(Path(plan_value).absolute())
+                        statuses_value = _command_value(argv, "hosted-run-statuses")
+                        if statuses_value is None:
+                            raise ReleaseControlError("attempt finalizer statuses are missing")
+                        statuses = (
+                            read_json(Path(statuses_value).absolute())
+                            .get("data", {})
+                            .get("cells", [])
+                        )
+                        successful_cells = {
+                            row.get("cell_id")
+                            for row in statuses
+                            if isinstance(row, dict)
+                            and row.get("status") == "completed"
+                            and row.get("conclusion") == "success"
+                        }
                         for cell_id in _validate_qualification_plan_payload(plan_record["data"]):
-                            outputs.extend(
-                                [
+                            if cell_id in successful_cells:
+                                outputs.append(
                                     (
                                         path.parent
                                         / _qualification_terminal_name(cell_id, "result"),
                                         "metriplane.release-cell-result.v1",
-                                    ),
-                                    (
-                                        path.parent
-                                        / _qualification_terminal_name(cell_id, "termination"),
-                                        "metriplane.provider-run-termination.v1",
-                                    ),
-                                ]
+                                    )
+                                )
+                            outputs.append(
+                                (
+                                    path.parent
+                                    / _qualification_terminal_name(cell_id, "termination"),
+                                    "metriplane.provider-run-termination.v1",
+                                )
                             )
                     elif tool == "aggregate_release_attempt.py":
                         outputs.append(
