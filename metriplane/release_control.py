@@ -4567,6 +4567,107 @@ def _postpublication_failed_stage(failed: ReleaseInvocation) -> str:
     raise ReleaseControlError("postpublication conflict stage owner is not implemented for " + tool)
 
 
+def _prepublication_failed_stage(failed: ReleaseInvocation) -> str:
+    """Resolve only command modes with an unambiguous prepublication stage owner."""
+
+    tool = failed.intent["tool"]
+    argv = failed.intent["argv"][1:]
+    direct = {
+        "validate_release_candidate_identity.py": "candidate-identity-validation",
+        "finalize_release_gate_instance.py": "gate-instance",
+        "check_release_readiness.py": "readiness",
+        "plan_release_qualification.py": "qualification-plan",
+        "validate_release_attempt.py": "attempt",
+        "build_release_qualification.py": "qualification",
+        "validate_release_qualification.py": "qualification",
+        "record_release_approval.py": "approval",
+        "validate_release_approval.py": "approval",
+        "validate_release_prepromotion_controls.py": "prepromotion-controls",
+        "update_release_attempt_index.py": "attempt-index-update",
+        "validate_release_attempt_index.py": "attempt-index-validation",
+        "record_release_index_recovery.py": "index-recovery",
+    }
+    if tool in direct:
+        return direct[tool]
+    if tool == "promote_release_candidate.py":
+        if "--dry-run" in argv:
+            return "promotion-plan"
+        if "--recover-abandoned-lock" in argv:
+            return "promotion-lock-recovery"
+    raise ReleaseControlError("prepublication blocker stage owner is not implemented for " + tool)
+
+
+def _record_release_blocker_attempt_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    """Bind one immutable blocker to the exact failed prepublication command."""
+
+    candidate_path = Path(args.candidate_identity).absolute()
+    failed_directory = Path(args.failed_invocation_dir).absolute()
+    if (
+        not candidate_path.is_relative_to(context.root)
+        or failed_directory.parent.parent.parent != context.root
+    ):
+        raise ReleaseControlError("prepublication blocker inputs belong to another run")
+    candidate_record = read_json(candidate_path)
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=context.intent["environment"]["fixture_mode"] != "1",
+    )
+    failed = _validate_intent(failed_directory)
+    terminal = _validate_terminal(failed)
+    if terminal["status"] not in {"FAIL", "BLOCKED", "CANCELLED"}:
+        raise ReleaseControlError("prepublication blocker requires an actual failed operation")
+    if _prepublication_failed_stage(failed) != args.stage:
+        raise ReleaseControlError("prepublication blocker relabels another failed stage")
+    stage_record_digest = None
+    if args.stage_record is not None:
+        stage_record_path = Path(args.stage_record).absolute()
+        if not stage_record_path.is_relative_to(context.root):
+            raise ReleaseControlError("prepublication stage record belongs to another run")
+        stage_record = read_json(stage_record_path)
+        validate_record(stage_record)
+        if (
+            stage_record["status"] not in {"FAIL", "BLOCKED", "CANCELLED"}
+            or stage_record["data"].get("candidate_digest") != candidate["candidate_digest"]
+        ):
+            raise ReleaseControlError("prepublication stage record is not the candidate failure")
+        stage_record_digest = sha256_json(stage_record)
+    data: dict[str, Any] = {
+        "available_inputs": sorted(
+            [dict(row) for row in context.intent["inputs"]], key=lambda row: row["path"]
+        ),
+        "blocker_digest": "",
+        "candidate_digest": candidate["candidate_digest"],
+        "candidate_identity_digest": sha256_json(candidate_record),
+        "disposition": args.disposition.upper(),
+        "failed_invocation_digest": sha256_json(terminal),
+        "failed_invocation_id": failed.intent["invocation_id"],
+        "failed_tool": failed.intent["tool"],
+        "failure_exit_code": terminal["data"]["exit_code"],
+        "failure_status": terminal["status"],
+        "invocation_root_locator": "invocations",
+        "producer_intent_digest": sha256_json(context.intent),
+        "sequence": args.sequence,
+        "stage": args.stage,
+        "stage_record_digest": stage_record_digest,
+    }
+    unsigned = dict(data)
+    del unsigned["blocker_digest"]
+    data["blocker_digest"] = sha256_json(unsigned)
+    result = make_record(
+        "release-prepublication-blocker-attempt",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=context.intent["environment"]["fixture_mode"] == "1",
+        status="BLOCKED",
+    )
+    validate_record(result, "release-prepublication-blocker-attempt")
+    return result
+
+
 def _record_postpublication_conflict_operation(
     args: argparse.Namespace,
     context: ReleaseInvocation,
@@ -10231,6 +10332,7 @@ def _validate_bound_invocation(
         "collect_publication_observations.py",
         "build_publication_reconciliation.py",
         "record_postpublication_conflict.py",
+        "record_release_blocker_attempt.py",
     }:
         historical_cwd = Path(context.intent["environment"]["working_directory"])
         argv = context.intent["argv"][1:]
@@ -10255,6 +10357,7 @@ def _validate_bound_invocation(
             "collect_publication_observations.py": "release-publication-observations",
             "build_publication_reconciliation.py": "release-publication-reconciliation",
             "record_postpublication_conflict.py": "release-postpublication-conflict",
+            "record_release_blocker_attempt.py": "release-prepublication-blocker-attempt",
         }[tool]
         if planned["schema_id"] != "metriplane." + expected_type + ".v1":
             raise ReleaseControlError("publication output plan type differs")
@@ -10289,6 +10392,11 @@ def _validate_bound_invocation(
                 "no-lkg-invalidation",
                 "stage-record",
             ),
+            "record_release_blocker_attempt.py": (
+                "candidate-identity",
+                "failed-invocation-dir",
+                "stage-record",
+            ),
         }[tool]
         for flag in path_flags:
             argument_name = _argument_destination(flag)
@@ -10317,13 +10425,15 @@ def _validate_bound_invocation(
                 live=publication_live,
                 attestation_verifier=None,
             )
-        else:
+        elif tool == "record_postpublication_conflict.py":
             expected_record = _record_postpublication_conflict_operation(
                 replay_args,
                 context,
                 live=publication_live,
                 attestation_verifier=None,
             )
+        else:
+            expected_record = _record_release_blocker_attempt_operation(replay_args, context)
         if read_json(output_path) != expected_record:
             raise ReleaseControlError("publication output semantics differ from exact replay")
         return
@@ -13225,6 +13335,11 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "record_release_blocker_attempt.py":
+            result = _record_release_blocker_attempt_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_target_resolution.py":
             result = _validate_release_target_resolution_operation(args, context)
             print(canonical_json(result).decode("utf-8"))
@@ -14741,6 +14856,37 @@ def run_release_command(
                     value = _command_value(argv, flag)
                     if value is not None:
                         inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            elif tool == "record_release_blocker_attempt.py":
+                candidate_value = _command_value(argv, "candidate-identity")
+                failed_value = _command_value(argv, "failed-invocation-dir")
+                if candidate_value is None or failed_value is None:
+                    raise ReleaseControlError("prepublication blocker inputs are incomplete")
+                inputs.append(
+                    (
+                        Path(candidate_value).absolute(),
+                        "metriplane.release-candidate-identity.v1",
+                    )
+                )
+                failed_directory = Path(failed_value).absolute()
+                if failed_directory.parent.parent.parent != root:
+                    raise ReleaseControlError(
+                        "prepublication failed journal belongs to another run"
+                    )
+                for name, kind in (
+                    ("intent.json", "release-invocation-intent"),
+                    ("invocation.json", "release-stage-invocation"),
+                    ("stdout", "release-invocation-stdout"),
+                    ("stderr", "release-invocation-stderr"),
+                    ("partial-files.json", "release-partial-files"),
+                    ("worker-result.json", "release-worker-result"),
+                    ("terminal-commit.json", "gate-terminal-commit"),
+                ):
+                    path = failed_directory / name
+                    if path.is_file() and not path.is_symlink():
+                        inputs.append((path, "metriplane." + kind + ".v1"))
+                stage_value = _command_value(argv, "stage-record")
+                if stage_value is not None:
+                    inputs.append((Path(stage_value).absolute(), "metriplane.release-record.v1"))
             elif tool in {"resolve_release_target.py", "record_release_target_burn.py"}:
                 inputs.extend(_release_target_command_input_paths(tool, argv, root))
             elif tool == "validate_release_target_resolution.py":

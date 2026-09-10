@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `3218cd28430551a433e6aa3901d6ef43ea72f06590c3d4217f4d08ee8f79ab54`
+Canonical projection SHA-256: `cbbfef359bdd12c595d814028e6a8df414490fff429e3ce28ff8a55df8e5feb0`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 207 |
+| actions | 208 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -312,6 +312,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
 | tool.record_postpublication_conflict | tool | Record Postpublication Conflict | python tools/record_postpublication_conflict.py |
 | tool.record_release_approval | tool | Record Release Approval | python tools/record_release_approval.py |
+| tool.record_release_blocker_attempt | tool | Record Release Blocker Attempt | python tools/record_release_blocker_attempt.py |
 | tool.record_release_index_recovery | tool | Record Release Index Recovery | python tools/record_release_index_recovery.py |
 | tool.record_release_role_assignments | tool | Record Release Role Assignments | python tools/record_release_role_assignments.py |
 | tool.record_release_staging_attempt | tool | Record Release Staging Attempt | python tools/record_release_staging_attempt.py |

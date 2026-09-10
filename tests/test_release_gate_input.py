@@ -25,36 +25,83 @@ import pytest
 from metriplane import release_control as release
 
 
-@pytest.mark.parametrize(
-    "tool",
-    [
-        "build_publication_reconciliation.py",
-        "capture_release_target_observations.py",
-        "check_release_readiness.py",
-        "collect_publication_observations.py",
-        "export_release_attempt_index.py",
-        "execute_release_qualification.py",
-        "plan_release_qualification.py",
-        "record_release_approval.py",
-        "record_postpublication_conflict.py",
-        "record_release_role_assignments.py",
-        "resolve_release_predecessor.py",
-        "retain_release_evidence.py",
-        "update_last_known_good.py",
-        "update_release_attempt_index.py",
-        "update_release_evidence_chain.py",
-        "validate_release_evidence_stores.py",
-        "validate_release_evidence_chain.py",
-        "validate_publication_reconciliation.py",
-        "validate_release_approval.py",
-        "validate_release_gate_instance.py",
-        "validate_release_predecessor.py",
-        "validate_release_qualification.py",
-        "validate_release_qualification_plan.py",
-        "validate_release_retention.py",
-        "validate_release_role_assignments.py",
-    ],
+PUBLIC_RELEASE_ROUTES = (
+    "aggregate_release_attempt.py",
+    "build_publication_reconciliation.py",
+    "build_release_artifacts.py",
+    "build_release_evidence_manifest.py",
+    "build_release_qualification.py",
+    "capture_release_run_statuses.py",
+    "capture_release_target_observations.py",
+    "check_release_readiness.py",
+    "collect_publication_observations.py",
+    "execute_release_qualification.py",
+    "export_release_attempt_index.py",
+    "export_release_burn_lineage.py",
+    "finalize_release_attempt_cells.py",
+    "finalize_release_candidate_identity.py",
+    "freeze_release_source.py",
+    "plan_release_qualification.py",
+    "prepare_release_gate_input.py",
+    "promote_release_candidate.py",
+    "record_release_approval.py",
+    "record_release_blocker_attempt.py",
+    "record_postpublication_conflict.py",
+    "record_release_index_recovery.py",
+    "record_release_role_assignments.py",
+    "record_release_staging_attempt.py",
+    "record_release_target_burn.py",
+    "resolve_release_predecessor.py",
+    "resolve_release_target.py",
+    "retain_release_evidence.py",
+    "update_last_known_good.py",
+    "update_release_attempt_index.py",
+    "update_release_evidence_chain.py",
+    "validate_publication_reconciliation.py",
+    "validate_release_approval.py",
+    "validate_release_artifact_manifest.py",
+    "validate_release_attempt.py",
+    "validate_release_candidate_identity.py",
+    "validate_release_evidence_chain.py",
+    "validate_release_evidence_manifest.py",
+    "validate_release_evidence_stores.py",
+    "validate_release_gate_input.py",
+    "validate_release_gate_instance.py",
+    "validate_release_predecessor.py",
+    "validate_release_qualification.py",
+    "validate_release_qualification_plan.py",
+    "validate_release_retention.py",
+    "validate_release_role_assignments.py",
+    "validate_release_source_freeze.py",
+    "validate_release_target_resolution.py",
 )
+
+PENDING_RELEASE_ROUTES = {
+    "build_release_delta_test_map.py",
+    "capture_linear_release_snapshot.py",
+    "capture_release_task_state_observation.py",
+    "check_release_delta.py",
+    "finalize_release_gate_instance.py",
+    "prepare_release_impact_manifest.py",
+    "validate_linear_release_snapshot.py",
+    "validate_release_attempt_index.py",
+    "validate_release_prepromotion_controls.py",
+    "validate_release_task_state_observation.py",
+}
+
+
+def test_release_route_census_is_exact() -> None:
+    assert set(PUBLIC_RELEASE_ROUTES).isdisjoint(PENDING_RELEASE_ROUTES)
+    assert set(PUBLIC_RELEASE_ROUTES) | PENDING_RELEASE_ROUTES == set(release.TOOL_CONTRACTS)
+    repository = Path(__file__).resolve().parents[1]
+    assert {
+        path.name
+        for path in (repository / "tools").glob("*.py")
+        if path.name in release.TOOL_CONTRACTS
+    } == set(PUBLIC_RELEASE_ROUTES)
+
+
+@pytest.mark.parametrize("tool", PUBLIC_RELEASE_ROUTES)
 def test_implemented_release_route_has_actual_public_adapter(tool: str) -> None:
     repository = Path(__file__).resolve().parents[1]
     completed = subprocess.run(
@@ -65,7 +112,129 @@ def test_implemented_release_route_has_actual_public_adapter(tool: str) -> None:
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
-    assert "section 9.B" in completed.stdout
+    assert completed.stdout.startswith(f"usage: {tool}")
+
+
+def _failed_readiness_for_blocker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    root = tmp_path / "prepublication-blocker"
+    root.mkdir()
+    candidate = release.make_record(
+        "release-candidate-identity",
+        {"candidate_digest": "a" * 64},
+        invocation_id="fixture-blocker-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    candidate_path = root / "candidate-identity.json"
+    candidate_path.write_bytes(release.canonical_json(candidate))
+    failed_directory = root / "invocations/check-release-readiness/001"
+    arguments = []
+    for flag, name in (
+        ("gate-instance", "missing-gate.json"),
+        ("candidate-identity", "candidate-identity.json"),
+        ("predecessor", "missing-predecessor.json"),
+        ("linear-snapshot", "missing-linear.json"),
+        ("artifact-manifest", "missing-artifact.json"),
+        ("delta", "missing-delta.json"),
+        ("delta-test-map", "missing-delta-map.json"),
+    ):
+        arguments.extend(["--" + flag, str(root / name)])
+    arguments.extend(
+        [
+            "--out",
+            str(root / "readiness.json"),
+            "--invocation-dir",
+            str(failed_directory),
+        ]
+    )
+    assert release.run_release_command("check_release_readiness.py", arguments) == 3
+    assert release._validate_terminal(release._validate_intent(failed_directory))["status"] == (
+        "BLOCKED"
+    )
+    return root, failed_directory
+
+
+def _blocker_arguments(
+    root: Path, failed_directory: Path, *, stage: str = "readiness"
+) -> list[str]:
+    return [
+        "--sequence",
+        "1",
+        "--stage",
+        stage,
+        "--disposition",
+        "recoverable",
+        "--candidate-identity",
+        str(root / "candidate-identity.json"),
+        "--failed-invocation-dir",
+        str(failed_directory),
+        "--out",
+        str(root / "blocker.json"),
+        "--invocation-dir",
+        str(root / "invocations/record-release-blocker-attempt/001"),
+    ]
+
+
+def test_public_prepublication_blocker_binds_actual_failed_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, failed_directory = _failed_readiness_for_blocker(tmp_path, monkeypatch)
+    assert (
+        release.run_release_command(
+            "record_release_blocker_attempt.py",
+            _blocker_arguments(root, failed_directory),
+        )
+        == 0
+    )
+    blocker_path = root / "blocker.json"
+    blocker = release.read_json(blocker_path)
+    release.validate_record(blocker, "release-prepublication-blocker-attempt")
+    release.validate_release_producer_journal(
+        blocker, blocker_path, producer="record_release_blocker_attempt.py"
+    )
+    data = blocker["data"]
+    assert blocker["status"] == "BLOCKED"
+    assert data["stage"] == "readiness"
+    assert data["disposition"] == "RECOVERABLE"
+    assert data["failure_status"] == "BLOCKED"
+    assert data["failed_tool"] == "check_release_readiness.py"
+
+
+def test_public_prepublication_blocker_rejects_relabelled_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, failed_directory = _failed_readiness_for_blocker(tmp_path, monkeypatch)
+    assert (
+        release.run_release_command(
+            "record_release_blocker_attempt.py",
+            _blocker_arguments(root, failed_directory, stage="approval"),
+        )
+        == 3
+    )
+    assert not (root / "blocker.json").exists()
+    assert (
+        b"relabels another failed stage"
+        in (root / "invocations/record-release-blocker-attempt/001/stdout").read_bytes()
+    )
+
+
+def test_public_prepublication_blocker_never_overwrites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, failed_directory = _failed_readiness_for_blocker(tmp_path, monkeypatch)
+    blocker_path = root / "blocker.json"
+    blocker_path.write_bytes(b"occupied")
+    assert (
+        release.run_release_command(
+            "record_release_blocker_attempt.py",
+            _blocker_arguments(root, failed_directory),
+        )
+        == 3
+    )
+    assert blocker_path.read_bytes() == b"occupied"
 
 
 def _qualification_plan_command_fixture(
