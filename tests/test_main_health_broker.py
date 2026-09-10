@@ -7002,8 +7002,9 @@ def test_owner_renewal_rejects_any_same_head_admitted_transaction(
     spool.record_request(**values, status="merging")
     spool.record_request(**values, status=status)
     before = spool.request_inventory()
-    with pytest.raises(broker.BrokerError, match="already has a durable transaction"):
+    with pytest.raises(broker.BrokerError, match="already has a durable transaction") as failure:
         _run_owner_renewal(service, checks)
+    assert f"{status}:{values['request_digest']}" in str(failure.value)
     assert api.merge_calls == 0 and checks.succeeded == [] and spool.request_inventory() == before
 
 

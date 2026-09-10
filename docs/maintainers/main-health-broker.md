@@ -270,6 +270,9 @@ can be replaced without an identical-tree source commit or duplicate source
 qualification. Expiration after reservation remains subject to the original
 orphan/uncertain handling; it cannot be treated as never admitted. A requester
 can check public eligibility but cannot attest to the private durable ledger.
+The broker diagnostic therefore includes the durable transaction status and
+digest so the fenced source identity can be identified without reading or
+changing the broker database.
 
 ### Fresh metadata and staged activation
 

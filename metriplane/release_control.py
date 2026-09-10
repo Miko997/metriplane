@@ -2019,6 +2019,8 @@ def _validate_cell_result_payload(
     attempt_id: str,
     candidate_digest: str,
     plan_digest: str,
+    expected_subject_digest: str,
+    expected_recipe_digest: str,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> dict[str, Any]:
@@ -2034,9 +2036,8 @@ def _validate_cell_result_payload(
         "candidate_digest",
         "cell_id",
         "completed_at",
-        "counts",
+        "evidence",
         "environment_id",
-        "junit_digest",
         "obligation_ids",
         "plan_digest",
         "profile_id",
@@ -2065,7 +2066,6 @@ def _validate_cell_result_payload(
         raise ReleaseControlError("release qualification cell result binding mismatch")
     for field in (
         "artifact_digest",
-        "junit_digest",
         "plan_digest",
         "stderr_digest",
         "stdout_digest",
@@ -2074,29 +2074,106 @@ def _validate_cell_result_payload(
     _require_nonempty_string(cell["runner_identity"], "release qualification cell runner")
     _require_canonical_string_inventory(cell["obligation_ids"], "release cell obligations")
     _require_canonical_string_inventory(cell["scenario_ids"], "release cell scenarios")
-    counts = cell["counts"]
-    count_fields = {
-        "deselected",
-        "failed",
-        "passed",
-        "retried",
-        "skipped",
-        "xfailed",
-        "xpassed",
-    }
+    evidence = _release_closed_mapping(
+        cell["evidence"],
+        {
+            "expected_subject_digest",
+            "kind",
+            "observed_process_exit",
+            "outputs",
+            "recipe_digest",
+        },
+        "release qualification cell evidence",
+    )
+    if evidence["kind"] != "command" or evidence["observed_process_exit"] != 0:
+        raise ReleaseControlError("release qualification cell command did not pass")
+    for field in ("expected_subject_digest", "recipe_digest"):
+        _require_digest(evidence[field], "release qualification cell evidence " + field)
     if (
-        not isinstance(counts, dict)
-        or set(counts) != count_fields
-        or any(type(counts[field]) is not int or counts[field] < 0 for field in count_fields)
-        or counts["passed"] < 1
-        or any(counts[field] != 0 for field in count_fields - {"passed"})
+        evidence["expected_subject_digest"] != expected_subject_digest
+        or evidence["recipe_digest"] != expected_recipe_digest
     ):
-        raise ReleaseControlError("release qualification cell counts are not a clean PASS")
+        raise ReleaseControlError("release qualification cell command identity differs")
+    outputs = evidence["outputs"]
+    if not isinstance(outputs, list) or not outputs:
+        raise ReleaseControlError("release qualification cell has no exact command outputs")
+    paths: list[str] = []
+    output_ids: set[str] = set()
+    for value in outputs:
+        output = _release_closed_mapping(
+            value,
+            {"id", "media_type", "path", "sha256", "size"},
+            "release qualification command output",
+        )
+        output_id = _require_nonempty_string(
+            output["id"], "release qualification command output id"
+        )
+        _require_nonempty_string(
+            output["media_type"], "release qualification command output media type"
+        )
+        paths.append(
+            _release_relative_suffix(
+                output["path"], "release qualification command output path"
+            ).as_posix()
+        )
+        _require_digest(output["sha256"], "release qualification command output bytes")
+        if type(output["size"]) is not int or output["size"] < 1 or output_id in output_ids:
+            raise ReleaseControlError("release qualification command output size is invalid")
+        output_ids.add(output_id)
+    if paths != sorted(set(paths)):
+        raise ReleaseControlError("release qualification command outputs are not canonical")
     started_at = _parse_utc_timestamp(cell["started_at"], "release cell start")
     completed_at = _parse_utc_timestamp(cell["completed_at"], "release cell completion")
     if completed_at < started_at:
         raise ReleaseControlError("release qualification cell completion precedes its start")
     return cell
+
+
+def _qualification_command_digests(
+    catalog_record: Mapping[str, Any],
+    *,
+    plan: Mapping[str, Any],
+    plan_cells: Mapping[str, Mapping[str, Any]],
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> dict[str, tuple[str, str]]:
+    catalog = _passing_record(
+        catalog_record,
+        "release-scenario-catalog",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    if sha256_json(catalog_record) != plan["scenario_catalog_digest"]:
+        raise ReleaseControlError("qualification command catalog binding differs")
+    units = catalog.get("execution_units")
+    if not isinstance(units, list):
+        raise ReleaseControlError("qualification command catalog units are malformed")
+    bindings: dict[str, tuple[str, str]] = {}
+    for value in units:
+        if not isinstance(value, Mapping):
+            continue
+        cell_id = value.get("unit_id")
+        if not isinstance(cell_id, str) or cell_id not in plan_cells:
+            continue
+        cell = plan_cells[cell_id]
+        expected_subject = value.get("expected_subject")
+        recipe = value.get("recipe")
+        if (
+            cell_id in bindings
+            or value.get("phase") != "qualification"
+            or value.get("slot_milestone") != plan["milestone"]
+            or value.get("environment_id") != cell["environment_id"]
+            or value.get("profile_id") != cell["profile_id"]
+            or value.get("obligation_ids") != cell["obligation_ids"]
+            or [value.get("scenario_id")] != cell["scenario_ids"]
+            or not isinstance(expected_subject, Mapping)
+            or not isinstance(recipe, Mapping)
+        ):
+            raise ReleaseControlError("qualification command unit changes its planned cell")
+        bindings[cell_id] = (sha256_json(expected_subject), sha256_json(recipe))
+    if list(bindings) != list(plan_cells):
+        raise ReleaseControlError("qualification command catalog omits a planned cell")
+    return bindings
 
 
 def _release_retention_content(retention: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -2566,7 +2643,6 @@ def _validate_attempt_coordination(
         raise ReleaseControlError("release attempt coordination cell matrix is incomplete")
     observed_cell_ids: list[str] = []
     job_ids: set[str] = set()
-    provider_run_ids: set[str] = set()
     termination_digests: set[str] = set()
     expected_cell_fields = {
         "cell_id",
@@ -2583,11 +2659,10 @@ def _validate_attempt_coordination(
         provider_run_id = _require_nonempty_string(
             cell["provider_run_id"], "coordination provider run id"
         )
-        if job_id in job_ids or provider_run_id in provider_run_ids or cell["status"] != "terminal":
+        if job_id in job_ids or cell["status"] != "terminal":
             raise ReleaseControlError("release attempt coordination is not uniquely terminal")
         observed_cell_ids.append(cell_id)
         job_ids.add(job_id)
-        provider_run_ids.add(provider_run_id)
         termination_digest = _require_digest(
             cell["provider_termination_digest"], "release attempt provider termination"
         )
@@ -3466,6 +3541,10 @@ def _validate_clean_warning_summary(
     warnings = warning["warnings"]
     if warnings != []:
         raise ReleaseControlError(f"{label} warning inventory is not empty")
+    unsigned_warning = dict(warning)
+    claimed_summary_digest = unsigned_warning.pop("summary_digest")
+    if claimed_summary_digest != sha256_json(unsigned_warning):
+        raise ReleaseControlError(f"{label} self digest is invalid")
 
 
 def _release_qualification_summary_content(
@@ -3482,9 +3561,7 @@ def _release_qualification_summary_content(
         attestation_verifier=attestation_verifier,
     )
     expected_fields = {
-        "attempt_digests",
-        "attempt_index_receipt_digests",
-        "attempt_retention_receipt_digests",
+        "attempt_evidence",
         "candidate_digest",
         "executed_cell_ids",
         "expected_cell_ids",
@@ -3526,21 +3603,36 @@ def _release_qualification_summary_content(
         _require_digest(row["result_digest"], "qualification terminal result")
     if terminal_ids != expected_cells:
         raise ReleaseControlError("release qualification terminals do not match expected cells")
-    for field in (
-        "attempt_digests",
-        "attempt_index_receipt_digests",
-        "attempt_retention_receipt_digests",
-    ):
-        values = data[field]
-        if (
-            not isinstance(values, list)
-            or not values
-            or any(not isinstance(value, str) for value in values)
-            or len(values) != len(set(values))
+    attempt_evidence = data["attempt_evidence"]
+    if not isinstance(attempt_evidence, list) or not attempt_evidence:
+        raise ReleaseControlError("release qualification attempt evidence is incomplete")
+    attempt_ids: list[str] = []
+    for value in attempt_evidence:
+        row = _release_closed_mapping(
+            value,
+            {
+                "attempt_digest",
+                "attempt_id",
+                "index_receipt_digest",
+                "manifest_digest",
+                "retention_receipts_digest",
+            },
+            "release qualification attempt evidence",
+        )
+        attempt_ids.append(
+            _require_nonempty_string(row["attempt_id"], "release qualification attempt id")
+        )
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", row["attempt_id"], re.ASCII) is None:
+            raise ReleaseControlError("release qualification attempt id is unsafe")
+        for field in (
+            "attempt_digest",
+            "index_receipt_digest",
+            "manifest_digest",
+            "retention_receipts_digest",
         ):
-            raise ReleaseControlError(f"release qualification {field} is incomplete")
-        for value in values:
-            _require_digest(value, f"release qualification {field}")
+            _require_digest(row[field], "release qualification " + field)
+    if attempt_ids != sorted(set(attempt_ids)):
+        raise ReleaseControlError("release qualification attempt evidence is not canonical")
     for field in (
         "candidate_digest",
         "plan_digest",
@@ -3548,6 +3640,10 @@ def _release_qualification_summary_content(
         "warning_summary_digest",
     ):
         _require_digest(data[field], f"release qualification {field}")
+    unsigned_qualification = dict(data)
+    claimed_qualification_digest = unsigned_qualification.pop("qualification_digest")
+    if claimed_qualification_digest != sha256_json(unsigned_qualification):
+        raise ReleaseControlError("release qualification self digest is invalid")
     return data
 
 
@@ -3604,26 +3700,38 @@ def validate_release_qualification_record(
     plan_cells = _validate_qualification_plan_payload(plan, candidate=candidate)
     if list(plan_cells) != expected_cells:
         raise ReleaseControlError("release qualification plan cell inventory mismatch")
+    catalog_record = _resolved_evidence_record(
+        indexed,
+        plan["scenario_catalog_digest"],
+        "release-scenario-catalog",
+        "release qualification scenario catalog",
+        identity_kind="record_C",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    command_digests = _qualification_command_digests(
+        catalog_record,
+        plan=plan,
+        plan_cells=plan_cells,
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
 
-    attempts = [
-        _resolved_evidence_record(
+    attempt_evidence = data["attempt_evidence"]
+    if plan["attempt_count"] != len(attempt_evidence):
+        raise ReleaseControlError("release qualification attempt count mismatch")
+    observed_attempt_ids: list[str] = []
+    latest_cells: list[dict[str, Any]] | None = None
+    for evidence_row in attempt_evidence:
+        attempt_record = _resolved_evidence_record(
             indexed,
-            digest,
+            evidence_row["attempt_digest"],
             "release-attempt",
             "release qualification attempt",
             identity_kind="record_C",
             live=live,
             attestation_verifier=attestation_verifier,
         )
-        for digest in data["attempt_digests"]
-    ]
-    if plan["attempt_count"] != len(attempts):
-        raise ReleaseControlError("release qualification attempt count mismatch")
-    observed_attempt_ids: list[str] = []
-    observed_index_receipts: list[str] = []
-    observed_retention_receipts: list[str] = []
-    latest_cells: list[dict[str, Any]] | None = None
-    for attempt_record in attempts:
         attempt = _release_data(
             attempt_record,
             {
@@ -3631,11 +3739,9 @@ def validate_release_qualification_record(
                 "candidate_digest",
                 "cells",
                 "coordination_digest",
-                "index_receipt_digest",
                 "milestone",
                 "qualification_plan_digest",
                 "result",
-                "retention_receipts_digest",
                 "warning_summary_digest",
             },
             "release qualification attempt",
@@ -3648,6 +3754,8 @@ def validate_release_qualification_record(
         ):
             raise ReleaseControlError("release qualification attempt binding mismatch")
         attempt_id = _require_nonempty_string(attempt["attempt_id"], "release attempt id")
+        if evidence_row["attempt_id"] != attempt_id:
+            raise ReleaseControlError("release qualification attempt association mismatch")
         observed_attempt_ids.append(attempt_id)
         attempt_cells = attempt["cells"]
         if not isinstance(attempt_cells, list) or len(attempt_cells) != len(expected_cells):
@@ -3690,6 +3798,8 @@ def validate_release_qualification_record(
                 attempt_id=attempt_id,
                 candidate_digest=data["candidate_digest"],
                 plan_digest=data["plan_digest"],
+                expected_subject_digest=command_digests[cell_id][0],
+                expected_recipe_digest=command_digests[cell_id][1],
                 live=live,
                 attestation_verifier=attestation_verifier,
             )
@@ -3718,7 +3828,7 @@ def validate_release_qualification_record(
             attestation_verifier=attestation_verifier,
         )
         retention_digest = _require_digest(
-            attempt["retention_receipts_digest"], "release attempt retention receipt"
+            evidence_row["retention_receipts_digest"], "release attempt retention receipt"
         )
         retention_record = _resolved_evidence_record(
             indexed,
@@ -3736,7 +3846,7 @@ def validate_release_qualification_record(
             attestation_verifier=attestation_verifier,
         )
         index_digest = _require_digest(
-            attempt["index_receipt_digest"], "release attempt index receipt"
+            evidence_row["index_receipt_digest"], "release attempt index receipt"
         )
         index_record = _resolved_evidence_record(
             indexed,
@@ -3754,8 +3864,10 @@ def validate_release_qualification_record(
             attestation_verifier=attestation_verifier,
         )
         manifest_digest = _require_digest(
-            index.get("entry_manifest_digest"), "release attempt evidence manifest"
+            evidence_row["manifest_digest"], "release attempt evidence manifest"
         )
+        if index.get("entry_manifest_digest") != manifest_digest:
+            raise ReleaseControlError("release attempt index changes the associated manifest")
         manifest_record = _resolved_evidence_record(
             indexed,
             manifest_digest,
@@ -3845,18 +3957,12 @@ def validate_release_qualification_record(
             live=live,
             attestation_verifier=attestation_verifier,
         )
-        observed_index_receipts.append(index_digest)
-        observed_retention_receipts.append(retention_digest)
         latest_cells = validated_attempt_cells
 
     if observed_attempt_ids != sorted(set(observed_attempt_ids)):
         raise ReleaseControlError("release qualification attempt ids are not canonical")
-    if observed_index_receipts != data["attempt_index_receipt_digests"]:
-        raise ReleaseControlError("release qualification index receipt bindings mismatch")
-    if observed_retention_receipts != data["attempt_retention_receipt_digests"]:
-        raise ReleaseControlError("release qualification retention receipt bindings mismatch")
     if attempt_retention_readbacks is not None and set(attempt_retention_readbacks) != set(
-        observed_retention_receipts
+        row["retention_receipts_digest"] for row in attempt_evidence
     ):
         raise ReleaseControlError("release qualification readback receipt inventory mismatch")
     if latest_cells is None or latest_cells != terminals:
@@ -3872,6 +3978,7 @@ def validate_release_qualification_record(
     )
     qualification_subject = dict(data)
     del qualification_subject["warning_summary_digest"]
+    del qualification_subject["qualification_digest"]
     _validate_clean_warning_summary(
         warning_record,
         candidate_digest=data["candidate_digest"],
@@ -8620,7 +8727,9 @@ _CONFLICT_STAGES: Final[tuple[str, ...]] = (
 
 
 TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
-    "aggregate_release_attempt.py": _tool_contract("plan coordination attempt-dir out"),
+    "aggregate_release_attempt.py": _tool_contract(
+        "plan coordination attempt-dir out", fixture_producer=False
+    ),
     "build_publication_reconciliation.py": _tool_contract(
         "qualification approval promotion-lock-receipt observations evidence-manifest "
         "retention-receipts out"
@@ -8667,7 +8776,9 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         boolean="provider-auth-from-approved-environment",
     ),
     "capture_release_run_statuses.py": _tool_contract(
-        "plan attempt-id provider-run-id out always-run", boolean="always-run"
+        "plan attempt-id provider-run-id out always-run",
+        boolean="always-run",
+        fixture_producer=False,
     ),
     "capture_release_target_observations.py": _tool_contract(
         "targets release-context provider-auth-from-approved-environment out",
@@ -8724,6 +8835,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
     "finalize_release_attempt_cells.py": _tool_contract(
         "plan attempt-id hosted-run-statuses attempt-dir out always-run",
         boolean="always-run",
+        fixture_producer=False,
     ),
     "finalize_release_candidate_identity.py": _tool_contract(
         "invocation-dir gate-input source-freeze predecessor artifact-manifest "
@@ -9714,6 +9826,917 @@ def _execute_release_qualification_operation(
     return result
 
 
+def _capture_release_run_statuses_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    """Capture the closed matrix census; fixture mode never claims provider authority."""
+
+    plan_path = Path(args.plan).absolute()
+    if plan_path != context.root / "qualification-plan.json":
+        raise ReleaseControlError("run-status plan is not the canonical candidate plan")
+    plan_record = read_json(plan_path)
+    validate_record(plan_record, "release-qualification-plan")
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    cells = _validate_qualification_plan_payload(plan)
+    attempt_id = _require_nonempty_string(args.attempt_id, "qualification attempt id")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", attempt_id, re.ASCII) is None:
+        raise ReleaseControlError("qualification attempt id is not a safe identifier")
+    provider_run_id = _require_nonempty_string(args.provider_run_id, "provider run id")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", provider_run_id, re.ASCII) is None:
+        raise ReleaseControlError("provider run id is not a safe identifier")
+    original_out = _command_value(context.intent["argv"][1:], "out")
+    if original_out is None or Path(original_out).absolute() != (
+        context.root / "attempts" / attempt_id / "hosted-run-statuses.json"
+    ):
+        raise ReleaseControlError("run-status output is not in its canonical attempt directory")
+    fixture_mode = os.environ.get("METRIPLANE_RELEASE_FIXTURE_MODE") == "1"
+    if not fixture_mode:
+        raise ReleaseControlError(
+            "authenticated provider run capture and transcript retention remain unbound"
+        )
+    rows = []
+    for cell_id in cells:
+        job_id = (
+            "fixture-job-"
+            + sha256_json(
+                {
+                    "attempt_id": attempt_id,
+                    "cell_id": cell_id,
+                    "plan_digest": plan["plan_digest"],
+                    "provider_run_id": provider_run_id,
+                }
+            )[:20]
+        )
+        rows.append(
+            {
+                "cell_id": cell_id,
+                "conclusion": "success",
+                "job_id": job_id,
+                "provider_run_id": provider_run_id,
+                "runner_identity": "github-fixture:" + job_id,
+                "status": "completed",
+            }
+        )
+    data = {
+        "attempt_id": attempt_id,
+        "candidate_digest": plan["candidate_digest"],
+        "captured_at": context.intent["started_at"],
+        "cells": rows,
+        "plan_digest": plan["plan_digest"],
+        "provider": "github",
+        "provider_run_id": provider_run_id,
+    }
+    return make_record(
+        "release-run-status-snapshot",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
+def _qualification_terminal_name(cell_id: str, kind: str) -> str:
+    if kind not in {"result", "termination"}:
+        raise ReleaseControlError("qualification terminal record kind is invalid")
+    return kind + "-" + sha256_json({"cell_id": cell_id}) + ".json"
+
+
+_ATTEMPT_WARNING_NAME = "attempt-warning-summary.json"
+_QUALIFICATION_WARNING_NAME = "qualification-warning-summary.json"
+
+
+def _qualification_attempt_required_paths(
+    attempt_dir: Path, plan_cells: Mapping[str, Mapping[str, Any]]
+) -> list[Path]:
+    paths = [
+        attempt_dir / "attempt-summary.json",
+        attempt_dir / _ATTEMPT_WARNING_NAME,
+        attempt_dir / "coordination.json",
+        attempt_dir / "hosted-run-statuses.json",
+    ]
+    for cell_id in plan_cells:
+        execution_root = attempt_dir / "cells" / cell_id
+        execution_path = execution_root / "execution.json"
+        execution_record = read_json(execution_path)
+        outputs = execution_record.get("data", {}).get("outputs")
+        if not isinstance(outputs, list) or not outputs:
+            raise ReleaseControlError("qualification manifest execution outputs are incomplete")
+        paths.extend(
+            [
+                execution_path,
+                execution_root / "stdout",
+                execution_root / "stderr",
+                attempt_dir / _qualification_terminal_name(cell_id, "result"),
+                attempt_dir / _qualification_terminal_name(cell_id, "termination"),
+            ]
+        )
+        for value in outputs:
+            output = _release_closed_mapping(
+                value, {"id", "media_type", "path", "sha256", "size"}, "cell output"
+            )
+            paths.append(
+                execution_root
+                / _release_relative_suffix(output["path"], "qualification output path")
+            )
+    return paths
+
+
+def _finalize_release_attempt_cells_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    plan_path = Path(args.plan).absolute()
+    attempt_dir = Path(args.attempt_dir).absolute()
+    statuses_path = Path(args.hosted_run_statuses).absolute()
+    plan_record = read_json(plan_path)
+    statuses_record = read_json(statuses_path)
+    validate_record(plan_record, "release-qualification-plan")
+    validate_record(statuses_record, "release-run-status-snapshot")
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    cells = _validate_qualification_plan_payload(plan)
+    command_digests = _qualification_command_digests(
+        read_json(context.root / "scenario-catalog.json"),
+        plan=plan,
+        plan_cells=cells,
+        live=False,
+    )
+    attempt_id = _require_nonempty_string(args.attempt_id, "qualification attempt id")
+    if (
+        plan_path != context.root / "qualification-plan.json"
+        or attempt_dir != context.root / "attempts" / attempt_id
+        or statuses_path != attempt_dir / "hosted-run-statuses.json"
+    ):
+        raise ReleaseControlError("attempt finalization inputs do not share the canonical root")
+    snapshot = _release_closed_mapping(
+        statuses_record["data"],
+        {
+            "attempt_id",
+            "candidate_digest",
+            "captured_at",
+            "cells",
+            "plan_digest",
+            "provider",
+            "provider_run_id",
+        },
+        "release run status snapshot",
+    )
+    if (
+        statuses_record["status"] != "PASS"
+        or statuses_record["synthetic"] is not plan_record["synthetic"]
+        or snapshot["attempt_id"] != attempt_id
+        or snapshot["candidate_digest"] != plan["candidate_digest"]
+        or snapshot["plan_digest"] != plan["plan_digest"]
+        or snapshot["provider"] != "github"
+    ):
+        raise ReleaseControlError("run status snapshot changes the planned attempt")
+    if plan_record["synthetic"] is not True:
+        raise ReleaseControlError(
+            "live cell finalization requires bound provider transcripts and release signing authority"
+        )
+    status_rows = snapshot["cells"]
+    if not isinstance(status_rows, list):
+        raise ReleaseControlError("run status snapshot cell inventory is malformed")
+    status_by_cell: dict[str, dict[str, Any]] = {}
+    for value in status_rows:
+        row = _release_closed_mapping(
+            value,
+            {
+                "cell_id",
+                "conclusion",
+                "job_id",
+                "provider_run_id",
+                "runner_identity",
+                "status",
+            },
+            "run status cell",
+        )
+        cell_id = _require_nonempty_string(row["cell_id"], "run status cell id")
+        if cell_id in status_by_cell:
+            raise ReleaseControlError("run status snapshot repeats a cell")
+        status_by_cell[cell_id] = row
+    if list(status_by_cell) != list(cells):
+        raise ReleaseControlError("run status snapshot does not close the planned cell census")
+
+    manifest = read_json(context.root / "artifact-manifest.json")
+    validate_record(manifest, "release-artifact-manifest")
+    artifact_digest = _require_digest(
+        manifest["data"].get("artifact_set_digest"), "qualification artifact set"
+    )
+    terminal_rows = []
+    coordination_rows = []
+    coordination_result = "PASS"
+    hard_runner_losses: list[str] = []
+    synthetic = True
+    for cell_id, plan_cell in cells.items():
+        status = status_by_cell[cell_id]
+        if status["status"] != "completed":
+            raise ReleaseControlError("qualification cell lacks a terminal provider status")
+        if status["provider_run_id"] != snapshot["provider_run_id"]:
+            raise ReleaseControlError("qualification cell changes the provider run")
+        conclusion = _require_nonempty_string(
+            status["conclusion"], "qualification provider conclusion"
+        )
+        result_status = {
+            "success": "PASS",
+            "failure": "FAIL",
+            "timed_out": "FAIL",
+            "startup_failure": "FAIL",
+            "cancelled": "CANCELLED",
+            "skipped": "SKIPPED",
+            "neutral": "BLOCKED",
+            "stale": "BLOCKED",
+            "action_required": "BLOCKED",
+        }.get(conclusion)
+        if result_status is None:
+            raise ReleaseControlError("qualification provider conclusion is unsupported")
+        termination = make_record(
+            "provider-run-termination",
+            {
+                "job_id": _require_nonempty_string(status["job_id"], "provider job id"),
+                "provider_run_id": _require_nonempty_string(
+                    status["provider_run_id"], "provider run id"
+                ),
+                "state": conclusion,
+                "tool": "github-provider-fixture" if synthetic else "github-provider",
+            },
+            invocation_id=context.intent["invocation_id"],
+            sequence=context.intent["sequence"],
+            synthetic=synthetic,
+        )
+        termination_path = Path(args.out).parent / _qualification_terminal_name(
+            cell_id, "termination"
+        )
+        write_immutable_json(termination_path, termination)
+        coordination_rows.append(
+            {
+                "cell_id": cell_id,
+                "job_id": status["job_id"],
+                "provider_run_id": status["provider_run_id"],
+                "provider_termination_digest": sha256_json(termination),
+                "status": "terminal",
+            }
+        )
+        if result_status != "PASS":
+            priority = {"PASS": 0, "SKIPPED": 1, "BLOCKED": 2, "CANCELLED": 3, "FAIL": 4}
+            if priority[result_status] > priority[coordination_result]:
+                coordination_result = result_status
+            if conclusion in {"timed_out", "startup_failure", "cancelled", "stale"}:
+                hard_runner_losses.append(cell_id)
+            terminal_rows.append({"cell_id": cell_id, "result": result_status})
+            continue
+        execution_path = attempt_dir / "cells" / cell_id / "execution.json"
+        execution_record = read_json(execution_path)
+        execution = _passing_record(execution_record, "release-cell-execution", live=False)
+        if (
+            execution_record["synthetic"] is not synthetic
+            or execution["attempt_id"] != attempt_id
+            or execution["candidate_digest"] != plan["candidate_digest"]
+            or execution["cell_id"] != cell_id
+            or execution["environment_id"] != plan_cell["environment_id"]
+            or execution["profile_id"] != plan_cell["profile_id"]
+            or execution["scenario_ids"] != plan_cell["scenario_ids"]
+            or execution["plan_digest"] != plan["plan_digest"]
+            or execution["observed_process_exit"] != 0
+            or sha256_json(execution["expected_subject"]) != command_digests[cell_id][0]
+            or execution["recipe_digest"] != command_digests[cell_id][1]
+        ):
+            raise ReleaseControlError("qualification execution changes its planned cell")
+        execution_root = execution_path.parent
+        stdout = _safe_release_bytes(execution_root / "stdout")
+        stderr = _safe_release_bytes(execution_root / "stderr")
+        if (
+            sha256_bytes(stdout) != execution["stdout_digest"]
+            or sha256_bytes(stderr) != execution["stderr_digest"]
+        ):
+            raise ReleaseControlError("qualification diagnostic bytes changed")
+        outputs = execution["outputs"]
+        if not isinstance(outputs, list) or not outputs:
+            raise ReleaseControlError("qualification execution has no declared result evidence")
+        for output in outputs:
+            ref = _release_closed_mapping(
+                output, {"id", "media_type", "path", "sha256", "size"}, "cell output"
+            )
+            raw = _safe_release_bytes(
+                execution_root / _release_relative_suffix(ref["path"], "cell output path")
+            )
+            if (
+                type(ref["size"]) is not int
+                or len(raw) != ref["size"]
+                or sha256_bytes(raw) != ref["sha256"]
+            ):
+                raise ReleaseControlError("qualification output bytes changed")
+        result = make_record(
+            "release-cell-result",
+            {
+                "artifact_digest": artifact_digest,
+                "attempt_id": attempt_id,
+                "candidate_digest": plan["candidate_digest"],
+                "cell_id": cell_id,
+                "completed_at": execution["completed_at"],
+                "evidence": {
+                    "expected_subject_digest": sha256_json(execution["expected_subject"]),
+                    "kind": "command",
+                    "observed_process_exit": execution["observed_process_exit"],
+                    "outputs": outputs,
+                    "recipe_digest": execution["recipe_digest"],
+                },
+                "environment_id": plan_cell["environment_id"],
+                "obligation_ids": plan_cell["obligation_ids"],
+                "plan_digest": plan["plan_digest"],
+                "profile_id": plan_cell["profile_id"],
+                "result": "PASS",
+                "runner_identity": _require_nonempty_string(
+                    status["runner_identity"], "qualification runner identity"
+                ),
+                "scenario_ids": plan_cell["scenario_ids"],
+                "started_at": execution["started_at"],
+                "stderr_digest": execution["stderr_digest"],
+                "stdout_digest": execution["stdout_digest"],
+                "unexpected_outcomes": [],
+            },
+            invocation_id=context.intent["invocation_id"],
+            sequence=context.intent["sequence"],
+            synthetic=synthetic,
+        )
+        result_path = Path(args.out).parent / _qualification_terminal_name(cell_id, "result")
+        write_immutable_json(result_path, result)
+        terminal_rows.append(
+            {"cell_id": cell_id, "result": "PASS", "result_digest": sha256_json(result)}
+        )
+    coordination = make_record(
+        "release-attempt-coordination",
+        {
+            "attempt_id": attempt_id,
+            "candidate_digest": plan["candidate_digest"],
+            "cells": coordination_rows,
+            "coordination_result": coordination_result,
+            "hard_runner_losses": hard_runner_losses,
+            "milestone": plan["milestone"],
+            "provider": "github",
+            "qualification_plan_digest": plan["plan_digest"],
+        },
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=synthetic,
+    )
+    # The terminal rows are independently retained records; the coordination
+    # record binds their provider termination counterparts. Aggregation resolves
+    # the result records from the same immutable attempt directory.
+    if len(terminal_rows) != len(cells):
+        raise ReleaseControlError("attempt finalization did not close every cell")
+    return coordination
+
+
+def _aggregate_release_attempt_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    plan_path = Path(args.plan).absolute()
+    coordination_path = Path(args.coordination).absolute()
+    attempt_dir = Path(args.attempt_dir).absolute()
+    original_out = _command_value(context.intent["argv"][1:], "out")
+    if (
+        plan_path != context.root / "qualification-plan.json"
+        or attempt_dir.parent != context.root / "attempts"
+        or coordination_path != attempt_dir / "coordination.json"
+        or original_out is None
+        or Path(original_out).absolute() != attempt_dir / "attempt-summary.json"
+    ):
+        raise ReleaseControlError("attempt aggregation inputs do not share the canonical root")
+    plan_record = read_json(plan_path)
+    coordination_record = read_json(coordination_path)
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    plan_cells = _validate_qualification_plan_payload(plan)
+    catalog = read_json(context.root / "scenario-catalog.json")
+    command_digests = _qualification_command_digests(
+        catalog, plan=plan, plan_cells=plan_cells, live=False
+    )
+    coordination = _passing_record(coordination_record, "release-attempt-coordination", live=False)
+    if plan_record["synthetic"] is not True or coordination_record["synthetic"] is not True:
+        raise ReleaseControlError(
+            "live attempt aggregation requires bound release signing authority"
+        )
+    attempt_id = attempt_dir.name
+    if (
+        coordination.get("attempt_id") != attempt_id
+        or coordination.get("candidate_digest") != plan["candidate_digest"]
+        or coordination.get("qualification_plan_digest") != plan["plan_digest"]
+        or coordination.get("milestone") != plan["milestone"]
+        or coordination.get("coordination_result") != "PASS"
+        or coordination.get("hard_runner_losses") != []
+        or coordination.get("provider") != "github"
+    ):
+        raise ReleaseControlError("attempt coordination changes the planned attempt")
+    rows = coordination.get("cells")
+    if not isinstance(rows, list) or len(rows) != len(plan_cells):
+        raise ReleaseControlError("attempt coordination cell census is incomplete")
+    terminals: list[dict[str, str]] = []
+    seen_jobs: set[str] = set()
+    for expected_cell_id, row_value in zip(plan_cells, rows, strict=True):
+        row = _release_closed_mapping(
+            row_value,
+            {
+                "cell_id",
+                "job_id",
+                "provider_run_id",
+                "provider_termination_digest",
+                "status",
+            },
+            "attempt coordination cell",
+        )
+        if row["cell_id"] != expected_cell_id or row["status"] != "terminal":
+            raise ReleaseControlError("attempt coordination reorders or unterminates a cell")
+        job_id = _require_nonempty_string(row["job_id"], "attempt provider job")
+        if job_id in seen_jobs:
+            raise ReleaseControlError("attempt coordination repeats a provider job")
+        seen_jobs.add(job_id)
+        termination = read_json(
+            attempt_dir / _qualification_terminal_name(expected_cell_id, "termination")
+        )
+        termination_data = _passing_record(termination, "provider-run-termination", live=False)
+        if (
+            sha256_json(termination) != row["provider_termination_digest"]
+            or termination_data.get("job_id") != job_id
+            or termination_data.get("provider_run_id") != row["provider_run_id"]
+            or termination_data.get("state") != "success"
+        ):
+            raise ReleaseControlError("attempt provider termination binding differs")
+        result = read_json(attempt_dir / _qualification_terminal_name(expected_cell_id, "result"))
+        _validate_cell_result_payload(
+            result,
+            plan_cell=plan_cells[expected_cell_id],
+            attempt_id=attempt_id,
+            candidate_digest=plan["candidate_digest"],
+            plan_digest=plan["plan_digest"],
+            expected_subject_digest=command_digests[expected_cell_id][0],
+            expected_recipe_digest=command_digests[expected_cell_id][1],
+            live=False,
+        )
+        terminals.append(
+            {
+                "cell_id": expected_cell_id,
+                "result": "PASS",
+                "result_digest": sha256_json(result),
+            }
+        )
+    attempt_data = {
+        "attempt_id": attempt_id,
+        "candidate_digest": plan["candidate_digest"],
+        "cells": terminals,
+        "coordination_digest": sha256_json(coordination_record),
+        "milestone": plan["milestone"],
+        "qualification_plan_digest": plan["plan_digest"],
+        "result": "PASS",
+    }
+    catalog_data = _passing_record(catalog, "release-scenario-catalog", live=False)
+    if sha256_json(catalog) != plan["scenario_catalog_digest"]:
+        raise ReleaseControlError("attempt warning policy uses another scenario catalog")
+    warning_data = {
+        "candidate_digest": plan["candidate_digest"],
+        "deselection_count": 0,
+        "policy_digest": _require_digest(
+            catalog_data.get("catalog_digest"), "attempt warning policy"
+        ),
+        "result": "PASS",
+        "retry_count": 0,
+        "skip_count": 0,
+        "subject_digest": sha256_json(attempt_data),
+        "unexpected_warning_count": 0,
+        "warnings": [],
+        "xfail_count": 0,
+        "xpass_count": 0,
+    }
+    warning_data["summary_digest"] = sha256_json(warning_data)
+    warning = make_record(
+        "release-warning-summary",
+        warning_data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+    write_immutable_json(Path(args.out).parent / _ATTEMPT_WARNING_NAME, warning)
+    attempt_data["warning_summary_digest"] = sha256_json(warning)
+    return make_record(
+        "release-attempt",
+        attempt_data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
+def _validate_release_attempt_operation(args: argparse.Namespace) -> dict[str, Any]:
+    plan_path = Path(args.plan).absolute()
+    attempt_dir = Path(args.attempt_dir).absolute()
+    record_path = Path(args.record).absolute()
+    if (
+        attempt_dir.parent.parent != plan_path.parent
+        or attempt_dir.parent.name != "attempts"
+        or record_path != attempt_dir / "attempt-summary.json"
+    ):
+        raise ReleaseControlError(
+            "release attempt validation inputs do not share the canonical root"
+        )
+    plan_record = read_json(plan_path)
+    attempt_record = read_json(record_path)
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    plan_cells = _validate_qualification_plan_payload(plan)
+    command_digests = _qualification_command_digests(
+        read_json(plan_path.parent / "scenario-catalog.json"),
+        plan=plan,
+        plan_cells=plan_cells,
+        live=False,
+    )
+    attempt = _release_data(
+        attempt_record,
+        {
+            "attempt_id",
+            "candidate_digest",
+            "cells",
+            "coordination_digest",
+            "milestone",
+            "qualification_plan_digest",
+            "result",
+            "warning_summary_digest",
+        },
+        "release attempt",
+    )
+    if attempt_record["synthetic"] is not True:
+        raise ReleaseControlError("live attempt validation requires bound release authority")
+    if (
+        attempt["attempt_id"] != attempt_dir.name
+        or attempt["candidate_digest"] != plan["candidate_digest"]
+        or attempt["qualification_plan_digest"] != plan["plan_digest"]
+        or attempt["milestone"] != plan["milestone"]
+        or attempt["result"] != "PASS"
+    ):
+        raise ReleaseControlError("release attempt changes its plan or canonical namespace")
+    cells = attempt["cells"]
+    if not isinstance(cells, list) or len(cells) != len(plan_cells):
+        raise ReleaseControlError("release attempt cell census is incomplete")
+    observed_ids: list[str] = []
+    observed_digests: set[str] = set()
+    for row_value in cells:
+        row = _release_closed_mapping(
+            row_value, {"cell_id", "result", "result_digest"}, "release attempt cell"
+        )
+        cell_id = _require_nonempty_string(row["cell_id"], "release attempt cell id")
+        result_digest = _require_digest(row["result_digest"], "release attempt cell result")
+        if row["result"] != "PASS" or result_digest in observed_digests:
+            raise ReleaseControlError("release attempt cell is not a unique PASS")
+        plan_cell = plan_cells.get(cell_id)
+        if plan_cell is None:
+            raise ReleaseControlError("release attempt names an unplanned cell")
+        cell_record = read_json(attempt_dir / _qualification_terminal_name(cell_id, "result"))
+        if sha256_json(cell_record) != result_digest:
+            raise ReleaseControlError("release attempt terminal cell digest differs")
+        _validate_cell_result_payload(
+            cell_record,
+            plan_cell=plan_cell,
+            attempt_id=attempt["attempt_id"],
+            candidate_digest=attempt["candidate_digest"],
+            plan_digest=attempt["qualification_plan_digest"],
+            expected_subject_digest=command_digests[cell_id][0],
+            expected_recipe_digest=command_digests[cell_id][1],
+            live=False,
+        )
+        observed_ids.append(cell_id)
+        observed_digests.add(result_digest)
+    if observed_ids != list(plan_cells):
+        raise ReleaseControlError("release attempt cell order differs from the plan")
+    coordination_digest = _require_digest(
+        attempt["coordination_digest"], "release attempt coordination"
+    )
+    coordination_record = read_json(attempt_dir / "coordination.json")
+    if sha256_json(coordination_record) != coordination_digest:
+        raise ReleaseControlError("release attempt coordination digest differs")
+    coordination = _passing_record(coordination_record, "release-attempt-coordination", live=False)
+    if (
+        coordination.get("attempt_id") != attempt["attempt_id"]
+        or coordination.get("candidate_digest") != attempt["candidate_digest"]
+        or coordination.get("qualification_plan_digest") != attempt["qualification_plan_digest"]
+        or coordination.get("milestone") != attempt["milestone"]
+        or coordination.get("coordination_result") != "PASS"
+        or coordination.get("hard_runner_losses") != []
+        or coordination.get("provider") != "github"
+    ):
+        raise ReleaseControlError("release attempt coordination binding differs")
+    coordination_rows = coordination.get("cells")
+    if not isinstance(coordination_rows, list) or len(coordination_rows) != len(plan_cells):
+        raise ReleaseControlError("release attempt coordination census is incomplete")
+    seen_jobs: set[str] = set()
+    for cell_id, row_value in zip(plan_cells, coordination_rows, strict=True):
+        row = _release_closed_mapping(
+            row_value,
+            {
+                "cell_id",
+                "job_id",
+                "provider_run_id",
+                "provider_termination_digest",
+                "status",
+            },
+            "release attempt coordination cell",
+        )
+        job_id = _require_nonempty_string(row["job_id"], "release attempt provider job")
+        provider_run_id = _require_nonempty_string(
+            row["provider_run_id"], "release attempt provider run"
+        )
+        if row["cell_id"] != cell_id or row["status"] != "terminal" or job_id in seen_jobs:
+            raise ReleaseControlError("release attempt coordination is not uniquely terminal")
+        seen_jobs.add(job_id)
+        termination = read_json(attempt_dir / _qualification_terminal_name(cell_id, "termination"))
+        termination_data = _passing_record(termination, "provider-run-termination", live=False)
+        if (
+            sha256_json(termination) != row["provider_termination_digest"]
+            or set(termination_data) != {"job_id", "provider_run_id", "state", "tool"}
+            or termination_data["job_id"] != job_id
+            or termination_data["provider_run_id"] != provider_run_id
+            or termination_data["state"] != "success"
+        ):
+            raise ReleaseControlError("release attempt provider termination binding differs")
+    warning_digest = _require_digest(
+        attempt["warning_summary_digest"], "release attempt warning summary"
+    )
+    warning_record = read_json(attempt_dir / _ATTEMPT_WARNING_NAME)
+    if sha256_json(warning_record) != warning_digest:
+        raise ReleaseControlError("release attempt warning summary digest differs")
+    warning_subject = dict(attempt)
+    del warning_subject["warning_summary_digest"]
+    _validate_clean_warning_summary(
+        warning_record,
+        candidate_digest=attempt["candidate_digest"],
+        expected_subject_digest=sha256_json(warning_subject),
+        label="release attempt warning summary",
+        live=False,
+    )
+    return attempt_record
+
+
+def _build_release_qualification_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    plan_path = Path(args.plan).absolute()
+    attempts_root = Path(args.attempts).absolute()
+    original_out = _command_value(context.intent["argv"][1:], "out")
+    if (
+        plan_path != context.root / "qualification-plan.json"
+        or attempts_root != context.root / "attempts"
+        or original_out is None
+        or Path(original_out).absolute() != context.root / "qualification.json"
+        or not args.require_attempt_retention
+        or not args.require_attempt_index_receipts
+    ):
+        raise ReleaseControlError("qualification build does not select the closed canonical graph")
+    plan_record = read_json(plan_path)
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    candidate_record = read_json(context.root / "candidate-identity.json")
+    candidate = _passing_record(candidate_record, "release-candidate-identity", live=False)
+    _validate_candidate_identity_payload(
+        candidate,
+        expected_digest=plan["candidate_digest"],
+        expected_milestone=plan["milestone"],
+    )
+    plan_cells = _validate_qualification_plan_payload(plan, candidate=candidate)
+    if plan_record["synthetic"] is not True:
+        raise ReleaseControlError(
+            "live qualification build requires bound release signing authority"
+        )
+    attempt_dirs = sorted(path for path in attempts_root.iterdir() if path.is_dir())
+    if len(attempt_dirs) != plan["attempt_count"] or any(
+        path.is_symlink()
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", path.name, re.ASCII) is None
+        for path in attempt_dirs
+    ):
+        raise ReleaseControlError("qualification build attempt census differs from the plan")
+    evidence_rows: list[dict[str, str]] = []
+    latest_cells: list[dict[str, str]] | None = None
+    for attempt_dir in attempt_dirs:
+        attempt_path = attempt_dir / "attempt-summary.json"
+        attempt_record = _validate_release_attempt_operation(
+            argparse.Namespace(
+                plan=str(plan_path), attempt_dir=str(attempt_dir), record=str(attempt_path)
+            )
+        )
+        attempt = attempt_record["data"]
+        manifest_path = attempt_dir / "evidence-manifest.json"
+        retention_path = attempt_dir / "retention-receipts.json"
+        index_path = attempt_dir / "index-receipt.json"
+        manifest_record = read_json(manifest_path)
+        retention_record = read_json(retention_path)
+        index_record = read_json(index_path)
+        manifest = _passing_record(manifest_record, "release-evidence-manifest", live=False)
+        entries = _release_evidence_manifest_content(manifest)
+        if (
+            manifest_record["synthetic"] is not True
+            or manifest["candidate_digest"] != plan["candidate_digest"]
+            or manifest["phase"] != "attempt"
+            or manifest["scope_kind"] != "release-attempt"
+            or manifest["scope_id"] != attempt["attempt_id"]
+        ):
+            raise ReleaseControlError("qualification attempt manifest changes its attempt")
+        required_paths = _qualification_attempt_required_paths(attempt_dir, plan_cells)
+        entries_by_path = {entry["path"]: entry for entry in entries}
+        if any(
+            path.relative_to(attempt_dir).as_posix() not in entries_by_path
+            or entries_by_path[path.relative_to(attempt_dir).as_posix()]["sha256"]
+            != sha256_bytes(_safe_release_bytes(path))
+            or entries_by_path[path.relative_to(attempt_dir).as_posix()]["size"]
+            != path.stat().st_size
+            for path in required_paths
+        ):
+            raise ReleaseControlError("qualification attempt manifest omits a required original")
+        retention = _passing_record(retention_record, "release-retention-receipts", live=False)
+        _validate_retention_payload(
+            retention,
+            expected_input_digest=sha256_bytes(_safe_release_bytes(manifest_path)),
+            expected_phase="attempt",
+            label="qualification attempt retention",
+        )
+        index = _passing_record(index_record, "release-attempt-index", live=False)
+        entry = _release_index_receipt_content(index)
+        scope = entry["scope"]
+        if (
+            index_record["synthetic"] is not True
+            or entry["entry_manifest_digest"] != sha256_json(manifest_record)
+            or entry["entry_receipts_digest"] != sha256_json(retention_record)
+            or entry["milestone"] != plan["milestone"]
+            or scope["kind"] != "release_candidate"
+            or scope["scope_id"] != attempt["attempt_id"]
+            or scope["stage"] != "qualification-attempt"
+            or scope["candidate_id"] != plan["candidate_digest"]
+            or scope["release_tag"] != candidate["release_tag"]
+        ):
+            raise ReleaseControlError("qualification attempt index changes its retained attempt")
+        evidence_rows.append(
+            {
+                "attempt_digest": sha256_json(attempt_record),
+                "attempt_id": attempt["attempt_id"],
+                "index_receipt_digest": sha256_json(index_record),
+                "manifest_digest": sha256_json(manifest_record),
+                "retention_receipts_digest": sha256_json(retention_record),
+            }
+        )
+        latest_cells = attempt["cells"]
+    if latest_cells is None:
+        raise ReleaseControlError("qualification build has no completed attempt")
+    qualification_data: dict[str, Any] = {
+        "attempt_evidence": evidence_rows,
+        "candidate_digest": plan["candidate_digest"],
+        "executed_cell_ids": list(plan_cells),
+        "expected_cell_ids": list(plan_cells),
+        "plan_digest": plan["plan_digest"],
+        "qualification_digest": "0" * 64,
+        "result": "PASS",
+        "terminal_results": latest_cells,
+        "unexpected_outcomes": [],
+        "warning_summary_digest": "0" * 64,
+    }
+    warning_subject = dict(qualification_data)
+    del warning_subject["warning_summary_digest"]
+    del warning_subject["qualification_digest"]
+    warning_data = {
+        "candidate_digest": plan["candidate_digest"],
+        "deselection_count": 0,
+        "policy_digest": _require_digest(
+            plan["scenario_catalog_digest"], "qualification warning policy"
+        ),
+        "result": "PASS",
+        "retry_count": 0,
+        "skip_count": 0,
+        "subject_digest": sha256_json(warning_subject),
+        "unexpected_warning_count": 0,
+        "warnings": [],
+        "xfail_count": 0,
+        "xpass_count": 0,
+    }
+    warning_data["summary_digest"] = sha256_json(warning_data)
+    warning = make_record(
+        "release-warning-summary",
+        warning_data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+    write_immutable_json(Path(args.out).parent / _QUALIFICATION_WARNING_NAME, warning)
+    qualification_data["warning_summary_digest"] = sha256_json(warning)
+    unsigned_qualification = dict(qualification_data)
+    del unsigned_qualification["qualification_digest"]
+    qualification_data["qualification_digest"] = sha256_json(unsigned_qualification)
+    return make_record(
+        "release-qualification",
+        qualification_data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
+def _validate_release_qualification_fixture_operation(args: argparse.Namespace) -> dict[str, Any]:
+    record_path = Path(args.record).absolute()
+    root = record_path.parent
+    if record_path != root / "qualification.json":
+        raise ReleaseControlError("qualification validator record is not canonical")
+    record = read_json(record_path)
+    if record.get("synthetic") is not True:
+        raise ReleaseControlError("fixture qualification validator cannot accept live evidence")
+    data = _release_qualification_summary_content(record, live=False)
+    plan_path = root / "qualification-plan.json"
+    plan_record = read_json(plan_path)
+    plan = _passing_record(plan_record, "release-qualification-plan", live=False)
+    plan_cells = _validate_qualification_plan_payload(plan)
+    if (
+        data["plan_digest"] != plan["plan_digest"]
+        or data["candidate_digest"] != plan["candidate_digest"]
+        or data["expected_cell_ids"] != list(plan_cells)
+        or data["executed_cell_ids"] != list(plan_cells)
+        or len(data["attempt_evidence"]) != plan["attempt_count"]
+    ):
+        raise ReleaseControlError("qualification validator plan binding differs")
+    candidate_record = read_json(root / "candidate-identity.json")
+    candidate = _passing_record(candidate_record, "release-candidate-identity", live=False)
+    _validate_candidate_identity_payload(
+        candidate,
+        expected_digest=data["candidate_digest"],
+        expected_milestone=plan["milestone"],
+    )
+    latest_cells: list[dict[str, Any]] | None = None
+    for evidence_row in data["attempt_evidence"]:
+        attempt_dir = root / "attempts" / evidence_row["attempt_id"]
+        attempt_path = attempt_dir / "attempt-summary.json"
+        attempt_record = _validate_release_attempt_operation(
+            argparse.Namespace(
+                plan=str(plan_path), attempt_dir=str(attempt_dir), record=str(attempt_path)
+            )
+        )
+        if sha256_json(attempt_record) != evidence_row["attempt_digest"]:
+            raise ReleaseControlError("qualification validator attempt digest differs")
+        manifest_record = read_json(attempt_dir / "evidence-manifest.json")
+        retention_record = read_json(attempt_dir / "retention-receipts.json")
+        index_record = read_json(attempt_dir / "index-receipt.json")
+        if (
+            sha256_json(manifest_record) != evidence_row["manifest_digest"]
+            or sha256_json(retention_record) != evidence_row["retention_receipts_digest"]
+            or sha256_json(index_record) != evidence_row["index_receipt_digest"]
+        ):
+            raise ReleaseControlError("qualification validator custody association differs")
+        manifest = _passing_record(manifest_record, "release-evidence-manifest", live=False)
+        entries = _release_evidence_manifest_content(manifest)
+        if (
+            manifest["candidate_digest"] != data["candidate_digest"]
+            or manifest["phase"] != "attempt"
+            or manifest["scope_kind"] != "release-attempt"
+            or manifest["scope_id"] != evidence_row["attempt_id"]
+        ):
+            raise ReleaseControlError("qualification validator manifest association differs")
+        entries_by_path = {entry["path"]: entry for entry in entries}
+        if any(
+            path.relative_to(attempt_dir).as_posix() not in entries_by_path
+            or entries_by_path[path.relative_to(attempt_dir).as_posix()]["sha256"]
+            != sha256_bytes(_safe_release_bytes(path))
+            or entries_by_path[path.relative_to(attempt_dir).as_posix()]["size"]
+            != path.stat().st_size
+            for path in _qualification_attempt_required_paths(attempt_dir, plan_cells)
+        ):
+            raise ReleaseControlError("qualification validator manifest custody differs")
+        retention = _passing_record(retention_record, "release-retention-receipts", live=False)
+        _validate_retention_payload(
+            retention,
+            expected_input_digest=sha256_bytes(
+                _safe_release_bytes(attempt_dir / "evidence-manifest.json")
+            ),
+            expected_phase="attempt",
+            label="qualification validator attempt retention",
+        )
+        index = _passing_record(index_record, "release-attempt-index", live=False)
+        entry = _release_index_receipt_content(index)
+        if (
+            entry["entry_manifest_digest"] != evidence_row["manifest_digest"]
+            or entry["entry_receipts_digest"] != evidence_row["retention_receipts_digest"]
+            or entry["scope"]["scope_id"] != evidence_row["attempt_id"]
+            or entry["scope"]["candidate_id"] != data["candidate_digest"]
+            or entry["scope"]["stage"] != "qualification-attempt"
+            or entry["scope"]["release_tag"] != candidate["release_tag"]
+            or entry["milestone"] != plan["milestone"]
+        ):
+            raise ReleaseControlError("qualification validator index association differs")
+        latest_cells = attempt_record["data"]["cells"]
+    if latest_cells != data["terminal_results"]:
+        raise ReleaseControlError("qualification validator final terminals differ")
+    warning_path = root / _QUALIFICATION_WARNING_NAME
+    warning_record = read_json(warning_path)
+    if sha256_json(warning_record) != data["warning_summary_digest"]:
+        raise ReleaseControlError("qualification validator warning digest differs")
+    warning_subject = dict(data)
+    del warning_subject["warning_summary_digest"]
+    del warning_subject["qualification_digest"]
+    _validate_clean_warning_summary(
+        warning_record,
+        candidate_digest=data["candidate_digest"],
+        expected_subject_digest=sha256_json(warning_subject),
+        label="release qualification warning summary",
+        live=False,
+    )
+    return record
+
+
 def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) -> int:
     """Run one exact section-9B adapter without inventing live authority."""
 
@@ -9748,7 +10771,13 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
         destination = getattr(args, _argument_destination(contract.output_flag), None)
         if destination is not None:
             relative = _run_relative(context.root, Path(destination))
-            if name != "execute_release_qualification.py" and Path(relative).parent != Path("."):
+            if name not in {
+                "execute_release_qualification.py",
+                "capture_release_run_statuses.py",
+                "finalize_release_attempt_cells.py",
+                "aggregate_release_attempt.py",
+                "build_release_qualification.py",
+            } and Path(relative).parent != Path("."):
                 raise ReleaseControlError(
                     "canonical release record must be directly in its run root"
                 )
@@ -9963,6 +10992,30 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             result = _execute_release_qualification_operation(args, context)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "capture_release_run_statuses.py":
+            result = _capture_release_run_statuses_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "finalize_release_attempt_cells.py":
+            result = _finalize_release_attempt_cells_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "aggregate_release_attempt.py":
+            result = _aggregate_release_attempt_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "validate_release_attempt.py":
+            result = _validate_release_attempt_operation(args)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "build_release_qualification.py":
+            result = _build_release_qualification_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_artifact_manifest.py":
             result = read_json(Path(args.record))
             validate_release_artifact_files(
@@ -9989,17 +11042,20 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
                 record_path=Path(args.receipts),
             )
         elif name == "validate_release_qualification.py":
-            record_path = Path(args.record)
-            result = read_json(record_path)
-            validate_release_qualification_record(
-                result,
-                evidence_root=record_path.parent,
-                live=not fixture_mode,
-                attestation_verifier=attestation_verifier,
-                attempt_retention_readbacks=_attempt_store_readbacks_from_args(
-                    args.attempt_store_readback
-                ),
-            )
+            if fixture_mode:
+                result = _validate_release_qualification_fixture_operation(args)
+            else:
+                record_path = Path(args.record)
+                result = read_json(record_path)
+                validate_release_qualification_record(
+                    result,
+                    evidence_root=record_path.parent,
+                    live=True,
+                    attestation_verifier=attestation_verifier,
+                    attempt_retention_readbacks=_attempt_store_readbacks_from_args(
+                        args.attempt_store_readback
+                    ),
+                )
         elif name == "validate_publication_reconciliation.py":
             record_path = Path(args.record)
             result = read_json(record_path)
@@ -11104,6 +12160,325 @@ def run_release_command(
                             manifest["data"], expected_milestone=manifest["data"]["milestone"]
                         ):
                             inputs.append((artifact_root / row["path"], row["media_type"]))
+            elif tool == "capture_release_run_statuses.py":
+                value = _command_value(argv, "plan")
+                if value is not None:
+                    inputs.append(
+                        (Path(value).absolute(), "metriplane.release-qualification-plan.v1")
+                    )
+            elif tool == "finalize_release_attempt_cells.py":
+                plan_value = _command_value(argv, "plan")
+                statuses_value = _command_value(argv, "hosted-run-statuses")
+                attempt_value = _command_value(argv, "attempt-dir")
+                if plan_value is not None:
+                    plan_path = Path(plan_value).absolute()
+                    inputs.extend(
+                        [
+                            (plan_path, "metriplane.release-qualification-plan.v1"),
+                            (
+                                plan_path.parent / "artifact-manifest.json",
+                                "metriplane.release-artifact-manifest.v1",
+                            ),
+                        ]
+                    )
+                if statuses_value is not None:
+                    statuses_path = Path(statuses_value).absolute()
+                    inputs.append(
+                        (
+                            statuses_path,
+                            "metriplane.release-run-status-snapshot.v1",
+                        )
+                    )
+                if plan_value is not None and attempt_value is not None:
+                    plan_record = read_json(Path(plan_value).absolute())
+                    plan_cells = _validate_qualification_plan_payload(plan_record["data"])
+                    statuses = (
+                        read_json(statuses_path).get("data", {}).get("cells", [])
+                        if statuses_value is not None
+                        else []
+                    )
+                    successful_cells = {
+                        row.get("cell_id")
+                        for row in statuses
+                        if isinstance(row, dict)
+                        and row.get("status") == "completed"
+                        and row.get("conclusion") == "success"
+                    }
+                    attempt_path = Path(attempt_value).absolute()
+                    for cell_id in plan_cells:
+                        if cell_id not in successful_cells:
+                            continue
+                        execution_path = attempt_path / "cells" / cell_id / "execution.json"
+                        execution_record = read_json(execution_path)
+                        execution = execution_record["data"]
+                        inputs.extend(
+                            [
+                                (execution_path, "metriplane.release-cell-execution.v1"),
+                                (execution_path.parent / "stdout", "application/octet-stream"),
+                                (execution_path.parent / "stderr", "application/octet-stream"),
+                            ]
+                        )
+                        for output in execution.get("outputs", []):
+                            inputs.append(
+                                (
+                                    execution_path.parent
+                                    / _release_relative_suffix(
+                                        output.get("path"), "qualification output path"
+                                    ),
+                                    output.get("media_type", "application/octet-stream"),
+                                )
+                            )
+            elif tool == "aggregate_release_attempt.py":
+                plan_value = _command_value(argv, "plan")
+                coordination_value = _command_value(argv, "coordination")
+                attempt_value = _command_value(argv, "attempt-dir")
+                if plan_value is not None:
+                    plan_path = Path(plan_value).absolute()
+                    inputs.extend(
+                        [
+                            (plan_path, "metriplane.release-qualification-plan.v1"),
+                            (
+                                plan_path.parent / "scenario-catalog.json",
+                                "metriplane.release-scenario-catalog.v1",
+                            ),
+                        ]
+                    )
+                    if attempt_value is not None:
+                        attempt_path = Path(attempt_value).absolute()
+                        for cell_id in _validate_qualification_plan_payload(
+                            read_json(plan_path)["data"]
+                        ):
+                            inputs.extend(
+                                [
+                                    (
+                                        attempt_path
+                                        / _qualification_terminal_name(cell_id, "result"),
+                                        "metriplane.release-cell-result.v1",
+                                    ),
+                                    (
+                                        attempt_path
+                                        / _qualification_terminal_name(cell_id, "termination"),
+                                        "metriplane.provider-run-termination.v1",
+                                    ),
+                                ]
+                            )
+                if coordination_value is not None:
+                    inputs.append(
+                        (
+                            Path(coordination_value).absolute(),
+                            "metriplane.release-attempt-coordination.v1",
+                        )
+                    )
+            elif tool == "validate_release_attempt.py":
+                plan_value = _command_value(argv, "plan")
+                attempt_value = _command_value(argv, "attempt-dir")
+                record_value = _command_value(argv, "record")
+                if plan_value is not None:
+                    inputs.append(
+                        (Path(plan_value).absolute(), "metriplane.release-qualification-plan.v1")
+                    )
+                if attempt_value is not None and record_value is not None:
+                    attempt_path = Path(attempt_value).absolute()
+                    record_path = Path(record_value).absolute()
+                    attempt_record = read_json(record_path)
+                    inputs.extend(
+                        [
+                            (record_path, "metriplane.release-attempt.v1"),
+                            (
+                                attempt_path / "coordination.json",
+                                "metriplane.release-attempt-coordination.v1",
+                            ),
+                            (
+                                attempt_path / _ATTEMPT_WARNING_NAME,
+                                "metriplane.release-warning-summary.v1",
+                            ),
+                        ]
+                    )
+                    for row in attempt_record.get("data", {}).get("cells", []):
+                        if isinstance(row, dict) and isinstance(row.get("cell_id"), str):
+                            inputs.extend(
+                                [
+                                    (
+                                        attempt_path
+                                        / _qualification_terminal_name(row["cell_id"], "result"),
+                                        "metriplane.release-cell-result.v1",
+                                    ),
+                                    (
+                                        attempt_path
+                                        / _qualification_terminal_name(
+                                            row["cell_id"], "termination"
+                                        ),
+                                        "metriplane.provider-run-termination.v1",
+                                    ),
+                                ]
+                            )
+            elif tool == "build_release_qualification.py":
+                plan_value = _command_value(argv, "plan")
+                attempts_value = _command_value(argv, "attempts")
+                if plan_value is not None:
+                    plan_path = Path(plan_value).absolute()
+                    inputs.append((plan_path, "metriplane.release-qualification-plan.v1"))
+                    inputs.append(
+                        (
+                            plan_path.parent / "candidate-identity.json",
+                            "metriplane.release-candidate-identity.v1",
+                        )
+                    )
+                if attempts_value is not None:
+                    attempts_path = Path(attempts_value).absolute()
+                    if attempts_path.is_dir():
+                        for attempt_path in sorted(
+                            path for path in attempts_path.iterdir() if path.is_dir()
+                        ):
+                            for name, kind in (
+                                ("attempt-summary.json", "release-attempt"),
+                                ("attempt-warning-summary.json", "release-warning-summary"),
+                                ("coordination.json", "release-attempt-coordination"),
+                                ("evidence-manifest.json", "release-evidence-manifest"),
+                                ("retention-receipts.json", "release-retention-receipts"),
+                                ("index-receipt.json", "release-attempt-index"),
+                            ):
+                                inputs.append((attempt_path / name, "metriplane." + kind + ".v1"))
+                            inputs.append(
+                                (
+                                    attempt_path / "hosted-run-statuses.json",
+                                    "metriplane.release-run-status-snapshot.v1",
+                                )
+                            )
+                            if plan_value is not None:
+                                plan_cells = _validate_qualification_plan_payload(
+                                    read_json(Path(plan_value).absolute())["data"]
+                                )
+                                for cell_id in plan_cells:
+                                    execution_path = (
+                                        attempt_path / "cells" / cell_id / "execution.json"
+                                    )
+                                    execution = read_json(execution_path)["data"]
+                                    inputs.extend(
+                                        [
+                                            (
+                                                execution_path,
+                                                "metriplane.release-cell-execution.v1",
+                                            ),
+                                            (
+                                                execution_path.parent / "stdout",
+                                                "application/octet-stream",
+                                            ),
+                                            (
+                                                execution_path.parent / "stderr",
+                                                "application/octet-stream",
+                                            ),
+                                        ]
+                                    )
+                                    for output in execution.get("outputs", []):
+                                        inputs.append(
+                                            (
+                                                execution_path.parent
+                                                / _release_relative_suffix(
+                                                    output.get("path"), "qualification output path"
+                                                ),
+                                                output.get(
+                                                    "media_type", "application/octet-stream"
+                                                ),
+                                            )
+                                        )
+                                    for suffix, kind in (
+                                        ("result", "release-cell-result"),
+                                        ("termination", "provider-run-termination"),
+                                    ):
+                                        inputs.append(
+                                            (
+                                                attempt_path
+                                                / _qualification_terminal_name(cell_id, suffix),
+                                                "metriplane." + kind + ".v1",
+                                            )
+                                        )
+            elif tool == "validate_release_qualification.py":
+                record_value = _command_value(argv, "record")
+                if record_value is not None:
+                    record_path = Path(record_value).absolute()
+                    root_path = record_path.parent
+                    qualification_record = read_json(record_path)
+                    inputs.extend(
+                        [
+                            (record_path, "metriplane.release-qualification.v1"),
+                            (
+                                root_path / "qualification-plan.json",
+                                "metriplane.release-qualification-plan.v1",
+                            ),
+                            (
+                                root_path / "candidate-identity.json",
+                                "metriplane.release-candidate-identity.v1",
+                            ),
+                            (
+                                root_path / _QUALIFICATION_WARNING_NAME,
+                                "metriplane.release-warning-summary.v1",
+                            ),
+                        ]
+                    )
+                    evidence_rows = qualification_record.get("data", {}).get("attempt_evidence", [])
+                    if isinstance(evidence_rows, list):
+                        for row in evidence_rows:
+                            if not isinstance(row, dict) or not isinstance(
+                                row.get("attempt_id"), str
+                            ):
+                                continue
+                            attempt_path = root_path / "attempts" / row["attempt_id"]
+                            for name, kind in (
+                                ("attempt-summary.json", "release-attempt"),
+                                ("attempt-warning-summary.json", "release-warning-summary"),
+                                ("coordination.json", "release-attempt-coordination"),
+                                ("evidence-manifest.json", "release-evidence-manifest"),
+                                ("retention-receipts.json", "release-retention-receipts"),
+                                ("index-receipt.json", "release-attempt-index"),
+                            ):
+                                inputs.append((attempt_path / name, "metriplane." + kind + ".v1"))
+                            inputs.append(
+                                (
+                                    attempt_path / "hosted-run-statuses.json",
+                                    "metriplane.release-run-status-snapshot.v1",
+                                )
+                            )
+                            plan_cells = _validate_qualification_plan_payload(
+                                read_json(root_path / "qualification-plan.json")["data"]
+                            )
+                            for cell_id in plan_cells:
+                                execution_path = attempt_path / "cells" / cell_id / "execution.json"
+                                execution = read_json(execution_path)["data"]
+                                inputs.extend(
+                                    [
+                                        (execution_path, "metriplane.release-cell-execution.v1"),
+                                        (
+                                            execution_path.parent / "stdout",
+                                            "application/octet-stream",
+                                        ),
+                                        (
+                                            execution_path.parent / "stderr",
+                                            "application/octet-stream",
+                                        ),
+                                    ]
+                                )
+                                for output in execution.get("outputs", []):
+                                    inputs.append(
+                                        (
+                                            execution_path.parent
+                                            / _release_relative_suffix(
+                                                output.get("path"), "qualification output path"
+                                            ),
+                                            output.get("media_type", "application/octet-stream"),
+                                        )
+                                    )
+                                for suffix, kind in (
+                                    ("result", "release-cell-result"),
+                                    ("termination", "provider-run-termination"),
+                                ):
+                                    inputs.append(
+                                        (
+                                            attempt_path
+                                            / _qualification_terminal_name(cell_id, suffix),
+                                            "metriplane." + kind + ".v1",
+                                        )
+                                    )
             else:
                 for flag, kind in [
                     ("gate-input", "release-gate-input"),
@@ -11145,11 +12520,71 @@ def run_release_command(
                 value = _command_value(argv, contract.output_flag)
                 if value is not None:
                     path = Path(value).absolute()
-                    if path.parent != root:
+                    if path.parent != root and tool not in {
+                        "capture_release_run_statuses.py",
+                        "finalize_release_attempt_cells.py",
+                        "aggregate_release_attempt.py",
+                        "build_release_qualification.py",
+                    }:
                         raise ReleaseControlError(
                             "canonical record must be directly in its invocation run root"
                         )
-                    outputs.append((path, "metriplane." + _record_type_from_tool(tool) + ".v1"))
+                    output_kind = (
+                        "release-attempt-coordination"
+                        if tool == "finalize_release_attempt_cells.py"
+                        else _record_type_from_tool(tool)
+                    )
+                    outputs.append((path, "metriplane." + output_kind + ".v1"))
+                    if tool == "finalize_release_attempt_cells.py":
+                        plan_value = _command_value(argv, "plan")
+                        if plan_value is None:
+                            raise ReleaseControlError("attempt finalizer plan is missing")
+                        plan_record = read_json(Path(plan_value).absolute())
+                        statuses_value = _command_value(argv, "hosted-run-statuses")
+                        if statuses_value is None:
+                            raise ReleaseControlError("attempt finalizer statuses are missing")
+                        statuses = (
+                            read_json(Path(statuses_value).absolute())
+                            .get("data", {})
+                            .get("cells", [])
+                        )
+                        successful_cells = {
+                            row.get("cell_id")
+                            for row in statuses
+                            if isinstance(row, dict)
+                            and row.get("status") == "completed"
+                            and row.get("conclusion") == "success"
+                        }
+                        for cell_id in _validate_qualification_plan_payload(plan_record["data"]):
+                            if cell_id in successful_cells:
+                                outputs.append(
+                                    (
+                                        path.parent
+                                        / _qualification_terminal_name(cell_id, "result"),
+                                        "metriplane.release-cell-result.v1",
+                                    )
+                                )
+                            outputs.append(
+                                (
+                                    path.parent
+                                    / _qualification_terminal_name(cell_id, "termination"),
+                                    "metriplane.provider-run-termination.v1",
+                                )
+                            )
+                    elif tool == "aggregate_release_attempt.py":
+                        outputs.append(
+                            (
+                                path.parent / _ATTEMPT_WARNING_NAME,
+                                "metriplane.release-warning-summary.v1",
+                            )
+                        )
+                    elif tool == "build_release_qualification.py":
+                        outputs.append(
+                            (
+                                path.parent / _QUALIFICATION_WARNING_NAME,
+                                "metriplane.release-warning-summary.v1",
+                            )
+                        )
             if tool == "build_release_artifacts.py":
                 value = _command_value(argv, "out-dir")
                 if value is not None:
@@ -17397,14 +18832,22 @@ def _release_predecessor_qualification_originals(
     candidate = _passing_record(candidate_record, "release-candidate-identity", live=False)
     plan_cells = _validate_qualification_plan_payload(plan, candidate=candidate)
     if (
-        plan["attempt_count"] != len(data["attempt_digests"])
+        plan["attempt_count"] != len(data["attempt_evidence"])
         or list(plan_cells) != data["expected_cell_ids"]
     ):
         raise ReleaseControlError("selected qualification plan cell inventory differs")
-    observed_indexes: list[str] = []
-    observed_retentions: list[str] = []
+    catalog_record = _release_predecessor_original_record(
+        originals,
+        "release-scenario-catalog",
+        plan["scenario_catalog_digest"],
+        "selected qualification scenario catalog",
+    )
+    command_digests = _qualification_command_digests(
+        catalog_record, plan=plan, plan_cells=plan_cells, live=False
+    )
     latest_cells: list[dict[str, Any]] | None = None
-    for attempt_digest in data["attempt_digests"]:
+    for evidence_row in data["attempt_evidence"]:
+        attempt_digest = evidence_row["attempt_digest"]
         attempt_record = _release_predecessor_original_record(
             originals, "release-attempt", attempt_digest, "selected qualification attempt"
         )
@@ -17415,11 +18858,9 @@ def _release_predecessor_qualification_originals(
                 "candidate_digest",
                 "cells",
                 "coordination_digest",
-                "index_receipt_digest",
                 "milestone",
                 "qualification_plan_digest",
                 "result",
-                "retention_receipts_digest",
                 "warning_summary_digest",
             },
             "selected qualification attempt",
@@ -17432,6 +18873,8 @@ def _release_predecessor_qualification_originals(
             or attempt["milestone"] != plan["milestone"]
         ):
             raise ReleaseControlError("selected qualification attempt binding differs")
+        if evidence_row["attempt_id"] != attempt["attempt_id"]:
+            raise ReleaseControlError("selected qualification attempt association differs")
         cells = attempt["cells"]
         if not isinstance(cells, list) or len(cells) != len(plan_cells):
             raise ReleaseControlError("selected qualification attempt cells are incomplete")
@@ -17452,6 +18895,8 @@ def _release_predecessor_qualification_originals(
                 attempt_id=attempt["attempt_id"],
                 candidate_digest=data["candidate_digest"],
                 plan_digest=data["plan_digest"],
+                expected_subject_digest=command_digests[row["cell_id"]][0],
+                expected_recipe_digest=command_digests[row["cell_id"]][1],
                 live=False,
             )
         coordination = _release_predecessor_original_record(
@@ -17468,7 +18913,7 @@ def _release_predecessor_qualification_originals(
             live=False,
         )
         retention_digest = _require_digest(
-            attempt["retention_receipts_digest"], "selected qualification retention"
+            evidence_row["retention_receipts_digest"], "selected qualification retention"
         )
         retention = _release_predecessor_original_record(
             originals,
@@ -17478,7 +18923,7 @@ def _release_predecessor_qualification_originals(
         )
         _release_retention_content(retention["data"])
         index_digest = _require_digest(
-            attempt["index_receipt_digest"], "selected qualification index"
+            evidence_row["index_receipt_digest"], "selected qualification index"
         )
         index_record = _release_predecessor_original_record(
             originals, "release-attempt-index", index_digest, "selected qualification index"
@@ -17487,7 +18932,7 @@ def _release_predecessor_qualification_originals(
         manifest = _release_predecessor_original_record(
             originals,
             "release-evidence-manifest",
-            entry["entry_manifest_digest"],
+            evidence_row["manifest_digest"],
             "selected qualification manifest",
         )
         entries = _release_evidence_manifest_content(manifest["data"])
@@ -17502,7 +18947,8 @@ def _release_predecessor_qualification_originals(
             },
         )
         if (
-            entry["entry_receipts_digest"] != retention_digest
+            entry["entry_manifest_digest"] != evidence_row["manifest_digest"]
+            or entry["entry_receipts_digest"] != retention_digest
             or entry["scope"].get("stage") != "qualification-attempt"
             or entry["scope"].get("candidate_id") != data["candidate_digest"]
         ):
@@ -17522,17 +18968,12 @@ def _release_predecessor_qualification_originals(
             label="selected attempt warning summary",
             live=False,
         )
-        observed_indexes.append(index_digest)
-        observed_retentions.append(retention_digest)
         latest_cells = cells
-    if (
-        observed_indexes != data["attempt_index_receipt_digests"]
-        or observed_retentions != data["attempt_retention_receipt_digests"]
-        or latest_cells != data["terminal_results"]
-    ):
+    if latest_cells != data["terminal_results"]:
         raise ReleaseControlError("selected qualification aggregate changes its final attempt")
     qualification_subject = dict(data)
     del qualification_subject["warning_summary_digest"]
+    del qualification_subject["qualification_digest"]
     warning = _release_predecessor_original_record(
         originals,
         "release-warning-summary",
@@ -20948,6 +22389,7 @@ def _release_predecessor_content(
             "release-task-state-policy",
             "release-task-state-observation",
             "release-protected-input",
+            "release-scenario-catalog",
             "release-qualification-plan",
             "release-qualification",
             "release-attempt",

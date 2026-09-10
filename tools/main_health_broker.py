@@ -6430,7 +6430,13 @@ class Broker:
             if same_head != expected:
                 raise BrokerError("owner admission has a missing or foreign same-head reservation")
         elif same_head:
-            raise BrokerError("owner admission head already has a durable transaction")
+            transactions = ", ".join(
+                f"{row['status']}:{row['request_digest']}" for row in same_head
+            )
+            raise BrokerError(
+                "owner admission head already has a durable transaction; "
+                f"exact source identity is fenced by {transactions}"
+            )
         if any(
             row["nonce"] == admission["nonce"]
             and (not reserved or row["request_digest"] != admission["request_digest"])

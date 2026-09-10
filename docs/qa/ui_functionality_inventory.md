@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `d12de0a5d9e0695779d164a93051970ccf34382046aab08127466056eb297da6`
+Canonical projection SHA-256: `064e5040d14110638f39f18912eb24515232de43c2caecc3a071016ae7dc8eca`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 190 |
+| actions | 195 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -251,6 +251,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | runner.run-fusion | allowlist | Run Fusion | ./tools/mp.sh run-fusion cpu 60 test |
 | runner.sentinel-demo | allowlist | Build Command Center Sample | _PYTHON -m metriplane.cli sentinel run --config configs/sentinel_operator_demo.yaml --runs-dir {metriplane_platform_runs_dir} |
 | runner.timing-breakdown | allowlist | Camera-Free Latency Check | _PYTHON tools/run_ui_timing_check.py |
+| tool.aggregate_release_attempt | tool | Aggregate Release Attempt | python tools/aggregate_release_attempt.py |
 | tool.analyze_id_stability_jsonl | tool | Analyze Id Stability Jsonl | python tools/analyze_id_stability_jsonl.py |
 | tool.analyze_session_metrics | tool | Analyze Session Metrics | python tools/analyze_session_metrics.py |
 | tool.audit_ui_functionality | tool | Audit Ui Functionality | python tools/audit_ui_functionality.py |
@@ -258,8 +259,10 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.build_external_source_family_matrix | tool | Build External Source Family Matrix | python tools/build_external_source_family_matrix.py |
 | tool.build_maniskill_pickcube_proof | tool | Build Maniskill Pickcube Proof | python tools/build_maniskill_pickcube_proof.py |
 | tool.build_release_artifacts | tool | Build Release Artifacts | python tools/build_release_artifacts.py |
+| tool.build_release_qualification | tool | Build Release Qualification | python tools/build_release_qualification.py |
 | tool.calibrate_intrinsics_chessboard | tool | Calibrate Intrinsics Chessboard | python tools/calibrate_intrinsics_chessboard.py |
 | tool.calibrate_planar_homography | tool | Calibrate Planar Homography | python tools/calibrate_planar_homography.py |
+| tool.capture_release_run_statuses | tool | Capture Release Run Statuses | python tools/capture_release_run_statuses.py |
 | tool.capture_release_target_observations | tool | Capture Release Target Observations | python tools/capture_release_target_observations.py |
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
 | tool.check_blockers | tool | Check Blockers | python tools/check_blockers.py |
@@ -286,6 +289,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.execute_release_qualification | tool | Execute Release Qualification | python tools/execute_release_qualification.py |
 | tool.export_release_attempt_index | tool | Export Release Attempt Index | python tools/export_release_attempt_index.py |
 | tool.export_release_burn_lineage | tool | Export Release Burn Lineage | python tools/export_release_burn_lineage.py |
+| tool.finalize_release_attempt_cells | tool | Finalize Release Attempt Cells | python tools/finalize_release_attempt_cells.py |
 | tool.finalize_release_candidate_identity | tool | Finalize Release Candidate Identity | python tools/finalize_release_candidate_identity.py |
 | tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
@@ -325,6 +329,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate_publication_reconciliation | tool | Validate Publication Reconciliation | python tools/validate_publication_reconciliation.py |
 | tool.validate_release_approval | tool | Validate Release Approval | python tools/validate_release_approval.py |
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
+| tool.validate_release_attempt | tool | Validate Release Attempt | python tools/validate_release_attempt.py |
 | tool.validate_release_candidate_identity | tool | Validate Release Candidate Identity | python tools/validate_release_candidate_identity.py |
 | tool.validate_release_evidence_stores | tool | Validate Release Evidence Stores | python tools/validate_release_evidence_stores.py |
 | tool.validate_release_gate_input | tool | Validate Release Gate Input | python tools/validate_release_gate_input.py |

@@ -1049,6 +1049,762 @@ def test_public_qualification_executor_rejects_substituted_retained_input(
     assert not (candidate / "attempts/001/cells").exists()
 
 
+def test_public_run_status_capture_binds_complete_plan_census_without_live_authority(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    executed = _public(
+        fixture,
+        "execute_release_qualification.py",
+        _qualification_execution_fixture(candidate),
+    )
+    assert executed.returncode == 0, (executed.stdout, executed.stderr)
+    arguments = [
+        "--plan",
+        str(candidate / "qualification-plan.json"),
+        "--attempt-id",
+        "001",
+        "--provider-run-id",
+        "fixture-run-1",
+        "--out",
+        str(candidate / "attempts/001/hosted-run-statuses.json"),
+        "--always-run",
+        "--invocation-dir",
+        str(candidate / "invocations/capture-release-run-statuses/001"),
+    ]
+    result = _public(fixture, "capture_release_run_statuses.py", arguments)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    record = control.read_json(candidate / "attempts/001/hosted-run-statuses.json")
+    assert record["record_type"] == "release-run-status-snapshot"
+    assert record["synthetic"] is True
+    assert record["data"]["attempt_id"] == "001"
+    assert [row["cell_id"] for row in record["data"]["cells"]] == [
+        "v0.4:qualification:linux-py312:fixture"
+    ]
+    assert all(row["conclusion"] == "success" for row in record["data"]["cells"])
+
+    live_candidate = _make_fixture(candidate.parent / "live-capture")
+    live_path = _success(live_candidate, _finalize(live_candidate))
+    _qualification_execution_fixture(live_path)
+    live_arguments = list(arguments)
+    for flag, replacement in (
+        ("--plan", live_path / "qualification-plan.json"),
+        ("--out", live_path / "attempts/001/hosted-run-statuses.json"),
+        (
+            "--invocation-dir",
+            live_path / "invocations/capture-release-run-statuses/001",
+        ),
+    ):
+        live_arguments[live_arguments.index(flag) + 1] = str(replacement)
+    blocked = _public(
+        live_candidate,
+        "capture_release_run_statuses.py",
+        live_arguments,
+        fixture_mode=False,
+    )
+    assert blocked.returncode != 0
+    assert not (live_path / "attempts/001/hosted-run-statuses.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["attempt", "provider-run", "output"])
+def test_public_run_status_capture_rejects_unbound_identity_or_destination(
+    finalized: tuple[dict[str, Any], Path], mutation: str
+) -> None:
+    fixture, candidate = finalized
+    _qualification_execution_fixture(candidate)
+    arguments = [
+        "--plan",
+        str(candidate / "qualification-plan.json"),
+        "--attempt-id",
+        "001",
+        "--provider-run-id",
+        "fixture-run-1",
+        "--out",
+        str(candidate / "attempts/001/hosted-run-statuses.json"),
+        "--always-run",
+        "--invocation-dir",
+        str(candidate / "invocations/capture-release-run-statuses/001"),
+    ]
+    if mutation == "attempt":
+        arguments[arguments.index("--attempt-id") + 1] = "../other"
+    elif mutation == "provider-run":
+        arguments[arguments.index("--provider-run-id") + 1] = "other/run"
+    else:
+        arguments[arguments.index("--out") + 1] = str(candidate / "status.json")
+    result = _public(fixture, "capture_release_run_statuses.py", arguments)
+    assert result.returncode != 0
+    assert not (candidate / "attempts/001/hosted-run-statuses.json").exists()
+
+
+def test_public_attempt_finalizer_binds_raw_execution_and_status_to_terminal_records(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    executed = _public(
+        fixture,
+        "execute_release_qualification.py",
+        _qualification_execution_fixture(candidate),
+    )
+    assert executed.returncode == 0, (executed.stdout, executed.stderr)
+    captured = _public(
+        fixture,
+        "capture_release_run_statuses.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempt-id",
+            "001",
+            "--provider-run-id",
+            "fixture-run-1",
+            "--out",
+            str(candidate / "attempts/001/hosted-run-statuses.json"),
+            "--always-run",
+            "--invocation-dir",
+            str(candidate / "invocations/capture-release-run-statuses/001"),
+        ],
+    )
+    assert captured.returncode == 0, (captured.stdout, captured.stderr)
+    attempt = candidate / "attempts/001"
+    finalized_cells = _public(
+        fixture,
+        "finalize_release_attempt_cells.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempt-id",
+            "001",
+            "--hosted-run-statuses",
+            str(attempt / "hosted-run-statuses.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "coordination.json"),
+            "--always-run",
+            "--invocation-dir",
+            str(candidate / "invocations/finalize-release-attempt-cells/001"),
+        ],
+    )
+    assert finalized_cells.returncode == 0, (finalized_cells.stdout, finalized_cells.stderr)
+    coordination = control.read_json(attempt / "coordination.json")
+    assert coordination["record_type"] == "release-attempt-coordination"
+    assert coordination["data"]["coordination_result"] == "PASS"
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+    result = control.read_json(attempt / control._qualification_terminal_name(cell_id, "result"))
+    termination = control.read_json(
+        attempt / control._qualification_terminal_name(cell_id, "termination")
+    )
+    assert result["record_type"] == "release-cell-result"
+    assert result["data"]["result"] == "PASS"
+    assert termination["record_type"] == "provider-run-termination"
+    assert coordination["data"]["cells"][0]["provider_termination_digest"] == (
+        control.sha256_json(termination)
+    )
+    aggregate = _public(
+        fixture,
+        "aggregate_release_attempt.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--coordination",
+            str(attempt / "coordination.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "attempt-summary.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/aggregate-release-attempt/001"),
+        ],
+    )
+    assert aggregate.returncode == 0, (aggregate.stdout, aggregate.stderr)
+    summary = control.read_json(attempt / "attempt-summary.json")
+    warning = control.read_json(attempt / "attempt-warning-summary.json")
+    assert summary["record_type"] == "release-attempt"
+    assert summary["data"]["result"] == "PASS"
+    assert summary["data"]["warning_summary_digest"] == control.sha256_json(warning)
+    assert warning["data"]["subject_digest"] == control.sha256_json(
+        {key: value for key, value in summary["data"].items() if key != "warning_summary_digest"}
+    )
+    validation_arguments = [
+        "--plan",
+        str(candidate / "qualification-plan.json"),
+        "--attempt-dir",
+        str(attempt),
+        "--record",
+        str(attempt / "attempt-summary.json"),
+        "--invocation-dir",
+        str(candidate / "invocations/validate-release-attempt/001"),
+    ]
+    validated = _public(fixture, "validate_release_attempt.py", validation_arguments)
+    assert validated.returncode == 0, (validated.stdout, validated.stderr)
+    _write_fixture_attempt_retention_and_index(candidate, attempt)
+    qualified = _public(
+        fixture,
+        "build_release_qualification.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempts",
+            str(candidate / "attempts"),
+            "--require-attempt-retention",
+            "--require-attempt-index-receipts",
+            "--out",
+            str(candidate / "qualification.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/build-release-qualification/001"),
+        ],
+    )
+    assert qualified.returncode == 0, (qualified.stdout, qualified.stderr)
+    qualification = control.read_json(candidate / "qualification.json")
+    assert qualification["record_type"] == "release-qualification"
+    assert qualification["data"]["attempt_evidence"][0]["attempt_id"] == "001"
+    control._release_qualification_summary_content(qualification, live=False)
+    validation = _public(
+        fixture,
+        "validate_release_qualification.py",
+        [
+            "--record",
+            str(candidate / "qualification.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/validate-release-qualification/001"),
+        ],
+    )
+    assert validation.returncode == 0, (validation.stdout, validation.stderr)
+    index_path = attempt / "index-receipt.json"
+    substituted_index = control.read_json(index_path)
+    substituted_index["data"]["entry_manifest_digest"] = "f" * 64
+    substituted_index = control.make_record(
+        "release-attempt-index",
+        substituted_index["data"],
+        invocation_id=substituted_index["invocation_id"],
+        sequence=substituted_index["sequence"],
+        synthetic=True,
+    )
+    _replace(index_path, control.canonical_json(substituted_index))
+    rejected = _public(
+        fixture,
+        "validate_release_qualification.py",
+        [
+            "--record",
+            str(candidate / "qualification.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/validate-release-qualification/002"),
+        ],
+    )
+    assert rejected.returncode != 0
+    terminal = control.read_json(
+        candidate / "invocations/validate-release-qualification/002/invocation.json"
+    )
+    assert terminal["data"]["terminal_status"] == "BLOCKED"
+
+
+def _write_fixture_attempt_retention_and_index(candidate: Path, attempt: Path) -> None:
+    plan = control.read_json(candidate / "qualification-plan.json")["data"]
+    plan_cells = {row["cell_id"]: row for row in plan["cells"]}
+    paths = control._qualification_attempt_required_paths(attempt, plan_cells)
+    entries = sorted(
+        [
+            {
+                "media_type": "application/json",
+                "path": path.relative_to(attempt).as_posix(),
+                "role": "qualification-attempt-original",
+                "sha256": control.sha256_bytes(path.read_bytes()),
+                "size": path.stat().st_size,
+            }
+            for path in paths
+        ],
+        key=lambda row: row["path"],
+    )
+    journals = ["1" * 64]
+    manifest_data = {
+        "candidate_digest": plan["candidate_digest"],
+        "entries": entries,
+        "invocation_journal_digests": journals,
+        "manifest_digest": control.sha256_json(
+            {"entries": entries, "invocation_journal_digests": journals}
+        ),
+        "phase": "attempt",
+        "scope_id": attempt.name,
+        "scope_kind": "release-attempt",
+        "producer_intent_digest": "2" * 64,
+        "invocation_root_locator": "invocations",
+    }
+    manifest = control.make_record(
+        "release-evidence-manifest",
+        manifest_data,
+        invocation_id="fixture-attempt-manifest",
+        sequence=1,
+        synthetic=True,
+    )
+    manifest_path = attempt / "evidence-manifest.json"
+    _write(manifest_path, manifest)
+    manifest_raw_digest = control.sha256_bytes(manifest_path.read_bytes())
+    stores = []
+    for index, store_id in enumerate(("payload-store-a", "payload-store-b"), start=1):
+        put_digest = f"{index + 2:x}" * 64
+        hold_digest = f"{index + 4:x}" * 64
+        stores.append(
+            {
+                "store_id": store_id,
+                "content_digest": manifest_raw_digest,
+                "read_back_digest": manifest_raw_digest,
+                "put_receipt_digest": put_digest,
+                "hold_receipt_digest": hold_digest,
+                "independence_group": f"fixture-group-{index}",
+                "namespace": f"fixture/{attempt.name}",
+                "object_key": f"manifest-{index}",
+                "backend_binding_digest": f"{index + 6:x}" * 64,
+                "native_proofs": {
+                    "put": {"path": f"put-{index}", "bytes": 1, "sha256": put_digest},
+                    "hold": {"path": f"hold-{index}", "bytes": 1, "sha256": hold_digest},
+                    "read_back": {
+                        "path": f"read-{index}",
+                        "bytes": manifest_path.stat().st_size,
+                        "sha256": manifest_raw_digest,
+                    },
+                },
+            }
+        )
+    retention = control.make_record(
+        "release-retention-receipts",
+        {
+            "all_content_equal": True,
+            "input_digest": manifest_raw_digest,
+            "phase": "attempt",
+            "receipt_set_digest": control.sha256_json(stores),
+            "retained_at": "2026-01-01T00:00:30Z",
+            "stores": stores,
+            "original_registry": {"path": "stores.json", "bytes": 1, "sha256": "9" * 64},
+            "invocation_root_locator": "invocations",
+            "producer_intent_digest": "a" * 64,
+        },
+        invocation_id="fixture-attempt-retention",
+        sequence=1,
+        synthetic=True,
+    )
+    retention_path = attempt / "retention-receipts.json"
+    _write(retention_path, retention)
+    scope = {
+        "kind": "release_candidate",
+        "scope_id": attempt.name,
+        "stage": "qualification-attempt",
+        "sequence": 1,
+        "release_tag": control.read_json(candidate / "candidate-identity.json")["data"][
+            "release_tag"
+        ],
+        "candidate_id": plan["candidate_digest"],
+    }
+    entry = {
+        "schema_version": "metriplane.release-attempt-index-entry.v1",
+        "backend_id": "attempt-index",
+        "genesis_digest": "b" * 64,
+        "generation": 1,
+        "previous_head": None,
+        "operation_id": "fixture-qualification-attempt",
+        "token": "fixture-token",
+        "milestone": plan["milestone"],
+        "scope": scope,
+        "entry_manifest_digest": control.sha256_json(manifest),
+        "entry_receipts_digest": control.sha256_json(retention),
+    }
+    entry_digest = control.sha256_json(entry)
+    index_data = {
+        "backend_id": entry["backend_id"],
+        "committed_head": entry_digest,
+        "disposition": "committed",
+        "entry_manifest_digest": entry["entry_manifest_digest"],
+        "entry_receipts_digest": entry["entry_receipts_digest"],
+        "generation": entry["generation"],
+        "milestone": entry["milestone"],
+        "operation_id": entry["operation_id"],
+        "previous_head": entry["previous_head"],
+        "read_back_digest": entry_digest,
+        "scope_id": scope["scope_id"],
+        "scope_kind": scope["kind"],
+        "sequence": scope["sequence"],
+        "stage": scope["stage"],
+        "token": entry["token"],
+        "kind": "update_receipt",
+        "genesis_digest": entry["genesis_digest"],
+        "entry_scope": scope,
+        "producer_intent_digest": "c" * 64,
+        "invocation_root_locator": "invocations",
+    }
+    _write(
+        attempt / "index-receipt.json",
+        control.make_record(
+            "release-attempt-index",
+            index_data,
+            invocation_id="fixture-attempt-index",
+            sequence=1,
+            synthetic=True,
+        ),
+    )
+
+
+def test_attempt_validator_rejects_warning_with_false_self_digest(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    # Exercise the complete public chain before changing only the retained warning.
+    assert (
+        _public(
+            fixture,
+            "execute_release_qualification.py",
+            _qualification_execution_fixture(candidate),
+        ).returncode
+        == 0
+    )
+    attempt = candidate / "attempts/001"
+    assert (
+        _public(
+            fixture,
+            "capture_release_run_statuses.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--attempt-id",
+                "001",
+                "--provider-run-id",
+                "fixture-run-1",
+                "--out",
+                str(attempt / "hosted-run-statuses.json"),
+                "--always-run",
+                "--invocation-dir",
+                str(candidate / "invocations/capture-release-run-statuses/001"),
+            ],
+        ).returncode
+        == 0
+    )
+    assert (
+        _public(
+            fixture,
+            "finalize_release_attempt_cells.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--attempt-id",
+                "001",
+                "--hosted-run-statuses",
+                str(attempt / "hosted-run-statuses.json"),
+                "--attempt-dir",
+                str(attempt),
+                "--out",
+                str(attempt / "coordination.json"),
+                "--always-run",
+                "--invocation-dir",
+                str(candidate / "invocations/finalize-release-attempt-cells/001"),
+            ],
+        ).returncode
+        == 0
+    )
+    assert (
+        _public(
+            fixture,
+            "aggregate_release_attempt.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--coordination",
+                str(attempt / "coordination.json"),
+                "--attempt-dir",
+                str(attempt),
+                "--out",
+                str(attempt / "attempt-summary.json"),
+                "--invocation-dir",
+                str(candidate / "invocations/aggregate-release-attempt/001"),
+            ],
+        ).returncode
+        == 0
+    )
+    missing_custody = _public(
+        fixture,
+        "build_release_qualification.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempts",
+            str(candidate / "attempts"),
+            "--require-attempt-retention",
+            "--require-attempt-index-receipts",
+            "--out",
+            str(candidate / "qualification.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/build-release-qualification/001"),
+        ],
+    )
+    assert missing_custody.returncode != 0
+    assert not (candidate / "qualification.json").exists()
+    warning_path = attempt / "attempt-warning-summary.json"
+    warning = control.read_json(warning_path)
+    warning["data"]["summary_digest"] = "f" * 64
+    warning = control.make_record(
+        "release-warning-summary",
+        warning["data"],
+        invocation_id=warning["invocation_id"],
+        sequence=warning["sequence"],
+        synthetic=True,
+    )
+    _replace(warning_path, control.canonical_json(warning))
+    summary_path = attempt / "attempt-summary.json"
+    summary = control.read_json(summary_path)
+    summary["data"]["warning_summary_digest"] = control.sha256_json(warning)
+    summary = control.make_record(
+        "release-attempt",
+        summary["data"],
+        invocation_id=summary["invocation_id"],
+        sequence=summary["sequence"],
+        synthetic=True,
+    )
+    _replace(summary_path, control.canonical_json(summary))
+    rejected = _public(
+        fixture,
+        "validate_release_attempt.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--record",
+            str(attempt / "attempt-summary.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/validate-release-attempt/001"),
+        ],
+    )
+    assert rejected.returncode != 0
+    assert "self digest is invalid" in (
+        candidate / "invocations/validate-release-attempt/001/stdout"
+    ).read_text(encoding="utf-8")
+
+
+def test_attempt_finalizer_rejects_changed_output_then_recovers_without_false_success(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    assert (
+        _public(
+            fixture,
+            "execute_release_qualification.py",
+            _qualification_execution_fixture(candidate),
+        ).returncode
+        == 0
+    )
+    attempt = candidate / "attempts/001"
+    assert (
+        _public(
+            fixture,
+            "capture_release_run_statuses.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--attempt-id",
+                "001",
+                "--provider-run-id",
+                "fixture-run-1",
+                "--out",
+                str(attempt / "hosted-run-statuses.json"),
+                "--always-run",
+                "--invocation-dir",
+                str(candidate / "invocations/capture-release-run-statuses/001"),
+            ],
+        ).returncode
+        == 0
+    )
+    result_path = attempt / "cells/v0.4:qualification:linux-py312:fixture/result.json"
+    original = result_path.read_bytes()
+    _replace(result_path, b"changed-result")
+
+    def finalizer(sequence: int) -> subprocess.CompletedProcess[str]:
+        return _public(
+            fixture,
+            "finalize_release_attempt_cells.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--attempt-id",
+                "001",
+                "--hosted-run-statuses",
+                str(attempt / "hosted-run-statuses.json"),
+                "--attempt-dir",
+                str(attempt),
+                "--out",
+                str(attempt / "coordination.json"),
+                "--always-run",
+                "--invocation-dir",
+                str(candidate / f"invocations/finalize-release-attempt-cells/{sequence:03d}"),
+            ],
+        )
+
+    rejected = finalizer(1)
+    assert rejected.returncode != 0
+    assert not (attempt / "coordination.json").exists()
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+    assert not (attempt / control._qualification_terminal_name(cell_id, "result")).exists()
+    assert not (attempt / control._qualification_terminal_name(cell_id, "termination")).exists()
+
+    _replace(result_path, original)
+    recovered = finalizer(2)
+    assert recovered.returncode == 0, (recovered.stdout, recovered.stderr)
+    assert (attempt / "coordination.json").is_file()
+
+
+def test_attempt_finalizer_rejects_substituted_command_identity(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    assert (
+        _public(
+            fixture,
+            "execute_release_qualification.py",
+            _qualification_execution_fixture(candidate),
+        ).returncode
+        == 0
+    )
+    attempt = candidate / "attempts/001"
+    assert (
+        _public(
+            fixture,
+            "capture_release_run_statuses.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--attempt-id",
+                "001",
+                "--provider-run-id",
+                "fixture-run-1",
+                "--out",
+                str(attempt / "hosted-run-statuses.json"),
+                "--always-run",
+                "--invocation-dir",
+                str(candidate / "invocations/capture-release-run-statuses/001"),
+            ],
+        ).returncode
+        == 0
+    )
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+    execution_path = attempt / "cells" / cell_id / "execution.json"
+    execution = control.read_json(execution_path)
+    data = copy.deepcopy(execution["data"])
+    data["expected_subject"] = {"fault_id": "substituted", "verdict": "PASS"}
+    data["recipe_digest"] = "a" * 64
+    _replace(execution_path, control.canonical_json(_remake(execution, data)))
+    rejected = _public(
+        fixture,
+        "finalize_release_attempt_cells.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempt-id",
+            "001",
+            "--hosted-run-statuses",
+            str(attempt / "hosted-run-statuses.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "coordination.json"),
+            "--always-run",
+            "--invocation-dir",
+            str(candidate / "invocations/finalize-release-attempt-cells/001"),
+        ],
+    )
+    assert rejected.returncode != 0
+    assert not (attempt / "coordination.json").exists()
+    assert not (attempt / control._qualification_terminal_name(cell_id, "result")).exists()
+    assert not (attempt / control._qualification_terminal_name(cell_id, "termination")).exists()
+
+
+@pytest.mark.parametrize(
+    ("conclusion", "terminal_status", "hard_loss"),
+    [("failure", "FAIL", False), ("cancelled", "CANCELLED", True)],
+)
+def test_attempt_finalizer_retains_provider_failure_without_false_success(
+    finalized: tuple[dict[str, Any], Path],
+    conclusion: str,
+    terminal_status: str,
+    hard_loss: bool,
+) -> None:
+    fixture, candidate = finalized
+    assert (
+        _public(
+            fixture,
+            "execute_release_qualification.py",
+            _qualification_execution_fixture(candidate),
+        ).returncode
+        == 0
+    )
+    attempt = candidate / "attempts/001"
+    capture_args = [
+        "--plan",
+        str(candidate / "qualification-plan.json"),
+        "--attempt-id",
+        "001",
+        "--provider-run-id",
+        "fixture-run-1",
+        "--out",
+        str(attempt / "hosted-run-statuses.json"),
+        "--always-run",
+        "--invocation-dir",
+        str(candidate / "invocations/capture-release-run-statuses/001"),
+    ]
+    assert _public(fixture, "capture_release_run_statuses.py", capture_args).returncode == 0
+    status_path = attempt / "hosted-run-statuses.json"
+    status = control.read_json(status_path)
+    data = copy.deepcopy(status["data"])
+    data["cells"][0]["conclusion"] = conclusion
+    _replace(status_path, control.canonical_json(_remake(status, data)))
+    shutil.rmtree(attempt / "cells")
+    result = _public(
+        fixture,
+        "finalize_release_attempt_cells.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempt-id",
+            "001",
+            "--hosted-run-statuses",
+            str(status_path),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "coordination.json"),
+            "--always-run",
+            "--invocation-dir",
+            str(candidate / "invocations/finalize-release-attempt-cells/001"),
+        ],
+    )
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    coordination = control.read_json(attempt / "coordination.json")
+    assert coordination["status"] == "PASS"
+    assert coordination["data"]["coordination_result"] == terminal_status
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+    assert coordination["data"]["hard_runner_losses"] == ([cell_id] if hard_loss else [])
+    termination = control.read_json(
+        attempt / control._qualification_terminal_name(cell_id, "termination")
+    )
+    assert termination["data"]["state"] == conclusion
+    assert coordination["data"]["cells"][0]["provider_termination_digest"] == (
+        control.sha256_json(termination)
+    )
+    assert not (attempt / control._qualification_terminal_name(cell_id, "result")).exists()
+    aggregated = _public(
+        fixture,
+        "aggregate_release_attempt.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--coordination",
+            str(attempt / "coordination.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "attempt-summary.json"),
+            "--invocation-dir",
+            str(candidate / "invocations/aggregate-release-attempt/001"),
+        ],
+    )
+    assert aggregated.returncode != 0
+    assert not (attempt / "attempt-summary.json").exists()
+
+
 def test_real_locked_s1_build_finalization_and_public_validation(tmp_path: Path) -> None:
     fixture = _make_fixture(tmp_path, real_project=True, build=False)
     # Only this source test executes the genuine pinned build adapter/backend.

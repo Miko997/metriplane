@@ -11562,6 +11562,25 @@ def _connected_predecessor_command_fixture(
         "profile_id": "fixture-profile",
         "scenario_ids": ["fixture-scenario"],
     }
+    expected_subject = {"fixture": "historical-subject"}
+    recipe = {"fixture": "historical-recipe"}
+    catalog_data = {
+        "execution_units": [
+            {
+                "environment_id": plan_cell["environment_id"],
+                "expected_subject": expected_subject,
+                "obligation_ids": plan_cell["obligation_ids"],
+                "phase": "qualification",
+                "profile_id": plan_cell["profile_id"],
+                "recipe": recipe,
+                "scenario_id": plan_cell["scenario_ids"][0],
+                "slot_milestone": "v0.4",
+                "unit_id": plan_cell["cell_id"],
+            }
+        ]
+    }
+    catalog_data["catalog_digest"] = release.sha256_json(catalog_data)
+    catalog_digest, _ = record("release-scenario-catalog", catalog_data)
     plan_data = {
         "attempt_count": 1,
         "candidate_digest": candidate_data["candidate_digest"],
@@ -11574,7 +11593,7 @@ def _connected_predecessor_command_fixture(
         "milestone": "v0.4",
         "predecessor_digest": candidate_data["predecessor_digest"],
         "readiness_digest": "b" * 64,
-        "scenario_catalog_digest": "c" * 64,
+        "scenario_catalog_digest": catalog_digest,
     }
     plan_data["plan_digest"] = release.sha256_json(plan_data)
     plan_digest, _ = record("release-qualification-plan", plan_data)
@@ -11587,17 +11606,22 @@ def _connected_predecessor_command_fixture(
             "candidate_digest": candidate_data["candidate_digest"],
             "cell_id": plan_cell["cell_id"],
             "completed_at": "2026-01-01T00:00:20Z",
-            "counts": {
-                "deselected": 0,
-                "failed": 0,
-                "passed": 1,
-                "retried": 0,
-                "skipped": 0,
-                "xfailed": 0,
-                "xpassed": 0,
+            "evidence": {
+                "expected_subject_digest": release.sha256_json(expected_subject),
+                "kind": "command",
+                "observed_process_exit": 0,
+                "outputs": [
+                    {
+                        "id": "historical-result",
+                        "media_type": "application/json",
+                        "path": "result.json",
+                        "sha256": "e" * 64,
+                        "size": 1,
+                    }
+                ],
+                "recipe_digest": release.sha256_json(recipe),
             },
             "environment_id": plan_cell["environment_id"],
-            "junit_digest": "d" * 64,
             "obligation_ids": plan_cell["obligation_ids"],
             "plan_digest": plan_digest,
             "profile_id": plan_cell["profile_id"],
@@ -11605,8 +11629,8 @@ def _connected_predecessor_command_fixture(
             "runner_identity": "fixture-runner",
             "scenario_ids": plan_cell["scenario_ids"],
             "started_at": "2026-01-01T00:00:10Z",
-            "stderr_digest": "e" * 64,
-            "stdout_digest": "f" * 64,
+            "stderr_digest": "1" * 64,
+            "stdout_digest": "2" * 64,
             "unexpected_outcomes": [],
         },
     )
@@ -11705,32 +11729,28 @@ def _connected_predecessor_command_fixture(
             {"cell_id": plan_cell["cell_id"], "result": "PASS", "result_digest": cell_digest}
         ],
         "coordination_digest": coordination_digest,
-        "index_receipt_digest": attempt_index_digest,
         "milestone": "v0.4",
         "qualification_plan_digest": plan_digest,
         "result": "PASS",
-        "retention_receipts_digest": attempt_retention_digest,
         "warning_summary_digest": "0" * 64,
     }
 
     def warning(subject: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        return record(
-            "release-warning-summary",
-            {
-                "candidate_digest": candidate_data["candidate_digest"],
-                "deselection_count": 0,
-                "policy_digest": "3" * 64,
-                "result": "PASS",
-                "retry_count": 0,
-                "skip_count": 0,
-                "subject_digest": release.sha256_json(subject),
-                "summary_digest": "4" * 64,
-                "unexpected_warning_count": 0,
-                "warnings": [],
-                "xfail_count": 0,
-                "xpass_count": 0,
-            },
-        )
+        warning_data = {
+            "candidate_digest": candidate_data["candidate_digest"],
+            "deselection_count": 0,
+            "policy_digest": "3" * 64,
+            "result": "PASS",
+            "retry_count": 0,
+            "skip_count": 0,
+            "subject_digest": release.sha256_json(subject),
+            "unexpected_warning_count": 0,
+            "warnings": [],
+            "xfail_count": 0,
+            "xpass_count": 0,
+        }
+        warning_data["summary_digest"] = release.sha256_json(warning_data)
+        return record("release-warning-summary", warning_data)
 
     attempt_subject = dict(attempt_data)
     del attempt_subject["warning_summary_digest"]
@@ -11738,14 +11758,20 @@ def _connected_predecessor_command_fixture(
     attempt_data["warning_summary_digest"] = attempt_warning_digest
     attempt_digest, _ = record("release-attempt", attempt_data)
     qualification_data = {
-        "attempt_digests": [attempt_digest],
-        "attempt_index_receipt_digests": [attempt_index_digest],
-        "attempt_retention_receipt_digests": [attempt_retention_digest],
+        "attempt_evidence": [
+            {
+                "attempt_digest": attempt_digest,
+                "attempt_id": attempt_id,
+                "index_receipt_digest": attempt_index_digest,
+                "manifest_digest": attempt_manifest_digest,
+                "retention_receipts_digest": attempt_retention_digest,
+            }
+        ],
         "candidate_digest": candidate_data["candidate_digest"],
         "executed_cell_ids": [plan_cell["cell_id"]],
         "expected_cell_ids": [plan_cell["cell_id"]],
         "plan_digest": plan_digest,
-        "qualification_digest": "5" * 64,
+        "qualification_digest": "0" * 64,
         "result": "PASS",
         "terminal_results": attempt_data["cells"],
         "unexpected_outcomes": [],
@@ -11753,8 +11779,12 @@ def _connected_predecessor_command_fixture(
     }
     qualification_subject = dict(qualification_data)
     del qualification_subject["warning_summary_digest"]
+    del qualification_subject["qualification_digest"]
     qualification_warning_digest, _ = warning(qualification_subject)
     qualification_data["warning_summary_digest"] = qualification_warning_digest
+    qualification_unsigned = dict(qualification_data)
+    del qualification_unsigned["qualification_digest"]
+    qualification_data["qualification_digest"] = release.sha256_json(qualification_unsigned)
     qualification_digest, _ = record("release-qualification", qualification_data)
     evidence_manifest_digest, _ = record(
         "release-evidence-manifest",
@@ -12409,6 +12439,9 @@ def test_predecessor_qualification_rejects_missing_planned_attempt(
         plan,
     )
     qualification["data"]["plan_digest"] = changed_plan_digest
+    qualification_unsigned = dict(qualification["data"])
+    del qualification_unsigned["qualification_digest"]
+    qualification["data"]["qualification_digest"] = release.sha256_json(qualification_unsigned)
     _predecessor_content_reseal(qualification)
     with pytest.raises(release.ReleaseControlError, match="plan cell inventory"):
         release._release_predecessor_qualification_originals(
