@@ -2019,6 +2019,8 @@ def _validate_cell_result_payload(
     attempt_id: str,
     candidate_digest: str,
     plan_digest: str,
+    expected_subject_digest: str,
+    expected_recipe_digest: str,
     live: bool,
     attestation_verifier: ProviderAttestationVerifier | None = None,
 ) -> dict[str, Any]:
@@ -2087,6 +2089,11 @@ def _validate_cell_result_payload(
         raise ReleaseControlError("release qualification cell command did not pass")
     for field in ("expected_subject_digest", "recipe_digest"):
         _require_digest(evidence[field], "release qualification cell evidence " + field)
+    if (
+        evidence["expected_subject_digest"] != expected_subject_digest
+        or evidence["recipe_digest"] != expected_recipe_digest
+    ):
+        raise ReleaseControlError("release qualification cell command identity differs")
     outputs = evidence["outputs"]
     if not isinstance(outputs, list) or not outputs:
         raise ReleaseControlError("release qualification cell has no exact command outputs")
@@ -2120,6 +2127,53 @@ def _validate_cell_result_payload(
     if completed_at < started_at:
         raise ReleaseControlError("release qualification cell completion precedes its start")
     return cell
+
+
+def _qualification_command_digests(
+    catalog_record: Mapping[str, Any],
+    *,
+    plan: Mapping[str, Any],
+    plan_cells: Mapping[str, Mapping[str, Any]],
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None = None,
+) -> dict[str, tuple[str, str]]:
+    catalog = _passing_record(
+        catalog_record,
+        "release-scenario-catalog",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    if sha256_json(catalog_record) != plan["scenario_catalog_digest"]:
+        raise ReleaseControlError("qualification command catalog binding differs")
+    units = catalog.get("execution_units")
+    if not isinstance(units, list):
+        raise ReleaseControlError("qualification command catalog units are malformed")
+    bindings: dict[str, tuple[str, str]] = {}
+    for value in units:
+        if not isinstance(value, Mapping):
+            continue
+        cell_id = value.get("unit_id")
+        if not isinstance(cell_id, str) or cell_id not in plan_cells:
+            continue
+        cell = plan_cells[cell_id]
+        expected_subject = value.get("expected_subject")
+        recipe = value.get("recipe")
+        if (
+            cell_id in bindings
+            or value.get("phase") != "qualification"
+            or value.get("slot_milestone") != plan["milestone"]
+            or value.get("environment_id") != cell["environment_id"]
+            or value.get("profile_id") != cell["profile_id"]
+            or value.get("obligation_ids") != cell["obligation_ids"]
+            or [value.get("scenario_id")] != cell["scenario_ids"]
+            or not isinstance(expected_subject, Mapping)
+            or not isinstance(recipe, Mapping)
+        ):
+            raise ReleaseControlError("qualification command unit changes its planned cell")
+        bindings[cell_id] = (sha256_json(expected_subject), sha256_json(recipe))
+    if list(bindings) != list(plan_cells):
+        raise ReleaseControlError("qualification command catalog omits a planned cell")
+    return bindings
 
 
 def _release_retention_content(retention: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -3646,6 +3700,22 @@ def validate_release_qualification_record(
     plan_cells = _validate_qualification_plan_payload(plan, candidate=candidate)
     if list(plan_cells) != expected_cells:
         raise ReleaseControlError("release qualification plan cell inventory mismatch")
+    catalog_record = _resolved_evidence_record(
+        indexed,
+        plan["scenario_catalog_digest"],
+        "release-scenario-catalog",
+        "release qualification scenario catalog",
+        identity_kind="record_C",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    command_digests = _qualification_command_digests(
+        catalog_record,
+        plan=plan,
+        plan_cells=plan_cells,
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
 
     attempt_evidence = data["attempt_evidence"]
     if plan["attempt_count"] != len(attempt_evidence):
@@ -3728,6 +3798,8 @@ def validate_release_qualification_record(
                 attempt_id=attempt_id,
                 candidate_digest=data["candidate_digest"],
                 plan_digest=data["plan_digest"],
+                expected_subject_digest=command_digests[cell_id][0],
+                expected_recipe_digest=command_digests[cell_id][1],
                 live=live,
                 attestation_verifier=attestation_verifier,
             )
@@ -9881,6 +9953,12 @@ def _finalize_release_attempt_cells_operation(
     validate_record(statuses_record, "release-run-status-snapshot")
     plan = _passing_record(plan_record, "release-qualification-plan", live=False)
     cells = _validate_qualification_plan_payload(plan)
+    command_digests = _qualification_command_digests(
+        read_json(context.root / "scenario-catalog.json"),
+        plan=plan,
+        plan_cells=cells,
+        live=False,
+    )
     attempt_id = _require_nonempty_string(args.attempt_id, "qualification attempt id")
     if (
         plan_path != context.root / "qualification-plan.json"
@@ -10018,6 +10096,8 @@ def _finalize_release_attempt_cells_operation(
             or execution["scenario_ids"] != plan_cell["scenario_ids"]
             or execution["plan_digest"] != plan["plan_digest"]
             or execution["observed_process_exit"] != 0
+            or sha256_json(execution["expected_subject"]) != command_digests[cell_id][0]
+            or execution["recipe_digest"] != command_digests[cell_id][1]
         ):
             raise ReleaseControlError("qualification execution changes its planned cell")
         execution_root = execution_path.parent
@@ -10125,6 +10205,10 @@ def _aggregate_release_attempt_operation(
     coordination_record = read_json(coordination_path)
     plan = _passing_record(plan_record, "release-qualification-plan", live=False)
     plan_cells = _validate_qualification_plan_payload(plan)
+    catalog = read_json(context.root / "scenario-catalog.json")
+    command_digests = _qualification_command_digests(
+        catalog, plan=plan, plan_cells=plan_cells, live=False
+    )
     coordination = _passing_record(coordination_record, "release-attempt-coordination", live=False)
     if plan_record["synthetic"] is not True or coordination_record["synthetic"] is not True:
         raise ReleaseControlError(
@@ -10182,6 +10266,8 @@ def _aggregate_release_attempt_operation(
             attempt_id=attempt_id,
             candidate_digest=plan["candidate_digest"],
             plan_digest=plan["plan_digest"],
+            expected_subject_digest=command_digests[expected_cell_id][0],
+            expected_recipe_digest=command_digests[expected_cell_id][1],
             live=False,
         )
         terminals.append(
@@ -10200,7 +10286,6 @@ def _aggregate_release_attempt_operation(
         "qualification_plan_digest": plan["plan_digest"],
         "result": "PASS",
     }
-    catalog = read_json(context.root / "scenario-catalog.json")
     catalog_data = _passing_record(catalog, "release-scenario-catalog", live=False)
     if sha256_json(catalog) != plan["scenario_catalog_digest"]:
         raise ReleaseControlError("attempt warning policy uses another scenario catalog")
@@ -10254,6 +10339,12 @@ def _validate_release_attempt_operation(args: argparse.Namespace) -> dict[str, A
     attempt_record = read_json(record_path)
     plan = _passing_record(plan_record, "release-qualification-plan", live=False)
     plan_cells = _validate_qualification_plan_payload(plan)
+    command_digests = _qualification_command_digests(
+        read_json(plan_path.parent / "scenario-catalog.json"),
+        plan=plan,
+        plan_cells=plan_cells,
+        live=False,
+    )
     attempt = _release_data(
         attempt_record,
         {
@@ -10303,6 +10394,8 @@ def _validate_release_attempt_operation(args: argparse.Namespace) -> dict[str, A
             attempt_id=attempt["attempt_id"],
             candidate_digest=attempt["candidate_digest"],
             plan_digest=attempt["qualification_plan_digest"],
+            expected_subject_digest=command_digests[cell_id][0],
+            expected_recipe_digest=command_digests[cell_id][1],
             live=False,
         )
         observed_ids.append(cell_id)
@@ -18743,6 +18836,15 @@ def _release_predecessor_qualification_originals(
         or list(plan_cells) != data["expected_cell_ids"]
     ):
         raise ReleaseControlError("selected qualification plan cell inventory differs")
+    catalog_record = _release_predecessor_original_record(
+        originals,
+        "release-scenario-catalog",
+        plan["scenario_catalog_digest"],
+        "selected qualification scenario catalog",
+    )
+    command_digests = _qualification_command_digests(
+        catalog_record, plan=plan, plan_cells=plan_cells, live=False
+    )
     latest_cells: list[dict[str, Any]] | None = None
     for evidence_row in data["attempt_evidence"]:
         attempt_digest = evidence_row["attempt_digest"]
@@ -18793,6 +18895,8 @@ def _release_predecessor_qualification_originals(
                 attempt_id=attempt["attempt_id"],
                 candidate_digest=data["candidate_digest"],
                 plan_digest=data["plan_digest"],
+                expected_subject_digest=command_digests[row["cell_id"]][0],
+                expected_recipe_digest=command_digests[row["cell_id"]][1],
                 live=False,
             )
         coordination = _release_predecessor_original_record(

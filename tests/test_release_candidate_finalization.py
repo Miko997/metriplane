@@ -1647,6 +1647,71 @@ def test_attempt_finalizer_rejects_changed_output_then_recovers_without_false_su
     assert (attempt / "coordination.json").is_file()
 
 
+def test_attempt_finalizer_rejects_substituted_command_identity(
+    finalized: tuple[dict[str, Any], Path],
+) -> None:
+    fixture, candidate = finalized
+    assert (
+        _public(
+            fixture,
+            "execute_release_qualification.py",
+            _qualification_execution_fixture(candidate),
+        ).returncode
+        == 0
+    )
+    attempt = candidate / "attempts/001"
+    assert (
+        _public(
+            fixture,
+            "capture_release_run_statuses.py",
+            [
+                "--plan",
+                str(candidate / "qualification-plan.json"),
+                "--attempt-id",
+                "001",
+                "--provider-run-id",
+                "fixture-run-1",
+                "--out",
+                str(attempt / "hosted-run-statuses.json"),
+                "--always-run",
+                "--invocation-dir",
+                str(candidate / "invocations/capture-release-run-statuses/001"),
+            ],
+        ).returncode
+        == 0
+    )
+    cell_id = "v0.4:qualification:linux-py312:fixture"
+    execution_path = attempt / "cells" / cell_id / "execution.json"
+    execution = control.read_json(execution_path)
+    data = copy.deepcopy(execution["data"])
+    data["expected_subject"] = {"fault_id": "substituted", "verdict": "PASS"}
+    data["recipe_digest"] = "a" * 64
+    _replace(execution_path, control.canonical_json(_remake(execution, data)))
+    rejected = _public(
+        fixture,
+        "finalize_release_attempt_cells.py",
+        [
+            "--plan",
+            str(candidate / "qualification-plan.json"),
+            "--attempt-id",
+            "001",
+            "--hosted-run-statuses",
+            str(attempt / "hosted-run-statuses.json"),
+            "--attempt-dir",
+            str(attempt),
+            "--out",
+            str(attempt / "coordination.json"),
+            "--always-run",
+            "--invocation-dir",
+            str(candidate / "invocations/finalize-release-attempt-cells/001"),
+        ],
+    )
+    assert rejected.returncode != 0
+    assert not (attempt / "coordination.json").exists()
+    assert not (attempt / control._qualification_terminal_name(cell_id, "result")).exists()
+    assert not (attempt / control._qualification_terminal_name(cell_id, "termination")).exists()
+
+
 @pytest.mark.parametrize(
     ("conclusion", "terminal_status", "hard_loss"),
     [("failure", "FAIL", False), ("cancelled", "CANCELLED", True)],
