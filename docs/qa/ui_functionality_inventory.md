@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `dc6b2a0de83a9a4aa397dec56382102bf67d85f09d50781cb95f5fc79460f9a8`
+Canonical projection SHA-256: `6a33f58579cc5578cb41555bf5f3329cd9c29216e0192c38a1073e61f9076447`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 218 |
+| actions | 219 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -263,6 +263,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.build_release_delta_test_map | tool | Build Release Delta Test Map | python tools/build_release_delta_test_map.py |
 | tool.build_release_evidence_manifest | tool | Build Release Evidence Manifest | python tools/build_release_evidence_manifest.py |
 | tool.build_release_qualification | tool | Build Release Qualification | python tools/build_release_qualification.py |
+| tool.build_traceability_graph | tool | Build Traceability Graph | python tools/build_traceability_graph.py |
 | tool.calibrate_intrinsics_chessboard | tool | Calibrate Intrinsics Chessboard | python tools/calibrate_intrinsics_chessboard.py |
 | tool.calibrate_planar_homography | tool | Calibrate Planar Homography | python tools/calibrate_planar_homography.py |
 | tool.capture_linear_release_snapshot | tool | Capture Linear Release Snapshot | python tools/capture_linear_release_snapshot.py |

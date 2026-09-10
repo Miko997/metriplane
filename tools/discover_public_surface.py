@@ -46,6 +46,12 @@ INVENTORY_PATH = "docs/status/functional-inventory.json"
 PROFILES_PATH = "docs/status/support-profiles.json"
 REPORT_PATH = "docs/status/public-surface-inventory.md"
 GENERATED_PATHS = frozenset({INVENTORY_PATH, PROFILES_PATH, REPORT_PATH})
+EXTERNAL_GENERATED_PATHS = frozenset(
+    {
+        "docs/requirements/requirements.json",
+        "docs/status/capability-test-ledger.json",
+    }
+)
 TRANSACTION_DIRECTORY = ".public-surface-generation.transaction"
 TRANSACTION_SCHEMA = "metriplane.public-surface-generation-transaction.v1"
 CONSUMERS = ("MP2-014", "MP2-015", "MP2-016", "MP2-017", "MP2-018")
@@ -98,7 +104,7 @@ FAMILY_OBLIGATION = {
 }
 EXPECTED_FAMILY_COUNTS = {
     "configs": 167,
-    "current_claims": 371,
+    "current_claims": 372,
     "examples": 172,
     "jobs": 59,
     "manifest_keys": 3938,
@@ -106,7 +112,7 @@ EXPECTED_FAMILY_COUNTS = {
     "models": 251,
     "proofs": 322,
     "public_api": 2515,
-    "resources": 1673,
+    "resources": 1678,
     "workflows": 17,
 }
 
@@ -820,7 +826,7 @@ def _resource_observations(snapshot: StagedSnapshot) -> tuple[list[Observation],
     examples: list[Observation] = []
     proofs: list[Observation] = []
     for entry in snapshot.entries:
-        if entry.path in GENERATED_PATHS:
+        if entry.path in GENERATED_PATHS or entry.path in EXTERNAL_GENERATED_PATHS:
             continue
         locator = f"index:{entry.mode}"
         resources.append(Observation("resources", entry.path, entry.path, entry.path, locator))
