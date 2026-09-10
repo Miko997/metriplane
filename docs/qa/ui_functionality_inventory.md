@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f9958d42d68211ab31006bcbbb984fa58ad24fcef5af64aede807b6ee30c9ecd`
+Canonical projection SHA-256: `6283c6cb67e80eb06ac509ccdeda9e800f9ba62753c2e13369288020d7f8394d`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 196 |
+| actions | 197 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -304,6 +304,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.preview_world_overlay_multi | tool | Preview World Overlay Multi | python tools/preview_world_overlay_multi.py |
 | tool.preview_world_overlay_multi_ws | tool | Preview World Overlay Multi Ws | python tools/preview_world_overlay_multi_ws.py |
 | tool.preview_zones_overlay | tool | Preview Zones Overlay | python tools/preview_zones_overlay.py |
+| tool.promote_release_candidate | tool | Promote Release Candidate | python tools/promote_release_candidate.py |
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
 | tool.record_release_approval | tool | Record Release Approval | python tools/record_release_approval.py |

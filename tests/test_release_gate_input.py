@@ -14,6 +14,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -440,6 +441,612 @@ def test_public_approval_command_materializes_and_validates_signed_non_author_de
     duplicate = _run_release_tool("record_release_approval.py", duplicate_argv)
     assert duplicate.returncode != 0
     assert (root / "approval.json").read_bytes() == original
+
+
+def _promotion_plan_command_fixture(tmp_path: Path) -> tuple[Path, list[str]]:
+    root = tmp_path / "promotion-run"
+    root.mkdir()
+    candidate_digest = "7" * 64
+    genesis_raw = b'{"schema_version":"metriplane.release-attempt-index-genesis.v1"}\n'
+    roles = release.make_record(
+        "release-role-assignments",
+        {
+            "author_id": "fixture-author",
+            "authorized_executor_id": "fixture-operator",
+            "infrastructure_owner": {"actor_id": "fixture-infrastructure-owner"},
+            "milestone": "v0.4",
+            "non_author_reviewer_id": "fixture-reviewer",
+            "publisher_id": "fixture-publisher",
+            "run_id": "fixture-promotion-run",
+            "task_id": "MP2-007",
+        },
+        invocation_id="fixture-promotion-roles",
+        sequence=1,
+        synthetic=True,
+    )
+    gate = release.make_record(
+        "release-gate-instance",
+        {
+            "candidate_digest": candidate_digest,
+            "milestone": "v0.4",
+            "run_id": "fixture-promotion-run",
+        },
+        invocation_id="fixture-promotion-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    qualification = release.make_record(
+        "release-qualification",
+        {"candidate_digest": candidate_digest},
+        invocation_id="fixture-promotion-qualification",
+        sequence=1,
+        synthetic=True,
+    )
+    decision_data = {
+        "approval_kind": "non_author_release_decision",
+        "author_id": "fixture-author",
+        "authority_policy_digest": "8" * 64,
+        "candidate_digest": candidate_digest,
+        "conflicts": [],
+        "decision": "APPROVED",
+        "expires_at": "2099-01-01T01:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z",
+        "milestone": "v0.4",
+        "qualification_digest": release.sha256_json(qualification),
+        "reviewer_id": "fixture-reviewer",
+        "rubric_result_digest": None,
+        "signing_method": "provider-attestation-v1",
+    }
+    unsigned = release.make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="fixture-promotion-decision",
+        sequence=1,
+        synthetic=True,
+    )
+    subject = release.signature_subject_digest(unsigned)
+    decision = release.make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="fixture-promotion-decision",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "fixture-reviewer",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": release.sha256_json(
+                    {"actor_id": "fixture-reviewer", "subject_digest": subject}
+                ),
+                "subject_digest": subject,
+                "synthetic": True,
+            }
+        ],
+    )
+    approval_data = {
+        "approval_decision_digest": release.sha256_json(decision),
+        "author_id": "fixture-author",
+        "candidate_digest": candidate_digest,
+        "conflicts": [],
+        "decision": "APPROVED",
+        "gate_instance_digest": release.sha256_json(gate),
+        "qualification_digest": release.sha256_json(qualification),
+        "reviewer_id": "fixture-reviewer",
+        "rubric_result_digest": None,
+    }
+    snapshot = release.make_record(
+        "linear-release-snapshot",
+        {"state": "open_running"},
+        invocation_id="fixture-promotion-snapshot",
+        sequence=1,
+        synthetic=True,
+    )
+    artifact_manifest = release.make_record(
+        "release-artifact-manifest",
+        {"artifact_set_digest": "6" * 64},
+        invocation_id="fixture-promotion-artifacts",
+        sequence=1,
+        synthetic=True,
+    )
+    records = {
+        "approval-decision.json": decision,
+        "approval.json": release.make_record(
+            "release-approval",
+            approval_data,
+            invocation_id="fixture-promotion-approval",
+            sequence=1,
+            synthetic=True,
+        ),
+        "artifact-manifest.json": artifact_manifest,
+        "attempt-index-checkpoint.json": release.make_record(
+            "release-attempt-index",
+            {
+                "generation": 4,
+                "genesis_digest": release.sha256_bytes(genesis_raw),
+                "head": "4" * 64,
+            },
+            invocation_id="fixture-promotion-index",
+            sequence=1,
+            synthetic=True,
+        ),
+        "candidate-identity.json": release.make_record(
+            "release-candidate-identity",
+            {
+                "artifact_manifest_digest": release.sha256_json(artifact_manifest),
+                "artifact_set_digest": "6" * 64,
+                "candidate_digest": candidate_digest,
+            },
+            invocation_id="fixture-promotion-candidate",
+            sequence=1,
+            synthetic=True,
+        ),
+        "gate-instance.json": gate,
+        "prepromotion-linear-snapshot.json": snapshot,
+        "qualification.json": qualification,
+        "role-assignments.json": roles,
+    }
+    records["prepromotion-controls.json"] = release.make_record(
+        "release-prepromotion-controls",
+        {
+            "candidate_digest": candidate_digest,
+            "captured_at": "2026-01-01T00:00:00Z",
+            "expires_at": "2099-01-01T00:00:00Z",
+            "linear_snapshot_digest": release.sha256_json(snapshot),
+            "task_state": "open_running",
+            "target_state_digest": "5" * 64,
+        },
+        invocation_id="fixture-promotion-controls",
+        sequence=1,
+        synthetic=True,
+    )
+    for name, record in records.items():
+        (root / name).write_bytes(release.canonical_json(record))
+    (root / "release-attempt-index-genesis.json").write_bytes(genesis_raw)
+    (root / "targets.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "metriplane.release-targets.v1",
+                "owner": "MP2-007",
+                "milestones": [
+                    {
+                        "id": "v0.4",
+                        "predecessor": "v0.3.0",
+                        "required_targets": ["github-release", "pypi", "testpypi"],
+                        "version_line": "v0.4.x",
+                    }
+                ],
+            },
+            sort_keys=True,
+        )
+    )
+    argv = ["--dry-run"]
+    for flag, name in (
+        ("gate-instance", "gate-instance.json"),
+        ("candidate-identity", "candidate-identity.json"),
+        ("qualification", "qualification.json"),
+        ("approval", "approval.json"),
+        ("prepromotion-controls", "prepromotion-controls.json"),
+        ("prepromotion-linear-snapshot", "prepromotion-linear-snapshot.json"),
+        ("attempt-index-checkpoint", "attempt-index-checkpoint.json"),
+        ("artifact-manifest", "artifact-manifest.json"),
+        ("targets", "targets.json"),
+    ):
+        argv.extend(["--" + flag, str(root / name)])
+    argv.extend(
+        [
+            "--out",
+            str(root / "promotion-plan.json"),
+            "--invocation-dir",
+            str(root / "invocations/promote-release-candidate/001"),
+        ]
+    )
+    return root, argv
+
+
+def test_public_promotion_dry_run_binds_exact_authority_checkpoint_and_targets(
+    tmp_path: Path,
+) -> None:
+    root, argv = _promotion_plan_command_fixture(tmp_path)
+    completed = _run_release_tool("promote_release_candidate.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    record = release.read_json(root / "promotion-plan.json")
+    release.validate_record(record, "release-promotion-plan")
+    plan = record["data"]
+    assert plan["attempt_index_epoch"] == 4
+    assert plan["attempt_index_head"] == "4" * 64
+    assert plan["publisher_id"] == "fixture-publisher"
+    assert plan["publisher_actions"] == [
+        "publish:github-release",
+        "publish:pypi",
+        "publish:testpypi",
+    ]
+    release.validate_promotion_plan(
+        plan,
+        now=0,
+        candidate_digest="7" * 64,
+        approval_digest=release.sha256_json(release.read_json(root / "approval.json")),
+        publisher_id="fixture-publisher",
+        controls_digest=release.sha256_json(release.read_json(root / "prepromotion-controls.json")),
+        target_state_digest="5" * 64,
+        attempt_index_checkpoint_digest=release.sha256_json(
+            release.read_json(root / "attempt-index-checkpoint.json")
+        ),
+        attempt_index_head="4" * 64,
+    )
+
+
+def test_public_promotion_dry_run_rejects_substituted_checkpoint_without_output(
+    tmp_path: Path,
+) -> None:
+    root, argv = _promotion_plan_command_fixture(tmp_path)
+    checkpoint = release.read_json(root / "attempt-index-checkpoint.json")
+    checkpoint["data"]["head"] = "9" * 64
+    (root / "attempt-index-checkpoint.json").write_bytes(release.canonical_json(checkpoint))
+    completed = _run_release_tool("promote_release_candidate.py", argv)
+    assert completed.returncode != 0
+    assert not (root / "promotion-plan.json").exists()
+
+
+def test_public_promotion_terminal_replay_rejects_reserved_input_drift(tmp_path: Path) -> None:
+    root, argv = _promotion_plan_command_fixture(tmp_path)
+    completed = _run_release_tool("promote_release_candidate.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    targets = json.loads((root / "targets.json").read_text())
+    targets["owner"] = "substituted-owner"
+    (root / "targets.json").write_text(json.dumps(targets, sort_keys=True))
+    context = release._validate_intent(root / "invocations/promote-release-candidate/001")
+    with pytest.raises(release.ReleaseControlError, match="reserved input bytes changed"):
+        release._validate_bound_invocation(context)
+
+
+def test_public_promotion_terminal_replay_survives_run_relocation(tmp_path: Path) -> None:
+    original_parent = tmp_path / "original-parent"
+    original_parent.mkdir()
+    original, argv = _promotion_plan_command_fixture(original_parent)
+    completed = _run_release_tool("promote_release_candidate.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    moved = tmp_path / "moved-parent" / original.name
+    moved.parent.mkdir()
+    original.rename(moved)
+    context = release._validate_intent(moved / "invocations/promote-release-candidate/001")
+    terminal = release.read_json(context.directory / "invocation.json")
+    release._validate_bound_invocation(
+        context,
+        outputs=terminal["data"]["outputs"],
+        output_root=moved,
+    )
+
+
+def _promotion_execute_argv(root: Path, *, sequence: int = 2) -> list[str]:
+    snapshot = release.read_json(root / "prepromotion-linear-snapshot.json")
+    records = {
+        "frozen-linear-snapshot.json": snapshot,
+        "task-state-observation.json": release.make_record(
+            "release-task-state-observation",
+            {
+                "observed_at": "2026-09-10T00:00:00Z",
+                "project_id": "fixture-project",
+                "snapshot_digest": release.sha256_json(snapshot),
+                "state": "open_running",
+                "task_id": "fixture-task",
+            },
+            invocation_id="fixture-promotion-task-state",
+            sequence=1,
+            synthetic=True,
+        ),
+        "retention-receipts.json": release.make_record(
+            "release-retention-receipts",
+            {"candidate_digest": "7" * 64},
+            invocation_id="fixture-promotion-retention",
+            sequence=1,
+            synthetic=True,
+        ),
+    }
+    for name, value in records.items():
+        (root / name).write_bytes(release.canonical_json(value))
+    (root / "readiness-registry.json").write_text(
+        '{"schema_version":"metriplane.release-readiness-registry.v1"}\n'
+    )
+    (root / "task-state-policy.json").write_text(
+        '{"schema_version":"metriplane.release-task-state-policy.v1"}\n'
+    )
+    (root / "release-attempt-index-genesis.json").write_text(
+        '{"schema_version":"metriplane.release-attempt-index-genesis.v1"}\n'
+    )
+    argv = ["--execute"]
+    for flag, name in (
+        ("plan", "promotion-plan.json"),
+        ("prepromotion-controls", "prepromotion-controls.json"),
+        ("prepromotion-linear-snapshot", "prepromotion-linear-snapshot.json"),
+        ("readiness-registry", "readiness-registry.json"),
+        ("frozen-linear-snapshot", "frozen-linear-snapshot.json"),
+        ("attempt-index-checkpoint", "attempt-index-checkpoint.json"),
+        ("attempt-index-genesis", "release-attempt-index-genesis.json"),
+        ("task-state-observation", "task-state-observation.json"),
+        ("task-state-policy", "task-state-policy.json"),
+        ("retention-receipts", "retention-receipts.json"),
+    ):
+        argv.extend(["--" + flag, str(root / name)])
+    argv.extend(
+        [
+            "--attempt-index-backend",
+            "attempt-index",
+            "--expected-head",
+            "4" * 64,
+            "--operation-id",
+            f"fixture-promotion-{sequence}",
+            "--project-id",
+            "fixture-project",
+            "--task-id",
+            "fixture-task",
+            "--require-live-state",
+            "open_running",
+            "--provider-auth-from-approved-environment",
+            "--require-live-full-release-bom-closed-except-current-decision",
+            "--require-live-exact-reciprocal-relations",
+            "--require-live-exact-milestone-assignments",
+            "--full-project-refetch-before-lock-and-before-first-mutation",
+            "--require-fresh-through-first-mutation",
+            "--bind-live-refetch-in-lock-receipt",
+            "--lock-receipt-out",
+            str(root / f"promotion-lock-{sequence}.json"),
+            "--out",
+            str(root / f"promotion-{sequence}.json"),
+            "--invocation-dir",
+            str(root / f"invocations/promote-release-candidate/{sequence:03d}"),
+        ]
+    )
+    return argv
+
+
+def test_public_promotion_execute_fences_competing_writer_and_retains_exact_receipts(
+    tmp_path: Path,
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    planned = _run_release_tool("promote_release_candidate.py", plan_argv)
+    assert planned.returncode == 0, planned.stderr or planned.stdout
+    first = _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root))
+    assert first.returncode == 0, first.stderr or first.stdout
+    lock = release.read_json(root / "promotion-lock-2.json")
+    promotion = release.read_json(root / "promotion-2.json")
+    release.validate_record(lock, "release-promotion-lock")
+    release.validate_record(promotion, "release-promotion")
+    assert promotion["synthetic"] is True
+    assert promotion["data"]["lock_receipt_digest"] == release.sha256_json(lock)
+    competing = _run_release_tool(
+        "promote_release_candidate.py", _promotion_execute_argv(root, sequence=3)
+    )
+    assert competing.returncode != 0
+    assert not (root / "promotion-lock-3.json").exists()
+    assert not (root / "promotion-3.json").exists()
+
+
+def test_public_promotion_terminal_replay_rejects_forged_empty_action_success(
+    tmp_path: Path,
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        == 0
+    )
+    output = root / "promotion-2.json"
+    forged = release.read_json(output)
+    forged["data"]["actions"] = []
+    forged = release.make_record(
+        "release-promotion",
+        forged["data"],
+        invocation_id=forged["invocation_id"],
+        sequence=forged["sequence"],
+        synthetic=True,
+    )
+    output.chmod(0o600)
+    output.write_bytes(release.canonical_json(forged))
+    context = release._validate_intent(root / "invocations/promote-release-candidate/002")
+    terminal = release.read_json(context.directory / "invocation.json")
+    outputs = [
+        {**row, "sha256": release.sha256_bytes(output.read_bytes())}
+        if row["path"] == "promotion-2.json"
+        else row
+        for row in terminal["data"]["outputs"]
+    ]
+    with pytest.raises(release.ReleaseControlError, match="output semantics differ"):
+        release._validate_bound_invocation(context, outputs=outputs)
+
+
+def test_public_promotion_interruption_after_lock_cannot_create_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_AFTER_PROMOTION_LOCK", "1")
+    interrupted = _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root))
+    assert interrupted.returncode != 0
+    assert list((root / "fixture-promotion-lock").glob("*.json"))
+    assert not (root / "promotion-lock-2.json").exists()
+    assert not (root / "promotion-2.json").exists()
+
+
+def test_public_promotion_rejects_expired_plan_before_acquiring_lock(tmp_path: Path) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    plan_record = release.read_json(root / "promotion-plan.json")
+    plan_data = plan_record["data"]
+    plan_data["expires_at"] = 1
+    unsigned = dict(plan_data)
+    unsigned.pop("plan_digest")
+    plan_data["plan_digest"] = release.sha256_json(unsigned)
+    (root / "promotion-plan.json").chmod(0o600)
+    (root / "promotion-plan.json").write_bytes(release.canonical_json(plan_record))
+    rejected = _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root))
+    assert rejected.returncode != 0
+    assert not (root / "fixture-promotion-lock").exists()
+    assert not (root / "promotion-lock-2.json").exists()
+    assert not (root / "promotion-2.json").exists()
+
+
+def test_public_promotion_revalidates_lock_before_every_effect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_REVOKE_PROMOTION_LOCK", "1")
+    rejected = _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root))
+    assert rejected.returncode != 0
+    assert not (root / "promotion-lock-2.json").exists()
+    assert not (root / "promotion-2.json").exists()
+
+
+def test_public_promotion_recovery_requires_expired_exact_lock_and_signed_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_PROMOTION_LEASE_SECONDS", "1")
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_AFTER_PROMOTION_LOCK", "1")
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        != 0
+    )
+    monkeypatch.delenv("METRIPLANE_RELEASE_TEST_INTERRUPT_AFTER_PROMOTION_LOCK")
+    active_path = root / "active-promotion-lock-00000001.json"
+    active = release.read_json(active_path)
+    termination = release.make_record(
+        "provider-run-termination",
+        {"operation_id": "fixture-promotion-2", "terminated": True},
+        invocation_id="fixture-promotion-termination",
+        sequence=1,
+        synthetic=True,
+    )
+    authorization_data = {
+        "active_lock_digest": release.sha256_json(active),
+        "decision": "RECOVER",
+        "infrastructure_owner_id": "fixture-infrastructure-owner",
+        "promotion_operation_id": "fixture-promotion-2",
+        "recovery_operation_id": "fixture-promotion-recovery-3",
+        "targets_digest": release.sha256_bytes((root / "targets.json").read_bytes()),
+    }
+    (root / "provider-run-termination.json").write_bytes(release.canonical_json(termination))
+    time.sleep(1.1)
+    argv = [
+        "--recover-abandoned-lock",
+        "--attempt-index-backend",
+        "attempt-index",
+        "--attempt-index-genesis",
+        str(root / "release-attempt-index-genesis.json"),
+        "--promotion-operation-id",
+        "fixture-promotion-2",
+        "--recovery-operation-id",
+        "fixture-promotion-recovery-3",
+        "--expected-active-head",
+        "4" * 64,
+        "--active-lock-record",
+        str(active_path),
+        "--provider-run-termination",
+        str(root / "provider-run-termination.json"),
+        "--signed-infrastructure-owner-recovery",
+        str(root / "infrastructure-owner-recovery.json"),
+        "--prelock-target-observations-from-lock",
+        "--refetch-all-targets",
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(root / "promotion-recovery.json"),
+        "--invocation-dir",
+        str(root / "invocations/promote-release-candidate/003"),
+    ]
+    substituted_data = {**authorization_data, "infrastructure_owner_id": "fixture-unassigned-owner"}
+    substituted_unsigned = release.make_record(
+        "release-infrastructure-owner-recovery",
+        substituted_data,
+        invocation_id="fixture-substituted-recovery-authorization",
+        sequence=1,
+        synthetic=True,
+    )
+    substituted_subject = release.signature_subject_digest(substituted_unsigned)
+    substituted = release.make_record(
+        "release-infrastructure-owner-recovery",
+        substituted_data,
+        invocation_id="fixture-substituted-recovery-authorization",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "fixture-unassigned-owner",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": release.sha256_json(
+                    {
+                        "actor_id": "fixture-unassigned-owner",
+                        "subject_digest": substituted_subject,
+                    }
+                ),
+                "subject_digest": substituted_subject,
+                "synthetic": True,
+            }
+        ],
+    )
+    (root / "infrastructure-owner-recovery.json").write_bytes(release.canonical_json(substituted))
+    rejected = _run_release_tool("promote_release_candidate.py", argv)
+    assert rejected.returncode != 0
+    assert not (root / "fixture-promotion-lock/00000002.json").exists()
+    assert not (root / "promotion-recovery.json").exists()
+
+    authorization_data["recovery_operation_id"] = "fixture-promotion-recovery-4"
+    unsigned = release.make_record(
+        "release-infrastructure-owner-recovery",
+        authorization_data,
+        invocation_id="fixture-promotion-recovery-authorization-4",
+        sequence=1,
+        synthetic=True,
+    )
+    subject = release.signature_subject_digest(unsigned)
+    authorization = release.make_record(
+        "release-infrastructure-owner-recovery",
+        authorization_data,
+        invocation_id="fixture-promotion-recovery-authorization-4",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "fixture-infrastructure-owner",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": release.sha256_json(
+                    {"actor_id": "fixture-infrastructure-owner", "subject_digest": subject}
+                ),
+                "subject_digest": subject,
+                "synthetic": True,
+            }
+        ],
+    )
+    (root / "infrastructure-owner-recovery.json").write_bytes(release.canonical_json(authorization))
+    argv = [
+        value.replace("fixture-promotion-recovery-3", "fixture-promotion-recovery-4").replace(
+            "promote-release-candidate/003", "promote-release-candidate/004"
+        )
+        for value in argv
+    ]
+    recovered = _run_release_tool("promote_release_candidate.py", argv)
+    assert recovered.returncode == 0, recovered.stderr or recovered.stdout
+    record = release.read_json(root / "promotion-recovery.json")
+    release.validate_record(record, "release-promotion-lock-recovery")
+    assert record["data"]["active_lock_digest"] == release.sha256_json(active)
+    assert release.read_json(root / "fixture-promotion-lock/00000002.json")["state"] == "RELEASED"
+    with pytest.raises(release.ReleaseControlError, match="epoch is stale"):
+        release.require_lock_owner(
+            root / "fixture-promotion-lock",
+            owner="fixture-publisher",
+            epoch=1,
+            now=int(time.time()),
+        )
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_PROMOTION_LEASE_SECONDS", "300")
+    retried = _run_release_tool(
+        "promote_release_candidate.py", _promotion_execute_argv(root, sequence=5)
+    )
+    assert retried.returncode == 0, retried.stderr or retried.stdout
+    assert (root / "active-promotion-lock-00000003.json").is_file()
 
 
 @pytest.mark.parametrize(

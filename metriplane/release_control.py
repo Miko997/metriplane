@@ -1036,15 +1036,31 @@ def build_promotion_plan(
     publisher_id: str,
     publisher_actions: Sequence[str],
     expires_at: int,
+    attempt_index_checkpoint_digest: str | None = None,
+    attempt_index_genesis_digest: str | None = None,
+    attempt_index_head: str | None = None,
+    artifact_manifest_digest: str | None = None,
+    gate_instance_digest: str | None = None,
+    prepromotion_linear_snapshot_digest: str | None = None,
+    infrastructure_owner_id: str | None = None,
 ) -> dict[str, Any]:
     """Bind every promotion input before any publisher action can run."""
 
-    if attempt_index_epoch < 0 or expires_at < 1:
+    if (
+        type(attempt_index_epoch) is not int
+        or attempt_index_epoch < 0
+        or type(expires_at) is not int
+        or expires_at < 1
+    ):
         raise ReleaseControlError("promotion checkpoint and expiry are invalid")
     if (
         not publisher_id
         or not publisher_actions
-        or len(publisher_actions) != len(set(publisher_actions))
+        or list(publisher_actions) != sorted(set(publisher_actions))
+        or any(
+            not isinstance(action, str) or not action.startswith("publish:")
+            for action in publisher_actions
+        )
     ):
         raise ReleaseControlError("promotion publisher actions must be nonempty and unique")
     plan: dict[str, Any] = {
@@ -1057,6 +1073,23 @@ def build_promotion_plan(
         "publisher_id": publisher_id,
         "target_state_digest": _require_digest(target_state_digest, "target_state_digest"),
     }
+    optional_digests = {
+        "attempt_index_checkpoint_digest": attempt_index_checkpoint_digest,
+        "attempt_index_genesis_digest": attempt_index_genesis_digest,
+        "attempt_index_head": attempt_index_head,
+        "artifact_manifest_digest": artifact_manifest_digest,
+        "gate_instance_digest": gate_instance_digest,
+        "prepromotion_linear_snapshot_digest": prepromotion_linear_snapshot_digest,
+    }
+    if any(value is not None for value in optional_digests.values()):
+        if any(value is None for value in optional_digests.values()) or not infrastructure_owner_id:
+            raise ReleaseControlError("promotion plan exact input bindings are incomplete")
+        plan.update(
+            {field: _require_digest(value, field) for field, value in optional_digests.items()}
+        )
+        plan["infrastructure_owner_id"] = _require_nonempty_string(
+            infrastructure_owner_id, "promotion infrastructure owner"
+        )
     plan["plan_digest"] = sha256_json(plan)
     return plan
 
@@ -1068,6 +1101,10 @@ def validate_promotion_plan(
     candidate_digest: str,
     approval_digest: str,
     publisher_id: str,
+    controls_digest: str | None = None,
+    target_state_digest: str | None = None,
+    attempt_index_checkpoint_digest: str | None = None,
+    attempt_index_head: str | None = None,
 ) -> None:
     exact = {
         "approval_digest",
@@ -1080,7 +1117,16 @@ def validate_promotion_plan(
         "publisher_id",
         "target_state_digest",
     }
-    if set(plan) != exact:
+    extended = {
+        "artifact_manifest_digest",
+        "attempt_index_checkpoint_digest",
+        "attempt_index_genesis_digest",
+        "attempt_index_head",
+        "gate_instance_digest",
+        "infrastructure_owner_id",
+        "prepromotion_linear_snapshot_digest",
+    }
+    if frozenset(plan) not in {frozenset(exact), frozenset(exact | extended)}:
         raise ReleaseControlError("promotion plan shape is not closed")
     unsigned = dict(plan)
     claimed = unsigned.pop("plan_digest")
@@ -1090,7 +1136,33 @@ def validate_promotion_plan(
         raise ReleaseControlError("promotion plan is bound to different release authority")
     if plan["publisher_id"] != publisher_id:
         raise ReleaseControlError("promotion plan names a different publisher")
-    if not isinstance(plan["expires_at"], int) or plan["expires_at"] <= now:
+    if (
+        type(plan["attempt_index_epoch"]) is not int
+        or plan["attempt_index_epoch"] < 0
+        or not isinstance(plan["publisher_actions"], list)
+        or plan["publisher_actions"] != sorted(set(plan["publisher_actions"]))
+        or any(
+            not isinstance(action, str) or not action.startswith("publish:")
+            for action in plan["publisher_actions"]
+        )
+    ):
+        raise ReleaseControlError("promotion plan checkpoint or actions are invalid")
+    for field in {"controls_digest", "target_state_digest"} | (extended & set(plan)):
+        if field != "infrastructure_owner_id":
+            _require_digest(plan[field], "promotion plan " + field)
+    if "infrastructure_owner_id" in plan:
+        _require_nonempty_string(
+            plan["infrastructure_owner_id"], "promotion plan infrastructure owner"
+        )
+    for expected, field in (
+        (controls_digest, "controls_digest"),
+        (target_state_digest, "target_state_digest"),
+        (attempt_index_checkpoint_digest, "attempt_index_checkpoint_digest"),
+        (attempt_index_head, "attempt_index_head"),
+    ):
+        if expected is not None and plan.get(field) != _require_digest(expected, field):
+            raise ReleaseControlError(f"promotion plan {field} binding mismatch")
+    if type(plan["expires_at"]) is not int or plan["expires_at"] <= now:
         raise ReleaseControlError("promotion plan is expired")
 
 
@@ -1143,8 +1215,15 @@ def append_cas_event(
 
     if expected_epoch < 0:
         raise ReleaseControlError("expected epoch cannot be negative")
+    if journal.is_symlink():
+        raise ReleaseControlError("compare-and-swap journal is an unsafe symlink")
     journal.mkdir(parents=True, exist_ok=True)
     existing = sorted(journal.glob("*.json"))
+    if any(
+        path.is_symlink() or not path.is_file() or path.name != f"{index:08d}.json"
+        for index, path in enumerate(existing, 1)
+    ):
+        raise ReleaseControlError("compare-and-swap journal history is unsafe or noncanonical")
     actual_epoch = len(existing)
     record = dict(event)
     record["epoch"] = expected_epoch + 1
@@ -1168,22 +1247,55 @@ def acquire_promotion_lock(
     expected_epoch: int,
     now: int,
     lease_seconds: int,
-    dead_owner_proof: str | None = None,
+    plan_digest: str | None = None,
+    expected_head: str | None = None,
+    infrastructure_owner_id: str | None = None,
+    dead_owner_proof: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not owner or lease_seconds < 1:
         raise ReleaseControlError("promotion lock owner and positive lease are required")
     existing = sorted(journal.glob("*.json")) if journal.exists() else []
     if existing:
         latest = read_json(existing[-1])
-        if int(latest["lease_until"]) > now:
+        if latest.get("state") == "RELEASED":
+            pass
+        elif int(latest["lease_until"]) > now:
             raise ReleaseControlError("promotion lock is still leased")
-        if dead_owner_proof is None:
+        elif dead_owner_proof is None:
             raise ReleaseControlError("expired promotion lock requires dead-owner proof")
-        _require_digest(dead_owner_proof, "dead_owner_proof")
+        else:
+            proof = _release_closed_mapping(
+                dead_owner_proof,
+                {"epoch", "lease_until", "owner", "provider_termination_digest"},
+                "dead-owner proof",
+            )
+            if (
+                proof["epoch"] != latest.get("epoch")
+                or proof["lease_until"] != latest.get("lease_until")
+                or proof["owner"] != latest.get("owner")
+            ):
+                raise ReleaseControlError("dead-owner proof names another lock")
+            _require_digest(proof["provider_termination_digest"], "dead-owner provider termination")
     event: dict[str, Any] = {
-        "dead_owner_proof": dead_owner_proof,
+        "dead_owner_proof_digest": (
+            sha256_json(dead_owner_proof) if dead_owner_proof is not None else None
+        ),
+        "expected_head": (
+            _require_digest(expected_head, "promotion expected head")
+            if expected_head is not None
+            else None
+        ),
+        "infrastructure_owner_id": (
+            _require_nonempty_string(infrastructure_owner_id, "promotion infrastructure owner")
+            if infrastructure_owner_id is not None
+            else None
+        ),
         "lease_until": now + lease_seconds,
         "owner": owner,
+        "plan_digest": (
+            _require_digest(plan_digest, "promotion plan") if plan_digest is not None else None
+        ),
+        "state": "ACTIVE",
     }
     return append_cas_event(journal, event, expected_epoch=expected_epoch)
 
@@ -5129,6 +5241,671 @@ def _record_release_approval_operation(
     return result
 
 
+def _promotion_checkpoint(record: Mapping[str, Any], *, live: bool) -> tuple[int, str, str]:
+    data = _derived_passing_record(record, "release-attempt-index", live=live)
+    if data.get("kind") == "complete_export":
+        generation, head = data.get("generation"), data.get("through_head")
+    else:
+        generation, head = data.get("generation"), data.get("head")
+    if type(generation) is not int or generation < 0:
+        raise ReleaseControlError("promotion attempt-index generation is invalid")
+    return (
+        generation,
+        _require_digest(head, "promotion attempt-index head"),
+        _require_digest(data.get("genesis_digest"), "promotion attempt-index genesis"),
+    )
+
+
+def _promotion_controls(
+    record: Mapping[str, Any],
+    *,
+    candidate_digest: str,
+    linear_snapshot_digest: str,
+    now: datetime,
+    live: bool,
+) -> tuple[dict[str, Any], int]:
+    data = _derived_passing_record(record, "release-prepromotion-controls", live=live)
+    exact = {
+        "candidate_digest",
+        "captured_at",
+        "expires_at",
+        "linear_snapshot_digest",
+        "task_state",
+        "target_state_digest",
+    }
+    if set(data) != exact:
+        raise ReleaseControlError("prepromotion control shape is not closed")
+    if (
+        data["candidate_digest"] != candidate_digest
+        or data["linear_snapshot_digest"] != linear_snapshot_digest
+        or data["task_state"] != "open_running"
+    ):
+        raise ReleaseControlError("prepromotion controls select another candidate or state")
+    captured = _parse_utc_timestamp(data["captured_at"], "prepromotion capture")
+    expires = _parse_utc_timestamp(data["expires_at"], "prepromotion expiry")
+    if expires <= captured or not captured <= now < expires:
+        raise ReleaseControlError("prepromotion controls are stale or invalid")
+    _require_digest(data["target_state_digest"], "prepromotion target state")
+    return data, int(expires.timestamp())
+
+
+def _promotion_plan_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    expected_authority_policy_digest: str | None,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    root = context.root
+    canonical = {
+        "gate_instance": "gate-instance.json",
+        "candidate_identity": "candidate-identity.json",
+        "qualification": "qualification.json",
+        "approval": "approval.json",
+        "prepromotion_controls": "prepromotion-controls.json",
+        "prepromotion_linear_snapshot": "prepromotion-linear-snapshot.json",
+        "attempt_index_checkpoint": "attempt-index-checkpoint.json",
+        "artifact_manifest": "artifact-manifest.json",
+        "targets": "targets.json",
+    }
+    paths = {name: Path(getattr(args, name)).absolute() for name in canonical}
+    if any(paths[name] != root / filename for name, filename in canonical.items()):
+        raise ReleaseControlError("promotion plan inputs do not share the canonical run root")
+    records = {name: read_json(path) for name, path in paths.items() if name != "targets"}
+    if any(record.get("synthetic") is not (not live) for record in records.values()):
+        raise ReleaseControlError("promotion plan inputs mix live and synthetic authority")
+    candidate = _passing_record(
+        records["candidate_identity"],
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate_digest = _require_digest(candidate.get("candidate_digest"), "promotion candidate")
+    gate = _passing_record(
+        records["gate_instance"],
+        "release-gate-instance",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    qualification = _passing_record(
+        records["qualification"],
+        "release-qualification",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    approval = _derived_passing_record(records["approval"], "release-approval", live=live)
+    if any(
+        value.get("candidate_digest") != candidate_digest
+        for value in (gate, qualification, approval)
+    ):
+        raise ReleaseControlError("promotion plan candidate bindings disagree")
+    roles_record = read_json(root / "role-assignments.json")
+    decision_record = read_json(root / "approval-decision.json")
+    decision_data = decision_record.get("data")
+    if not isinstance(decision_data, Mapping):
+        raise ReleaseControlError("promotion approval decision data is missing")
+    if live and expected_authority_policy_digest is None:
+        expected_authority_policy_digest = _require_digest(
+            decision_data.get("authority_policy_digest"),
+            "promotion approval authority policy",
+        )
+    validate_release_approval_record(
+        records["approval"],
+        approval_decision=decision_record,
+        gate_instance=records["gate_instance"],
+        qualification=records["qualification"],
+        role_assignments=roles_record,
+        no_prepublication_rubric=approval.get("rubric_result_digest") is None,
+        live=live,
+        expected_authority_policy_digest=expected_authority_policy_digest,
+        attestation_verifier=attestation_verifier,
+    )
+    milestone = gate.get("milestone")
+    if not isinstance(milestone, str) or milestone not in MILESTONES:
+        raise ReleaseControlError("promotion gate milestone is invalid")
+    roles = validate_role_assignments(
+        roles_record,
+        live=live,
+        expected_milestone=milestone,
+        expected_run_id=gate.get("run_id"),
+        expected_authority_policy_digest=expected_authority_policy_digest,
+        check_conflicts=True,
+        check_freshness=live,
+        attestation_verifier=attestation_verifier,
+        expected_context_digest=gate.get("release_context_digest"),
+    )
+    infrastructure_owner = roles_record["data"].get("infrastructure_owner")
+    if not isinstance(infrastructure_owner, Mapping):
+        raise ReleaseControlError("promotion plan lacks an assigned infrastructure owner")
+    infrastructure_owner_id = _require_nonempty_string(
+        infrastructure_owner.get("actor_id"), "promotion infrastructure owner"
+    )
+    _passing_record(
+        records["prepromotion_linear_snapshot"],
+        "linear-release-snapshot",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    now = _parse_utc_timestamp(context.intent["started_at"], "promotion plan start")
+    controls, controls_expiry = _promotion_controls(
+        records["prepromotion_controls"],
+        candidate_digest=candidate_digest,
+        linear_snapshot_digest=sha256_json(records["prepromotion_linear_snapshot"]),
+        now=now,
+        live=live,
+    )
+    generation, head, genesis = _promotion_checkpoint(
+        records["attempt_index_checkpoint"], live=live
+    )
+    artifact = _passing_record(
+        records["artifact_manifest"],
+        "release-artifact-manifest",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    if live:
+        _validate_candidate_identity_payload(
+            candidate,
+            expected_digest=candidate_digest,
+            expected_milestone=milestone,
+        )
+        _validate_artifact_manifest_payload(artifact, expected_milestone=milestone)
+    if candidate.get("artifact_manifest_digest") != sha256_json(records["artifact_manifest"]):
+        raise ReleaseControlError("promotion candidate selects another artifact manifest")
+    for field in ("artifact_set_digest", "build_invocation_id", "source_freeze_digest"):
+        if field in candidate or field in artifact:
+            if candidate.get(field) != artifact.get(field):
+                raise ReleaseControlError("promotion candidate artifact/build binding differs")
+    targets = read_json(paths["targets"])
+    rows = targets.get("milestones") if isinstance(targets, Mapping) else None
+    selected = [row for row in rows or [] if row.get("id") == milestone]
+    if len(selected) != 1 or not isinstance(selected[0].get("required_targets"), list):
+        raise ReleaseControlError("promotion target registry has no unique milestone")
+    target_ids = selected[0]["required_targets"]
+    if not target_ids or target_ids != sorted(set(target_ids)):
+        raise ReleaseControlError("promotion target inventory is empty or noncanonical")
+    decision_expiry = _parse_utc_timestamp(
+        decision_record["data"].get("expires_at"), "approval decision expiry"
+    )
+    expires_at = min(controls_expiry, int(decision_expiry.timestamp()))
+    if expires_at <= int(now.timestamp()):
+        raise ReleaseControlError("promotion authority expires before plan creation")
+    plan = build_promotion_plan(
+        candidate_digest=candidate_digest,
+        approval_digest=sha256_json(records["approval"]),
+        controls_digest=sha256_json(records["prepromotion_controls"]),
+        target_state_digest=controls["target_state_digest"],
+        attempt_index_epoch=generation,
+        publisher_id=roles["publisher_id"][1],
+        publisher_actions=["publish:" + target for target in target_ids],
+        expires_at=expires_at,
+        attempt_index_checkpoint_digest=sha256_json(records["attempt_index_checkpoint"]),
+        attempt_index_genesis_digest=genesis,
+        attempt_index_head=head,
+        artifact_manifest_digest=sha256_json(records["artifact_manifest"]),
+        gate_instance_digest=sha256_json(records["gate_instance"]),
+        prepromotion_linear_snapshot_digest=sha256_json(records["prepromotion_linear_snapshot"]),
+        infrastructure_owner_id=infrastructure_owner_id,
+    )
+    return make_record(
+        "release-promotion-plan",
+        plan,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=not live,
+    )
+
+
+def _promotion_execution_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Exercise the fenced publication path; live use awaits its production backend binding."""
+    if live:
+        raise ReleaseControlError("production promotion CAS/publisher backend is not bound")
+    root = context.root
+    paths = {
+        "approval": root / "approval.json",
+        "gate_instance": root / "gate-instance.json",
+        "plan": root / "promotion-plan.json",
+        "prepromotion_controls": root / "prepromotion-controls.json",
+        "prepromotion_linear_snapshot": root / "prepromotion-linear-snapshot.json",
+        "readiness_registry": root / "readiness-registry.json",
+        "frozen_linear_snapshot": root / "frozen-linear-snapshot.json",
+        "attempt_index_checkpoint": root / "attempt-index-checkpoint.json",
+        "attempt_index_genesis": root / "release-attempt-index-genesis.json",
+        "task_state_observation": root / "task-state-observation.json",
+        "task_state_policy": root / "task-state-policy.json",
+        "retention_receipts": root / "retention-receipts.json",
+        "role_assignments": root / "role-assignments.json",
+        "targets": root / "targets.json",
+    }
+    declared_inputs = set(paths) - {"approval", "gate_instance", "role_assignments", "targets"}
+    if any(Path(getattr(args, name)).absolute() != paths[name] for name in declared_inputs):
+        raise ReleaseControlError("promotion execution inputs do not share the canonical run root")
+    plan_record = read_json(paths["plan"])
+    plan = _derived_passing_record(plan_record, "release-promotion-plan", live=False)
+    approval_record = read_json(paths["approval"])
+    approval = _derived_passing_record(approval_record, "release-approval", live=False)
+    gate_record = read_json(paths["gate_instance"])
+    gate = _passing_record(gate_record, "release-gate-instance", live=False)
+    roles_record = read_json(paths["role_assignments"])
+    milestone = gate.get("milestone")
+    if not isinstance(milestone, str) or milestone not in MILESTONES:
+        raise ReleaseControlError("promotion execution gate milestone is invalid")
+    roles = validate_role_assignments(
+        roles_record,
+        live=False,
+        expected_milestone=milestone,
+        expected_run_id=gate.get("run_id"),
+        expected_authority_policy_digest=None,
+        check_conflicts=True,
+        check_freshness=False,
+        expected_context_digest=gate.get("release_context_digest"),
+    )
+    infrastructure_owner = roles_record["data"].get("infrastructure_owner")
+    target_registry = read_json(paths["targets"])
+    target_rows = (
+        target_registry.get("milestones") if isinstance(target_registry, Mapping) else None
+    )
+    selected_targets = [row for row in target_rows or [] if row.get("id") == milestone]
+    if (
+        len(selected_targets) != 1
+        or not isinstance(infrastructure_owner, Mapping)
+        or plan.get("approval_digest") != sha256_json(approval_record)
+        or approval.get("candidate_digest") != plan.get("candidate_digest")
+        or plan.get("gate_instance_digest") != sha256_json(gate_record)
+        or plan.get("publisher_id") != roles["publisher_id"][1]
+        or plan.get("infrastructure_owner_id") != infrastructure_owner.get("actor_id")
+        or plan.get("publisher_actions")
+        != ["publish:" + target for target in selected_targets[0].get("required_targets", [])]
+    ):
+        raise ReleaseControlError("promotion execution authority differs from retained inputs")
+    checkpoint_record = read_json(paths["attempt_index_checkpoint"])
+    generation, head, genesis = _promotion_checkpoint(checkpoint_record, live=False)
+    expected_head = _require_digest(args.expected_head, "promotion expected head")
+    if (
+        args.attempt_index_backend != "attempt-index"
+        or head != expected_head
+        or generation != plan.get("attempt_index_epoch")
+        or plan.get("attempt_index_head") != head
+        or plan.get("attempt_index_checkpoint_digest") != sha256_json(checkpoint_record)
+        or plan.get("attempt_index_genesis_digest") != genesis
+    ):
+        raise ReleaseControlError("promotion execution checkpoint or backend differs from plan")
+    snapshot_record = read_json(paths["prepromotion_linear_snapshot"])
+    if read_json(paths["frozen_linear_snapshot"]) != snapshot_record:
+        raise ReleaseControlError("promotion frozen snapshot differs from planned snapshot")
+    now = _parse_utc_timestamp(context.intent["started_at"], "promotion execution start")
+    controls_record = read_json(paths["prepromotion_controls"])
+    controls, _ = _promotion_controls(
+        controls_record,
+        candidate_digest=plan["candidate_digest"],
+        linear_snapshot_digest=sha256_json(snapshot_record),
+        now=now,
+        live=False,
+    )
+    if (
+        plan.get("controls_digest") != sha256_json(controls_record)
+        or plan.get("prepromotion_linear_snapshot_digest") != sha256_json(snapshot_record)
+        or plan.get("target_state_digest") != controls["target_state_digest"]
+    ):
+        raise ReleaseControlError("promotion execution fresh controls differ from plan")
+    validate_promotion_plan(
+        plan,
+        now=int(now.timestamp()),
+        candidate_digest=plan["candidate_digest"],
+        approval_digest=plan["approval_digest"],
+        publisher_id=plan["publisher_id"],
+        controls_digest=sha256_json(controls_record),
+        target_state_digest=controls["target_state_digest"],
+        attempt_index_checkpoint_digest=sha256_json(checkpoint_record),
+        attempt_index_head=head,
+    )
+    if sha256_bytes(_safe_release_bytes(paths["attempt_index_genesis"])) != genesis:
+        raise ReleaseControlError("promotion attempt-index genesis differs from plan")
+    observation = _derived_passing_record(
+        read_json(paths["task_state_observation"]),
+        "release-task-state-observation",
+        live=False,
+    )
+    if (
+        set(observation) != {"observed_at", "project_id", "snapshot_digest", "state", "task_id"}
+        or observation.get("state") != "open_running"
+        or observation.get("project_id") != args.project_id
+        or observation.get("task_id") != args.task_id
+        or observation.get("snapshot_digest") != sha256_json(snapshot_record)
+        or args.require_live_state != "open_running"
+    ):
+        raise ReleaseControlError("promotion execution task state is not open and running")
+    retention = _derived_passing_record(
+        read_json(paths["retention_receipts"]), "release-retention-receipts", live=False
+    )
+    if retention.get("candidate_digest") != plan["candidate_digest"]:
+        raise ReleaseControlError("promotion retention receipts select another candidate")
+    for path, schema in (
+        (paths["readiness_registry"], "metriplane.release-readiness-registry.v1"),
+        (paths["task_state_policy"], "metriplane.release-task-state-policy.v1"),
+    ):
+        if read_json(path).get("schema_version") != schema:
+            raise ReleaseControlError("promotion policy or registry schema differs")
+    required_assertions = (
+        "provider_auth_from_approved_environment",
+        "require_live_full_release_bom_closed_except_current_decision",
+        "require_live_exact_reciprocal_relations",
+        "require_live_exact_milestone_assignments",
+        "full_project_refetch_before_lock_and_before_first_mutation",
+        "require_fresh_through_first_mutation",
+        "bind_live_refetch_in_lock_receipt",
+    )
+    if any(getattr(args, flag) is not True for flag in required_assertions):
+        raise ReleaseControlError("promotion execution omits a required live-control assertion")
+    operation_id = _require_nonempty_string(args.operation_id, "promotion operation")
+    journal = root / "fixture-promotion-lock"
+    lease_seconds = int(os.environ.get("METRIPLANE_RELEASE_TEST_PROMOTION_LEASE_SECONDS", "300"))
+    if lease_seconds < 1 or lease_seconds > 300:
+        raise ReleaseControlError("synthetic promotion lease is outside the bounded test range")
+    lock = acquire_promotion_lock(
+        journal,
+        owner=plan["publisher_id"],
+        expected_epoch=len(list(journal.glob("*.json"))) if journal.exists() else 0,
+        now=int(now.timestamp()),
+        lease_seconds=lease_seconds,
+        plan_digest=plan["plan_digest"],
+        expected_head=head,
+        infrastructure_owner_id=plan["infrastructure_owner_id"],
+    )
+    require_lock_owner(
+        journal,
+        owner=plan["publisher_id"],
+        epoch=lock["epoch"],
+        now=int(now.timestamp()),
+    )
+    active_lock_data = {
+        "acquired_index_head": head,
+        "approval_digest": plan["approval_digest"],
+        "attempt_index_checkpoint_digest": plan["attempt_index_checkpoint_digest"],
+        "attempt_index_genesis_digest": plan["attempt_index_genesis_digest"],
+        "backend_id": "attempt-index",
+        "candidate_digest": plan["candidate_digest"],
+        "controls_digest": plan["controls_digest"],
+        "dead_owner_proof_digest": lock["dead_owner_proof_digest"],
+        "epoch": lock["epoch"],
+        "expected_index_head": head,
+        "infrastructure_owner_id": plan["infrastructure_owner_id"],
+        "lease_expires_at": datetime.fromtimestamp(lock["lease_until"], UTC)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "lease_started_at": context.intent["started_at"],
+        "lock_token": sha256_json(lock),
+        "mutation_started": False,
+        "operation_id": operation_id,
+        "owner": plan["publisher_id"],
+        "promotion_plan_digest": plan["plan_digest"],
+        "recovery_authorization_digest": None,
+        "state": "ACTIVE",
+        "target_state_digest": plan["target_state_digest"],
+    }
+    active_lock_record = make_record(
+        "release-promotion-lock",
+        active_lock_data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+    write_immutable_json(
+        root / f"active-promotion-lock-{lock['epoch']:08d}.json", active_lock_record
+    )
+    if os.environ.get("METRIPLANE_RELEASE_TEST_INTERRUPT_AFTER_PROMOTION_LOCK") == "1":
+        raise ReleaseControlError("synthetic interruption after promotion lock acquisition")
+    if os.environ.get("METRIPLANE_RELEASE_TEST_REVOKE_PROMOTION_LOCK") == "1":
+        append_cas_event(
+            journal,
+            {
+                "dead_owner_proof_digest": None,
+                "expected_head": head,
+                "lease_until": int(now.timestamp()),
+                "owner": "fixture-competing-writer",
+                "plan_digest": plan["plan_digest"],
+                "state": "RELEASED",
+            },
+            expected_epoch=lock["epoch"],
+        )
+    started_at = context.intent["started_at"]
+    actions = []
+    for action in plan["publisher_actions"]:
+        require_lock_owner(
+            journal,
+            owner=plan["publisher_id"],
+            epoch=lock["epoch"],
+            now=int(datetime.now(UTC).timestamp()),
+        )
+        actions.append(
+            {
+                "action": action,
+                "observed_digest": sha256_json(
+                    {
+                        "action": action,
+                        "candidate_digest": plan["candidate_digest"],
+                        "mode": "fixture",
+                    }
+                ),
+                "result": "PASS",
+                "target_id": action.removeprefix("publish:"),
+            }
+        )
+    lock_data = {
+        "acquired_index_head": head,
+        "approval_digest": plan["approval_digest"],
+        "attempt_index_checkpoint_digest": plan["attempt_index_checkpoint_digest"],
+        "backend_id": "attempt-index",
+        "candidate_digest": plan["candidate_digest"],
+        "controls_digest": plan["controls_digest"],
+        "dead_owner_proof_digest": lock["dead_owner_proof_digest"],
+        "epoch": lock["epoch"],
+        "expected_index_head": head,
+        "lease_expires_at": datetime.fromtimestamp(lock["lease_until"], UTC)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "lease_started_at": started_at,
+        "lock_token": sha256_json(lock),
+        "mutation_started": True,
+        "operation_id": operation_id,
+        "owner": plan["publisher_id"],
+        "promotion_plan_digest": plan["plan_digest"],
+        "recovery_authorization_digest": None,
+        "state": "COMMITTED",
+        "target_state_digest": plan["target_state_digest"],
+    }
+    lock_record = make_record(
+        "release-promotion-lock",
+        lock_data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+    promotion = make_record(
+        "release-promotion",
+        {
+            "actions": actions,
+            "candidate_digest": plan["candidate_digest"],
+            "completed_at": started_at,
+            "lock_receipt_digest": sha256_json(lock_record),
+            "mode": "execute",
+            "mutation_started": True,
+            "operation_id": operation_id,
+            "promotion_plan_digest": plan["plan_digest"],
+            "publisher_id": plan["publisher_id"],
+            "record_kind": "promotion_execution",
+            "result": "PUBLISHED",
+            "started_at": started_at,
+            "target_state_digest": plan["target_state_digest"],
+        },
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+    return lock_record, promotion
+
+
+def _promotion_recovery_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    if live:
+        raise ReleaseControlError("production promotion recovery backend is not bound")
+    root = context.root
+    paths = {
+        "active_lock_record": Path(args.active_lock_record).absolute(),
+        "attempt_index_genesis": root / "release-attempt-index-genesis.json",
+        "provider_run_termination": root / "provider-run-termination.json",
+        "signed_infrastructure_owner_recovery": root / "infrastructure-owner-recovery.json",
+        "targets": root / "targets.json",
+    }
+    if (
+        paths["active_lock_record"].parent != root
+        or not paths["active_lock_record"].name.startswith("active-promotion-lock-")
+        or any(
+            Path(getattr(args, name)).absolute() != path
+            for name, path in paths.items()
+            if name != "active_lock_record"
+        )
+    ):
+        raise ReleaseControlError("promotion recovery inputs do not share the canonical run root")
+    if not args.prelock_target_observations_from_lock or not args.refetch_all_targets:
+        raise ReleaseControlError(
+            "promotion recovery lacks prelock and current target observations"
+        )
+    lock_record = read_json(paths["active_lock_record"])
+    lock = _derived_passing_record(lock_record, "release-promotion-lock", live=False)
+    if args.attempt_index_backend != "attempt-index" or sha256_bytes(
+        _safe_release_bytes(paths["attempt_index_genesis"])
+    ) != lock.get("attempt_index_genesis_digest"):
+        raise ReleaseControlError("promotion recovery attempt-index authority differs")
+    if lock.get("operation_id") != args.promotion_operation_id:
+        raise ReleaseControlError("promotion recovery selects another failed operation")
+    if lock.get("acquired_index_head") != _require_digest(
+        args.expected_active_head, "promotion recovery active head"
+    ):
+        raise ReleaseControlError("promotion recovery selects another active head")
+    termination_record = read_json(paths["provider_run_termination"])
+    termination = _passing_record(
+        termination_record,
+        "provider-run-termination",
+        live=False,
+        attestation_verifier=attestation_verifier,
+    )
+    if (
+        termination.get("operation_id") != lock["operation_id"]
+        or termination.get("terminated") is not True
+    ):
+        raise ReleaseControlError("promotion recovery lacks exact provider termination proof")
+    authorization_record = read_json(paths["signed_infrastructure_owner_recovery"])
+    authorization = _passing_record(
+        authorization_record,
+        "release-infrastructure-owner-recovery",
+        live=False,
+        attestation_verifier=attestation_verifier,
+    )
+    if set(authorization) != {
+        "active_lock_digest",
+        "decision",
+        "infrastructure_owner_id",
+        "promotion_operation_id",
+        "recovery_operation_id",
+        "targets_digest",
+    }:
+        raise ReleaseControlError("promotion recovery authorization shape is not closed")
+    owner_id = _require_nonempty_string(
+        authorization["infrastructure_owner_id"], "promotion recovery infrastructure owner"
+    )
+    if ("test-fixture", owner_id) not in _validated_record_signers(
+        authorization_record, live=False, attestation_verifier=attestation_verifier
+    ):
+        raise ReleaseControlError("promotion recovery lacks its infrastructure owner's signature")
+    recovery_operation = _require_nonempty_string(
+        args.recovery_operation_id, "promotion recovery operation"
+    )
+    if (
+        authorization.get("active_lock_digest") != sha256_json(lock_record)
+        or authorization.get("infrastructure_owner_id") != lock.get("infrastructure_owner_id")
+        or authorization.get("promotion_operation_id") != lock["operation_id"]
+        or authorization.get("recovery_operation_id") != recovery_operation
+        or authorization.get("decision") != "RECOVER"
+        or not authorization_record["signatures"]
+    ):
+        raise ReleaseControlError("promotion recovery authorization is absent or substituted")
+    targets_raw = _safe_release_bytes(paths["targets"])
+    if authorization.get("targets_digest") != sha256_bytes(targets_raw):
+        raise ReleaseControlError("promotion recovery target refetch differs from authorization")
+    now = int(
+        _parse_utc_timestamp(context.intent["started_at"], "promotion recovery start").timestamp()
+    )
+    lease_until = int(
+        _parse_utc_timestamp(lock["lease_expires_at"], "promotion lock expiry").timestamp()
+    )
+    if lease_until > now:
+        raise ReleaseControlError("promotion recovery cannot replace a live lease")
+    journal = root / "fixture-promotion-lock"
+    existing = sorted(journal.glob("*.json")) if journal.exists() else []
+    if not existing:
+        raise ReleaseControlError("promotion recovery has no native active lock")
+    latest = read_json(existing[-1])
+    if (
+        latest.get("state") != "ACTIVE"
+        or latest.get("epoch") != lock["epoch"]
+        or sha256_json(latest) != lock["lock_token"]
+        or latest.get("owner") != lock["owner"]
+        or latest.get("lease_until") != lease_until
+        or latest.get("infrastructure_owner_id") != lock.get("infrastructure_owner_id")
+    ):
+        raise ReleaseControlError("promotion recovery active native lock differs from receipt")
+    proof = {
+        "epoch": latest["epoch"],
+        "lease_until": latest["lease_until"],
+        "owner": latest["owner"],
+        "provider_termination_digest": sha256_json(termination_record),
+    }
+    released = append_cas_event(
+        journal,
+        {
+            "dead_owner_proof_digest": sha256_json(proof),
+            "expected_head": lock["acquired_index_head"],
+            "infrastructure_owner_id": lock["infrastructure_owner_id"],
+            "lease_until": now,
+            "owner": lock["owner"],
+            "plan_digest": lock["promotion_plan_digest"],
+            "recovery_authorization_digest": sha256_json(authorization_record),
+            "recovery_operation_id": recovery_operation,
+            "state": "RELEASED",
+        },
+        expected_epoch=latest["epoch"],
+    )
+    return make_record(
+        "release-promotion-lock-recovery",
+        {
+            "active_lock_digest": sha256_json(lock_record),
+            "dead_owner_proof_digest": sha256_json(proof),
+            "new_epoch": released["epoch"],
+            "promotion_operation_id": lock["operation_id"],
+            "provider_termination_digest": sha256_json(termination_record),
+            "recovery_authorization_digest": sha256_json(authorization_record),
+            "recovery_operation_id": recovery_operation,
+            "state": "RECOVERED",
+            "targets_digest": sha256_bytes(targets_raw),
+        },
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
 def validate_release_candidate_identity_record(
     record: Mapping[str, Any],
     *,
@@ -8058,6 +8835,179 @@ def _validate_bound_invocation(
             ):
                 raise ReleaseControlError("qualification execution output bytes changed")
         return
+    if tool == "promote_release_candidate.py":
+        promotion_live = context.intent["environment"]["fixture_mode"] != "1"
+        argv = context.intent["argv"][1:]
+        invocation_value = _command_value(argv, "invocation-dir")
+        if invocation_value is None:
+            raise ReleaseControlError("promotion invocation directory is missing")
+        historical_cwd = Path(context.intent["environment"]["working_directory"])
+
+        def promotion_historical_path(value: str) -> Path:
+            path = Path(value)
+            return path if path.is_absolute() else historical_cwd / path
+
+        historical_directory = promotion_historical_path(invocation_value)
+        historical_root = historical_directory.parents[2]
+        for row in context.intent["inputs"]:
+            current = context.root / _run_relative(historical_root, Path(row["path"]).absolute())
+            if sha256_bytes(_safe_release_bytes(current)) != row["sha256"]:
+                raise ReleaseControlError("promotion reserved input bytes changed")
+        if "--dry-run" in argv:
+            specifications = [("out", "release-promotion-plan")]
+        elif "--execute" in argv:
+            specifications = [
+                ("lock-receipt-out", "release-promotion-lock"),
+                ("out", "release-promotion"),
+            ]
+        elif "--recover-abandoned-lock" in argv:
+            specifications = [("out", "release-promotion-lock-recovery")]
+        else:
+            raise ReleaseControlError("promotion invocation mode is missing")
+        expected_plan = sorted(
+            [
+                {
+                    "path": _run_relative(
+                        historical_root,
+                        promotion_historical_path(_command_value(argv, flag) or ""),
+                    ),
+                    "schema_id": "metriplane." + kind + ".v1",
+                }
+                for flag, kind in specifications
+            ],
+            key=lambda row: row["path"],
+        )
+        if context.intent["planned_outputs"] != expected_plan:
+            raise ReleaseControlError("promotion output plan differs from its command mode")
+        if outputs is not None:
+            root = context.root if output_root is None else output_root
+            expected_outputs = []
+            installed: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+            for row in expected_plan:
+                path = root / row["path"]
+                record = read_json(path)
+                kind = row["schema_id"].removeprefix("metriplane.").removesuffix(".v1")
+                data = _derived_passing_record(
+                    record,
+                    kind,
+                    live=promotion_live,
+                )
+                installed[kind] = (record, data)
+                expected_outputs.append({**row, "sha256": sha256_bytes(_safe_release_bytes(path))})
+            if outputs != expected_outputs:
+                raise ReleaseControlError("promotion terminal outputs changed after installation")
+            if "--dry-run" in argv:
+                parser = _build_tool_parser(tool, TOOL_CONTRACTS[tool])
+                args = parser.parse_args(argv)
+                for name in (
+                    "gate_instance",
+                    "candidate_identity",
+                    "qualification",
+                    "approval",
+                    "prepromotion_controls",
+                    "prepromotion_linear_snapshot",
+                    "attempt_index_checkpoint",
+                    "artifact_manifest",
+                    "targets",
+                    "out",
+                ):
+                    value = getattr(args, name)
+                    setattr(
+                        args,
+                        name,
+                        str(
+                            context.root
+                            / _run_relative(historical_root, promotion_historical_path(value))
+                        ),
+                    )
+                args.invocation_dir = str(context.directory)
+                expected_record = _promotion_plan_operation(
+                    args,
+                    context,
+                    live=promotion_live,
+                    expected_authority_policy_digest=getattr(args, "authority_policy_digest", None),
+                    attestation_verifier=None,
+                )
+                if installed["release-promotion-plan"][0] != expected_record:
+                    raise ReleaseControlError("promotion plan is not its deterministic replay")
+            elif "--execute" in argv:
+                plan_record = read_json(context.root / "promotion-plan.json")
+                plan = _derived_passing_record(
+                    plan_record, "release-promotion-plan", live=promotion_live
+                )
+                lock_record, lock = installed["release-promotion-lock"]
+                _, promotion = installed["release-promotion"]
+                if (
+                    lock.get("promotion_plan_digest") != plan.get("plan_digest")
+                    or promotion.get("promotion_plan_digest") != plan.get("plan_digest")
+                    or promotion.get("lock_receipt_digest") != sha256_json(lock_record)
+                    or promotion.get("candidate_digest") != plan.get("candidate_digest")
+                    or promotion.get("publisher_id") != plan.get("publisher_id")
+                    or promotion.get("operation_id") != lock.get("operation_id")
+                ):
+                    raise ReleaseControlError("promotion execution outputs are not cross-bound")
+                expected_actions = [
+                    {
+                        "action": action,
+                        "observed_digest": sha256_json(
+                            {
+                                "action": action,
+                                "candidate_digest": plan["candidate_digest"],
+                                "mode": "fixture",
+                            }
+                        ),
+                        "result": "PASS",
+                        "target_id": action.removeprefix("publish:"),
+                    }
+                    for action in plan["publisher_actions"]
+                ]
+                epoch = lock.get("epoch")
+                if type(epoch) is not int or epoch < 1:
+                    raise ReleaseControlError("promotion lock output epoch is invalid")
+                native_lock = read_json(
+                    context.root / "fixture-promotion-lock" / f"{epoch:08d}.json"
+                )
+                if (
+                    promotion.get("actions") != expected_actions
+                    or promotion.get("mode") != "execute"
+                    or promotion.get("record_kind") != "promotion_execution"
+                    or promotion.get("result") != "PUBLISHED"
+                    or promotion.get("mutation_started") is not True
+                    or promotion.get("started_at") != context.intent["started_at"]
+                    or promotion.get("completed_at") != context.intent["started_at"]
+                    or lock.get("state") != "COMMITTED"
+                    or lock.get("mutation_started") is not True
+                    or lock.get("owner") != plan.get("publisher_id")
+                    or lock.get("candidate_digest") != plan.get("candidate_digest")
+                    or lock.get("approval_digest") != plan.get("approval_digest")
+                    or lock.get("controls_digest") != plan.get("controls_digest")
+                    or lock.get("attempt_index_checkpoint_digest")
+                    != plan.get("attempt_index_checkpoint_digest")
+                    or lock.get("acquired_index_head") != plan.get("attempt_index_head")
+                    or lock.get("expected_index_head") != plan.get("attempt_index_head")
+                    or lock.get("lock_token") != sha256_json(native_lock)
+                    or native_lock.get("state") != "ACTIVE"
+                    or native_lock.get("owner") != plan.get("publisher_id")
+                    or native_lock.get("plan_digest") != plan.get("plan_digest")
+                    or native_lock.get("expected_head") != plan.get("attempt_index_head")
+                    or native_lock.get("infrastructure_owner_id")
+                    != plan.get("infrastructure_owner_id")
+                ):
+                    raise ReleaseControlError("promotion execution output semantics differ")
+            else:
+                active_value = _command_value(argv, "active-lock-record")
+                if active_value is None:
+                    raise ReleaseControlError("promotion recovery active lock is missing")
+                active = read_json(
+                    context.root
+                    / _run_relative(historical_root, promotion_historical_path(active_value))
+                )
+                _, recovery = installed["release-promotion-lock-recovery"]
+                if recovery.get("active_lock_digest") != sha256_json(active) or recovery.get(
+                    "promotion_operation_id"
+                ) != active.get("data", {}).get("operation_id"):
+                    raise ReleaseControlError("promotion recovery output is not cross-bound")
+        return
     if tool not in _INVOCATION_STAGES:
         return
     keyring_binding = (
@@ -8981,6 +9931,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "require-fresh-through-first-mutation bind-live-refetch-in-lock-receipt "
         "prelock-target-observations-from-lock refetch-all-targets",
         choices={"require-live-state": ("open_running",)},
+        fixture_producer=False,
     ),
     "record_postpublication_conflict.py": _tool_contract(
         "stage candidate-identity failed-invocation-dir requires-lkg-invalidation "
@@ -11114,6 +12065,40 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "promote_release_candidate.py" and args.dry_run:
+            result = _promotion_plan_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                expected_authority_policy_digest=None,
+                attestation_verifier=attestation_verifier,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "promote_release_candidate.py" and args.execute:
+            lock_record, result = _promotion_execution_operation(
+                args, context, live=not fixture_mode
+            )
+            lock_destination = (
+                context.directory
+                / "staged"
+                / _run_relative(context.root, Path(args.lock_receipt_out).absolute())
+            )
+            write_immutable_json(lock_destination, lock_record)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "promote_release_candidate.py" and args.recover_abandoned_lock:
+            result = _promotion_recovery_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_artifact_manifest.py":
             result = read_json(Path(args.record))
             validate_release_artifact_files(
@@ -12220,6 +13205,68 @@ def run_release_command(
                         "metriplane.release-scenario-catalog.v1",
                     )
                 )
+            elif tool == "promote_release_candidate.py" and "--dry-run" in argv:
+                for flag, kind in (
+                    ("gate-instance", "release-gate-instance"),
+                    ("candidate-identity", "release-candidate-identity"),
+                    ("qualification", "release-qualification"),
+                    ("approval", "release-approval"),
+                    ("prepromotion-controls", "release-prepromotion-controls"),
+                    ("prepromotion-linear-snapshot", "linear-release-snapshot"),
+                    ("attempt-index-checkpoint", "release-attempt-index"),
+                    ("artifact-manifest", "release-artifact-manifest"),
+                    ("targets", "release-targets"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+                inputs.extend(
+                    [
+                        (
+                            root / "approval-decision.json",
+                            "metriplane.release-approval-decision.v1",
+                        ),
+                        (root / "role-assignments.json", "metriplane.release-role-assignments.v1"),
+                    ]
+                )
+            elif tool == "promote_release_candidate.py" and "--execute" in argv:
+                for flag, kind in (
+                    ("plan", "release-promotion-plan"),
+                    ("prepromotion-controls", "release-prepromotion-controls"),
+                    ("prepromotion-linear-snapshot", "linear-release-snapshot"),
+                    ("readiness-registry", "release-readiness-registry"),
+                    ("frozen-linear-snapshot", "linear-release-snapshot"),
+                    ("attempt-index-checkpoint", "release-attempt-index"),
+                    ("attempt-index-genesis", "release-attempt-index-genesis"),
+                    ("task-state-observation", "release-task-state-observation"),
+                    ("task-state-policy", "release-task-state-policy"),
+                    ("retention-receipts", "release-retention-receipts"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+                inputs.extend(
+                    [
+                        (root / "approval.json", "metriplane.release-approval.v1"),
+                        (root / "gate-instance.json", "metriplane.release-gate-instance.v1"),
+                        (root / "role-assignments.json", "metriplane.release-role-assignments.v1"),
+                        (root / "targets.json", "metriplane.release-targets.v1"),
+                    ]
+                )
+            elif tool == "promote_release_candidate.py" and "--recover-abandoned-lock" in argv:
+                for flag, kind in (
+                    ("active-lock-record", "release-promotion-lock"),
+                    ("attempt-index-genesis", "release-attempt-index-genesis"),
+                    ("provider-run-termination", "provider-run-termination"),
+                    (
+                        "signed-infrastructure-owner-recovery",
+                        "release-infrastructure-owner-recovery",
+                    ),
+                    ("targets", "release-targets"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
             elif tool == "validate_release_qualification_plan.py":
                 for flag, kind in (
                     ("record", "release-qualification-plan"),
@@ -12630,9 +13677,24 @@ def run_release_command(
                     output_kind = (
                         "release-attempt-coordination"
                         if tool == "finalize_release_attempt_cells.py"
+                        else "release-promotion-plan"
+                        if tool == "promote_release_candidate.py" and "--dry-run" in argv
+                        else "release-promotion-lock-recovery"
+                        if tool == "promote_release_candidate.py"
+                        and "--recover-abandoned-lock" in argv
                         else _record_type_from_tool(tool)
                     )
                     outputs.append((path, "metriplane." + output_kind + ".v1"))
+                    if tool == "promote_release_candidate.py" and "--execute" in argv:
+                        lock_value = _command_value(argv, "lock-receipt-out")
+                        if lock_value is None:
+                            raise ReleaseControlError("promotion lock receipt output is missing")
+                        outputs.append(
+                            (
+                                Path(lock_value).absolute(),
+                                "metriplane.release-promotion-lock.v1",
+                            )
+                        )
                     if tool == "finalize_release_attempt_cells.py":
                         plan_value = _command_value(argv, "plan")
                         if plan_value is None:
