@@ -22902,6 +22902,314 @@ def _graph_recovery_content_fixture() -> Any:
     }
 
 
+def _public_index_recovery_fixture(tmp_path: Path) -> tuple[Path, list[str]]:
+    root = tmp_path / "recovery-run"
+    root.mkdir()
+    values = _graph_recovery_content_fixture()
+    context, _ = _context_policy_fixture()
+    context_digest = release.sha256_json(context)
+    keyring = {
+        "schema_version": "metriplane.provider-attestation-keyring.v1",
+        "keys": [
+            {
+                "actor_id": "fixture-infrastructure",
+                "provider": "github",
+                "public_key_hex": "0" * 64,
+            }
+        ],
+    }
+    keyring_digest = release.sha256_json(keyring)
+    policy = release.release_authority_policy_digest(keyring_digest)
+    role_data = copy.deepcopy(values["roles"]["data"])
+    role_data.update(
+        authority_policy_digest=policy,
+        provider_attestation_keyring_digest=keyring_digest,
+        release_context_digest=context_digest,
+        valid_from="2026-01-01T00:00:00Z",
+        valid_until="2099-01-01T00:00:00Z",
+    )
+    roles = release.make_record(
+        "release-role-assignments",
+        role_data,
+        invocation_id="fixture-recovery-roles",
+        sequence=1,
+        synthetic=True,
+    )
+    original_entry = release._release_index_receipt_content(values["original_receipt"]["data"])
+    plan = {
+        "schema_version": "metriplane.release-index-recovery-plan.v1",
+        "release_context_digest": context_digest,
+        "scope_kind": original_entry["scope"]["kind"],
+        "scope_id": original_entry["scope"]["scope_id"],
+        "index_backend_id": "attempt-index",
+        "genesis_digest": original_entry["genesis_digest"],
+        "original_receipt_digest": release.sha256_json(values["original_receipt"]),
+        "failure_envelope_manifest_digest": release.sha256_json(values["failure_manifest"]),
+        "failure_envelope_receipts_digest": release.sha256_json(values["failure_retention"]),
+        "failure_entry_receipt_digest": release.sha256_json(values["failure_receipt"]),
+        "recovery_operation_id": "fixture-recovery-operation",
+        "recovery_sequence": 19,
+    }
+    auth_data = copy.deepcopy(values["authorization"]["data"])
+    auth_data.update(
+        authority_policy_digest=policy,
+        issued_at="2026-01-01T00:00:00Z",
+        expires_at="2099-01-01T00:00:00Z",
+        subject_digests=[
+            {"subject": "recovery_plan", "sha256": release.sha256_json(plan)},
+            {"subject": "role_assignments", "sha256": release.sha256_json(roles)},
+        ],
+    )
+    authorization = release.make_record(
+        "release-protected-input",
+        auth_data,
+        invocation_id="fixture-recovery-authorization",
+        sequence=1,
+        synthetic=True,
+    )
+    subject = release.signature_subject_digest(authorization)
+    signature = {
+        "actor_id": "fixture-infrastructure",
+        "algorithm": "test-sha256-v1",
+        "provider": "test-fixture",
+        "subject_digest": subject,
+        "synthetic": True,
+        "signature": release.sha256_json(
+            {"actor_id": "fixture-infrastructure", "subject_digest": subject}
+        ),
+    }
+    authorization = release.make_record(
+        "release-protected-input",
+        auth_data,
+        invocation_id="fixture-recovery-authorization",
+        sequence=1,
+        synthetic=True,
+        signatures=[signature],
+    )
+    records = {
+        "original-receipt.json": values["original_receipt"],
+        "failure-manifest.json": values["failure_manifest"],
+        "failure-retention.json": values["failure_retention"],
+        "failure-receipt.json": values["failure_receipt"],
+        "roles.json": roles,
+        "context.json": context,
+        "authorization.json": authorization,
+        "keyring.json": keyring,
+    }
+    for name, value in records.items():
+        (root / name).write_bytes(release.canonical_json(value))
+    scope = original_entry["scope"]
+    argv = [
+        "--scope-kind",
+        scope["kind"],
+        "--release-tag",
+        scope["release_tag"],
+        "--candidate-id",
+        scope["candidate_id"],
+        "--original-entry-receipt",
+        str(root / "original-receipt.json"),
+        "--failure-envelope-manifest",
+        str(root / "failure-manifest.json"),
+        "--failure-envelope-receipts",
+        str(root / "failure-retention.json"),
+        "--failure-entry-receipt",
+        str(root / "failure-receipt.json"),
+        "--role-assignments",
+        str(root / "roles.json"),
+        "--release-context",
+        str(root / "context.json"),
+        "--signed-recovery-authorization",
+        str(root / "authorization.json"),
+        "--recovery-operation-id",
+        "fixture-recovery-operation",
+        "--recovery-sequence",
+        "19",
+        "--provider-attestation-keyring",
+        str(root / "keyring.json"),
+        "--provider-attestation-keyring-digest",
+        keyring_digest,
+        "--authority-policy-digest",
+        policy,
+        "--out",
+        str(root / "recovery.json"),
+        "--invocation-dir",
+        str(root / "invocations/record-release-index-recovery/001"),
+    ]
+    return root, argv
+
+
+def test_public_index_recovery_command_retains_exact_new_operation_without_overwrite(
+    tmp_path: Path,
+) -> None:
+    root, argv = _public_index_recovery_fixture(tmp_path)
+    completed = _run_release_tool("record_release_index_recovery.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    recovery = release.read_json(root / "recovery.json")
+    release.validate_record(recovery, "release-index-recovery")
+    original = release.read_json(root / "original-receipt.json")
+    assert (
+        recovery["data"]["original_operation_id"]
+        == release._release_index_receipt_content(original["data"])["operation_id"]
+    )
+    assert recovery["data"]["recovery_operation_id"] == "fixture-recovery-operation"
+    assert recovery["data"]["recovery_sequence"] == 19
+    release.validate_release_producer_journal(
+        recovery,
+        root / "recovery.json",
+        producer="record_release_index_recovery.py",
+    )
+    retained = (root / "recovery.json").read_bytes()
+    retry = list(argv)
+    retry[-1] = str(root / "invocations/record-release-index-recovery/002")
+    rejected = _run_release_tool("record_release_index_recovery.py", retry)
+    assert rejected.returncode != 0
+    assert (root / "recovery.json").read_bytes() == retained
+
+
+def test_public_staging_failure_command_retains_exact_failed_index_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failed, _ = _failed_index_build_fixture(tmp_path, monkeypatch, "attempt-index-update")
+    root = failed.root
+    output = root / "public-failure-envelope.json"
+    argv = [
+        "--work-dir",
+        str(root),
+        "--stage",
+        "attempt-index-update",
+        "--failed-invocation-dir",
+        str(failed.directory),
+        "--out",
+        str(output),
+        "--invocation-dir",
+        str(root / "invocations/record-release-staging-attempt/001"),
+    ]
+    completed = _run_release_tool(
+        "record_release_staging_attempt.py",
+        argv,
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    envelope = release.read_json(output)
+    release.validate_record(envelope, "release-staging-attempt")
+    terminal = release.read_json(failed.directory / "invocation.json")
+    assert envelope["data"]["failed_invocation_digest"] == release.sha256_json(terminal)
+    assert envelope["data"]["result"] == terminal["status"]
+    assert envelope["data"]["disposition"] == "TERMINAL"
+    assert envelope["data"]["recovery_envelope_digest"] is None
+    assert any(
+        row["path"] == str(failed.directory / "intent.json")
+        for row in envelope["data"]["available_inputs"]
+    )
+    release.validate_release_producer_journal(
+        envelope,
+        output,
+        producer="record_release_staging_attempt.py",
+    )
+    retained = output.read_bytes()
+    retry = [
+        value.replace("/record-release-staging-attempt/001", "/record-release-staging-attempt/002")
+        for value in argv
+    ]
+    rejected = _run_release_tool("record_release_staging_attempt.py", retry)
+    assert rejected.returncode != 0
+    assert output.read_bytes() == retained
+
+
+def test_public_staging_failure_command_covers_store_failure_with_bound_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, argv, _, _, _ = _seed_staging_preflight_seed(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        release,
+        "_release_fixture_seed_emulate",
+        lambda _: (_ for _ in ()).throw(release.ReleaseControlError("store unavailable")),
+    )
+    assert release.run_release_command(argv[0], argv[1:]) == 3
+    context, _ = _context_policy_fixture()
+    context_path = root / "inputs/context.json"
+    context_path.write_bytes(release.canonical_json(context))
+    failed = root / "invocations/validate-release-evidence-stores/001"
+    output = root / "store-failure-envelope.json"
+    completed = _run_release_tool(
+        "record_release_staging_attempt.py",
+        [
+            "--work-dir",
+            str(root),
+            "--stage",
+            "evidence-store-preflight",
+            "--failed-invocation-dir",
+            str(failed),
+            "--out",
+            str(output),
+            "--invocation-dir",
+            str(root / "invocations/record-release-staging-attempt/001"),
+        ],
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    envelope = release.read_json(output)
+    release.validate_record(envelope, "release-staging-attempt")
+    assert envelope["data"]["milestone"] == "v0.4"
+    assert envelope["data"]["stage"] == "evidence-store-preflight"
+    assert envelope["data"]["result"] == "BLOCKED"
+    assert any(
+        row["path"] == str(context_path)
+        and row["sha256"] == release.sha256_bytes(context_path.read_bytes())
+        for row in envelope["data"]["available_inputs"]
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "candidate",
+        "failure-receipt",
+        "context",
+        "authorization",
+        "keyring",
+    ],
+)
+def test_public_index_recovery_command_rejects_substituted_originals(
+    tmp_path: Path, mutation: str
+) -> None:
+    root, argv = _public_index_recovery_fixture(tmp_path)
+    if mutation == "candidate":
+        argv[argv.index("--candidate-id") + 1] = "d" * 64
+    elif mutation == "failure-receipt":
+        (root / "failure-receipt.json").write_bytes((root / "original-receipt.json").read_bytes())
+    elif mutation == "context":
+        context = release.read_json(root / "context.json")
+        data = copy.deepcopy(context["data"])
+        data["context_id"] = "substituted-context"
+        data["context_digest"] = release.sha256_json(
+            {key: value for key, value in data.items() if key != "context_digest"}
+        )
+        substituted = release.make_record(
+            "release-context",
+            data,
+            invocation_id="fixture-substituted-context",
+            sequence=1,
+            synthetic=True,
+        )
+        (root / "context.json").write_bytes(release.canonical_json(substituted))
+    elif mutation == "keyring":
+        keyring = release.read_json(root / "keyring.json")
+        keyring["keys"][0]["actor_id"] = "substituted-infrastructure"
+        (root / "keyring.json").write_bytes(release.canonical_json(keyring))
+    else:
+        authorization = release.read_json(root / "authorization.json")
+        substituted = release.make_record(
+            "release-protected-input",
+            authorization["data"],
+            invocation_id=authorization["invocation_id"],
+            sequence=authorization["sequence"],
+            synthetic=True,
+        )
+        (root / "authorization.json").write_bytes(release.canonical_json(substituted))
+    completed = _run_release_tool("record_release_index_recovery.py", argv)
+    assert completed.returncode != 0
+    assert not (root / "recovery.json").exists()
+
+
 def test_graph_committed_recovery_plan_is_acyclic_and_counters_stay_distinct(
     tmp_path: Path,
 ) -> None:

@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `7dc286b0ab46a9ae55a7d62a27e99c04640946c263249a09b2377b77f4c53309`
+Canonical projection SHA-256: `3218cd28430551a433e6aa3901d6ef43ea72f06590c3d4217f4d08ee8f79ab54`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 205 |
+| total_discovered_features | 207 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 119 |
+| cli_only_documented | 121 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -219,7 +219,9 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_postpublication_conflict | Record Postpublication Conflict | tools/record_postpublication_conflict.py | python tools/record_postpublication_conflict.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_approval | Record Release Approval | tools/record_release_approval.py | python tools/record_release_approval.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.record_release_index_recovery | Record Release Index Recovery | tools/record_release_index_recovery.py | python tools/record_release_index_recovery.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_role_assignments | Record Release Role Assignments | tools/record_release_role_assignments.py | python tools/record_release_role_assignments.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.record_release_staging_attempt | Record Release Staging Attempt | tools/record_release_staging_attempt.py | python tools/record_release_staging_attempt.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_target_burn | Record Release Target Burn | tools/record_release_target_burn.py | python tools/record_release_target_burn.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.release_artifacts | Release Artifacts | tools/release_artifacts.py | python tools/release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.resolve_release_predecessor | Resolve Release Predecessor | tools/resolve_release_predecessor.py | python tools/resolve_release_predecessor.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

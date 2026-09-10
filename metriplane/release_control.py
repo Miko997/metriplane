@@ -9976,6 +9976,50 @@ def _validate_bound_invocation(
         return
     tool = context.intent["tool"]
     if tool in {
+        "record_release_staging_attempt.py",
+        "record_release_index_recovery.py",
+    }:
+        argv = context.intent["argv"][1:]
+        historical_cwd = Path(context.intent["environment"]["working_directory"])
+        invocation_value = _command_value(argv, "invocation-dir")
+        if invocation_value is None:
+            raise ReleaseControlError("recovery invocation directory is missing")
+        historical_directory = _release_historical_path(invocation_value, historical_cwd)
+        historical_root = historical_directory.parents[2]
+        for row in context.intent["inputs"]:
+            old = _canonical_absolute_path(row["path"], "recovery historical input")
+            if not old.is_relative_to(historical_root):
+                raise ReleaseControlError("recovery input escapes its historical run")
+            current = context.root / old.relative_to(historical_root)
+            if sha256_bytes(_safe_release_bytes(current)) != row["sha256"]:
+                raise ReleaseControlError("recovery reserved input bytes changed")
+        output_value = _command_value(argv, "out")
+        if output_value is None:
+            raise ReleaseControlError("recovery output is missing")
+        expected_plan = [
+            {
+                "path": _run_relative(
+                    historical_root,
+                    _release_historical_path(output_value, historical_cwd),
+                ),
+                "schema_id": "metriplane."
+                + (
+                    "release-staging-attempt"
+                    if tool == "record_release_staging_attempt.py"
+                    else "release-index-recovery"
+                )
+                + ".v1",
+            }
+        ]
+        if context.intent["planned_outputs"] != expected_plan:
+            raise ReleaseControlError("recovery output plan differs from its command")
+        if outputs is not None:
+            root = context.root if output_root is None else output_root
+            path = root / expected_plan[0]["path"]
+            if outputs != [{**expected_plan[0], "sha256": sha256_bytes(_safe_release_bytes(path))}]:
+                raise ReleaseControlError("recovery output bytes changed")
+        return
+    if tool in {
         "resolve_release_target.py",
         "record_release_target_burn.py",
         "validate_release_target_resolution.py",
@@ -13171,6 +13215,16 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "record_release_staging_attempt.py":
+            result = _record_release_staging_attempt_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "record_release_index_recovery.py":
+            result = _record_release_index_recovery_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_target_resolution.py":
             result = _validate_release_target_resolution_operation(args, context)
             print(canonical_json(result).decode("utf-8"))
@@ -14634,7 +14688,60 @@ def run_release_command(
             )
         else:
             inputs = []
-            if tool in {"resolve_release_target.py", "record_release_target_burn.py"}:
+            if tool == "record_release_staging_attempt.py":
+                failed_value = _command_value(argv, "failed-invocation-dir")
+                work_value = _command_value(argv, "work-dir")
+                if failed_value is None or work_value is None:
+                    raise ReleaseControlError("staging failure inputs are incomplete")
+                failed_directory = Path(failed_value).absolute()
+                work_root = Path(work_value).absolute()
+                if work_root != root or not failed_directory.is_relative_to(root):
+                    raise ReleaseControlError("staging failure journal belongs to another run")
+                historical_invocation = _validate_intent(failed_directory)
+                captured_failure_inputs: dict[Path, str] = {}
+                while True:
+                    for path in sorted(historical_invocation.directory.iterdir()):
+                        if path.is_file() and not path.is_symlink():
+                            captured_failure_inputs[path] = {
+                                "intent.json": "metriplane.release-invocation-intent.v1",
+                                "invocation.json": "metriplane.release-stage-invocation.v1",
+                                "partial-files.json": "metriplane.release-partial-files.v1",
+                                "worker-result.json": "metriplane.release-worker-result.v1",
+                            }.get(path.name, "application/octet-stream")
+                    for row in historical_invocation.intent["inputs"]:
+                        path = Path(row["path"]).absolute()
+                        if path.is_relative_to(root) and path.is_file() and not path.is_symlink():
+                            captured_failure_inputs[path] = row["schema_id"]
+                    predecessor = historical_invocation.intent["predecessor"]
+                    if predecessor is None:
+                        break
+                    historical_invocation = _validate_intent(
+                        historical_invocation.directory.parent / f"{predecessor['sequence']:03d}"
+                    )
+                release_context_path = root / "inputs/context.json"
+                if release_context_path.is_file() and not release_context_path.is_symlink():
+                    captured_failure_inputs[release_context_path] = "metriplane.release-context.v1"
+                stage_value = _command_value(argv, "stage-record")
+                if stage_value is not None:
+                    captured_failure_inputs[Path(stage_value).absolute()] = (
+                        "metriplane.release-record.v1"
+                    )
+                inputs.extend(sorted(captured_failure_inputs.items(), key=lambda row: str(row[0])))
+            elif tool == "record_release_index_recovery.py":
+                for flag, kind in (
+                    ("original-entry-receipt", "release-attempt-index"),
+                    ("failure-envelope-manifest", "release-evidence-manifest"),
+                    ("failure-envelope-receipts", "release-retention-receipts"),
+                    ("failure-entry-receipt", "release-attempt-index"),
+                    ("role-assignments", "release-role-assignments"),
+                    ("release-context", "release-context"),
+                    ("signed-recovery-authorization", "release-protected-input"),
+                    ("provider-attestation-keyring", "provider-attestation-keyring"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            elif tool in {"resolve_release_target.py", "record_release_target_burn.py"}:
                 inputs.extend(_release_target_command_input_paths(tool, argv, root))
             elif tool == "validate_release_target_resolution.py":
                 inputs.extend(_release_target_validation_input_paths(argv, root))
@@ -37161,6 +37268,203 @@ def _release_recovery_committed_data(
         "scope_kind": original_entry["scope"]["kind"],
         "task_state_invalidation_reason": None,
     }
+
+
+def _record_release_staging_attempt_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    """Retain one exact failed invocation as the common immutable failure envelope."""
+
+    failed_directory = Path(args.failed_invocation_dir).absolute()
+    if Path(args.work_dir).absolute() != context.root or not failed_directory.is_relative_to(
+        context.root
+    ):
+        raise ReleaseControlError("staging failure command selects another immutable run")
+    failed = _validate_intent(failed_directory)
+    terminal = _validate_terminal(failed)
+    if terminal["status"] not in {"FAIL", "BLOCKED", "CANCELLED"}:
+        raise ReleaseControlError("staging failure command requires a negative original")
+    stages = {
+        "record_release_role_assignments.py": "role-resource-resolution",
+        "validate_release_evidence_stores.py": "evidence-store-preflight",
+        "capture_linear_release_snapshot.py": "snapshot",
+        "capture_release_target_observations.py": "target-observation",
+        "export_release_burn_lineage.py": "burn-lineage",
+        "resolve_release_target.py": "target-resolution",
+        "record_release_target_burn.py": "target-burn",
+        "update_release_attempt_index.py": "attempt-index-update",
+        "validate_release_attempt_index.py": "attempt-index-validation",
+        "record_release_index_recovery.py": "index-recovery",
+    }
+    if stages.get(failed.intent["tool"]) != args.stage:
+        raise ReleaseControlError("staging failure stage differs from its original command")
+    if args.stage_record is not None:
+        raise ReleaseControlError(
+            "staging failure with a completed stage record requires its stage-specific owner"
+        )
+    failed_args = _release_original_arguments(failed.intent["tool"], failed.intent["argv"])
+    milestone = failed_args.get("milestone")
+    if milestone is None and failed_args.get("scope-kind") in {
+        "release_candidate",
+        "evaluation_candidate",
+        "release_completion",
+    }:
+        release_tag = failed_args.get("release-tag")
+        if isinstance(release_tag, str) and release_tag.startswith("v"):
+            milestone = ".".join(release_tag.split(".")[:2])
+    if milestone is None:
+        context_rows = [
+            row
+            for row in context.intent["inputs"]
+            if row["schema_id"] == "metriplane.release-context.v1"
+        ]
+        if len(context_rows) == 1:
+            release_context = read_json(Path(context_rows[0]["path"]))
+            validate_record(release_context, "release-context")
+            if sha256_bytes(canonical_json(release_context)) != context_rows[0]["sha256"]:
+                raise ReleaseControlError("staging release context changed after reservation")
+            milestone = release_context["data"].get("framework_milestone")
+    if milestone not in MILESTONES:
+        raise ReleaseControlError("staging failure cannot reconstruct its original milestone")
+    available = sorted(
+        (dict(row) for row in context.intent["inputs"]),
+        key=lambda row: row["path"],
+    )
+    data = {
+        "available_inputs": available,
+        "blockers": [
+            f"{args.stage}: original {terminal['status']} "
+            f"(exit {terminal['data']['exit_code']}); corrected staging requires a new run"
+        ],
+        "disposition": "TERMINAL",
+        "failed_invocation_digest": sha256_json(terminal),
+        "invocation_root_locator": "invocations",
+        "milestone": milestone,
+        "producer_intent_digest": sha256_json(context.intent),
+        "recovery_envelope_digest": None,
+        "result": terminal["status"],
+        "run_id": context.root.name,
+        "sequence": context.intent["sequence"],
+        "stage": args.stage,
+        "stage_record_digest": None,
+    }
+    result = make_record(
+        "release-staging-attempt",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=context.intent["environment"]["fixture_mode"] == "1",
+    )
+    validate_record(result, "release-staging-attempt")
+    return result
+
+
+def _record_release_index_recovery_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    """Produce one immutable committed-index recovery from its original evidence."""
+
+    paths = {
+        "original_receipt": Path(args.original_entry_receipt).absolute(),
+        "failure_manifest": Path(args.failure_envelope_manifest).absolute(),
+        "failure_retention": Path(args.failure_envelope_receipts).absolute(),
+        "failure_receipt": Path(args.failure_entry_receipt).absolute(),
+        "roles": Path(args.role_assignments).absolute(),
+        "release_context": Path(args.release_context).absolute(),
+        "authorization": Path(args.signed_recovery_authorization).absolute(),
+    }
+    if any(not path.is_relative_to(context.root) for path in paths.values()):
+        raise ReleaseControlError("recovery inputs do not share the immutable run root")
+    records = {name: read_json(path) for name, path in paths.items()}
+    for name, kind in (
+        ("original_receipt", "release-attempt-index"),
+        ("failure_manifest", "release-evidence-manifest"),
+        ("failure_retention", "release-retention-receipts"),
+        ("failure_receipt", "release-attempt-index"),
+        ("roles", "release-role-assignments"),
+        ("release_context", "release-context"),
+        ("authorization", "release-protected-input"),
+    ):
+        validate_record(records[name], kind)
+        if records[name]["status"] != "PASS" or records[name]["synthetic"] is not True:
+            raise ReleaseControlError(
+                "index recovery command accepts only passing fixture evidence"
+            )
+    keyring_digest = _require_digest(
+        args.provider_attestation_keyring_digest,
+        "recovery provider attestation keyring",
+    )
+    keyring = read_json(Path(args.provider_attestation_keyring).absolute())
+    ProviderAttestationVerifier._from_keyring_value(
+        keyring,
+        expected_digest=keyring_digest,
+    )
+    if args.authority_policy_digest != release_authority_policy_digest(keyring_digest):
+        raise ReleaseControlError("recovery authority policy differs from its keyring")
+    original_entry = _release_index_receipt_content(records["original_receipt"]["data"])
+    scope = original_entry["scope"]
+    if args.scope_kind != scope["kind"]:
+        raise ReleaseControlError("recovery command selects another original scope kind")
+    if scope["kind"] in {"release_staging", "evaluation_staging"}:
+        if (
+            args.milestone != original_entry["milestone"]
+            or args.run_id != scope["scope_id"]
+            or any(
+                getattr(args, field) is not None
+                for field in ("release_tag", "candidate_id", "assurance_round")
+            )
+        ):
+            raise ReleaseControlError("recovery command changes its original staging scope")
+    elif scope["kind"] in {"release_candidate", "evaluation_candidate"}:
+        if (
+            args.release_tag != scope["release_tag"]
+            or args.candidate_id != scope["candidate_id"]
+            or any(
+                getattr(args, field) is not None
+                for field in ("milestone", "run_id", "assurance_round")
+            )
+        ):
+            raise ReleaseControlError("recovery command changes its original candidate scope")
+    elif scope["kind"] == "release_completion":
+        if (
+            args.release_tag != scope["release_tag"]
+            or args.candidate_id != scope["candidate_id"]
+            or args.assurance_round != scope["assurance_round"]
+            or args.milestone is not None
+            or args.run_id is not None
+        ):
+            raise ReleaseControlError("recovery command changes its original completion scope")
+    else:
+        raise ReleaseControlError("recovery command has an unsupported original scope")
+    context_digest = sha256_json(records["release_context"])
+    if records["release_context"]["data"].get("framework_milestone") != original_entry["milestone"]:
+        raise ReleaseControlError("recovery context milestone differs from its original entry")
+    data = _release_recovery_committed_data(
+        original_receipt=records["original_receipt"],
+        failure_manifest=records["failure_manifest"],
+        failure_retention=records["failure_retention"],
+        failure_receipt=records["failure_receipt"],
+        authorization=records["authorization"],
+        roles=records["roles"],
+        expected_context_digest=context_digest,
+        expected_authority_policy_digest=args.authority_policy_digest,
+        planned_operation_id=args.recovery_operation_id,
+        planned_sequence=args.recovery_sequence,
+        producer_intent_digest=sha256_json(context.intent),
+        use_interval=(
+            context.intent["started_at"],
+            context.intent["started_at"],
+        ),
+    )
+    result = make_record(
+        "release-index-recovery",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+    validate_record(result, "release-index-recovery")
+    return result
 
 
 def _release_graph_positive_integer(value: object, label: str) -> int:
