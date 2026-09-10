@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `e939f76ab3ee786c58a8edcc17cd46f9062d301e3fae5743a1b5083a5f1e852d`
+Canonical projection SHA-256: `7dc286b0ab46a9ae55a7d62a27e99c04640946c263249a09b2377b77f4c53309`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 202 |
+| actions | 205 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -329,7 +329,9 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.start_metriplane | tool | Start Metriplane | tools/start_metriplane.sh |
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
+| tool.update_last_known_good | tool | Update Last Known Good | python tools/update_last_known_good.py |
 | tool.update_release_attempt_index | tool | Update Release Attempt Index | python tools/update_release_attempt_index.py |
+| tool.update_release_evidence_chain | tool | Update Release Evidence Chain | python tools/update_release_evidence_chain.py |
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
 | tool.validate_publication_reconciliation | tool | Validate Publication Reconciliation | python tools/validate_publication_reconciliation.py |
@@ -337,6 +339,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
 | tool.validate_release_attempt | tool | Validate Release Attempt | python tools/validate_release_attempt.py |
 | tool.validate_release_candidate_identity | tool | Validate Release Candidate Identity | python tools/validate_release_candidate_identity.py |
+| tool.validate_release_evidence_chain | tool | Validate Release Evidence Chain | python tools/validate_release_evidence_chain.py |
 | tool.validate_release_evidence_manifest | tool | Validate Release Evidence Manifest | python tools/validate_release_evidence_manifest.py |
 | tool.validate_release_evidence_stores | tool | Validate Release Evidence Stores | python tools/validate_release_evidence_stores.py |
 | tool.validate_release_gate_input | tool | Validate Release Gate Input | python tools/validate_release_gate_input.py |

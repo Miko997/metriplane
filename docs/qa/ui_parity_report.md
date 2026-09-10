@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `e939f76ab3ee786c58a8edcc17cd46f9062d301e3fae5743a1b5083a5f1e852d`
+Canonical projection SHA-256: `7dc286b0ab46a9ae55a7d62a27e99c04640946c263249a09b2377b77f4c53309`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 202 |
+| total_discovered_features | 205 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 116 |
+| cli_only_documented | 119 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -233,7 +233,9 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.stop_the_line | Stop The Line | tools/stop_the_line.py | python tools/stop_the_line.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.update_last_known_good | Update Last Known Good | tools/update_last_known_good.py | python tools/update_last_known_good.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.update_release_attempt_index | Update Release Attempt Index | tools/update_release_attempt_index.py | python tools/update_release_attempt_index.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.update_release_evidence_chain | Update Release Evidence Chain | tools/update_release_evidence_chain.py | python tools/update_release_evidence_chain.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate-replay | Validate Replay | tools/validate-replay.sh | tools/validate-replay.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_atlas_assessment | Validate Atlas Assessment | tools/validate_atlas_assessment.py | python tools/validate_atlas_assessment.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_publication_reconciliation | Validate Publication Reconciliation | tools/validate_publication_reconciliation.py | python tools/validate_publication_reconciliation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -241,6 +243,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.validate_release_artifact_manifest | Validate Release Artifact Manifest | tools/validate_release_artifact_manifest.py | python tools/validate_release_artifact_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_attempt | Validate Release Attempt | tools/validate_release_attempt.py | python tools/validate_release_attempt.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_candidate_identity | Validate Release Candidate Identity | tools/validate_release_candidate_identity.py | python tools/validate_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_evidence_chain | Validate Release Evidence Chain | tools/validate_release_evidence_chain.py | python tools/validate_release_evidence_chain.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_evidence_manifest | Validate Release Evidence Manifest | tools/validate_release_evidence_manifest.py | python tools/validate_release_evidence_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_evidence_stores | Validate Release Evidence Stores | tools/validate_release_evidence_stores.py | python tools/validate_release_evidence_stores.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_gate_input | Validate Release Gate Input | tools/validate_release_gate_input.py | python tools/validate_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

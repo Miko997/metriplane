@@ -1710,6 +1710,156 @@
             "companion_validations"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "companion_validations": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "intent": {
+                    "$ref": "#/$defs/raw_file"
+                  },
+                  "stage": {
+                    "const": "validate-release-evidence-chain"
+                  },
+                  "terminal": {
+                    "$ref": "#/$defs/raw_file"
+                  },
+                  "tool": {
+                    "const": "validate_release_evidence_chain.py"
+                  }
+                },
+                "required": [
+                  "tool",
+                  "stage",
+                  "intent",
+                  "terminal"
+                ],
+                "type": "object"
+              },
+              "maxItems": 1,
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "original_run_root": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "producer": {
+              "const": "update_release_evidence_chain.py"
+            },
+            "producer_intent": {
+              "$ref": "#/$defs/raw_file"
+            },
+            "producer_terminal": {
+              "$ref": "#/$defs/raw_file"
+            },
+            "record": {
+              "$ref": "#/$defs/raw_file"
+            },
+            "record_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "record_kind": {
+              "const": null
+            },
+            "record_type": {
+              "const": "release-evidence-chain"
+            },
+            "stage": {
+              "const": "update-release-evidence-chain"
+            }
+          },
+          "required": [
+            "producer",
+            "stage",
+            "record_type",
+            "record_kind",
+            "record",
+            "record_digest",
+            "original_run_root",
+            "producer_intent",
+            "producer_terminal",
+            "companion_validations"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "companion_validations": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "intent": {
+                    "$ref": "#/$defs/raw_file"
+                  },
+                  "stage": {
+                    "const": null
+                  },
+                  "terminal": {
+                    "$ref": "#/$defs/raw_file"
+                  },
+                  "tool": {
+                    "const": null
+                  }
+                },
+                "required": [
+                  "tool",
+                  "stage",
+                  "intent",
+                  "terminal"
+                ],
+                "type": "object"
+              },
+              "maxItems": 0,
+              "minItems": 0,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "original_run_root": {
+              "$ref": "#/$defs/relative_path"
+            },
+            "producer": {
+              "const": "update_last_known_good.py"
+            },
+            "producer_intent": {
+              "$ref": "#/$defs/raw_file"
+            },
+            "producer_terminal": {
+              "$ref": "#/$defs/raw_file"
+            },
+            "record": {
+              "$ref": "#/$defs/raw_file"
+            },
+            "record_digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "record_kind": {
+              "const": null
+            },
+            "record_type": {
+              "const": "release-last-known-good"
+            },
+            "stage": {
+              "const": "update-last-known-good"
+            }
+          },
+          "required": [
+            "producer",
+            "stage",
+            "record_type",
+            "record_kind",
+            "record",
+            "record_digest",
+            "original_run_root",
+            "producer_intent",
+            "producer_terminal",
+            "companion_validations"
+          ],
+          "type": "object"
         }
       ]
     },

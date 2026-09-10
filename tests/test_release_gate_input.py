@@ -40,8 +40,11 @@ from metriplane import release_control as release
         "record_release_role_assignments.py",
         "resolve_release_predecessor.py",
         "retain_release_evidence.py",
+        "update_last_known_good.py",
         "update_release_attempt_index.py",
+        "update_release_evidence_chain.py",
         "validate_release_evidence_stores.py",
+        "validate_release_evidence_chain.py",
         "validate_publication_reconciliation.py",
         "validate_release_approval.py",
         "validate_release_gate_instance.py",
@@ -1063,28 +1066,39 @@ def _publication_reconciliation_command_fixture(
     candidate = release.read_json(evidence / "candidate-identity.json")["data"]
     artifacts = release.read_json(evidence / "artifact-manifest.json")["data"]["artifacts"]
     entries = [{**row, "role": "release-artifact"} for row in artifacts]
+    manifest_data = {
+        "candidate_digest": candidate["candidate_digest"],
+        "entries": entries,
+        "invocation_journal_digests": [],
+        "manifest_digest": release.sha256_json(
+            {"entries": entries, "invocation_journal_digests": []}
+        ),
+        "phase": "qualified-publication",
+        "scope_id": candidate["candidate_digest"],
+        "scope_kind": "release-candidate",
+        "producer_intent_digest": "d" * 64,
+        "invocation_root_locator": "invocations",
+    }
     manifest = release.make_record(
         "release-evidence-manifest",
-        {
-            "candidate_digest": candidate["candidate_digest"],
-            "entries": entries,
-            "phase": "qualified-publication",
-        },
+        manifest_data,
         invocation_id="fixture-qualified-publication-manifest",
         sequence=1,
         synthetic=True,
     )
+    retention_data, retention_files = _retention_content_fixture(release.canonical_json(manifest))
+    retention_data["phase"] = "prepublication"
     retention = release.make_record(
         "release-retention-receipts",
-        {
-            "candidate_digest": candidate["candidate_digest"],
-            "input_digest": release.sha256_bytes(release.canonical_json(manifest)),
-            "phase": "prepublication",
-        },
+        retention_data,
         invocation_id="fixture-qualified-publication-retention",
         sequence=1,
         synthetic=True,
     )
+    for name, raw in retention_files.items():
+        path = evidence / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
     (evidence / "evidence-manifest.json").write_bytes(release.canonical_json(manifest))
     (evidence / "retention.json").write_bytes(release.canonical_json(retention))
     argv = [
@@ -1121,6 +1135,721 @@ def test_publication_reconciliation_command_closes_exact_fixture_bytes(tmp_path:
         "pypi",
         "testpypi",
     ]
+
+
+def test_qualified_publication_manifest_command_binds_staged_custody(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, evidence, reconciliation_argv = _publication_reconciliation_command_fixture(tmp_path)
+    staged = release.read_json(evidence / "evidence-manifest.json")
+    staged["data"]["phase"] = "prepublication"
+    staged["data"]["invocation_journal_digests"] = ["e" * 64]
+    staged["data"]["manifest_digest"] = release.sha256_json(
+        {key: staged["data"][key] for key in ("entries", "invocation_journal_digests")}
+    )
+    staged = release.make_record(
+        "release-evidence-manifest",
+        staged["data"],
+        invocation_id="fixture-staged-manifest",
+        sequence=1,
+        synthetic=True,
+    )
+    staged_path = root / "staged-manifest.json"
+    staged_path.write_bytes(release.canonical_json(staged))
+    retention_data, retention_files = _retention_content_fixture(staged_path.read_bytes())
+    retention_data["phase"] = "prepublication"
+    retention = release.make_record(
+        "release-retention-receipts",
+        retention_data,
+        invocation_id="fixture-staged-retention",
+        sequence=1,
+        synthetic=True,
+    )
+    retention_path = root / "staged-retention.json"
+    retention_path.write_bytes(release.canonical_json(retention))
+    for name, raw in retention_files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    output = evidence / "qualified-manifest.json"
+    argv = [
+        "--phase",
+        "qualified-publication",
+        "--staged-manifest",
+        str(staged_path),
+        "--retention-receipts",
+        str(retention_path),
+        "--promotion-lock-receipt",
+        str(root / "promotion-lock-2.json"),
+        "--promotion",
+        str(root / "promotion-2.json"),
+        "--observations",
+        str(root / "publication-observations.json"),
+        "--invocation-root",
+        str(root / "invocations"),
+        "--exclude-current-invocation",
+        "--out",
+        str(output),
+        "--invocation-dir",
+        str(root / "invocations/build-release-evidence-manifest/001"),
+    ]
+    completed = _run_release_tool("build_release_evidence_manifest.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    manifest = release.read_json(output)
+    entries = manifest["data"]["entries"]
+    assert manifest["data"]["phase"] == "qualified-publication"
+    assert (
+        sum(row["sha256"] == release.sha256_bytes(staged_path.read_bytes()) for row in entries) == 1
+    )
+    assert (
+        sum(row["sha256"] == release.sha256_bytes(retention_path.read_bytes()) for row in entries)
+        == 1
+    )
+    assert sum(row["role"] == "release-artifact" for row in entries) == 2
+
+    registry, control_files, controls = _fixture_native_registry_bundle()
+    stores_raw = release.canonical_json(registry)
+    stores_path = root / "inputs/stores.json"
+    _seed_staging_put(stores_path, stores_raw)
+    for name, raw in control_files.items():
+        _seed_staging_put(root / "inputs" / name, raw)
+    final_path = root / "final-retention-receipts.json"
+    retention_argv = [
+        "--manifest",
+        str(output),
+        "--stores",
+        str(stores_path),
+        "--phase",
+        "final",
+        "--out",
+        str(final_path),
+        "--invocation-dir",
+        str(root / "invocations/retain-release-evidence/001"),
+    ]
+    _subject, operations = release._release_fixture_retention_expectations(
+        {
+            "manifest": str(output),
+            "stores": str(stores_path),
+            "phase": "final",
+        },
+        original_inputs=[],
+        original_manifest=output.read_bytes(),
+        registry_raw=stores_raw,
+        expected_registry_digest=release.sha256_bytes(stores_raw),
+        fixture_run_id=root.name,
+        backend_controls=controls,
+    )
+    retained = output.read_bytes()
+    responses = {}
+    for index, operation in enumerate(operations):
+        responses[f"effect-{index}"] = (
+            retained
+            if operation["kind"] == "retention.read"
+            else release.canonical_json(
+                {
+                    **operation["request"],
+                    "effect": (
+                        "immutable_put"
+                        if operation["kind"] == "retention.put"
+                        else "governance_hold"
+                    ),
+                    "administration_identity": operation["request"]["administration_identity"],
+                }
+            )
+        )
+    _write_fixture_native_seed(root, "retain_release_evidence.py", retention_argv, responses)
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    retained_result = _run_release_tool("retain_release_evidence.py", retention_argv)
+    assert retained_result.returncode == 0, retained_result.stderr or retained_result.stdout
+    final = release.read_json(final_path)
+    assert final["data"]["phase"] == "final"
+    assert final["data"]["input_digest"] == release.sha256_bytes(output.read_bytes())
+
+    reconciliation_retention_data, reconciliation_retention_files = _retention_content_fixture(
+        output.read_bytes()
+    )
+    reconciliation_retention_data["phase"] = "prepublication"
+    reconciliation_retention = release.make_record(
+        "release-retention-receipts",
+        reconciliation_retention_data,
+        invocation_id="fixture-reconciliation-retention",
+        sequence=1,
+        synthetic=True,
+    )
+    (evidence / "retention.json").write_bytes(release.canonical_json(reconciliation_retention))
+    for name, raw in reconciliation_retention_files.items():
+        path = evidence / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    reconciliation_argv[reconciliation_argv.index("--evidence-manifest") + 1] = str(output)
+    completed = _run_release_tool("build_publication_reconciliation.py", reconciliation_argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    reconciliation_path = evidence / "reconciliation.json"
+    reconciliation = release.read_json(reconciliation_path)
+    assert reconciliation["data"]["evidence_manifest_digest"] == release.sha256_json(manifest)
+
+    genesis_path = root / "inputs/chain-genesis.json"
+    genesis_raw = (
+        Path(__file__).resolve().parents[1] / "docs/releases/release-evidence-chain-genesis.json"
+    ).read_bytes()
+    _seed_staging_put(genesis_path, genesis_raw)
+    genesis_digest = release.sha256_bytes(genesis_raw)
+    chain_path = root / "success-chain-receipt.json"
+    chain_argv = [
+        "--reconciliation",
+        str(reconciliation_path),
+        "--evidence-manifest",
+        str(output),
+        "--final-receipts",
+        str(final_path),
+        "--chain-backend",
+        "success-chain",
+        "--expected-head",
+        genesis_digest,
+        "--operation-id",
+        "fixture-success-chain-1",
+        "--prior-invocation-root",
+        str(root / "invocations"),
+        "--require-prior-stages",
+        "all",
+        "--out",
+        str(chain_path),
+        "--invocation-dir",
+        str(root / "invocations/update-release-evidence-chain/001"),
+    ]
+    entry = {
+        "backend_id": "success-chain",
+        "candidate_digest": manifest["data"]["candidate_digest"],
+        "reconciliation_digest": release.sha256_json(reconciliation),
+        "final_receipts_digest": release.sha256_json(final),
+        "evidence_manifest_digest": release.sha256_json(manifest),
+        "expected_head": None,
+        "generation": 1,
+        "milestone": reconciliation["data"]["milestone"],
+        "operation_id": "fixture-success-chain-1",
+        "previous_head": None,
+    }
+    committed_head = release.sha256_json(entry)
+    response = release.canonical_json(
+        {
+            "backend_id": "success-chain",
+            "genesis_digest": genesis_digest,
+            "operation_id": "fixture-success-chain-1",
+            "expected_head": genesis_digest,
+            "entry": entry,
+            "committed_head": committed_head,
+            "read_back_digest": committed_head,
+            "disposition": "committed",
+        }
+    )
+    _write_fixture_native_seed(
+        root, "update_release_evidence_chain.py", chain_argv, {"cas": response}
+    )
+    chained = _run_release_tool("update_release_evidence_chain.py", chain_argv)
+    assert chained.returncode == 0, chained.stderr or chained.stdout
+    chain = release.read_json(chain_path)
+    release.validate_release_producer_journal(
+        chain, chain_path, producer="update_release_evidence_chain.py"
+    )
+    assert chain["data"]["committed_head"] == committed_head
+    assert chain["data"]["generation"] == 1
+    validated = _run_release_tool(
+        "validate_release_evidence_chain.py",
+        [
+            "--chain-backend",
+            "success-chain",
+            "--expected-reconciliation",
+            release.sha256_json(reconciliation),
+            "--receipt",
+            str(chain_path),
+            "--invocation-dir",
+            str(root / "invocations/validate-release-evidence-chain/001"),
+        ],
+    )
+    assert validated.returncode == 0, validated.stderr or validated.stdout
+
+    lkg_path = root / "last-known-good.json"
+    lkg_argv = [
+        "--reconciliation",
+        str(reconciliation_path),
+        "--chain-receipt",
+        str(chain_path),
+        "--lkg-backend",
+        "last-known-good",
+        "--expected-generation",
+        "0",
+        "--expected-previous-release",
+        genesis_digest,
+        "--expected-chain-head",
+        committed_head,
+        "--operation-id",
+        "fixture-lkg-1",
+        "--prior-invocation-root",
+        str(root / "invocations"),
+        "--require-prior-stages",
+        "all",
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(lkg_path),
+        "--invocation-dir",
+        str(root / "invocations/update-last-known-good/001"),
+    ]
+    stable_lkg = {
+        "backend_id": "last-known-good",
+        "candidate_digest": manifest["data"]["candidate_digest"],
+        "chain_head": committed_head,
+        "expected_generation": 0,
+        "invalidation_decision_digest": None,
+        "milestone": reconciliation["data"]["milestone"],
+        "new_generation": 1,
+        "operation_id": "fixture-lkg-1",
+        "previous_release_digest": None,
+        "reconciliation_digest": release.sha256_json(reconciliation),
+        "state": "LKG",
+    }
+    lkg_token = release.sha256_json(stable_lkg)
+    lkg_entry = {
+        **stable_lkg,
+        "committed_token": lkg_token,
+        "read_back_digest": release.sha256_json(
+            {"committed_token": lkg_token, "entry": stable_lkg}
+        ),
+    }
+    _write_fixture_native_seed(
+        root,
+        "update_last_known_good.py",
+        lkg_argv,
+        {"cas": release.canonical_json({"entry": lkg_entry, "disposition": "committed"})},
+    )
+    updated_lkg = _run_release_tool("update_last_known_good.py", lkg_argv)
+    assert updated_lkg.returncode == 0, updated_lkg.stderr or updated_lkg.stdout
+    lkg = release.read_json(lkg_path)
+    release.validate_record(lkg, "release-last-known-good")
+    assert lkg["data"] == lkg_entry
+
+    def retain_pointer(subject: Path, phase: str, out: Path, sequence: int) -> dict[str, Any]:
+        retain_argv = [
+            "--input",
+            str(subject),
+            "--stores",
+            str(stores_path),
+            "--phase",
+            phase,
+            "--out",
+            str(out),
+            "--invocation-dir",
+            str(root / f"invocations/retain-release-evidence/{sequence:03d}"),
+        ]
+        _subject, retain_operations = release._release_fixture_retention_expectations(
+            {"input": [str(subject)], "stores": str(stores_path), "phase": phase},
+            original_inputs=[subject.read_bytes()],
+            original_manifest=None,
+            registry_raw=stores_raw,
+            expected_registry_digest=release.sha256_bytes(stores_raw),
+            fixture_run_id=root.name,
+            backend_controls=controls,
+        )
+        retain_responses = {}
+        for index, operation in enumerate(retain_operations):
+            retain_responses[f"effect-{index}"] = (
+                subject.read_bytes()
+                if operation["kind"] == "retention.read"
+                else release.canonical_json(
+                    {
+                        **operation["request"],
+                        "effect": (
+                            "immutable_put"
+                            if operation["kind"] == "retention.put"
+                            else "governance_hold"
+                        ),
+                        "administration_identity": operation["request"]["administration_identity"],
+                    }
+                )
+            )
+        _write_fixture_native_seed(
+            root, "retain_release_evidence.py", retain_argv, retain_responses
+        )
+        result = _run_release_tool("retain_release_evidence.py", retain_argv)
+        assert result.returncode == 0, result.stderr or result.stdout
+        return release.read_json(out)
+
+    pointer_transition_retention_path = root / "pointer-transition-retention.json"
+    pointer_transition_retention = retain_pointer(
+        lkg_path, "pointer-transition", pointer_transition_retention_path, 2
+    )
+    assert pointer_transition_retention["data"]["input_digest"] == release.sha256_bytes(
+        lkg_path.read_bytes()
+    )
+    pointer_manifest_path = root / "pointer-envelope.json"
+    pointer_manifest_argv = [
+        "--phase",
+        "pointer-transition",
+        "--input",
+        str(lkg_path),
+        "--input",
+        str(pointer_transition_retention_path),
+        "--invocation-root",
+        str(root / "invocations"),
+        "--exclude-current-invocation",
+        "--out",
+        str(pointer_manifest_path),
+        "--invocation-dir",
+        str(root / "invocations/build-release-evidence-manifest/002"),
+    ]
+    pointer_manifest_result = _run_release_tool(
+        "build_release_evidence_manifest.py", pointer_manifest_argv
+    )
+    assert pointer_manifest_result.returncode == 0, (
+        pointer_manifest_result.stderr or pointer_manifest_result.stdout
+    )
+    pointer_manifest = release.read_json(pointer_manifest_path)
+    assert pointer_manifest["data"]["phase"] == "pointer-transition"
+    pointer_envelope_retention_path = root / "pointer-envelope-retention.json"
+    pointer_envelope_retention = retain_pointer(
+        pointer_manifest_path,
+        "pointer-transition-envelope",
+        pointer_envelope_retention_path,
+        3,
+    )
+
+    attempt_genesis_path = root / "inputs/genesis.json"
+    attempt_genesis_raw = _fixture_native_genesis_raw()
+    _seed_staging_put(attempt_genesis_path, attempt_genesis_raw)
+    attempt_genesis_digest = release.sha256_bytes(attempt_genesis_raw)
+    pointer_index_path = root / "pointer-index-receipt.json"
+    pointer_index_argv = [
+        "--entry-manifest",
+        str(pointer_manifest_path),
+        "--entry-receipts",
+        str(pointer_envelope_retention_path),
+        "--scope-kind",
+        "release_candidate",
+        "--scope-id",
+        "pointer-scope-1",
+        "--release-tag",
+        "v0.4.1",
+        "--candidate-id",
+        manifest["data"]["candidate_digest"],
+        "--stage",
+        "pointer-transition",
+        "--sequence",
+        "1",
+        "--index-backend",
+        "attempt-index",
+        "--expected-head",
+        attempt_genesis_digest,
+        "--operation-id",
+        "fixture-pointer-index-1",
+        "--out",
+        str(pointer_index_path),
+        "--invocation-dir",
+        str(root / "invocations/update-release-attempt-index/001"),
+    ]
+    pointer_scope = {
+        "kind": "release_candidate",
+        "scope_id": "pointer-scope-1",
+        "stage": "pointer-transition",
+        "sequence": 1,
+        "release_tag": "v0.4.1",
+        "candidate_id": manifest["data"]["candidate_digest"],
+    }
+    pointer_entry = {
+        "schema_version": "metriplane.release-attempt-index-entry.v1",
+        "backend_id": "attempt-index",
+        "genesis_digest": attempt_genesis_digest,
+        "generation": 1,
+        "previous_head": None,
+        "operation_id": "fixture-pointer-index-1",
+        "token": "fixture-pointer-index-token",
+        "milestone": "v0.4",
+        "scope": pointer_scope,
+        "entry_manifest_digest": release.sha256_json(pointer_manifest),
+        "entry_receipts_digest": release.sha256_json(pointer_envelope_retention),
+    }
+    pointer_head = release.sha256_json(pointer_entry)
+    pointer_response = release.canonical_json(
+        {
+            "backend_id": "attempt-index",
+            "genesis_digest": attempt_genesis_digest,
+            "operation_id": "fixture-pointer-index-1",
+            "expected_head": attempt_genesis_digest,
+            "entry": pointer_entry,
+            "committed_head": pointer_head,
+            "read_back_digest": pointer_head,
+            "disposition": "committed",
+        }
+    )
+    _write_fixture_native_seed(
+        root,
+        "update_release_attempt_index.py",
+        pointer_index_argv,
+        {"cas": pointer_response},
+    )
+    pointer_index_result = _run_release_tool("update_release_attempt_index.py", pointer_index_argv)
+    assert pointer_index_result.returncode == 0, (
+        pointer_index_result.stderr or pointer_index_result.stdout
+    )
+    pointer_index = release.read_json(pointer_index_path)
+    assert pointer_index["data"]["committed_head"] == pointer_head
+
+    conflict_path = root / "postpublication-conflicts/004/conflict.json"
+    conflict = release.make_record(
+        "release-postpublication-conflict",
+        {
+            "available_inputs": [],
+            "candidate_digest": manifest["data"]["candidate_digest"],
+            "candidate_identity_digest": "1" * 64,
+            "classification_digest": "2" * 64,
+            "conflict_digest": "3" * 64,
+            "failed_invocation_digest": "4" * 64,
+            "failed_invocation_id": "fixture-failed-reconciliation",
+            "failed_tool": "build_publication_reconciliation.py",
+            "failure_exit_code": 2,
+            "failure_status": "FAIL",
+            "invocation_root_locator": "invocations",
+            "lkg_disposition": "REQUIRES_LKG_INVALIDATION",
+            "no_assurance_round": True,
+            "producer_intent_digest": "5" * 64,
+            "requires_lkg_invalidation": True,
+            "stage": "publication-reconciliation",
+            "stage_record_digest": None,
+        },
+        invocation_id="fixture-postpublication-conflict",
+        sequence=4,
+        synthetic=True,
+    )
+    conflict_path.parent.mkdir(parents=True)
+    conflict_path.write_bytes(release.canonical_json(conflict))
+    decision_data = {
+        "author_id": "fixture-author",
+        "candidate_digest": manifest["data"]["candidate_digest"],
+        "decision": "INVALIDATED",
+        "reason": "fixture exact-byte contradiction",
+        "reviewer_id": "fixture-independent-reviewer",
+    }
+    unsigned_decision = release.make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="fixture-lkg-invalidation-decision",
+        sequence=1,
+        synthetic=True,
+    )
+    decision_subject = release.signature_subject_digest(unsigned_decision)
+    decision = release.make_record(
+        "release-approval-decision",
+        decision_data,
+        invocation_id="fixture-lkg-invalidation-decision",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "fixture-independent-reviewer",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": release.sha256_json(
+                    {
+                        "actor_id": "fixture-independent-reviewer",
+                        "subject_digest": decision_subject,
+                    }
+                ),
+                "subject_digest": decision_subject,
+                "synthetic": True,
+            }
+        ],
+    )
+    decision_path = root / "inputs/lkg-invalidation-decision.json"
+    decision_path.write_bytes(release.canonical_json(decision))
+    role_assignments = release.make_record(
+        "release-role-assignments",
+        {
+            "author_id": "fixture-author",
+            "authorized_executor_id": "fixture-executor",
+            "milestone": "v0.4",
+            "non_author_reviewer_id": "fixture-independent-reviewer",
+            "publisher_id": "fixture-publisher",
+            "task_id": "MP2-007",
+        },
+        invocation_id="fixture-lkg-role-assignments",
+        sequence=1,
+        synthetic=True,
+    )
+    role_assignments_path = root / "inputs/lkg-role-assignments.json"
+    role_assignments_path.write_bytes(release.canonical_json(role_assignments))
+    invalidated_path = root / "lkg-invalidation-receipt.json"
+    invalidation_argv = [
+        "--invalidate",
+        "--current-receipt",
+        str(lkg_path),
+        "--conflict",
+        str(conflict_path),
+        "--signed-invalidation-decision",
+        str(decision_path),
+        "--role-assignments",
+        str(role_assignments_path),
+        "--lkg-backend",
+        "last-known-good",
+        "--expected-generation",
+        "1",
+        "--operation-id",
+        "fixture-lkg-invalidate-1",
+        "--out",
+        str(invalidated_path),
+        "--invocation-dir",
+        str(root / "invocations/update-last-known-good/003"),
+    ]
+    invalidated_stable = {
+        "backend_id": "last-known-good",
+        "candidate_digest": manifest["data"]["candidate_digest"],
+        "chain_head": committed_head,
+        "expected_generation": 1,
+        "invalidation_decision_digest": release.sha256_json(decision),
+        "milestone": "v0.4",
+        "new_generation": 2,
+        "operation_id": "fixture-lkg-invalidate-1",
+        "previous_release_digest": release.sha256_json(lkg),
+        "reconciliation_digest": release.sha256_json(reconciliation),
+        "state": "INVALIDATED",
+    }
+    invalidated_token = release.sha256_json(invalidated_stable)
+    invalidated_entry = {
+        **invalidated_stable,
+        "committed_token": invalidated_token,
+        "read_back_digest": release.sha256_json(
+            {"committed_token": invalidated_token, "entry": invalidated_stable}
+        ),
+    }
+    interrupted_path = root / "lkg-invalidation-interrupted.json"
+    interrupted_argv = [
+        value.replace(str(invalidated_path), str(interrupted_path)).replace(
+            "invocations/update-last-known-good/003",
+            "invocations/update-last-known-good/002",
+        )
+        for value in invalidation_argv
+    ]
+    _write_fixture_native_seed(
+        root,
+        "update_last_known_good.py",
+        interrupted_argv,
+        {"cas": release.canonical_json({"entry": invalidated_entry, "disposition": "committed"})},
+    )
+    state_path = root / ".fixture-native-state/last-known-good.json"
+    state_before_interrupt = state_path.read_bytes()
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_LKG_CAS", "1")
+    interrupted_result = _run_release_tool("update_last_known_good.py", interrupted_argv)
+    monkeypatch.delenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_LKG_CAS")
+    assert interrupted_result.returncode == 3
+    assert not interrupted_path.exists()
+    assert state_path.read_bytes() == state_before_interrupt
+
+    _write_fixture_native_seed(
+        root,
+        "update_last_known_good.py",
+        invalidation_argv,
+        {"cas": release.canonical_json({"entry": invalidated_entry, "disposition": "committed"})},
+    )
+    invalidation_result = _run_release_tool("update_last_known_good.py", invalidation_argv)
+    assert invalidation_result.returncode == 0, (
+        invalidation_result.stderr or invalidation_result.stdout
+    )
+    assert release.read_json(invalidated_path)["data"] == invalidated_entry
+    validation_result = _run_release_tool(
+        "update_last_known_good.py",
+        [
+            "--validate-invalidation",
+            "--receipt",
+            str(invalidated_path),
+            "--lkg-backend",
+            "last-known-good",
+            "--read-back",
+            "--invocation-dir",
+            str(root / "invocations/update-last-known-good/004"),
+        ],
+    )
+    assert validation_result.returncode == 0, validation_result.stderr or validation_result.stdout
+
+    replay_path = root / "lkg-invalidation-replay.json"
+    replay_argv = [
+        value.replace(str(invalidated_path), str(replay_path)).replace(
+            "invocations/update-last-known-good/003",
+            "invocations/update-last-known-good/005",
+        )
+        for value in invalidation_argv
+    ]
+    _write_fixture_native_seed(
+        root,
+        "update_last_known_good.py",
+        replay_argv,
+        {"cas": release.canonical_json({"entry": invalidated_entry, "disposition": "idempotent"})},
+    )
+    replay_result = _run_release_tool("update_last_known_good.py", replay_argv)
+    assert replay_result.returncode == 0, replay_result.stderr or replay_result.stdout
+    assert release.read_json(replay_path)["data"] == invalidated_entry
+
+    stale_path = root / "lkg-invalidation-stale.json"
+    stale_argv = [
+        value.replace("fixture-lkg-invalidate-1", "fixture-lkg-invalidate-2")
+        .replace(str(invalidated_path), str(stale_path))
+        .replace(
+            "invocations/update-last-known-good/003",
+            "invocations/update-last-known-good/006",
+        )
+        for value in invalidation_argv
+    ]
+    stale_entry = {
+        **invalidated_entry,
+        "operation_id": "fixture-lkg-invalidate-2",
+    }
+    _write_fixture_native_seed(
+        root,
+        "update_last_known_good.py",
+        stale_argv,
+        {"cas": release.canonical_json({"entry": stale_entry, "disposition": "committed"})},
+    )
+    stale_result = _run_release_tool("update_last_known_good.py", stale_argv)
+    assert stale_result.returncode == 2
+    assert not stale_path.exists()
+
+    competing_path = root / "competing-success-chain-receipt.json"
+    competing_argv = [
+        value.replace("fixture-success-chain-1", "fixture-success-chain-2")
+        .replace(str(chain_path), str(competing_path))
+        .replace(
+            "invocations/update-release-evidence-chain/001",
+            "invocations/update-release-evidence-chain/002",
+        )
+        for value in chain_argv
+    ]
+    competing_entry = {
+        **entry,
+        "operation_id": "fixture-success-chain-2",
+    }
+    competing_head = release.sha256_json(competing_entry)
+    competing_response = release.canonical_json(
+        {
+            "backend_id": "success-chain",
+            "genesis_digest": genesis_digest,
+            "operation_id": "fixture-success-chain-2",
+            "expected_head": genesis_digest,
+            "entry": competing_entry,
+            "committed_head": competing_head,
+            "read_back_digest": competing_head,
+            "disposition": "committed",
+        }
+    )
+    _write_fixture_native_seed(
+        root,
+        "update_release_evidence_chain.py",
+        competing_argv,
+        {"cas": competing_response},
+    )
+    competing = _run_release_tool("update_release_evidence_chain.py", competing_argv)
+    assert competing.returncode != 0
+    assert not competing_path.exists()
+    assert not (
+        root / "invocations/update-release-evidence-chain/002/terminal-commit.json"
+    ).exists()
 
 
 def test_publication_reconciliation_terminal_replay_rejects_forged_success(
@@ -6673,7 +7402,7 @@ def test_original_prerequisite_contract_table_matches_all_closed_schema_variants
         companion = fields["companion_validations"]["items"]["properties"]["tool"]["const"]
         observed[tool] = (fields["record_type"]["const"], fields["record_kind"]["const"], companion)
     assert observed == release._RELEASE_GATE_PREREQUISITES
-    assert len(observed) == 13
+    assert len(observed) == 15
 
 
 @pytest.mark.parametrize(
@@ -22027,9 +22756,9 @@ def test_graph_live_and_mode_aliases_reject_before_io(live: Any) -> None:
         )
 
 
-def test_graph_exact_closed_13_type_dispatch_inventory() -> None:
-    assert len(release._RELEASE_GATE_PREREQUISITES) == 13
-    assert len(release._RELEASE_GRAPH_NATIVE_TOOLS) == 8
+def test_graph_exact_closed_15_type_dispatch_inventory() -> None:
+    assert len(release._RELEASE_GATE_PREREQUISITES) == 15
+    assert len(release._RELEASE_GRAPH_NATIVE_TOOLS) == 10
     assert set(release._RELEASE_GATE_PREREQUISITES) - release._RELEASE_GRAPH_NATIVE_TOOLS == {
         "resolve_release_target.py",
         "record_release_target_burn.py",
