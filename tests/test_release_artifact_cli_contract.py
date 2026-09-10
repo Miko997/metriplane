@@ -543,15 +543,24 @@ def test_partial_install_and_manifest_failure_roll_back_owned_artifacts(
     tmp_path: Path, fault: str
 ) -> None:
     fixture = _record_inputs(tmp_path)
-    patch = (
-        "original=a.os.link\nlinks=0\ndef failed(source,destination,**kwargs):\n global links\n links+=1\n if "
-        + (
-            "links==2"
-            if fault == "second-artifact-link"
-            else "destination.name=='artifact-manifest.json'"
+    if fault == "second-artifact-link":
+        patch = (
+            "original=a.os.link\nlinks=0\n"
+            "def failed(source,destination,**kwargs):\n"
+            " global links\n links+=1\n"
+            " if links==2: raise OSError('injected installation failure')\n"
+            " original(source,destination,**kwargs)\n"
+            "a.os.link=failed"
         )
-        + ": raise OSError('injected installation failure')\n original(source,destination,**kwargs)\na.os.link=failed"
-    )
+    else:
+        patch = (
+            "original=c._rename_candidate_exclusive\n"
+            "def failed(source_fd,source_name,destination_fd,destination_name):\n"
+            " if destination_name=='artifact-manifest.json': "
+            "raise OSError('injected installation failure')\n"
+            " original(source_fd,source_name,destination_fd,destination_name)\n"
+            "c._rename_candidate_exclusive=failed"
+        )
     result = _run_build(fixture, bootstrap=_bootstrap(parent_patch=patch))
     assert result.returncode == 3, (result.stdout, result.stderr)
     root = fixture["run"]

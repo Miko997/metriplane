@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `064e5040d14110638f39f18912eb24515232de43c2caecc3a071016ae7dc8eca`
+Canonical projection SHA-256: `dc6b2a0de83a9a4aa397dec56382102bf67d85f09d50781cb95f5fc79460f9a8`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 195 |
+| actions | 218 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -258,20 +258,27 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.baseline_snapshot | tool | Baseline Snapshot | python tools/baseline_snapshot.py |
 | tool.build_external_source_family_matrix | tool | Build External Source Family Matrix | python tools/build_external_source_family_matrix.py |
 | tool.build_maniskill_pickcube_proof | tool | Build Maniskill Pickcube Proof | python tools/build_maniskill_pickcube_proof.py |
+| tool.build_publication_reconciliation | tool | Build Publication Reconciliation | python tools/build_publication_reconciliation.py |
 | tool.build_release_artifacts | tool | Build Release Artifacts | python tools/build_release_artifacts.py |
+| tool.build_release_delta_test_map | tool | Build Release Delta Test Map | python tools/build_release_delta_test_map.py |
+| tool.build_release_evidence_manifest | tool | Build Release Evidence Manifest | python tools/build_release_evidence_manifest.py |
 | tool.build_release_qualification | tool | Build Release Qualification | python tools/build_release_qualification.py |
 | tool.calibrate_intrinsics_chessboard | tool | Calibrate Intrinsics Chessboard | python tools/calibrate_intrinsics_chessboard.py |
 | tool.calibrate_planar_homography | tool | Calibrate Planar Homography | python tools/calibrate_planar_homography.py |
+| tool.capture_linear_release_snapshot | tool | Capture Linear Release Snapshot | python tools/capture_linear_release_snapshot.py |
 | tool.capture_release_run_statuses | tool | Capture Release Run Statuses | python tools/capture_release_run_statuses.py |
 | tool.capture_release_target_observations | tool | Capture Release Target Observations | python tools/capture_release_target_observations.py |
+| tool.capture_release_task_state_observation | tool | Capture Release Task State Observation | python tools/capture_release_task_state_observation.py |
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
 | tool.check_blockers | tool | Check Blockers | python tools/check_blockers.py |
 | tool.check_met77_transition | tool | Check Met77 Transition | python tools/check_met77_transition.py |
 | tool.check_pr_contract | tool | Check Pr Contract | python tools/check_pr_contract.py |
+| tool.check_release_delta | tool | Check Release Delta | python tools/check_release_delta.py |
 | tool.check_release_readiness | tool | Check Release Readiness | python tools/check_release_readiness.py |
 | tool.check_repository_protection | tool | Check Repository Protection | python tools/check_repository_protection.py |
 | tool.check_required_terminal | tool | Check Required Terminal | python tools/check_required_terminal.py |
 | tool.check_ros2_adapters | tool | Check Ros2 Adapters | python tools/check_ros2_adapters.py |
+| tool.collect_publication_observations | tool | Collect Publication Observations | python tools/collect_publication_observations.py |
 | tool.command_center_up | tool | Command Center Up | tools/command_center_up.sh |
 | tool.cross_adapter_gate | tool | Cross Adapter Gate | python tools/cross_adapter_gate.py |
 | tool.cross_adapter_pytest | tool | Cross Adapter Pytest | python tools/cross_adapter_pytest.py |
@@ -291,6 +298,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.export_release_burn_lineage | tool | Export Release Burn Lineage | python tools/export_release_burn_lineage.py |
 | tool.finalize_release_attempt_cells | tool | Finalize Release Attempt Cells | python tools/finalize_release_attempt_cells.py |
 | tool.finalize_release_candidate_identity | tool | Finalize Release Candidate Identity | python tools/finalize_release_candidate_identity.py |
+| tool.finalize_release_gate_instance | tool | Finalize Release Gate Instance | python tools/finalize_release_gate_instance.py |
 | tool.freeze_release_source | tool | Freeze Release Source | python tools/freeze_release_source.py |
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
 | tool.list_cameras | tool | List Cameras | python tools/list_cameras.py |
@@ -300,13 +308,20 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.plan_release_qualification | tool | Plan Release Qualification | python tools/plan_release_qualification.py |
 | tool.plot_compute_backend_comparison | tool | Plot Compute Backend Comparison | python tools/plot_compute_backend_comparison.py |
 | tool.prepare_release_gate_input | tool | Prepare Release Gate Input | python tools/prepare_release_gate_input.py |
+| tool.prepare_release_impact_manifest | tool | Prepare Release Impact Manifest | python tools/prepare_release_impact_manifest.py |
 | tool.preview_world_overlay | tool | Preview World Overlay | python tools/preview_world_overlay.py |
 | tool.preview_world_overlay_multi | tool | Preview World Overlay Multi | python tools/preview_world_overlay_multi.py |
 | tool.preview_world_overlay_multi_ws | tool | Preview World Overlay Multi Ws | python tools/preview_world_overlay_multi_ws.py |
 | tool.preview_zones_overlay | tool | Preview Zones Overlay | python tools/preview_zones_overlay.py |
+| tool.promote_release_candidate | tool | Promote Release Candidate | python tools/promote_release_candidate.py |
 | tool.proof_m8_fusion | tool | Proof M8 Fusion | tools/proof_m8_fusion.sh |
 | tool.public_surface_provenance | tool | Public Surface Provenance | python tools/public_surface_provenance.py |
+| tool.record_postpublication_conflict | tool | Record Postpublication Conflict | python tools/record_postpublication_conflict.py |
+| tool.record_release_approval | tool | Record Release Approval | python tools/record_release_approval.py |
+| tool.record_release_blocker_attempt | tool | Record Release Blocker Attempt | python tools/record_release_blocker_attempt.py |
+| tool.record_release_index_recovery | tool | Record Release Index Recovery | python tools/record_release_index_recovery.py |
 | tool.record_release_role_assignments | tool | Record Release Role Assignments | python tools/record_release_role_assignments.py |
+| tool.record_release_staging_attempt | tool | Record Release Staging Attempt | python tools/record_release_staging_attempt.py |
 | tool.record_release_target_burn | tool | Record Release Target Burn | python tools/record_release_target_burn.py |
 | tool.release_artifacts | tool | Release Artifacts | python tools/release_artifacts.py |
 | tool.report_alignment | tool | Report Alignment | python tools/report_alignment.py |
@@ -323,24 +338,32 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.start_metriplane | tool | Start Metriplane | tools/start_metriplane.sh |
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
+| tool.update_last_known_good | tool | Update Last Known Good | python tools/update_last_known_good.py |
 | tool.update_release_attempt_index | tool | Update Release Attempt Index | python tools/update_release_attempt_index.py |
+| tool.update_release_evidence_chain | tool | Update Release Evidence Chain | python tools/update_release_evidence_chain.py |
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
+| tool.validate_linear_release_snapshot | tool | Validate Linear Release Snapshot | python tools/validate_linear_release_snapshot.py |
 | tool.validate_publication_reconciliation | tool | Validate Publication Reconciliation | python tools/validate_publication_reconciliation.py |
 | tool.validate_release_approval | tool | Validate Release Approval | python tools/validate_release_approval.py |
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
 | tool.validate_release_attempt | tool | Validate Release Attempt | python tools/validate_release_attempt.py |
+| tool.validate_release_attempt_index | tool | Validate Release Attempt Index | python tools/validate_release_attempt_index.py |
 | tool.validate_release_candidate_identity | tool | Validate Release Candidate Identity | python tools/validate_release_candidate_identity.py |
+| tool.validate_release_evidence_chain | tool | Validate Release Evidence Chain | python tools/validate_release_evidence_chain.py |
+| tool.validate_release_evidence_manifest | tool | Validate Release Evidence Manifest | python tools/validate_release_evidence_manifest.py |
 | tool.validate_release_evidence_stores | tool | Validate Release Evidence Stores | python tools/validate_release_evidence_stores.py |
 | tool.validate_release_gate_input | tool | Validate Release Gate Input | python tools/validate_release_gate_input.py |
 | tool.validate_release_gate_instance | tool | Validate Release Gate Instance | python tools/validate_release_gate_instance.py |
 | tool.validate_release_predecessor | tool | Validate Release Predecessor | python tools/validate_release_predecessor.py |
+| tool.validate_release_prepromotion_controls | tool | Validate Release Prepromotion Controls | python tools/validate_release_prepromotion_controls.py |
 | tool.validate_release_qualification | tool | Validate Release Qualification | python tools/validate_release_qualification.py |
 | tool.validate_release_qualification_plan | tool | Validate Release Qualification Plan | python tools/validate_release_qualification_plan.py |
 | tool.validate_release_retention | tool | Validate Release Retention | python tools/validate_release_retention.py |
 | tool.validate_release_role_assignments | tool | Validate Release Role Assignments | python tools/validate_release_role_assignments.py |
 | tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
 | tool.validate_release_target_resolution | tool | Validate Release Target Resolution | python tools/validate_release_target_resolution.py |
+| tool.validate_release_task_state_observation | tool | Validate Release Task State Observation | python tools/validate_release_task_state_observation.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |
 | tool.ws_replay_jsonl | tool | Ws Replay Jsonl | python tools/ws_replay_jsonl.py |
