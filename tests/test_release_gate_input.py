@@ -88,6 +88,8 @@ PUBLIC_RELEASE_ROUTES = (
 
 PENDING_RELEASE_ROUTES: set[str] = set()
 
+PENDING_RELEASE_OPERATIONS: set[str] = set()
+
 
 def test_release_route_census_is_exact() -> None:
     assert set(PUBLIC_RELEASE_ROUTES).isdisjoint(PENDING_RELEASE_ROUTES)
@@ -98,6 +100,15 @@ def test_release_route_census_is_exact() -> None:
         for path in (repository / "tools").glob("*.py")
         if path.name in release.TOOL_CONTRACTS
     } == set(PUBLIC_RELEASE_ROUTES)
+
+
+def test_release_operation_census_is_exact() -> None:
+    assert PENDING_RELEASE_OPERATIONS < set(PUBLIC_RELEASE_ROUTES)
+    assert {
+        "build_release_delta_test_map.py",
+        "check_release_delta.py",
+        "prepare_release_impact_manifest.py",
+    }.isdisjoint(PENDING_RELEASE_OPERATIONS)
 
 
 @pytest.mark.parametrize("tool", PUBLIC_RELEASE_ROUTES)
@@ -112,6 +123,751 @@ def test_implemented_release_route_has_actual_public_adapter(tool: str) -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.startswith(f"usage: {tool}")
+
+
+def test_impact_delta_and_test_map_commands_form_one_connected_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "config", "user.name", "Release Author"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "release-author@example.invalid"],
+        cwd=repository,
+        check=True,
+    )
+    source = repository / "metriplane" / "connected.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repository, check=True)
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repository, check=True)
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
+    tree = subprocess.check_output(
+        ["git", "rev-parse", "HEAD^{tree}"], cwd=repository, text=True
+    ).strip()
+
+    root = repository / "release-run"
+    root.mkdir()
+    target = release.make_record(
+        "release-target-resolution",
+        {
+            "milestone": "v0.4",
+            "selected_package_version": "v0.4.1",
+            "selected_release_tag": "v0.4.1",
+        },
+        invocation_id="target",
+        sequence=1,
+        synthetic=True,
+    )
+    freeze = release.make_record(
+        "release-source-freeze",
+        {"milestone": "v0.4", "source_sha": head, "source_tree": tree},
+        invocation_id="freeze",
+        sequence=1,
+        synthetic=True,
+    )
+    predecessor = release.make_record(
+        "release-predecessor",
+        {"candidate_milestone": "v0.4"},
+        invocation_id="predecessor",
+        sequence=1,
+        synthetic=True,
+    )
+    for name, record in (
+        ("target-resolution.json", target),
+        ("source-freeze.json", freeze),
+        ("predecessor.json", predecessor),
+    ):
+        release.write_immutable_json(root / name, record)
+
+    monkeypatch.chdir(repository)
+
+    def invoke(tool: str, arguments: list[str], *, sequence: int = 1) -> None:
+        stage = release._invocation_stage(tool)
+        invocation = root / "invocations" / stage / f"{sequence:03d}"
+        assert (
+            release.run_release_command(tool, ["--invocation-dir", str(invocation), *arguments])
+            == 0
+        )
+
+    invoke(
+        "prepare_release_impact_manifest.py",
+        [
+            "--milestone",
+            "v0.4",
+            "--target-resolution",
+            str(root / "target-resolution.json"),
+            "--base",
+            base,
+            "--head",
+            head,
+            "--source-freeze",
+            str(root / "source-freeze.json"),
+            "--out",
+            str(root / "author-impact.json"),
+        ],
+    )
+    impact = release.read_json(root / "author-impact.json")
+    assert impact["data"]["author_id"] == "release-author@example.invalid"
+    assert impact["data"]["changes"] == [
+        {
+            "after_digest": release.sha256_bytes(b"VALUE = 2\n"),
+            "before_digest": release.sha256_bytes(b"VALUE = 1\n"),
+            "capability_id": "metriplane-core",
+            "old_path": None,
+            "path": "metriplane/connected.py",
+            "status": "M",
+        }
+    ]
+
+    invoke(
+        "check_release_delta.py",
+        [
+            "--milestone",
+            "v0.4",
+            "--target-resolution",
+            str(root / "target-resolution.json"),
+            "--predecessor",
+            str(root / "predecessor.json"),
+            "--candidate-sha",
+            head,
+            "--impact-manifest",
+            str(root / "author-impact.json"),
+            "--out",
+            str(root / "delta.json"),
+        ],
+    )
+    delta = release.read_json(root / "delta.json")
+    assert [row["capability_id"] for row in delta["data"]["changed"]] == ["metriplane-core"]
+
+    obligation_id = "MP2-007.OBL.CONNECTED"
+    scenario_id = "LOCAL_FAKE_RELEASE"
+    environment_id = "linux-py312"
+    registries = {
+        "obligations.json": {
+            "owner": "MP2-007",
+            "obligations": [
+                {
+                    "id": obligation_id,
+                    "capability_ids": ["metriplane-core"],
+                    "environment_ids": [environment_id],
+                    "lifecycle": "active",
+                    "scenario_ids": [scenario_id],
+                }
+            ],
+        },
+        "scenarios.json": {
+            "owner": "MP2-007",
+            "release_slots": [
+                {
+                    "milestone": "v0.4",
+                    "qualification_scenario_ids": [scenario_id],
+                    "publication_reconciliation_scenario_ids": [],
+                    "postpublication_scenario_ids": [],
+                }
+            ],
+            "scenarios": [
+                {
+                    "id": scenario_id,
+                    "environment_pairs": [
+                        {"environment_id": environment_id, "profile_id": "release"}
+                    ],
+                    "required_obligations": {
+                        "known_obligation_ids": [obligation_id],
+                        "state": "CONFIGURED",
+                    },
+                }
+            ],
+        },
+        "environments.json": {
+            "owner": "MP2-007",
+            "environments": [{"id": environment_id, "profile_id": "release"}],
+        },
+    }
+    for name, value in registries.items():
+        (root / name).write_bytes(release.canonical_json(value))
+    invoke(
+        "build_release_delta_test_map.py",
+        [
+            "--milestone",
+            "v0.4",
+            "--delta",
+            str(root / "delta.json"),
+            "--impact-manifest",
+            str(root / "author-impact.json"),
+            "--obligations",
+            str(root / "obligations.json"),
+            "--scenarios",
+            str(root / "scenarios.json"),
+            "--environments",
+            str(root / "environments.json"),
+            "--out",
+            str(root / "delta-test-map.json"),
+        ],
+    )
+    mapping = release.read_json(root / "delta-test-map.json")
+    assert mapping["data"]["mappings"] == [
+        {
+            "capability_id": "metriplane-core",
+            "environment_ids": [environment_id],
+            "obligation_ids": [obligation_id],
+            "scenario_ids": [scenario_id],
+        }
+    ]
+
+    unmapped = root / "unmapped-obligations.json"
+    unmapped.write_bytes(release.canonical_json({"owner": "MP2-007", "obligations": []}))
+    failed_output = root / "unmapped-delta-test-map.json"
+    stage = release._invocation_stage("build_release_delta_test_map.py")
+    assert (
+        release.run_release_command(
+            "build_release_delta_test_map.py",
+            [
+                "--invocation-dir",
+                str(root / "invocations" / stage / "002"),
+                "--milestone",
+                "v0.4",
+                "--delta",
+                str(root / "delta.json"),
+                "--impact-manifest",
+                str(root / "author-impact.json"),
+                "--obligations",
+                str(unmapped),
+                "--scenarios",
+                str(root / "scenarios.json"),
+                "--environments",
+                str(root / "environments.json"),
+                "--out",
+                str(failed_output),
+            ],
+        )
+        == 3
+    )
+    assert not failed_output.exists()
+
+
+def test_prepromotion_task_state_commands_bind_roles_snapshot_and_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    root = tmp_path / "task-state-run"
+    root.mkdir()
+    roles = release.make_record(
+        "release-role-assignments",
+        {
+            "author_id": "fixture-author",
+            "authorized_executor_id": "fixture-executor",
+            "infrastructure_owner": {"actor_id": "fixture-infrastructure"},
+            "milestone": "v0.4",
+            "non_author_reviewer_id": "fixture-reviewer",
+            "publisher_id": "fixture-publisher",
+            "run_id": "task-state-run",
+            "task_id": "MP2-007",
+        },
+        invocation_id="fixture-roles",
+        sequence=1,
+        synthetic=True,
+    )
+    gate = release.make_record(
+        "release-gate-instance",
+        {"candidate_digest": "7" * 64, "milestone": "v0.4", "run_id": "task-state-run"},
+        invocation_id="fixture-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    snapshot = release.make_record(
+        "linear-release-snapshot",
+        {"project_id": "fixture-project", "state": "open_running", "task_id": "MP2-007"},
+        invocation_id="fixture-snapshot",
+        sequence=1,
+        synthetic=True,
+    )
+    for name, value in (
+        ("role-assignments.json", roles),
+        ("gate-instance.json", gate),
+        ("frozen-linear-snapshot.json", snapshot),
+    ):
+        (root / name).write_bytes(release.canonical_json(value))
+    (root / "readiness-registry.json").write_bytes(
+        release.canonical_json({"schema_version": "metriplane.release-readiness-registry.v1"})
+    )
+    (root / "task-state-policy.json").write_bytes(
+        (
+            Path(__file__).resolve().parents[1] / "docs/status/release-task-state-policy.json"
+        ).read_bytes()
+    )
+    output = root / "task-state-observation.json"
+    capture = [
+        "--phase",
+        "prepromotion",
+        "--project-id",
+        "fixture-project",
+        "--task-id",
+        "MP2-007",
+        "--require-open-running",
+        "--role-assignments",
+        str(root / "role-assignments.json"),
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--readiness-registry",
+        str(root / "readiness-registry.json"),
+        "--frozen-linear-snapshot",
+        str(root / "frozen-linear-snapshot.json"),
+        "--out",
+        str(output),
+        "--invocation-dir",
+        str(root / "invocations/capture-release-task-state-observation/001"),
+    ]
+    completed = _run_release_tool("capture_release_task_state_observation.py", capture)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    observation = release.read_json(output)
+    assert observation["data"]["snapshot_digest"] == release.sha256_json(snapshot)
+    assert observation["data"]["producer_intent_digest"] == release.sha256_json(
+        release._validate_intent(
+            root / "invocations/capture-release-task-state-observation/001"
+        ).intent
+    )
+
+    validation = [
+        "--phase",
+        "prepromotion",
+        "--record",
+        str(output),
+        "--task-id",
+        "MP2-007",
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--readiness-registry",
+        str(root / "readiness-registry.json"),
+        "--frozen-linear-snapshot",
+        str(root / "frozen-linear-snapshot.json"),
+        "--policy",
+        str(root / "task-state-policy.json"),
+        "--require-open-running",
+        "--require-assigned-authority",
+        "--check-freshness",
+        "--minimum-validity-seconds",
+        "1",
+        "--invocation-dir",
+        str(root / "invocations/validate-release-task-state-observation/001"),
+    ]
+    validated = _run_release_tool("validate_release_task_state_observation.py", validation)
+    assert validated.returncode == 0, validated.stderr or validated.stdout
+
+    for name, kind in (
+        ("prepromotion-main-health.json", "release-main-health-state"),
+        ("prepromotion-repository-protection.json", "release-repository-protection"),
+    ):
+        (root / name).write_bytes(
+            release.canonical_json(
+                release.make_record(
+                    kind,
+                    {"observed": True},
+                    invocation_id="fixture-" + kind,
+                    sequence=1,
+                    synthetic=True,
+                )
+            )
+        )
+    controls_output = root / "prepromotion-controls.json"
+    controls = [
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--release-task-state",
+        str(output),
+        "--linear-snapshot",
+        str(root / "frozen-linear-snapshot.json"),
+        "--main-health",
+        str(root / "prepromotion-main-health.json"),
+        "--repository-protection",
+        str(root / "prepromotion-repository-protection.json"),
+        "--out",
+        str(controls_output),
+        "--invocation-dir",
+        str(root / "invocations/validate-release-prepromotion-controls/001"),
+    ]
+    controls_result = _run_release_tool("validate_release_prepromotion_controls.py", controls)
+    assert controls_result.returncode == 0, controls_result.stderr or controls_result.stdout
+    control_record = release.read_json(controls_output)
+    assert control_record["data"]["task_state"] == "open_running"
+    assert control_record["data"]["linear_snapshot_digest"] == release.sha256_json(snapshot)
+
+    monkeypatch.delenv("METRIPLANE_RELEASE_FIXTURE_MODE")
+    live_output = root / "live-task-state-observation.json"
+    live_capture = [
+        value.replace(str(output), str(live_output)).replace(
+            "capture-release-task-state-observation/001",
+            "capture-release-task-state-observation/002",
+        )
+        for value in capture
+    ]
+    assert (
+        release.run_release_command("capture_release_task_state_observation.py", live_capture) == 3
+    )
+    assert not live_output.exists()
+
+
+def test_gate_instance_command_binds_every_declared_input_and_rejects_substitution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    root = tmp_path / "gate-instance-run"
+    root.mkdir()
+    raw_names = {
+        "obligations": "release-test-obligations.json",
+        "scenarios": "release-scenarios.json",
+        "environments": "supported-environments.json",
+        "targets": "release-targets.json",
+        "evidence_stores": "release-evidence-stores.json",
+        "task_state_policy": "release-task-state-policy.json",
+    }
+    raw_records: dict[str, dict[str, object]] = {}
+    for index, (key, name) in enumerate(raw_names.items(), start=1):
+        value: dict[str, object] = {"owner": "MP2-007", "sequence": index}
+        raw_records[key] = value
+        (root / name).write_bytes(release.canonical_json(value))
+    linear = release.make_record(
+        "linear-release-snapshot",
+        {"task_id": "MP2-007"},
+        invocation_id="fixture-linear",
+        sequence=1,
+        synthetic=True,
+    )
+    predecessor = release.make_record(
+        "release-predecessor",
+        {"candidate_milestone": "v0.4"},
+        invocation_id="fixture-predecessor",
+        sequence=1,
+        synthetic=True,
+    )
+    gate_data = {
+        "gate_input_digest": "",
+        "linear_snapshot_digest": release.sha256_json(linear),
+        "milestone": "v0.4",
+        "run_id": "fixture-gate-instance",
+        "obligation_registry_digest": release.sha256_json(raw_records["obligations"]),
+        "scenario_registry_digest": release.sha256_json(raw_records["scenarios"]),
+        "environment_registry_digest": release.sha256_json(raw_records["environments"]),
+        "target_registry_digest": release.sha256_json(raw_records["targets"]),
+        "evidence_store_registry_digest": release.sha256_json(raw_records["evidence_stores"]),
+        "task_state_policy_digest": release.sha256_json(raw_records["task_state_policy"]),
+    }
+    gate_data["gate_input_digest"] = release.sha256_json(
+        {key: value for key, value in gate_data.items() if key != "gate_input_digest"}
+    )
+    gate_input = release.make_record(
+        "release-gate-input",
+        gate_data,
+        invocation_id="fixture-gate-input",
+        sequence=1,
+        synthetic=True,
+    )
+    freeze = release.make_record(
+        "release-source-freeze",
+        {
+            "gate_input_digest": release.sha256_json(gate_input),
+            "milestone": "v0.4",
+            "source_sha": "1" * 40,
+        },
+        invocation_id="fixture-freeze",
+        sequence=1,
+        synthetic=True,
+    )
+    candidate = release.make_record(
+        "release-candidate-identity",
+        {
+            "candidate_digest": "2" * 64,
+            "gate_input_digest": release.sha256_json(gate_input),
+            "milestone": "v0.4",
+            "package_version": "v0.4.1",
+            "predecessor_digest": release.sha256_json(predecessor),
+            "release_tag": "v0.4.1",
+            "source_freeze_digest": release.sha256_json(freeze),
+        },
+        invocation_id="fixture-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    preflight = release.make_record(
+        "release-evidence-store-preflight",
+        {"scope": "fixture-gate-instance"},
+        invocation_id="fixture-preflight",
+        sequence=1,
+        synthetic=True,
+    )
+    for name, value in (
+        ("gate-input.json", gate_input),
+        ("candidate-identity.json", candidate),
+        ("predecessor.json", predecessor),
+        ("linear-snapshot.json", linear),
+        ("source-freeze.json", freeze),
+        ("store-preflight.json", preflight),
+    ):
+        (root / name).write_bytes(release.canonical_json(value))
+    (root / "repository-protection.json").write_bytes(
+        release.canonical_json(
+            {
+                "activation_state": "active",
+                "actor_exclusivity_enforced": True,
+                "deletion_blocked": True,
+                "non_fast_forward_blocked": True,
+                "pull_request_required": True,
+                "ruleset_enforcement": "active",
+                "schema_version": 1,
+                "strict_up_to_date": True,
+            }
+        )
+    )
+    (root / "main-health.json").write_bytes(
+        release.canonical_json({"last_good_sha": "1" * 40, "schema_version": 1, "status": "green"})
+    )
+    (root / "main-health-history.json").write_bytes(
+        release.canonical_json(
+            {
+                "cadence": "protected-main",
+                "schema_version": 1,
+                "sha": "1" * 40,
+                "status": "green",
+            }
+        )
+    )
+
+    def arguments(output: str, sequence: int) -> list[str]:
+        values = [
+            "--invocation-dir",
+            str(root / "invocations/finalize-release-gate-instance" / f"{sequence:03d}"),
+            "--gate-input",
+            str(root / "gate-input.json"),
+            "--candidate-identity",
+            str(root / "candidate-identity.json"),
+            "--predecessor",
+            str(root / "predecessor.json"),
+            "--linear-snapshot",
+            str(root / "linear-snapshot.json"),
+            "--source-freeze",
+            str(root / "source-freeze.json"),
+        ]
+        for flag, name in raw_names.items():
+            values.extend(["--" + flag.replace("_", "-"), str(root / name)])
+        values.extend(
+            [
+                "--repository-protection",
+                str(root / "repository-protection.json"),
+                "--main-health",
+                str(root / "main-health.json"),
+                "--main-health-history",
+                str(root / "main-health-history.json"),
+                "--store-preflight",
+                str(root / "store-preflight.json"),
+                "--out",
+                str(root / output),
+            ]
+        )
+        return values
+
+    assert (
+        release.run_release_command(
+            "finalize_release_gate_instance.py", arguments("gate-instance.json", 1)
+        )
+        == 0
+    )
+    output = release.read_json(root / "gate-instance.json")
+    assert output["data"]["frozen_source_sha"] == "1" * 40
+    assert output["data"]["instance_digest"] == release.sha256_json(
+        {key: value for key, value in output["data"].items() if key != "instance_digest"}
+    )
+    assert (
+        release.run_release_command(
+            "validate_release_gate_instance.py",
+            [
+                "--invocation-dir",
+                str(root / "invocations/validate-release-gate-instance/001"),
+                "--record",
+                str(root / "gate-instance.json"),
+                "--candidate-identity",
+                str(root / "candidate-identity.json"),
+                "--predecessor",
+                str(root / "predecessor.json"),
+                "--task-state-policy",
+                str(root / raw_names["task_state_policy"]),
+            ],
+        )
+        == 0
+    )
+
+    substituted = copy.deepcopy(freeze)
+    substituted["data"]["source_sha"] = "3" * 40
+    (root / "source-freeze.json").write_bytes(release.canonical_json(substituted))
+    assert (
+        release.run_release_command(
+            "finalize_release_gate_instance.py", arguments("substituted-gate-instance.json", 2)
+        )
+        == 3
+    )
+    assert not (root / "substituted-gate-instance.json").exists()
+
+
+@pytest.mark.parametrize("phase", ["finalizing", "completion"])
+def test_terminal_task_state_commands_bind_transition_and_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    root = tmp_path / ("task-state-" + phase)
+    root.mkdir()
+    candidate = release.make_record(
+        "release-candidate-identity",
+        {"candidate_digest": "a" * 64},
+        invocation_id="fixture-candidate",
+        sequence=1,
+        synthetic=True,
+    )
+    gate = release.make_record(
+        "release-gate-instance",
+        {"candidate_digest": "a" * 64, "milestone": "v0.4", "run_id": "terminal-task"},
+        invocation_id="fixture-gate",
+        sequence=1,
+        synthetic=True,
+    )
+    snapshot = release.make_record(
+        "linear-release-snapshot",
+        {
+            "project_id": "fixture-project",
+            "state": "open_finalizing",
+            "task_id": "MP2-007",
+        },
+        invocation_id="fixture-snapshot",
+        sequence=1,
+        synthetic=True,
+    )
+    transition = {
+        "actor_id": "fixture-human",
+        "after_state_key": "open_finalizing",
+        "before_state_key": "open_running",
+    }
+    for name, value in (
+        ("candidate-identity.json", candidate),
+        ("gate-instance.json", gate),
+        ("frozen-linear-snapshot.json", snapshot),
+        ("protected-transition-event.json", transition),
+    ):
+        (root / name).write_bytes(release.canonical_json(value))
+    (root / "readiness-registry.json").write_bytes(
+        release.canonical_json({"schema_version": "metriplane.release-readiness-registry.v1"})
+    )
+    (root / "task-state-policy.json").write_bytes(
+        (
+            Path(__file__).resolve().parents[1] / "docs/status/release-task-state-policy.json"
+        ).read_bytes()
+    )
+    output = root / (phase + "-observation.json")
+    capture = [
+        "--phase",
+        phase,
+        "--project-id",
+        "fixture-project",
+        "--task-id",
+        "MP2-007",
+        "--require-open-finalizing",
+        "--protected-transition-event",
+        str(root / "protected-transition-event.json"),
+        "--require-transition",
+        "open_running:open_finalizing",
+        "--require-assigned-human-actor",
+        "--candidate-identity",
+        str(root / "candidate-identity.json"),
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--readiness-registry",
+        str(root / "readiness-registry.json"),
+        "--frozen-linear-snapshot",
+        str(root / "frozen-linear-snapshot.json"),
+    ]
+    if phase == "finalizing":
+        reconciliation = release.make_record(
+            "release-publication-reconciliation",
+            {"candidate_digest": "a" * 64},
+            invocation_id="fixture-reconciliation",
+            sequence=1,
+            synthetic=True,
+        )
+        pointer = release.make_record(
+            "release-attempt-index",
+            {"stage": "pointer-transition"},
+            invocation_id="fixture-pointer",
+            sequence=1,
+            synthetic=True,
+        )
+        (root / "reconciliation.json").write_bytes(release.canonical_json(reconciliation))
+        (root / "lkg-index-receipt.json").write_bytes(release.canonical_json(pointer))
+        (root / "attempt-index-backend.json").write_bytes(
+            release.canonical_json({"backend_id": "attempt-index"})
+        )
+        capture.extend(
+            [
+                "--reconciliation",
+                str(root / "reconciliation.json"),
+                "--lkg-index-receipt",
+                str(root / "lkg-index-receipt.json"),
+                "--attempt-index-backend",
+                str(root / "attempt-index-backend.json"),
+                "--require-latest-resolved-pointer-state",
+            ]
+        )
+    else:
+        for name in ("completion-input.json", "cleanup-plan.json"):
+            (root / name).write_bytes(release.canonical_json({"name": name}))
+        capture.extend(
+            [
+                "--completion-input",
+                str(root / "completion-input.json"),
+                "--cleanup-plan",
+                str(root / "cleanup-plan.json"),
+            ]
+        )
+    capture.extend(
+        [
+            "--out",
+            str(output),
+            "--invocation-dir",
+            str(root / "invocations/capture-release-task-state-observation/001"),
+        ]
+    )
+    captured = _run_release_tool("capture_release_task_state_observation.py", capture)
+    assert captured.returncode == 0, captured.stderr or captured.stdout
+    record = release.read_json(output)
+    assert record["data"]["candidate_digest"] == "a" * 64
+    assert record["data"]["state"] == "open_finalizing"
+    validation = [
+        "--phase",
+        phase,
+        "--record",
+        str(output),
+        "--task-id",
+        "MP2-007",
+        "--gate-instance",
+        str(root / "gate-instance.json"),
+        "--readiness-registry",
+        str(root / "readiness-registry.json"),
+        "--frozen-linear-snapshot",
+        str(root / "frozen-linear-snapshot.json"),
+        "--policy",
+        str(root / "task-state-policy.json"),
+        "--require-open-finalizing",
+        "--require-no-other-open-required-task",
+        "--check-freshness",
+        "--minimum-validity-seconds",
+        "1",
+        "--invocation-dir",
+        str(root / "invocations/validate-release-task-state-observation/001"),
+    ]
+    validated = _run_release_tool("validate_release_task_state_observation.py", validation)
+    assert validated.returncode == 0, validated.stderr or validated.stdout
 
 
 def _failed_readiness_for_blocker(

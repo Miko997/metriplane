@@ -26,7 +26,7 @@ import time
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -6547,6 +6547,245 @@ def _promotion_checkpoint(record: Mapping[str, Any], *, live: bool) -> tuple[int
     )
 
 
+def _capture_release_task_state_observation_operation(
+    args: argparse.Namespace, context: ReleaseInvocation, *, live: bool
+) -> dict[str, Any]:
+    if live:
+        raise ReleaseControlError("live Linear task-state capture backend is not bound")
+    if args.phase in {"finalizing", "completion"}:
+        if (
+            args.require_open_finalizing is not True
+            or args.require_transition != "open_running:open_finalizing"
+            or args.require_assigned_human_actor is not True
+        ):
+            raise ReleaseControlError("task-state transition controls are incomplete")
+        records = {
+            "candidate": read_json(Path(args.candidate_identity)),
+            "gate": read_json(Path(args.gate_instance)),
+            "snapshot": read_json(Path(args.frozen_linear_snapshot)),
+        }
+        candidate = _passing_record(records["candidate"], "release-candidate-identity", live=False)
+        gate = _passing_record(records["gate"], "release-gate-instance", live=False)
+        snapshot = _passing_record(records["snapshot"], "linear-release-snapshot", live=False)
+        event = _source_json(
+            _safe_release_bytes(Path(args.protected_transition_event)),
+            "task-state protected transition event",
+        )
+        if not isinstance(event, Mapping):
+            raise ReleaseControlError("task-state protected transition event is not an object")
+        if (
+            event.get("before_state_key") != "open_running"
+            or event.get("after_state_key") != "open_finalizing"
+            or not isinstance(event.get("actor_id"), str)
+            or not event["actor_id"]
+            or snapshot.get("state") not in {"open_finalizing", "In Progress"}
+            or snapshot.get("task_id", args.task_id) != args.task_id
+            or snapshot.get("project_id", args.project_id) != args.project_id
+            or candidate.get("candidate_digest") != gate.get("candidate_digest")
+        ):
+            raise ReleaseControlError("task-state transition differs from the selected candidate")
+        data: dict[str, Any] = {
+            "candidate_digest": candidate["candidate_digest"],
+            "invocation_root_locator": "invocations",
+            "observed_at": context.intent["started_at"],
+            "phase": "close-ready" if args.phase == "finalizing" else "completion-ready",
+            "producer_intent_digest": sha256_json(context.intent),
+            "project_id": args.project_id,
+            "snapshot_digest": sha256_json(records["snapshot"]),
+            "state": "open_finalizing",
+            "task_id": args.task_id,
+            "transition_event_digest": sha256_json(event),
+        }
+        if args.phase == "finalizing":
+            reconciliation = read_json(Path(args.reconciliation))
+            lkg_receipt = read_json(Path(args.lkg_index_receipt))
+            _passing_record(reconciliation, "release-publication-reconciliation", live=False)
+            _passing_record(lkg_receipt, "release-attempt-index", live=False)
+            data.update(
+                reconciliation_digest=sha256_json(reconciliation),
+                latest_pointer_index_digest=sha256_json(lkg_receipt),
+            )
+            if args.chain_receipt is not None:
+                chain = read_json(Path(args.chain_receipt))
+                _passing_record(chain, "release-evidence-chain", live=False)
+                data["chain_receipt_digest"] = sha256_json(chain)
+            if args.core_receipts is not None:
+                core = read_json(Path(args.core_receipts))
+                _passing_record(core, "release-retention-receipts", live=False)
+                data["core_receipts_digest"] = sha256_json(core)
+            if args.require_latest_resolved_pointer_state is True:
+                backend = _source_json(
+                    _safe_release_bytes(Path(args.attempt_index_backend)),
+                    "task-state attempt-index backend",
+                )
+                data["attempt_index_backend_digest"] = sha256_json(backend)
+        else:
+            completion = read_json(Path(args.completion_input))
+            cleanup = read_json(Path(args.cleanup_plan))
+            if not isinstance(completion, Mapping) or not isinstance(cleanup, Mapping):
+                raise ReleaseControlError("task completion inputs are not closed objects")
+            data.update(
+                completion_input_digest=sha256_json(completion),
+                cleanup_plan_digest=sha256_json(cleanup),
+            )
+        return make_record(
+            "release-task-state-observation",
+            data,
+            invocation_id=context.intent["invocation_id"],
+            sequence=context.intent["sequence"],
+            synthetic=True,
+        )
+    if args.phase != "prepromotion" or args.require_open_running is not True:
+        raise ReleaseControlError("unsupported task-state capture operation")
+    root = context.root
+    paths = {
+        "role_assignments": Path(args.role_assignments).absolute(),
+        "gate_instance": Path(args.gate_instance).absolute(),
+        "readiness_registry": Path(args.readiness_registry).absolute(),
+        "frozen_linear_snapshot": Path(args.frozen_linear_snapshot).absolute(),
+    }
+    if any(not path.is_relative_to(root) for path in paths.values()):
+        raise ReleaseControlError("task-state capture inputs do not share its retained root")
+    roles_record = read_json(paths["role_assignments"])
+    gate_record = read_json(paths["gate_instance"])
+    snapshot_record = read_json(paths["frozen_linear_snapshot"])
+    gate = _passing_record(gate_record, "release-gate-instance", live=False)
+    snapshot = _passing_record(snapshot_record, "linear-release-snapshot", live=False)
+    milestone = _require_nonempty_string(gate.get("milestone"), "task-state gate milestone")
+    run_id = _require_nonempty_string(gate.get("run_id"), "task-state gate run")
+    roles = validate_role_assignments(
+        roles_record,
+        live=False,
+        expected_milestone=milestone,
+        expected_run_id=run_id,
+    )
+    role_data = roles_record["data"]
+    if role_data.get("task_id") != args.task_id or roles.get("authorized_executor_id") is None:
+        raise ReleaseControlError("task-state capture role assignment selects another task")
+    snapshot_state = snapshot.get("state")
+    if snapshot_state not in {"open_running", "In Progress"}:
+        raise ReleaseControlError("task-state frozen snapshot is not open and running")
+    if snapshot.get("task_id", args.task_id) != args.task_id:
+        raise ReleaseControlError("task-state frozen snapshot selects another task")
+    if snapshot.get("project_id", args.project_id) != args.project_id:
+        raise ReleaseControlError("task-state frozen snapshot selects another project")
+    readiness = _source_json(
+        _safe_release_bytes(paths["readiness_registry"]), "task-state readiness registry"
+    )
+    if (
+        not isinstance(readiness, Mapping)
+        or readiness.get("schema_version") != "metriplane.release-readiness-registry.v1"
+    ):
+        raise ReleaseControlError("task-state readiness registry is not governed")
+    data = {
+        "invocation_root_locator": "invocations",
+        "observed_at": context.intent["started_at"],
+        "producer_intent_digest": sha256_json(context.intent),
+        "project_id": args.project_id,
+        "snapshot_digest": sha256_json(snapshot_record),
+        "state": "open_running",
+        "task_id": args.task_id,
+    }
+    return make_record(
+        "release-task-state-observation",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
+def _validate_release_task_state_observation_operation(
+    args: argparse.Namespace, context: ReleaseInvocation, *, live: bool
+) -> dict[str, Any]:
+    record_path = Path(args.record).absolute()
+    record = read_json(record_path)
+    observation = _derived_passing_record(record, "release-task-state-observation", live=live)
+    validate_release_producer_journal(
+        record, record_path, producer="capture_release_task_state_observation.py"
+    )
+    gate_record = read_json(Path(args.gate_instance))
+    gate = _passing_record(gate_record, "release-gate-instance", live=live)
+    snapshot_record = read_json(Path(args.frozen_linear_snapshot))
+    _passing_record(snapshot_record, "linear-release-snapshot", live=live)
+    readiness = _source_json(
+        _safe_release_bytes(Path(args.readiness_registry)),
+        "task-state validation readiness registry",
+    )
+    policy = _source_json(_safe_release_bytes(Path(args.policy)), "task-state validation policy")
+    policy_window_name = "prepromotion" if args.phase == "prepromotion" else "terminal_commit"
+    policy_window = (
+        policy.get("freshness_windows_seconds", {}).get(policy_window_name)
+        if isinstance(policy, Mapping)
+        else None
+    )
+    observed_at = _parse_utc_timestamp(observation["observed_at"], "task-state observation time")
+    validation_at = _parse_utc_timestamp(context.intent["started_at"], "task-state validation time")
+    remaining = (
+        policy_window - (validation_at - observed_at).total_seconds()
+        if type(policy_window) is int
+        else -1
+    )
+    common_fields = {
+        "invocation_root_locator",
+        "observed_at",
+        "producer_intent_digest",
+        "project_id",
+        "snapshot_digest",
+        "state",
+        "task_id",
+    }
+    if args.phase == "prepromotion":
+        expected_fields = common_fields
+        required_state = "open_running"
+        required_flags = (
+            args.require_open_running is True and args.require_assigned_authority is True
+        )
+    else:
+        expected_fields = common_fields | {
+            "candidate_digest",
+            "phase",
+            "transition_event_digest",
+        }
+        if args.phase == "finalizing":
+            expected_fields |= {"latest_pointer_index_digest", "reconciliation_digest"}
+            expected_fields |= set(observation) & {
+                "attempt_index_backend_digest",
+                "chain_receipt_digest",
+                "core_receipts_digest",
+            }
+        else:
+            expected_fields |= {"cleanup_plan_digest", "completion_input_digest"}
+        required_state = "open_finalizing"
+        required_flags = (
+            args.require_open_finalizing is True
+            and args.require_no_other_open_required_task is True
+        )
+        for field in expected_fields - common_fields - {"phase"}:
+            _require_digest(observation[field], "task-state " + field.replace("_", " "))
+        expected_phase = "close-ready" if args.phase == "finalizing" else "completion-ready"
+        if observation["phase"] != expected_phase:
+            raise ReleaseControlError("task-state observation phase differs")
+    if (
+        set(observation) != expected_fields
+        or observation["invocation_root_locator"] != "invocations"
+        or observation["task_id"] != args.task_id
+        or observation["snapshot_digest"] != sha256_json(snapshot_record)
+        or observation["state"] != required_state
+        or gate.get("milestone") not in MILESTONES
+        or readiness.get("schema_version") != "metriplane.release-readiness-registry.v1"
+        or policy.get("schema_version") != "metriplane.release-task-state-policy.v1"
+        or not required_flags
+        or args.check_freshness is not True
+        or type(args.minimum_validity_seconds) is not int
+        or args.minimum_validity_seconds < 1
+        or remaining < args.minimum_validity_seconds
+    ):
+        raise ReleaseControlError("task-state observation differs from its governed inputs")
+    _require_digest(observation["producer_intent_digest"], "task-state producer intent")
+    return record
+
+
 def _promotion_controls(
     record: Mapping[str, Any],
     *,
@@ -6564,8 +6803,13 @@ def _promotion_controls(
         "task_state",
         "target_state_digest",
     }
-    if set(data) != exact:
+    producer_fields = {"invocation_root_locator", "producer_intent_digest"}
+    if set(data) not in (exact, exact | producer_fields):
         raise ReleaseControlError("prepromotion control shape is not closed")
+    if producer_fields <= set(data):
+        if data["invocation_root_locator"] != "invocations":
+            raise ReleaseControlError("prepromotion control invocation locator is unsafe")
+        _require_digest(data["producer_intent_digest"], "prepromotion control producer intent")
     if (
         data["candidate_digest"] != candidate_digest
         or data["linear_snapshot_digest"] != linear_snapshot_digest
@@ -6578,6 +6822,213 @@ def _promotion_controls(
         raise ReleaseControlError("prepromotion controls are stale or invalid")
     _require_digest(data["target_state_digest"], "prepromotion target state")
     return data, int(expires.timestamp())
+
+
+def _finalize_release_gate_instance_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    records = {
+        "gate": read_json(Path(args.gate_input)),
+        "candidate": read_json(Path(args.candidate_identity)),
+        "predecessor": read_json(Path(args.predecessor)),
+        "linear": read_json(Path(args.linear_snapshot)),
+        "freeze": read_json(Path(args.source_freeze)),
+        "preflight": read_json(Path(args.store_preflight)),
+    }
+    for name, kind in (
+        ("gate", "release-gate-input"),
+        ("candidate", "release-candidate-identity"),
+        ("predecessor", "release-predecessor"),
+        ("linear", "linear-release-snapshot"),
+        ("freeze", "release-source-freeze"),
+        ("preflight", "release-evidence-store-preflight"),
+    ):
+        _passing_record(records[name], kind, live=live, attestation_verifier=attestation_verifier)
+    if len({record["synthetic"] for record in records.values()}) != 1:
+        raise ReleaseControlError("gate-instance inputs mix live and fixture authority")
+
+    raw_paths = {
+        "obligation_registry_digest": Path(args.obligations),
+        "scenario_registry_digest": Path(args.scenarios),
+        "environment_registry_digest": Path(args.environments),
+        "target_registry_digest": Path(args.targets),
+        "evidence_store_registry_digest": Path(args.evidence_stores),
+        "task_state_policy_digest": Path(args.task_state_policy),
+    }
+    raw_records = {field: read_json(path) for field, path in raw_paths.items()}
+    if any(not isinstance(value, Mapping) for value in raw_records.values()):
+        raise ReleaseControlError("gate-instance registry input is not an object")
+    gate = records["gate"]["data"]
+    candidate = records["candidate"]["data"]
+    predecessor = records["predecessor"]["data"]
+    freeze = records["freeze"]["data"]
+    if gate.get("gate_input_digest") != sha256_json(
+        {key: value for key, value in gate.items() if key != "gate_input_digest"}
+    ):
+        raise ReleaseControlError("gate-instance gate input semantic digest is stale")
+    bindings = {
+        "candidate gate input": (candidate.get("gate_input_digest"), sha256_json(records["gate"])),
+        "candidate predecessor": (
+            candidate.get("predecessor_digest"),
+            sha256_json(records["predecessor"]),
+        ),
+        "candidate source freeze": (
+            candidate.get("source_freeze_digest"),
+            sha256_json(records["freeze"]),
+        ),
+        "source-freeze gate input": (
+            freeze.get("gate_input_digest"),
+            sha256_json(records["gate"]),
+        ),
+        "Linear snapshot": (gate.get("linear_snapshot_digest"), sha256_json(records["linear"])),
+    }
+    for field, value in raw_records.items():
+        bindings[field.replace("_", " ")] = (gate.get(field), sha256_json(value))
+    for label, (observed, expected) in bindings.items():
+        if observed != expected:
+            raise ReleaseControlError("gate-instance " + label + " binding mismatch")
+    milestone = gate.get("milestone")
+    if (
+        milestone not in MILESTONES
+        or candidate.get("milestone") != milestone
+        or predecessor.get("candidate_milestone") != milestone
+        or freeze.get("milestone") != milestone
+    ):
+        raise ReleaseControlError("gate-instance milestone inputs disagree")
+    package_version = candidate.get("package_version")
+    release_tag = candidate.get("release_tag")
+    if (
+        not isinstance(package_version, str)
+        or release_tag != package_version
+        or not package_version.startswith(f"{milestone}.")
+    ):
+        raise ReleaseControlError("gate-instance candidate release identity is invalid")
+    external_inputs = {
+        "repository_protection_digest": read_json(Path(args.repository_protection)),
+        "main_health_digest": read_json(Path(args.main_health)),
+        "main_health_history_digest": read_json(Path(args.main_health_history)),
+    }
+    if any(not isinstance(value, Mapping) for value in external_inputs.values()):
+        raise ReleaseControlError("gate-instance external state input is not an object")
+    source_sha = freeze.get("source_sha")
+    if not isinstance(source_sha, str) or re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
+        raise ReleaseControlError("gate frozen source SHA is invalid")
+    health = external_inputs["main_health_digest"]
+    history = external_inputs["main_health_history_digest"]
+    protection = external_inputs["repository_protection_digest"]
+    if (
+        health.get("schema_version") != 1
+        or health.get("status") != "green"
+        or health.get("last_good_sha") != source_sha
+        or history.get("schema_version") != 1
+        or history.get("status") != "green"
+        or history.get("sha") != source_sha
+        or history.get("cadence") != "protected-main"
+    ):
+        raise ReleaseControlError("gate-instance main-health proof is not green for the source")
+    if (
+        protection.get("schema_version") != 1
+        or protection.get("activation_state") != "active"
+        or protection.get("ruleset_enforcement") != "active"
+        or protection.get("strict_up_to_date") is not True
+        or protection.get("pull_request_required") is not True
+        or protection.get("deletion_blocked") is not True
+        or protection.get("non_fast_forward_blocked") is not True
+        or protection.get("actor_exclusivity_enforced") is not True
+    ):
+        raise ReleaseControlError("gate-instance repository protection is not active")
+    data: dict[str, Any] = {
+        "candidate_digest": _require_digest(candidate.get("candidate_digest"), "gate candidate"),
+        "candidate_identity_digest": sha256_json(records["candidate"]),
+        **{field: sha256_json(value) for field, value in raw_records.items()},
+        "evidence_store_preflight_digest": sha256_json(records["preflight"]),
+        "frozen_source_sha": source_sha,
+        "gate_input_digest": sha256_json(records["gate"]),
+        "instance_digest": "",
+        **{field: sha256_json(value) for field, value in external_inputs.items()},
+        "linear_snapshot_digest": sha256_json(records["linear"]),
+        "milestone": milestone,
+        "package_version": package_version,
+        "predecessor_digest": sha256_json(records["predecessor"]),
+        "release_tag": release_tag,
+        "run_id": _require_nonempty_string(gate.get("run_id"), "gate run id"),
+    }
+    data["instance_digest"] = sha256_json(
+        {key: value for key, value in data.items() if key != "instance_digest"}
+    )
+    return make_record(
+        "release-gate-instance",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=bool(records["gate"]["synthetic"]),
+    )
+
+
+def _validate_release_prepromotion_controls_operation(
+    args: argparse.Namespace, context: ReleaseInvocation, *, live: bool
+) -> dict[str, Any]:
+    if live:
+        raise ReleaseControlError("live prepromotion provider controls are not bound")
+    records = {
+        "gate": read_json(Path(args.gate_instance)),
+        "task": read_json(Path(args.release_task_state)),
+        "linear": read_json(Path(args.linear_snapshot)),
+        "health": read_json(Path(args.main_health)),
+        "protection": read_json(Path(args.repository_protection)),
+    }
+    for name, kind in (
+        ("gate", "release-gate-instance"),
+        ("task", "release-task-state-observation"),
+        ("linear", "linear-release-snapshot"),
+        ("health", "release-main-health-state"),
+        ("protection", "release-repository-protection"),
+    ):
+        _passing_record(records[name], kind, live=False)
+    if any(record.get("synthetic") is not True for record in records.values()):
+        raise ReleaseControlError("prepromotion controls mix fixture and live authority")
+    task_path = Path(args.release_task_state).absolute()
+    validate_release_producer_journal(
+        records["task"], task_path, producer="capture_release_task_state_observation.py"
+    )
+    gate = records["gate"]["data"]
+    task = records["task"]["data"]
+    if task.get("state") != "open_running" or task.get("snapshot_digest") != sha256_json(
+        records["linear"]
+    ):
+        raise ReleaseControlError("prepromotion task state differs from the fresh snapshot")
+    for name in ("health", "protection"):
+        record = records[name]
+        if record.get("status") != "PASS":
+            raise ReleaseControlError("prepromotion " + name + " is not passing")
+    captured = _parse_utc_timestamp(context.intent["started_at"], "prepromotion capture")
+    subject = {
+        "linear_snapshot_digest": sha256_json(records["linear"]),
+        "main_health_digest": sha256_json(records["health"]),
+        "repository_protection_digest": sha256_json(records["protection"]),
+        "task_state_digest": sha256_json(records["task"]),
+    }
+    data = {
+        "candidate_digest": _require_digest(gate.get("candidate_digest"), "prepromotion candidate"),
+        "captured_at": captured.isoformat().replace("+00:00", "Z"),
+        "expires_at": (captured + timedelta(seconds=120)).isoformat().replace("+00:00", "Z"),
+        "invocation_root_locator": "invocations",
+        "linear_snapshot_digest": subject["linear_snapshot_digest"],
+        "producer_intent_digest": sha256_json(context.intent),
+        "task_state": "open_running",
+        "target_state_digest": sha256_json(subject),
+    }
+    return make_record(
+        "release-prepromotion-controls",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
 
 
 def _promotion_plan_operation(
@@ -6863,8 +7314,11 @@ def _promotion_execution_operation(
         "release-task-state-observation",
         live=False,
     )
+    observation_fields = {"observed_at", "project_id", "snapshot_digest", "state", "task_id"}
+    producer_fields = {"invocation_root_locator", "producer_intent_digest"}
     if (
-        set(observation) != {"observed_at", "project_id", "snapshot_digest", "state", "task_id"}
+        frozenset(observation)
+        not in {frozenset(observation_fields), frozenset(observation_fields | producer_fields)}
         or observation.get("state") != "open_running"
         or observation.get("project_id") != args.project_id
         or observation.get("task_id") != args.task_id
@@ -6872,6 +7326,10 @@ def _promotion_execution_operation(
         or args.require_live_state != "open_running"
     ):
         raise ReleaseControlError("promotion execution task state is not open and running")
+    if producer_fields <= set(observation):
+        if observation["invocation_root_locator"] != "invocations":
+            raise ReleaseControlError("promotion task-state invocation locator is unsafe")
+        _require_digest(observation["producer_intent_digest"], "promotion task-state producer")
     retention = _derived_passing_record(
         read_json(paths["retention_receipts"]), "release-retention-receipts", live=False
     )
@@ -7758,8 +8216,17 @@ def build_release_readiness_record(
         ),
     )
     for value, expected_fields, label in exact_shapes:
-        if set(value) != expected_fields:
+        producer_fields = {"invocation_root_locator", "producer_intent_digest"}
+        observed_fields = set(value)
+        if observed_fields != expected_fields and not (
+            label in {"impact manifest", "capability delta", "delta test map"}
+            and observed_fields == expected_fields | producer_fields
+        ):
             raise ReleaseControlError(f"readiness {label} data shape is not closed")
+        if producer_fields <= observed_fields:
+            if value["invocation_root_locator"] != "invocations":
+                raise ReleaseControlError(f"readiness {label} invocation locator is unsafe")
+            _require_digest(value["producer_intent_digest"], f"readiness {label} producer intent")
     _validate_candidate_identity_payload(
         candidate,
         expected_digest=candidate["candidate_digest"],
@@ -8172,6 +8639,399 @@ def _source_git(repository: Path, *arguments: str) -> bytes:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ReleaseControlError("cannot inspect the bound Git source") from exc
     return result.stdout
+
+
+def _release_impact_capability(path: str) -> str:
+    """Assign one conservative repository ownership bucket to a changed path."""
+
+    if not path or Path(path).is_absolute() or ".." in Path(path).parts:
+        raise ReleaseControlError("release impact contains an unsafe repository path")
+    parts = Path(path).parts
+    if parts[0] == "adapters" and len(parts) > 1:
+        return "adapter:" + parts[1].replace("_", "-")
+    if parts[0] == "metriplane":
+        return "metriplane-core"
+    if parts[0] == "web":
+        return "web-dashboard"
+    if parts[0] in {"tools", "tests", "schemas", ".github"}:
+        return "release-framework"
+    if parts[0] == "docs":
+        return "documentation"
+    if parts[0] in {"pyproject.toml", "uv.lock", "mkdocs.yml"}:
+        return "distribution-toolchain"
+    return "repository:" + parts[0].lower().replace("_", "-")
+
+
+def _release_git_blob_digest(repository: Path, revision: str, path: str) -> str:
+    return sha256_bytes(_source_git(repository, "show", f"{revision}:{path}"))
+
+
+def _release_impact_changes(repository: Path, base: str, head: str) -> list[dict[str, Any]]:
+    raw = _source_git(repository, "diff", "--name-status", "-z", "--find-renames", base, head)
+    fields = raw.decode("utf-8").split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    rows: list[dict[str, Any]] = []
+    index = 0
+    while index < len(fields):
+        status = fields[index]
+        index += 1
+        if not status:
+            raise ReleaseControlError("release impact Git status is empty")
+        code = status[0]
+        if code in {"R", "C"}:
+            if index + 1 >= len(fields):
+                raise ReleaseControlError("release impact rename is truncated")
+            old_path, path = fields[index : index + 2]
+            index += 2
+        else:
+            if index >= len(fields):
+                raise ReleaseControlError("release impact path is truncated")
+            path = fields[index]
+            old_path = path
+            index += 1
+        if code not in {"A", "C", "D", "M", "R", "T"}:
+            raise ReleaseControlError(
+                "release impact contains an unsupported Git status: " + status
+            )
+        row = {
+            "after_digest": None
+            if code == "D"
+            else _release_git_blob_digest(repository, head, path),
+            "before_digest": None
+            if code == "A"
+            else _release_git_blob_digest(repository, base, old_path),
+            "capability_id": _release_impact_capability(path),
+            "old_path": None if old_path == path else old_path,
+            "path": path,
+            "status": status,
+        }
+        rows.append(row)
+    rows.sort(key=lambda row: (row["path"], row["old_path"] or "", row["status"]))
+    if len({(row["path"], row["old_path"]) for row in rows}) != len(rows):
+        raise ReleaseControlError("release impact repeats a changed path")
+    return rows
+
+
+def _prepare_release_impact_manifest_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    target_path = Path(args.target_resolution).absolute()
+    freeze_path = Path(args.source_freeze).absolute()
+    target = read_json(target_path)
+    freeze = read_json(freeze_path)
+    for record, kind in (
+        (target, "release-target-resolution"),
+        (freeze, "release-source-freeze"),
+    ):
+        validate_record(record, kind)
+        if record["status"] != "PASS":
+            raise ReleaseControlError(kind + " is not passing impact authority")
+    if target["synthetic"] != freeze["synthetic"]:
+        raise ReleaseControlError("release impact inputs mix authority modes")
+    target_data = target["data"]
+    freeze_data = freeze["data"]
+    base = _release_git_oid(args.base, "release impact base")
+    head = _release_git_oid(args.head, "release impact head")
+    if (
+        args.milestone != target_data.get("milestone")
+        or args.milestone != freeze_data.get("milestone")
+        or head != freeze_data.get("source_sha")
+    ):
+        raise ReleaseControlError("release impact milestone or frozen source binding mismatch")
+    repository = _canonical_absolute_path(
+        context.intent["environment"]["working_directory"],
+        "release impact working directory",
+    )
+    for revision in (base, head):
+        if _source_git(repository, "cat-file", "-t", revision).strip() != b"commit":
+            raise ReleaseControlError("release impact revision is not a commit")
+    if _source_git(repository, "merge-base", "--is-ancestor", base, head) != b"":
+        raise ReleaseControlError("release impact base is not an ancestor of its head")
+    if _source_git(repository, "rev-parse", f"{head}^{{tree}}").decode().strip() != freeze_data.get(
+        "source_tree"
+    ):
+        raise ReleaseControlError("release impact head tree differs from its source freeze")
+    author_id = _source_git(repository, "show", "-s", "--format=%aE", head).decode().strip()
+    if not author_id:
+        raise ReleaseControlError("release impact commit author is missing")
+    data: dict[str, Any] = {
+        "author_id": author_id,
+        "base_sha": base,
+        "changes": _release_impact_changes(repository, base, head),
+        "head_sha": head,
+        "invocation_root_locator": "invocations",
+        "milestone": args.milestone,
+        "producer_intent_digest": sha256_json(context.intent),
+        "release_tag": _require_nonempty_string(
+            target_data.get("selected_release_tag"), "release impact selected tag"
+        ),
+        "source_freeze_digest": sha256_json(freeze),
+        "target_resolution_digest": sha256_json(target),
+        "unclassified_paths": [],
+    }
+    data["manifest_digest"] = sha256_json(data)
+    return make_record(
+        "release-impact-manifest",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=bool(target["synthetic"]),
+    )
+
+
+def _release_capability_delta_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    target = read_json(Path(args.target_resolution))
+    predecessor = read_json(Path(args.predecessor))
+    impact = read_json(Path(args.impact_manifest))
+    for record, kind in (
+        (target, "release-target-resolution"),
+        (predecessor, "release-predecessor"),
+        (impact, "release-impact-manifest"),
+    ):
+        validate_record(record, kind)
+        if record["status"] != "PASS":
+            raise ReleaseControlError(kind + " is not passing delta authority")
+    if len({target["synthetic"], predecessor["synthetic"], impact["synthetic"]}) != 1:
+        raise ReleaseControlError("release delta inputs mix authority modes")
+    target_data, prior, impact_data = target["data"], predecessor["data"], impact["data"]
+    validate_release_producer_journal(
+        impact, Path(args.impact_manifest), producer="prepare_release_impact_manifest.py"
+    )
+    if impact_data.get("manifest_digest") != sha256_json(
+        {key: value for key, value in impact_data.items() if key != "manifest_digest"}
+    ):
+        raise ReleaseControlError("release impact manifest semantic digest differs")
+    candidate = _release_git_oid(args.candidate_sha, "release delta candidate")
+    if (
+        args.milestone != target_data.get("milestone")
+        or args.milestone != prior.get("candidate_milestone")
+        or args.milestone != impact_data.get("milestone")
+        or candidate != impact_data.get("head_sha")
+        or impact_data.get("target_resolution_digest") != sha256_json(target)
+    ):
+        raise ReleaseControlError("release delta identity binding mismatch")
+    changes = impact_data.get("changes")
+    if not isinstance(changes, list):
+        raise ReleaseControlError("release delta impact changes are malformed")
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    expected_fields = {
+        "after_digest",
+        "before_digest",
+        "capability_id",
+        "old_path",
+        "path",
+        "status",
+    }
+    for row in changes:
+        if not isinstance(row, dict) or set(row) != expected_fields:
+            raise ReleaseControlError("release delta impact row shape is not closed")
+        capability = _require_nonempty_string(row["capability_id"], "impact capability")
+        if capability != _release_impact_capability(
+            _require_nonempty_string(row["path"], "impact path")
+        ):
+            raise ReleaseControlError("release delta impact capability changes path ownership")
+        for field in ("before_digest", "after_digest"):
+            if row[field] is not None:
+                _require_digest(row[field], "impact " + field)
+        grouped.setdefault(capability, []).append(row)
+    dispositions: dict[str, list[dict[str, Any]]] = {"added": [], "changed": [], "removed": []}
+    for capability, rows in sorted(grouped.items()):
+        before_rows = sorted(
+            (
+                {"path": row["old_path"] or row["path"], "sha256": row["before_digest"]}
+                for row in rows
+                if row["before_digest"] is not None
+            ),
+            key=lambda row: row["path"],
+        )
+        after_rows = sorted(
+            (
+                {"path": row["path"], "sha256": row["after_digest"]}
+                for row in rows
+                if row["after_digest"] is not None
+            ),
+            key=lambda row: row["path"],
+        )
+        before = sha256_json(before_rows) if before_rows else None
+        after = sha256_json(after_rows) if after_rows else None
+        disposition = "added" if before is None else "removed" if after is None else "changed"
+        if before == after:
+            raise ReleaseControlError("release delta capability has no effective change")
+        dispositions[disposition].append(
+            {"after_digest": after, "before_digest": before, "capability_id": capability}
+        )
+    data: dict[str, Any] = {
+        **dispositions,
+        "candidate_sha": candidate,
+        "impact_manifest_digest": sha256_json(impact),
+        "invocation_root_locator": "invocations",
+        "milestone": args.milestone,
+        "predecessor_digest": sha256_json(predecessor),
+        "producer_intent_digest": sha256_json(context.intent),
+    }
+    data["delta_digest"] = sha256_json(data)
+    return make_record(
+        "release-capability-delta",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=bool(target["synthetic"]),
+    )
+
+
+def _release_delta_test_map_operation(
+    args: argparse.Namespace, context: ReleaseInvocation
+) -> dict[str, Any]:
+    delta = read_json(Path(args.delta))
+    impact = read_json(Path(args.impact_manifest))
+    validate_record(delta, "release-capability-delta")
+    validate_record(impact, "release-impact-manifest")
+    if delta["status"] != "PASS" or impact["status"] != "PASS":
+        raise ReleaseControlError("release delta map inputs are not passing")
+    if delta["synthetic"] != impact["synthetic"]:
+        raise ReleaseControlError("release delta map inputs mix authority modes")
+    delta_data, impact_data = delta["data"], impact["data"]
+    if (
+        args.milestone != delta_data.get("milestone")
+        or args.milestone != impact_data.get("milestone")
+        or delta_data.get("impact_manifest_digest") != sha256_json(impact)
+    ):
+        raise ReleaseControlError("release delta map identity binding mismatch")
+
+    registry_paths = {
+        "obligation": Path(args.obligations),
+        "scenario": Path(args.scenarios),
+        "environment": Path(args.environments),
+    }
+    registries = {}
+    for kind, path in registry_paths.items():
+        value = _source_json(_safe_release_bytes(path), "release " + kind + " registry")
+        registries[kind] = _release_closed_mapping(
+            value, set(value), "release " + kind + " registry"
+        )
+    validate_release_producer_journal(delta, Path(args.delta), producer="check_release_delta.py")
+    if delta_data.get("delta_digest") != sha256_json(
+        {key: value for key, value in delta_data.items() if key != "delta_digest"}
+    ):
+        raise ReleaseControlError("release capability delta semantic digest differs")
+    if any(registry.get("owner") != "MP2-007" for registry in registries.values()):
+        raise ReleaseControlError("release delta map registry has another owner")
+    obligation_rows = _release_id_rows(
+        registries["obligation"].get("obligations"), "id", "release obligations"
+    )
+    scenario_rows = _release_id_rows(
+        registries["scenario"].get("scenarios"), "id", "release scenarios"
+    )
+    environment_rows = _release_id_rows(
+        registries["environment"].get("environments"), "id", "release environments"
+    )
+    slot_rows = _release_id_rows(
+        registries["scenario"].get("release_slots"),
+        "milestone",
+        "release scenario slots",
+    )
+    slot = slot_rows.get(args.milestone)
+    if slot is None:
+        raise ReleaseControlError("release delta map milestone has no scenario slot")
+    allowed_scenarios = set()
+    for field in (
+        "qualification_scenario_ids",
+        "publication_reconciliation_scenario_ids",
+        "postpublication_scenario_ids",
+    ):
+        allowed_scenarios.update(_release_id_list(slot.get(field), "release slot " + field))
+
+    capability_ids = sorted(
+        row["capability_id"]
+        for field in ("added", "changed", "removed")
+        for row in delta_data.get(field, [])
+    )
+    if not capability_ids or len(set(capability_ids)) != len(capability_ids):
+        raise ReleaseControlError("release delta map has an empty or duplicate capability delta")
+    mappings: list[dict[str, Any]] = []
+    unmapped: list[str] = []
+    for capability in capability_ids:
+        obligations = sorted(
+            identity
+            for identity, row in obligation_rows.items()
+            if capability
+            in _release_id_list(row.get("capability_ids"), "obligation capability ids")
+            and row.get("lifecycle") == "active"
+        )
+        scenarios: set[str] = set()
+        environments: set[str] = set()
+        for obligation in obligations:
+            row = obligation_rows[obligation]
+            scenarios.update(_release_id_list(row.get("scenario_ids"), "obligation scenario ids"))
+            environments.update(
+                _release_id_list(row.get("environment_ids"), "obligation environment ids")
+            )
+        for identity, row in scenario_rows.items():
+            required = row.get("required_obligations")
+            if isinstance(required, Mapping) and required.get("state") != "UNRESOLVED":
+                known = _release_id_list(
+                    required.get("known_obligation_ids"), "scenario obligation ids"
+                )
+                if set(known) & set(obligations):
+                    scenarios.add(identity)
+            if identity in scenarios:
+                for pair in row.get("environment_pairs", []):
+                    closed = _release_closed_mapping(
+                        pair,
+                        {"environment_id", "profile_id"},
+                        "scenario environment pair",
+                    )
+                    environments.add(
+                        _require_nonempty_string(
+                            closed["environment_id"], "scenario environment id"
+                        )
+                    )
+        scenarios &= allowed_scenarios
+        if (
+            not obligations
+            or not scenarios
+            or not environments
+            or any(identity not in scenario_rows for identity in scenarios)
+            or any(identity not in environment_rows for identity in environments)
+        ):
+            unmapped.append(capability)
+            continue
+        mappings.append(
+            {
+                "capability_id": capability,
+                "environment_ids": sorted(environments),
+                "obligation_ids": obligations,
+                "scenario_ids": sorted(scenarios),
+            }
+        )
+    if unmapped:
+        raise ReleaseControlError(
+            "release delta has capabilities without complete governed test mappings: "
+            + ", ".join(unmapped)
+        )
+    data: dict[str, Any] = {
+        "delta_digest": delta_data["delta_digest"],
+        "environment_registry_digest": sha256_json(registries["environment"]),
+        "impact_manifest_digest": sha256_json(impact),
+        "invocation_root_locator": "invocations",
+        "mappings": mappings,
+        "milestone": args.milestone,
+        "obligation_registry_digest": sha256_json(registries["obligation"]),
+        "producer_intent_digest": sha256_json(context.intent),
+        "scenario_registry_digest": sha256_json(registries["scenario"]),
+        "unmapped_capabilities": [],
+    }
+    data["map_digest"] = sha256_json(data)
+    return make_record(
+        "release-delta-test-map",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=bool(delta["synthetic"]),
+    )
 
 
 def _source_repository(repository: Path | None) -> Path:
@@ -11382,9 +12242,10 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         output_flag="identity-name",
     ),
     "finalize_release_gate_instance.py": _tool_contract(
-        "gate-input candidate-identity predecessor linear-snapshot obligations scenarios "
+        "gate-input candidate-identity predecessor linear-snapshot source-freeze obligations scenarios "
         "environments targets evidence-stores task-state-policy repository-protection "
-        "main-health main-health-history store-preflight out"
+        "main-health main-health-history store-preflight out",
+        optional="provider-attestation-keyring provider-attestation-keyring-digest",
     ),
     "freeze_release_source.py": _tool_contract("gate-input source-sha out"),
     "plan_release_qualification.py": _tool_contract(
@@ -13395,6 +14256,51 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "prepare_release_impact_manifest.py":
+            result = _prepare_release_impact_manifest_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "check_release_delta.py":
+            result = _release_capability_delta_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "build_release_delta_test_map.py":
+            result = _release_delta_test_map_operation(args, context)
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "capture_release_task_state_observation.py":
+            result = _capture_release_task_state_observation_operation(
+                args, context, live=not fixture_mode
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "validate_release_task_state_observation.py":
+            result = _validate_release_task_state_observation_operation(
+                args, context, live=not fixture_mode
+            )
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "validate_release_prepromotion_controls.py":
+            result = _validate_release_prepromotion_controls_operation(
+                args, context, live=not fixture_mode
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "finalize_release_gate_instance.py":
+            result = _finalize_release_gate_instance_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_source_freeze.py":
             record_path = Path(args.record).absolute()
             result = read_json(record_path)
@@ -14931,6 +15837,83 @@ def run_release_command(
                         "metriplane.release-scenario-catalog.v1",
                     )
                 )
+            elif tool == "check_release_delta.py":
+                for flag, kind in (
+                    ("target-resolution", "release-target-resolution"),
+                    ("predecessor", "release-predecessor"),
+                    ("impact-manifest", "release-impact-manifest"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            elif tool == "build_release_delta_test_map.py":
+                for flag, kind in (
+                    ("delta", "metriplane.release-capability-delta.v1"),
+                    ("impact-manifest", "metriplane.release-impact-manifest.v1"),
+                    ("obligations", "application/json"),
+                    ("scenarios", "application/json"),
+                    ("environments", "application/json"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), kind))
+            elif tool in {
+                "capture_release_task_state_observation.py",
+                "validate_release_task_state_observation.py",
+            }:
+                task_state_inputs = (
+                    ("role-assignments", "metriplane.release-role-assignments.v1"),
+                    ("gate-instance", "metriplane.release-gate-instance.v1"),
+                    ("readiness-registry", "application/json"),
+                    ("frozen-linear-snapshot", "metriplane.linear-release-snapshot.v1"),
+                    ("policy", "metriplane.release-task-state-policy.v1"),
+                    ("record", "metriplane.release-task-state-observation.v1"),
+                    ("candidate-identity", "metriplane.release-candidate-identity.v1"),
+                    ("protected-transition-event", "application/json"),
+                    ("reconciliation", "metriplane.release-publication-reconciliation.v1"),
+                    ("lkg-index-receipt", "metriplane.release-attempt-index.v1"),
+                    ("attempt-index-backend", "application/json"),
+                    ("chain-receipt", "metriplane.release-evidence-chain.v1"),
+                    ("core-receipts", "metriplane.release-retention-receipts.v1"),
+                    ("completion-input", "application/json"),
+                    ("cleanup-plan", "application/json"),
+                )
+                for flag, kind in task_state_inputs:
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), kind))
+            elif tool == "validate_release_prepromotion_controls.py":
+                for flag, kind in (
+                    ("gate-instance", "release-gate-instance"),
+                    ("release-task-state", "release-task-state-observation"),
+                    ("linear-snapshot", "linear-release-snapshot"),
+                    ("main-health", "release-main-health-state"),
+                    ("repository-protection", "release-repository-protection"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            elif tool == "finalize_release_gate_instance.py":
+                for flag, kind in (
+                    ("gate-input", "release-gate-input"),
+                    ("candidate-identity", "release-candidate-identity"),
+                    ("predecessor", "release-predecessor"),
+                    ("linear-snapshot", "linear-release-snapshot"),
+                    ("source-freeze", "release-source-freeze"),
+                    ("obligations", "release-test-obligations"),
+                    ("scenarios", "release-scenarios"),
+                    ("environments", "supported-environments"),
+                    ("targets", "release-targets"),
+                    ("evidence-stores", "release-evidence-stores"),
+                    ("task-state-policy", "release-task-state-policy"),
+                    ("repository-protection", "repository-protection"),
+                    ("main-health", "main-health-state"),
+                    ("main-health-history", "main-health-history"),
+                    ("store-preflight", "release-evidence-store-preflight"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
             elif tool == "promote_release_candidate.py" and "--dry-run" in argv:
                 for flag, kind in (
                     ("gate-instance", "release-gate-instance"),
