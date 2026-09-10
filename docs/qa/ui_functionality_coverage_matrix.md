@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `6283c6cb67e80eb06ac509ccdeda9e800f9ba62753c2e13369288020d7f8394d`
+Canonical projection SHA-256: `e939f76ab3ee786c58a8edcc17cd46f9062d301e3fae5743a1b5083a5f1e852d`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -117,7 +117,9 @@ Canonical projection SHA-256: `6283c6cb67e80eb06ac509ccdeda9e800f9ba62753c2e1336
 | tool.baseline_snapshot | Baseline Snapshot | tools/baseline_snapshot.py | python tools/baseline_snapshot.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_external_source_family_matrix | Build External Source Family Matrix | tools/build_external_source_family_matrix.py | python tools/build_external_source_family_matrix.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_maniskill_pickcube_proof | Build Maniskill Pickcube Proof | tools/build_maniskill_pickcube_proof.py | python tools/build_maniskill_pickcube_proof.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.build_publication_reconciliation | Build Publication Reconciliation | tools/build_publication_reconciliation.py | python tools/build_publication_reconciliation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_release_artifacts | Build Release Artifacts | tools/build_release_artifacts.py | python tools/build_release_artifacts.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.build_release_evidence_manifest | Build Release Evidence Manifest | tools/build_release_evidence_manifest.py | python tools/build_release_evidence_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_release_qualification | Build Release Qualification | tools/build_release_qualification.py | python tools/build_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.calibrate_intrinsics_chessboard | Calibrate Intrinsics Chessboard | tools/calibrate_intrinsics_chessboard.py | python tools/calibrate_intrinsics_chessboard.py | web/dashboard/* | calibrate_intrinsics_chessboard.py | ui_copy_command_only | P2 |  |
 | tool.calibrate_planar_homography | Calibrate Planar Homography | tools/calibrate_planar_homography.py | python tools/calibrate_planar_homography.py | web/dashboard/* | calibrate_planar_homography.py | ui_copy_command_only | P2 |  |
@@ -131,6 +133,7 @@ Canonical projection SHA-256: `6283c6cb67e80eb06ac509ccdeda9e800f9ba62753c2e1336
 | tool.check_repository_protection | Check Repository Protection | tools/check_repository_protection.py | python tools/check_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_required_terminal | Check Required Terminal | tools/check_required_terminal.py | python tools/check_required_terminal.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_ros2_adapters | Check Ros2 Adapters | tools/check_ros2_adapters.py | python tools/check_ros2_adapters.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.collect_publication_observations | Collect Publication Observations | tools/collect_publication_observations.py | python tools/collect_publication_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.command_center_up | Command Center Up | tools/command_center_up.sh | tools/command_center_up.sh | web/dashboard/* | command_center_up.sh | ui_copy_command_only | P2 |  |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.cross_adapter_pytest | Cross Adapter Pytest | tools/cross_adapter_pytest.py | python tools/cross_adapter_pytest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -166,6 +169,7 @@ Canonical projection SHA-256: `6283c6cb67e80eb06ac509ccdeda9e800f9ba62753c2e1336
 | tool.promote_release_candidate | Promote Release Candidate | tools/promote_release_candidate.py | python tools/promote_release_candidate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.proof_m8_fusion | Proof M8 Fusion | tools/proof_m8_fusion.sh | tools/proof_m8_fusion.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.public_surface_provenance | Public Surface Provenance | tools/public_surface_provenance.py | python tools/public_surface_provenance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.record_postpublication_conflict | Record Postpublication Conflict | tools/record_postpublication_conflict.py | python tools/record_postpublication_conflict.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_approval | Record Release Approval | tools/record_release_approval.py | python tools/record_release_approval.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_role_assignments | Record Release Role Assignments | tools/record_release_role_assignments.py | python tools/record_release_role_assignments.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.record_release_target_burn | Record Release Target Burn | tools/record_release_target_burn.py | python tools/record_release_target_burn.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -192,6 +196,7 @@ Canonical projection SHA-256: `6283c6cb67e80eb06ac509ccdeda9e800f9ba62753c2e1336
 | tool.validate_release_artifact_manifest | Validate Release Artifact Manifest | tools/validate_release_artifact_manifest.py | python tools/validate_release_artifact_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_attempt | Validate Release Attempt | tools/validate_release_attempt.py | python tools/validate_release_attempt.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_candidate_identity | Validate Release Candidate Identity | tools/validate_release_candidate_identity.py | python tools/validate_release_candidate_identity.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_release_evidence_manifest | Validate Release Evidence Manifest | tools/validate_release_evidence_manifest.py | python tools/validate_release_evidence_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_evidence_stores | Validate Release Evidence Stores | tools/validate_release_evidence_stores.py | python tools/validate_release_evidence_stores.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_gate_input | Validate Release Gate Input | tools/validate_release_gate_input.py | python tools/validate_release_gate_input.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_gate_instance | Validate Release Gate Instance | tools/validate_release_gate_instance.py | python tools/validate_release_gate_instance.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

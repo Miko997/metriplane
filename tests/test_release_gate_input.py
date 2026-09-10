@@ -28,12 +28,15 @@ from metriplane import release_control as release
 @pytest.mark.parametrize(
     "tool",
     [
+        "build_publication_reconciliation.py",
         "capture_release_target_observations.py",
         "check_release_readiness.py",
+        "collect_publication_observations.py",
         "export_release_attempt_index.py",
         "execute_release_qualification.py",
         "plan_release_qualification.py",
         "record_release_approval.py",
+        "record_postpublication_conflict.py",
         "record_release_role_assignments.py",
         "resolve_release_predecessor.py",
         "retain_release_evidence.py",
@@ -542,9 +545,35 @@ def _promotion_plan_command_fixture(tmp_path: Path) -> tuple[Path, list[str]]:
         sequence=1,
         synthetic=True,
     )
+    artifact_bytes = {
+        "metriplane-0.4.1-py3-none-any.whl": b"fixture-wheel",
+        "metriplane-0.4.1.tar.gz": b"fixture-sdist",
+    }
+    artifact_rows = [
+        {
+            "media_type": (
+                "application/vnd.pypa.wheel+zip" if name.endswith(".whl") else "application/gzip"
+            ),
+            "path": name,
+            "sha256": release.sha256_bytes(raw),
+            "size": len(raw),
+        }
+        for name, raw in sorted(artifact_bytes.items())
+    ]
     artifact_manifest = release.make_record(
         "release-artifact-manifest",
-        {"artifact_set_digest": "6" * 64},
+        {
+            "artifact_set_digest": release.sha256_json(artifact_rows),
+            "artifacts": artifact_rows,
+            "build_invocation_id": "fixture-promotion-build",
+            "build_recipe_digest": "1" * 64,
+            "invocation_root_locator": "invocations",
+            "milestone": "v0.4",
+            "producer_intent_digest": "2" * 64,
+            "source_digest": "3" * 64,
+            "source_freeze_digest": "4" * 64,
+            "target_resolution_digest": "5" * 64,
+        },
         invocation_id="fixture-promotion-artifacts",
         sequence=1,
         synthetic=True,
@@ -574,8 +603,13 @@ def _promotion_plan_command_fixture(tmp_path: Path) -> tuple[Path, list[str]]:
             "release-candidate-identity",
             {
                 "artifact_manifest_digest": release.sha256_json(artifact_manifest),
-                "artifact_set_digest": "6" * 64,
+                "artifact_set_digest": artifact_manifest["data"]["artifact_set_digest"],
+                "build_invocation_id": artifact_manifest["data"]["build_invocation_id"],
                 "candidate_digest": candidate_digest,
+                "milestone": "v0.4",
+                "package_version": "0.4.1",
+                "release_tag": "v0.4.1",
+                "source_freeze_digest": artifact_manifest["data"]["source_freeze_digest"],
             },
             invocation_id="fixture-promotion-candidate",
             sequence=1,
@@ -602,23 +636,12 @@ def _promotion_plan_command_fixture(tmp_path: Path) -> tuple[Path, list[str]]:
     )
     for name, record in records.items():
         (root / name).write_bytes(release.canonical_json(record))
+    (root / "artifacts").mkdir()
+    for name, raw in artifact_bytes.items():
+        (root / "artifacts" / name).write_bytes(raw)
     (root / "release-attempt-index-genesis.json").write_bytes(genesis_raw)
-    (root / "targets.json").write_text(
-        json.dumps(
-            {
-                "schema_version": "metriplane.release-targets.v1",
-                "owner": "MP2-007",
-                "milestones": [
-                    {
-                        "id": "v0.4",
-                        "predecessor": "v0.3.0",
-                        "required_targets": ["github-release", "pypi", "testpypi"],
-                        "version_line": "v0.4.x",
-                    }
-                ],
-            },
-            sort_keys=True,
-        )
+    (root / "targets.json").write_bytes(
+        (Path(__file__).resolve().parents[1] / "docs/status/release-targets.json").read_bytes()
     )
     argv = ["--dry-run"]
     for flag, name in (
@@ -822,6 +845,94 @@ def test_public_promotion_execute_fences_competing_writer_and_retains_exact_rece
     assert not (root / "promotion-3.json").exists()
 
 
+def test_publication_observation_command_reads_exact_fixture_bytes(tmp_path: Path) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        == 0
+    )
+    argv = [
+        "--promotion",
+        str(root / "promotion-2.json"),
+        "--promotion-lock-receipt",
+        str(root / "promotion-lock-2.json"),
+        "--artifact-manifest",
+        str(root / "artifact-manifest.json"),
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(root / "publication-observations.json"),
+        "--invocation-dir",
+        str(root / "invocations/collect-publication-observations/001"),
+    ]
+    completed = _run_release_tool("collect_publication_observations.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    record = release.read_json(root / "publication-observations.json")
+    release.validate_record(record, "release-publication-observations")
+    assert record["synthetic"] is True
+    assert [row["target_id"] for row in record["data"]["targets"]] == [
+        "github-release",
+        "pypi",
+        "testpypi",
+    ]
+
+
+def _replaced_terminal_outputs(
+    context: release.ReleaseInvocation, output: Path
+) -> list[dict[str, str]]:
+    terminal = release.read_json(context.directory / "invocation.json")
+    return [
+        {**row, "sha256": release.sha256_bytes(output.read_bytes())}
+        if row["path"] == output.relative_to(context.root).as_posix()
+        else row
+        for row in terminal["data"]["outputs"]
+    ]
+
+
+def test_publication_observation_terminal_replay_rejects_forged_success(
+    tmp_path: Path,
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        == 0
+    )
+    argv = [
+        "--promotion",
+        str(root / "promotion-2.json"),
+        "--promotion-lock-receipt",
+        str(root / "promotion-lock-2.json"),
+        "--artifact-manifest",
+        str(root / "artifact-manifest.json"),
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(root / "publication-observations.json"),
+        "--invocation-dir",
+        str(root / "invocations/collect-publication-observations/001"),
+    ]
+    assert _run_release_tool("collect_publication_observations.py", argv).returncode == 0
+    output = root / "publication-observations.json"
+    forged = release.read_json(output)
+    forged["data"]["all_targets_observed"] = False
+    forged = release.make_record(
+        "release-publication-observations",
+        forged["data"],
+        invocation_id=forged["invocation_id"],
+        sequence=forged["sequence"],
+        synthetic=True,
+    )
+    output.chmod(0o600)
+    output.write_bytes(release.canonical_json(forged))
+    context = release._validate_intent(root / "invocations/collect-publication-observations/001")
+    with pytest.raises(release.ReleaseControlError, match="output semantics differ"):
+        release._validate_bound_invocation(
+            context, outputs=_replaced_terminal_outputs(context, output)
+        )
+
+
 def test_public_promotion_terminal_replay_rejects_forged_empty_action_success(
     tmp_path: Path,
 ) -> None:
@@ -853,6 +964,794 @@ def test_public_promotion_terminal_replay_rejects_forged_empty_action_success(
     ]
     with pytest.raises(release.ReleaseControlError, match="output semantics differ"):
         release._validate_bound_invocation(context, outputs=outputs)
+
+
+def test_publication_observation_rejects_changed_artifact(tmp_path: Path) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        == 0
+    )
+    (root / "artifacts/metriplane-0.4.1.tar.gz").write_bytes(b"substituted")
+    argv = [
+        "--promotion",
+        str(root / "promotion-2.json"),
+        "--promotion-lock-receipt",
+        str(root / "promotion-lock-2.json"),
+        "--artifact-manifest",
+        str(root / "artifact-manifest.json"),
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(root / "publication-observations.json"),
+        "--invocation-dir",
+        str(root / "invocations/collect-publication-observations/001"),
+    ]
+    completed = _run_release_tool("collect_publication_observations.py", argv)
+    assert completed.returncode != 0
+    assert not (root / "publication-observations.json").exists()
+
+
+def test_interrupted_publication_observation_cannot_create_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        == 0
+    )
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_AFTER_PUBLICATION_READBACK", "1")
+    argv = [
+        "--promotion",
+        str(root / "promotion-2.json"),
+        "--promotion-lock-receipt",
+        str(root / "promotion-lock-2.json"),
+        "--artifact-manifest",
+        str(root / "artifact-manifest.json"),
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(root / "publication-observations.json"),
+        "--invocation-dir",
+        str(root / "invocations/collect-publication-observations/001"),
+    ]
+    completed = _run_release_tool("collect_publication_observations.py", argv)
+    assert completed.returncode != 0
+    assert not (root / "publication-observations.json").exists()
+
+
+def _publication_reconciliation_command_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, list[str]]:
+    root, plan_argv = _promotion_plan_command_fixture(tmp_path)
+    assert _run_release_tool("promote_release_candidate.py", plan_argv).returncode == 0
+    assert (
+        _run_release_tool("promote_release_candidate.py", _promotion_execute_argv(root)).returncode
+        == 0
+    )
+    observation_argv = [
+        "--promotion",
+        str(root / "promotion-2.json"),
+        "--promotion-lock-receipt",
+        str(root / "promotion-lock-2.json"),
+        "--artifact-manifest",
+        str(root / "artifact-manifest.json"),
+        "--targets",
+        str(root / "targets.json"),
+        "--out",
+        str(root / "publication-observations.json"),
+        "--invocation-dir",
+        str(root / "invocations/collect-publication-observations/001"),
+    ]
+    assert (
+        _run_release_tool("collect_publication_observations.py", observation_argv).returncode == 0
+    )
+    evidence = root / "reconciliation-evidence"
+    evidence.mkdir()
+    for source, destination in (
+        ("candidate-identity.json", "candidate-identity.json"),
+        ("artifact-manifest.json", "artifact-manifest.json"),
+        ("qualification.json", "qualification.json"),
+        ("approval.json", "approval.json"),
+        ("promotion-lock-2.json", "promotion-lock.json"),
+        ("promotion-2.json", "promotion.json"),
+        ("publication-observations.json", "observations.json"),
+    ):
+        shutil.copyfile(root / source, evidence / destination)
+    candidate = release.read_json(evidence / "candidate-identity.json")["data"]
+    artifacts = release.read_json(evidence / "artifact-manifest.json")["data"]["artifacts"]
+    entries = [{**row, "role": "release-artifact"} for row in artifacts]
+    manifest = release.make_record(
+        "release-evidence-manifest",
+        {
+            "candidate_digest": candidate["candidate_digest"],
+            "entries": entries,
+            "phase": "qualified-publication",
+        },
+        invocation_id="fixture-qualified-publication-manifest",
+        sequence=1,
+        synthetic=True,
+    )
+    retention = release.make_record(
+        "release-retention-receipts",
+        {
+            "candidate_digest": candidate["candidate_digest"],
+            "input_digest": release.sha256_bytes(release.canonical_json(manifest)),
+            "phase": "prepublication",
+        },
+        invocation_id="fixture-qualified-publication-retention",
+        sequence=1,
+        synthetic=True,
+    )
+    (evidence / "evidence-manifest.json").write_bytes(release.canonical_json(manifest))
+    (evidence / "retention.json").write_bytes(release.canonical_json(retention))
+    argv = [
+        "--qualification",
+        str(evidence / "qualification.json"),
+        "--approval",
+        str(evidence / "approval.json"),
+        "--promotion-lock-receipt",
+        str(evidence / "promotion-lock.json"),
+        "--observations",
+        str(evidence / "observations.json"),
+        "--evidence-manifest",
+        str(evidence / "evidence-manifest.json"),
+        "--retention-receipts",
+        str(evidence / "retention.json"),
+        "--out",
+        str(evidence / "reconciliation.json"),
+        "--invocation-dir",
+        str(evidence / "invocations/build-publication-reconciliation/001"),
+    ]
+    return root, evidence, argv
+
+
+def test_publication_reconciliation_command_closes_exact_fixture_bytes(tmp_path: Path) -> None:
+    _root, evidence, argv = _publication_reconciliation_command_fixture(tmp_path)
+    completed = _run_release_tool("build_publication_reconciliation.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    record = release.read_json(evidence / "reconciliation.json")
+    release.validate_record(record, "release-publication-reconciliation")
+    assert record["data"]["result"] == "RECONCILED"
+    assert record["data"]["burn_required"] is False
+    assert [row["target_id"] for row in record["data"]["targets"]] == [
+        "github-release",
+        "pypi",
+        "testpypi",
+    ]
+
+
+def test_publication_reconciliation_terminal_replay_rejects_forged_success(
+    tmp_path: Path,
+) -> None:
+    _root, evidence, argv = _publication_reconciliation_command_fixture(tmp_path)
+    assert _run_release_tool("build_publication_reconciliation.py", argv).returncode == 0
+    output = evidence / "reconciliation.json"
+    forged = release.read_json(output)
+    forged["data"]["targets"][0]["exact_match"] = False
+    unsigned = dict(forged["data"])
+    unsigned.pop("reconciliation_digest")
+    forged["data"]["reconciliation_digest"] = release.sha256_json(unsigned)
+    forged = release.make_record(
+        "release-publication-reconciliation",
+        forged["data"],
+        invocation_id=forged["invocation_id"],
+        sequence=forged["sequence"],
+        synthetic=True,
+    )
+    output.chmod(0o600)
+    output.write_bytes(release.canonical_json(forged))
+    context = release._validate_intent(
+        evidence / "invocations/build-publication-reconciliation/001"
+    )
+    with pytest.raises(release.ReleaseControlError, match="output semantics differ"):
+        release._validate_bound_invocation(
+            context, outputs=_replaced_terminal_outputs(context, output)
+        )
+
+
+def test_publication_reconciliation_rejects_substituted_observation(tmp_path: Path) -> None:
+    _root, evidence, argv = _publication_reconciliation_command_fixture(tmp_path)
+    observations = release.read_json(evidence / "observations.json")
+    observations["data"]["targets"][0]["artifacts"][0]["observed_digest"] = "f" * 64
+    observations = release.make_record(
+        "release-publication-observations",
+        observations["data"],
+        invocation_id=observations["invocation_id"],
+        sequence=observations["sequence"],
+        synthetic=True,
+    )
+    (evidence / "observations.json").write_bytes(release.canonical_json(observations))
+    completed = _run_release_tool("build_publication_reconciliation.py", argv)
+    assert completed.returncode != 0
+    assert not (evidence / "reconciliation.json").exists()
+
+
+def _fixture_impact_classification(
+    candidate: dict[str, Any], failed: release.ReleaseInvocation, *, stage: str
+) -> dict[str, Any]:
+    terminal = release._validate_terminal(failed)
+    data = {
+        "authority_policy_digest": "a" * 64,
+        "authorized_role": "infrastructure_owner",
+        "conflicts": ["fixture postpublication operation failed"],
+        "decision": "NO_LKG_INVALIDATION",
+        "expires_at": "2099-01-01T00:00:00Z",
+        "input_kind": "impact_classification",
+        "issued_at": "2026-01-01T00:00:00Z",
+        "provider_event": {"actor_id": "fixture-infrastructure-owner"},
+        "signer_identity": "fixture-infrastructure-owner",
+        "signing_method": "provider-attestation-v1",
+        "subject_digests": [
+            {"subject": "candidate_identity", "sha256": release.sha256_json(candidate)},
+            {"subject": "failed_invocation", "sha256": release.sha256_json(terminal)},
+            {"subject": "failed_stage", "sha256": release.sha256_json({"stage": stage})},
+        ],
+    }
+    unsigned = release.make_record(
+        "release-protected-input",
+        data,
+        invocation_id="fixture-impact-classification",
+        sequence=1,
+        synthetic=True,
+    )
+    subject = release.signature_subject_digest(unsigned)
+    return release.make_record(
+        "release-protected-input",
+        data,
+        invocation_id="fixture-impact-classification",
+        sequence=1,
+        synthetic=True,
+        signatures=[
+            {
+                "actor_id": "fixture-infrastructure-owner",
+                "algorithm": "test-sha256-v1",
+                "provider": "test-fixture",
+                "signature": release.sha256_json(
+                    {
+                        "actor_id": "fixture-infrastructure-owner",
+                        "subject_digest": subject,
+                    }
+                ),
+                "subject_digest": subject,
+                "synthetic": True,
+            }
+        ],
+    )
+
+
+def test_postpublication_conflict_binds_actual_failed_reconciliation_and_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _root, evidence, argv = _publication_reconciliation_command_fixture(tmp_path)
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_RECONCILIATION", "1")
+    interrupted = _run_release_tool("build_publication_reconciliation.py", argv)
+    assert interrupted.returncode != 0
+    assert not (evidence / "reconciliation.json").exists()
+    monkeypatch.delenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_RECONCILIATION")
+    failed = release._validate_intent(evidence / "invocations/build-publication-reconciliation/001")
+    candidate = release.read_json(evidence / "candidate-identity.json")
+    classification = _fixture_impact_classification(
+        candidate, failed, stage="publication-reconciliation"
+    )
+    classification_path = evidence / "impact-classification.json"
+    classification_path.write_bytes(release.canonical_json(classification))
+    conflict_path = evidence / "postpublication-conflicts/001/conflict.json"
+    conflict_path.parent.mkdir(parents=True)
+    conflict_argv = [
+        "--stage",
+        "publication-reconciliation",
+        "--candidate-identity",
+        str(evidence / "candidate-identity.json"),
+        "--failed-invocation-dir",
+        str(failed.directory),
+        "--no-lkg-invalidation",
+        str(classification_path),
+        "--no-assurance-round",
+        "--out",
+        str(conflict_path),
+        "--invocation-dir",
+        str(evidence / "invocations/record-postpublication-conflict/001"),
+    ]
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_CONFLICT_FINALIZATION", "1")
+    interrupted_conflict = _run_release_tool("record_postpublication_conflict.py", conflict_argv)
+    assert interrupted_conflict.returncode != 0
+    assert not conflict_path.exists()
+    monkeypatch.delenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_CONFLICT_FINALIZATION")
+    conflict_path = evidence / "postpublication-conflicts/002/conflict.json"
+    conflict_path.parent.mkdir(parents=True)
+    conflict_argv = [
+        value.replace("postpublication-conflicts/001", "postpublication-conflicts/002").replace(
+            "record-postpublication-conflict/001", "record-postpublication-conflict/002"
+        )
+        for value in conflict_argv
+    ]
+    completed = _run_release_tool("record_postpublication_conflict.py", conflict_argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    conflict = release.read_json(conflict_path)
+    assert conflict["status"] == "FAIL"
+    assert conflict["data"]["failed_invocation_digest"] == release.sha256_json(
+        release._validate_terminal(failed)
+    )
+    original = conflict_path.read_bytes()
+    forged = copy.deepcopy(conflict)
+    forged["data"]["failed_invocation_digest"] = "e" * 64
+    unsigned = dict(forged["data"])
+    unsigned.pop("conflict_digest")
+    forged["data"]["conflict_digest"] = release.sha256_json(unsigned)
+    forged = release.make_record(
+        "release-postpublication-conflict",
+        forged["data"],
+        invocation_id=forged["invocation_id"],
+        sequence=forged["sequence"],
+        synthetic=True,
+        status="FAIL",
+    )
+    conflict_path.chmod(0o600)
+    conflict_path.write_bytes(release.canonical_json(forged))
+    conflict_context = release._validate_intent(
+        evidence / "invocations/record-postpublication-conflict/002"
+    )
+    with pytest.raises(release.ReleaseControlError, match="output semantics differ"):
+        release._validate_bound_invocation(
+            conflict_context,
+            outputs=_replaced_terminal_outputs(conflict_context, conflict_path),
+        )
+    conflict_path.write_bytes(original)
+    duplicate = _run_release_tool(
+        "record_postpublication_conflict.py",
+        [
+            value.replace(
+                "record-postpublication-conflict/002", "record-postpublication-conflict/003"
+            )
+            for value in conflict_argv
+        ],
+    )
+    assert duplicate.returncode != 0
+    assert conflict_path.read_bytes() == original
+
+
+def test_postpublication_conflict_rejects_passing_operation_even_when_relabelled(
+    tmp_path: Path,
+) -> None:
+    _root, evidence, argv = _publication_reconciliation_command_fixture(tmp_path)
+    assert _run_release_tool("build_publication_reconciliation.py", argv).returncode == 0
+    completed_context = release._validate_intent(
+        evidence / "invocations/build-publication-reconciliation/001"
+    )
+    candidate = release.read_json(evidence / "candidate-identity.json")
+    classification = _fixture_impact_classification(
+        candidate, completed_context, stage="publication-reconciliation"
+    )
+    classification_path = evidence / "impact-classification.json"
+    classification_path.write_bytes(release.canonical_json(classification))
+    conflict_path = evidence / "postpublication-conflicts/001/conflict.json"
+    conflict_path.parent.mkdir(parents=True)
+    argv = [
+        "--stage",
+        "publication-observations",
+        "--candidate-identity",
+        str(evidence / "candidate-identity.json"),
+        "--failed-invocation-dir",
+        str(completed_context.directory),
+        "--no-lkg-invalidation",
+        str(classification_path),
+        "--no-assurance-round",
+        "--out",
+        str(conflict_path),
+        "--invocation-dir",
+        str(evidence / "invocations/record-postpublication-conflict/001"),
+    ]
+    rejected = _run_release_tool("record_postpublication_conflict.py", argv)
+    assert rejected.returncode != 0
+    assert not conflict_path.exists()
+
+
+def _postpublication_conflict_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
+    _root, evidence, argv = _publication_reconciliation_command_fixture(tmp_path)
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_RECONCILIATION", "1")
+    assert _run_release_tool("build_publication_reconciliation.py", argv).returncode != 0
+    monkeypatch.delenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_RECONCILIATION")
+    failed = release._validate_intent(evidence / "invocations/build-publication-reconciliation/001")
+    candidate = release.read_json(evidence / "candidate-identity.json")
+    classification = _fixture_impact_classification(
+        candidate, failed, stage="publication-reconciliation"
+    )
+    classification_path = evidence / "impact-classification.json"
+    classification_path.write_bytes(release.canonical_json(classification))
+    conflict_path = evidence / "postpublication-conflicts/001/conflict.json"
+    conflict_path.parent.mkdir(parents=True)
+    completed = _run_release_tool(
+        "record_postpublication_conflict.py",
+        [
+            "--stage",
+            "publication-reconciliation",
+            "--candidate-identity",
+            str(evidence / "candidate-identity.json"),
+            "--failed-invocation-dir",
+            str(failed.directory),
+            "--no-lkg-invalidation",
+            str(classification_path),
+            "--no-assurance-round",
+            "--out",
+            str(conflict_path),
+            "--invocation-dir",
+            str(evidence / "invocations/record-postpublication-conflict/001"),
+        ],
+    )
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    return evidence, conflict_path
+
+
+def test_postpublication_conflict_manifest_actual_command_closes_subject_and_journals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence, conflict_path = _postpublication_conflict_fixture(tmp_path, monkeypatch)
+    manifest_path = conflict_path.parent / "evidence-manifest.json"
+    argv = [
+        "--phase",
+        "postpublication-conflict",
+        "--candidate-dir",
+        str(evidence),
+        "--no-assurance-round",
+        "--input",
+        str(conflict_path),
+        "--invocation-root",
+        str(evidence / "invocations"),
+        "--exclude-current-invocation",
+        "--require-lkg-disposition-and-applicable-invalidation-receipt",
+        "--out",
+        str(manifest_path),
+        "--invocation-dir",
+        str(evidence / "invocations/build-release-evidence-manifest/001"),
+    ]
+    completed = _run_release_tool("build_release_evidence_manifest.py", argv)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    manifest = release.read_json(manifest_path)
+    release.validate_release_producer_journal(
+        manifest, manifest_path, producer="build_release_evidence_manifest.py"
+    )
+    entries = manifest["data"]["entries"]
+    assert any(row["path"] == conflict_path.relative_to(evidence).as_posix() for row in entries)
+    assert release.sha256_json(
+        release.read_json(
+            evidence / "invocations/build-publication-reconciliation/001/invocation.json"
+        )
+    ) in set(manifest["data"]["invocation_journal_digests"])
+    validated = _run_release_tool(
+        "validate_release_evidence_manifest.py",
+        [
+            "--record",
+            str(manifest_path),
+            "--require-lkg-disposition-and-applicable-invalidation-receipt",
+            "--invocation-dir",
+            str(evidence / "invocations/validate-release-evidence-manifest/001"),
+        ],
+    )
+    assert validated.returncode == 0, validated.stderr or validated.stdout
+
+
+def test_postpublication_conflict_manifest_validator_replays_after_relocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence, conflict_path = _postpublication_conflict_fixture(tmp_path, monkeypatch)
+    manifest_path = conflict_path.parent / "evidence-manifest.json"
+    argv = [
+        "--phase",
+        "postpublication-conflict",
+        "--candidate-dir",
+        str(evidence),
+        "--no-assurance-round",
+        "--input",
+        str(conflict_path),
+        "--invocation-root",
+        str(evidence / "invocations"),
+        "--exclude-current-invocation",
+        "--require-lkg-disposition-and-applicable-invalidation-receipt",
+        "--out",
+        str(manifest_path),
+        "--invocation-dir",
+        str(evidence / "invocations/build-release-evidence-manifest/001"),
+    ]
+    assert _run_release_tool("build_release_evidence_manifest.py", argv).returncode == 0
+    relocated = tmp_path / "relocated-candidate"
+    evidence.rename(relocated)
+    relocated_manifest = relocated / manifest_path.relative_to(evidence)
+    validated = _run_release_tool(
+        "validate_release_evidence_manifest.py",
+        [
+            "--record",
+            str(relocated_manifest),
+            "--require-lkg-disposition-and-applicable-invalidation-receipt",
+            "--invocation-dir",
+            str(relocated / "invocations/validate-release-evidence-manifest/001"),
+        ],
+    )
+    assert validated.returncode == 0, validated.stderr or validated.stdout
+
+
+@pytest.mark.parametrize("mutation", ["missing-input", "substituted-input", "changed-journal"])
+def test_postpublication_conflict_manifest_validation_rejects_broken_custody(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    evidence, conflict_path = _postpublication_conflict_fixture(tmp_path, monkeypatch)
+    manifest_path = conflict_path.parent / "evidence-manifest.json"
+    argv = [
+        "--phase",
+        "postpublication-conflict",
+        "--candidate-dir",
+        str(evidence),
+        "--no-assurance-round",
+        "--input",
+        str(conflict_path),
+        "--invocation-root",
+        str(evidence / "invocations"),
+        "--exclude-current-invocation",
+        "--require-lkg-disposition-and-applicable-invalidation-receipt",
+        "--out",
+        str(manifest_path),
+        "--invocation-dir",
+        str(evidence / "invocations/build-release-evidence-manifest/001"),
+    ]
+    assert _run_release_tool("build_release_evidence_manifest.py", argv).returncode == 0
+    if mutation == "missing-input":
+        (evidence / "impact-classification.json").unlink()
+    elif mutation == "substituted-input":
+        candidate = evidence / "candidate-identity.json"
+        candidate.chmod(0o600)
+        candidate.write_bytes(candidate.read_bytes() + b" ")
+    else:
+        journal = evidence / "invocations/build-publication-reconciliation/001/stdout"
+        journal.chmod(0o600)
+        journal.write_bytes(b"substituted journal\n")
+    validated = _run_release_tool(
+        "validate_release_evidence_manifest.py",
+        [
+            "--record",
+            str(manifest_path),
+            "--require-lkg-disposition-and-applicable-invalidation-receipt",
+            "--invocation-dir",
+            str(evidence / "invocations/validate-release-evidence-manifest/001"),
+        ],
+    )
+    assert validated.returncode != 0
+
+
+def test_postpublication_conflict_manifest_interruption_retries_without_false_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence, conflict_path = _postpublication_conflict_fixture(tmp_path, monkeypatch)
+    manifest_path = conflict_path.parent / "evidence-manifest.json"
+    argv = [
+        "--phase",
+        "postpublication-conflict",
+        "--candidate-dir",
+        str(evidence),
+        "--no-assurance-round",
+        "--input",
+        str(conflict_path),
+        "--invocation-root",
+        str(evidence / "invocations"),
+        "--exclude-current-invocation",
+        "--require-lkg-disposition-and-applicable-invalidation-receipt",
+        "--out",
+        str(manifest_path),
+        "--invocation-dir",
+        str(evidence / "invocations/build-release-evidence-manifest/001"),
+    ]
+    monkeypatch.setenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_CONFLICT_MANIFEST", "1")
+    assert _run_release_tool("build_release_evidence_manifest.py", argv).returncode != 0
+    assert not manifest_path.exists()
+    monkeypatch.delenv("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_CONFLICT_MANIFEST")
+    retry = [
+        value.replace("build-release-evidence-manifest/001", "build-release-evidence-manifest/002")
+        for value in argv
+    ]
+    completed = _run_release_tool("build_release_evidence_manifest.py", retry)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    first = release._validate_terminal(
+        release._validate_intent(evidence / "invocations/build-release-evidence-manifest/001")
+    )
+    assert first["status"] == "BLOCKED"
+    assert first["data"]["outputs"] == []
+
+
+def _write_fixture_native_seed(
+    root: Path, tool: str, argv: list[str], responses: dict[str, bytes]
+) -> None:
+    stage = release._invocation_stage(tool)
+    sequence = int(Path(argv[argv.index("--invocation-dir") + 1]).name)
+    seed_root = root / f"inputs/fixture-native/{stage}/{sequence:03d}"
+    members = []
+    for member_id, raw in responses.items():
+        path = seed_root / "raw" / f"{member_id}.bin"
+        _seed_staging_put(path, raw)
+        members.append(
+            {
+                "member_id": member_id,
+                "path": "raw/" + member_id + ".bin",
+                "schema_id": "application/octet-stream",
+                "bytes": len(raw),
+                "sha256": release.sha256_bytes(raw),
+            }
+        )
+    seed = {
+        "schema_version": release._RELEASE_FIXTURE_SEED_SCHEMA,
+        "synthetic": True,
+        "tool": tool,
+        "command_digest": release.sha256_json(
+            {"tool": tool, "argv": [tool, *argv], "working_directory": str(Path.cwd())}
+        ),
+        "members": members,
+        "data": {"response_member_ids": list(responses)},
+    }
+    _seed_staging_put(seed_root / "seed.json", json.dumps(seed, indent=2).encode() + b"\n")
+
+
+def test_postpublication_conflict_retention_and_index_actual_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evidence, conflict_path = _postpublication_conflict_fixture(tmp_path, monkeypatch)
+    manifest_path = conflict_path.parent / "evidence-manifest.json"
+    manifest_argv = [
+        "--phase",
+        "postpublication-conflict",
+        "--candidate-dir",
+        str(evidence),
+        "--no-assurance-round",
+        "--input",
+        str(conflict_path),
+        "--invocation-root",
+        str(evidence / "invocations"),
+        "--exclude-current-invocation",
+        "--require-lkg-disposition-and-applicable-invalidation-receipt",
+        "--out",
+        str(manifest_path),
+        "--invocation-dir",
+        str(evidence / "invocations/build-release-evidence-manifest/001"),
+    ]
+    assert _run_release_tool("build_release_evidence_manifest.py", manifest_argv).returncode == 0
+
+    registry, control_files, controls = _fixture_native_registry_bundle()
+    stores_raw = release.canonical_json(registry)
+    stores_path = evidence / "inputs/stores.json"
+    _seed_staging_put(stores_path, stores_raw)
+    for name, raw in control_files.items():
+        _seed_staging_put(evidence / "inputs" / name, raw)
+    retention_path = conflict_path.parent / "retention-receipts.json"
+    retention_argv = [
+        "--manifest",
+        str(manifest_path),
+        "--stores",
+        str(stores_path),
+        "--phase",
+        "postpublication-conflict",
+        "--out",
+        str(retention_path),
+        "--invocation-dir",
+        str(evidence / "invocations/retain-release-evidence/001"),
+    ]
+    _subject, operations = release._release_fixture_retention_expectations(
+        {
+            "manifest": str(manifest_path),
+            "stores": str(stores_path),
+            "phase": "postpublication-conflict",
+        },
+        original_inputs=[],
+        original_manifest=manifest_path.read_bytes(),
+        registry_raw=stores_raw,
+        expected_registry_digest=release.sha256_bytes(stores_raw),
+        fixture_run_id=evidence.name,
+        backend_controls=controls,
+    )
+    retained = manifest_path.read_bytes()
+    retention_responses = {}
+    for index, operation in enumerate(operations):
+        retention_responses[f"effect-{index}"] = (
+            retained
+            if operation["kind"] == "retention.read"
+            else release.canonical_json(
+                {
+                    **operation["request"],
+                    "effect": (
+                        "immutable_put"
+                        if operation["kind"] == "retention.put"
+                        else "governance_hold"
+                    ),
+                    "administration_identity": operation["request"]["administration_identity"],
+                }
+            )
+        )
+    _write_fixture_native_seed(
+        evidence, "retain_release_evidence.py", retention_argv, retention_responses
+    )
+    monkeypatch.setenv("METRIPLANE_RELEASE_FIXTURE_MODE", "1")
+    retained_result = _run_release_tool("retain_release_evidence.py", retention_argv)
+    assert retained_result.returncode == 0, retained_result.stderr or retained_result.stdout
+    assert manifest_path.stat().st_nlink == 1
+
+    genesis_raw = _fixture_native_genesis_raw()
+    genesis_path = evidence / "inputs/genesis.json"
+    _seed_staging_put(genesis_path, genesis_raw)
+    genesis_digest = release.sha256_bytes(genesis_raw)
+    candidate = release.read_json(evidence / "candidate-identity.json")["data"]
+    operation_id = "fixture-postpublication-conflict-index"
+    scope = {
+        "kind": "release_candidate",
+        "scope_id": candidate["candidate_digest"],
+        "stage": "postpublication-conflict",
+        "sequence": 1,
+        "release_tag": candidate["release_tag"],
+        "candidate_id": candidate["candidate_digest"],
+    }
+    entry = {
+        "schema_version": "metriplane.release-attempt-index-entry.v1",
+        "backend_id": "attempt-index",
+        "genesis_digest": genesis_digest,
+        "generation": 1,
+        "previous_head": None,
+        "operation_id": operation_id,
+        "token": "opaque-postpublication-conflict-token",
+        "milestone": candidate["milestone"],
+        "scope": scope,
+        "entry_manifest_digest": release.sha256_json(release.read_json(manifest_path)),
+        "entry_receipts_digest": release.sha256_json(release.read_json(retention_path)),
+    }
+    response = release.canonical_json(
+        {
+            "backend_id": "attempt-index",
+            "genesis_digest": genesis_digest,
+            "operation_id": operation_id,
+            "expected_head": genesis_digest,
+            "entry": entry,
+            "committed_head": release.sha256_json(entry),
+            "read_back_digest": release.sha256_json(entry),
+            "disposition": "committed",
+        }
+    )
+    index_path = conflict_path.parent / "index-receipt.json"
+    index_argv = [
+        "--entry-manifest",
+        str(manifest_path),
+        "--entry-receipts",
+        str(retention_path),
+        "--scope-kind",
+        "release_candidate",
+        "--scope-id",
+        candidate["candidate_digest"],
+        "--release-tag",
+        candidate["release_tag"],
+        "--candidate-id",
+        candidate["candidate_digest"],
+        "--stage",
+        "postpublication-conflict",
+        "--sequence",
+        "1",
+        "--index-backend",
+        "attempt-index",
+        "--expected-head",
+        genesis_digest,
+        "--operation-id",
+        operation_id,
+        "--out",
+        str(index_path),
+        "--invocation-dir",
+        str(evidence / "invocations/update-release-attempt-index/001"),
+    ]
+    _write_fixture_native_seed(
+        evidence, "update_release_attempt_index.py", index_argv, {"cas": response}
+    )
+    indexed = _run_release_tool("update_release_attempt_index.py", index_argv)
+    assert indexed.returncode == 0, indexed.stderr or indexed.stdout
+    receipt = release.read_json(index_path)
+    assert receipt["data"]["stage"] == "postpublication-conflict"
+    assert receipt["data"]["entry_manifest_digest"] == release.sha256_json(
+        release.read_json(manifest_path)
+    )
 
 
 def test_public_promotion_interruption_after_lock_cannot_create_success(

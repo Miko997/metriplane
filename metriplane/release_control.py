@@ -1518,11 +1518,25 @@ def _derived_passing_record(
     return data
 
 
-def _evidence_record_index(root: Path) -> dict[str, list[tuple[Path, dict[str, Any]]]]:
+def _evidence_record_index(
+    root: Path, *, exclude: frozenset[Path] = frozenset()
+) -> dict[str, list[tuple[Path, dict[str, Any]]]]:
     if root.is_symlink() or not root.is_dir():
         raise ReleaseControlError("release evidence root is missing or unsafe")
     root = root.absolute()
-    paths = sorted(root.rglob("*.json"))
+    paths = []
+    for path in sorted(root.rglob("*.json")):
+        if path.absolute() in exclude:
+            continue
+        relative = path.relative_to(root)
+        if "invocations" in relative.parts:
+            continue
+        try:
+            candidate = _source_json(_safe_release_bytes(path), "possible indexed release record")
+        except ReleaseControlError:
+            continue
+        if isinstance(candidate, dict) and set(candidate) == RECORD_KEYS:
+            paths.append(path)
     captured = _ReleaseCapturedFiles.capture(
         root,
         [(path.relative_to(root).as_posix(), "release-record") for path in paths],
@@ -3377,6 +3391,7 @@ def _release_index_original_update_binding(
         ("release_staging", "target-burn"),
         ("release_staging", "staging-failure"),
         ("release_candidate", "qualification-attempt"),
+        ("release_candidate", "postpublication-conflict"),
     }:
         raise ReleaseControlError("index original subject has no implemented content binding")
     root = _release_capture_absolute(update.root)
@@ -4123,8 +4138,9 @@ def validate_release_qualification_record(
     )
 
 
-def _required_release_targets(milestone: str) -> list[str]:
-    registry = read_json(RELEASE_TARGETS_PATH)
+def _required_release_targets_from_registry(
+    registry: Mapping[str, Any], milestone: str
+) -> list[str]:
     if set(registry) != {"milestones", "owner", "schema_version"}:
         raise ReleaseControlError("release target registry shape is not closed")
     if (
@@ -4162,6 +4178,876 @@ def _required_release_targets(milestone: str) -> list[str]:
     if tuple(observed_milestones) != MILESTONES or selected is None:
         raise ReleaseControlError("release target milestone bindings are invalid")
     return selected
+
+
+def _required_release_targets(milestone: str) -> list[str]:
+    return _required_release_targets_from_registry(read_json(RELEASE_TARGETS_PATH), milestone)
+
+
+def _collect_publication_observations_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+) -> dict[str, Any]:
+    """Read back every published fixture byte; live providers stay fail closed."""
+
+    if live:
+        raise ReleaseControlError("production publication observation adapters are not bound")
+    promotion_path = Path(args.promotion).absolute()
+    lock_path = Path(args.promotion_lock_receipt).absolute()
+    manifest_path = Path(args.artifact_manifest).absolute()
+    targets_path = Path(args.targets).absolute()
+    promotion_record = _release_input(promotion_path, "release-promotion", live=False)
+    lock_record = _release_input(lock_path, "release-promotion-lock", live=False)
+    manifest_record = read_json(manifest_path)
+    validate_record(manifest_record, "release-artifact-manifest")
+    promotion = _passing_record(promotion_record, "release-promotion", live=False)
+    lock = _passing_record(lock_record, "release-promotion-lock", live=False)
+    manifest = _passing_record(manifest_record, "release-artifact-manifest", live=False)
+    artifacts = _validate_artifact_manifest_payload(
+        manifest, expected_milestone=manifest["milestone"]
+    )
+    if (
+        promotion.get("result") != "PUBLISHED"
+        or promotion.get("mutation_started") is not True
+        or lock.get("state") != "COMMITTED"
+        or lock.get("mutation_started") is not True
+        or promotion.get("lock_receipt_digest") != sha256_json(lock_record)
+    ):
+        raise ReleaseControlError("publication observation inputs are not committed")
+    target_registry = read_json(targets_path)
+    target_ids = _required_release_targets_from_registry(target_registry, manifest["milestone"])
+    if target_ids != _required_release_targets(manifest["milestone"]):
+        raise ReleaseControlError("publication observation target registry differs")
+    action_ids = [
+        row.get("target_id") for row in promotion.get("actions", []) if isinstance(row, dict)
+    ]
+    if action_ids != target_ids:
+        raise ReleaseControlError("publication observation promotion target set differs")
+    observed_artifacts: list[dict[str, Any]] = []
+    for artifact in artifacts:
+        path = manifest_path.parent / "artifacts" / artifact["path"]
+        raw = _safe_release_bytes(path)
+        if len(raw) != artifact["size"] or sha256_bytes(raw) != artifact["sha256"]:
+            raise ReleaseControlError("publication observation artifact bytes differ from manifest")
+        observed_artifacts.append(
+            {
+                "expected_digest": artifact["sha256"],
+                "name": artifact["path"],
+                "observed_digest": sha256_bytes(raw),
+                "size": len(raw),
+            }
+        )
+    targets: list[dict[str, Any]] = []
+    for target_id in target_ids:
+        native_result = {
+            "artifacts": observed_artifacts,
+            "candidate_digest": promotion["candidate_digest"],
+            "target_id": target_id,
+        }
+        targets.append(
+            {
+                "artifacts": observed_artifacts,
+                "availability": "present",
+                "immutability": "immutable",
+                "provider_receipt_digest": sha256_json(
+                    {"kind": "fixture-publication-readback", **native_result}
+                ),
+                "raw_result_digest": sha256_json(native_result),
+                "target_id": target_id,
+                "uri": "fixture://publication/" + target_id,
+            }
+        )
+    data: dict[str, Any] = {
+        "all_targets_observed": True,
+        "artifact_manifest_digest": sha256_json(manifest_record),
+        "candidate_digest": promotion["candidate_digest"],
+        "lock_receipt_digest": sha256_json(lock_record),
+        "observed_at": context.intent["started_at"],
+        "promotion_digest": sha256_json(promotion_record),
+        "targets": targets,
+    }
+    if os.environ.get("METRIPLANE_RELEASE_TEST_INTERRUPT_AFTER_PUBLICATION_READBACK") == "1":
+        raise OSError("synthetic interruption after publication readback")
+    data["observation_digest"] = sha256_json(data)
+    return make_record(
+        "release-publication-observations",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=True,
+    )
+
+
+def _validate_publication_fixture_dependencies(
+    records: Mapping[str, Mapping[str, Any]],
+    *,
+    candidate_record: Mapping[str, Any],
+    artifact_record: Mapping[str, Any],
+    promotion_record: Mapping[str, Any],
+) -> tuple[str, str, list[dict[str, Any]], list[str]]:
+    """Validate the exact synthetic dependency projection without granting live authority."""
+
+    candidate = _passing_record(candidate_record, "release-candidate-identity", live=False)
+    milestone = candidate.get("milestone")
+    if milestone not in MILESTONES:
+        raise ReleaseControlError("fixture reconciliation candidate milestone is invalid")
+    candidate_digest = _require_digest(
+        candidate.get("candidate_digest"), "fixture reconciliation candidate"
+    )
+    artifacts = _validate_artifact_manifest_payload(
+        _passing_record(artifact_record, "release-artifact-manifest", live=False),
+        expected_milestone=milestone,
+    )
+    qualification = _passing_record(records["qualification"], "release-qualification", live=False)
+    approval = _passing_record(records["approval"], "release-approval", live=False)
+    lock = _passing_record(records["lock"], "release-promotion-lock", live=False)
+    observations = _passing_record(
+        records["observations"], "release-publication-observations", live=False
+    )
+    manifest = _passing_record(records["manifest"], "release-evidence-manifest", live=False)
+    retention = _passing_record(records["retention"], "release-retention-receipts", live=False)
+    promotion = _passing_record(promotion_record, "release-promotion", live=False)
+    if (
+        candidate.get("artifact_manifest_digest") != sha256_json(artifact_record)
+        or candidate.get("artifact_set_digest")
+        != artifact_record["data"].get("artifact_set_digest")
+        or qualification.get("candidate_digest") != candidate_digest
+        or approval.get("candidate_digest") != candidate_digest
+        or approval.get("qualification_digest") != sha256_json(records["qualification"])
+        or approval.get("decision") != "APPROVED"
+        or lock.get("candidate_digest") != candidate_digest
+        or lock.get("state") != "COMMITTED"
+        or lock.get("mutation_started") is not True
+        or promotion.get("candidate_digest") != candidate_digest
+        or promotion.get("lock_receipt_digest") != sha256_json(records["lock"])
+        or promotion.get("result") != "PUBLISHED"
+        or promotion.get("mutation_started") is not True
+        or observations.get("candidate_digest") != candidate_digest
+        or observations.get("artifact_manifest_digest") != sha256_json(artifact_record)
+        or observations.get("lock_receipt_digest") != sha256_json(records["lock"])
+        or observations.get("promotion_digest") != sha256_json(promotion_record)
+        or observations.get("all_targets_observed") is not True
+        or manifest.get("candidate_digest") != candidate_digest
+        or manifest.get("phase") != "qualified-publication"
+        or retention.get("candidate_digest") != candidate_digest
+        or retention.get("phase") != "prepublication"
+        or retention.get("input_digest") != sha256_bytes(canonical_json(records["manifest"]))
+    ):
+        raise ReleaseControlError("fixture publication reconciliation dependency binding differs")
+    observation_time = _parse_utc_timestamp(
+        observations.get("observed_at"), "fixture publication observation time"
+    )
+    promotion_completed = _parse_utc_timestamp(
+        promotion.get("completed_at"), "fixture promotion completion time"
+    )
+    lock_expires = _parse_utc_timestamp(
+        lock.get("lease_expires_at"), "fixture promotion lock expiry"
+    )
+    if not (promotion_completed <= observation_time <= lock_expires):
+        raise ReleaseControlError("fixture publication observation timing differs")
+    entries = manifest.get("entries")
+    if not isinstance(entries, list):
+        raise ReleaseControlError("fixture publication evidence manifest has no entries")
+    manifested_artifacts = sorted(
+        (
+            {
+                "media_type": row.get("media_type"),
+                "path": row.get("path"),
+                "sha256": row.get("sha256"),
+                "size": row.get("size"),
+            }
+            for row in entries
+            if isinstance(row, dict) and row.get("role") == "release-artifact"
+        ),
+        key=lambda row: str(row["path"]),
+    )
+    if manifested_artifacts != artifacts:
+        raise ReleaseControlError("fixture publication manifest artifact set differs")
+    target_ids = _required_release_targets(milestone)
+    observed_targets = observations.get("targets")
+    if not isinstance(observed_targets, list):
+        raise ReleaseControlError("fixture publication observations have no targets")
+    expected = {row["path"]: (row["sha256"], row["size"]) for row in artifacts}
+    observed_ids: list[str] = []
+    for target in observed_targets:
+        if not isinstance(target, dict):
+            raise ReleaseControlError("fixture publication target is malformed")
+        rows = target.get("artifacts")
+        if (
+            target.get("availability") != "present"
+            or target.get("immutability") != "immutable"
+            or not isinstance(rows, list)
+        ):
+            raise ReleaseControlError("fixture publication target is not final")
+        actual: dict[str, tuple[object, object]] = {}
+        for row in rows:
+            if not isinstance(row, dict) or row.get("expected_digest") != row.get(
+                "observed_digest"
+            ):
+                raise ReleaseControlError("fixture publication observed bytes differ")
+            name = row.get("name")
+            if not isinstance(name, str) or name in actual:
+                raise ReleaseControlError("fixture publication artifact identity is invalid")
+            actual[name] = (row.get("observed_digest"), row.get("size"))
+        if actual != expected:
+            raise ReleaseControlError("fixture publication observed artifact set differs")
+        target_id = target.get("target_id")
+        if not isinstance(target_id, str):
+            raise ReleaseControlError("fixture publication target identity is invalid")
+        observed_ids.append(target_id)
+    if observed_ids != target_ids:
+        raise ReleaseControlError("fixture publication target set differs")
+    return candidate_digest, milestone, artifacts, target_ids
+
+
+def _build_publication_reconciliation_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    """Compose one exact closed reconciliation from the retained dependency graph."""
+
+    records = {
+        "qualification": _release_input(
+            Path(args.qualification),
+            "release-qualification",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        ),
+        "approval": _release_input(
+            Path(args.approval),
+            "release-approval",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        ),
+        "lock": _release_input(
+            Path(args.promotion_lock_receipt),
+            "release-promotion-lock",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        ),
+        "observations": _release_input(
+            Path(args.observations),
+            "release-publication-observations",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        ),
+        "manifest": _release_input(
+            Path(args.evidence_manifest),
+            "release-evidence-manifest",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        ),
+        "retention": _release_input(
+            Path(args.retention_receipts),
+            "release-retention-receipts",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        ),
+    }
+    root = context.root
+    indexed = _evidence_record_index(root, exclude=frozenset({Path(args.out).absolute()}))
+    qualification = records["qualification"]["data"]
+    candidate_digest = _require_digest(
+        qualification.get("candidate_digest"), "reconciliation candidate"
+    )
+    candidate_record = _candidate_record_for_digest(
+        indexed, candidate_digest, live=live, attestation_verifier=attestation_verifier
+    )
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    artifact_record = _resolved_evidence_record(
+        indexed,
+        candidate["artifact_manifest_digest"],
+        "release-artifact-manifest",
+        "reconciliation artifact manifest",
+        identity_kind="record_C",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    artifacts = _validate_artifact_manifest_payload(
+        artifact_record["data"], expected_milestone=candidate["milestone"]
+    )
+    observations = records["observations"]["data"]
+    target_rows = observations.get("targets")
+    if not isinstance(target_rows, list):
+        raise ReleaseControlError("publication observations have no target rows")
+    targets = [
+        {"conflict_digest": None, "exact_match": True, "target_id": row["target_id"]}
+        for row in target_rows
+        if isinstance(row, dict)
+    ]
+    promotion_digest = records["observations"]["data"].get("promotion_digest")
+    _require_digest(promotion_digest, "reconciliation promotion")
+    promotion_record = _resolved_evidence_record(
+        indexed,
+        promotion_digest,
+        "release-promotion",
+        "reconciliation promotion",
+        identity_kind="record_C",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    if not live:
+        fixture_candidate, fixture_milestone, fixture_artifacts, fixture_targets = (
+            _validate_publication_fixture_dependencies(
+                records,
+                candidate_record=candidate_record,
+                artifact_record=artifact_record,
+                promotion_record=promotion_record,
+            )
+        )
+        if (
+            fixture_candidate != candidate_digest
+            or fixture_milestone != candidate["milestone"]
+            or fixture_artifacts != artifacts
+            or fixture_targets != [row["target_id"] for row in targets]
+        ):
+            raise ReleaseControlError("fixture publication reconciliation projection differs")
+    data: dict[str, Any] = {
+        "approval_digest": sha256_json(records["approval"]),
+        "burn_required": False,
+        "candidate_digest": candidate_digest,
+        "evidence_manifest_digest": sha256_json(records["manifest"]),
+        "expected_artifacts": artifacts,
+        "lock_receipt_digest": sha256_json(records["lock"]),
+        "milestone": candidate["milestone"],
+        "observations_digest": sha256_json(records["observations"]),
+        "partial_targets": [],
+        "promotion_digest": promotion_digest,
+        "qualification_digest": sha256_json(records["qualification"]),
+        "result": "RECONCILED",
+        "staged_retention_receipts_digest": sha256_json(records["retention"]),
+        "targets": targets,
+    }
+    data["reconciliation_digest"] = sha256_json(data)
+    result = make_record(
+        "release-publication-reconciliation",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=not live,
+    )
+    if os.environ.get("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_RECONCILIATION") == "1":
+        raise OSError("synthetic interruption before publication reconciliation finalization")
+    if live:
+        validate_publication_reconciliation_record(
+            result,
+            evidence_root=root,
+            live=True,
+            attestation_verifier=attestation_verifier,
+        )
+    else:
+        validate_record(result, "release-publication-reconciliation")
+    return result
+
+
+def _postpublication_failed_stage(failed: ReleaseInvocation) -> str:
+    tool = failed.intent["tool"]
+    argv = failed.intent["argv"][1:]
+    if tool == "promote_release_candidate.py":
+        if "--execute" in argv:
+            return "promotion-execution"
+        if "--recover-abandoned-lock" in argv:
+            return "promotion-lock-recovery"
+    if tool == "collect_publication_observations.py":
+        return "publication-observations"
+    if tool == "build_publication_reconciliation.py":
+        return "publication-reconciliation"
+    raise ReleaseControlError("postpublication conflict stage owner is not implemented for " + tool)
+
+
+def _record_postpublication_conflict_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    """Bind one immutable conflict to its actual failed operation and classification."""
+
+    original_out = _command_value(context.intent["argv"][1:], "out")
+    if original_out is None:
+        raise ReleaseControlError("postpublication conflict output is missing")
+    historical_cwd = _canonical_absolute_path(
+        context.intent["environment"]["working_directory"], "conflict producer cwd"
+    )
+    historical_directory = _release_historical_path(
+        _command_value(context.intent["argv"][1:], "invocation-dir") or "", historical_cwd
+    )
+    historical_root = historical_directory.parents[2]
+    historical_out = _release_historical_path(original_out, historical_cwd)
+    if not historical_out.is_relative_to(historical_root):
+        raise ReleaseControlError("postpublication conflict output escapes its historical run")
+    output_parts = historical_out.relative_to(historical_root).parts
+    if (
+        len(output_parts) != 3
+        or output_parts[0] != "postpublication-conflicts"
+        or not output_parts[1].isdigit()
+        or int(output_parts[1]) != context.intent["sequence"]
+        or output_parts[2] != "conflict.json"
+    ):
+        raise ReleaseControlError("postpublication conflict output path is not canonical")
+    candidate_record = _release_input(
+        Path(args.candidate_identity),
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    disposition_values = [
+        (args.requires_lkg_invalidation, True, "REQUIRES_LKG_INVALIDATION"),
+        (args.no_lkg_invalidation, False, "NO_LKG_INVALIDATION"),
+    ]
+    selected = [row for row in disposition_values if row[0] is not None]
+    if len(selected) != 1 or args.no_assurance_round is not True:
+        raise ReleaseControlError("postpublication conflict disposition is not exclusive")
+    classification_path, requires_lkg_invalidation, decision = selected[0]
+    classification_record = _release_input(
+        Path(classification_path),
+        "release-protected-input",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    failed_directory = Path(args.failed_invocation_dir).absolute()
+    if failed_directory.parent.parent.parent != context.root:
+        raise ReleaseControlError("postpublication conflict failed invocation is outside its run")
+    failed = _validate_intent(failed_directory)
+    terminal = _validate_terminal(failed)
+    if terminal["status"] not in {"FAIL", "BLOCKED", "CANCELLED"}:
+        raise ReleaseControlError("postpublication conflict requires an actual failed operation")
+    if _postpublication_failed_stage(failed) != args.stage:
+        raise ReleaseControlError("postpublication conflict relabels another failed stage")
+    stage_record = None
+    stage_record_digest = None
+    if args.stage_record is not None:
+        stage_record = read_json(Path(args.stage_record))
+        validate_record(stage_record)
+        if stage_record["status"] not in {"FAIL", "BLOCKED", "CANCELLED"} or stage_record[
+            "data"
+        ].get("candidate_digest") != candidate.get("candidate_digest"):
+            raise ReleaseControlError("postpublication stage record is not the candidate failure")
+        stage_record_digest = sha256_json(stage_record)
+    terminal_digest = sha256_json(terminal)
+    subjects = [
+        {"subject": "candidate_identity", "sha256": sha256_json(candidate_record)},
+        {"subject": "failed_invocation", "sha256": terminal_digest},
+        {"subject": "failed_stage", "sha256": sha256_json({"stage": args.stage})},
+    ]
+    if stage_record_digest is not None:
+        subjects.append({"subject": "stage_record", "sha256": stage_record_digest})
+    classification = _passing_record(
+        classification_record,
+        "release-protected-input",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    classification_fields = {
+        "authority_policy_digest",
+        "authorized_role",
+        "conflicts",
+        "decision",
+        "expires_at",
+        "input_kind",
+        "issued_at",
+        "provider_event",
+        "signer_identity",
+        "signing_method",
+        "subject_digests",
+    }
+    issued = _parse_utc_timestamp(
+        classification.get("issued_at"), "impact classification issue time"
+    )
+    expires = _parse_utc_timestamp(classification.get("expires_at"), "impact classification expiry")
+    recorder_started = _parse_utc_timestamp(
+        context.intent["started_at"], "postpublication conflict recorder start"
+    )
+    if (
+        set(classification) != classification_fields
+        or classification.get("input_kind") != "impact_classification"
+        or classification.get("authorized_role") != "infrastructure_owner"
+        or classification.get("decision") != decision
+        or classification.get("subject_digests") != subjects
+        or not isinstance(classification.get("conflicts"), list)
+        or not classification["conflicts"]
+        or not (issued <= recorder_started < expires)
+    ):
+        raise ReleaseControlError("postpublication impact classification differs")
+    signer = _require_nonempty_string(
+        classification.get("signer_identity"), "impact classification signer"
+    )
+    signers = _validated_record_signers(
+        classification_record, live=live, attestation_verifier=attestation_verifier
+    )
+    if not any(actor == signer for _provider, actor in signers):
+        raise ReleaseControlError("postpublication impact classification lacks its signer")
+    if os.environ.get("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_CONFLICT_FINALIZATION") == "1":
+        raise OSError("synthetic interruption before conflict finalization")
+    data: dict[str, Any] = {
+        "available_inputs": sorted(
+            [dict(row) for row in context.intent["inputs"]], key=lambda row: row["path"]
+        ),
+        "candidate_digest": candidate["candidate_digest"],
+        "candidate_identity_digest": sha256_json(candidate_record),
+        "classification_digest": sha256_json(classification_record),
+        "conflict_digest": "",
+        "failed_invocation_digest": terminal_digest,
+        "failed_invocation_id": failed.intent["invocation_id"],
+        "failed_tool": failed.intent["tool"],
+        "failure_exit_code": terminal["data"]["exit_code"],
+        "failure_status": terminal["status"],
+        "invocation_root_locator": "invocations",
+        "lkg_disposition": decision,
+        "no_assurance_round": True,
+        "producer_intent_digest": sha256_json(context.intent),
+        "requires_lkg_invalidation": requires_lkg_invalidation,
+        "stage": args.stage,
+        "stage_record_digest": stage_record_digest,
+    }
+    unsigned = dict(data)
+    del unsigned["conflict_digest"]
+    data["conflict_digest"] = sha256_json(unsigned)
+    return make_record(
+        "release-postpublication-conflict",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=not live,
+        status="FAIL",
+    )
+
+
+def _build_postpublication_conflict_manifest_operation(
+    args: argparse.Namespace,
+    context: ReleaseInvocation,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> dict[str, Any]:
+    """Seal one conflict and its already-completed producer/failure journals."""
+
+    root = Path(args.candidate_dir).absolute()
+    if (
+        args.phase != "postpublication-conflict"
+        or root != context.root
+        or args.no_assurance_round is not True
+        or args.exclude_current_invocation is not True
+        or args.require_lkg_disposition_and_applicable_invalidation_receipt is not True
+        or args.additional_invocation_root is not None
+        or Path(args.invocation_root).absolute() != root / "invocations"
+    ):
+        raise ReleaseControlError("postpublication conflict manifest boundary differs")
+    selected = args.input if isinstance(args.input, list) else []
+    if len(selected) != 1:
+        raise ReleaseControlError("postpublication conflict manifest requires one conflict input")
+    conflict_path = Path(selected[0]).absolute()
+    if (
+        not conflict_path.is_relative_to(root / "postpublication-conflicts")
+        or conflict_path.name != "conflict.json"
+        or len(conflict_path.relative_to(root).parts) != 3
+    ):
+        raise ReleaseControlError("postpublication conflict manifest input is not canonical")
+    historical_cwd = Path(context.intent["environment"]["working_directory"])
+    historical_directory = _release_historical_path(
+        _command_value(context.intent["argv"][1:], "invocation-dir") or "", historical_cwd
+    )
+    historical_root = historical_directory.parents[2]
+    expected_out = conflict_path.parent / "evidence-manifest.json"
+    original_out = _command_value(context.intent["argv"][1:], "out")
+    if (
+        original_out is None
+        or not _release_historical_path(original_out, historical_cwd).is_relative_to(
+            historical_root
+        )
+        or root
+        / _release_historical_path(original_out, historical_cwd).relative_to(historical_root)
+        != expected_out
+    ):
+        raise ReleaseControlError("postpublication conflict manifest output is not canonical")
+
+    candidate_path = root / "candidate-identity.json"
+    candidate_record = _release_input(
+        candidate_path,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    conflict_record = read_json(conflict_path)
+    validate_record(conflict_record, "release-postpublication-conflict")
+    conflict_data = conflict_record["data"]
+    if (
+        conflict_record["status"] != "FAIL"
+        or conflict_record["synthetic"] is not (not live)
+        or conflict_data["candidate_identity_digest"] != sha256_json(candidate_record)
+        or conflict_data["candidate_digest"] != candidate["candidate_digest"]
+        or conflict_data["no_assurance_round"] is not True
+    ):
+        raise ReleaseControlError(
+            "postpublication conflict manifest changes its candidate/conflict"
+        )
+
+    captured: dict[str, dict[str, str]] = {}
+    for row in context.intent["inputs"]:
+        old = _canonical_absolute_path(row["path"], "manifest historical input")
+        if not old.is_relative_to(historical_root):
+            raise ReleaseControlError("manifest historical input escapes its candidate")
+        current = root / old.relative_to(historical_root)
+        raw = _safe_release_bytes(current)
+        if sha256_bytes(raw) != row["sha256"] or current == expected_out:
+            raise ReleaseControlError("manifest reserved input bytes changed")
+        captured[current.relative_to(root).as_posix()] = {
+            "schema_id": row["schema_id"],
+            "sha256": row["sha256"],
+        }
+    required_inputs = {}
+    for row in conflict_data["available_inputs"]:
+        old = _canonical_absolute_path(row["path"], "conflict available input")
+        if not old.is_relative_to(historical_root):
+            raise ReleaseControlError("conflict available input escapes its historical run")
+        required_inputs[old.relative_to(historical_root).as_posix()] = row["sha256"]
+    if any(
+        name not in captured or captured[name]["sha256"] != digest
+        for name, digest in required_inputs.items()
+    ):
+        raise ReleaseControlError("manifest omits or changes a conflict available input")
+    for required in (candidate_path, conflict_path):
+        name = required.relative_to(root).as_posix()
+        if name not in captured:
+            raise ReleaseControlError("manifest omits its candidate or conflict input")
+
+    invalidation = conflict_path.parent / "lkg-invalidation-receipt.json"
+    invalidation_name = invalidation.relative_to(root).as_posix()
+    if conflict_data["requires_lkg_invalidation"] is True:
+        if invalidation_name not in captured:
+            raise ReleaseControlError("conflict manifest lacks required LKG invalidation receipt")
+        receipt = read_json(invalidation)
+        invalidation_data = _passing_record(
+            receipt,
+            "release-last-known-good",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
+        if (
+            invalidation_data.get("state") != "INVALIDATED"
+            or invalidation_data.get("candidate_digest") != candidate["candidate_digest"]
+        ):
+            raise ReleaseControlError("conflict manifest LKG invalidation differs")
+    elif conflict_data["lkg_disposition"] != "NO_LKG_INVALIDATION" or invalidation_name in captured:
+        raise ReleaseControlError("conflict manifest has an inapplicable LKG invalidation receipt")
+
+    journals: set[str] = set()
+    conflict_journal_seen = False
+    failed_journal_seen = False
+    started = _parse_utc_timestamp(context.intent["started_at"], "manifest start")
+    for name in sorted(captured):
+        path = root / name
+        if path.name != "invocation.json" or not path.is_relative_to(root / "invocations"):
+            continue
+        previous = _validate_intent(path.parent)
+        terminal = _validate_terminal(previous)
+        if (
+            _parse_utc_timestamp(terminal["data"]["completed_at"], "manifest prior terminal")
+            > started
+        ):
+            raise ReleaseControlError("manifest adopts a journal completed after it started")
+        digest = sha256_json(terminal)
+        journals.add(digest)
+        conflict_journal_seen |= (
+            previous.intent["invocation_id"] == conflict_record["invocation_id"]
+            and previous.intent["sequence"] == conflict_record["sequence"]
+        )
+        failed_journal_seen |= digest == conflict_data["failed_invocation_digest"]
+    if not conflict_journal_seen or not failed_journal_seen:
+        raise ReleaseControlError("manifest lacks the conflict producer or failed journal")
+
+    entries = []
+    for name, row in sorted(captured.items()):
+        raw = _safe_release_bytes(root / name)
+        role = (
+            "postpublication-conflict"
+            if root / name == conflict_path
+            else "candidate-identity"
+            if root / name == candidate_path
+            else "applicable-lkg-invalidation"
+            if name == invalidation_name
+            else "invocation-journal"
+            if (root / name).is_relative_to(root / "invocations")
+            else "original-input"
+        )
+        entries.append(
+            {
+                "media_type": (
+                    "application/json"
+                    if row["schema_id"].startswith("metriplane.")
+                    else "application/octet-stream"
+                ),
+                "path": name,
+                "role": role,
+                "sha256": row["sha256"],
+                "size": len(raw),
+            }
+        )
+    data: dict[str, Any] = {
+        "candidate_digest": candidate["candidate_digest"],
+        "entries": entries,
+        "invocation_journal_digests": sorted(journals),
+        "manifest_digest": "",
+        "phase": "postpublication-conflict",
+        "scope_id": candidate["candidate_digest"],
+        "scope_kind": "release-candidate",
+        "producer_intent_digest": sha256_json(context.intent),
+        "invocation_root_locator": "invocations",
+    }
+    data["manifest_digest"] = sha256_json(
+        {key: data[key] for key in ("entries", "invocation_journal_digests")}
+    )
+    _release_evidence_manifest_content(data)
+    if os.environ.get("METRIPLANE_RELEASE_TEST_INTERRUPT_BEFORE_CONFLICT_MANIFEST") == "1":
+        raise OSError("synthetic interruption before conflict manifest finalization")
+    return make_record(
+        "release-evidence-manifest",
+        data,
+        invocation_id=context.intent["invocation_id"],
+        sequence=context.intent["sequence"],
+        synthetic=not live,
+    )
+
+
+def _validate_postpublication_conflict_manifest_record(
+    record: Mapping[str, Any],
+    record_path: Path,
+    *,
+    live: bool,
+    attestation_verifier: ProviderAttestationVerifier | None,
+) -> None:
+    manifest = _passing_record(
+        record,
+        "release-evidence-manifest",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    entries = _release_evidence_manifest_content(manifest)
+    path = record_path.absolute()
+    if (
+        path.name != "evidence-manifest.json"
+        or path.parent.parent.name != "postpublication-conflicts"
+        or manifest["phase"] != "postpublication-conflict"
+        or manifest["scope_kind"] != "release-candidate"
+    ):
+        raise ReleaseControlError("postpublication conflict manifest location or scope differs")
+    root = path.parents[2]
+    producer_stage = root / "invocations/build-release-evidence-manifest"
+    producer_matches = []
+    for directory in _journal_sequences(producer_stage):
+        original = _validate_intent(directory)
+        if (
+            original.intent["invocation_id"] == record["invocation_id"]
+            and original.intent["sequence"] == record["sequence"]
+            and sha256_json(original.intent) == manifest["producer_intent_digest"]
+        ):
+            producer_matches.append(original)
+    if len(producer_matches) != 1:
+        raise ReleaseControlError("postpublication conflict manifest producer is ambiguous")
+    producer = producer_matches[0]
+    producer_cwd = _canonical_absolute_path(
+        producer.intent["environment"]["working_directory"], "manifest producer cwd"
+    )
+    producer_arguments = _release_original_arguments(
+        producer.intent["tool"], producer.intent["argv"]
+    )
+    historical_root = _release_historical_path(
+        producer_arguments["invocation-dir"], producer_cwd
+    ).parents[2]
+    observed_journals = set()
+    role_paths: dict[str, list[Path]] = {}
+    for entry in entries:
+        member = root / _release_relative_suffix(entry["path"], "conflict manifest member")
+        if not member.is_relative_to(root):
+            raise ReleaseControlError("conflict manifest member escapes its candidate")
+        raw = _safe_release_bytes(member)
+        if len(raw) != entry["size"] or sha256_bytes(raw) != entry["sha256"]:
+            raise ReleaseControlError("conflict manifest member bytes differ")
+        role_paths.setdefault(entry["role"], []).append(member)
+        if entry["role"] == "invocation-journal" and member.name == "invocation.json":
+            terminal = _source_json(raw, "conflict manifest terminal")
+            validate_record(terminal, "release-stage-invocation")
+            observed_journals.add(sha256_json(terminal))
+    if observed_journals != set(manifest["invocation_journal_digests"]):
+        raise ReleaseControlError("conflict manifest journal inventory differs")
+    conflicts = role_paths.get("postpublication-conflict", [])
+    candidates = role_paths.get("candidate-identity", [])
+    if len(conflicts) != 1 or len(candidates) != 1:
+        raise ReleaseControlError("conflict manifest lacks one candidate and conflict")
+    conflict_record = read_json(conflicts[0])
+    validate_record(conflict_record, "release-postpublication-conflict")
+    conflict = conflict_record["data"]
+    candidate_record = _release_input(
+        candidates[0],
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    candidate = _passing_record(
+        candidate_record,
+        "release-candidate-identity",
+        live=live,
+        attestation_verifier=attestation_verifier,
+    )
+    available = {}
+    for row in conflict["available_inputs"]:
+        original_input = _canonical_absolute_path(row["path"], "conflict available input")
+        if not original_input.is_relative_to(historical_root):
+            raise ReleaseControlError("conflict available input escapes its historical candidate")
+        available[original_input.relative_to(historical_root).as_posix()] = row["sha256"]
+    manifested = {row["path"]: row["sha256"] for row in entries}
+    if (
+        conflict_record["status"] != "FAIL"
+        or conflict_record["synthetic"] is not (not live)
+        or conflict["candidate_identity_digest"] != sha256_json(candidate_record)
+        or conflict["candidate_digest"] != candidate["candidate_digest"]
+        or manifest["candidate_digest"] != candidate["candidate_digest"]
+        or manifest["scope_id"] != candidate["candidate_digest"]
+        or any(manifested.get(name) != digest for name, digest in available.items())
+        or conflict["failed_invocation_digest"] not in observed_journals
+    ):
+        raise ReleaseControlError("conflict manifest semantic linkage differs")
+    invalidations = role_paths.get("applicable-lkg-invalidation", [])
+    if conflict["requires_lkg_invalidation"] is True:
+        if len(invalidations) != 1:
+            raise ReleaseControlError("conflict manifest lacks one LKG invalidation")
+        invalidation = _passing_record(
+            read_json(invalidations[0]),
+            "release-last-known-good",
+            live=live,
+            attestation_verifier=attestation_verifier,
+        )
+        if (
+            invalidation.get("state") != "INVALIDATED"
+            or invalidation.get("candidate_digest") != candidate["candidate_digest"]
+        ):
+            raise ReleaseControlError("conflict manifest LKG invalidation differs")
+    elif invalidations or conflict["lkg_disposition"] != "NO_LKG_INVALIDATION":
+        raise ReleaseControlError("conflict manifest has an inapplicable LKG invalidation")
+    validate_release_producer_journal(record, path, producer="build_release_evidence_manifest.py")
 
 
 def validate_publication_reconciliation_record(
@@ -4536,7 +5422,11 @@ def validate_publication_reconciliation_record(
         "promotion_digest",
     ):
         _require_digest(observations[field], f"publication reconciliation observation {field}")
-    _parse_utc_timestamp(observations["observed_at"], "publication observation time")
+    observation_time = _parse_utc_timestamp(
+        observations["observed_at"], "publication observation time"
+    )
+    if observation_time < promotion_completed_at or observation_time > lock_expires_at:
+        raise ReleaseControlError("publication observation timing is outside the committed lease")
     staged_subject = _release_publication_retention_subject(
         retention_record=dependencies["staged_retention_receipts_digest"],
         retention_digest=data["staged_retention_receipts_digest"],
@@ -9008,6 +9898,156 @@ def _validate_bound_invocation(
                 ) != active.get("data", {}).get("operation_id"):
                     raise ReleaseControlError("promotion recovery output is not cross-bound")
         return
+    if tool in {
+        "collect_publication_observations.py",
+        "build_publication_reconciliation.py",
+        "record_postpublication_conflict.py",
+    }:
+        historical_cwd = Path(context.intent["environment"]["working_directory"])
+        argv = context.intent["argv"][1:]
+        invocation_value = _command_value(argv, "invocation-dir")
+        if invocation_value is None:
+            raise ReleaseControlError("publication invocation directory is missing")
+        historical_directory = _release_historical_path(invocation_value, historical_cwd)
+        historical_root = historical_directory.parents[2]
+        for row in context.intent["inputs"]:
+            historical_input_path = _canonical_absolute_path(
+                row["path"], "publication historical input"
+            )
+            if not historical_input_path.is_relative_to(historical_root):
+                raise ReleaseControlError("publication historical input escapes its run")
+            current = context.root / historical_input_path.relative_to(historical_root)
+            if sha256_bytes(_safe_release_bytes(current)) != row["sha256"]:
+                raise ReleaseControlError("publication reserved input bytes changed")
+        if len(context.intent["planned_outputs"]) != 1:
+            raise ReleaseControlError("publication command output plan is not singular")
+        planned = context.intent["planned_outputs"][0]
+        expected_type = {
+            "collect_publication_observations.py": "release-publication-observations",
+            "build_publication_reconciliation.py": "release-publication-reconciliation",
+            "record_postpublication_conflict.py": "release-postpublication-conflict",
+        }[tool]
+        if planned["schema_id"] != "metriplane." + expected_type + ".v1":
+            raise ReleaseControlError("publication output plan type differs")
+        if outputs is None:
+            return
+        installed_root = context.root if output_root is None else output_root
+        output_path = installed_root / planned["path"]
+        expected_outputs = [{**planned, "sha256": sha256_bytes(_safe_release_bytes(output_path))}]
+        if outputs != expected_outputs:
+            raise ReleaseControlError("publication terminal output bytes changed")
+        parser = _build_tool_parser(tool, TOOL_CONTRACTS[tool])
+        replay_args = parser.parse_args(argv)
+        path_flags = {
+            "collect_publication_observations.py": (
+                "promotion",
+                "promotion-lock-receipt",
+                "artifact-manifest",
+                "targets",
+            ),
+            "build_publication_reconciliation.py": (
+                "qualification",
+                "approval",
+                "promotion-lock-receipt",
+                "observations",
+                "evidence-manifest",
+                "retention-receipts",
+            ),
+            "record_postpublication_conflict.py": (
+                "candidate-identity",
+                "failed-invocation-dir",
+                "requires-lkg-invalidation",
+                "no-lkg-invalidation",
+                "stage-record",
+            ),
+        }[tool]
+        for flag in path_flags:
+            argument_name = _argument_destination(flag)
+            value = getattr(replay_args, argument_name)
+            if value is None:
+                continue
+            old = _release_historical_path(value, historical_cwd)
+            if not old.is_relative_to(historical_root):
+                raise ReleaseControlError("publication replay input escapes its run")
+            setattr(
+                replay_args,
+                argument_name,
+                str(context.root / old.relative_to(historical_root)),
+            )
+        replay_args.invocation_dir = str(context.directory)
+        replay_args.out = str(output_path)
+        publication_live = context.intent["environment"]["fixture_mode"] != "1"
+        if tool == "collect_publication_observations.py":
+            expected_record = _collect_publication_observations_operation(
+                replay_args, context, live=publication_live
+            )
+        elif tool == "build_publication_reconciliation.py":
+            expected_record = _build_publication_reconciliation_operation(
+                replay_args,
+                context,
+                live=publication_live,
+                attestation_verifier=None,
+            )
+        else:
+            expected_record = _record_postpublication_conflict_operation(
+                replay_args,
+                context,
+                live=publication_live,
+                attestation_verifier=None,
+            )
+        if read_json(output_path) != expected_record:
+            raise ReleaseControlError("publication output semantics differ from exact replay")
+        return
+    if tool == "build_release_evidence_manifest.py":
+        argv = context.intent["argv"][1:]
+        if _command_value(argv, "phase") != "postpublication-conflict":
+            return
+        historical_cwd = Path(context.intent["environment"]["working_directory"])
+        historical_invocation = _release_historical_path(
+            _command_value(argv, "invocation-dir") or "", historical_cwd
+        )
+        historical_root = historical_invocation.parents[2]
+        for row in context.intent["inputs"]:
+            old = _canonical_absolute_path(row["path"], "manifest historical input")
+            if not old.is_relative_to(historical_root):
+                raise ReleaseControlError("manifest historical input escapes its run")
+            current = context.root / old.relative_to(historical_root)
+            if sha256_bytes(_safe_release_bytes(current)) != row["sha256"]:
+                raise ReleaseControlError("manifest reserved input bytes changed")
+        if len(context.intent["planned_outputs"]) != 1:
+            raise ReleaseControlError("manifest output plan is not singular")
+        planned = context.intent["planned_outputs"][0]
+        if planned["schema_id"] != "metriplane.release-evidence-manifest.v1":
+            raise ReleaseControlError("manifest output plan type differs")
+        if outputs is None:
+            return
+        installed_root = context.root if output_root is None else output_root
+        output_path = installed_root / planned["path"]
+        if outputs != [{**planned, "sha256": sha256_bytes(_safe_release_bytes(output_path))}]:
+            raise ReleaseControlError("manifest terminal output bytes changed")
+        parser = _build_tool_parser(tool, TOOL_CONTRACTS[tool])
+        replay = parser.parse_args(argv)
+        for field in ("candidate_dir", "invocation_root"):
+            old = _release_historical_path(getattr(replay, field), historical_cwd)
+            setattr(replay, field, str(context.root / old.relative_to(historical_root)))
+        replay.input = [
+            str(
+                context.root
+                / _release_historical_path(value, historical_cwd).relative_to(historical_root)
+            )
+            for value in replay.input
+        ]
+        replay.invocation_dir = str(context.directory)
+        replay.out = str(output_path)
+        expected = _build_postpublication_conflict_manifest_operation(
+            replay,
+            context,
+            live=context.intent["environment"]["fixture_mode"] != "1",
+            attestation_verifier=None,
+        )
+        if read_json(output_path) != expected:
+            raise ReleaseControlError("manifest output semantics differ from exact replay")
+        return
     if tool not in _INVOCATION_STAGES:
         return
     keyring_binding = (
@@ -9370,7 +10410,16 @@ def validate_release_producer_journal(
     if data.get("invocation_root_locator") != "invocations":
         raise ReleaseControlError("producer invocation-root locator is missing or unsafe")
     _require_digest(data.get("producer_intent_digest"), "producer intent")
-    root = record_path.absolute().parent
+    absolute_record = record_path.absolute()
+    root = absolute_record.parent
+    if absolute_record.parent.parent.name == "postpublication-conflicts" and (
+        record.get("record_type") == "release-postpublication-conflict"
+        or (
+            record.get("record_type") == "release-evidence-manifest"
+            and data.get("phase") == "postpublication-conflict"
+        )
+    ):
+        root = absolute_record.parents[2]
     gate_root = None
     preflight_root = None
     gate_readbacks: list[_ReleaseGateJournalReadback] = []
@@ -10064,7 +11113,8 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
         "milestone run-id stage=target-burn,index-recovery sequence "
         "release-tag candidate-id-not-resolved index-backend expected-head operation-id out",
         "entry-manifest entry-receipts scope-kind=release_candidate,evaluation_candidate "
-        "release-tag candidate-id stage=qualification-attempt,index-recovery,pointer-transition "
+        "release-tag candidate-id stage=qualification-attempt,index-recovery,pointer-transition,"
+        "postpublication-conflict "
         "sequence "
         "index-backend expected-head operation-id out",
         "entry-manifest entry-receipts scope-kind=release_candidate release-tag candidate-id "
@@ -10096,6 +11146,7 @@ TOOL_CONTRACTS: Final[Mapping[str, ToolContract]] = {
                 "qualification-attempt",
                 "index-recovery",
                 "pointer-transition",
+                "postpublication-conflict",
                 "release-task-finalizing",
                 "release-completion",
             ),
@@ -11815,6 +12866,8 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
                 "finalize_release_attempt_cells.py",
                 "aggregate_release_attempt.py",
                 "build_release_qualification.py",
+                "record_postpublication_conflict.py",
+                "build_release_evidence_manifest.py",
             } and Path(relative).parent != Path("."):
                 raise ReleaseControlError(
                     "canonical release record must be directly in its run root"
@@ -12099,6 +13152,46 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
             write_immutable_json(Path(args.out), result)
             print(canonical_json(result).decode("utf-8"))
             return 0
+        if name == "collect_publication_observations.py":
+            result = _collect_publication_observations_operation(
+                args, context, live=not fixture_mode
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "build_publication_reconciliation.py":
+            result = _build_publication_reconciliation_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if name == "record_postpublication_conflict.py":
+            result = _record_postpublication_conflict_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
+        if (
+            name == "build_release_evidence_manifest.py"
+            and args.phase == "postpublication-conflict"
+        ):
+            result = _build_postpublication_conflict_manifest_operation(
+                args,
+                context,
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            write_immutable_json(Path(args.out), result)
+            print(canonical_json(result).decode("utf-8"))
+            return 0
         if name == "validate_release_artifact_manifest.py":
             result = read_json(Path(args.record))
             validate_release_artifact_files(
@@ -12153,6 +13246,23 @@ def _tool_operation(tool: str, argv: Sequence[str], context: ReleaseInvocation) 
                     args.attempt_store_readback
                 ),
             )
+        elif name == "validate_release_evidence_manifest.py":
+            record_path = Path(args.record).absolute()
+            result = read_json(record_path)
+            manifest = _passing_record(
+                result,
+                "release-evidence-manifest",
+                live=not fixture_mode,
+                attestation_verifier=attestation_verifier,
+            )
+            _release_evidence_manifest_content(manifest)
+            if args.require_lkg_disposition_and_applicable_invalidation_receipt:
+                _validate_postpublication_conflict_manifest_record(
+                    result,
+                    record_path,
+                    live=not fixture_mode,
+                    attestation_verifier=attestation_verifier,
+                )
         elif name == "validate_release_gate_instance.py":
             result = read_json(Path(args.record))
             validate_release_gate_instance_record(
@@ -12254,6 +13364,20 @@ def _command_value(argv: Sequence[str], flag: str) -> str | None:
     if len(values) > 1 or any(not value.strip() for value in values):
         raise ReleaseControlError("duplicate or empty --" + flag)
     return values[0] if values else None
+
+
+def _command_repeatable_values(argv: Sequence[str], flag: str) -> list[str]:
+    values = []
+    for index, argument in enumerate(argv):
+        if argument == "--" + flag:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+                raise ReleaseControlError("missing --" + flag + " value")
+            values.append(argv[index + 1])
+        elif argument.startswith("--" + flag + "="):
+            values.append(argument.split("=", 1)[1])
+    if any(not value.strip() for value in values):
+        raise ReleaseControlError("empty --" + flag)
+    return values
 
 
 def _collect_staged_outputs(context: ReleaseInvocation) -> list[dict[str, str]]:
@@ -12740,7 +13864,22 @@ def _install_release_outputs(
             if sha256_bytes(_safe_release_bytes(source)) != row["sha256"]:
                 raise ReleaseControlError("staged bytes changed before installation")
             source.chmod(0o400)
-            os.link(source, destination, follow_symlinks=False)
+            source_parent_fd = os.open(source.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            destination_parent_fd = os.open(
+                destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            )
+            try:
+                _rename_candidate_exclusive(
+                    source_parent_fd,
+                    source.name,
+                    destination_parent_fd,
+                    destination.name,
+                )
+                os.fsync(source_parent_fd)
+                os.fsync(destination_parent_fd)
+            finally:
+                os.close(source_parent_fd)
+                os.close(destination_parent_fd)
             installed.append((source, destination))
         descriptor = os.open(context.root, os.O_RDONLY)
         try:
@@ -12750,14 +13889,26 @@ def _install_release_outputs(
     except BaseException:
         for source, destination in reversed(installed):
             try:
-                origin_stat = source.stat()
-                current_stat = destination.stat(follow_symlinks=False)
-                if (origin_stat.st_dev, origin_stat.st_ino) == (
-                    current_stat.st_dev,
-                    current_stat.st_ino,
-                ):
-                    destination.unlink()
-            except OSError:
+                if destination.exists() and not source.exists():
+                    source_parent_fd = os.open(
+                        source.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                    )
+                    destination_parent_fd = os.open(
+                        destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                    )
+                    try:
+                        _rename_candidate_exclusive(
+                            destination_parent_fd,
+                            destination.name,
+                            source_parent_fd,
+                            source.name,
+                        )
+                        os.fsync(destination_parent_fd)
+                        os.fsync(source_parent_fd)
+                    finally:
+                        os.close(source_parent_fd)
+                        os.close(destination_parent_fd)
+            except (OSError, ReleaseControlError):
                 pass
         for path in reversed(created_directories):
             try:
@@ -13253,6 +14404,142 @@ def run_release_command(
                         (root / "targets.json", "metriplane.release-targets.v1"),
                     ]
                 )
+            elif tool == "collect_publication_observations.py":
+                for flag, kind in (
+                    ("promotion", "release-promotion"),
+                    ("promotion-lock-receipt", "release-promotion-lock"),
+                    ("artifact-manifest", "release-artifact-manifest"),
+                    ("targets", "release-targets"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+                manifest_value = _command_value(argv, "artifact-manifest")
+                if manifest_value is not None:
+                    manifest_path = Path(manifest_value).absolute()
+                    manifest = read_json(manifest_path)
+                    for row in _validate_artifact_manifest_payload(
+                        manifest["data"], expected_milestone=manifest["data"]["milestone"]
+                    ):
+                        inputs.append(
+                            (
+                                manifest_path.parent / "artifacts" / row["path"],
+                                row["media_type"],
+                            )
+                        )
+            elif tool == "build_publication_reconciliation.py":
+                for flag, kind in (
+                    ("qualification", "release-qualification"),
+                    ("approval", "release-approval"),
+                    ("promotion-lock-receipt", "release-promotion-lock"),
+                    ("observations", "release-publication-observations"),
+                    ("evidence-manifest", "release-evidence-manifest"),
+                    ("retention-receipts", "release-retention-receipts"),
+                ):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append((Path(value).absolute(), "metriplane." + kind + ".v1"))
+            elif tool == "record_postpublication_conflict.py":
+                candidate_value = _command_value(argv, "candidate-identity")
+                if candidate_value is not None:
+                    inputs.append(
+                        (
+                            Path(candidate_value).absolute(),
+                            "metriplane.release-candidate-identity.v1",
+                        )
+                    )
+                for flag in ("requires-lkg-invalidation", "no-lkg-invalidation"):
+                    value = _command_value(argv, flag)
+                    if value is not None:
+                        inputs.append(
+                            (Path(value).absolute(), "metriplane.release-protected-input.v1")
+                        )
+                failed_value = _command_value(argv, "failed-invocation-dir")
+                if failed_value is not None:
+                    failed_directory = Path(failed_value).absolute()
+                    for name, kind in (
+                        ("intent.json", "release-invocation-intent"),
+                        ("invocation.json", "release-invocation-journal"),
+                        ("stdout", "release-invocation-stdout"),
+                        ("stderr", "release-invocation-stderr"),
+                        ("partial-files.json", "release-partial-file-inventory"),
+                    ):
+                        path = failed_directory / name
+                        if path.exists():
+                            inputs.append((path, "metriplane." + kind + ".v1"))
+                stage_record_value = _command_value(argv, "stage-record")
+                if stage_record_value is not None:
+                    inputs.append(
+                        (Path(stage_record_value).absolute(), "metriplane.release-record.v1")
+                    )
+            elif (
+                tool == "build_release_evidence_manifest.py"
+                and _command_value(argv, "phase") == "postpublication-conflict"
+            ):
+                candidate_value = _command_value(argv, "candidate-dir")
+                invocation_value = _command_value(argv, "invocation-root")
+                selected = _command_repeatable_values(argv, "input")
+                if candidate_value is None or invocation_value is None or len(selected) != 1:
+                    raise ReleaseControlError("postpublication manifest inputs are incomplete")
+                candidate_root = Path(candidate_value).absolute()
+                invocation_root = Path(invocation_value).absolute()
+                conflict_path = Path(selected[0]).absolute()
+                inputs.extend(
+                    [
+                        (
+                            candidate_root / "candidate-identity.json",
+                            "metriplane.release-candidate-identity.v1",
+                        ),
+                        (conflict_path, "metriplane.release-postpublication-conflict.v1"),
+                    ]
+                )
+                conflict_record = read_json(conflict_path)
+                validate_record(conflict_record, "release-postpublication-conflict")
+                available = conflict_record.get("data", {}).get("available_inputs")
+                if not isinstance(available, list):
+                    raise ReleaseControlError(
+                        "postpublication conflict available inputs are missing"
+                    )
+                for row in available:
+                    if not isinstance(row, dict) or set(row) != {"path", "schema_id", "sha256"}:
+                        raise ReleaseControlError(
+                            "postpublication conflict available input is malformed"
+                        )
+                    path = Path(row["path"]).absolute()
+                    if not path.is_relative_to(candidate_root):
+                        raise ReleaseControlError(
+                            "postpublication conflict available input escapes"
+                        )
+                    inputs.append((path, row["schema_id"]))
+                invalidation = conflict_path.parent / "lkg-invalidation-receipt.json"
+                if invalidation.exists():
+                    inputs.append((invalidation, "metriplane.release-last-known-good.v1"))
+                journal_types = {
+                    "intent.json": "metriplane.release-invocation-intent.v1",
+                    "invocation.json": "metriplane.release-stage-invocation.v1",
+                    "worker-result.json": "metriplane.release-worker-result.v1",
+                    "partial-files.json": "metriplane.release-partial-files.v1",
+                }
+                if not invocation_root.is_dir() or invocation_root.is_symlink():
+                    raise ReleaseControlError("postpublication manifest invocation root is unsafe")
+                already = {path for path, _kind in inputs}
+                for path in sorted(invocation_root.rglob("*")):
+                    if (
+                        path.is_file()
+                        and not path.is_symlink()
+                        and not path.is_relative_to(directory)
+                        and path not in already
+                    ):
+                        inputs.append(
+                            (path, journal_types.get(path.name, "application/octet-stream"))
+                        )
+                        already.add(path)
+                unique: dict[Path, str] = {}
+                for path, kind in inputs:
+                    if path in unique and unique[path] != kind:
+                        raise ReleaseControlError("postpublication manifest input type conflicts")
+                    unique[path] = kind
+                inputs = sorted(unique.items(), key=lambda row: str(row[0]))
             elif tool == "promote_release_candidate.py" and "--recover-abandoned-lock" in argv:
                 for flag, kind in (
                     ("active-lock-record", "release-promotion-lock"),
@@ -13670,6 +14957,8 @@ def run_release_command(
                         "finalize_release_attempt_cells.py",
                         "aggregate_release_attempt.py",
                         "build_release_qualification.py",
+                        "record_postpublication_conflict.py",
+                        "build_release_evidence_manifest.py",
                     }:
                         raise ReleaseControlError(
                             "canonical record must be directly in its invocation run root"
@@ -26725,6 +28014,7 @@ def _release_fixture_native_original_inputs(
         "index-recovery",
         "qualification-attempt",
         "pointer-transition",
+        "postpublication-conflict",
     }:
         raise ReleaseControlError(
             "fixture task-state commit native policy remains separately unimplemented"
@@ -28033,6 +29323,7 @@ def _release_index_update_subject_content(
         ("release_staging", "target-burn"),
         ("release_staging", "staging-failure"),
         ("release_candidate", "qualification-attempt"),
+        ("release_candidate", "postpublication-conflict"),
     }:
         raise ReleaseControlError("index subject has no existing content owner")
 
@@ -28057,7 +29348,11 @@ def _release_index_update_subject_content(
         return raw, actual
 
     entries = _release_evidence_manifest_content(manifest["data"])
-    phase = purpose[1] if purpose[0] == "release_staging" else "attempt"
+    phase = (
+        purpose[1]
+        if purpose[0] == "release_staging" or purpose[1] == "postpublication-conflict"
+        else "attempt"
+    )
     if manifest["data"]["phase"] != phase:
         raise ReleaseControlError("original index manifest has a different phase")
     _validate_retention_payload(
@@ -28112,6 +29407,18 @@ def _release_index_update_subject_content(
             raise ReleaseControlError(
                 "original target burn does not require this selected index entry"
             )
+    elif purpose == ("release_candidate", "postpublication-conflict"):
+        conflict = manifested(subject_path, subject_record, "release-postpublication-conflict")[
+            "data"
+        ]
+        if (
+            subject_record["status"] != "FAIL"
+            or conflict.get("candidate_digest") != scope["candidate_id"]
+            or conflict.get("no_assurance_round") is not True
+            or conflict.get("lkg_disposition")
+            not in {"NO_LKG_INVALIDATION", "REQUIRES_LKG_INVALIDATION"}
+        ):
+            raise ReleaseControlError("original postpublication conflict differs from index scope")
     else:
         attempt_id = _require_nonempty_string(
             expected_attempt_id, "original logical attempt identity"
@@ -29074,9 +30381,25 @@ def _release_fixture_seed_prepare(
             outputs.append((row["paths"]["response"], "application/octet-stream"))
     outputs.extend((name, "application/octet-stream") for name, _ in artifacts)
     primary = _release_historical_path(arguments["out"], working_directory)
-    if primary.parent != captured.root:
+    if not primary.is_relative_to(captured.root):
+        raise ReleaseControlError("fixture primary output escapes its original run root")
+    primary_name = primary.relative_to(captured.root).as_posix()
+    nested_postpublication = (
+        tool == "retain_release_evidence.py"
+        and arguments.get("phase") == "postpublication-conflict"
+        and primary.name == "retention-receipts.json"
+        and primary.parent.name.isdigit()
+        and primary.parent.parent == captured.root / "postpublication-conflicts"
+    ) or (
+        tool == "update_release_attempt_index.py"
+        and arguments.get("stage") == "postpublication-conflict"
+        and primary.name == "index-receipt.json"
+        and primary.parent.name.isdigit()
+        and primary.parent.parent == captured.root / "postpublication-conflicts"
+    )
+    if primary.parent != captured.root and not nested_postpublication:
         raise ReleaseControlError("fixture primary output is not its canonical original run root")
-    outputs.append((primary.name, "metriplane." + _RELEASE_GATE_PREREQUISITES[tool][0] + ".v1"))
+    outputs.append((primary_name, "metriplane." + _RELEASE_GATE_PREREQUISITES[tool][0] + ".v1"))
     if len({name for name, _ in outputs}) != len(outputs):
         raise ReleaseControlError("fixture output plan contains aliases")
     for name, _ in outputs:
@@ -29283,9 +30606,10 @@ def _release_fixture_seed_emulate(bound: _ReleaseFixtureSeedInvocation) -> _Rele
         times.append((start, end))
         previous = finished
     values.extend((name, "application/octet-stream", raw) for name, raw in plan.artifact_payloads)
-    primary = _release_historical_path(
+    primary_path = _release_historical_path(
         _release_original_arguments(plan.tool, list(plan.argv))["out"], plan.working_directory
-    ).name
+    )
+    primary = primary_path.relative_to(plan.captured.root).as_posix()
     if {(name, kind) for name, kind, _ in values} != set(plan.output_plan) - {
         (primary, "metriplane." + _RELEASE_GATE_PREREQUISITES[plan.tool][0] + ".v1")
     }:
@@ -30931,13 +32255,15 @@ def _release_fixture_index_update_command_inputs(
     dict[str, str],
     dict[str, Any],
 ]:
-    """Capture one first-generation fixture CAS and its retained staging subject."""
-    if arguments["scope-kind"] != "release_staging" or arguments["stage"] not in {
-        "target-burn",
-        "staging-failure",
+    """Capture one fixture CAS and its exact retained subject."""
+    purpose = (arguments["scope-kind"], arguments["stage"])
+    if purpose not in {
+        ("release_staging", "target-burn"),
+        ("release_staging", "staging-failure"),
+        ("release_candidate", "postpublication-conflict"),
     }:
         raise ReleaseControlError(
-            "INDEX_UPDATE_SCOPE_GRAPH_REQUIRED: fixture CAS needs a release-staging subject"
+            "INDEX_UPDATE_SCOPE_GRAPH_REQUIRED: fixture CAS has no implemented subject"
         )
     paths = {
         "entry-manifest": (
@@ -30974,29 +32300,57 @@ def _release_fixture_index_update_command_inputs(
     scope_id = _require_nonempty_string(
         arguments.get("scope-id"), "fixture CAS independently selected scope"
     )
-    scope = _release_index_scope_content(
-        {
+    if purpose[0] == "release_staging":
+        milestone = arguments["milestone"]
+        scope_value = {
             "kind": "release_staging",
             "scope_id": scope_id,
             "stage": arguments["stage"],
             "sequence": arguments["sequence"],
-            "milestone": arguments["milestone"],
+            "milestone": milestone,
             "run_id": arguments["run-id"],
             "release_tag": arguments["release-tag"],
             "candidate_id": None,
-        },
-        milestone=arguments["milestone"],
-    )
-    role = (
-        "release-target-burn" if arguments["stage"] == "target-burn" else "release-staging-attempt"
-    )
+        }
+    else:
+        major, minor, *_ = _release_version_pair(
+            arguments["release-tag"].removeprefix("v"), arguments["release-tag"], historical=True
+        )
+        milestone = f"v{major}.{minor}"
+        scope_value = {
+            "kind": "release_candidate",
+            "scope_id": scope_id,
+            "stage": arguments["stage"],
+            "sequence": arguments["sequence"],
+            "release_tag": arguments["release-tag"],
+            "candidate_id": arguments["candidate-id"],
+        }
+    scope = _release_index_scope_content(scope_value, milestone=milestone)
     entries = _release_evidence_manifest_content(manifest["data"])
-    matches = list(entries)
-    if len(matches) != 1:
-        raise ReleaseControlError("fixture CAS manifest does not select exactly one subject")
     entry_root = _release_index_manifest_entry_root(
         root=root, manifest_path=manifest_path, manifest=manifest, scope=scope
     )
+    expected_subject = {
+        ("release_staging", "target-burn"): "release-target-burn",
+        ("release_staging", "staging-failure"): "release-staging-attempt",
+        ("release_candidate", "postpublication-conflict"): "release-postpublication-conflict",
+    }[purpose]
+    matches = []
+    for member in entries:
+        if (
+            purpose == ("release_candidate", "postpublication-conflict")
+            and member["role"] != "postpublication-conflict"
+        ):
+            continue
+        path = entry_root / _release_relative_suffix(member["path"], "fixture CAS manifest member")
+        try:
+            value = _source_json(_safe_release_bytes(path), "fixture CAS manifest subject")
+            validate_record(value, expected_subject)
+        except ReleaseControlError:
+            continue
+        matches.append(member)
+    if len(matches) != 1:
+        raise ReleaseControlError("fixture CAS manifest does not select exactly one subject")
     subject_path = entry_root / _release_relative_suffix(
         matches[0]["path"], "fixture CAS manifest subject"
     )
@@ -31018,9 +32372,7 @@ def _release_fixture_index_update_command_inputs(
     if len(subject_raw) != matches[0]["size"] or sha256_bytes(subject_raw) != matches[0]["sha256"]:
         raise ReleaseControlError("fixture CAS subject differs from its manifest")
     subject_record = _source_json(subject_raw, "fixture CAS subject")
-    subject_kind = (
-        "release-target-burn" if role == "release-target-burn" else "release-staging-attempt"
-    )
+    subject_kind = expected_subject
     validate_record(subject_record, subject_kind)
     genesis_path = root / "inputs/genesis.json"
     genesis_raw = held.read("inputs/genesis.json", kind="prerequisite-original")
@@ -31066,7 +32418,7 @@ def _release_fixture_index_update_command_inputs(
             "subject_record": subject_record,
             "expected_scope": scope,
             "expected_operation_id": arguments["operation-id"],
-            "expected_milestone": arguments["milestone"],
+            "expected_milestone": milestone,
             "expected_release_tag": arguments["release-tag"],
             "expected_index_backend": arguments["index-backend"],
             "expected_prior_head": arguments["expected-head"],
@@ -31683,20 +33035,46 @@ def _release_fixture_worker(
             )
         )
         staged = _release_fixture_directory(context.directory / "staged", expected=pins)
-        staged_parents = _release_fixture_output_parents(
+        sidecar_parents = _release_fixture_output_parents(
             staged, [name for name, _, _ in emulation.sidecars]
         )
         sidecars = _release_fixture_stage_sidecars(
             emulation,
             original_staged_directory=staged,
-            original_parent_directories=staged_parents,
+            original_parent_directories=sidecar_parents,
         )
-        primary_name = _release_historical_path(
+        primary_path = _release_historical_path(
             _release_original_arguments(bound.plan.tool, list(bound.plan.argv))["out"],
             bound.plan.working_directory,
-        ).name
+        )
+        primary_name = primary_path.relative_to(context.root).as_posix()
+        primary_parent_paths = {
+            parent.as_posix() for parent in Path(primary_name).parents if parent != Path(".")
+        }
+        existing_primary_parents = [
+            item
+            for item in sidecar_parents
+            if item.path.relative_to(staged.path).as_posix() in primary_parent_paths
+        ]
+        missing_primary = [
+            parent
+            for parent in primary_parent_paths
+            if parent
+            not in {
+                item.path.relative_to(staged.path).as_posix() for item in existing_primary_parents
+            }
+        ]
+        primary_created_parents = (
+            _release_fixture_output_parents(staged, [primary_name]) if missing_primary else []
+        )
+        staged_parents = [*sidecar_parents, *primary_created_parents]
         primary_schema = "metriplane." + _RELEASE_GATE_PREREQUISITES[bound.plan.tool][0] + ".v1"
         primary_raw = _release_fixture_primary(emulation)
+        primary_parents = [
+            item
+            for item in [*existing_primary_parents, *primary_created_parents]
+            if item.path.relative_to(staged.path) in Path(primary_name).parents
+        ]
         primary = _release_fixture_write_set(
             staged,
             [
@@ -31707,7 +33085,7 @@ def _release_fixture_worker(
                 )
             ],
             before_effect=bound.revalidate,
-            original_parent_directories=(),
+            original_parent_directories=primary_parents,
         )
         staged_files = _ReleaseCapturedFiles(
             staged.path,
@@ -34946,6 +36324,15 @@ def _release_index_manifest_entry_root(
         if data["phase"] != "attempt" or data["scope_kind"] != "release-attempt":
             raise ReleaseControlError("attempt manifest changes its owner namespace")
         return manifest_path.parent
+    if scope["kind"] == "release_candidate" and scope["stage"] == "postpublication-conflict":
+        if (
+            data["phase"] != "postpublication-conflict"
+            or data["scope_kind"] != "release-candidate"
+            or data["scope_id"] != scope["scope_id"]
+            or data["candidate_digest"] != scope["candidate_id"]
+        ):
+            raise ReleaseControlError("conflict manifest changes its candidate namespace")
+        return root
     raise ReleaseControlError("manifest phase has no implemented original namespace owner")
 
 
