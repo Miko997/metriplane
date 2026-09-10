@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `ba9a66dddd148da076a56c436ec13d778eb481337feae380920b19c8a4f84cae`
+- Materialization SHA-256: `07dad23f6a3e215065a0aeecc6e2a53fb61cec37602a64315ca554e049a5f54d`
 - Owned rows: `11019`
-- Owned rows SHA-256: `751d8b3d0a013676779167b5059beaa1e740ea52e257ae5fcc4a304f8013443f`
+- Owned rows SHA-256: `c05f712707c3cc499217b807f8f2fbedd7a3a2cd4bcb450736f69307ca1eb6bc`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
@@ -19,10 +19,10 @@
 | `examples` | `maintained_example` | 172 | `3fb4bcd7b25bee665e567d1d787bec3bf165e917d848fa09d797ba55315b9df6` |
 | `jobs` | `workflow_job_declaration` | 59 | `b4efa087688687a0ac2980b2f2c14e9db9c25575ec017b3eb948dde6374ee877` |
 | `manifest_keys` | `artifact_manifest_key` | 3938 | `77b0b32f851c030e84c341e84e2a3b0bdbedc28993cfdce6bca3f2eecd42e0a7` |
-| `model_fields` | `python_model_field` | 1534 | `197d518fc3389fa30d833cf2e4a64360b4a493acd03a0558eb6af6eebc90a196` |
-| `models` | `python_model` | 251 | `a7f27f485b5c4cc39c2f3821a94bc1c58b8ff4a0251be9bd6aff67590880a516` |
+| `model_fields` | `python_model_field` | 1534 | `069bca0505b24e691bde0a1d327f6f9759d7c62a84ee6812c407fc29dba84d1b` |
+| `models` | `python_model` | 251 | `fd74c7689ac534336f23553439fc942a09979c488e5797a86bdce09b7a5609bf` |
 | `proofs` | `maintained_proof` | 322 | `cd6dcae29622d9e73dea66a214b0d52f3498bee529af968da4d8af69981fc4de` |
-| `public_api` | `python_public_api` | 2515 | `4bc364810ad723ccf38d98e938bdbda5d98ea5bf57e80b258919caf83719267a` |
+| `public_api` | `python_public_api` | 2515 | `64c8006f93c7ba9605f9eda9d096d98809bb736dd54967a4eeff31bf49f1f32a` |
 | `resources` | `repository_resource` | 1673 | `e928a8acb82f102683f99d409fb2671f8caae688e3d3922ca62858595e02bcdd` |
 | `workflows` | `workflow_declaration` | 17 | `07aed64ec257c038ac9fd50440adb99fca1e3ba851da98e974d11eb1e1b96aa9` |
 

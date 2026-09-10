@@ -236,6 +236,40 @@ def test_public_prepublication_blocker_never_overwrites(
     assert blocker_path.read_bytes() == b"occupied"
 
 
+def test_prepublication_blocker_stage_modes_are_exact_and_fail_closed() -> None:
+    cases = (
+        ("export_release_attempt_index.py", [], "attempt-index-checkpoint"),
+        (
+            "capture_release_task_state_observation.py",
+            ["--phase", "prepromotion"],
+            "prepromotion-task-state-observation",
+        ),
+        (
+            "validate_release_task_state_observation.py",
+            ["--phase", "prepromotion"],
+            "prepromotion-task-state-validation",
+        ),
+        ("retain_release_evidence.py", ["--phase", "prepublication"], "prepublication-retention"),
+        (
+            "promote_release_candidate.py",
+            ["--execute"],
+            "promotion-execution-pre-mutation",
+        ),
+    )
+    for tool, argv, expected in cases:
+        failed = SimpleNamespace(intent={"tool": tool, "argv": [tool, *argv]})
+        assert release._prepublication_failed_stage(failed) == expected
+
+    for tool, argv in (
+        ("capture_release_task_state_observation.py", ["--phase", "finalizing"]),
+        ("validate_release_task_state_observation.py", ["--phase", "completion"]),
+        ("retain_release_evidence.py", ["--phase", "postpublication"]),
+    ):
+        failed = SimpleNamespace(intent={"tool": tool, "argv": [tool, *argv]})
+        with pytest.raises(release.ReleaseControlError, match="stage owner is not implemented"):
+            release._prepublication_failed_stage(failed)
+
+
 def _qualification_plan_command_fixture(
     tmp_path: Path, *, mutation: str | None = None
 ) -> tuple[Path, list[str]]:

@@ -4583,15 +4583,30 @@ def _prepublication_failed_stage(failed: ReleaseInvocation) -> str:
         "record_release_approval.py": "approval",
         "validate_release_approval.py": "approval",
         "validate_release_prepromotion_controls.py": "prepromotion-controls",
+        "export_release_attempt_index.py": "attempt-index-checkpoint",
         "update_release_attempt_index.py": "attempt-index-update",
         "validate_release_attempt_index.py": "attempt-index-validation",
         "record_release_index_recovery.py": "index-recovery",
     }
     if tool in direct:
         return direct[tool]
+    if (
+        tool == "capture_release_task_state_observation.py"
+        and _command_value(argv, "phase") == "prepromotion"
+    ):
+        return "prepromotion-task-state-observation"
+    if (
+        tool == "validate_release_task_state_observation.py"
+        and _command_value(argv, "phase") == "prepromotion"
+    ):
+        return "prepromotion-task-state-validation"
+    if tool == "retain_release_evidence.py" and _command_value(argv, "phase") == "prepublication":
+        return "prepublication-retention"
     if tool == "promote_release_candidate.py":
         if "--dry-run" in argv:
             return "promotion-plan"
+        if "--execute" in argv:
+            return "promotion-execution-pre-mutation"
         if "--recover-abandoned-lock" in argv:
             return "promotion-lock-recovery"
     raise ReleaseControlError("prepublication blocker stage owner is not implemented for " + tool)
