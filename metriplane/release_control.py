@@ -15283,7 +15283,15 @@ def _install_release_outputs(
     except BaseException:
         for source, destination in reversed(installed):
             try:
-                if destination.exists() and not source.exists():
+                if destination.exists() and source.exists():
+                    source_stat = source.stat()
+                    destination_stat = destination.stat(follow_symlinks=False)
+                    if (source_stat.st_dev, source_stat.st_ino) == (
+                        destination_stat.st_dev,
+                        destination_stat.st_ino,
+                    ):
+                        destination.unlink()
+                elif destination.exists():
                     source_parent_fd = os.open(
                         source.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
                     )
