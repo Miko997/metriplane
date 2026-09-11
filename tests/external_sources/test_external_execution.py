@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -33,6 +32,7 @@ from metriplane.external_sources.execution import (
     validate_external_fixture,
 )
 from metriplane.provenance.run_provenance import GitInfo
+from tests.external_sources.version_projection import materialize_current_version_fixture
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 VALID_BUNDLE = REPOSITORY_ROOT / "examples" / "external_sources" / "minimal"
@@ -100,8 +100,7 @@ def _string_values(value: object) -> list[str]:
 
 def _copy_fixture(tmp_path: Path) -> Path:
     root = tmp_path / "fixture"
-    shutil.copytree(VALID_BUNDLE, root)
-    return root
+    return materialize_current_version_fixture(VALID_BUNDLE, root)
 
 
 def _rewrite_session_contract(root: Path, rows: list[dict[str, Any]]) -> None:
@@ -190,16 +189,17 @@ def _canonical_run_semantics(run_dir: Path) -> dict[str, Any]:
     }
 
 
-def test_validation_summary_exposes_stable_contract_and_input_identity() -> None:
-    summary = validate_external_fixture(VALID_BUNDLE)
+def test_validation_summary_exposes_stable_contract_and_input_identity(tmp_path: Path) -> None:
+    fixture = _copy_fixture(tmp_path)
+    summary = validate_external_fixture(fixture)
 
     assert summary.schema_version == VALIDATION_SUMMARY_SCHEMA_VERSION
     assert summary.passed is True
     assert summary.fixture_id == "synthetic-inspection-bench-v1"
     assert summary.contract_schema_version == CONTRACT_SCHEMA_VERSION
     assert summary.contract_profile == CONTRACT_PROFILE
-    assert summary.manifest_sha256 == _sha256(VALID_BUNDLE / "source-manifest.json")
-    assert summary.session_sha256 == _sha256(VALID_BUNDLE / "session.jsonl")
+    assert summary.manifest_sha256 == _sha256(fixture / "source-manifest.json")
+    assert summary.session_sha256 == _sha256(fixture / "session.jsonl")
     assert set(summary.domain_pack_file_hashes) == {
         "assets",
         "workspace",
@@ -207,10 +207,8 @@ def test_validation_summary_exposes_stable_contract_and_input_identity() -> None
         "contracts",
         "work_orders",
     }
-    assert summary.entity_mapping_sha256 == _sha256(VALID_BUNDLE / "entity-mapping.json")
-    assert summary.normalization_report_sha256 == _sha256(
-        VALID_BUNDLE / "normalization-report.json"
-    )
+    assert summary.entity_mapping_sha256 == _sha256(fixture / "entity-mapping.json")
+    assert summary.normalization_report_sha256 == _sha256(fixture / "normalization-report.json")
     assert [source.artifact_id for source in summary.source_identities] == [
         "trajectory",
         "metadata",
@@ -240,8 +238,12 @@ def test_validation_summary_exposes_stable_contract_and_input_identity() -> None
     assert summary.limitations
 
 
-def test_root_cli_json_validation_stdout_is_one_clean_document(capsys: Any) -> None:
-    exit_code = metriplane_main(["external", "validate", str(VALID_BUNDLE), "--json"])
+def test_root_cli_json_validation_stdout_is_one_clean_document(
+    tmp_path: Path,
+    capsys: Any,
+) -> None:
+    fixture = _copy_fixture(tmp_path)
+    exit_code = metriplane_main(["external", "validate", str(fixture), "--json"])
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -277,11 +279,12 @@ def test_root_cli_json_run_stdout_is_one_clean_document(
     tmp_path: Path,
     capsys: Any,
 ) -> None:
+    fixture = _copy_fixture(tmp_path)
     exit_code = metriplane_main(
         [
             "external",
             "run",
-            str(VALID_BUNDLE),
+            str(fixture),
             "--out",
             str(tmp_path / "cli-run"),
             "--run-id",

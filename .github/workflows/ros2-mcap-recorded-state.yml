@@ -366,8 +366,9 @@ jobs:
           for path in root.rglob("*"):
               if not path.is_file():
                   continue
-              check(path.read_bytes(), path)
-              if path.suffix == ".zip":
+              if path.suffix != ".zip":
+                  check(path.read_bytes(), path)
+              else:
                   with zipfile.ZipFile(path) as archive:
                       for info in archive.infolist():
                           assert not info.filename.startswith(("/", "\\"))
