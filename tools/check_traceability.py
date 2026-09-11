@@ -3,6 +3,7 @@
 """Read-only assignment-time validation of the governed traceability graph."""
 
 from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -17,6 +18,7 @@ try:
     from tools import build_traceability_graph
 except ImportError:
     import build_traceability_graph
+
 SCHEMA_VERSION = "metriplane.assignment-validation-result.v1"
 
 
@@ -38,7 +40,13 @@ def _write_new(path: Path, value: dict[str, Any]) -> None:
 
 
 def validate(
-    root: Path, *, task_id: str, base_sha: str, graph: Path, ledger: Path, obligations: Path
+    root: Path,
+    *,
+    task_id: str,
+    base_sha: str,
+    graph: Path,
+    ledger: Path,
+    obligations: Path,
 ) -> tuple[int, dict[str, Any]]:
     if not task_id.startswith("MP2-") or len(base_sha) != 40:
         raise ValueError("explicit task and base identities are required")

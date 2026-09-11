@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Miko Parkkinen
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
+
 import json
 import subprocess
 import sys
@@ -51,10 +52,13 @@ def test_wrong_base_is_blocked(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "result.json").read_text())["verdict"] == "BLOCKED_NOT_READY"
 
 
-def test_substituted_graph_path_is_invalid_input(tmp_path: Path) -> None:
-    substitute = tmp_path / "graph.json"
-    substitute.write_text("{}")
-    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    result = _run(tmp_path, head, graph=str(substitute))
+def test_noncanonical_graph_is_invalid_input(tmp_path: Path) -> None:
+    substituted = tmp_path / "graph.json"
+    substituted.write_text("{}", encoding="utf-8")
+    result = _run(
+        tmp_path,
+        subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        graph=str(substituted),
+    )
     assert result.returncode == 2
     assert not (tmp_path / "result.json").exists()
