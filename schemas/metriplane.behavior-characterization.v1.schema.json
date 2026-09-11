@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.behavior-characterization.v1.schema.json",
+  "title": "Metriplane governed behavior characterization registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "schema_path", "owner", "criteria", "obligations", "inventory_path", "governed_rows_sha256", "row_count", "rows", "rows_sha256"],
+  "properties": {
+    "schema_version": {"const": "metriplane.behavior-characterization.v1"},
+    "schema_path": {"const": "schemas/metriplane.behavior-characterization.v1.schema.json"},
+    "owner": {"const": "MP2-015"},
+    "criteria": {"const": ["MP2-015.A01", "MP2-015.A02"]},
+    "obligations": {
+      "const": ["MP2-015.OBL.CHARACTERIZATION", "MP2-015.OBL.COMPATIBILITY_RETENTION", "MP2-015.OBL.DETERMINISM", "MP2-015.OBL.NEGATIVE", "MP2-015.OBL.CLEAN"]
+    },
+    "inventory_path": {"const": "docs/status/functional-inventory.json"},
+    "governed_rows_sha256": {"$ref": "#/$defs/sha256"},
+    "row_count": {"minimum": 1, "type": "integer"},
+    "rows": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/row"}},
+    "rows_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "argv": {"type": "array", "minItems": 2, "items": {"type": "string", "minLength": 1}},
+    "channel": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "empty", "contains"],
+      "properties": {
+        "format": {"const": "text"}, "empty": {"type": "boolean"},
+        "contains": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "filesystem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["created", "modified", "removed"],
+      "properties": {
+        "created": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "modified": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "removed": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["argv", "exit_code", "stdout", "stderr", "filesystem", "state"],
+      "properties": {
+        "argv": {"$ref": "#/$defs/argv"}, "exit_code": {"type": "integer", "minimum": 0, "maximum": 255},
+        "stdout": {"$ref": "#/$defs/channel"}, "stderr": {"$ref": "#/$defs/channel"},
+        "filesystem": {"$ref": "#/$defs/filesystem"},
+        "state": {"enum": ["unchanged", "declared_outputs_only"]}
+      }
+    },
+    "row": {
+      "type": "object", "additionalProperties": false,
+      "required": ["row_id", "row_digest", "kind", "claim_classification", "profile_id", "retained_obligation_id", "success", "failure"],
+      "properties": {
+        "row_id": {"type": "string", "pattern": "^MP2-[0-9]{3}\\."}, "row_digest": {"$ref": "#/$defs/sha256"},
+        "kind": {"type": "string", "minLength": 1}, "claim_classification": {"enum": ["compatibility", "supported"]},
+        "profile_id": {"type": "string", "minLength": 1}, "retained_obligation_id": {"type": "string", "pattern": "^MP2-[0-9]{3}\\.OBL\\."},
+        "success": {"$ref": "#/$defs/scenario"}, "failure": {"$ref": "#/$defs/scenario"}
+      }
+    }
+  }
+}

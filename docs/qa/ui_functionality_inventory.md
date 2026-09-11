@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `6a33f58579cc5578cb41555bf5f3329cd9c29216e0192c38a1073e61f9076447`
+Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0ad82d34930e2bed`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 219 |
+| actions | 220 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -271,6 +271,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.capture_release_target_observations | tool | Capture Release Target Observations | python tools/capture_release_target_observations.py |
 | tool.capture_release_task_state_observation | tool | Capture Release Task State Observation | python tools/capture_release_task_state_observation.py |
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
+| tool.characterize_supported_surface | tool | Characterize Supported Surface | python tools/characterize_supported_surface.py |
 | tool.check_blockers | tool | Check Blockers | python tools/check_blockers.py |
 | tool.check_met77_transition | tool | Check Met77 Transition | python tools/check_met77_transition.py |
 | tool.check_pr_contract | tool | Check Pr Contract | python tools/check_pr_contract.py |
