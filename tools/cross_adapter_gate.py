@@ -38,6 +38,11 @@ from typing import Any, Final
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
+try:
+    from tools import characterize_supported_surface as behavior_characterization
+except ImportError:  # Direct ``python tools/cross_adapter_gate.py`` execution.
+    import characterize_supported_surface as behavior_characterization
+
 REGISTRY_PATH: Final = Path("tests/adapter_conformance/registry.json")
 REGISTRY_SCHEMA_PATH: Final = Path("tests/adapter_conformance/registry.schema.json")
 RESULT_SCHEMA_PATH: Final = Path("tests/adapter_conformance/result.schema.json")
@@ -1319,6 +1324,21 @@ def _clean_install_component(
         command = f"{shlex.quote(str(cli))} --help"
         record, _ = _run_command(command, cwd=temporary, env={"PYTHONPATH": ""})
         records.append(record)
+        started = time.monotonic()
+        count = behavior_characterization.execute_programs(
+            repo,
+            {component["cli_name"]: cli},
+        )
+        if count == 0:
+            raise GateError(
+                f"no MP2-015 behavior rows matched installed CLI {component['cli_name']}"
+            )
+        records.append(
+            _operation(
+                f"MP2-015 installed CLI characterization ({count} scenarios)",
+                started,
+            )
+        )
     return records
 
 
@@ -2128,6 +2148,7 @@ def check_root_wheel(repo: Path, results_dir: Path) -> Path:
         command_result, _ = _run_command(install, cwd=root)
         result["commands"].append(command_result)
         cli = _venv_program(venv, "metriplane")
+        run_cli = _venv_program(venv, "metriplane-run")
         version_program = (
             "import importlib.metadata as metadata,metriplane;"
             "version=metadata.version('metriplane');"
@@ -2144,6 +2165,19 @@ def check_root_wheel(repo: Path, results_dir: Path) -> Path:
         installed_version = version_output.strip()
         if not installed_version or any(character.isspace() for character in installed_version):
             raise GateError("installed root-wheel version is malformed")
+        characterization_started = time.monotonic()
+        characterization_count = behavior_characterization.execute_programs(
+            repo,
+            {"metriplane": cli, "metriplane-run": run_cli},
+        )
+        if characterization_count == 0:
+            raise GateError("no MP2-015 behavior rows matched the installed root wheel")
+        result["commands"].append(
+            _operation(
+                f"MP2-015 installed root CLI characterization ({characterization_count} scenarios)",
+                characterization_started,
+            )
+        )
         input_root = root / "relocated-input"
         run_root = root / "runs"
         variants = fixture_variants(registry)
