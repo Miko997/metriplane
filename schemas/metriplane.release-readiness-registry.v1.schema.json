@@ -2414,26 +2414,141 @@
           "task": "MP2-226"
         }
       ]
+    },
+    "v0_4_1_owner_scope": {
+      "additionalProperties": false,
+      "properties": {
+        "budget_usd": {
+          "const": 0
+        },
+        "claim_boundary": {
+          "additionalProperties": false,
+          "properties": {
+            "live_multi_party_production_custody": {
+              "const": "DEFERRED_BY_OWNER_TO_LATER_ASSURANCE_MILESTONE"
+            },
+            "software_assurance": {
+              "enum": [
+                "PENDING_FINAL_CANDIDATE_PROOF",
+                "PASS"
+              ]
+            }
+          },
+          "required": [
+            "live_multi_party_production_custody",
+            "software_assurance"
+          ],
+          "type": "object"
+        },
+        "criterion_classification": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "classification": {
+                "enum": [
+                  "A",
+                  "B",
+                  "C",
+                  "D"
+                ]
+              },
+              "criterion_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "reason": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "classification",
+              "criterion_id",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "decision_date": {
+          "const": "2026-09-11"
+        },
+        "deferred_live_assurance": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "destination_task_ids": {
+                "items": {
+                  "pattern": "^MP2-[0-9]{3}$",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "requirement": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "destination_task_ids",
+              "requirement"
+            ],
+            "type": "object"
+          },
+          "minItems": 4,
+          "type": "array"
+        },
+        "mandatory_assurance": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "profile": {
+          "const": "zero_cost_single_maintainer_v0_4_1"
+        },
+        "scope_document": {
+          "const": "docs/releases/v0.4.1-assurance-scope.md"
+        }
+      },
+      "required": [
+        "profile",
+        "decision_date",
+        "budget_usd",
+        "scope_document",
+        "mandatory_assurance",
+        "deferred_live_assurance",
+        "claim_boundary",
+        "criterion_classification"
+      ],
+      "type": "object"
     }
   },
   "required": [
-    "schema_version",
-    "owner",
     "blockers",
+    "catalog_binding",
     "evidence_resolution",
     "first_release",
-    "last_release",
     "framework",
+    "last_release",
+    "linear_capture_policy",
     "live_release",
     "main_health",
     "modes",
-    "required_terminal",
-    "catalog_binding",
-    "task_catalog",
-    "release_gate_slots",
+    "owner",
     "provider_issue_bindings",
     "release_contexts",
-    "linear_capture_policy"
+    "release_gate_slots",
+    "required_terminal",
+    "schema_version",
+    "task_catalog",
+    "v0_4_1_owner_scope"
   ],
   "type": "object",
   "x-metriplane-semantic-checks": [
