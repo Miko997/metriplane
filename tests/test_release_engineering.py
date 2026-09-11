@@ -10,6 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "publish-pypi.yml"
+STAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "stage-pypi.yml"
 RELEASING = ROOT / "docs" / "releasing.md"
 RELEASES = ROOT / "docs" / "releases"
 CHANGELOG = ROOT / "CHANGELOG.md"
@@ -30,9 +31,16 @@ def _workflow() -> tuple[dict[str, object], str]:
     return yaml.safe_load(text), text
 
 
+def _stage_workflow() -> tuple[dict[str, object], str]:
+    text = STAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    return yaml.safe_load(text), text
+
+
 def test_tag_publication_stops_after_verified_testpypi() -> None:
     workflow, text = _workflow()
+    stage_workflow, stage_text = _stage_workflow()
     jobs = workflow["jobs"]
+    stage_jobs = stage_workflow["jobs"]
 
     assert jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
     assert jobs["gates"]["needs"] == "provenance"
@@ -41,19 +49,25 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
         "pull-requests": "read",
     }
     assert jobs["gates"]["with"] == {"enforce-release-decision": True}
-    assert jobs["build"]["needs"] == ["provenance", "gates"]
-    assert jobs["publish-testpypi"]["needs"] == ["provenance", "build"]
+    assert jobs["import-staged-artifacts"]["needs"] == ["provenance", "gates"]
+    assert jobs["publish-testpypi"]["needs"] == [
+        "provenance",
+        "import-staged-artifacts",
+    ]
     assert jobs["verify-testpypi"]["needs"] == ["provenance", "publish-testpypi"]
     for name in (
         "provenance",
         "gates",
-        "build",
+        "import-staged-artifacts",
         "publish-testpypi",
         "verify-testpypi",
     ):
         assert "github.event_name == 'push'" in jobs[name]["if"]
 
-    build = jobs["build"]
+    assert stage_jobs["gates"]["uses"] == "./.github/workflows/release-gates.yml"
+    assert stage_jobs["gates"]["needs"] == "provenance"
+    assert stage_jobs["gates"]["with"] == {"enforce-release-decision": True}
+    build = stage_jobs["build"]
     build_steps = build["steps"]
     build_step_names = [step["name"] for step in build_steps if "name" in step]
     assert len(build_step_names) == len(set(build_step_names))
@@ -104,12 +118,22 @@ def test_tag_publication_stops_after_verified_testpypi() -> None:
         str(step.get("run", "")) for step in build_steps[:wheel_smoke_index]
     )
     assert "pip install" not in qualification_text
-    assert "python -m pip install . pytest setuptools build twine" not in text
-    assert "python -m twine check --strict release-artifacts/dist/*" in text
-    assert "Install and smoke-test the source distribution independently" in text
+    assert "python -m pip install . pytest setuptools build twine" not in stage_text
+    assert "python -m twine check --strict release-artifacts/dist/*" in stage_text
+    assert "Install and smoke-test the source distribution independently" in stage_text
     assert text.count("packages-dir: release-artifacts/dist/") == 2
-    assert "retention-days: 90" in text
-    assert "skip-existing" not in text
+    assert "retention-days: 90" in stage_text
+    assert "skip-existing" not in stage_text
+
+    imported = jobs["import-staged-artifacts"]
+    imported_text = str(imported)
+    assert imported["permissions"] == {"actions": "read", "contents": "read"}
+    assert "stage-pypi.yml/runs" in imported_text
+    assert "exactly one successful exact-source staging run" in imported_text
+    assert "BUILD_IDENTITY.json" in imported_text
+    assert "run-id: ${{ steps.source.outputs.run_id }}" in text
+    assert "github-token: ${{ github.token }}" in text
+    assert "python -m build" not in text
 
 
 def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
@@ -190,6 +214,32 @@ def test_production_requires_a_separate_owner_only_manual_dispatch() -> None:
     assert all(fragment in text for fragment in required)
 
 
+def test_canonical_artifact_staging_is_owner_only_exact_main_and_nonpublishing() -> None:
+    workflow, text = _stage_workflow()
+    trigger = workflow.get("on", workflow.get(True))
+    inputs = trigger["workflow_dispatch"]["inputs"]
+
+    assert set(trigger) == {"workflow_dispatch"}
+    assert set(inputs) == {"version", "confirmation"}
+    assert all(item["required"] is True for item in inputs.values())
+    assert set(workflow["jobs"]) == {"provenance", "gates", "build"}
+    assert 'test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"' in text
+    assert 'test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"' in text
+    assert 'test "$GITHUB_REF" = "refs/heads/main"' in text
+    assert 'test "$GITHUB_SHA" = "$(git rev-parse origin/main)"' in text
+    assert "stage metriplane ${RELEASE_VERSION} canonical artifacts" in text
+    assert "refs/heads/release-leases/*" in text
+    assert "releases/tags/v{version}" in text
+    assert "https://pypi.org" in text
+    assert "https://test.pypi.org" in text
+    assert "BUILD_IDENTITY.json" in text
+    assert text.index("Record immutable staged-artifact identity") < text.index(
+        "Upload the immutable release-artifact set"
+    )
+    assert "id-token: write" not in text
+    assert "gh-action-pypi-publish" not in text
+
+
 def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
     workflow, _ = _workflow()
     jobs = workflow["jobs"]
@@ -207,6 +257,8 @@ def test_cross_run_artifacts_are_downloaded_after_checkout() -> None:
 
 def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
     _, text = _workflow()
+    _, stage_text = _stage_workflow()
+    combined = text + stage_text
 
     required = (
         'test "$(git cat-file -t "$tag_ref")" = "tag"',
@@ -220,13 +272,13 @@ def test_tag_and_artifact_identity_are_explicit_release_gates() -> None:
         "SHA256SUMS",
         "--repository https://test.pypi.org",
     )
-    assert all(fragment in text for fragment in required)
+    assert all(fragment in combined for fragment in required)
     assert 'test "$RELEASE_COMMIT" = "$(git rev-parse origin/main)"' not in text
     assert text.count("acquire-publish-lease") == 1
     assert text.count("assert-publish-lease") == 1
     assert text.count("reconcile-publish-lease") == 1
     assert text.count("verify-registry") == 4
-    assert text.count("sha256sum --check ../SHA256SUMS") == 2
+    assert text.count("sha256sum --check ../SHA256SUMS") == 3
     assert "find . -maxdepth 1 -type f -printf '%f\\n'" in text
 
 

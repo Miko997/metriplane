@@ -1,0 +1,330 @@
+# SPDX-FileCopyrightText: 2025-2026 Miko Parkkinen
+# SPDX-License-Identifier: MIT
+
+name: Stage Python distributions
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact version to stage, without the v prefix"
+        required: true
+        type: string
+      confirmation:
+        description: "Type: stage metriplane VERSION canonical artifacts"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-stage-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  provenance:
+    name: Verify protected-main staging source
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      tree: ${{ steps.release.outputs.tree }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Reject stale, mismatched, occupied, or unauthorized staging
+        id: release
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_TRIGGERING_ACTOR" = "$GITHUB_REPOSITORY_OWNER"
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9._+-]*)?$ ]]
+          test "$CONFIRMATION" = \
+            "stage metriplane ${RELEASE_VERSION} canonical artifacts"
+
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          package_version="$(python -c \
+            'import metriplane; print(metriplane.__version__)')"
+          test "$package_version" = "$RELEASE_VERSION"
+          test -z "$(git ls-remote --tags origin \
+            "refs/tags/v${RELEASE_VERSION}" "refs/tags/v${RELEASE_VERSION}^{}")"
+          test -z "$(git ls-remote --heads origin 'refs/heads/release-leases/*')"
+
+          GH_TOKEN="$GH_TOKEN" RELEASE_VERSION="$RELEASE_VERSION" python - <<'PY'
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          version = os.environ["RELEASE_VERSION"]
+          github_release = Request(
+              "https://api.github.com/repos/"
+              f"{os.environ['GITHUB_REPOSITORY']}/releases/tags/v{version}",
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          try:
+              with urlopen(github_release, timeout=30) as response:
+                  json.load(response)
+          except HTTPError as exc:
+              if exc.code != 404:
+                  raise
+          else:
+              raise SystemExit(f"occupied GitHub Release target: v{version}")
+
+          for repository in ("https://pypi.org", "https://test.pypi.org"):
+              request = Request(
+                  f"{repository}/pypi/metriplane/{version}/json",
+                  headers={"Accept": "application/json"},
+              )
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      json.load(response)
+              except HTTPError as exc:
+                  if exc.code == 404:
+                      continue
+                  raise
+              raise SystemExit(f"occupied registry target: {repository} {version}")
+          PY
+
+          printf 'version=%s\n' "$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf 'tree=%s\n' "$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+
+  gates:
+    name: Run required release gates
+    needs: provenance
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/release-gates.yml
+    with:
+      enforce-release-decision: true
+
+  build:
+    name: Test and build distributions once
+    needs: [provenance, gates]
+    runs-on: ubuntu-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
+      UV_NO_CONFIG: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Sync locked release environment
+        run: |
+          uv --no-config lock --check
+          uv --no-config sync --frozen --all-groups
+          uv --no-config pip check
+
+      - name: Prove exact release toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv --version
+          UV_VERSION="$(uv --version | awk '{print $2}')" \
+            uv --no-config run --frozen python - <<'PY'
+          from importlib import metadata
+          import os
+          from pathlib import Path
+          import tomllib
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          actual_uv = os.environ["UV_VERSION"]
+          expected_uv = project["tool"]["uv"]["required-version"]
+          if expected_uv != f"=={actual_uv}":
+              raise SystemExit(f"uv: installed {actual_uv}, expected {expected_uv}")
+          print(f"uv=={actual_uv}")
+
+          governed = {}
+          for requirement in project["dependency-groups"]["dev"]:
+              name, separator, expected = requirement.partition("==")
+              if separator != "==" or not name or not expected:
+                  raise SystemExit(f"non-exact governed tool requirement: {requirement}")
+              normalized = name.lower()
+              if normalized in governed:
+                  raise SystemExit(f"duplicate governed tool requirement: {name}")
+              actual = metadata.version(name)
+              if actual != expected:
+                  raise SystemExit(f"{name}: installed {actual}, expected {expected}")
+              governed[normalized] = actual
+              print(f"{name}=={actual}")
+
+          for requirement in project["build-system"]["requires"]:
+              name, separator, expected = requirement.partition("==")
+              if separator != "==" or not name or not expected:
+                  raise SystemExit(f"non-exact build-backend requirement: {requirement}")
+              actual = governed.get(name.lower())
+              if actual != expected:
+                  raise SystemExit(
+                      f"build backend {requirement} is not installed from the governed toolchain"
+                  )
+              print(f"build-backend:{name}=={actual}")
+          PY
+
+      - name: Install Chromium for complete release qualification
+        run: uv --no-config run --frozen python -m playwright install chromium --with-deps
+
+      - name: Run the complete test suite
+        run: uv --no-config run --frozen python -m pytest -q
+
+      - name: Build, inspect, and fingerprint distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts/dist
+          uv --no-config run --frozen python -m build \
+            --no-isolation \
+            --outdir release-artifacts/dist
+          uv --no-config run --frozen python -m twine check --strict release-artifacts/dist/*
+          uv --no-config run --frozen python tools/release_artifacts.py create-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          uv --no-config run --frozen python tools/release_artifacts.py verify-manifest \
+            --dist release-artifacts/dist \
+            --manifest release-artifacts/SHA256SUMS \
+            --version "$RELEASE_VERSION"
+          sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
+          uv --no-config run --frozen python tools/release_artifacts.py inspect-sdist \
+            --sdist "$sdist_path" \
+            --version "$RELEASE_VERSION"
+          cat release-artifacts/SHA256SUMS
+
+      - name: Smoke-test the wheel outside the checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel_path="$(realpath release-artifacts/dist/*.whl)"
+          smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
+          smoke_out="${RUNNER_TEMP}/metriplane-wheel-output"
+          python -m venv "$smoke_venv"
+          "$smoke_venv/bin/python" -m pip install --upgrade pip
+          "$smoke_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/python" -m pip check
+          test "$("$smoke_venv/bin/metriplane" --version)" = \
+            "metriplane ${RELEASE_VERSION}"
+          "$smoke_venv/bin/metriplane" --help | grep -Fq "demo"
+          doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
+          printf '%s\n' "$doctor_output"
+          grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
+          demo_output="$("$smoke_venv/bin/metriplane" demo --out "$smoke_out")"
+          printf '%s\n' "$demo_output"
+          grep -Fq "required torque driver is missing" <<<"$demo_output"
+          grep -Fq "delayed by 35.0 seconds" <<<"$demo_output"
+          grep -Fq "PASS  Incident timeline: 6 events" <<<"$demo_output"
+          grep -Fq "PASS  Incident report: 1 incident" <<<"$demo_output"
+          "$smoke_venv/bin/metriplane" atlas bundle verify \
+            "$smoke_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
+          "$smoke_venv/bin/metriplane" atlas test \
+            "$smoke_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
+          VERSION="$RELEASE_VERSION" "$smoke_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import os
+          import metriplane
+
+          expected = os.environ["VERSION"]
+          assert metriplane.__version__ == metadata.version("metriplane") == expected
+          PY
+
+      - name: Install and smoke-test the source distribution independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
+          smoke_venv="${RUNNER_TEMP}/metriplane-sdist-smoke"
+          smoke_out="${RUNNER_TEMP}/metriplane-sdist-output"
+          python -m venv "$smoke_venv"
+          "$smoke_venv/bin/python" -m pip install --upgrade pip
+          "$smoke_venv/bin/python" -m pip install --no-cache-dir "$sdist_path"
+          cd "$RUNNER_TEMP"
+          "$smoke_venv/bin/python" -m pip check
+          test "$("$smoke_venv/bin/metriplane" --version)" = \
+            "metriplane ${RELEASE_VERSION}"
+          doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
+          printf '%s\n' "$doctor_output"
+          grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
+          demo_output="$("$smoke_venv/bin/metriplane" demo --out "$smoke_out")"
+          printf '%s\n' "$demo_output"
+          grep -Fq "PASS  Incident timeline: 6 events" <<<"$demo_output"
+          grep -Fq "PASS  Incident report: 1 incident" <<<"$demo_output"
+          "$smoke_venv/bin/metriplane" atlas bundle verify \
+            "$smoke_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
+          "$smoke_venv/bin/metriplane" atlas test \
+            "$smoke_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
+          VERSION="$RELEASE_VERSION" "$smoke_venv/bin/python" - <<'PY'
+          import importlib.metadata as metadata
+          import os
+          import metriplane
+
+          expected = os.environ["VERSION"]
+          assert metriplane.__version__ == metadata.version("metriplane") == expected
+          PY
+
+      - name: Record immutable staged-artifact identity
+        env:
+          RELEASE_COMMIT: ${{ needs.provenance.outputs.commit }}
+          RELEASE_TREE: ${{ needs.provenance.outputs.tree }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_WORKFLOW_RUN_ID="$GITHUB_RUN_ID" \
+            uv --no-config run --frozen python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          identity = {
+              "commit": os.environ["RELEASE_COMMIT"],
+              "tree": os.environ["RELEASE_TREE"],
+              "version": os.environ["RELEASE_VERSION"],
+              "workflow": ".github/workflows/stage-pypi.yml",
+              "workflow_run_id": int(os.environ["RELEASE_WORKFLOW_RUN_ID"]),
+          }
+          Path("release-artifacts/BUILD_IDENTITY.json").write_text(
+              json.dumps(identity, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload the immutable release-artifact set
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 90
