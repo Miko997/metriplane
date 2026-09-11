@@ -8,7 +8,7 @@
     "schema_version": {"const": "metriplane.validation-result.v1"},
     "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
     "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-    "validator": {"enum": ["functional_inventory", "traceability"]},
+    "validator": {"enum": ["functional_inventory", "traceability", "task_work_order"]},
     "verdict": {"enum": ["READY", "BLOCKED_NOT_READY"]},
     "inputs": {
       "type": "object",
