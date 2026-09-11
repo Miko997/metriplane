@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0ad82d34930e2bed`
+Canonical projection SHA-256: `d41ce549299fb6933c69c5beac90d789dda5834669ca6cc1962e690dec334471`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -132,6 +132,7 @@ Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0
 | tool.capture_repository_protection | Capture Repository Protection | tools/capture_repository_protection.py | python tools/capture_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.characterize_supported_surface | Characterize Supported Surface | tools/characterize_supported_surface.py | python tools/characterize_supported_surface.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_blockers | Check Blockers | tools/check_blockers.py | python tools/check_blockers.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_functional_inventory | Check Functional Inventory | tools/check_functional_inventory.py | python tools/check_functional_inventory.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_met77_transition | Check Met77 Transition | tools/check_met77_transition.py | python tools/check_met77_transition.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_pr_contract | Check Pr Contract | tools/check_pr_contract.py | python tools/check_pr_contract.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_release_delta | Check Release Delta | tools/check_release_delta.py | python tools/check_release_delta.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -139,6 +140,8 @@ Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0
 | tool.check_repository_protection | Check Repository Protection | tools/check_repository_protection.py | python tools/check_repository_protection.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_required_terminal | Check Required Terminal | tools/check_required_terminal.py | python tools/check_required_terminal.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.check_ros2_adapters | Check Ros2 Adapters | tools/check_ros2_adapters.py | python tools/check_ros2_adapters.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_traceability | Check Traceability | tools/check_traceability.py | python tools/check_traceability.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.check_work_order_catalog | Check Work Order Catalog | tools/check_work_order_catalog.py | python tools/check_work_order_catalog.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.collect_publication_observations | Collect Publication Observations | tools/collect_publication_observations.py | python tools/collect_publication_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.command_center_up | Command Center Up | tools/command_center_up.sh | tools/command_center_up.sh | web/dashboard/* | command_center_up.sh | ui_copy_command_only | P2 |  |
 | tool.cross_adapter_gate | Cross Adapter Gate | tools/cross_adapter_gate.py | python tools/cross_adapter_gate.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -164,6 +167,7 @@ Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0
 | tool.jetson_preflight | Jetson Preflight | tools/jetson_preflight.sh | tools/jetson_preflight.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.list_cameras | List Cameras | tools/list_cameras.py | python tools/list_cameras.py | web/dashboard/* | list_cameras.py | ui_copy_command_only | P1 |  |
 | tool.main_health_broker | Main Health Broker | tools/main_health_broker.py | python tools/main_health_broker.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.materialize_task_work_order | Materialize Task Work Order | tools/materialize_task_work_order.py | python tools/materialize_task_work_order.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.mp | Mp | tools/mp.sh | tools/mp.sh | web/dashboard/* | mp.sh | ui_copy_command_only | P2 |  |
 | tool.observe_main_health | Observe Main Health | tools/observe_main_health.py | python tools/observe_main_health.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.plan_release_qualification | Plan Release Qualification | tools/plan_release_qualification.py | python tools/plan_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
@@ -225,6 +229,7 @@ Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0
 | tool.validate_release_source_freeze | Validate Release Source Freeze | tools/validate_release_source_freeze.py | python tools/validate_release_source_freeze.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_target_resolution | Validate Release Target Resolution | tools/validate_release_target_resolution.py | python tools/validate_release_target_resolution.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_task_state_observation | Validate Release Task State Observation | tools/validate_release_task_state_observation.py | python tools/validate_release_task_state_observation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_task_work_order | Validate Task Work Order | tools/validate_task_work_order.py | python tools/validate_task_work_order.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m1_m6 | Verify M1 M6 | tools/verify_m1_m6.sh | tools/verify_m1_m6.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.verify_m6_offline | Verify M6 Offline | tools/verify_m6_offline.sh | tools/verify_m6_offline.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.ws_replay_jsonl | Ws Replay Jsonl | tools/ws_replay_jsonl.py | python tools/ws_replay_jsonl.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

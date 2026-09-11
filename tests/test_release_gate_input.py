@@ -8198,7 +8198,7 @@ def test_complete_migrated_catalog_keeps_all_unfinished_acceptance_work_blocking
             for trace in qualification
         )
     assert len(declarations["scenarios"]) == 66
-    assert len(declarations["obligations"]) == 51
+    assert len(declarations["obligations"]) == 57
     assert len(declarations["criteria"]) == 280
 
 
@@ -8232,7 +8232,7 @@ def test_scenario_catalog_payload_preserves_all_original_work_and_acyclic_identi
         {k: v for k, v in data.items() if k != "catalog_digest"}
     )
     assert len(data["declarations"]["criteria"]) == 280
-    assert len(data["declarations"]["obligations"]) == 51
+    assert len(data["declarations"]["obligations"]) == 57
     assert len(data["declarations"]["scenarios"]) == 66
     assert [slot["milestone"] for slot in data["release_slots"]] == list(release.MILESTONES)
     assert data["execution_units"] == [] and data["unresolved_declarations"]

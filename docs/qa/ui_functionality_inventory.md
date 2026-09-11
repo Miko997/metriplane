@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `c5034b885eb11bfa96fb2cc7a55f973fa66af0885154499e0ad82d34930e2bed`
+Canonical projection SHA-256: `d41ce549299fb6933c69c5beac90d789dda5834669ca6cc1962e690dec334471`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 220 |
+| actions | 225 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -273,6 +273,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.capture_repository_protection | tool | Capture Repository Protection | python tools/capture_repository_protection.py |
 | tool.characterize_supported_surface | tool | Characterize Supported Surface | python tools/characterize_supported_surface.py |
 | tool.check_blockers | tool | Check Blockers | python tools/check_blockers.py |
+| tool.check_functional_inventory | tool | Check Functional Inventory | python tools/check_functional_inventory.py |
 | tool.check_met77_transition | tool | Check Met77 Transition | python tools/check_met77_transition.py |
 | tool.check_pr_contract | tool | Check Pr Contract | python tools/check_pr_contract.py |
 | tool.check_release_delta | tool | Check Release Delta | python tools/check_release_delta.py |
@@ -280,6 +281,8 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.check_repository_protection | tool | Check Repository Protection | python tools/check_repository_protection.py |
 | tool.check_required_terminal | tool | Check Required Terminal | python tools/check_required_terminal.py |
 | tool.check_ros2_adapters | tool | Check Ros2 Adapters | python tools/check_ros2_adapters.py |
+| tool.check_traceability | tool | Check Traceability | python tools/check_traceability.py |
+| tool.check_work_order_catalog | tool | Check Work Order Catalog | python tools/check_work_order_catalog.py |
 | tool.collect_publication_observations | tool | Collect Publication Observations | python tools/collect_publication_observations.py |
 | tool.command_center_up | tool | Command Center Up | tools/command_center_up.sh |
 | tool.cross_adapter_gate | tool | Cross Adapter Gate | python tools/cross_adapter_gate.py |
@@ -305,6 +308,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.jetson_preflight | tool | Jetson Preflight | tools/jetson_preflight.sh |
 | tool.list_cameras | tool | List Cameras | python tools/list_cameras.py |
 | tool.main_health_broker | tool | Main Health Broker | python tools/main_health_broker.py |
+| tool.materialize_task_work_order | tool | Materialize Task Work Order | python tools/materialize_task_work_order.py |
 | tool.mp | tool | Mp | tools/mp.sh |
 | tool.observe_main_health | tool | Observe Main Health | python tools/observe_main_health.py |
 | tool.plan_release_qualification | tool | Plan Release Qualification | python tools/plan_release_qualification.py |
@@ -366,6 +370,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate_release_source_freeze | tool | Validate Release Source Freeze | python tools/validate_release_source_freeze.py |
 | tool.validate_release_target_resolution | tool | Validate Release Target Resolution | python tools/validate_release_target_resolution.py |
 | tool.validate_release_task_state_observation | tool | Validate Release Task State Observation | python tools/validate_release_task_state_observation.py |
+| tool.validate_task_work_order | tool | Validate Task Work Order | python tools/validate_task_work_order.py |
 | tool.verify_m1_m6 | tool | Verify M1 M6 | tools/verify_m1_m6.sh |
 | tool.verify_m6_offline | tool | Verify M6 Offline | tools/verify_m6_offline.sh |
 | tool.ws_replay_jsonl | tool | Ws Replay Jsonl | python tools/ws_replay_jsonl.py |
