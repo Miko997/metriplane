@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `d41ce549299fb6933c69c5beac90d789dda5834669ca6cc1962e690dec334471`
+Canonical projection SHA-256: `f8413834f2af006b43322708267eae779481af9b30662ac8b9d31253d4fa2566`
 
 | action_id | feature_name | source_path | command_or_endpoint | ui_route | ui_label | coverage_status | risk | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -209,6 +209,7 @@ Canonical projection SHA-256: `d41ce549299fb6933c69c5beac90d789dda5834669ca6cc19
 | tool.validate-replay | Validate Replay | tools/validate-replay.sh | tools/validate-replay.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_atlas_assessment | Validate Atlas Assessment | tools/validate_atlas_assessment.py | python tools/validate_atlas_assessment.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_linear_release_snapshot | Validate Linear Release Snapshot | tools/validate_linear_release_snapshot.py | python tools/validate_linear_release_snapshot.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.validate_migration_delta | Validate Migration Delta | tools/validate_migration_delta.py | python tools/validate_migration_delta.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_publication_reconciliation | Validate Publication Reconciliation | tools/validate_publication_reconciliation.py | python tools/validate_publication_reconciliation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_approval | Validate Release Approval | tools/validate_release_approval.py | python tools/validate_release_approval.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.validate_release_artifact_manifest | Validate Release Artifact Manifest | tools/validate_release_artifact_manifest.py | python tools/validate_release_artifact_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

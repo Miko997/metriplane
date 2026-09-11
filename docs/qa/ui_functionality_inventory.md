@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `d41ce549299fb6933c69c5beac90d789dda5834669ca6cc1962e690dec334471`
+Canonical projection SHA-256: `f8413834f2af006b43322708267eae779481af9b30662ac8b9d31253d4fa2566`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 225 |
+| actions | 226 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -350,6 +350,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.validate-replay | tool | Validate Replay | tools/validate-replay.sh |
 | tool.validate_atlas_assessment | tool | Validate Atlas Assessment | python tools/validate_atlas_assessment.py |
 | tool.validate_linear_release_snapshot | tool | Validate Linear Release Snapshot | python tools/validate_linear_release_snapshot.py |
+| tool.validate_migration_delta | tool | Validate Migration Delta | python tools/validate_migration_delta.py |
 | tool.validate_publication_reconciliation | tool | Validate Publication Reconciliation | python tools/validate_publication_reconciliation.py |
 | tool.validate_release_approval | tool | Validate Release Approval | python tools/validate_release_approval.py |
 | tool.validate_release_artifact_manifest | tool | Validate Release Artifact Manifest | python tools/validate_release_artifact_manifest.py |
