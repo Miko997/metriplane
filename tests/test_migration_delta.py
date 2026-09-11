@@ -9,13 +9,24 @@ import subprocess
 import sys
 from pathlib import Path
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from metriplane.release_control import canonical_json, sha256_json
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "validate_migration_delta.py"
+_NODE_SIGN = r"""
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const {privateKey, publicKey} = crypto.generateKeyPairSync("ed25519");
+const publicDer = publicKey.export({format: "der", type: "spki"});
+const prefix = Buffer.from("302a300506032b6570032100", "hex");
+if (!publicDer.subarray(0, prefix.length).equals(prefix) || publicDer.length !== prefix.length + 32) {
+  process.exit(2);
+}
+process.stdout.write(JSON.stringify({
+  public_key_hex: publicDer.subarray(prefix.length).toString("hex"),
+  signature: crypto.sign(null, fs.readFileSync(0), privateKey).toString("hex"),
+}));
+"""
 
 
 def _write(path: Path, value: object) -> None:
@@ -24,6 +35,17 @@ def _write(path: Path, value: object) -> None:
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=repo, text=True).strip()
+
+
+def _signed_fixture(message: bytes) -> tuple[str, str]:
+    completed = subprocess.run(
+        ["node", "--eval", _NODE_SIGN],
+        input=message,
+        capture_output=True,
+        check=True,
+    )
+    value = json.loads(completed.stdout)
+    return value["public_key_hex"], value["signature"]
 
 
 def _obligation(identity: str) -> dict[str, object]:
@@ -171,13 +193,10 @@ def _fixture(
             ),
         ],
     }
-    private = Ed25519PrivateKey.generate()
-    public = private.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-    )
     reviewer = "fixture-author" if same_reviewer else "fixture-reviewer"
     digest = sha256_json(manifest)
     signed = canonical_json({"actor_id": reviewer, "provider": "github", "subject_digest": digest})
+    public_key_hex, signature = _signed_fixture(signed)
     approval = {
         "schema_version": "metriplane.migration-delta-approval.v1",
         "reviewer_id": reviewer,
@@ -185,12 +204,12 @@ def _fixture(
         "signature": {
             "provider": "github",
             "actor_id": reviewer,
-            "signature": private.sign(signed).hex(),
+            "signature": signature,
         },
     }
     keyring = {
         "schema_version": "metriplane.provider-attestation-keyring.v1",
-        "keys": [{"provider": "github", "actor_id": reviewer, "public_key_hex": public.hex()}],
+        "keys": [{"provider": "github", "actor_id": reviewer, "public_key_hex": public_key_hex}],
     }
     _write(tmp_path / "manifest.json", manifest)
     _write(tmp_path / "approval.json", approval)
