@@ -7,20 +7,42 @@ import subprocess
 import sys
 from pathlib import Path
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
 from metriplane.release_control import canonical_json, sha256_json
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "materialize_task_work_order.py"
 VALIDATOR = ROOT / "tools" / "validate_task_work_order.py"
 CATALOG = json.loads((ROOT / "docs/status/task-work-orders.json").read_bytes())
+_NODE_SIGN = r"""
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const {privateKey, publicKey} = crypto.generateKeyPairSync("ed25519");
+const publicDer = publicKey.export({format: "der", type: "spki"});
+const prefix = Buffer.from("302a300506032b6570032100", "hex");
+if (!publicDer.subarray(0, prefix.length).equals(prefix) || publicDer.length !== prefix.length + 32) {
+  process.exit(2);
+}
+process.stdout.write(JSON.stringify({
+  public_key_hex: publicDer.subarray(prefix.length).toString("hex"),
+  signature: crypto.sign(null, fs.readFileSync(0), privateKey).toString("hex"),
+}));
+"""
 
 
 def _write(path: Path, value: object) -> Path:
     path.write_bytes(canonical_json(value))
     return path
+
+
+def _signed_fixture(message: bytes) -> tuple[str, str]:
+    completed = subprocess.run(
+        ["node", "--eval", _NODE_SIGN],
+        input=message,
+        capture_output=True,
+        check=True,
+    )
+    value = json.loads(completed.stdout)
+    return value["public_key_hex"], value["signature"]
 
 
 def _resolution() -> dict[str, object]:
@@ -54,11 +76,6 @@ def _resolution() -> dict[str, object]:
 
 def _inputs(tmp_path: Path) -> dict[str, Path]:
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    private = Ed25519PrivateKey.generate()
-    public = private.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
     subject = {
         "actor_id": "fixture-actor",
         "authority": "disposable MP2-016 test assignment",
@@ -70,12 +87,13 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
     signed = canonical_json(
         {"actor_id": "fixture-actor", "provider": "linear", "subject_digest": subject_digest}
     )
+    public_key_hex, signature = _signed_fixture(signed)
     assignment = {
         "schema_version": "metriplane.task-assignment.v1",
         "signature": {
             "actor_id": "fixture-actor",
             "provider": "linear",
-            "signature": private.sign(signed).hex(),
+            "signature": signature,
         },
         "subject": subject,
         "subject_digest": subject_digest,
@@ -99,7 +117,7 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
                     {
                         "actor_id": "fixture-actor",
                         "provider": "linear",
-                        "public_key_hex": public.hex(),
+                        "public_key_hex": public_key_hex,
                     }
                 ],
                 "schema_version": "metriplane.provider-attestation-keyring.v1",
