@@ -19,7 +19,7 @@ try:
 except ImportError:
     import build_traceability_graph
 
-SCHEMA_VERSION = "metriplane.assignment-validation-result.v1"
+SCHEMA_VERSION = "metriplane.validation-result.v1"
 
 
 def _digest(path: Path) -> str:

@@ -19,7 +19,7 @@ try:
 except ImportError:  # Direct ``python tools/check_functional_inventory.py`` execution.
     import discover_functional_surface
 
-SCHEMA_VERSION = "metriplane.assignment-validation-result.v1"
+SCHEMA_VERSION = "metriplane.validation-result.v1"
 
 
 def _digest(path: Path) -> str:

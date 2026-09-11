@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://metriplane.com/schemas/metriplane.assignment-validation-result.v1.schema.json",
+  "$id": "https://metriplane.com/schemas/metriplane.validation-result.v1.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "task_id", "base_sha", "validator", "verdict", "inputs", "checks"],
   "properties": {
-    "schema_version": {"const": "metriplane.assignment-validation-result.v1"},
+    "schema_version": {"const": "metriplane.validation-result.v1"},
     "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
     "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "validator": {"enum": ["functional_inventory", "traceability"]},
