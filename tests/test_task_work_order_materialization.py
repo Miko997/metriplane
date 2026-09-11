@@ -144,7 +144,13 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
     }
 
 
-def _run(tmp_path: Path, inputs: dict[str, Path], *, out: str = "work-order.json"):
+def _run(
+    tmp_path: Path,
+    inputs: dict[str, Path],
+    *,
+    out: str = "work-order.json",
+    base_sha: str | None = None,
+):
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     return subprocess.run(
         [
@@ -155,7 +161,7 @@ def _run(tmp_path: Path, inputs: dict[str, Path], *, out: str = "work-order.json
             "--task-id",
             "MP2-016",
             "--base-sha",
-            head,
+            base_sha or head,
             "--catalog",
             "docs/status/task-work-orders.json",
             "--catalog-schema",
@@ -245,6 +251,12 @@ def test_tampered_assignment_is_rejected(tmp_path: Path) -> None:
     assignment["subject"]["actor_id"] = "substituted"
     _write(inputs["assignment"], assignment)
     assert _run(tmp_path, inputs).returncode == 2
+
+
+def test_malformed_base_is_invalid_input(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    assert _run(tmp_path, inputs, base_sha="x" * 40).returncode == 2
+    assert not (tmp_path / "work-order.json").exists()
 
 
 def test_work_order_is_never_overwritten(tmp_path: Path) -> None:

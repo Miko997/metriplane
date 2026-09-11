@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -47,7 +48,7 @@ def validate(
     inventory: Path,
     profiles: Path,
 ) -> tuple[int, dict[str, Any]]:
-    if not task_id.startswith("MP2-") or len(base_sha) != 40:
+    if not task_id.startswith("MP2-") or re.fullmatch(r"[0-9a-f]{40}", base_sha) is None:
         raise ValueError("explicit task and base identities are required")
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     paths = {
@@ -103,7 +104,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         _write_new(args.out, result)
         return code
-    except (OSError, ValueError, discover_functional_surface.DiscoveryError) as exc:
+    except (
+        OSError,
+        ValueError,
+        subprocess.CalledProcessError,
+        discover_functional_surface.DiscoveryError,
+    ) as exc:
         print(f"functional inventory validation failed: {exc}", file=sys.stderr)
         return 2
 

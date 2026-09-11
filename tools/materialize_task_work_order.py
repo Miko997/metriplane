@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -118,6 +119,8 @@ def build(
     command_registry_path: Path,
     resolution_path: Path,
 ) -> dict[str, Any]:
+    if not re.fullmatch(r"MP2-[0-9]{3}", task_id) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+        raise InputError("task and base identities are malformed")
     actual_head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     if actual_head != base_sha:
         raise NotReady("base SHA is not the checked-out source")
@@ -323,7 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except NotReady as exc:
         print(f"work-order materialization blocked: {exc}", file=sys.stderr)
         return 3
-    except (CatalogError, InputError, OSError, ValueError) as exc:
+    except (CatalogError, InputError, OSError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"work-order materialization invalid: {exc}", file=sys.stderr)
         return 2
 

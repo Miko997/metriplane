@@ -62,3 +62,8 @@ def test_noncanonical_graph_is_invalid_input(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert not (tmp_path / "result.json").exists()
+
+
+def test_malformed_base_is_invalid_input(tmp_path: Path) -> None:
+    assert _run(tmp_path, "x" * 40).returncode == 2
+    assert not (tmp_path / "result.json").exists()

@@ -48,3 +48,16 @@ def test_substituted_catalog_is_rejected(tmp_path: Path) -> None:
     changed.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(tool.CatalogError, match="source digest"):
         tool.validate_catalog(changed, schema_path=SCHEMA)
+    assert tool.main(["check", "--catalog", str(changed), "--schema", str(SCHEMA)]) == 2
+
+
+def test_transcription_never_overwrites_an_existing_output(tmp_path: Path) -> None:
+    out = tmp_path / "catalog.json"
+    out.write_text("retained", encoding="utf-8")
+    assert (
+        tool.main(
+            ["transcribe", "--source", str(CATALOG), "--out", str(out), "--schema", str(SCHEMA)]
+        )
+        == 2
+    )
+    assert out.read_text(encoding="utf-8") == "retained"

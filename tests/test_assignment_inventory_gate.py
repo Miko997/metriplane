@@ -56,3 +56,8 @@ def test_result_is_never_overwritten(tmp_path: Path) -> None:
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     assert _run(tmp_path, head).returncode == 0
     assert _run(tmp_path, head).returncode == 2
+
+
+def test_malformed_base_is_invalid_input(tmp_path: Path) -> None:
+    assert _run(tmp_path, "x" * 40).returncode == 2
+    assert not (tmp_path / "result.json").exists()

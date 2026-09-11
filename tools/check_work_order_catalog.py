@@ -7,7 +7,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import shutil
+import os
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
@@ -180,14 +181,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     transcribe.add_argument("--out", type=Path, required=True)
     transcribe.add_argument("--schema", type=Path, required=True)
     args = parser.parse_args(argv)
-    candidate = args.catalog if args.command == "check" else args.source
-    result = validate_catalog(candidate, schema_path=args.schema)
-    if args.command == "transcribe":
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(args.source, args.out)
-        validate_catalog(args.out, schema_path=args.schema)
-    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-    return 0
+    try:
+        candidate = args.catalog if args.command == "check" else args.source
+        result = validate_catalog(candidate, schema_path=args.schema)
+        if args.command == "transcribe":
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            descriptor = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(args.source.read_bytes())
+                stream.flush()
+                os.fsync(stream.fileno())
+            validate_catalog(args.out, schema_path=args.schema)
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return 0
+    except (CatalogError, OSError) as exc:
+        print(f"work-order catalog invalid: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
