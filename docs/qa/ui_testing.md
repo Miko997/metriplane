@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `dc6b2a0de83a9a4aa397dec56382102bf67d85f09d50781cb95f5fc79460f9a8`
+Canonical projection SHA-256: `6a33f58579cc5578cb41555bf5f3329cd9c29216e0192c38a1073e61f9076447`
 
 Check committed current status without writing:
 

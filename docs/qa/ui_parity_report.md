@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `dc6b2a0de83a9a4aa397dec56382102bf67d85f09d50781cb95f5fc79460f9a8`
+Canonical projection SHA-256: `6a33f58579cc5578cb41555bf5f3329cd9c29216e0192c38a1073e61f9076447`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 218 |
+| total_discovered_features | 219 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 132 |
+| cli_only_documented | 133 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -177,6 +177,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.build_release_delta_test_map | Build Release Delta Test Map | tools/build_release_delta_test_map.py | python tools/build_release_delta_test_map.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_release_evidence_manifest | Build Release Evidence Manifest | tools/build_release_evidence_manifest.py | python tools/build_release_evidence_manifest.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.build_release_qualification | Build Release Qualification | tools/build_release_qualification.py | python tools/build_release_qualification.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.build_traceability_graph | Build Traceability Graph | tools/build_traceability_graph.py | python tools/build_traceability_graph.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.capture_linear_release_snapshot | Capture Linear Release Snapshot | tools/capture_linear_release_snapshot.py | python tools/capture_linear_release_snapshot.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.capture_release_run_statuses | Capture Release Run Statuses | tools/capture_release_run_statuses.py | python tools/capture_release_run_statuses.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.capture_release_target_observations | Capture Release Target Observations | tools/capture_release_target_observations.py | python tools/capture_release_target_observations.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

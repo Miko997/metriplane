@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.traceability-validation-result.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "criterion_id", "verdict", "graph_digest", "ledger_digest", "checks"],
+  "properties": {
+    "schema_version": {"const": "metriplane.traceability-validation-result.v1"},
+    "criterion_id": {"enum": ["MP2-014.A01", "MP2-014.A02"]},
+    "verdict": {"enum": ["PASS", "BLOCKED"]},
+    "graph_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "ledger_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_valid", "zero_dangling_edges", "zero_orphans", "bidirectional_chain", "cumulative_obligations"],
+      "properties": {
+        "schema_valid": {"type": "boolean"},
+        "zero_dangling_edges": {"type": "boolean"},
+        "zero_orphans": {"type": "boolean"},
+        "bidirectional_chain": {"type": "boolean"},
+        "cumulative_obligations": {"type": "boolean"}
+      }
+    }
+  }
+}
