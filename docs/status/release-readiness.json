@@ -7,14 +7,6 @@
       "resolver": "docs/status/release-test-obligations.json"
     },
     {
-      "code": "LIVE_NON_AUTHOR_APPROVAL_REQUIRED",
-      "resolver": "tools/validate_release_approval.py"
-    },
-    {
-      "code": "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED",
-      "resolver": "tools/validate_release_retention.py"
-    },
-    {
       "code": "HOSTED_PROTECTION_AND_REAL_MERGE_PROOF_REQUIRED",
       "resolver": "tools/validate_repository_protection.py"
     },
@@ -3302,5 +3294,206 @@
       "role": "post_release",
       "task": "MP2-226"
     }
-  ]
+  ],
+  "v0_4_1_owner_scope": {
+    "budget_usd": 0,
+    "claim_boundary": {
+      "live_multi_party_production_custody": "DEFERRED_BY_OWNER_TO_LATER_ASSURANCE_MILESTONE",
+      "software_assurance": "PENDING_FINAL_CANDIDATE_PROOF"
+    },
+    "criterion_classification": [
+      {
+        "classification": "A",
+        "criterion_id": "MET-162",
+        "reason": "Atlas correctness implementation is merged; final installed-artifact comparison remains a MET-163 product proof."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A01",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A02",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A03",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "B",
+        "criterion_id": "MP2-007.A04",
+        "reason": "Live target observation and burn resolution completes around the publication transaction."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A05",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A06",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "C",
+        "criterion_id": "MP2-007.A07",
+        "reason": "The complete matrix and interfaces are implemented; independently administered live store custody is deferred."
+      },
+      {
+        "classification": "C",
+        "criterion_id": "MP2-007.A08",
+        "reason": "The approval validator is implemented; a genuine non-author human signature is deferred."
+      },
+      {
+        "classification": "C",
+        "criterion_id": "MP2-007.A09",
+        "reason": "Promotion planning and fenced locking are implemented; production external CAS operation and separation of duties are deferred."
+      },
+      {
+        "classification": "B",
+        "criterion_id": "MP2-007.A10",
+        "reason": "Exact published-byte observation and reconciliation necessarily completes after publication."
+      },
+      {
+        "classification": "C",
+        "criterion_id": "MP2-007.A11",
+        "reason": "Retention, chain, LKG, pointer, index, and invalidation are implemented; live independent custody and external LKG operation are deferred."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A12",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-007.A13",
+        "reason": "Implemented behavior is retained and covered by the governed qualification evidence."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-014.A01",
+        "reason": "The generated bidirectional graph is closed and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-014.A02",
+        "reason": "The generated graph reports zero orphan and dangling nodes."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-015.A01",
+        "reason": "Supported and compatibility rows have governed behavior characterization."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-015.A02",
+        "reason": "Compatibility behavior outside the declared delta is retained."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A01",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A02",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A03",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A04",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A05",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A06",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A07",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-016.A08",
+        "reason": "The work-order, membership, and validator behavior is merged and qualified."
+      },
+      {
+        "classification": "C",
+        "criterion_id": "MP2-017.A01",
+        "reason": "The semantic-change workflow and validator are implemented; genuine non-author human review is deferred."
+      },
+      {
+        "classification": "A",
+        "criterion_id": "MP2-017.A02",
+        "reason": "Affected compatibility obligations are retained outside the declared delta."
+      },
+      {
+        "classification": "B",
+        "criterion_id": "MET-163",
+        "reason": "Final successor qualification, canonical artifacts, installed-product proof, publication, and postpublication reconciliation remain."
+      }
+    ],
+    "decision_date": "2026-09-11",
+    "deferred_live_assurance": [
+      {
+        "destination_task_ids": [
+          "MP2-207",
+          "MP2-210",
+          "MP2-223",
+          "MP2-225"
+        ],
+        "requirement": "genuine independent non-author human release signature"
+      },
+      {
+        "destination_task_ids": [
+          "MP2-209",
+          "MP2-210",
+          "MP2-225"
+        ],
+        "requirement": "two independently administered external durable production evidence stores"
+      },
+      {
+        "destination_task_ids": [
+          "MP2-207",
+          "MP2-210",
+          "MP2-225"
+        ],
+        "requirement": "production external CAS/index/lock/LKG service"
+      },
+      {
+        "destination_task_ids": [
+          "MP2-210",
+          "MP2-225"
+        ],
+        "requirement": "multi-party privileged production deployment and authenticated readback"
+      }
+    ],
+    "mandatory_assurance": [
+      "canonical_artifact_identity_and_sha256sums",
+      "deterministic_generation_and_currentness",
+      "final_installed_product_and_met_162_comparison",
+      "governed_linux_macos_qualification",
+      "implemented_release_control_integration_tests",
+      "protected_main_candidate_and_health",
+      "traceability_characterization_membership_and_semantic_governance",
+      "truthful_release_and_migration_materials"
+    ],
+    "profile": "zero_cost_single_maintainer_v0_4_1",
+    "scope_document": "docs/releases/v0.4.1-assurance-scope.md"
+  }
 }

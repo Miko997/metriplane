@@ -21,6 +21,8 @@ V040_LAUNCH = RELEASES / "v0.4.0-launch-materials.md"
 V041_MIGRATION = RELEASES / "v0.4.1-migration.md"
 V041_NOTES = RELEASES / "v0.4.1-release-notes.md"
 V041_LAUNCH = RELEASES / "v0.4.1-launch-materials.md"
+V041_SCOPE = RELEASES / "v0.4.1-assurance-scope.md"
+RELEASE_READINESS = ROOT / "docs" / "status" / "release-readiness.json"
 
 
 def _workflow() -> tuple[dict[str, object], str]:
@@ -470,6 +472,61 @@ def test_v041_prepublication_materials_are_explicit_drafts() -> None:
         assert "0.4.0.post2" in text
         assert "v0.2.0" in text
         assert "10.5281/zenodo.20736619" in text
+
+
+def test_v041_zero_cost_scope_is_explicit_and_deferred_without_false_pass() -> None:
+    scope = V041_SCOPE.read_text(encoding="utf-8")
+    readiness = json.loads(RELEASE_READINESS.read_text(encoding="utf-8"))
+    decision = readiness["v0_4_1_owner_scope"]
+
+    assert decision["profile"] == "zero_cost_single_maintainer_v0_4_1"
+    assert decision["budget_usd"] == 0
+    assert decision["claim_boundary"] == {
+        "live_multi_party_production_custody": ("DEFERRED_BY_OWNER_TO_LATER_ASSURANCE_MILESTONE"),
+        "software_assurance": "PENDING_FINAL_CANDIDATE_PROOF",
+    }
+    assert {
+        task for row in decision["deferred_live_assurance"] for task in row["destination_task_ids"]
+    } == {"MP2-207", "MP2-209", "MP2-210", "MP2-223", "MP2-225"}
+    criterion_ids = [row["criterion_id"] for row in decision["criterion_classification"]]
+    assert len(criterion_ids) == len(set(criterion_ids))
+    assert set(criterion_ids) == {
+        "MET-162",
+        "MET-163",
+        *(f"MP2-007.A{index:02d}" for index in range(1, 14)),
+        *(f"MP2-014.A{index:02d}" for index in range(1, 3)),
+        *(f"MP2-015.A{index:02d}" for index in range(1, 3)),
+        *(f"MP2-016.A{index:02d}" for index in range(1, 9)),
+        *(f"MP2-017.A{index:02d}" for index in range(1, 3)),
+    }
+    assert {row["classification"] for row in decision["criterion_classification"]} == {
+        "A",
+        "B",
+        "C",
+    }
+    assert not any(row["classification"] == "D" for row in decision["criterion_classification"])
+    assert decision["mandatory_assurance"] == sorted(decision["mandatory_assurance"])
+    assert all(
+        row["destination_task_ids"] == sorted(set(row["destination_task_ids"]))
+        for row in decision["deferred_live_assurance"]
+    )
+    blocker_codes = {row["code"] for row in readiness["blockers"]}
+    assert "LIVE_NON_AUTHOR_APPROVAL_REQUIRED" not in blocker_codes
+    assert "EXTERNAL_TWO_STORE_READBACK_AND_CAS_PROOF_REQUIRED" not in blocker_codes
+
+    for expected in (
+        "`SOFTWARE_ASSURANCE`",
+        "`LIVE_MULTI_PARTY_PRODUCTION_CUSTODY`",
+        "DEFERRED_BY_OWNER_TO_LATER_ASSURANCE_MILESTONE",
+        "MP2-207",
+        "MP2-209",
+        "MP2-210",
+        "MP2-223",
+        "MP2-225",
+    ):
+        assert expected in scope
+    for path in (V041_MIGRATION, V041_NOTES, V041_LAUNCH):
+        assert "v0.4.1-assurance-scope.md" in path.read_text(encoding="utf-8")
 
 
 def test_changelog_is_dated_and_complete() -> None:
