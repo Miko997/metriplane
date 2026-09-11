@@ -5,9 +5,11 @@ SPDX-License-Identifier: MIT
 
 # Releasing Metriplane
 
-Metriplane uses PyPI Trusted Publishing. A release tag starts a workflow that
-builds one wheel and one source distribution, records their SHA-256 hashes,
-publishes those exact files to TestPyPI, and verifies them. Production
+Metriplane uses PyPI Trusted Publishing. Before a release tag exists, an
+owner-only staging workflow builds one wheel and one source distribution from
+exact protected `main`, records their source identity and SHA-256 hashes, and
+retains that canonical set. The release tag workflow imports those exact files,
+publishes them to TestPyPI, and verifies them without rebuilding. Production
 publication is a separate owner-only manual dispatch that names the successful
 tag workflow run, version, and an exact confirmation phrase. The `pypi`
 environment is an additional protection layer, not the only approval control.
@@ -229,6 +231,21 @@ license and notice files, metadata, and every bundled-demo resource. They must
 not contain credentials, local paths, generated runs, caches, private media,
 editor files, or unrelated research archives.
 
+## Retain the canonical publication artifacts
+
+After the exact protected-main candidate and every prepublication gate are
+green, manually run **Stage Python distributions** from `main` with the exact
+version and confirmation `stage metriplane <version> canonical artifacts`.
+Review the successful run and retain its `python-package-distributions`
+artifact. It must contain exactly one wheel, one source distribution,
+`SHA256SUMS`, and `BUILD_IDENTITY.json`; the identity must name the exact main
+commit, tree, version, staging workflow, and run ID.
+
+Do not run staging twice for the same candidate. The tag workflow fails closed
+unless it finds exactly one successful exact-source staging run with one
+unexpired canonical artifact. Any source change invalidates the staging run and
+requires a new protected candidate and one new canonical build.
+
 ## Create the annotated tag
 
 Only after the owner approves and the final release-candidate pull request is
@@ -262,10 +279,11 @@ The publication workflow rejects:
 
 ## Staged publication and explicit production promotion
 
-The workflow performs this sequence:
+The staging and publication workflows perform this sequence:
 
-1. verify tag provenance;
-2. run the reusable Release Gates;
+1. before tagging, verify the owner requested staging from exact protected
+   `main` and that the version and public targets are unoccupied;
+2. run the reusable Release Gates on that exact source;
 3. sync the canonical lock, prove its exact governed tool versions, install the
    locked Playwright browser and runtime dependencies, and rerun the complete
    test suite;
@@ -274,28 +292,31 @@ The workflow performs this sequence:
 5. run strict metadata validation;
 6. test the wheel outside the checkout;
 7. install and test the source distribution in a different environment;
-8. upload the two files with a SHA-256 manifest;
-9. publish those files to TestPyPI;
-10. compare TestPyPI's file hashes with the build manifest and install the
-    staged package;
-11. stop after verified TestPyPI publication;
-12. from the latest `main`, have the owner manually run **Publish Python
+8. retain the two files with their SHA-256 manifest and exact source identity;
+9. after the annotated tag is pushed, verify tag provenance and Release Gates,
+   locate the unique successful staging run for that exact commit, and import
+   its canonical artifact without rebuilding;
+10. publish those files to TestPyPI;
+11. compare TestPyPI's file hashes with the build manifest and install the
+   staged package;
+12. stop after verified TestPyPI publication;
+13. from the latest `main`, have the owner manually run **Publish Python
     distributions** with the successful tag workflow run ID, exact version,
     and exact confirmation
     `publish metriplane <version> to production`;
-13. verify that the named source run was a successful tag run for the same
+14. verify that the named source run was a successful tag run for the same
     annotated tag and commit and that it has one unexpired immutable artifact;
-14. re-download that exact artifact set and compare it with TestPyPI before the
+15. re-download that exact artifact set and compare it with TestPyPI before the
     `pypi` environment is entered;
-15. wait for the App-only main-update broker to create the exact protected
+16. wait for the App-only main-update broker to create the exact protected
     publish-lease ref and acknowledge that all main updates are fenced;
-16. revalidate live blocker approvals while the lease is held, then reassert the
+17. revalidate live blocker approvals while the lease is held, then reassert the
     lease, its exact App check, and exact current `main` immediately before the
     trusted publishing action;
-17. publish the verified files to PyPI;
-18. while the lease remains active, compare production PyPI's hashes with the
+18. publish the verified files to PyPI;
+19. while the lease remains active, compare production PyPI's hashes with the
     same manifest and verify a clean production installation;
-19. wait for the broker to re-prove exact `main`, retire its exact lease, and
+20. wait for the broker to re-prove exact `main`, retire its exact lease, and
     complete the same App check successfully before main updates resume.
 
 Do not start the production workflow dispatch until the TestPyPI verification
@@ -305,7 +326,7 @@ approve it only after confirming the dispatch inputs. A failed TestPyPI stage
 means stop, diagnose, and prepare a new version if any immutable file was
 already accepted by a registry.
 
-Any `main` drift detected before step 17 burns the candidate; stop and create a
+Any `main` drift detected before step 18 burns the candidate; stop and create a
 new tag. A failed or ambiguous production upload or verification deliberately
 leaves the App-owned lease active. Do not delete it by hand or retry
 publication. Reconcile the PyPI file hashes and broker state first, then use the

@@ -83,183 +83,123 @@ jobs:
     with:
       enforce-release-decision: true
 
-  build:
-    name: Test and build distributions once
+  import-staged-artifacts:
+    name: Import exact pre-tag artifacts
     if: github.event_name == 'push'
     needs: [provenance, gates]
     runs-on: ubuntu-latest
-    env:
-      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
-      UV_NO_CONFIG: "1"
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      staging_run_id: ${{ steps.source.outputs.run_id }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.12.0"
-          enable-cache: false
-
-      - name: Sync locked release environment
-        run: |
-          uv --no-config lock --check
-          uv --no-config sync --frozen --all-groups
-          uv --no-config pip check
-
-      - name: Prove exact release toolchain
+      - name: Resolve the unique exact-source staging run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.provenance.outputs.commit }}
         shell: bash
         run: |
           set -euo pipefail
-          uv --version
-          UV_VERSION="$(uv --version | awk '{print $2}')" \
-            uv --no-config run --frozen python - <<'PY'
-          from importlib import metadata
+          api_root="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "${api_root}/actions/workflows/stage-pypi.yml/runs?event=workflow_dispatch&status=success&branch=main&per_page=100" \
+            > "${RUNNER_TEMP}/staging-runs.json"
+          GH_TOKEN="$GH_TOKEN" \
+          API_ROOT="$api_root" \
+          RUNS_JSON="${RUNNER_TEMP}/staging-runs.json" \
+          python - <<'PY'
+          import json
           import os
           from pathlib import Path
-          import tomllib
+          from urllib.request import Request, urlopen
 
-          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-          actual_uv = os.environ["UV_VERSION"]
-          expected_uv = project["tool"]["uv"]["required-version"]
-          if expected_uv != f"=={actual_uv}":
-              raise SystemExit(f"uv: installed {actual_uv}, expected {expected_uv}")
-          print(f"uv=={actual_uv}")
-
-          governed = {}
-          for requirement in project["dependency-groups"]["dev"]:
-              name, separator, expected = requirement.partition("==")
-              if separator != "==" or not name or not expected:
-                  raise SystemExit(f"non-exact governed tool requirement: {requirement}")
-              normalized = name.lower()
-              if normalized in governed:
-                  raise SystemExit(f"duplicate governed tool requirement: {name}")
-              actual = metadata.version(name)
-              if actual != expected:
-                  raise SystemExit(f"{name}: installed {actual}, expected {expected}")
-              governed[normalized] = actual
-              print(f"{name}=={actual}")
-
-          for requirement in project["build-system"]["requires"]:
-              name, separator, expected = requirement.partition("==")
-              if separator != "==" or not name or not expected:
-                  raise SystemExit(f"non-exact build-backend requirement: {requirement}")
-              actual = governed.get(name.lower())
-              if actual != expected:
-                  raise SystemExit(
-                      f"build backend {requirement} is not installed from the governed toolchain"
-                  )
-              print(f"build-backend:{name}=={actual}")
+          expected_commit = os.environ["RELEASE_COMMIT"]
+          runs = json.loads(Path(os.environ["RUNS_JSON"]).read_text())
+          candidates = [
+              run for run in runs.get("workflow_runs", [])
+              if run.get("head_sha") == expected_commit
+              and run.get("event") == "workflow_dispatch"
+              and run.get("path") == ".github/workflows/stage-pypi.yml"
+              and run.get("status") == "completed"
+              and run.get("conclusion") == "success"
+          ]
+          usable = []
+          for run in candidates:
+              request = Request(
+                  f"{os.environ['API_ROOT']}/actions/runs/{run['id']}/artifacts?per_page=100",
+                  headers={
+                      "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urlopen(request, timeout=30) as response:
+                  payload = json.load(response)
+              artifacts = [
+                  item for item in payload.get("artifacts", [])
+                  if item.get("name") == "python-package-distributions"
+                  and not item.get("expired", True)
+              ]
+              if len(artifacts) == 1:
+                  usable.append(run)
+          if len(usable) != 1:
+              raise SystemExit(
+                  "tag requires exactly one successful exact-source staging run "
+                  "with one unexpired canonical artifact"
+              )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
+              stream.write(f"run_id={usable[0]['id']}\n")
           PY
 
-      - name: Install Chromium for complete release qualification
-        run: uv --no-config run --frozen python -m playwright install chromium --with-deps
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: python-package-distributions
+          path: release-artifacts/
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
 
-      - name: Run the complete test suite
-        run: uv --no-config run --frozen python -m pytest -q
-
-      - name: Build, inspect, and fingerprint distributions
+      - name: Verify staged source and exact artifact identity
+        env:
+          RELEASE_COMMIT: ${{ needs.provenance.outputs.commit }}
+          RELEASE_VERSION: ${{ needs.provenance.outputs.version }}
+          STAGING_RUN_ID: ${{ steps.source.outputs.run_id }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release-artifacts/dist
-          uv --no-config run --frozen python -m build \
-            --no-isolation \
-            --outdir release-artifacts/dist
-          uv --no-config run --frozen python -m twine check --strict release-artifacts/dist/*
-          uv --no-config run --frozen python tools/release_artifacts.py create-manifest \
-            --dist release-artifacts/dist \
-            --manifest release-artifacts/SHA256SUMS \
-            --version "$RELEASE_VERSION"
-          uv --no-config run --frozen python tools/release_artifacts.py verify-manifest \
-            --dist release-artifacts/dist \
-            --manifest release-artifacts/SHA256SUMS \
-            --version "$RELEASE_VERSION"
-          sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
-          uv --no-config run --frozen python tools/release_artifacts.py inspect-sdist \
-            --sdist "$sdist_path" \
-            --version "$RELEASE_VERSION"
-          cat release-artifacts/SHA256SUMS
-
-      - name: Smoke-test the wheel outside the checkout
-        shell: bash
-        run: |
-          set -euo pipefail
-          wheel_path="$(realpath release-artifacts/dist/*.whl)"
-          smoke_venv="${RUNNER_TEMP}/metriplane-wheel-smoke"
-          smoke_out="${RUNNER_TEMP}/metriplane-wheel-output"
-          python -m venv "$smoke_venv"
-          "$smoke_venv/bin/python" -m pip install --upgrade pip
-          "$smoke_venv/bin/python" -m pip install --no-cache-dir "$wheel_path"
-          cd "$RUNNER_TEMP"
-          "$smoke_venv/bin/python" -m pip check
-          test "$("$smoke_venv/bin/metriplane" --version)" = \
-            "metriplane ${RELEASE_VERSION}"
-          "$smoke_venv/bin/metriplane" --help | grep -Fq "demo"
-          doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
-          printf '%s\n' "$doctor_output"
-          grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
-          demo_output="$("$smoke_venv/bin/metriplane" demo --out "$smoke_out")"
-          printf '%s\n' "$demo_output"
-          grep -Fq "required torque driver is missing" <<<"$demo_output"
-          grep -Fq "delayed by 35.0 seconds" <<<"$demo_output"
-          grep -Fq "PASS  Incident timeline: 6 events" <<<"$demo_output"
-          grep -Fq "PASS  Incident report: 1 incident" <<<"$demo_output"
-          "$smoke_venv/bin/metriplane" atlas bundle verify \
-            "$smoke_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
-          "$smoke_venv/bin/metriplane" atlas test \
-            "$smoke_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
-          VERSION="$RELEASE_VERSION" "$smoke_venv/bin/python" - <<'PY'
-          import importlib.metadata as metadata
+          RELEASE_TREE="$(git rev-parse HEAD^{tree})" python - <<'PY'
+          import json
           import os
-          import metriplane
+          from pathlib import Path
 
-          expected = os.environ["VERSION"]
-          assert metriplane.__version__ == metadata.version("metriplane") == expected
+          identity = json.loads(
+              Path("release-artifacts/BUILD_IDENTITY.json").read_text(encoding="utf-8")
+          )
+          expected = {
+              "commit": os.environ["RELEASE_COMMIT"],
+              "tree": os.environ["RELEASE_TREE"],
+              "version": os.environ["RELEASE_VERSION"],
+              "workflow": ".github/workflows/stage-pypi.yml",
+              "workflow_run_id": int(os.environ["STAGING_RUN_ID"]),
+          }
+          if identity != expected:
+              raise SystemExit(f"staged artifact source mismatch: {identity!r}")
           PY
+          cd release-artifacts/dist
+          diff -u \
+            <(awk '{print $2}' ../SHA256SUMS | LC_ALL=C sort) \
+            <(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          sha256sum --check ../SHA256SUMS
 
-      - name: Install and smoke-test the source distribution independently
-        shell: bash
-        run: |
-          set -euo pipefail
-          sdist_path="$(realpath release-artifacts/dist/*.tar.gz)"
-          smoke_venv="${RUNNER_TEMP}/metriplane-sdist-smoke"
-          smoke_out="${RUNNER_TEMP}/metriplane-sdist-output"
-          python -m venv "$smoke_venv"
-          "$smoke_venv/bin/python" -m pip install --upgrade pip
-          "$smoke_venv/bin/python" -m pip install --no-cache-dir "$sdist_path"
-          cd "$RUNNER_TEMP"
-          "$smoke_venv/bin/python" -m pip check
-          test "$("$smoke_venv/bin/metriplane" --version)" = \
-            "metriplane ${RELEASE_VERSION}"
-          doctor_output="$("$smoke_venv/bin/metriplane" doctor)"
-          printf '%s\n' "$doctor_output"
-          grep -Fxq "Ready for the bundled camera-free demo." <<<"$doctor_output"
-          demo_output="$("$smoke_venv/bin/metriplane" demo --out "$smoke_out")"
-          printf '%s\n' "$demo_output"
-          grep -Fq "PASS  Incident timeline: 6 events" <<<"$demo_output"
-          grep -Fq "PASS  Incident report: 1 incident" <<<"$demo_output"
-          "$smoke_venv/bin/metriplane" atlas bundle verify \
-            "$smoke_out/evidence_bundles/INC-0001.zip" | grep -q '"pass": true'
-          "$smoke_venv/bin/metriplane" atlas test \
-            "$smoke_out/regression_tests/INC-0001.yaml" --json | grep -q '"pass": true'
-          VERSION="$RELEASE_VERSION" "$smoke_venv/bin/python" - <<'PY'
-          import importlib.metadata as metadata
-          import os
-          import metriplane
-
-          expected = os.environ["VERSION"]
-          assert metriplane.__version__ == metadata.version("metriplane") == expected
-          PY
-
-      - name: Upload the immutable release-artifact set
+      - name: Retain exact staged artifacts in the tag run
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: python-package-distributions
@@ -270,7 +210,7 @@ jobs:
   publish-testpypi:
     name: Publish exact artifacts to TestPyPI
     if: github.event_name == 'push'
-    needs: [provenance, build]
+    needs: [provenance, import-staged-artifacts]
     runs-on: ubuntu-latest
     environment:
       name: testpypi
