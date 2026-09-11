@@ -11,9 +11,10 @@ claiming improvement when the requirements differ or the evidence is incomplete.
 This document records the bounded validation method for that change.
 
 The published reference is `metriplane==0.4.0.post2`. The candidate is an
-unreleased wheel built from this pull request; its source and distribution
-hashes distinguish it even when the package version has not changed. These
-results do not rewrite the frozen SoftwareX v0.2.0 or TIM v0.1.3 evaluations.
+unreleased `metriplane==0.4.1` wheel built from the approved release-candidate
+source. Its source and distribution hashes remain part of the comparison
+identity. These results do not rewrite the frozen SoftwareX v0.2.0 or TIM
+v0.1.3 evaluations.
 
 ## Reproduce from installed artifacts
 
@@ -28,7 +29,7 @@ python /path/to/checkout/tools/validate_atlas_assessment.py \
   --before-python /path/to/reference-env/bin/python \
   --after-python /path/to/candidate-env/bin/python \
   --before-artifact /path/to/metriplane-0.4.0.post2-py3-none-any.whl \
-  --after-artifact /path/to/candidate/metriplane-0.4.0.post2-py3-none-any.whl \
+  --after-artifact /path/to/candidate/metriplane-0.4.1-py3-none-any.whl \
   --out /path/outside/checkout/met-162-review-01
 ```
 
@@ -128,11 +129,13 @@ Retained identities:
 | `summary.json` | `ba7923951931a8e7dc8a8ccd81b5182b13d12967f963f04382f6ab24df9c6e1f` |
 | Retained `CHECKSUMS.sha256` inventory | `dc7669287173b9df453f51d6bb79b045f0c8330c3235fdeb35615b119c7810ac` |
 
-The candidate was built from the working changes on base commit
-`17bb62d61a567dee65b41674d2129c7e113b7b3a`; its complete installed source-file hash
-inventory is retained in `protocol.json`. The wheel remains an unreleased
-candidate despite reporting the existing `0.4.0.post2` package version. The
-identities above describe this execution, not a later rebuild or release.
+The retained MET-162 engineering candidate was built from working changes on
+base commit `17bb62d61a567dee65b41674d2129c7e113b7b3a`; its complete installed
+source-file hash inventory is retained in `protocol.json`. It predates the
+v0.4.1 release-candidate version transition and does not qualify a later
+artifact. The final release check must repeat the comparison against the exact
+retained v0.4.1 candidate bytes. The identities above describe the earlier
+execution, not a later rebuild or release.
 
 ## Closure of the original 21-case study
 

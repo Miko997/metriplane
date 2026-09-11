@@ -7,7 +7,6 @@ import hashlib
 import json
 import math
 import re
-import shutil
 from itertools import pairwise
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -346,9 +345,19 @@ def test_all_registered_expected_outcomes_are_test_only_oracles() -> None:
 def test_operator_domain_pack_changes_do_not_change_normalized_session(
     tmp_path: Path,
 ) -> None:
-    baseline = REPOSITORY_ROOT / "examples/external_sources/minimal"
+    frozen_baseline = REPOSITORY_ROOT / "examples/external_sources/minimal"
+    baseline = tmp_path / "baseline"
+    _materialize_current_version_fixture(
+        frozen_baseline,
+        baseline,
+        installed_version=__version__,
+    )
     changed = tmp_path / "fixture"
-    shutil.copytree(baseline, changed)
+    _materialize_current_version_fixture(
+        frozen_baseline,
+        changed,
+        installed_version=__version__,
+    )
     process_path = changed / "domain-pack/process.yaml"
     original_process = process_path.read_text(encoding="utf-8")
     assert "max_wait_s: 2.0" in original_process

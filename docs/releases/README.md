@@ -8,6 +8,12 @@ SPDX-License-Identifier: MIT
 This directory contains finalized historical release records and
 owner-reviewable release preparation material.
 
+The v0.4.1 preparation files are drafts for an unpublished candidate:
+
+- [v0.4.1 migration and behavior changes](v0.4.1-migration.md)
+- [v0.4.1 draft release notes](v0.4.1-release-notes.md)
+- [v0.4.1 draft launch materials](v0.4.1-launch-materials.md)
+
 - [v0.4.0.post2 migration and behavior changes](v0.4.0-migration.md)
 - [v0.4.0.post2 GitHub release notes](v0.4.0-release-notes.md)
 - [v0.4.0.post2 launch materials and finalization record](v0.4.0-launch-materials.md)

@@ -344,18 +344,23 @@ jobs:
           expected_metriplane_git_commit="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
           test "$expected_metriplane_git_commit" = \
             "${{ github.event.pull_request.head.sha || github.sha }}"
-          SOURCE_FIXTURE="$GITHUB_WORKSPACE/examples/external_sources/minimal" \
-            EXTERNAL_FIXTURE="$external_fixture" \
-            FINGERPRINT_FILE="$external_fixture_fingerprint" \
-            "$smoke_venv/bin/python" - <<'PY'
+          (
+            cd "$GITHUB_WORKSPACE"
+            SOURCE_FIXTURE="$GITHUB_WORKSPACE/examples/external_sources/minimal" \
+              EXTERNAL_FIXTURE="$external_fixture" \
+              FINGERPRINT_FILE="$external_fixture_fingerprint" \
+              "$smoke_venv/bin/python" - <<'PY'
           import hashlib
           import os
           from pathlib import Path
-          import shutil
+
+          from tests.external_sources.version_projection import (
+              materialize_current_version_fixture,
+          )
 
           source = Path(os.environ["SOURCE_FIXTURE"])
           fixture = Path(os.environ["EXTERNAL_FIXTURE"])
-          shutil.copytree(source, fixture)
+          materialize_current_version_fixture(source, fixture)
 
           digest = hashlib.sha256()
           for path in sorted(fixture.rglob("*")):
@@ -378,6 +383,7 @@ jobs:
               digest.hexdigest() + "\n", encoding="utf-8"
           )
           PY
+          )
 
           cd "$RUNNER_TEMP"
           "$smoke_venv/bin/metriplane" external validate \

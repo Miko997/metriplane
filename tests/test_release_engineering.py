@@ -18,6 +18,9 @@ WSL2_VALIDATION = ROOT / "docs" / "validation" / "wsl2-v0.3.0-owner-run.md"
 V040_MIGRATION = RELEASES / "v0.4.0-migration.md"
 V040_NOTES = RELEASES / "v0.4.0-release-notes.md"
 V040_LAUNCH = RELEASES / "v0.4.0-launch-materials.md"
+V041_MIGRATION = RELEASES / "v0.4.1-migration.md"
+V041_NOTES = RELEASES / "v0.4.1-release-notes.md"
+V041_LAUNCH = RELEASES / "v0.4.1-launch-materials.md"
 
 
 def _workflow() -> tuple[dict[str, object], str]:
@@ -439,10 +442,34 @@ def test_citation_paths_do_not_mix_release_and_research_versions() -> None:
     assert "Do not use the v0.2.0 DOI for v0.3.0" in guide
 
 
-def test_v040_release_candidate_sets_the_package_version() -> None:
+def test_v041_release_candidate_sets_the_package_version() -> None:
     import metriplane
 
-    assert metriplane.__version__ == "0.4.0.post2"
+    assert metriplane.__version__ == "0.4.1"
+
+
+def test_v041_prepublication_materials_are_explicit_drafts() -> None:
+    index = (RELEASES / "README.md").read_text(encoding="utf-8")
+    migration = V041_MIGRATION.read_text(encoding="utf-8")
+    notes = V041_NOTES.read_text(encoding="utf-8")
+    launch = V041_LAUNCH.read_text(encoding="utf-8")
+
+    assert index.index("v0.4.1-migration.md") < index.index("v0.4.0-migration.md")
+    assert index.index("v0.4.1-release-notes.md") < index.index("v0.4.0-release-notes.md")
+    assert index.index("v0.4.1-launch-materials.md") < index.index("v0.4.0-launch-materials.md")
+    assert "DRAFT — UNPUBLISHED" not in migration
+    assert "DRAFT — UNPUBLISHED" in notes
+    assert "DRAFT — UNPUBLISHED" in launch
+    assert "`0.4.1`" in migration
+    assert "`v0.4.1`" in launch
+    assert "<fill-from-approved-final-main>" in notes
+    assert "<fill-from-retained-build-once-manifest>" in notes
+    assert "Publication lease/checkpoint: not started" in launch
+    assert "No v0.4.1 DOI is planned" in launch
+    for text in (migration, notes, launch):
+        assert "0.4.0.post2" in text
+        assert "v0.2.0" in text
+        assert "10.5281/zenodo.20736619" in text
 
 
 def test_changelog_is_dated_and_complete() -> None:
