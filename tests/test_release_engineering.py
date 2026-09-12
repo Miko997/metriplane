@@ -23,6 +23,7 @@ V041_MIGRATION = RELEASES / "v0.4.1-migration.md"
 V041_NOTES = RELEASES / "v0.4.1-release-notes.md"
 V041_LAUNCH = RELEASES / "v0.4.1-launch-materials.md"
 V041_SCOPE = RELEASES / "v0.4.1-assurance-scope.md"
+V050_SCOPE = RELEASES / "v0.5.0-single-maintainer-review-policy.md"
 RELEASE_READINESS = ROOT / "docs" / "status" / "release-readiness.json"
 
 
@@ -579,6 +580,61 @@ def test_v041_zero_cost_scope_is_explicit_and_deferred_without_false_pass() -> N
         assert expected in scope
     for path in (V041_MIGRATION, V041_NOTES, V041_LAUNCH):
         assert "v0.4.1-assurance-scope.md" in path.read_text(encoding="utf-8")
+
+
+def test_v050_single_maintainer_scope_defers_only_human_independence() -> None:
+    scope = V050_SCOPE.read_text(encoding="utf-8")
+    readiness = json.loads(RELEASE_READINESS.read_text(encoding="utf-8"))
+    decision = readiness["v0_5_owner_scope"]
+
+    assert decision["profile"] == "zero_cost_single_maintainer_v0_5_0"
+    assert decision["budget_eur"] == 0
+    assert decision["applies_to_task_ids"] == ["MP2-030", "MP2-049"]
+    assert decision["readiness"] == {
+        "policy": "OWNER_APPROVED",
+        "release": "BLOCKED_NOT_READY",
+        "tagging_or_publication_authorized": False,
+    }
+    assert decision["human_review"] == {
+        "automated_execution_evidence_required": True,
+        "classification": "NOT_APPLICABLE_FOR_V0_5",
+        "deferred_to_task_ids": ["MP2-207", "MP2-210", "MP2-223", "MP2-225"],
+        "independent_review_occurred": False,
+        "owner_architecture_decision_allowed": True,
+        "removed_requirements": [
+            "backup_non_author_reviewer",
+            "independent_human_candidate_or_qualification_approval",
+            "mandatory_second_human_READY_review",
+            "reviewer_key_or_signature_used_only_to_prove_human_independence",
+        ],
+        "represented_as_pass": False,
+    }
+    assert set(decision["mandatory_technical_controls"]) == {
+        "branch_protection_required_CI_and_broker_admission",
+        "exact_byte_publication_readback_and_reconciliation",
+        "immutable_retention_chain_LKG_index_invalidation_and_recovery",
+        "installed_product_upgrade_failure_and_rollback_testing",
+        "negative_and_fail_closed_fixtures",
+        "OIDC_backed_machine_attestation_and_signature_verification",
+        "provenance_qualification_and_reproducibility",
+        "publisher_operator_and_infrastructure_authority",
+        "subject_issuer_workflow_ref_event_commit_and_artifact_digest_validation",
+    }
+    for required in (
+        "OIDC-backed machine attestation",
+        "subject, issuer, workflow",
+        "ref/event, commit and artifact-digest",
+        "fail closed",
+        "exact-byte publication",
+        "reconciliation",
+        "recovery",
+        "never `PASS`",
+        "MP2-207",
+        "MP2-210",
+        "MP2-223",
+        "MP2-225",
+    ):
+        assert required in scope
 
 
 def test_changelog_is_dated_and_complete() -> None:

@@ -13,6 +13,16 @@ acceptance result to one canonical no-overwrite materialization. An independent
 read-only reviewer must return `READY`. Missing or conflicting authority returns
 `BLOCKED_NOT_READY`.
 
+For MET-92 / MP2-030 and MET-156 / MP2-049 in v0.5.0 only, the owner-approved
+[single-maintainer review policy](../releases/v0.5.0-single-maintainer-review-policy.md)
+replaces the mandatory second-human start-gate disposition. The materializer
+must still validate every exact authority, dependency, path, command, resource,
+acceptance and stop-condition binding and return its machine result. The human
+review field is `NOT_APPLICABLE_FOR_V0_5`, never `READY` or `PASS`. Miko may make
+the protected architecture/trust-profile decision as owner, but that decision
+is separate from automated execution evidence. This exception does not apply to
+later milestones or weaken protected merge, CI, broker or release gates.
+
 Use the exact supported tool versions from `docs/maintainers/testing-policy.md`.
 Do not substitute a newer executable merely because it is on `PATH`.
 

@@ -15,7 +15,7 @@ from typing import Any, Final
 
 CATALOG_PATH: Final = Path("docs/status/task-work-orders.json")
 SCHEMA_PATH: Final = Path("schemas/metriplane.mp2-work-order-set.v1.schema.json")
-SOURCE_SHA256: Final = "f04a69658ae8c0c11c1ad96cb666b03d92cdf2d0a59a7520580487a61a43c161"
+SOURCE_SHA256: Final = "e5880da934995d0bca6af49551b9c58047699d3e5a10078b1262e6394d43b2c4"
 TASK_COUNT: Final = 93
 RELEASES: Final = frozenset({"v0.4", "v0.5", "v0.6", "v0.7", "v0.8", "v0.9", "v1.0", "post-v1.0"})
 
@@ -45,7 +45,7 @@ def validate_catalog(catalog_path: Path, *, schema_path: Path) -> dict[str, obje
     raw, catalog = _load(catalog_path)
     digest = hashlib.sha256(raw).hexdigest()
     if digest != SOURCE_SHA256:
-        raise CatalogError(f"catalog source digest {digest} does not match packet 12")
+        raise CatalogError(f"catalog source digest {digest} does not match the governed catalog")
     if catalog.get("schema_version") != "metriplane.mp2-work-order-set.v1":
         raise CatalogError("unknown work-order catalog schema")
     tasks = catalog.get("tasks")

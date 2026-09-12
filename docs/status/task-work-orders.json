@@ -1,6 +1,6 @@
 {
   "schema_version": "metriplane.mp2-work-order-set.v1",
-  "packet_revision": "2.5.3",
+  "packet_revision": "2.5.4",
   "authority": "Exact task-specific planning catalog. Static validity means a fresh agent can understand the task. Editing is prohibited until a metriplane.task-work-order.v1 instance resolves every current-main field, including repository instructions and PR-contract phase, and validates READY.",
   "source_authority_sha256": {
     "06_IMPLEMENTATION_BACKLOG.md": "e3607339fc6d8d1251e88e5fcfe167de7b5694e7c2c900be14bf82d67e1ce508",
@@ -7221,7 +7221,7 @@
       "first_required_release": "v0.5",
       "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
       "assignment_state": "PLANNING_BLOCKED__PROTECTED_ARCHITECTURE_TRUST_DECISION_REQUIRED",
-      "observable_outcome": "After a protected architecture/trust decision fixes the attestation envelope, signer/provider, identity claims, trust roots and promotion-verification boundary, implement exactly that OIDC-backed signing profile. Every promotion must reject wrong or missing subject, issuer, workflow/ref/event, commit and artifact digest claims; negative fixtures prove fail-closed behavior. The implementing agent may not choose or silently substitute the trust profile.",
+      "observable_outcome": "After a protected owner architecture/trust decision fixes the attestation envelope, signer/provider, identity claims, trust roots and promotion-verification boundary, implement exactly that OIDC-backed signing profile. Under the v0.5.0 single-maintainer policy Miko may approve the profile as owner; that decision remains distinct from automated execution evidence and does not claim independent-human review. Every promotion must reject wrong or missing subject, issuer, workflow/ref/event, commit and artifact digest claims; negative fixtures prove fail-closed behavior. The implementing agent may not choose or silently substitute the trust profile.",
       "product_reason": "Closes the v0.5 readiness gap for [MP2-030] OIDC-backed attestations/signatures; verify subject/issuer/workflow/commit/digest before each promotion while preserving the declared Metriplane product boundary.",
       "authoritative_blocked_by": [
         "MP2-029"
@@ -7267,7 +7267,7 @@
                 "."
               ]
             ],
-            "expected_resolution": "exactly one protected, approved and digest-bound decision fixing envelope/format, signer/provider, issuer and subject rules, workflow/ref/event and commit claims, artifact-digest binding, trust roots/transparency or equivalent verification, validity/revocation policy, promotion consumer and negative-fixture obligations",
+            "expected_resolution": "exactly one protected, owner-approved and digest-bound decision fixing envelope/format, signer/provider, issuer and subject rules, workflow/ref/event and commit claims, artifact-digest binding, trust roots/transparency or equivalent verification, validity/revocation policy, promotion consumer and negative-fixture obligations; v0.5.0 does not require or claim an independent-human co-approval",
             "evidence_output": "build/work-orders/MP2-030/<base-sha>/<materialization-id>/architecture-trust-decision-resolution.json",
             "stop_rule": "absent, draft, conflicting, expired or incompletely specified decision => PLANNING_BLOCKED; agent must not choose a provider or trust profile"
           },
@@ -7412,8 +7412,8 @@
         {
           "status": "MANUAL_AUTHORITY_REQUIRED",
           "kind": "protected_architecture_and_trust_profile_decision",
-          "required_role": "security_release_architecture_owner plus non-author approver",
-          "requirement": "supply one signed/digest-bound decision fixing the attestation envelope/format, signer/provider, accepted issuer/subject/workflow/ref/event/commit/artifact claims, trust roots/transparency or equivalent verification, validity/revocation, promotion consumer and negative-fixture matrix; separately supply the protected credential channel at integration time; agent cannot choose, amend or self-approve the profile"
+          "required_role": "security_release_architecture_owner",
+          "requirement": "Miko as owner may supply one signed/digest-bound decision fixing the attestation envelope/format, signer/provider, accepted issuer/subject/workflow/ref/event/commit/artifact claims, trust roots/transparency or equivalent verification, validity/revocation, promotion consumer and negative-fixture matrix; separately supply the protected credential channel at integration time; the owner decision is not automated execution evidence, and an agent cannot choose or amend the profile"
         }
       ],
       "compatibility_and_rollback": {
@@ -9540,7 +9540,7 @@
       "first_required_release": "v0.5",
       "linear_milestone_id": "59072253-8fb3-410f-987a-b35529400bb9",
       "assignment_state": "PLANNING_READY__EXECUTION_MANIFEST_REQUIRED",
-      "observable_outcome": "Resolve the actual reconciled v0.4 LKG predecessor and v0.5 runtime target; qualify all inherited obligations plus installed/upgrade/failure/rollback coverage; complete exact-byte promotion through close-ready index, then close last.",
+      "observable_outcome": "Under the owner-approved v0.5.0 single-maintainer policy, resolve the actual reconciled v0.4 LKG predecessor and v0.5 runtime target; qualify all inherited obligations plus installed/upgrade/failure/rollback coverage; retain independent-human approval as NOT_APPLICABLE rather than PASS; complete exact-byte promotion through close-ready index, then close last.",
       "product_reason": "Closes the v0.5 readiness gap for [MP2-049] [v0.5] Qualify, publish, and reconcile Installable Family while preserving the declared Metriplane product boundary.",
       "authoritative_blocked_by": [
         "MP2-018",
@@ -9635,7 +9635,7 @@
         ]
       },
       "ordered_task_specific_steps": [
-        "Materialize the release row, signed roles, exact target/predecessor/BOM/scenario executors and close predicate.",
+        "Materialize the release row, signed operator/publisher/infrastructure roles, the exact v0.5.0 owner-scope digest, exact target/predecessor/BOM/scenario executors and close predicate; record independent-human review as NOT_APPLICABLE, never PASS.",
         "Execute sections 9–14 of the runbook in exact order; each failure uses its typed immutable envelope and no step is inferred complete.",
         "Reach the row-specific close-ready or completion index, live-refetch task state, then close the decision last."
       ],
@@ -9720,10 +9720,10 @@
       },
       "manual_external_irreversible_actions": [
         {
-          "status": "MANUAL_AUTHORITY_REQUIRED",
-          "kind": "approval",
-          "required_role": "non_author_reviewer",
-          "requirement": "signed candidate/qualification decision"
+          "status": "NOT_APPLICABLE",
+          "kind": "independent_human_release_approval",
+          "required_role": "none",
+          "requirement": "Under docs/releases/v0.5.0-single-maintainer-review-policy.md, independent-human approval is not required for v0.5.0 and its absence must never be represented as PASS; no agent, bot, CI job or GitHub App qualifies as an independent human"
         },
         {
           "status": "MANUAL_AUTHORITY_REQUIRED",
@@ -9746,8 +9746,8 @@
         {
           "status": "MANUAL_AUTHORITY_REQUIRED",
           "kind": "backup_role_assignments",
-          "required_role": "backup_operator plus backup_non_author_reviewer plus backup_infrastructure_owner plus backup_publisher",
-          "requirement": "supply signed authorized conflict-checked backups before qualification; activation uses the runbook role-replacement record, preserves separation constraints and never silently substitutes an unavailable primary"
+          "required_role": "backup_operator plus backup_infrastructure_owner plus backup_publisher",
+          "requirement": "supply signed authorized conflict-checked backups before qualification; activation uses the runbook role-replacement record and never silently substitutes an unavailable primary; no backup non-author reviewer is required for v0.5.0"
         }
       ],
       "compatibility_and_rollback": {

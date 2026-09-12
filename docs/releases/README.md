@@ -8,6 +8,11 @@ SPDX-License-Identifier: MIT
 This directory contains finalized historical release records and
 owner-reviewable release preparation material.
 
+The v0.5.0 preparation policy is not a release record or publication
+authorization:
+
+- [v0.5.0 owner-approved single-maintainer review policy](v0.5.0-single-maintainer-review-policy.md)
+
 The v0.4.1 files are finalized release records:
 
 - [v0.4.1 owner-approved assurance scope](v0.4.1-assurance-scope.md)

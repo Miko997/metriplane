@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `f1fdda086ef252d4e5dac5071a37d67dbf73b8c711f1fc07bf689c3c7bafbb34`
-- Owned rows: `11064`
-- Owned rows SHA-256: `60d2ad19e807e059d2b34b1913893f488b82e36081f32587297bf54bc1af792c`
+- Materialization SHA-256: `bc023fb5c3d738697e7ff4d5c298d5e5643151711d35c30d4ab78e036fc523a7`
+- Owned rows: `11065`
+- Owned rows SHA-256: `d270fa64f06a37a844403c55eff889ad561730f19b36b7cd5cb1c64bbdb101f9`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
@@ -23,7 +23,7 @@
 | `models` | `python_model` | 251 | `0ded1389ee397c8316058b61102faa32bbce1f7518f3aa4d016781a29238f4ca` |
 | `proofs` | `maintained_proof` | 322 | `cd6dcae29622d9e73dea66a214b0d52f3498bee529af968da4d8af69981fc4de` |
 | `public_api` | `python_public_api` | 2515 | `d2209ef1d5d95cdb0a3023d53704feee4e6f206b865b1186914f802a51205ce9` |
-| `resources` | `repository_resource` | 1706 | `1515a6b41d80d60efe524ad656453d1359ffb47a8648b84d267f60e5c2d4fddb` |
+| `resources` | `repository_resource` | 1707 | `70df8fe6a9589e3a83920a5ad94d6fa81cc52336bbc18c76e96a9b46ce27a8ce` |
 | `workflows` | `workflow_declaration` | 18 | `52ff10d385e396751e0a5160f053f75d8d549d122169c10fe39586212d7a17ef` |
 
 ## Resource facets
@@ -39,8 +39,8 @@
 
 | Source identity | Count |
 |---|---:|
-| `git_entries` | 1711 |
-| `regular_blobs` | 1708 |
+| `git_entries` | 1712 |
+| `regular_blobs` | 1709 |
 | `symlink_blobs` | 3 |
 
 ## Parser census

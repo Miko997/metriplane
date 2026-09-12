@@ -2528,6 +2528,123 @@
         "criterion_classification"
       ],
       "type": "object"
+    },
+    "v0_5_owner_scope": {
+      "additionalProperties": false,
+      "properties": {
+        "applies_to_task_ids": {
+          "const": [
+            "MP2-030",
+            "MP2-049"
+          ]
+        },
+        "budget_eur": {
+          "const": 0
+        },
+        "decision_date": {
+          "const": "2026-09-12"
+        },
+        "human_review": {
+          "additionalProperties": false,
+          "properties": {
+            "automated_execution_evidence_required": {
+              "const": true
+            },
+            "classification": {
+              "const": "NOT_APPLICABLE_FOR_V0_5"
+            },
+            "deferred_to_task_ids": {
+              "const": [
+                "MP2-207",
+                "MP2-210",
+                "MP2-223",
+                "MP2-225"
+              ]
+            },
+            "independent_review_occurred": {
+              "const": false
+            },
+            "owner_architecture_decision_allowed": {
+              "const": true
+            },
+            "removed_requirements": {
+              "const": [
+                "backup_non_author_reviewer",
+                "independent_human_candidate_or_qualification_approval",
+                "mandatory_second_human_READY_review",
+                "reviewer_key_or_signature_used_only_to_prove_human_independence"
+              ]
+            },
+            "represented_as_pass": {
+              "const": false
+            }
+          },
+          "required": [
+            "automated_execution_evidence_required",
+            "classification",
+            "deferred_to_task_ids",
+            "independent_review_occurred",
+            "owner_architecture_decision_allowed",
+            "removed_requirements",
+            "represented_as_pass"
+          ],
+          "type": "object"
+        },
+        "mandatory_technical_controls": {
+          "const": [
+            "branch_protection_required_CI_and_broker_admission",
+            "exact_byte_publication_readback_and_reconciliation",
+            "immutable_retention_chain_LKG_index_invalidation_and_recovery",
+            "installed_product_upgrade_failure_and_rollback_testing",
+            "negative_and_fail_closed_fixtures",
+            "OIDC_backed_machine_attestation_and_signature_verification",
+            "provenance_qualification_and_reproducibility",
+            "publisher_operator_and_infrastructure_authority",
+            "subject_issuer_workflow_ref_event_commit_and_artifact_digest_validation"
+          ]
+        },
+        "owner": {
+          "const": "Miko Parkkinen"
+        },
+        "profile": {
+          "const": "zero_cost_single_maintainer_v0_5_0"
+        },
+        "readiness": {
+          "additionalProperties": false,
+          "properties": {
+            "policy": {
+              "const": "OWNER_APPROVED"
+            },
+            "release": {
+              "const": "BLOCKED_NOT_READY"
+            },
+            "tagging_or_publication_authorized": {
+              "const": false
+            }
+          },
+          "required": [
+            "policy",
+            "release",
+            "tagging_or_publication_authorized"
+          ],
+          "type": "object"
+        },
+        "scope_document": {
+          "const": "docs/releases/v0.5.0-single-maintainer-review-policy.md"
+        }
+      },
+      "required": [
+        "applies_to_task_ids",
+        "budget_eur",
+        "decision_date",
+        "human_review",
+        "mandatory_technical_controls",
+        "owner",
+        "profile",
+        "readiness",
+        "scope_document"
+      ],
+      "type": "object"
     }
   },
   "required": [
@@ -2548,7 +2665,8 @@
     "required_terminal",
     "schema_version",
     "task_catalog",
-    "v0_4_1_owner_scope"
+    "v0_4_1_owner_scope",
+    "v0_5_owner_scope"
   ],
   "type": "object",
   "x-metriplane-semantic-checks": [
