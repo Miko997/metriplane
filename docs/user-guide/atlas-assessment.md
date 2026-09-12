@@ -5,9 +5,9 @@ SPDX-License-Identifier: MIT
 
 # Understand requirement outcomes and compare recorded runs
 
-This page describes the unreleased MET-162 change on the current 0.4 release
-line. The published `0.4.0.post2` wheel does not contain these assessment and
-comparison guards. A successful command means the recorded input was processed;
+This page describes the MET-162 assessment and comparison guards included in
+Metriplane `0.4.1`. The predecessor `0.4.0.post2` wheel does not contain these
+guards. A successful command means the recorded input was processed;
 zero incidents alone does not establish that every requirement was satisfied.
 
 ## Read a requirement outcome
