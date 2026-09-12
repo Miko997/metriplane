@@ -22,6 +22,13 @@ python -m pip install "metriplane==0.4.1"
 metriplane demo --open
 ```
 
+The same release is also available from conda-forge:
+
+```bash
+conda install conda-forge::metriplane
+metriplane demo --open
+```
+
 [Run the camera-free quickstart](user-guide/quickstart.md), then follow the
 [five-to-ten-minute tutorial](user-guide/use-your-own-run.md) to inspect the
 example inputs and use the supported recorded-run interface.

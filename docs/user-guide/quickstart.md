@@ -19,6 +19,13 @@ python -m pip install "metriplane==0.4.1"
 metriplane demo --open
 ```
 
+Or install the same release from conda-forge and run the demo:
+
+```bash
+conda install conda-forge::metriplane
+metriplane demo --open
+```
+
 Release gates exercise the bundled demo from a built wheel on Ubuntu and macOS
 with Python 3.12/3.13. Opening the visible browser window is also a local manual
 check.

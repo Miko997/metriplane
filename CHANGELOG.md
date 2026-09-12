@@ -11,7 +11,7 @@ All notable changes to Metriplane are documented here.
 
 ## [Unreleased]
 
-## [0.4.1] — Unreleased — Assurance Hardening
+## [0.4.1] — 2026-09-12 — Assurance Hardening
 
 ### Fixed
 
@@ -31,15 +31,15 @@ All notable changes to Metriplane are documented here.
 ### Validation
 
 - Added focused failure-path and compatibility tests plus an installed-package
-  before/after reproduction runner for MET-162. These changes are unreleased;
-  they do not alter frozen research evidence or claim external adoption.
+  before/after reproduction runner for MET-162. These changes do not alter
+  frozen research evidence or claim external adoption.
 - Added a connected, fail-closed release lifecycle from source freeze through
   candidate identity, target and predecessor resolution, qualification,
   approval, promotion planning and locking, exact-byte reconciliation,
   retention, evidence-chain and last-known-good transitions, invalidation, and
-  immutable recovery. Live release authority still requires separately bound
-  non-author approval, independent stores, production CAS, and deployment
-  readback.
+  immutable recovery. The interfaces and failure paths are implemented and
+  tested; live multi-party production custody is owner-deferred to a later
+  assurance milestone for this single-maintainer release.
 - Added governed bidirectional requirement, capability, code, test,
   documentation, and rubric traceability with deterministic currentness checks.
 - Characterized supported command-line behavior across success and failure,
