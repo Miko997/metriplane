@@ -61,3 +61,44 @@ def test_transcription_never_overwrites_an_existing_output(tmp_path: Path) -> No
         == 2
     )
     assert out.read_text(encoding="utf-8") == "retained"
+
+
+def test_v050_rows_apply_owner_scoped_human_review_policy_only() -> None:
+    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    tasks = {row["task_id"]: row for row in catalog["tasks"]}
+
+    trust_action = tasks["MP2-030"]["manual_external_irreversible_actions"]
+    assert len(trust_action) == 1
+    assert trust_action[0]["required_role"] == "security_release_architecture_owner"
+    assert "non-author approver" not in json.dumps(trust_action)
+    assert "automated execution evidence" in trust_action[0]["requirement"]
+
+    release_actions = tasks["MP2-049"]["manual_external_irreversible_actions"]
+    human_review = next(
+        row for row in release_actions if row["kind"] == "independent_human_release_approval"
+    )
+    assert human_review["status"] == "NOT_APPLICABLE"
+    assert human_review["required_role"] == "none"
+    assert "must never be represented as PASS" in human_review["requirement"]
+    backups = next(row for row in release_actions if row["kind"] == "backup_role_assignments")
+    assert backups["required_role"] == (
+        "backup_operator plus backup_infrastructure_owner plus backup_publisher"
+    )
+    assert "backup_non_author_reviewer" not in backups["required_role"]
+    assert {row["required_role"] for row in release_actions} >= {
+        "publisher",
+        "operator",
+        "infrastructure_owner",
+    }
+
+    later_expected_roles = {
+        "MP2-207": "independent_assurance_verifier",
+        "MP2-210": "non_author_reviewer",
+        "MP2-223": "independent_non_maintainer_rerunner",
+        "MP2-225": "non_author_reviewer",
+    }
+    for task_id, required_role in later_expected_roles.items():
+        roles = {
+            row["required_role"] for row in tasks[task_id]["manual_external_irreversible_actions"]
+        }
+        assert required_role in roles

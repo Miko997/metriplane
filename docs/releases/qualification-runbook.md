@@ -8,6 +8,25 @@ The complete release protocol remains unqualified. v0.4.1 tagging and publicatio
 are held by the owner’s explicit instruction. Every release acceptance gate
 remains required before a later authorization to publish.
 
+## v0.5.0 single-maintainer review scope
+
+The owner-approved
+[v0.5.0 single-maintainer review policy](v0.5.0-single-maintainer-review-policy.md)
+classifies independent-human approval as `NOT_APPLICABLE_FOR_V0_5`, never
+`PASS`. Miko may make the protected MP2-030 architecture/trust-profile decision
+as owner; the decision remains distinct from the machine evidence that verifies
+the implementation and exact candidate.
+
+This exception removes only the independent/non-author human reviewer, mandatory
+second-human READY review, `backup_non_author_reviewer`, and a reviewer key or
+signature used solely to prove human independence. OIDC-backed machine
+attestation/signature verification, accepted subject, issuer, workflow,
+ref/event, commit and artifact-digest claims, fail-closed negative fixtures,
+qualification, provenance, promotion, exact-byte publication, reconciliation,
+recovery, CI, branch protection, broker admission, reproducibility, package
+integrity and installed-product testing remain mandatory. MP2-207, MP2-210,
+MP2-223 and MP2-225 retain later organizational-separation requirements.
+
 ## Source and artifact segment
 
 The commands consume complete gate-input and target-resolution records in a
@@ -50,7 +69,8 @@ It refuses an existing canonical destination and preserves failed build bytes.
 Synthetic mode is restricted to isolated test fixtures. Tests create complete
 local Git source and upstream input records, exercise the production commands,
 and retain synthetic provenance. A synthetic run cannot satisfy live authority,
-independent signing, durable-store independence or release qualification.
+durable-store independence or release qualification. For v0.5.0, it also cannot
+turn the policy-scoped absence of independent human review into `PASS`.
 
 ## Candidate finalization and readback
 
@@ -164,8 +184,9 @@ Private native fixtures use the fixed seed slot
 all declared raw members are original typed inputs, fixed before reservation.
 The synthetic interpreter preserves supplied observation times; emulation and
 historical replay cannot make an old observation fresh. These fixtures exercise
-the protocol and do not establish provider identity, independent storage or
-non-author approval.
+the protocol and do not establish provider identity or independent storage. They
+also do not establish non-author approval; v0.5.0 records that approval as
+policy-scoped `NOT_APPLICABLE`, not as fixture-derived evidence.
 
 Staging and installation retain the original created directory and file
 identities through verification and copying. The complete native graph, original
@@ -190,7 +211,8 @@ MP2-007 retains all original A01–A13. Remaining work includes signed roles and
 task state; complete staging and recovery; live target observation and indexed
 burns; authentic predecessor/LKG resolution; live signed candidate finalization; gate and matrix
 construction with every terminal; unconditional two-store retention and indexing;
-non-author approval; checkpoint-bound planning and fenced promotion locking;
+the approval classification required by the governing release scope;
+checkpoint-bound planning and fenced promotion locking;
 exact-byte publication observation and reconciliation; chain append, CAS LKG,
 pointer retention and signed invalidation. Unimplemented adapters return a
 blocker and cannot create PASS records from fixture argument strings.
@@ -204,9 +226,11 @@ protected-main merge path and existing release criteria remain in force.
 
 ## Qualification boundaries and provider administration
 
-Prepare and independently review a complete compatible slice before its hosted
-qualification. The target is one full platform matrix per stable coherent PR
-candidate and one final integrated v0.4.1 release-candidate matrix. Additional
+Prepare and review a complete compatible slice before its hosted qualification.
+An independent human performs that review when the governing milestone requires
+one; v0.5.0 uses the owner-approved single-maintainer classification above. The
+target is one full platform matrix per stable coherent PR candidate and one final
+integrated release-candidate matrix. Additional
 complete runs require a recorded source or environment invalidation under the
 exact-identity contract. CI's four fresh macOS shards per Python version (eight total) retain the complete test
 collection and all outcomes; its aggregate is source qualification evidence,
@@ -238,8 +262,9 @@ read back protected-main state, all rulesets and terminal producers before
 activating the lightweight-only metadata trigger. No deployment or renewal
 capability is claimed before that proof.
 
-All remaining CLI routes, non-author approval, two independent durable stores,
-CAS/lock/LKG backend and deployment/readback remain acceptance work. A local
+All remaining CLI routes, the approval classification required by the governing
+release scope, two independent durable stores, CAS/lock/LKG backend and
+deployment/readback remain acceptance work. A local
 fixture or same-host directory pair cannot satisfy those bindings. Keep MET-163
 In Progress and retain the explicit v0.4.1 publication/tag hold throughout this
 work; neither CI efficiency nor completion of one source segment closes it.
