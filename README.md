@@ -57,6 +57,13 @@ python -m pip install "metriplane==0.4.1"
 metriplane demo --open
 ```
 
+Or install the same release from conda-forge:
+
+```bash
+conda install conda-forge::metriplane
+metriplane demo --open
+```
+
 The example is camera-free, GPU-free, Docker-free, ROS-free, and offline after
 installation. It writes an HTML report and requests that the browser open it.
 Headless users can omit `--open`.
