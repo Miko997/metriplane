@@ -8,14 +8,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_readme_first_screen_uses_exact_v040_package_quickstart() -> None:
+def test_readme_first_screen_uses_exact_current_package_quickstart() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     first_screen, separator, _ = readme.partition("## Published versions")
     normalized = " ".join(
         first_screen.replace("`", "").replace("**", "").replace("\n> ", " ").split()
     )
     release_quickstart = """```bash
-python -m pip install \"metriplane==0.4.0.post2\"
+python -m pip install \"metriplane==0.4.1\"
 metriplane demo --open
 ```"""
 
@@ -28,7 +28,7 @@ metriplane demo --open
     assert "does not control machinery" in normalized
     assert release_quickstart in first_screen
     assert first_screen.index("## Quickstart") < first_screen.index(release_quickstart)
-    assert "Current installable software release: `v0.4.0.post2`" in readme
+    assert "Current installable software release: `v0.4.1`" in readme
     assert "Retired unpublished production candidate: `v0.4.0.post1`" in readme
     assert "Preserved failed publication tag: `v0.4.0`" in readme
     assert "Prior usability and adoption software release: `v0.3.0`" in readme

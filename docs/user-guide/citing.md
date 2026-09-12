@@ -9,6 +9,17 @@ Choose the citation that matches what you actually used. The current product,
 the frozen research artifact, and the manuscript are separate objects with
 separate version boundaries.
 
+## Exact v0.4.1 software release
+
+Metriplane v0.4.1 is the Assurance Hardening software release and has no DOI.
+Cite the exact `v0.4.1` GitHub software release; if a citation style requires a
+release date, use September 12, 2026:
+
+> Parkkinen, Miko. *Metriplane v0.4.1* [Computer software].
+> GitHub. https://github.com/Miko997/metriplane/releases/tag/v0.4.1
+
+No v0.4.1 DOI exists. Do not use the v0.2.0 DOI for v0.4.1.
+
 ## Exact v0.4.0.post2 software release
 
 Metriplane v0.4.0.post2 is the replacement publication identity for the reduced
@@ -46,7 +57,7 @@ exact archived artifact, cite:
 > Observability for Workcell Evidence, Replay, and Regression Testing*
 > [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.20736619
 
-Use the exact `v0.2.0` tag for reproduction. Do not attribute v0.4.0.post2 or v0.3.0
+Use the exact `v0.2.0` tag for reproduction. Do not attribute v0.4.1, v0.4.0.post2, or v0.3.0
 behavior, outputs, compatibility, or measurements to this DOI.
 
 ## Manuscript

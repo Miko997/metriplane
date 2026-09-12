@@ -428,9 +428,9 @@ def test_wsl2_owner_run_claim_is_recorded_and_bounded() -> None:
     environments = SUPPORTED_ENVIRONMENTS.read_text(encoding="utf-8")
     validation = WSL2_VALIDATION.read_text(encoding="utf-8")
 
-    assert "No fresh exact-v0.4.0.post2 candidate run is recorded" in environments
-    assert "No v0.4.0.post2 WSL2 support claim is made" in environments
-    assert "No v0.4.0.post2 native-Windows support claim is made" in environments
+    assert "No fresh exact-v0.4.1 candidate run is recorded" in environments
+    assert "No v0.4.1 WSL2 support claim is made" in environments
+    assert "No v0.4.1 native-Windows support claim is made" in environments
     assert "926 passed" not in environments
     assert "925 passed" not in environments
 
@@ -502,7 +502,7 @@ def test_v041_release_candidate_sets_the_package_version() -> None:
     assert metriplane.__version__ == "0.4.1"
 
 
-def test_v041_prepublication_materials_are_explicit_drafts() -> None:
+def test_v041_postpublication_materials_record_exact_release() -> None:
     index = (RELEASES / "README.md").read_text(encoding="utf-8")
     migration = V041_MIGRATION.read_text(encoding="utf-8")
     notes = V041_NOTES.read_text(encoding="utf-8")
@@ -512,13 +512,13 @@ def test_v041_prepublication_materials_are_explicit_drafts() -> None:
     assert index.index("v0.4.1-release-notes.md") < index.index("v0.4.0-release-notes.md")
     assert index.index("v0.4.1-launch-materials.md") < index.index("v0.4.0-launch-materials.md")
     assert "DRAFT — UNPUBLISHED" not in migration
-    assert "DRAFT — UNPUBLISHED" in notes
-    assert "DRAFT — UNPUBLISHED" in launch
+    assert "DRAFT — UNPUBLISHED" not in notes
+    assert "DRAFT — UNPUBLISHED" not in launch
     assert "`0.4.1`" in migration
     assert "`v0.4.1`" in launch
-    assert "<fill-from-approved-final-main>" in notes
-    assert "<fill-from-retained-build-once-manifest>" in notes
-    assert "Publication lease/checkpoint: not started" in launch
+    assert "306279aae7ebddd403e06b83659b590eb981b25f" in notes
+    assert "86c8d6263278020f1727aec0a28f716fdd6922e96c038ad3aac687cdacd776a2" in notes
+    assert "Production publication and verification" in launch
     assert "No v0.4.1 DOI is planned" in launch
     for text in (migration, notes, launch):
         assert "0.4.0.post2" in text
