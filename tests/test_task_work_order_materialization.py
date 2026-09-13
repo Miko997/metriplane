@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import base64
 import json
 import subprocess
 import sys
@@ -10,8 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from metriplane.release_control import canonical_json, sha256_json
 from tools.task_delegation import delegation_id, key_id, tracker_snapshot_digest
@@ -27,12 +26,37 @@ EXECUTOR = "01a096e0-4e21-7a11-9f0f-fb303387c5c0"
 OTHER_EXECUTOR = "11111111-1111-4111-8111-111111111111"
 EVALUATED_AT = "2026-09-13T00:30:00Z"
 VALIDATED_AT = "2026-09-13T00:31:00Z"
+_NODE_KEYGEN = r"""
+const crypto = require("node:crypto");
+const {privateKey, publicKey} = crypto.generateKeyPairSync("ed25519");
+const publicDer = publicKey.export({format: "der", type: "spki"});
+const privateDer = privateKey.export({format: "der", type: "pkcs8"});
+const prefix = Buffer.from("302a300506032b6570032100", "hex");
+if (!publicDer.subarray(0, prefix.length).equals(prefix) || publicDer.length !== prefix.length + 32) {
+  process.exit(2);
+}
+process.stdout.write(JSON.stringify({
+  private_key_pkcs8: privateDer.toString("base64"),
+  public_key_hex: publicDer.subarray(prefix.length).toString("hex"),
+}));
+"""
+_NODE_SIGN = r"""
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const privateKey = crypto.createPrivateKey({
+  key: Buffer.from(input.private_key_pkcs8, "base64"),
+  format: "der",
+  type: "pkcs8",
+});
+process.stdout.write(crypto.sign(null, Buffer.from(input.message, "base64"), privateKey).toString("hex"));
+"""
 
 
 @dataclass
 class Fixture:
     paths: dict[str, Path]
-    private_key: Ed25519PrivateKey
+    private_key_pkcs8: str
 
 
 def _write(path: Path, value: object) -> Path:
@@ -40,18 +64,34 @@ def _write(path: Path, value: object) -> Path:
     return path
 
 
-def _raw_public_key(private_key: Ed25519PrivateKey) -> bytes:
-    return private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
+def _keypair() -> tuple[str, str]:
+    completed = subprocess.run(
+        ["node", "--eval", _NODE_KEYGEN],
+        capture_output=True,
+        check=True,
+        text=True,
     )
+    value = json.loads(completed.stdout)
+    return value["private_key_pkcs8"], value["public_key_hex"]
 
 
-def _signature(private_key: Ed25519PrivateKey, *, actor_id: str, subject_digest: str) -> str:
+def _signature(private_key_pkcs8: str, *, actor_id: str, subject_digest: str) -> str:
     message = canonical_json(
         {"actor_id": actor_id, "provider": "linear", "subject_digest": subject_digest}
     )
-    return private_key.sign(message).hex()
+    completed = subprocess.run(
+        ["node", "--eval", _NODE_SIGN],
+        input=json.dumps(
+            {
+                "message": base64.b64encode(message).decode("ascii"),
+                "private_key_pkcs8": private_key_pkcs8,
+            }
+        ),
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return completed.stdout
 
 
 def _resolution() -> dict[str, object]:
@@ -132,8 +172,7 @@ def _inputs(
     tmp_path.mkdir(parents=True, exist_ok=True)
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
-    private_key = Ed25519PrivateKey.generate()
-    public_key_hex = _raw_public_key(private_key).hex()
+    private_key_pkcs8, public_key_hex = _keypair()
     signing_key_id = key_id(public_key_hex)
     authority = {
         "keys": [
@@ -197,7 +236,9 @@ def _inputs(
             "actor_id": grantor,
             "key_id": signing_key_id,
             "provider": "linear",
-            "signature": _signature(private_key, actor_id=grantor, subject_digest=subject_digest),
+            "signature": _signature(
+                private_key_pkcs8, actor_id=grantor, subject_digest=subject_digest
+            ),
         },
         "subject": subject,
         "subject_digest": subject_digest,
@@ -242,7 +283,7 @@ def _inputs(
         ),
         "resolution": _write(tmp_path / "resolution.json", _resolution()),
     }
-    return Fixture(paths=paths, private_key=private_key)
+    return Fixture(paths=paths, private_key_pkcs8=private_key_pkcs8)
 
 
 def _resign(fixture: Fixture, mutate: Any) -> None:
@@ -252,7 +293,7 @@ def _resign(fixture: Fixture, mutate: Any) -> None:
     subject["delegation_id"] = delegation_id(subject)
     delegation["subject_digest"] = sha256_json(subject)
     delegation["signature"]["signature"] = _signature(
-        fixture.private_key,
+        fixture.private_key_pkcs8,
         actor_id=delegation["signature"]["actor_id"],
         subject_digest=delegation["subject_digest"],
     )
@@ -268,7 +309,7 @@ def _bind_snapshot(fixture: Fixture) -> None:
     snapshot["task"]["delegation_id"] = subject["delegation_id"]
     delegation["subject_digest"] = sha256_json(subject)
     delegation["signature"]["signature"] = _signature(
-        fixture.private_key,
+        fixture.private_key_pkcs8,
         actor_id=delegation["signature"]["actor_id"],
         subject_digest=delegation["subject_digest"],
     )
@@ -601,7 +642,7 @@ def test_validator_cannot_reuse_an_expired_ready_materialization(tmp_path: Path)
 
 
 def test_historical_v1_work_order_remains_interpretable(tmp_path: Path) -> None:
-    private_key = Ed25519PrivateKey.generate()
+    private_key_pkcs8, public_key_hex = _keypair()
     actor = "historical-fixture-actor"
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     subject = {
@@ -617,7 +658,9 @@ def test_historical_v1_work_order_remains_interpretable(tmp_path: Path) -> None:
         "signature": {
             "actor_id": actor,
             "provider": "linear",
-            "signature": _signature(private_key, actor_id=actor, subject_digest=subject_digest),
+            "signature": _signature(
+                private_key_pkcs8, actor_id=actor, subject_digest=subject_digest
+            ),
         },
         "subject": subject,
         "subject_digest": subject_digest,
@@ -646,7 +689,7 @@ def test_historical_v1_work_order_remains_interpretable(tmp_path: Path) -> None:
                 {
                     "actor_id": actor,
                     "provider": "linear",
-                    "public_key_hex": _raw_public_key(private_key).hex(),
+                    "public_key_hex": public_key_hex,
                 }
             ],
             "schema_version": "metriplane.provider-attestation-keyring.v1",
