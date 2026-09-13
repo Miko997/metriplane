@@ -5,9 +5,9 @@
 # Public Surface Inventory
 
 - Task: `MP2-013` / `MET-78`
-- Materialization SHA-256: `bc023fb5c3d738697e7ff4d5c298d5e5643151711d35c30d4ab78e036fc523a7`
-- Owned rows: `11065`
-- Owned rows SHA-256: `d270fa64f06a37a844403c55eff889ad561730f19b36b7cd5cb1c64bbdb101f9`
+- Materialization SHA-256: `32d3dabfa0192589c8a76acd1bc208bfc16c6e3e800b33d03c098b19976d1676`
+- Owned rows: `11072`
+- Owned rows SHA-256: `997d21f234c98677b976c417260bd17066f07be9b758e3a65113ab353ff00b9e`
 - Claim boundary: static staged-source observations only; no runtime, compatibility, or support claim.
 
 ## Families
@@ -15,7 +15,7 @@
 | Family | Kind | Count | Canonical projection SHA-256 |
 |---|---|---:|---|
 | `configs` | `maintained_config` | 167 | `2b25beeb81935378779bac4ef23e1de8c8346d60a595852e30b34bfeae75d91c` |
-| `current_claims` | `current_claim` | 379 | `38be040a4ad536d46c702fa6d406754545c0bc98e64952ab96b8846a62eab21b` |
+| `current_claims` | `current_claim` | 380 | `cca51e4348a2469091d3f3847918111b303321e1f212bc5aab2f85c9ec82b491` |
 | `examples` | `maintained_example` | 172 | `3fb4bcd7b25bee665e567d1d787bec3bf165e917d848fa09d797ba55315b9df6` |
 | `jobs` | `workflow_job_declaration` | 62 | `eb52e433a59f51ada293f8845ced9e89c7a9051d3f5edbc4678aa1863393e104` |
 | `manifest_keys` | `artifact_manifest_key` | 3938 | `77b0b32f851c030e84c341e84e2a3b0bdbedc28993cfdce6bca3f2eecd42e0a7` |
@@ -23,7 +23,7 @@
 | `models` | `python_model` | 251 | `0ded1389ee397c8316058b61102faa32bbce1f7518f3aa4d016781a29238f4ca` |
 | `proofs` | `maintained_proof` | 322 | `cd6dcae29622d9e73dea66a214b0d52f3498bee529af968da4d8af69981fc4de` |
 | `public_api` | `python_public_api` | 2515 | `d2209ef1d5d95cdb0a3023d53704feee4e6f206b865b1186914f802a51205ce9` |
-| `resources` | `repository_resource` | 1707 | `70df8fe6a9589e3a83920a5ad94d6fa81cc52336bbc18c76e96a9b46ce27a8ce` |
+| `resources` | `repository_resource` | 1713 | `1d5fd2cd65895caa047ec0db4f2f3b913f177479cc987688fb0b23293ec95136` |
 | `workflows` | `workflow_declaration` | 18 | `52ff10d385e396751e0a5160f053f75d8d549d122169c10fe39586212d7a17ef` |
 
 ## Resource facets
@@ -39,14 +39,14 @@
 
 | Source identity | Count |
 |---|---:|
-| `git_entries` | 1712 |
-| `regular_blobs` | 1709 |
+| `git_entries` | 1718 |
+| `regular_blobs` | 1715 |
 | `symlink_blobs` | 3 |
 
 ## Parser census
 
 | Parser input | Count |
 |---|---:|
-| `all_python_modules` | 534 |
+| `all_python_modules` | 535 |
 | `packaged_python_modules` | 220 |
 | `workflow_documents` | 18 |

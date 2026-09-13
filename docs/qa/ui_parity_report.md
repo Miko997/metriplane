@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f8413834f2af006b43322708267eae779481af9b30662ac8b9d31253d4fa2566`
+Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7dba24f20437c582`
 
 Static inventory result: **FAIL**
 
@@ -17,13 +17,13 @@ Browser rendering, runtime behavior, integration availability, and supported env
 
 | metric | value |
 | --- | --- |
-| total_discovered_features | 226 |
+| total_discovered_features | 227 |
 | ui_full | 58 |
 | ui_partial | 2 |
 | ui_copy_command_only | 12 |
 | ui_disabled_with_reason | 0 |
 | ui_missing | 14 |
-| cli_only_documented | 140 |
+| cli_only_documented | 141 |
 | planned_only | 0 |
 | broken_buttons | 0 |
 | unsupported_claims_found | 0 |
@@ -248,6 +248,7 @@ Browser rendering, runtime behavior, integration availability, and supported env
 | tool.session_health_summary | Session Health Summary | tools/session_health_summary.py | python tools/session_health_summary.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.start_metriplane | Start Metriplane | tools/start_metriplane.sh | tools/start_metriplane.sh | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.stop_the_line | Stop The Line | tools/stop_the_line.py | python tools/stop_the_line.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
+| tool.task_delegation | Task Delegation | tools/task_delegation.py | python tools/task_delegation.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.update_last_known_good | Update Last Known Good | tools/update_last_known_good.py | python tools/update_last_known_good.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.update_release_attempt_index | Update Release Attempt Index | tools/update_release_attempt_index.py | python tools/update_release_attempt_index.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |
 | tool.update_release_evidence_chain | Update Release Evidence Chain | tools/update_release_evidence_chain.py | python tools/update_release_evidence_chain.py | - | - | cli_only_documented | P2 | Developer/diagnostic script; not a primary localhost workflow. |

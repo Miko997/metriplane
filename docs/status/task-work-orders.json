@@ -1,7 +1,7 @@
 {
   "schema_version": "metriplane.mp2-work-order-set.v1",
-  "packet_revision": "2.5.4",
-  "authority": "Exact task-specific planning catalog. Static validity means a fresh agent can understand the task. Editing is prohibited until a metriplane.task-work-order.v1 instance resolves every current-main field, including repository instructions and PR-contract phase, and validates READY.",
+  "packet_revision": "2.5.5",
+  "authority": "Exact task-specific planning catalog. Static validity means a fresh agent can understand the task. New editing is prohibited until a metriplane.task-work-order.v2 instance resolves every current-main field, including repository instructions and PR-contract phase, and validates READY; v1 remains historical interpretation only.",
   "source_authority_sha256": {
     "06_IMPLEMENTATION_BACKLOG.md": "e3607339fc6d8d1251e88e5fcfe167de7b5694e7c2c900be14bf82d67e1ce508",
     "09_RELEASE_READINESS_MAP.json": "a748dcfeadd292b5130f30b06174cad0cba92166b14bb2432124cd19b082406a",
@@ -28,7 +28,7 @@
     "criterion→stable obligation→exact argv→expected exit/verdict→evidence mapping",
     "materialized test families are the union of the row families and every inherited capability, risk, compatibility, profile and release obligation; materialization may add applicable families but never remove a row or inherited family",
     "exact environment/profile rows and typed manual people/permissions/secrets/services/hardware",
-    "materialization ID equals the canonical digest of task row, base SHA, repository-instruction identities and PR-contract phase, live issue/relation cursor, signed assignment/delegation record plus actor/authority, dependency evidence, resolved anchors/commands/profiles and manual-resource declarations",
+    "materialization ID equals the canonical digest of task row, base SHA/tree, repository-instruction identities and PR-contract phase, live issue/relation cursor, signed delegation with distinct grantor/delegate plus protected authority keyring, dependency evidence, resolved anchors/commands/profiles and manual-resource declarations",
     "same inputs are idempotent and read-validate the same no-overwrite instance; any changed input produces a different instance",
     "clean base and smallest retained baseline result",
     "before MP2-016, every file-13 bootstrap instance validates the exact versioned canonical materialization object, timestamp-free environment observation and complete GitHub branch/open-PR collision proof; their retained digests, directory identity, manifest projection and independent review must agree, while incomplete visibility, pagination, normalization, fetch or rediscovery blocks"
@@ -42,7 +42,7 @@
     "linear_issue_snapshot_digest_and_event_cursor",
     "clean_tree",
     "repository_instruction_state_and_pr_contract_phase",
-    "assignment_actor_and_authority",
+    "delegation_grantor_delegate_and_authority",
     "signed_assignment_or_delegation_record_digest",
     "exact_dependency_ids_and_merged_artifact_proof",
     "exact_existing_and_CREATE_paths",
@@ -4082,7 +4082,7 @@
       "first_required_release": "v0.4",
       "linear_milestone_id": "cbefcf4c-5177-41d7-9ce0-6499e5af9d3c",
       "assignment_state": "PLANNING_READY__EXECUTION_MANIFEST_REQUIRED",
-      "observable_outcome": "Add read-only deterministic inventory/traceability validators plus the assignment-time work-order gate. Transcribe packet file `12` into the checked-in 93-row catalog and enforce exact identity/dependency/cut-line equality, unique output ownership, typed anchors, criterion-to-evidence mappings, resolver-backed commands, manual authority and downstream handoffs. Materialization binds one row to current `main`, the signed assignment/delegation record plus actor/authority, live reciprocal Linear relations, exact dependency artifacts, paths/symbols, baseline/acceptance argv and environment/resources; validation emits READY or `BLOCKED_NOT_READY` before edits. Commands accept explicit identities and `--out`; exit `0` passes, `2` invalid invocation/schema/input, `3` policy/not-ready, and `4` externally evidenced provider outage. Meta-tests also fail on new unclassified surface, missing/deleted/renamed path, stale count, orphan graph node, unknown release membership, duplicate stable ID, missing owner/profile/status, obligation weakening, vague/no-proof criterion or unresolved manual actor. Validators never rewrite source/registries.",
+      "observable_outcome": "Add read-only deterministic inventory/traceability validators plus the assignment-time work-order gate. Transcribe packet file `12` into the checked-in 93-row catalog and enforce exact identity/dependency/cut-line equality, unique output ownership, typed anchors, criterion-to-evidence mappings, resolver-backed commands, manual authority and downstream handoffs. New materialization uses work-order v2 and binds one row to current `main`; a signed provider-backed Ed25519 delegation with distinct authorized grantor and exact executor; repository/project/task/issue/base SHA/tree, exact Linear snapshot-claims digest, provider event/cursor, issued/expiry, stable ID and active non-revoked protected key; live reciprocal Linear relations; exact dependency artifacts; paths/symbols; and baseline/acceptance argv and environment/resources. Synthetic fixtures never supply live authority, v1 evidence remains interpretable without rewrite, and validation emits READY or `BLOCKED_NOT_READY` before edits. For v0.5.0 external-human READY is `NOT_APPLICABLE_FOR_V0_5`, not PASS. Commands accept explicit identities and `--out`; exit `0` passes, `2` invalid invocation/schema/input, `3` policy/not-ready, and `4` externally evidenced provider outage. Meta-tests also fail on new unclassified surface, missing/deleted/renamed path, stale count, orphan graph node, unknown release membership, duplicate stable ID, missing owner/profile/status, obligation weakening, vague/no-proof criterion or unresolved manual actor. Validators never rewrite source/registries.",
       "product_reason": "Closes the v0.4 readiness gap for [MP2-016] Enforce inventory, traceability and release membership on every PR while preserving the declared Metriplane product boundary.",
       "authoritative_blocked_by": [
         "MP2-014"
@@ -4091,7 +4091,7 @@
       "ownership": {
         "start_anchors": [
           {
-            "locator": "work-order, assignment and validation schemas plus work-order-set/dependency/ownership/command/manual-resource mutation fixtures",
+            "locator": "work-order, delegation, authority, Linear snapshot, historical assignment and validation schemas plus work-order-set/dependency/ownership/command/manual-resource mutation fixtures",
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "read_only_resolver_argv": [
               [
@@ -4157,7 +4157,7 @@
           "stop_rule": "missing baseline-declared authority, zero owner for a read/consumer anchor, multiple competing authorities, an undeclared or ambiguous CREATE destination, an unexpanded grouped resolver, or a path outside the declared boundary => BLOCKED_NOT_READY; only the same row-owned planned output proven absent with no baseline/inventory/compatibility owner may materialize CREATE under catalog invariants"
           },
           {
-            "locator": "schemas/metriplane.{mp2-work-order-set,task-assignment,task-work-order,validation-result}.v1.schema.json",
+            "locator": "schemas/metriplane.{mp2-work-order-set,task-assignment,task-delegation,task-delegation-authority,linear-work-order-snapshot,task-work-order,validation-result}.*.schema.json",
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "read_only_resolver_argv": [
               [
@@ -4199,7 +4199,7 @@
           "stop_rule": "missing baseline-declared authority, zero owner for a read/consumer anchor, multiple competing authorities, an undeclared or ambiguous CREATE destination, an unexpanded grouped resolver, or a path outside the declared boundary => BLOCKED_NOT_READY; only the same row-owned planned output proven absent with no baseline/inventory/compatibility owner may materialize CREATE under catalog invariants"
           },
           {
-            "locator": "tools/{materialize,validate}_task_work_order.py",
+            "locator": "tools/{task_delegation,materialize_task_work_order,validate_task_work_order}.py",
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "read_only_resolver_argv": [
               [
@@ -4243,7 +4243,7 @@
         ],
         "planned_outputs": [
           {
-            "path_or_resolver": "work-order, assignment and validation schemas plus work-order-set/dependency/ownership/command/manual-resource mutation fixtures",
+            "path_or_resolver": "work-order, delegation, authority, Linear snapshot, historical assignment and validation schemas plus work-order-set/dependency/ownership/command/manual-resource mutation fixtures",
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "producer_task": "MP2-016",
             "schema_media_type_or_validator": "materialize every exact destination with its schema or media type, independent validator and named consumers",
@@ -4273,7 +4273,7 @@
             "materialization_rule": "resolve exact output path/type, independent validator and consumer; reject ownership collision"
           },
           {
-            "path_or_resolver": "schemas/metriplane.{mp2-work-order-set,task-assignment,task-work-order,validation-result}.v1.schema.json",
+            "path_or_resolver": "schemas/metriplane.{mp2-work-order-set,task-assignment,task-delegation,task-delegation-authority,linear-work-order-snapshot,task-work-order,validation-result}.*.schema.json",
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "producer_task": "MP2-016",
             "schema_media_type_or_validator": "RESOLVE_AT_CURRENT_MAIN",
@@ -4293,7 +4293,7 @@
             "materialization_rule": "resolve exact output path/type, independent validator and consumer; reject ownership collision"
           },
           {
-            "path_or_resolver": "tools/{materialize,validate}_task_work_order.py",
+            "path_or_resolver": "tools/{task_delegation,materialize_task_work_order,validate_task_work_order}.py",
             "planning_status": "RESOLVE_AT_CURRENT_MAIN",
             "producer_task": "MP2-016",
             "schema_media_type_or_validator": "RESOLVE_AT_CURRENT_MAIN",
@@ -4324,10 +4324,10 @@
         ]
       },
       "ordered_task_specific_steps": [
-        "Resolve and inspect task anchors: tools/check_functional_inventory.py, tools/check_traceability.py, schemas/metriplane.{mp2-work-order-set,task-assignment,task-work-order,validation-result}.v1.schema.json; retain the exact baseline before edits.",
+        "Resolve and inspect task anchors: tools/check_functional_inventory.py, tools/check_traceability.py, tools/{task_delegation,materialize_task_work_order,validate_task_work_order}.py and the work-order/delegation/authority/Linear-snapshot schemas; retain the exact baseline before edits.",
         "Implement and prove criterion MP2-016.A01: Add read-only deterministic inventory/traceability validators plus the assignment-time work-order gate",
         "Implement and prove criterion MP2-016.A02: Transcribe packet file `12` into the checked-in 93-row catalog and enforce exact identity/dependency/cut-line equality, unique output ownership, typed anchors, criterion-to-evidence mappings, resolver-backed commands, manual authority and downstream handoffs",
-        "Implement and prove criterion MP2-016.A03: Materialization binds one row to current `main`, the signed assignment/delegation record plus actor/authority, live reciprocal Linear relations, exact dependency artifacts, paths/symbols, baseline/acceptance argv and environment/resources",
+        "Implement and prove criterion MP2-016.A03: Materialization binds one row to current `main`, a signed delegation with distinct authorized grantor and exact executor, protected provider-backed key authority, exact repository/project/task/issue/base/event/time scope, live reciprocal Linear relations, exact dependency artifacts, paths/symbols, baseline/acceptance argv and environment/resources",
         "Implement and prove criterion MP2-016.A04: validation emits READY or `BLOCKED_NOT_READY` before edits",
         "Implement and prove criterion MP2-016.A05: Commands accept explicit identities and `--out`",
         "Run all resolved inherited/applicable obligations; update inventory, requirements, work-order/test/release/docs mappings; validate clean compact diff and downstream handoff."
@@ -4372,7 +4372,7 @@
         },
         {
           "criterion_id": "MP2-016.A03",
-          "predicate": "Materialization binds one row to current `main`, the signed assignment/delegation record plus actor/authority, live reciprocal Linear relations, exact dependency artifacts, paths/symbols, baseline/acceptance argv and environment/resources",
+          "predicate": "Materialization binds one row to current `main`, a provider-backed Ed25519 delegation with distinct authorized grantor and exact executor, protected active key and revocation state, exact repository/project/task/issue/base SHA/tree/snapshot-claims digest/event/cursor/issued/expiry scope, live reciprocal Linear relations, exact dependency artifacts, paths/symbols, baseline/acceptance argv and environment/resources; fixtures cannot supply live authority and historical v1 evidence remains interpretable",
           "proof_resolution_status": "RESOLVE_AT_CURRENT_MAIN",
           "required_test_family_ids": [
             "BASELINE",
@@ -4508,9 +4508,21 @@
       "manual_external_irreversible_actions": [
         {
           "status": "FIXED_PLANNING",
+          "kind": "owner_task_delegation",
+          "required_role": "repository_owner",
+          "requirement": "Miko supplies a genuine provider-backed Ed25519 delegation for the exact Codex goal and task/base scope through the protected production keyring; Codex cannot self-grant, establish the trust root or expose private material"
+        },
+        {
+          "status": "FIXED_PLANNING",
           "kind": "live_tracker_relation_read_access",
           "required_role": "project_tracker_owner",
           "requirement": "provide the exact Linear project/team identity, approved read-only credential channel and stable issue/relation event cursor needed to validate all 93 live reciprocal relations; no tracker mutation is authorized and an evidenced provider outage exits 4/BLOCKED_NOT_READY"
+        },
+        {
+          "status": "NOT_APPLICABLE_FOR_V0_5",
+          "kind": "independent_human_ready_review",
+          "required_role": "none",
+          "requirement": "v0.5.0 single-maintainer policy removes only the external-human READY decision; this is not PASS and does not replace the owner delegation or automated evidence"
         }
       ],
       "compatibility_and_rollback": {
@@ -4525,6 +4537,7 @@
         "baseline failure preventing attribution",
         "unnamed person/permission/secret/service/hardware or unauthorized irreversible action",
         "criterion without exact obligation/argv/result/evidence/validator",
+        "missing, untrusted, expired, revoked, self-granted or scope-mismatched owner delegation, missing protected production keyring, or synthetic evidence presented as live authority",
         "scope expansion or compatibility/claim change outside this row"
       ],
       "compact_pr_boundary": {

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.task-delegation-authority.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "keys", "revoked_delegation_ids"],
+  "properties": {
+    "schema_version": {"const": "metriplane.task-delegation-authority.v1"},
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key_id",
+          "provider",
+          "actor_id",
+          "public_key_hex",
+          "role",
+          "repository",
+          "project_id",
+          "not_before",
+          "not_after",
+          "status",
+          "trust_class"
+        ],
+        "properties": {
+          "key_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "provider": {"enum": ["github", "linear"]},
+          "actor_id": {"type": "string", "minLength": 1},
+          "public_key_hex": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "role": {"const": "repository_owner"},
+          "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+          "project_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "not_before": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+          "not_after": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+          "status": {"enum": ["active", "revoked"]},
+          "trust_class": {"enum": ["production", "fixture"]}
+        }
+      }
+    },
+    "revoked_delegation_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    }
+  }
+}

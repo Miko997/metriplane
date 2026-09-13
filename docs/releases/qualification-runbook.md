@@ -27,6 +27,13 @@ recovery, CI, branch protection, broker admission, reproducibility, package
 integrity and installed-product testing remain mandatory. MP2-207, MP2-210,
 MP2-223 and MP2-225 retain later organizational-separation requirements.
 
+New v0.5.0 task starts use the MP2-016
+[delegation contract](../maintainers/task-delegation.md) and work-order v2.
+The release-readiness registry records Miko as grantor and the exact Codex goal
+as executor, while production authority remains `BLOCKED_NEEDS_OWNER` until an
+approved public owner key is installed at the protected keyring path. That
+status cannot be converted to `READY` by chat, fixture data or self-signing.
+
 ## Source and artifact segment
 
 The commands consume complete gate-input and target-resolution records in a

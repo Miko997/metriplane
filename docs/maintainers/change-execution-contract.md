@@ -13,7 +13,7 @@ acceptance result to one canonical no-overwrite materialization. An independent
 read-only reviewer must return `READY`. Missing or conflicting authority returns
 `BLOCKED_NOT_READY`.
 
-For MET-92 / MP2-030 and MET-156 / MP2-049 in v0.5.0 only, the owner-approved
+For v0.5.0 work orders, including MET-92 / MP2-030 and MET-156 / MP2-049, the owner-approved
 [single-maintainer review policy](../releases/v0.5.0-single-maintainer-review-policy.md)
 replaces the mandatory second-human start-gate disposition. The materializer
 must still validate every exact authority, dependency, path, command, resource,
@@ -22,6 +22,18 @@ review field is `NOT_APPLICABLE_FOR_V0_5`, never `READY` or `PASS`. Miko may mak
 the protected architecture/trust-profile decision as owner, but that decision
 is separate from automated execution evidence. This exception does not apply to
 later milestones or weaken protected merge, CI, broker or release gates.
+
+All new work-order materializations use `metriplane.task-work-order.v2` and the
+[task delegation contract](task-delegation.md). A delegation has distinct
+grantor and executor roles and binds the task, Linear issue/project, repository,
+exact base commit/tree, provider event/cursor, issue state, issued-at/expiry,
+stable delegation identity, exact tracker snapshot-claims digest and Ed25519
+signing-key identity. Live validation
+trusts only the production authority keyring committed at the exact base under
+`docs/status/task-delegation-authority.json`; a caller-supplied replacement,
+fixture key or synthetic snapshot cannot create authority. The v1 assignment
+and work-order schemas remain read-only historical interpretation formats and
+must not be used for new `READY` evidence.
 
 Use the exact supported tool versions from `docs/maintainers/testing-policy.md`.
 Do not substitute a newer executable merely because it is on `PATH`.

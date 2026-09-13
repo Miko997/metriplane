@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metriplane.com/schemas/metriplane.linear-work-order-snapshot.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider_status",
+    "repository",
+    "project_id",
+    "event_cursor",
+    "captured_at",
+    "synthetic",
+    "task",
+    "edges"
+  ],
+  "properties": {
+    "schema_version": {"const": "metriplane.linear-work-order-snapshot.v1"},
+    "provider_status": {"enum": ["available", "outage"]},
+    "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+    "project_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "event_cursor": {"type": "string", "minLength": 1},
+    "captured_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "synthetic": {"type": "boolean"},
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "linear_issue",
+        "issue_state",
+        "assignee_actor_id",
+        "delegation_id",
+        "delegate_executor_id",
+        "delegation_event_id",
+        "base_sha",
+        "delegation_status"
+      ],
+      "properties": {
+        "task_id": {"type": "string", "pattern": "^MP2-[0-9]{3}$"},
+        "linear_issue": {"type": "string", "pattern": "^MET-[0-9]+$"},
+        "issue_state": {"enum": ["backlog", "unstarted", "started"]},
+        "assignee_actor_id": {"type": "string", "minLength": 1},
+        "delegation_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "delegate_executor_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "delegation_event_id": {"type": "string", "minLength": 1},
+        "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "delegation_status": {"enum": ["active", "revoked"]}
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["blocked", "blocker"],
+        "properties": {
+          "blocked": {"type": "string", "pattern": "^MET-[0-9]+$"},
+          "blocker": {"type": "string", "pattern": "^MET-[0-9]+$"}
+        }
+      }
+    }
+  }
+}
