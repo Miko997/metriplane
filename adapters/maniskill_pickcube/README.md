@@ -12,6 +12,12 @@ The converter uses ManiSkill 3.0.1 at commit
 ManiSkill 3.0.0b4 at commit `652ad9353c0223507a938f0e8d990dd6f1c771ad`, from dataset
 revision `d674485bbffdd533914e52d272fdda34c0515608`. Those are separate identities.
 
+The locked converter environment supports CPython 3.12 on Linux. It does not
+claim CPython 3.13 support: ManiSkill 3.0.1 requires `mplib==0.1.1` on Linux,
+and that release has no CPython 3.13 distribution. The checked-in portable
+fixtures remain independent of this converter environment and continue to be
+evaluated with the root Metriplane Python 3.12/3.13 matrix.
+
 ## Locked source
 
 | Artifact | Bytes | SHA-256 |

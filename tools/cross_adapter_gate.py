@@ -290,6 +290,11 @@ def _manual_registry_shape(registry: Mapping[str, Any]) -> None:
     known_variant_ids = {item["variant_id"] for item in variants}
     fixture_ids = {item["fixture_id"] for item in variants}
     for adapter in adapters:
+        if not set(adapter["source_conversion_python_versions"]) <= set(adapter["python_versions"]):
+            raise GateError(
+                f"source-conversion Python versions exceed package coverage for "
+                f"{adapter['component_id']}"
+            )
         if not set(adapter["portable_fixture_variants"]) <= known_variant_ids:
             raise GateError(f"{adapter['component_id']} references an unknown portable variant")
         expected = adapter["expected_results"]
@@ -550,9 +555,21 @@ def discover_repository(repo: Path | str, registry: Mapping[str, Any]) -> dict[s
         pyproject = tomllib.loads((package / "pyproject.toml").read_text(encoding="utf-8"))
         if pyproject["project"].get("license") != component["package_license_expression"]:
             raise GateError(f"package licence drift for {component['component_id']}")
-        if requires_python != ">=3.12,<3.14":
+        supported_versions = tuple(sorted(component["python_versions"]))
+        supported_requires_python = {
+            ("3.12",): ">=3.12,<3.13",
+            ("3.12", "3.13"): ">=3.12,<3.14",
+        }
+        expected_requires_python = supported_requires_python.get(supported_versions)
+        if expected_requires_python is None:
             raise GateError(
-                f"Python support drift for {component['component_id']}: {requires_python}"
+                f"unsupported Python coverage declaration for "
+                f"{component['component_id']}: {supported_versions}"
+            )
+        if requires_python != expected_requires_python:
+            raise GateError(
+                f"Python support drift for {component['component_id']}: "
+                f"declared {component['python_versions']}, metadata {requires_python}"
             )
         module_root = package / "src" / component["module_name"]
         if not module_root.is_dir():
