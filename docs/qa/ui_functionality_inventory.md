@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Generated deterministically by `python tools/audit_ui_functionality.py --write`.
 
-Canonical projection SHA-256: `f8413834f2af006b43322708267eae779481af9b30662ac8b9d31253d4fa2566`
+Canonical projection SHA-256: `5441c7f9b5800369ef4aad279c9f1cc72462b4dcfd3edb1d7dba24f20437c582`
 
 This is a static source census. It does not characterize runtime behavior or expand browser, platform, environment, or integration support.
 
@@ -15,7 +15,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 
 | surface | count |
 | --- | --- |
-| actions | 226 |
+| actions | 227 |
 | HTTP routes | 34 |
 | pages | 12 |
 | services | 4 |
@@ -343,6 +343,7 @@ This is a static source census. It does not characterize runtime behavior or exp
 | tool.session_health_summary | tool | Session Health Summary | python tools/session_health_summary.py |
 | tool.start_metriplane | tool | Start Metriplane | tools/start_metriplane.sh |
 | tool.stop_the_line | tool | Stop The Line | python tools/stop_the_line.py |
+| tool.task_delegation | tool | Task Delegation | python tools/task_delegation.py |
 | tool.ui_safe_cleanup | tool | Ui Safe Cleanup | python tools/ui_safe_cleanup.py |
 | tool.update_last_known_good | tool | Update Last Known Good | python tools/update_last_known_good.py |
 | tool.update_release_attempt_index | tool | Update Release Attempt Index | python tools/update_release_attempt_index.py |

@@ -5,28 +5,34 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from metriplane.release_control import canonical_json, sha256_json
+from tools.task_delegation import delegation_id, key_id, tracker_snapshot_digest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "materialize_task_work_order.py"
 VALIDATOR = ROOT / "tools" / "validate_task_work_order.py"
 CATALOG = json.loads((ROOT / "docs/status/task-work-orders.json").read_bytes())
-_NODE_SIGN = r"""
-const crypto = require("node:crypto");
-const fs = require("node:fs");
-const {privateKey, publicKey} = crypto.generateKeyPairSync("ed25519");
-const publicDer = publicKey.export({format: "der", type: "spki"});
-const prefix = Buffer.from("302a300506032b6570032100", "hex");
-if (!publicDer.subarray(0, prefix.length).equals(prefix) || publicDer.length !== prefix.length + 32) {
-  process.exit(2);
-}
-process.stdout.write(JSON.stringify({
-  public_key_hex: publicDer.subarray(prefix.length).toString("hex"),
-  signature: crypto.sign(null, fs.readFileSync(0), privateKey).toString("hex"),
-}));
-"""
+REPOSITORY = "Miko997/metriplane"
+PROJECT_ID = "cf53f98f-0965-4360-a66e-530457e40354"
+GRANTOR = "miko"
+EXECUTOR = "01a096e0-4e21-7a11-9f0f-fb303387c5c0"
+OTHER_EXECUTOR = "11111111-1111-4111-8111-111111111111"
+EVALUATED_AT = "2026-09-13T00:30:00Z"
+VALIDATED_AT = "2026-09-13T00:31:00Z"
+
+
+@dataclass
+class Fixture:
+    paths: dict[str, Path]
+    private_key: Ed25519PrivateKey
 
 
 def _write(path: Path, value: object) -> Path:
@@ -34,21 +40,24 @@ def _write(path: Path, value: object) -> Path:
     return path
 
 
-def _signed_fixture(message: bytes) -> tuple[str, str]:
-    completed = subprocess.run(
-        ["node", "--eval", _NODE_SIGN],
-        input=message,
-        capture_output=True,
-        check=True,
+def _raw_public_key(private_key: Ed25519PrivateKey) -> bytes:
+    return private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
     )
-    value = json.loads(completed.stdout)
-    return value["public_key_hex"], value["signature"]
+
+
+def _signature(private_key: Ed25519PrivateKey, *, actor_id: str, subject_digest: str) -> str:
+    message = canonical_json(
+        {"actor_id": actor_id, "provider": "linear", "subject_digest": subject_digest}
+    )
+    return private_key.sign(message).hex()
 
 
 def _resolution() -> dict[str, object]:
     task = next(row for row in CATALOG["tasks"] if row["task_id"] == "MP2-016")
 
-    def groups(rows: list[dict[str, object]], key: str, prefix: str) -> list[dict[str, object]]:
+    def groups(rows: list[dict[str, Any]], key: str, prefix: str) -> list[dict[str, object]]:
         return [
             {
                 "destinations": [
@@ -74,32 +83,9 @@ def _resolution() -> dict[str, object]:
     }
 
 
-def _inputs(tmp_path: Path) -> dict[str, Path]:
-    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    subject = {
-        "actor_id": "fixture-actor",
-        "authority": "disposable MP2-016 test assignment",
-        "base_sha": head,
-        "linear_issue": "MET-90",
-        "task_id": "MP2-016",
-    }
-    subject_digest = sha256_json(subject)
-    signed = canonical_json(
-        {"actor_id": "fixture-actor", "provider": "linear", "subject_digest": subject_digest}
-    )
-    public_key_hex, signature = _signed_fixture(signed)
-    assignment = {
-        "schema_version": "metriplane.task-assignment.v1",
-        "signature": {
-            "actor_id": "fixture-actor",
-            "provider": "linear",
-            "signature": signature,
-        },
-        "subject": subject,
-        "subject_digest": subject_digest,
-    }
+def _relations() -> list[dict[str, str]]:
     issue = {row["task_id"]: row["linear_issue"] for row in CATALOG["tasks"]}
-    edges = sorted(
+    return sorted(
         [
             {"blocked": row["linear_issue"], "blocker": issue[dependency]}
             for row in CATALOG["tasks"]
@@ -107,26 +93,122 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
         ],
         key=lambda row: (row["blocker"], row["blocked"]),
     )
-    criteria = [f"MP2-016.A{index:02d}" for index in range(1, 9)]
+
+
+def _snapshot(
+    *, head: str, grantor: str, executor: str, synthetic: bool, delegation_id_value: str
+) -> dict[str, Any]:
     return {
-        "assignment": _write(tmp_path / "assignment.json", assignment),
-        "keyring": _write(
-            tmp_path / "keyring.json",
+        "captured_at": "2026-09-13T00:29:30Z",
+        "edges": _relations(),
+        "event_cursor": "fixture-cursor-1",
+        "project_id": PROJECT_ID,
+        "provider_status": "available",
+        "repository": REPOSITORY,
+        "schema_version": "metriplane.linear-work-order-snapshot.v1",
+        "synthetic": synthetic,
+        "task": {
+            "assignee_actor_id": grantor,
+            "base_sha": head,
+            "delegate_executor_id": executor,
+            "delegation_event_id": "fixture-event-1",
+            "delegation_id": delegation_id_value,
+            "delegation_status": "active",
+            "issue_state": "started",
+            "linear_issue": "MET-90",
+            "task_id": "MP2-016",
+        },
+    }
+
+
+def _inputs(
+    tmp_path: Path,
+    *,
+    grantor: str = GRANTOR,
+    executor: str = EXECUTOR,
+    synthetic: bool = True,
+    trust_class: str = "fixture",
+) -> Fixture:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
+    private_key = Ed25519PrivateKey.generate()
+    public_key_hex = _raw_public_key(private_key).hex()
+    signing_key_id = key_id(public_key_hex)
+    authority = {
+        "keys": [
             {
-                "keys": [
-                    {
-                        "actor_id": "fixture-actor",
-                        "provider": "linear",
-                        "public_key_hex": public_key_hex,
-                    }
-                ],
-                "schema_version": "metriplane.provider-attestation-keyring.v1",
-            },
-        ),
-        "linear": _write(
-            tmp_path / "linear.json",
-            {"edges": edges, "event_cursor": "fixture-cursor", "provider_status": "available"},
-        ),
+                "actor_id": grantor,
+                "key_id": signing_key_id,
+                "not_after": "2026-09-14T00:00:00Z",
+                "not_before": "2026-09-12T00:00:00Z",
+                "project_id": PROJECT_ID,
+                "provider": "linear",
+                "public_key_hex": public_key_hex,
+                "repository": REPOSITORY,
+                "role": "repository_owner",
+                "status": "active",
+                "trust_class": trust_class,
+            }
+        ],
+        "revoked_delegation_ids": [],
+        "schema_version": "metriplane.task-delegation-authority.v1",
+    }
+    snapshot = _snapshot(
+        head=head,
+        grantor=grantor,
+        executor=executor,
+        synthetic=synthetic,
+        delegation_id_value="0" * 64,
+    )
+    subject: dict[str, Any] = {
+        "delegate": {"executor_id": executor, "kind": "codex_goal"},
+        "expires_at": "2026-09-13T02:00:00Z",
+        "grantor": {
+            "actor_id": grantor,
+            "provider": "linear",
+            "role": "repository_owner",
+        },
+        "issued_at": "2026-09-13T00:00:00Z",
+        "max_snapshot_age_seconds": 600,
+        "scope": {
+            "authority": "execute the bounded MP2-016 contract correction",
+            "base_sha": head,
+            "base_tree": tree,
+            "linear_issue": "MET-90",
+            "project_id": PROJECT_ID,
+            "repository": REPOSITORY,
+            "task_id": "MP2-016",
+        },
+        "signing_key_id": signing_key_id,
+        "tracker_snapshot_digest": tracker_snapshot_digest(snapshot),
+        "tracker": {
+            "event_cursor": "fixture-cursor-1",
+            "event_id": "fixture-event-1",
+            "provider": "linear",
+        },
+    }
+    subject["delegation_id"] = delegation_id(subject)
+    snapshot["task"]["delegation_id"] = subject["delegation_id"]
+    subject_digest = sha256_json(subject)
+    delegation = {
+        "schema_version": "metriplane.task-delegation.v1",
+        "signature": {
+            "actor_id": grantor,
+            "key_id": signing_key_id,
+            "provider": "linear",
+            "signature": _signature(private_key, actor_id=grantor, subject_digest=subject_digest),
+        },
+        "subject": subject,
+        "subject_digest": subject_digest,
+        "synthetic": synthetic,
+    }
+    task = next(row for row in CATALOG["tasks"] if row["task_id"] == "MP2-016")
+    criteria = [row["criterion_id"] for row in task["task_specific_acceptance_predicates"]]
+    paths = {
+        "authority": _write(tmp_path / "authority.json", authority),
+        "delegation": _write(tmp_path / "delegation.json", delegation),
+        "linear": _write(tmp_path / "linear.json", snapshot),
         "dependencies": _write(
             tmp_path / "dependencies.json",
             {
@@ -160,44 +242,151 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
         ),
         "resolution": _write(tmp_path / "resolution.json", _resolution()),
     }
+    return Fixture(paths=paths, private_key=private_key)
+
+
+def _resign(fixture: Fixture, mutate: Any) -> None:
+    delegation = json.loads(fixture.paths["delegation"].read_bytes())
+    mutate(delegation)
+    subject = delegation["subject"]
+    subject["delegation_id"] = delegation_id(subject)
+    delegation["subject_digest"] = sha256_json(subject)
+    delegation["signature"]["signature"] = _signature(
+        fixture.private_key,
+        actor_id=delegation["signature"]["actor_id"],
+        subject_digest=delegation["subject_digest"],
+    )
+    _write(fixture.paths["delegation"], delegation)
+
+
+def _bind_snapshot(fixture: Fixture) -> None:
+    delegation = json.loads(fixture.paths["delegation"].read_bytes())
+    snapshot = json.loads(fixture.paths["linear"].read_bytes())
+    subject = delegation["subject"]
+    subject["tracker_snapshot_digest"] = tracker_snapshot_digest(snapshot)
+    subject["delegation_id"] = delegation_id(subject)
+    snapshot["task"]["delegation_id"] = subject["delegation_id"]
+    delegation["subject_digest"] = sha256_json(subject)
+    delegation["signature"]["signature"] = _signature(
+        fixture.private_key,
+        actor_id=delegation["signature"]["actor_id"],
+        subject_digest=delegation["subject_digest"],
+    )
+    _write(fixture.paths["linear"], snapshot)
+    _write(fixture.paths["delegation"], delegation)
 
 
 def _run(
     tmp_path: Path,
-    inputs: dict[str, Path],
+    fixture: Fixture,
     *,
     out: str = "work-order.json",
     base_sha: str | None = None,
-):
+    grantor: str = GRANTOR,
+    executor: str = EXECUTOR,
+    fixture_mode: bool = True,
+) -> subprocess.CompletedProcess[str]:
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    argv = [
+        sys.executable,
+        str(TOOL),
+        "--repository-root",
+        str(ROOT),
+        "--task-id",
+        "MP2-016",
+        "--base-sha",
+        base_sha or head,
+        "--repository",
+        REPOSITORY,
+        "--linear-project-id",
+        PROJECT_ID,
+        "--grantor-id",
+        grantor,
+        "--executor-id",
+        executor,
+        "--evaluated-at",
+        EVALUATED_AT,
+        "--catalog",
+        "docs/status/task-work-orders.json",
+        "--catalog-schema",
+        "schemas/metriplane.mp2-work-order-set.v1.schema.json",
+        "--delegation",
+        str(fixture.paths["delegation"]),
+        "--delegation-schema",
+        "schemas/metriplane.task-delegation.v1.schema.json",
+        "--authority-keyring",
+        str(fixture.paths["authority"]),
+        "--authority-keyring-schema",
+        "schemas/metriplane.task-delegation-authority.v1.schema.json",
+        "--linear-snapshot",
+        str(fixture.paths["linear"]),
+        "--linear-snapshot-schema",
+        "schemas/metriplane.linear-work-order-snapshot.v1.schema.json",
+        "--dependency-evidence",
+        str(fixture.paths["dependencies"]),
+        "--command-registry",
+        str(fixture.paths["commands"]),
+        "--resolution",
+        str(fixture.paths["resolution"]),
+        "--out",
+        str(tmp_path / out),
+    ]
+    if fixture_mode:
+        argv.append("--fixture-mode")
+    return subprocess.run(argv, check=False, capture_output=True, text=True)
+
+
+def _validate(
+    tmp_path: Path,
+    fixture: Fixture,
+    work_order: Path,
+    *,
+    out: str = "validation.json",
+    validated_at: str = VALIDATED_AT,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable,
-            str(TOOL),
+            str(VALIDATOR),
+            "--work-order",
+            str(work_order),
+            "--schema",
+            str(ROOT / "schemas/metriplane.task-work-order.v2.schema.json"),
+            "--catalog",
+            str(ROOT / "docs/status/task-work-orders.json"),
+            "--catalog-schema",
+            str(ROOT / "schemas/metriplane.mp2-work-order-set.v1.schema.json"),
             "--repository-root",
             str(ROOT),
-            "--task-id",
-            "MP2-016",
-            "--base-sha",
-            base_sha or head,
-            "--catalog",
-            "docs/status/task-work-orders.json",
-            "--catalog-schema",
-            "schemas/metriplane.mp2-work-order-set.v1.schema.json",
-            "--assignment",
-            str(inputs["assignment"]),
-            "--assignment-schema",
-            "schemas/metriplane.task-assignment.v1.schema.json",
-            "--keyring",
-            str(inputs["keyring"]),
+            "--delegation",
+            str(fixture.paths["delegation"]),
+            "--delegation-schema",
+            str(ROOT / "schemas/metriplane.task-delegation.v1.schema.json"),
+            "--authority-keyring",
+            str(fixture.paths["authority"]),
+            "--authority-keyring-schema",
+            str(ROOT / "schemas/metriplane.task-delegation-authority.v1.schema.json"),
             "--linear-snapshot",
-            str(inputs["linear"]),
+            str(fixture.paths["linear"]),
+            "--linear-snapshot-schema",
+            str(ROOT / "schemas/metriplane.linear-work-order-snapshot.v1.schema.json"),
             "--dependency-evidence",
-            str(inputs["dependencies"]),
+            str(fixture.paths["dependencies"]),
             "--command-registry",
-            str(inputs["commands"]),
+            str(fixture.paths["commands"]),
             "--resolution",
-            str(inputs["resolution"]),
+            str(fixture.paths["resolution"]),
+            "--repository",
+            REPOSITORY,
+            "--linear-project-id",
+            PROJECT_ID,
+            "--grantor-id",
+            GRANTOR,
+            "--executor-id",
+            EXECUTOR,
+            "--validated-at",
+            validated_at,
+            "--fixture-mode",
             "--out",
             str(tmp_path / out),
         ],
@@ -207,13 +396,268 @@ def _run(
     )
 
 
-def _validate(tmp_path: Path, inputs: dict[str, Path], work_order: Path):
-    return subprocess.run(
+def test_valid_miko_to_codex_delegation_materializes_and_validates_ready(
+    tmp_path: Path,
+) -> None:
+    fixture = _inputs(tmp_path)
+    assert _run(tmp_path, fixture, out="first.json").returncode == 0
+    assert _run(tmp_path, fixture, out="second.json").returncode == 0
+    assert (tmp_path / "first.json").read_bytes() == (tmp_path / "second.json").read_bytes()
+    payload = json.loads((tmp_path / "first.json").read_bytes())
+    assert payload["verdict"] == "READY"
+    assert payload["grantor_id"] == GRANTOR
+    assert payload["executor_id"] == EXECUTOR
+    assert payload["materialization_id"] == sha256_json(
+        {key: value for key, value in payload.items() if key != "materialization_id"}
+    )
+    assert _validate(tmp_path, fixture, tmp_path / "first.json").returncode == 0
+
+
+def test_delegate_cannot_self_grant(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path, grantor=EXECUTOR)
+    assert _run(tmp_path, fixture, grantor=EXECUTOR).returncode == 2
+
+
+def test_wrong_grantor_and_wrong_delegate_are_rejected(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    assert _run(tmp_path, fixture, out="grantor.json", grantor="another-owner").returncode == 2
+    assert _run(tmp_path, fixture, out="delegate.json", executor=OTHER_EXECUTOR).returncode == 2
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("task_id", "MP2-017"),
+        ("repository", "Miko997/substituted"),
+        ("base_sha", "0" * 40),
+    ],
+)
+def test_wrong_signed_scope_is_rejected(tmp_path: Path, field: str, value: str) -> None:
+    fixture = _inputs(tmp_path)
+    _resign(fixture, lambda row: row["subject"]["scope"].__setitem__(field, value))
+    assert _run(tmp_path, fixture).returncode == 2
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("expires_at", "2026-09-13T00:30:00Z", 3),
+        ("issued_at", "2026-09-13T00:31:00Z", 2),
+        ("issued_at", "2026-09-13T00:00:00+00:00", 2),
+    ],
+)
+def test_invalid_or_inactive_delegation_time_is_rejected(
+    tmp_path: Path, field: str, value: str, expected: int
+) -> None:
+    fixture = _inputs(tmp_path)
+    _resign(fixture, lambda row: row["subject"].__setitem__(field, value))
+    assert _run(tmp_path, fixture).returncode == expected
+
+
+def test_altered_payload_is_rejected(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    delegation = json.loads(fixture.paths["delegation"].read_bytes())
+    delegation["subject"]["scope"]["authority"] = "altered"
+    _write(fixture.paths["delegation"], delegation)
+    assert _run(tmp_path, fixture).returncode == 2
+
+    fixture = _inputs(tmp_path / "snapshot-tamper")
+    snapshot = json.loads(fixture.paths["linear"].read_bytes())
+    snapshot["captured_at"] = "2026-09-13T00:29:31Z"
+    _write(fixture.paths["linear"], snapshot)
+    assert _run(tmp_path, fixture, out="snapshot-tamper.json").returncode == 2
+
+
+def test_altered_signature_is_rejected(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    delegation = json.loads(fixture.paths["delegation"].read_bytes())
+    signature = delegation["signature"]["signature"]
+    delegation["signature"]["signature"] = ("0" if signature[0] != "0" else "1") + signature[1:]
+    _write(fixture.paths["delegation"], delegation)
+    assert _run(tmp_path, fixture).returncode == 2
+
+
+@pytest.mark.parametrize("mode", ["unknown", "revoked", "untrusted-live"])
+def test_key_fail_closed_modes(tmp_path: Path, mode: str) -> None:
+    fixture = _inputs(tmp_path)
+    authority = json.loads(fixture.paths["authority"].read_bytes())
+    if mode == "unknown":
+        authority["keys"][0]["actor_id"] = "unrelated-owner"
+    elif mode == "revoked":
+        authority["keys"][0]["status"] = "revoked"
+    else:
+        delegation = json.loads(fixture.paths["delegation"].read_bytes())
+        delegation["synthetic"] = False
+        _write(fixture.paths["delegation"], delegation)
+        snapshot = json.loads(fixture.paths["linear"].read_bytes())
+        snapshot["synthetic"] = False
+        _write(fixture.paths["linear"], snapshot)
+    _write(fixture.paths["authority"], authority)
+    completed = _run(tmp_path, fixture, fixture_mode=mode != "untrusted-live")
+    assert completed.returncode in {2, 3}
+
+
+def test_revoked_delegation_is_not_ready(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    authority = json.loads(fixture.paths["authority"].read_bytes())
+    delegation = json.loads(fixture.paths["delegation"].read_bytes())
+    authority["revoked_delegation_ids"] = [delegation["subject"]["delegation_id"]]
+    _write(fixture.paths["authority"], authority)
+    assert _run(tmp_path, fixture).returncode == 3
+
+
+def test_synthetic_fixture_cannot_supply_live_authority(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    assert _run(tmp_path, fixture, fixture_mode=False).returncode == 2
+
+
+def test_arbitrary_production_keyring_cannot_bootstrap_live_authority(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path, synthetic=False, trust_class="production")
+    assert _run(tmp_path, fixture, fixture_mode=False).returncode == 2
+
+
+def test_stale_snapshot_and_missing_live_relation_are_not_ready(tmp_path: Path) -> None:
+    stale = tmp_path / "stale"
+    fixture = _inputs(stale)
+    snapshot = json.loads(fixture.paths["linear"].read_bytes())
+    snapshot["captured_at"] = "2026-09-13T00:00:00Z"
+    _write(fixture.paths["linear"], snapshot)
+    _bind_snapshot(fixture)
+    assert _run(tmp_path, fixture, out="stale.json").returncode == 3
+
+    missing = tmp_path / "missing"
+    fixture = _inputs(missing)
+    snapshot = json.loads(fixture.paths["linear"].read_bytes())
+    snapshot["edges"].pop()
+    _write(fixture.paths["linear"], snapshot)
+    _bind_snapshot(fixture)
+    assert _run(tmp_path, fixture, out="missing.json").returncode == 3
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("event_cursor", "substituted-cursor"),
+        ("delegation_event_id", "substituted-event"),
+        ("base_sha", "0" * 40),
+    ],
+)
+def test_linear_cursor_event_and_base_substitution_are_not_ready(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    fixture = _inputs(tmp_path)
+    snapshot = json.loads(fixture.paths["linear"].read_bytes())
+    target = snapshot if field == "event_cursor" else snapshot["task"]
+    target[field] = value
+    _write(fixture.paths["linear"], snapshot)
+    _bind_snapshot(fixture)
+    assert _run(tmp_path, fixture).returncode == 3
+
+
+def test_provider_outage_has_distinct_exit(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    snapshot = json.loads(fixture.paths["linear"].read_bytes())
+    snapshot["provider_status"] = "outage"
+    _write(fixture.paths["linear"], snapshot)
+    assert _run(tmp_path, fixture).returncode == 4
+
+
+def test_work_order_is_never_overwritten(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    assert _run(tmp_path, fixture).returncode == 0
+    assert _run(tmp_path, fixture).returncode == 3
+
+
+def test_validator_rejects_substitution_and_does_not_mutate_inputs(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    assert _run(tmp_path, fixture).returncode == 0
+    work_order = tmp_path / "work-order.json"
+    before = {name: path.read_bytes() for name, path in fixture.paths.items()}
+    status_before = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)
+    assert _validate(tmp_path, fixture, work_order).returncode == 0
+    assert before == {name: path.read_bytes() for name, path in fixture.paths.items()}
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT) == status_before
+
+    commands = json.loads(fixture.paths["commands"].read_bytes())
+    commands["commands"][0]["cwd"] = "/substituted"
+    _write(fixture.paths["commands"], commands)
+    assert (
+        _validate(tmp_path, fixture, work_order, out="substituted-validation.json").returncode == 2
+    )
+
+
+def test_validator_cannot_reuse_an_expired_ready_materialization(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path)
+    assert _run(tmp_path, fixture).returncode == 0
+    assert (
+        _validate(
+            tmp_path,
+            fixture,
+            tmp_path / "work-order.json",
+            validated_at="2026-09-13T02:00:00Z",
+        ).returncode
+        == 3
+    )
+
+
+def test_historical_v1_work_order_remains_interpretable(tmp_path: Path) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    actor = "historical-fixture-actor"
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    subject = {
+        "actor_id": actor,
+        "authority": "historical fixture",
+        "base_sha": head,
+        "linear_issue": "MET-90",
+        "task_id": "MP2-016",
+    }
+    subject_digest = sha256_json(subject)
+    assignment = {
+        "schema_version": "metriplane.task-assignment.v1",
+        "signature": {
+            "actor_id": actor,
+            "provider": "linear",
+            "signature": _signature(private_key, actor_id=actor, subject_digest=subject_digest),
+        },
+        "subject": subject,
+        "subject_digest": subject_digest,
+    }
+    task = next(row for row in CATALOG["tasks"] if row["task_id"] == "MP2-016")
+    work_order: dict[str, Any] = {
+        "assignment": assignment,
+        "base_sha": head,
+        "catalog_row": task,
+        "commands": [{"historical": True}],
+        "dependencies": [],
+        "input_digests": {str(index): "0" * 64 for index in range(6)},
+        "linear_issue": "MET-90",
+        "linear_relation_digest": "0" * 64,
+        "resolution": {},
+        "schema_version": "metriplane.task-work-order.v1",
+        "task_id": "MP2-016",
+        "verdict": "READY",
+    }
+    work_order["materialization_id"] = sha256_json(work_order)
+    work_order_path = _write(tmp_path / "historical-work-order.json", work_order)
+    keyring = _write(
+        tmp_path / "historical-keyring.json",
+        {
+            "keys": [
+                {
+                    "actor_id": actor,
+                    "provider": "linear",
+                    "public_key_hex": _raw_public_key(private_key).hex(),
+                }
+            ],
+            "schema_version": "metriplane.provider-attestation-keyring.v1",
+        },
+    )
+    completed = subprocess.run(
         [
             sys.executable,
             str(VALIDATOR),
             "--work-order",
-            str(work_order),
+            str(work_order_path),
             "--schema",
             str(ROOT / "schemas/metriplane.task-work-order.v1.schema.json"),
             "--assignment-schema",
@@ -223,76 +667,16 @@ def _validate(tmp_path: Path, inputs: dict[str, Path], work_order: Path):
             "--catalog-schema",
             str(ROOT / "schemas/metriplane.mp2-work-order-set.v1.schema.json"),
             "--keyring",
-            str(inputs["keyring"]),
+            str(keyring),
             "--out",
-            str(tmp_path / "validation.json"),
+            str(tmp_path / "historical-validation.json"),
         ],
         check=False,
         capture_output=True,
         text=True,
     )
-
-
-def test_materializes_exact_ready_work_order_deterministically(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    assert _run(tmp_path, inputs, out="first.json").returncode == 0
-    assert _run(tmp_path, inputs, out="second.json").returncode == 0
-    assert (tmp_path / "first.json").read_bytes() == (tmp_path / "second.json").read_bytes()
-    payload = json.loads((tmp_path / "first.json").read_bytes())
-    assert payload["verdict"] == "READY"
-    assert payload["task_id"] == "MP2-016"
-    assert payload["materialization_id"] == sha256_json(
-        {key: value for key, value in payload.items() if key != "materialization_id"}
-    )
-
-
-def test_rejects_missing_live_relation(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    snapshot = json.loads(inputs["linear"].read_bytes())
-    snapshot["edges"].pop()
-    _write(inputs["linear"], snapshot)
-    assert _run(tmp_path, inputs).returncode == 3
-    assert not (tmp_path / "work-order.json").exists()
-
-
-def test_provider_outage_has_distinct_exit(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    snapshot = json.loads(inputs["linear"].read_bytes())
-    snapshot["provider_status"] = "outage"
-    _write(inputs["linear"], snapshot)
-    assert _run(tmp_path, inputs).returncode == 4
-
-
-def test_tampered_assignment_is_rejected(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    assignment = json.loads(inputs["assignment"].read_bytes())
-    assignment["subject"]["actor_id"] = "substituted"
-    _write(inputs["assignment"], assignment)
-    assert _run(tmp_path, inputs).returncode == 2
-
-
-def test_malformed_base_is_invalid_input(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    assert _run(tmp_path, inputs, base_sha="x" * 40).returncode == 2
-    assert not (tmp_path / "work-order.json").exists()
-
-
-def test_work_order_is_never_overwritten(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    assert _run(tmp_path, inputs).returncode == 0
-    assert _run(tmp_path, inputs).returncode == 3
-
-
-def test_independent_validator_rejects_substituted_manifest(tmp_path: Path) -> None:
-    inputs = _inputs(tmp_path)
-    assert _run(tmp_path, inputs).returncode == 0
-    work_order = tmp_path / "work-order.json"
-    assert _validate(tmp_path, inputs, work_order).returncode == 0
-    assert json.loads((tmp_path / "validation.json").read_bytes())["verdict"] == "READY"
-
-    changed = json.loads(work_order.read_bytes())
-    changed["base_sha"] = "0" * 40
-    _write(tmp_path / "substituted.json", changed)
-    (tmp_path / "validation.json").unlink()
-    assert _validate(tmp_path, inputs, tmp_path / "substituted.json").returncode == 2
-    assert not (tmp_path / "validation.json").exists()
+    assert completed.returncode == 3, completed.stderr
+    result = json.loads((tmp_path / "historical-validation.json").read_bytes())
+    assert result["checks"]["historical_v1_interpretable"] is True
+    assert result["checks"]["eligible_for_new_execution"] is False
+    assert result["verdict"] == "BLOCKED_NOT_READY"

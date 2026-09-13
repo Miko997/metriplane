@@ -15,14 +15,20 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from metriplane.release_control import ProviderAttestationVerifier, canonical_json, sha256_json
+from metriplane.release_control import canonical_json, sha256_json
 
 try:
     from tools.check_work_order_catalog import CatalogError, validate_catalog
 except ImportError:
     from check_work_order_catalog import CatalogError, validate_catalog
 
-SCHEMA_VERSION = "metriplane.task-work-order.v1"
+try:
+    from tools.task_delegation import DelegationError, DelegationNotReady, validate_delegation
+except ImportError:
+    from task_delegation import DelegationError, DelegationNotReady, validate_delegation
+
+SCHEMA_VERSION = "metriplane.task-work-order.v2"
+PRODUCTION_AUTHORITY_PATH = Path("docs/status/task-delegation-authority.json")
 
 
 class MaterializationError(ValueError):
@@ -104,17 +110,41 @@ def _validate_relations(catalog: Mapping[str, Any], snapshot: Mapping[str, Any])
     return sha256_json({"edges": sorted(actual), "event_cursor": cursor})
 
 
+def _validate_live_authority_root(root: Path, base_sha: str, path: Path) -> None:
+    expected = (root / PRODUCTION_AUTHORITY_PATH).resolve()
+    if path.resolve() != expected:
+        raise InputError(
+            "live delegation authority is not the protected repository trust-root path"
+        )
+    try:
+        committed = subprocess.check_output(
+            ["git", "show", f"{base_sha}:{PRODUCTION_AUTHORITY_PATH.as_posix()}"], cwd=root
+        )
+    except subprocess.CalledProcessError as exc:
+        raise InputError("live delegation authority is absent from the exact base") from exc
+    if committed != path.read_bytes():
+        raise InputError("live delegation authority differs from its exact-base Git object")
+
+
 def build(
     root: Path,
     *,
     task_id: str,
     base_sha: str,
+    repository: str,
+    project_id: str,
+    grantor_id: str,
+    executor_id: str,
+    evaluated_at: str,
+    fixture_mode: bool,
     catalog_path: Path,
     catalog_schema: Path,
-    assignment_path: Path,
-    assignment_schema_path: Path,
-    keyring_path: Path,
+    delegation_path: Path,
+    delegation_schema_path: Path,
+    authority_keyring_path: Path,
+    authority_keyring_schema_path: Path,
     linear_snapshot_path: Path,
+    linear_snapshot_schema_path: Path,
     dependency_evidence_path: Path,
     command_registry_path: Path,
     resolution_path: Path,
@@ -124,39 +154,40 @@ def build(
     actual_head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
     if actual_head != base_sha:
         raise NotReady("base SHA is not the checked-out source")
+    base_tree = subprocess.check_output(
+        ["git", "rev-parse", "HEAD^{tree}"], cwd=root, text=True
+    ).strip()
     validate_catalog(catalog_path, schema_path=catalog_schema)
     catalog = _read(catalog_path)
     matches = [row for row in catalog["tasks"] if row["task_id"] == task_id]
     if len(matches) != 1:
         raise InputError("task identity is absent or duplicated")
     task = matches[0]
-    assignment = _read(assignment_path)
-    _schema_validate(assignment, assignment_schema_path, "assignment")
-    subject = assignment.get("subject")
-    if not isinstance(subject, Mapping):
-        raise InputError("assignment subject is invalid")
-    expected_subject = {
-        "actor_id": subject.get("actor_id"),
-        "authority": subject.get("authority"),
-        "base_sha": base_sha,
-        "linear_issue": task["linear_issue"],
-        "task_id": task_id,
-    }
-    if subject != expected_subject or not all(
-        isinstance(expected_subject[key], str) and expected_subject[key]
-        for key in ("actor_id", "authority")
-    ):
-        raise InputError("assignment does not bind the selected task and base")
-    subject_digest = sha256_json(subject)
-    if assignment.get("subject_digest") != subject_digest:
-        raise InputError("assignment subject digest mismatch")
-    signature = assignment.get("signature")
-    if not isinstance(signature, Mapping) or signature.get("actor_id") != subject["actor_id"]:
-        raise InputError("assignment signature identity mismatch")
-    verifier = ProviderAttestationVerifier.from_keyring(keyring_path)
-    if not verifier.verify(signature, subject_digest=subject_digest):
-        raise InputError("assignment signature is not trusted")
+    delegation = _read(delegation_path)
+    _schema_validate(delegation, delegation_schema_path, "delegation")
+    authority_keyring = _read(authority_keyring_path)
+    _schema_validate(authority_keyring, authority_keyring_schema_path, "delegation authority")
+    if not fixture_mode:
+        _validate_live_authority_root(root, base_sha, authority_keyring_path)
     linear_snapshot = _read(linear_snapshot_path)
+    _schema_validate(linear_snapshot, linear_snapshot_schema_path, "Linear snapshot")
+    if linear_snapshot.get("provider_status") == "outage":
+        raise ConnectionError("Linear relation provider outage")
+    validate_delegation(
+        delegation,
+        authority_keyring,
+        linear_snapshot,
+        task_id=task_id,
+        linear_issue=task["linear_issue"],
+        repository=repository,
+        project_id=project_id,
+        base_sha=base_sha,
+        base_tree=base_tree,
+        grantor_id=grantor_id,
+        executor_id=executor_id,
+        evaluated_at=evaluated_at,
+        live=not fixture_mode,
+    )
     relation_digest = _validate_relations(catalog, linear_snapshot)
     evidence = _read(dependency_evidence_path)
     dependencies = evidence.get("dependencies")
@@ -255,25 +286,33 @@ def build(
             if previous != owner:
                 raise NotReady(f"resolved output ownership collision at {path}")
     inputs = {
-        "assignment": assignment_path,
-        "assignment_schema": assignment_schema_path,
+        "authority_keyring": authority_keyring_path,
+        "authority_keyring_schema": authority_keyring_schema_path,
         "catalog": catalog_path,
         "catalog_schema": catalog_schema,
         "commands": command_registry_path,
+        "delegation": delegation_path,
+        "delegation_schema": delegation_schema_path,
         "dependencies": dependency_evidence_path,
-        "keyring": keyring_path,
         "linear_snapshot": linear_snapshot_path,
+        "linear_snapshot_schema": linear_snapshot_schema_path,
         "resolution": resolution_path,
     }
     result: dict[str, Any] = {
-        "assignment": assignment,
         "base_sha": base_sha,
+        "base_tree": base_tree,
         "catalog_row": task,
         "commands": commands["commands"],
+        "delegation": delegation,
         "dependencies": dependencies,
+        "evaluated_at": evaluated_at,
+        "executor_id": executor_id,
+        "grantor_id": grantor_id,
         "input_digests": {name: _digest(path) for name, path in sorted(inputs.items())},
         "linear_issue": task["linear_issue"],
         "linear_relation_digest": relation_digest,
+        "project_id": project_id,
+        "repository": repository,
         "resolution": resolution,
         "schema_version": SCHEMA_VERSION,
         "task_id": task_id,
@@ -288,12 +327,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repository-root", type=Path, required=True)
     parser.add_argument("--task-id", required=True)
     parser.add_argument("--base-sha", required=True)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--linear-project-id", required=True)
+    parser.add_argument("--grantor-id", required=True)
+    parser.add_argument("--executor-id", required=True)
+    parser.add_argument("--evaluated-at", required=True)
+    parser.add_argument("--fixture-mode", action="store_true")
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--catalog-schema", type=Path, required=True)
-    parser.add_argument("--assignment", type=Path, required=True)
-    parser.add_argument("--assignment-schema", type=Path, required=True)
-    parser.add_argument("--keyring", type=Path, required=True)
+    parser.add_argument("--delegation", type=Path, required=True)
+    parser.add_argument("--delegation-schema", type=Path, required=True)
+    parser.add_argument("--authority-keyring", type=Path, required=True)
+    parser.add_argument("--authority-keyring-schema", type=Path, required=True)
     parser.add_argument("--linear-snapshot", type=Path, required=True)
+    parser.add_argument("--linear-snapshot-schema", type=Path, required=True)
     parser.add_argument("--dependency-evidence", type=Path, required=True)
     parser.add_argument("--command-registry", type=Path, required=True)
     parser.add_argument("--resolution", type=Path, required=True)
@@ -305,12 +352,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             root,
             task_id=args.task_id,
             base_sha=args.base_sha,
+            repository=args.repository,
+            project_id=args.linear_project_id,
+            grantor_id=args.grantor_id,
+            executor_id=args.executor_id,
+            evaluated_at=args.evaluated_at,
+            fixture_mode=args.fixture_mode,
             catalog_path=(root / args.catalog).resolve(strict=True),
             catalog_schema=(root / args.catalog_schema).resolve(strict=True),
-            assignment_path=args.assignment.resolve(strict=True),
-            assignment_schema_path=args.assignment_schema.resolve(strict=True),
-            keyring_path=args.keyring.resolve(strict=True),
+            delegation_path=args.delegation.resolve(strict=True),
+            delegation_schema_path=(root / args.delegation_schema).resolve(strict=True),
+            authority_keyring_path=args.authority_keyring.resolve(strict=True),
+            authority_keyring_schema_path=(root / args.authority_keyring_schema).resolve(
+                strict=True
+            ),
             linear_snapshot_path=args.linear_snapshot.resolve(strict=True),
+            linear_snapshot_schema_path=(root / args.linear_snapshot_schema).resolve(strict=True),
             dependency_evidence_path=args.dependency_evidence.resolve(strict=True),
             command_registry_path=args.command_registry.resolve(strict=True),
             resolution_path=args.resolution.resolve(strict=True),
@@ -326,7 +383,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     except NotReady as exc:
         print(f"work-order materialization blocked: {exc}", file=sys.stderr)
         return 3
-    except (CatalogError, InputError, OSError, ValueError, subprocess.CalledProcessError) as exc:
+    except DelegationNotReady as exc:
+        print(f"work-order materialization blocked: {exc}", file=sys.stderr)
+        return 3
+    except (
+        CatalogError,
+        DelegationError,
+        InputError,
+        OSError,
+        ValueError,
+        subprocess.CalledProcessError,
+    ) as exc:
         print(f"work-order materialization invalid: {exc}", file=sys.stderr)
         return 2
 

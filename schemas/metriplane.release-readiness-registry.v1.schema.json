@@ -2534,7 +2534,27 @@
       "properties": {
         "applies_to_task_ids": {
           "const": [
+            "MP2-020",
+            "MP2-021",
+            "MP2-022",
+            "MP2-023",
+            "MP2-024",
+            "MP2-025",
+            "MP2-026",
+            "MP2-027",
+            "MP2-028",
+            "MP2-029",
             "MP2-030",
+            "MP2-031",
+            "MP2-040",
+            "MP2-041",
+            "MP2-042",
+            "MP2-043",
+            "MP2-044",
+            "MP2-045",
+            "MP2-046",
+            "MP2-047",
+            "MP2-048",
             "MP2-049"
           ]
         },
@@ -2543,6 +2563,28 @@
         },
         "decision_date": {
           "const": "2026-09-12"
+        },
+        "delegation_contract": {
+          "additionalProperties": false,
+          "properties": {
+            "contract_owner": {"const": "MP2-016"},
+            "executor_id": {"const": "01a096e0-4e21-7a11-9f0f-fb303387c5c0"},
+            "grantor": {"const": "Miko Parkkinen"},
+            "production_authority": {"const": "BLOCKED_NEEDS_OWNER"},
+            "production_keyring_path": {
+              "const": "docs/status/task-delegation-authority.json"
+            },
+            "work_order_schema": {"const": "metriplane.task-work-order.v2"}
+          },
+          "required": [
+            "contract_owner",
+            "executor_id",
+            "grantor",
+            "production_authority",
+            "production_keyring_path",
+            "work_order_schema"
+          ],
+          "type": "object"
         },
         "human_review": {
           "additionalProperties": false,
@@ -2637,6 +2679,7 @@
         "applies_to_task_ids",
         "budget_eur",
         "decision_date",
+        "delegation_contract",
         "human_review",
         "mandatory_technical_controls",
         "owner",

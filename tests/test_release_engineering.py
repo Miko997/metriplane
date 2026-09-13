@@ -589,7 +589,38 @@ def test_v050_single_maintainer_scope_defers_only_human_independence() -> None:
 
     assert decision["profile"] == "zero_cost_single_maintainer_v0_5_0"
     assert decision["budget_eur"] == 0
-    assert decision["applies_to_task_ids"] == ["MP2-030", "MP2-049"]
+    assert decision["applies_to_task_ids"] == [
+        "MP2-020",
+        "MP2-021",
+        "MP2-022",
+        "MP2-023",
+        "MP2-024",
+        "MP2-025",
+        "MP2-026",
+        "MP2-027",
+        "MP2-028",
+        "MP2-029",
+        "MP2-030",
+        "MP2-031",
+        "MP2-040",
+        "MP2-041",
+        "MP2-042",
+        "MP2-043",
+        "MP2-044",
+        "MP2-045",
+        "MP2-046",
+        "MP2-047",
+        "MP2-048",
+        "MP2-049",
+    ]
+    assert decision["delegation_contract"] == {
+        "contract_owner": "MP2-016",
+        "executor_id": "01a096e0-4e21-7a11-9f0f-fb303387c5c0",
+        "grantor": "Miko Parkkinen",
+        "production_authority": "BLOCKED_NEEDS_OWNER",
+        "production_keyring_path": "docs/status/task-delegation-authority.json",
+        "work_order_schema": "metriplane.task-work-order.v2",
+    }
     assert decision["readiness"] == {
         "policy": "OWNER_APPROVED",
         "release": "BLOCKED_NOT_READY",
