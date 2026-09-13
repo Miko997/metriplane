@@ -36,6 +36,10 @@ exact base, live materialization is `BLOCKED_NEEDS_OWNER`. Codex must not create
 approve or sign the owner trust root. Fixture mode accepts only explicitly
 synthetic inputs and can never supply live authority.
 
+An absent approved keyring at the exact base is a policy blocker with exit `3`,
+not malformed input and not permission to bootstrap a key. A caller-supplied
+replacement path or changed committed bytes remains invalid input with exit `2`.
+
 ## READY evaluation
 
 The materializer returns `READY` only when all of these classes pass together:
