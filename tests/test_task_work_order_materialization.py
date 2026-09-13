@@ -557,6 +557,14 @@ def test_arbitrary_production_keyring_cannot_bootstrap_live_authority(tmp_path: 
     assert _run(tmp_path, fixture, fixture_mode=False).returncode == 2
 
 
+def test_missing_production_authority_is_blocked_needs_owner(tmp_path: Path) -> None:
+    fixture = _inputs(tmp_path, synthetic=False, trust_class="production")
+    fixture.paths["authority"] = ROOT / "docs/status/task-delegation-authority.json"
+    completed = _run(tmp_path, fixture, fixture_mode=False)
+    assert completed.returncode == 3
+    assert "BLOCKED_NEEDS_OWNER" in completed.stderr
+
+
 def test_stale_snapshot_and_missing_live_relation_are_not_ready(tmp_path: Path) -> None:
     stale = tmp_path / "stale"
     fixture = _inputs(stale)

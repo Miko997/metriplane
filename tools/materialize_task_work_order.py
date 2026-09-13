@@ -121,8 +121,15 @@ def _validate_live_authority_root(root: Path, base_sha: str, path: Path) -> None
             ["git", "show", f"{base_sha}:{PRODUCTION_AUTHORITY_PATH.as_posix()}"], cwd=root
         )
     except subprocess.CalledProcessError as exc:
-        raise InputError("live delegation authority is absent from the exact base") from exc
-    if committed != path.read_bytes():
+        raise NotReady(
+            "BLOCKED_NEEDS_OWNER: approved production delegation authority is absent "
+            "from the exact base"
+        ) from exc
+    try:
+        current = path.read_bytes()
+    except OSError as exc:
+        raise InputError("live delegation authority is absent from the checkout") from exc
+    if committed != current:
         raise InputError("live delegation authority differs from its exact-base Git object")
 
 
@@ -165,10 +172,10 @@ def build(
     task = matches[0]
     delegation = _read(delegation_path)
     _schema_validate(delegation, delegation_schema_path, "delegation")
-    authority_keyring = _read(authority_keyring_path)
-    _schema_validate(authority_keyring, authority_keyring_schema_path, "delegation authority")
     if not fixture_mode:
         _validate_live_authority_root(root, base_sha, authority_keyring_path)
+    authority_keyring = _read(authority_keyring_path)
+    _schema_validate(authority_keyring, authority_keyring_schema_path, "delegation authority")
     linear_snapshot = _read(linear_snapshot_path)
     _schema_validate(linear_snapshot, linear_snapshot_schema_path, "Linear snapshot")
     if linear_snapshot.get("provider_status") == "outage":
@@ -362,7 +369,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             catalog_schema=(root / args.catalog_schema).resolve(strict=True),
             delegation_path=args.delegation.resolve(strict=True),
             delegation_schema_path=(root / args.delegation_schema).resolve(strict=True),
-            authority_keyring_path=args.authority_keyring.resolve(strict=True),
+            authority_keyring_path=args.authority_keyring.resolve(),
             authority_keyring_schema_path=(root / args.authority_keyring_schema).resolve(
                 strict=True
             ),
