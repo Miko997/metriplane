@@ -88,6 +88,17 @@ provider result, change settings, or authorize any other incident. The existing
 owner-emergency repair and resolution contract governs everything after red
 state exists.
 
+At the resulting exact repair boundary only—state commit
+`7855be7d0de1f7f873fd3a8d392e95e540ca158d`, generation 69, red status,
+incident digest
+`c19598c316f5096e0e7f04de16706007ac9333ff35a75b71edc34419ea0df0df`,
+the same unchanged protected main, and the same stale LKG—the broker does not
+re-observe the already retained stalled main/deep provider set before evaluating
+the existing owner-emergency repair admission. This is not a green result or a
+second bootstrap. Any repository, main, state commit, generation, status,
+incident, first-bad, or LKG change disables the exception and restores ordinary
+fail-closed health reconciliation immediately.
+
 ## Admission
 
 The repository has exactly seven active governed rulesets:

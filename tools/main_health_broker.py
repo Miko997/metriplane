@@ -84,6 +84,10 @@ PROVIDER_STALL_RESULT_PREFIX = stop_the_line.PROVIDER_STALL_RESULT_PREFIX
 PROVIDER_STALL_MAIN_SHA = stop_the_line.PROVIDER_STALL_MAIN_SHA
 PROVIDER_STALL_STATE_COMMIT = stop_the_line.PROVIDER_STALL_STATE_COMMIT
 PROVIDER_STALL_STATE_GENERATION = stop_the_line.PROVIDER_STALL_STATE_GENERATION
+PROVIDER_STALL_RED_STATE_COMMIT = "7855be7d0de1f7f873fd3a8d392e95e540ca158d"
+PROVIDER_STALL_RED_STATE_GENERATION = PROVIDER_STALL_STATE_GENERATION + 1
+PROVIDER_STALL_INCIDENT_DIGEST = "c19598c316f5096e0e7f04de16706007ac9333ff35a75b71edc34419ea0df0df"
+PROVIDER_STALL_STALE_LKG_SHA = "5d6df8e6db0054d990623d042143e75e6b91ebce"
 PROVIDER_STALL_MINIMUM_AGE_SECONDS = stop_the_line.PROVIDER_STALL_MINIMUM_AGE_SECONDS
 PROVIDER_STALL_EXPECTED_RUNS = stop_the_line.PROVIDER_STALL_EXPECTED_RUNS
 PROVIDER_STALL_PR_MARKER = (
@@ -3289,6 +3293,22 @@ def _main_ref(api: GitHubApi, *, config: BrokerConfig, token: str) -> str:
     ):
         raise BrokerError("main ref response is not provider-bound")
     return _require_sha(provider_object.get("sha"), "main ref SHA")
+
+
+def _provider_stall_owner_repair_boundary(
+    *, main_sha: str, repository: str, state: dict[str, Any]
+) -> bool:
+    """Recognize only the consumed bootstrap's exact live repair boundary."""
+    return (
+        repository == stop_the_line.PROVIDER_STALL_REPOSITORY
+        and main_sha == PROVIDER_STALL_MAIN_SHA
+        and state.get("state_commit") == PROVIDER_STALL_RED_STATE_COMMIT
+        and state.get("generation") == PROVIDER_STALL_RED_STATE_GENERATION
+        and state.get("status") == "red"
+        and state.get("first_bad_sha") == PROVIDER_STALL_MAIN_SHA
+        and state.get("last_good_sha") == PROVIDER_STALL_STALE_LKG_SHA
+        and state.get("incident_digest") == PROVIDER_STALL_INCIDENT_DIGEST
+    )
 
 
 def _check_runs(
@@ -7835,8 +7855,17 @@ class Broker:
             state_branch=state_branch,
             token=token,
         )
-        reconciler.reconcile_main(provider_now)
-        reconciler.reconcile_deep(self.api.provider_now(token))
+        main_before_health = _main_ref(self.api, config=self.config, token=token)
+        provider_stall_repair = False
+        if main_before_health == PROVIDER_STALL_MAIN_SHA:
+            provider_stall_repair = _provider_stall_owner_repair_boundary(
+                main_sha=main_before_health,
+                repository=self.config.repository,
+                state=state_branch.read(),
+            )
+        if not provider_stall_repair:
+            reconciler.reconcile_main(provider_now)
+            reconciler.reconcile_deep(self.api.provider_now(token))
         self._reconcile_repair(
             settings_token=settings_token,
             state_branch=state_branch,

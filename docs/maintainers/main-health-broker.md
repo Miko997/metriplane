@@ -337,6 +337,18 @@ the exact state-bound command permanently ineligible. It has no main merge,
 green-state, ruleset, setting, credential, workflow, tag, release or
 publication operation.
 
+The normal service recognizes the consumed bootstrap's one exact red repair
+boundary by repository, unchanged main and stale LKG, state commit, generation,
+status, first-bad SHA, and incident digest. Only at that conjunction does it
+defer re-observation of the already retained stalled main/deep runs until after
+the existing owner-emergency admission can repair main. It still performs App
+authentication, fail-closed pull checks, complete ruleset validation, state
+history validation, publication fencing, repair reconciliation, and every
+owner-emergency admission seal. A mismatch in any boundary field follows the
+ordinary health-reconciliation order. A successful repair changes main and
+therefore retires this ordering exception automatically; the exact merged main
+must then qualify and resolve through the normal state machine.
+
 The six numeric protected-main records from the
 pre-App history predate run-attempt evidence and are allowlisted by exact run ID
 and canonical result digest. The broker preserves them as opaque history rather
