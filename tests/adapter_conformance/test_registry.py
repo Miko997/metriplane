@@ -101,12 +101,9 @@ def test_governed_support_may_be_narrower_than_frozen_package_metadata() -> None
     )
 
     assert maniskill["python_versions"] == ["3.12"]
-    assert (
-        'requires-python = ">=3.12,<3.14"'
-        in (REPOSITORY_ROOT / maniskill["package_path"] / "pyproject.toml").read_text(
-            encoding="utf-8"
-        )
-    )
+    assert 'requires-python = ">=3.12,<3.14"' in (
+        REPOSITORY_ROOT / maniskill["package_path"] / "pyproject.toml"
+    ).read_text(encoding="utf-8")
     discover_repository(REPOSITORY_ROOT, registry)
 
 
