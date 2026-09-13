@@ -555,21 +555,10 @@ def discover_repository(repo: Path | str, registry: Mapping[str, Any]) -> dict[s
         pyproject = tomllib.loads((package / "pyproject.toml").read_text(encoding="utf-8"))
         if pyproject["project"].get("license") != component["package_license_expression"]:
             raise GateError(f"package licence drift for {component['component_id']}")
-        supported_versions = tuple(sorted(component["python_versions"]))
-        supported_requires_python = {
-            ("3.12",): ">=3.12,<3.13",
-            ("3.12", "3.13"): ">=3.12,<3.14",
-        }
-        expected_requires_python = supported_requires_python.get(supported_versions)
-        if expected_requires_python is None:
+        if requires_python != ">=3.12,<3.14":
             raise GateError(
-                f"unsupported Python coverage declaration for "
-                f"{component['component_id']}: {supported_versions}"
-            )
-        if requires_python != expected_requires_python:
-            raise GateError(
-                f"Python support drift for {component['component_id']}: "
-                f"declared {component['python_versions']}, metadata {requires_python}"
+                f"Python metadata compatibility drift for "
+                f"{component['component_id']}: {requires_python}"
             )
         module_root = package / "src" / component["module_name"]
         if not module_root.is_dir():

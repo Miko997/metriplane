@@ -92,18 +92,22 @@ def test_maniskill_python_support_matches_locked_upstream_distribution() -> None
     assert maniskill["source_conversion_python_versions"] == ["3.12"]
 
 
-def test_registry_rejects_python_support_beyond_package_metadata(tmp_path: Path) -> None:
-    repository = _copy_repository_surface(tmp_path)
-    registry = load_registry(repository)
+def test_governed_support_may_be_narrower_than_frozen_package_metadata() -> None:
+    registry = load_registry(REPOSITORY_ROOT)
     maniskill = next(
         adapter
         for adapter in registry["adapters"]
         if adapter["component_id"] == "maniskill-pickcube"
     )
-    maniskill["python_versions"] = ["3.12", "3.13"]
 
-    with pytest.raises(GateError, match="Python support drift"):
-        discover_repository(repository, registry)
+    assert maniskill["python_versions"] == ["3.12"]
+    assert (
+        'requires-python = ">=3.12,<3.14"'
+        in (REPOSITORY_ROOT / maniskill["package_path"] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    discover_repository(REPOSITORY_ROOT, registry)
 
 
 def test_registry_rejects_source_conversion_beyond_package_support() -> None:

@@ -16,11 +16,11 @@ compatibility or conformance claim.
 ## Package inventory
 
 There are five independently packaged components under `adapters/`: one shared
-SDK and four source adapters. The SDK and three adapters declare Python
-`>=3.12,<3.14`; the ManiSkill adapter declares Python `>=3.12,<3.13` because its
-locked Linux dependency chain has no CPython 3.13 distribution. None is included
-in the ordinary `metriplane` wheel. The unified registry deliberately limits the
-four adapter source suites to Ubuntu/Python 3.12. The SDK and portable fixtures
+SDK and four source adapters. All package metadata declares Python
+`>=3.12,<3.14`; none is included in the ordinary `metriplane` wheel. That
+language-level metadata range is not an execution-support claim. The unified
+registry deliberately limits ManiSkill package execution and all four adapter
+source suites to Ubuntu/Python 3.12. The SDK and portable fixtures
 have broader exhaustive coverage; a package declaration alone is not treated as
 source-conversion evidence on another environment.
 
@@ -199,12 +199,15 @@ evidence, not classified as transient and not rewritten as a pass:
 `mani-skill==3.0.1` requires `mplib==0.1.1` on Linux, while that MPlib release
 publishes no CPython 3.13 distribution.
 
-The governed correction limits only the isolated ManiSkill adapter package and
-source-conversion environment to CPython 3.12. The portable ManiSkill fixtures,
-the Source Adapter SDK, the root Metriplane wheel and the other adapter packages
-retain their independently declared Python matrices. A future ManiSkill 3.13
-claim requires a compatible locked upstream dependency chain and a successful
-qualification run; it cannot be inferred from portable-fixture execution.
+The governed correction limits only the isolated ManiSkill adapter execution
+matrix and source-conversion environment to CPython 3.12. The published proof's
+frozen adapter package metadata and lock bytes remain unchanged; their broader
+language-level `Requires-Python` bound is not treated as evidence that the Linux
+dependency set resolves. The portable ManiSkill fixtures, the Source Adapter
+SDK, the root Metriplane wheel and the other adapter packages retain their
+independently declared Python matrices. A future ManiSkill 3.13 claim requires a
+compatible locked upstream dependency chain and a successful qualification run;
+it cannot be inferred from portable-fixture execution.
 
 ## Findings requiring reconciliation
 

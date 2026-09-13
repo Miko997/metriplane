@@ -10,7 +10,7 @@ name = "maniskill-pickcube-adapter"
 version = "1.0.0"
 description = "Isolated deterministic adapter for one pinned ManiSkill PickCube trajectory"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 license = "MIT"
 dependencies = [
   "h5py==3.16.0",
