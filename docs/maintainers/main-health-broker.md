@@ -315,7 +315,29 @@ CodeQL run attempts together. Provider update time determines the latest attempt
 across workflow-run IDs. Distinct identities tied at the latest provider time,
 or any repeated attempt identity, fail closed. A cached green state never skips
 a new companion rerun and an already retained aggregate never creates a
-freshness-only state commit. The six numeric protected-main records from the
+freshness-only state commit.
+
+The `recover-provider-stall` command is a distinct, single-use exception for
+the exact 2026-09-13 deadlocked provider state documented in the Main Health
+contract. It is compiled against one repository, main SHA, prior state commit
+and generation, stale LKG, four workflow names, four run IDs and their original
+timestamps. It accepts `--dry-run` or `--execute`, never both, and requires the
+owner-authored recovery PR's frozen source commit and tree. The provider PR,
+tree, complete changed paths, three core hosted checks, seven active rulesets,
+current main and protected state are re-read before observation.
+
+Each mode performs two complete live workflow and zero-job reads separated by
+the explicitly bounded interval and checked against GitHub's clock. `--dry-run`
+does not mutate durable state. `--execute` may append only the canonical
+failure result through `StateBranch.append` and its existing App token,
+expected-generation validation, single fast-forward push, convergence readback
+and complete history validation. The result embeds both provider observation
+times and all four unchanged run records. The resulting red generation makes
+the exact state-bound command permanently ineligible. It has no main merge,
+green-state, ruleset, setting, credential, workflow, tag, release or
+publication operation.
+
+The six numeric protected-main records from the
 pre-App history predate run-attempt evidence and are allowlisted by exact run ID
 and canonical result digest. The broker preserves them as opaque history rather
 than inferring an attempt; new numeric records are rejected and legacy successes
