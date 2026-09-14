@@ -16,9 +16,11 @@ compatibility or conformance claim.
 ## Package inventory
 
 There are five independently packaged components under `adapters/`: one shared
-SDK and four source adapters. All declare Python `>=3.12,<3.14`; none is included
-in the ordinary `metriplane` wheel. The unified registry deliberately limits the
-four adapter source suites to Ubuntu/Python 3.12. The SDK and portable fixtures
+SDK and four source adapters. All package metadata declares Python
+`>=3.12,<3.14`; none is included in the ordinary `metriplane` wheel. That
+language-level metadata range is not an execution-support claim. The unified
+registry deliberately limits ManiSkill package execution and all four adapter
+source suites to Ubuntu/Python 3.12. The SDK and portable fixtures
 have broader exhaustive coverage; a package declaration alone is not treated as
 source-conversion evidence on another environment.
 
@@ -150,8 +152,8 @@ path filters do not provide one stable, always-present compatibility status.
 
 The new workflow removes this selection gap by having no pull-request path
 filter. Its Level A matrix is Ubuntu/Python 3.12 and emits 16 records. The
-scheduled or manually dispatched Level B matrix emits 53 records: four SDK
-environments, four Ubuntu/Python 3.12 adapter source suites, four
+scheduled or manually dispatched Level B matrix emits 52 records: four SDK
+environments, four Ubuntu/Python 3.12 adapter source suites, three
 Ubuntu/Python 3.13 adapter package-only checks, 36 portable-fixture
 environments, four root-wheel environments, and one shared-contract record.
 
@@ -161,7 +163,7 @@ environments, four root-wheel environments, and one shared-contract record.
 | --- | --- | --- | --- |
 | Source Adapter SDK | Package tests, lint, format, sdist/wheel inspection, and clean install; exhaustive Ubuntu/macOS and Python 3.12/3.13 | Shared contract, registry, mutation-catalog, matrix determinism, scoped REUSE, and result-aggregation tests | No package-local static type-check command; its post-hoc catalog covers ManiSkill and robomimic only. |
 | Minimal contract fixture | No source adapter; contract baseline only | Exact five-event oracle, incident bundle/regression, relocation, tamper, rights, privacy, and installed-root-wheel replay | No control variant and no source-conversion claim. |
-| ManiSkill | Full adapter package suite on Ubuntu/Python 3.12; package-only build/install evidence on Python 3.13; Ruff migration on an ephemeral copy with exact rewrite-set and syntax-tree checks | Incident/control exact oracles; shared and profile negative/metamorphic tests; wheel/sdist isolation and portable four-environment exhaustive replay | Reference-only ZIP/HDF5 is absent, so the unified gate cannot rerun the frozen source conversion. Published proof bytes remain unchanged rather than being reformatted in place. |
+| ManiSkill | Full adapter package suite on Ubuntu/Python 3.12; Ruff migration on an ephemeral copy with exact rewrite-set and syntax-tree checks | Incident/control exact oracles; shared and profile negative/metamorphic tests; wheel/sdist isolation and portable four-environment exhaustive replay | The locked ManiSkill 3.0.1 Linux dependency chain requires `mplib==0.1.1`, which has no CPython 3.13 distribution. Reference-only ZIP/HDF5 is absent, so the unified gate cannot rerun the frozen source conversion. Published proof bytes remain unchanged rather than being reformatted in place. |
 | robomimic | Full adapter package suite on Ubuntu/Python 3.12; package-only build/install evidence on Python 3.13 | Incident/control exact oracles; shared and profile negative/metamorphic tests; wheel/sdist isolation and portable four-environment exhaustive replay | Reference-only raw/prepared HDF5 is absent, so the unified gate cannot rerun the frozen source conversion. |
 | ROS 2/MCAP | On Ubuntu/Python 3.12, regenerate the synthetic MCAP, run three clean conversions, finalize them, and diff the checked-in fixtures; package-only evidence on Python 3.13 | Incident/control exact oracles; stream/TF and shared mutations; distribution isolation and portable four-environment exhaustive replay | Source-family matrix publication still says `NOT TESTED`; source conversion is not registered for Python 3.13 or macOS. |
 | MassRobotics AMR | On Ubuntu/Python 3.12, run three clean conversions per synthetic source variant, finalize them, and diff the checked-in fixtures; package-only evidence on Python 3.13 | Incident/control exact oracles; clock/datum/snapshot and shared mutations; upstream-byte exclusions and portable four-environment exhaustive replay | Source conversion remains Linux/Python 3.12 only; portable replay does not establish general protocol or transport support. |
@@ -186,6 +188,26 @@ each commit.
 | Installed root-wheel job | 26.65 s |
 | Sum of the 16 recorded Level A job durations | 133.61 s |
 | Result artifacts | 2,050--6,997 bytes; 42,834 bytes total |
+
+### 2026-09-13 compatibility correction
+
+Scheduled Cross-Adapter run
+[`34749754742`](https://github.com/Miko997/metriplane/actions/runs/34749754742)
+failed on exact main `3fd763816c9493475083adcd1299d2eed0daa0b2` while resolving the
+ManiSkill adapter on Ubuntu/CPython 3.13. The failure is retained as defect
+evidence, not classified as transient and not rewritten as a pass:
+`mani-skill==3.0.1` requires `mplib==0.1.1` on Linux, while that MPlib release
+publishes no CPython 3.13 distribution.
+
+The governed correction limits only the isolated ManiSkill adapter execution
+matrix and source-conversion environment to CPython 3.12. The published proof's
+frozen adapter package metadata and lock bytes remain unchanged; their broader
+language-level `Requires-Python` bound is not treated as evidence that the Linux
+dependency set resolves. The portable ManiSkill fixtures, the Source Adapter
+SDK, the root Metriplane wheel and the other adapter packages retain their
+independently declared Python matrices. A future ManiSkill 3.13 claim requires a
+compatible locked upstream dependency chain and a successful qualification run;
+it cannot be inferred from portable-fixture execution.
 
 ## Findings requiring reconciliation
 

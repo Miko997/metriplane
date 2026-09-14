@@ -79,6 +79,47 @@ def test_registry_is_strict_and_matches_repository_discovery() -> None:
     discover_repository(REPOSITORY_ROOT, registry)
 
 
+def test_maniskill_python_support_matches_locked_upstream_distribution() -> None:
+    registry = load_registry(REPOSITORY_ROOT)
+    maniskill = next(
+        adapter
+        for adapter in registry["adapters"]
+        if adapter["component_id"] == "maniskill-pickcube"
+    )
+
+    assert maniskill["python_versions"] == ["3.12"]
+    assert maniskill["full_suite_python_versions"] == ["3.12"]
+    assert maniskill["source_conversion_python_versions"] == ["3.12"]
+
+
+def test_governed_support_may_be_narrower_than_frozen_package_metadata() -> None:
+    registry = load_registry(REPOSITORY_ROOT)
+    maniskill = next(
+        adapter
+        for adapter in registry["adapters"]
+        if adapter["component_id"] == "maniskill-pickcube"
+    )
+
+    assert maniskill["python_versions"] == ["3.12"]
+    assert 'requires-python = ">=3.12,<3.14"' in (
+        REPOSITORY_ROOT / maniskill["package_path"] / "pyproject.toml"
+    ).read_text(encoding="utf-8")
+    discover_repository(REPOSITORY_ROOT, registry)
+
+
+def test_registry_rejects_source_conversion_beyond_package_support() -> None:
+    registry = load_registry(REPOSITORY_ROOT)
+    maniskill = next(
+        adapter
+        for adapter in registry["adapters"]
+        if adapter["component_id"] == "maniskill-pickcube"
+    )
+    maniskill["source_conversion_python_versions"] = ["3.12", "3.13"]
+
+    with pytest.raises(GateError, match="source-conversion Python versions"):
+        validate_registry(REPOSITORY_ROOT, registry, require_jsonschema=False)
+
+
 def test_root_runtime_bridge_is_limited_to_base_python_adapter_tests() -> None:
     registry = load_registry(REPOSITORY_ROOT)
     bridged = {

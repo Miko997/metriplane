@@ -13,6 +13,7 @@ import pytest
 
 from tools.cross_adapter_gate import (
     RESULT_SCHEMA_VERSION,
+    _component_matrix,
     _expected_result_keys,
     _fixture_matrix,
     _run_command,
@@ -212,9 +213,21 @@ def _write_complete_results(root: Path, *, commit: str, level: str = "pr") -> li
 
 def test_pr_and_exhaustive_matrices_have_exact_registry_cardinality() -> None:
     registry = load_registry(REPOSITORY_ROOT)
+    adapter_rows = _component_matrix(registry, "adapters", "exhaustive")["include"]
+    maniskill_rows = [row for row in adapter_rows if row["component_id"] == "maniskill-pickcube"]
+    exhaustive_keys = _expected_result_keys(registry, "exhaustive")
 
+    assert maniskill_rows == [
+        {
+            "component_id": "maniskill-pickcube",
+            "python_version": "3.12",
+            "os": "ubuntu-latest",
+        }
+    ]
+    assert ("root-wheel-clean-room", "linux", "3.13") in exhaustive_keys
+    assert ("root-wheel-clean-room", "macos", "3.13") in exhaustive_keys
     assert len(_expected_result_keys(registry, "pr")) == 16
-    assert len(_expected_result_keys(registry, "exhaustive")) == 53
+    assert len(exhaustive_keys) == 52
     assert len(_fixture_matrix(registry, "pr")["include"]) == 9
     assert len(_fixture_matrix(registry, "exhaustive")["include"]) == 36
 
