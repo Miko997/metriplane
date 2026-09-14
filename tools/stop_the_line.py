@@ -40,6 +40,28 @@ MAIN_HEALTH_PUBLISHER_SLUG = "metriplane-main-health-publisher"
 MAIN_HEALTH_BROKER_CHECK = "Main health / required"
 BROKER_OWNER_REPAIR_REQUEST_MARKER = "metriplane-owner-repair-request:v1"
 BROKER_OWNER_EMERGENCY_MODE = "single-maintainer-owner-emergency"
+PROVIDER_STALL_RESULT_PREFIX = "github-actions-provider-stall:v1:"
+PROVIDER_STALL_REPOSITORY = "Miko997/metriplane"
+PROVIDER_STALL_MAIN_SHA = "3fd763816c9493475083adcd1299d2eed0daa0b2"
+PROVIDER_STALL_STATE_COMMIT = "6e25a9a9cdc13f36f743a10b9c5d3a4306c124c4"
+PROVIDER_STALL_STATE_GENERATION = 68
+PROVIDER_STALL_MINIMUM_AGE_SECONDS = 3600
+PROVIDER_STALL_EXPECTED_RUNS = (
+    (
+        "massrobotics",
+        "Bounded MassRobotics AMR Offline Replay",
+        34749333980,
+        "2026-09-13T09:20:03Z",
+    ),
+    ("maniskill", "ManiSkill PickCube Proof", 34749334015, "2026-09-13T09:20:03Z"),
+    (
+        "robomimic",
+        "robomimic Low-Dimensional Fixture",
+        34749334201,
+        "2026-09-13T09:20:04Z",
+    ),
+    ("ci", "CI", 34749334271, "2026-09-13T09:20:04Z"),
+)
 BROKER_OWNER_RULESET_IDS = {
     "20613848",
     "21487681",
@@ -292,7 +314,9 @@ def _validate_summary(summary: dict[str, Any]) -> None:
         "schema_version",
         "sha",
     }
-    if set(summary) != required:
+    has_provider_stall = "provider_stall" in summary
+    provider_stall = summary.get("provider_stall")
+    if set(summary) not in {frozenset(required), frozenset(required | {"provider_stall"})}:
         raise HealthError("result summary shape is invalid")
     if summary["schema_version"] != SCHEMA_VERSION:
         raise HealthError("unsupported result summary schema")
@@ -320,6 +344,107 @@ def _validate_summary(summary: dict[str, Any]) -> None:
     expected = PASS if results == {PASS} else "failure"
     if summary["conclusion"] != expected:
         raise HealthError("summary conclusion disagrees with obligation results")
+    if not has_provider_stall:
+        if str(summary["run_id"]).startswith(PROVIDER_STALL_RESULT_PREFIX):
+            raise HealthError("provider-stall result is missing retained evidence")
+        return
+    _validate_provider_stall_summary(summary, provider_stall)
+
+
+def _validate_provider_stall_summary(summary: dict[str, Any], provider_stall: Any) -> None:
+    required = {
+        "first_observed_at",
+        "main_sha",
+        "minimum_age_seconds",
+        "observation_interval_seconds",
+        "repository",
+        "runs",
+        "schema_version",
+        "second_observed_at",
+        "state_commit",
+        "state_generation",
+    }
+    if not isinstance(provider_stall, dict) or set(provider_stall) != required:
+        raise HealthError("provider-stall evidence shape is invalid")
+    if (
+        provider_stall["schema_version"] != SCHEMA_VERSION
+        or provider_stall["repository"] != PROVIDER_STALL_REPOSITORY
+        or provider_stall["main_sha"] != PROVIDER_STALL_MAIN_SHA
+        or provider_stall["state_commit"] != PROVIDER_STALL_STATE_COMMIT
+        or provider_stall["state_generation"] != PROVIDER_STALL_STATE_GENERATION
+        or provider_stall["minimum_age_seconds"] != PROVIDER_STALL_MINIMUM_AGE_SECONDS
+        or summary["cadence"] != "protected-main"
+        or summary["conclusion"] != "failure"
+        or summary["sha"] != PROVIDER_STALL_MAIN_SHA
+    ):
+        raise HealthError("provider-stall evidence is outside its incident-specific authority")
+    interval = provider_stall["observation_interval_seconds"]
+    if not isinstance(interval, int) or isinstance(interval, bool) or not 1 <= interval <= 60:
+        raise HealthError("provider-stall observation interval is invalid")
+    first = _timestamp(provider_stall["first_observed_at"])
+    second = _timestamp(provider_stall["second_observed_at"])
+    if (second - first).total_seconds() < interval:
+        raise HealthError("provider-stall observations are not sufficiently separated")
+    rows = provider_stall["runs"]
+    if not isinstance(rows, list) or len(rows) != len(PROVIDER_STALL_EXPECTED_RUNS):
+        raise HealthError("provider-stall run set is incomplete")
+    expected_rows = {
+        key: (workflow, run_id, timestamp)
+        for key, workflow, run_id, timestamp in PROVIDER_STALL_EXPECTED_RUNS
+    }
+    observed_keys: set[str] = set()
+    row_fields = {
+        "conclusion",
+        "created_at",
+        "event",
+        "head_branch",
+        "head_sha",
+        "job_count",
+        "key",
+        "run_attempt",
+        "run_id",
+        "run_started_at",
+        "status",
+        "updated_at",
+        "workflow",
+    }
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != row_fields:
+            raise HealthError("provider-stall run evidence is malformed")
+        key = row.get("key")
+        if not isinstance(key, str) or key not in expected_rows or key in observed_keys:
+            raise HealthError("provider-stall run identity is unexpected or duplicated")
+        observed_keys.add(key)
+        workflow, run_id, timestamp = expected_rows[key]
+        if row != {
+            "conclusion": None,
+            "created_at": timestamp,
+            "event": "push",
+            "head_branch": "main",
+            "head_sha": PROVIDER_STALL_MAIN_SHA,
+            "job_count": 0,
+            "key": key,
+            "run_attempt": 1,
+            "run_id": run_id,
+            "run_started_at": timestamp,
+            "status": "queued",
+            "updated_at": timestamp,
+            "workflow": workflow,
+        }:
+            raise HealthError("provider-stall run evidence changed from the authorized incident")
+        if (second - _timestamp(timestamp)).total_seconds() < PROVIDER_STALL_MINIMUM_AGE_SECONDS:
+            raise HealthError("provider-stall run is younger than the governed minimum")
+    if observed_keys != set(expected_rows):
+        raise HealthError("provider-stall run set is partial")
+    expected_obligations = [
+        {"id": f"Provider stall / {workflow}", "result": "failure"}
+        for _key, workflow, _run_id, _timestamp_value in PROVIDER_STALL_EXPECTED_RUNS
+    ]
+    if summary["obligations"] != expected_obligations:
+        raise HealthError("provider-stall obligations do not bind the exact workflow set")
+    expected_run_id = PROVIDER_STALL_RESULT_PREFIX + digest(provider_stall)
+    if summary["run_id"] != expected_run_id:
+        raise HealthError("provider-stall result identity does not bind retained evidence")
 
 
 def _load_state(root: Path) -> dict[str, Any] | None:

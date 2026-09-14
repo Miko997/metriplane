@@ -465,6 +465,131 @@ def _summary(
     }
 
 
+def _provider_stall_summary() -> dict[str, object]:
+    evidence = {
+        "first_observed_at": "2026-09-13T15:00:00Z",
+        "main_sha": stop_the_line.PROVIDER_STALL_MAIN_SHA,
+        "minimum_age_seconds": stop_the_line.PROVIDER_STALL_MINIMUM_AGE_SECONDS,
+        "observation_interval_seconds": 60,
+        "repository": stop_the_line.PROVIDER_STALL_REPOSITORY,
+        "runs": [
+            {
+                "conclusion": None,
+                "created_at": timestamp,
+                "event": "push",
+                "head_branch": "main",
+                "head_sha": stop_the_line.PROVIDER_STALL_MAIN_SHA,
+                "job_count": 0,
+                "key": key,
+                "run_attempt": 1,
+                "run_id": run_id,
+                "run_started_at": timestamp,
+                "status": "queued",
+                "updated_at": timestamp,
+                "workflow": workflow,
+            }
+            for key, workflow, run_id, timestamp in stop_the_line.PROVIDER_STALL_EXPECTED_RUNS
+        ],
+        "schema_version": 1,
+        "second_observed_at": "2026-09-13T15:01:00Z",
+        "state_commit": stop_the_line.PROVIDER_STALL_STATE_COMMIT,
+        "state_generation": stop_the_line.PROVIDER_STALL_STATE_GENERATION,
+    }
+    return {
+        "cadence": "protected-main",
+        "conclusion": "failure",
+        "obligations": [
+            {"id": f"Provider stall / {workflow}", "result": "failure"}
+            for _key, workflow, _run_id, _timestamp_value in (
+                stop_the_line.PROVIDER_STALL_EXPECTED_RUNS
+            )
+        ],
+        "provider_stall": evidence,
+        "recorded_at": evidence["second_observed_at"],
+        "run_id": stop_the_line.PROVIDER_STALL_RESULT_PREFIX + digest(evidence),
+        "schema_version": 1,
+        "sha": stop_the_line.PROVIDER_STALL_MAIN_SHA,
+    }
+
+
+def test_provider_stall_result_is_retained_as_one_normal_red_transition(tmp_path: Path) -> None:
+    summary = _provider_stall_summary()
+
+    state = ingest(
+        tmp_path,
+        scope="main",
+        summary=summary,
+        activation_policy=POLICY,
+        expected_generation=-1,
+    )
+
+    assert state["status"] == "red"
+    assert state["first_bad_sha"] == stop_the_line.PROVIDER_STALL_MAIN_SHA
+    incident = json.loads(
+        (tmp_path / "incidents" / f"{state['incident_digest']}.json").read_text(encoding="utf-8")
+    )
+    assert incident["failing_obligations"] == sorted(row["id"] for row in summary["obligations"])
+    assert validate_history(tmp_path)["status"] == "red"
+
+    malformed = _provider_stall_summary()
+    malformed["provider_stall"] = None
+    with pytest.raises(HealthError, match="evidence shape is invalid"):
+        ingest(
+            tmp_path / "malformed",
+            scope="main",
+            summary=malformed,
+            activation_policy=POLICY,
+            expected_generation=-1,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing-evidence", "missing retained evidence"),
+        ("wrong-state", "incident-specific authority"),
+        ("wrong-run", "changed from the authorized incident"),
+        ("changed-status", "changed from the authorized incident"),
+        ("changed-timestamp", "changed from the authorized incident"),
+        ("nonzero-jobs", "changed from the authorized incident"),
+        ("too-close", "not sufficiently separated"),
+        ("wrong-digest", "does not bind retained evidence"),
+    ],
+)
+def test_provider_stall_retained_result_rejects_mutation(
+    tmp_path: Path, mutation: str, message: str
+) -> None:
+    summary = _provider_stall_summary()
+    evidence = summary["provider_stall"]
+    assert isinstance(evidence, dict)
+    runs = evidence["runs"]
+    assert isinstance(runs, list)
+    if mutation == "missing-evidence":
+        summary.pop("provider_stall")
+    elif mutation == "wrong-state":
+        evidence["state_generation"] = 67
+    elif mutation == "wrong-run":
+        runs[0]["run_id"] = 1
+    elif mutation == "changed-status":
+        runs[0]["status"] = "completed"
+    elif mutation == "changed-timestamp":
+        runs[0]["updated_at"] = "2026-09-13T15:00:00Z"
+    elif mutation == "nonzero-jobs":
+        runs[0]["job_count"] = 1
+    elif mutation == "too-close":
+        evidence["second_observed_at"] = "2026-09-13T15:00:59Z"
+    else:
+        summary["run_id"] = stop_the_line.PROVIDER_STALL_RESULT_PREFIX + "f" * 64
+    with pytest.raises(HealthError, match=message):
+        ingest(
+            tmp_path,
+            scope="main",
+            summary=summary,
+            activation_policy=POLICY,
+            expected_generation=-1,
+        )
+
+
 def _owner_admission(
     manifest: dict[str, object],
     *,
@@ -3214,6 +3339,8 @@ def test_schema_policy_and_example_families_are_complete_json() -> None:
             repair = {**example, "cadence": "repair-resolution"}
             with pytest.raises(SnapshotError):
                 _internal_validate(repair, schema)
+        if name == "main-health-result-summary":
+            _internal_validate(_provider_stall_summary(), schema)
     provider = json.loads(
         (STATUS / "examples/main-health-provider-evidence.json").read_text(encoding="utf-8")
     )

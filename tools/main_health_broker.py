@@ -80,6 +80,38 @@ PUBLISH_RECONCILE_OBSERVE_STEP = "Observe exact main and the broker's terminal r
 PUBLISH_UNSTARTED_STEP_STATUSES = {"pending", "queued"}
 PROVIDER_ACTION_STATUSES = {"completed", "in_progress", "pending", "queued", "requested", "waiting"}
 PROVIDER_PENDING_ACTION_STATUSES = PROVIDER_ACTION_STATUSES - {"completed"}
+PROVIDER_STALL_RESULT_PREFIX = stop_the_line.PROVIDER_STALL_RESULT_PREFIX
+PROVIDER_STALL_MAIN_SHA = stop_the_line.PROVIDER_STALL_MAIN_SHA
+PROVIDER_STALL_STATE_COMMIT = stop_the_line.PROVIDER_STALL_STATE_COMMIT
+PROVIDER_STALL_STATE_GENERATION = stop_the_line.PROVIDER_STALL_STATE_GENERATION
+PROVIDER_STALL_RED_STATE_COMMIT = "7855be7d0de1f7f873fd3a8d392e95e540ca158d"
+PROVIDER_STALL_RED_STATE_GENERATION = PROVIDER_STALL_STATE_GENERATION + 1
+PROVIDER_STALL_INCIDENT_DIGEST = "c19598c316f5096e0e7f04de16706007ac9333ff35a75b71edc34419ea0df0df"
+PROVIDER_STALL_STALE_LKG_SHA = "5d6df8e6db0054d990623d042143e75e6b91ebce"
+PROVIDER_STALL_MINIMUM_AGE_SECONDS = stop_the_line.PROVIDER_STALL_MINIMUM_AGE_SECONDS
+PROVIDER_STALL_EXPECTED_RUNS = stop_the_line.PROVIDER_STALL_EXPECTED_RUNS
+PROVIDER_STALL_PR_MARKER = (
+    "Main-health provider-stall recovery: incident-only\n"
+    f"State: {PROVIDER_STALL_STATE_COMMIT}:{PROVIDER_STALL_STATE_GENERATION}"
+)
+PROVIDER_STALL_ALLOWED_PATHS = frozenset(
+    {
+        "docs/maintainers/main-health-broker.md",
+        "docs/maintainers/main-health.md",
+        "docs/maintainers/testing-policy.md",
+        "docs/requirements/requirements.json",
+        "docs/status/capability-test-ledger.json",
+        "docs/status/functional-inventory.json",
+        "docs/status/public-surface-inventory.md",
+        "docs/status/schemas/main-health-result-summary.schema.json",
+        "tests/test_main_health.py",
+        "tests/test_main_health_broker.py",
+        "tests/test_toolchain_policy.py",
+        "tools/main_health_broker.py",
+        "tools/observe_main_health.py",
+        "tools/stop_the_line.py",
+    }
+)
 CORE_CHECKS = (
     "Metriplane / required",
     "Documentation / required",
@@ -2777,6 +2809,8 @@ def _protected_main_result_identity(value: Any) -> str:
         value,
     ):
         return value
+    if re.fullmatch(rf"{re.escape(PROVIDER_STALL_RESULT_PREFIX)}[0-9a-f]{{64}}", value):
+        return value
     raise BrokerError("protected-main result run identity is not canonical")
 
 
@@ -3072,10 +3106,13 @@ class StateBranch:
         scope: str,
         summary: dict[str, Any],
     ) -> dict[str, Any]:
-        if scope == "main" and not _protected_main_result_identity(
-            summary.get("run_id")
-        ).startswith("github-actions-set:v1:"):
-            raise BrokerError("new protected-main result must use an aggregate identity")
+        if scope == "main":
+            identity = _protected_main_result_identity(summary.get("run_id"))
+            if not (
+                identity.startswith("github-actions-set:v1:")
+                or identity.startswith(PROVIDER_STALL_RESULT_PREFIX)
+            ):
+                raise BrokerError("new protected-main result must use an aggregate identity")
         before = self.provider_ref()
         self.config.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         with tempfile.TemporaryDirectory(
@@ -3256,6 +3293,22 @@ def _main_ref(api: GitHubApi, *, config: BrokerConfig, token: str) -> str:
     ):
         raise BrokerError("main ref response is not provider-bound")
     return _require_sha(provider_object.get("sha"), "main ref SHA")
+
+
+def _provider_stall_owner_repair_boundary(
+    *, main_sha: str, repository: str, state: dict[str, Any]
+) -> bool:
+    """Recognize only the consumed bootstrap's exact live repair boundary."""
+    return (
+        repository == stop_the_line.PROVIDER_STALL_REPOSITORY
+        and main_sha == PROVIDER_STALL_MAIN_SHA
+        and state.get("state_commit") == PROVIDER_STALL_RED_STATE_COMMIT
+        and state.get("generation") == PROVIDER_STALL_RED_STATE_GENERATION
+        and state.get("status") == "red"
+        and state.get("first_bad_sha") == PROVIDER_STALL_MAIN_SHA
+        and state.get("last_good_sha") == PROVIDER_STALL_STALE_LKG_SHA
+        and state.get("incident_digest") == PROVIDER_STALL_INCIDENT_DIGEST
+    )
 
 
 def _check_runs(
@@ -5201,6 +5254,307 @@ def validate_clock(
     skew = abs((provider_now - local_now).total_seconds())
     if skew > max_clock_skew_seconds:
         raise BrokerError(f"provider clock skew {skew:.3f}s exceeds the configured boundary")
+
+
+def _provider_stall_source_identity(root: Path) -> tuple[str, str]:
+    identities: list[str] = []
+    for revision in ("HEAD^{commit}", "HEAD^{tree}"):
+        completed = subprocess.run(
+            ["git", "-c", f"safe.directory={root}", "-C", str(root), "rev-parse", revision],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        value = completed.stdout.strip()
+        if completed.returncode != 0 or SHA_RE.fullmatch(value) is None:
+            raise BrokerError("provider-stall bootstrap source identity is unavailable")
+        identities.append(value)
+    status = subprocess.run(
+        [
+            "git",
+            "-c",
+            f"safe.directory={root}",
+            "-C",
+            str(root),
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if status.returncode != 0 or status.stdout:
+        raise BrokerError("provider-stall bootstrap source tree is not clean and frozen")
+    return identities[0], identities[1]
+
+
+def validate_provider_stall_bootstrap_candidate(
+    *,
+    api: GitHubApi,
+    config: BrokerConfig,
+    expected_source_sha: str,
+    expected_source_tree: str,
+    pull_request: int,
+    settings_token: str,
+    source_root: Path,
+    token: str,
+) -> dict[str, Any]:
+    source_sha = _require_sha(expected_source_sha, "provider-stall source SHA")
+    source_tree = _require_sha(expected_source_tree, "provider-stall source tree")
+    local_sha, local_tree = _provider_stall_source_identity(source_root)
+    if (local_sha, local_tree) != (source_sha, source_tree):
+        raise BrokerError("provider-stall bootstrap source does not match its frozen identity")
+    pull_result = api.request(
+        f"repos/{config.repository}/pulls/{pull_request}",
+        token=token,
+    )
+    if not isinstance(pull_result.value, dict):
+        raise BrokerError("provider-stall recovery pull response is malformed")
+    pull = pull_result.value
+    base = pull.get("base")
+    head = pull.get("head")
+    author = pull.get("user")
+    if not all(isinstance(value, dict) for value in (base, head, author)):
+        raise BrokerError("provider-stall recovery pull identity is malformed")
+    assert isinstance(base, dict) and isinstance(head, dict) and isinstance(author, dict)
+    head_repository = head.get("repo")
+    if (
+        pull.get("number") != pull_request
+        or pull.get("state") != "open"
+        or pull.get("draft") is not False
+        or base.get("ref") != MAIN_BRANCH
+        or base.get("sha") != PROVIDER_STALL_MAIN_SHA
+        or head.get("sha") != source_sha
+        or not isinstance(head_repository, dict)
+        or head_repository.get("full_name") != config.repository
+        or author.get("login") != REPOSITORY_OWNER
+        or author.get("id") != 141511110
+        or (pull.get("body") or "").count(PROVIDER_STALL_PR_MARKER) != 1
+    ):
+        raise BrokerError("provider-stall recovery pull is not the exact owner-authored candidate")
+    commit_result = api.request(
+        f"repos/{config.repository}/git/commits/{source_sha}",
+        token=token,
+    )
+    commit = commit_result.value
+    if not isinstance(commit, dict) or not isinstance(commit.get("tree"), dict):
+        raise BrokerError("provider-stall recovery commit response is malformed")
+    if commit["tree"].get("sha") != source_tree:
+        raise BrokerError("provider-stall recovery provider tree differs from the frozen source")
+    files = _provider_list(
+        api,
+        f"repos/{config.repository}/pulls/{pull_request}/files",
+        token=token,
+    )
+    try:
+        changed_paths = stop_the_line._github_changed_paths(pull, files)
+    except stop_the_line.HealthError as exc:
+        raise BrokerError(f"provider-stall changed-path validation failed: {exc}") from exc
+    if not changed_paths or not set(changed_paths) <= PROVIDER_STALL_ALLOWED_PATHS:
+        raise BrokerError("provider-stall recovery pull exceeds its authorized path set")
+    check_ids = validate_core_checks(
+        check_runs=_check_runs(api, config=config, head_sha=source_sha, token=token),
+        head_sha=source_sha,
+    )
+    validate_hosted_rulesets(
+        config=config,
+        rulesets=_rulesets(api, config=config, token=settings_token),
+    )
+    return {
+        "changed_paths": changed_paths,
+        "core_check_ids": check_ids,
+        "pull_request": pull_request,
+        "schema_version": 1,
+        "source_sha": source_sha,
+        "source_tree": source_tree,
+    }
+
+
+class ProviderStallRecovery:
+    """Consume the one incident-specific stale-provider bootstrap authority."""
+
+    def __init__(
+        self,
+        *,
+        api: GitHubApi,
+        config: BrokerConfig,
+        sleep: Callable[[float], None],
+        state_branch: StateBranch,
+        token: str,
+    ) -> None:
+        self.api = api
+        self.config = config
+        self.sleep = sleep
+        self.state_branch = state_branch
+        self.token = token
+
+    def _snapshot(self) -> list[dict[str, Any]]:
+        if self.config.repository != stop_the_line.PROVIDER_STALL_REPOSITORY:
+            raise BrokerError("provider-stall recovery repository is not authorized")
+        workflow_runs = self.api.list_items(
+            f"repos/{self.config.repository}/actions/runs?head_sha={PROVIDER_STALL_MAIN_SHA}",
+            key="workflow_runs",
+            token=self.token,
+        )
+        expected = {
+            workflow: (key, run_id, timestamp)
+            for key, workflow, run_id, timestamp in PROVIDER_STALL_EXPECTED_RUNS
+        }
+        governed = [run for run in workflow_runs if run.get("name") in expected]
+        if len(governed) != len(expected):
+            raise BrokerError("provider-stall required workflow set is partial or ambiguous")
+        by_workflow: dict[str, dict[str, Any]] = {}
+        for run in governed:
+            workflow = run.get("name")
+            if not isinstance(workflow, str) or workflow in by_workflow:
+                raise BrokerError("provider-stall required workflow is duplicated")
+            by_workflow[workflow] = run
+        if set(by_workflow) != set(expected):
+            raise BrokerError("provider-stall required workflow set changed")
+
+        rows: list[dict[str, Any]] = []
+        row_fields = (
+            "conclusion",
+            "created_at",
+            "event",
+            "head_branch",
+            "head_sha",
+            "run_attempt",
+            "run_started_at",
+            "status",
+            "updated_at",
+        )
+        for key, workflow, expected_run_id, timestamp in PROVIDER_STALL_EXPECTED_RUNS:
+            run = by_workflow[workflow]
+            run_id = _require_positive_int(run.get("id"), f"{workflow} run ID")
+            attempt = _require_positive_int(run.get("run_attempt"), f"{workflow} run attempt")
+            jobs = self.api.list_items(
+                (f"repos/{self.config.repository}/actions/runs/{run_id}/attempts/{attempt}/jobs"),
+                key="jobs",
+                token=self.token,
+            )
+            row = {field: run.get(field) for field in row_fields}
+            row.update(
+                {
+                    "job_count": len(jobs),
+                    "key": key,
+                    "run_id": run_id,
+                    "workflow": workflow,
+                }
+            )
+            expected_row = {
+                "conclusion": None,
+                "created_at": timestamp,
+                "event": "push",
+                "head_branch": MAIN_BRANCH,
+                "head_sha": PROVIDER_STALL_MAIN_SHA,
+                "job_count": 0,
+                "key": key,
+                "run_attempt": 1,
+                "run_id": expected_run_id,
+                "run_started_at": timestamp,
+                "status": "queued",
+                "updated_at": timestamp,
+                "workflow": workflow,
+            }
+            if row != expected_row:
+                raise BrokerError(
+                    f"provider-stall evidence changed for authorized workflow {workflow}"
+                )
+            rows.append(row)
+        return rows
+
+    @staticmethod
+    def _require_authorized_state(state: dict[str, Any]) -> None:
+        if (
+            state.get("state_commit") != PROVIDER_STALL_STATE_COMMIT
+            or state.get("generation") != PROVIDER_STALL_STATE_GENERATION
+            or state.get("status") != "green"
+            or state.get("incident_digest") is not None
+            or state.get("last_good_sha") != "5d6df8e6db0054d990623d042143e75e6b91ebce"
+        ):
+            raise BrokerError(
+                "provider-stall bootstrap authority is consumed or state-boundary changed"
+            )
+
+    def observe(self, *, interval_seconds: int) -> dict[str, Any]:
+        if not 1 <= interval_seconds <= 60:
+            raise BrokerError("provider-stall observation interval is outside the governed bound")
+        state = self.state_branch.read()
+        self._require_authorized_state(state)
+        if _main_ref(self.api, config=self.config, token=self.token) != PROVIDER_STALL_MAIN_SHA:
+            raise BrokerError("provider-stall recovery main SHA changed")
+        first_at = self.api.provider_now(self.token)
+        first = self._snapshot()
+        self.sleep(float(interval_seconds))
+        second_at = self.api.provider_now(self.token)
+        if (second_at - first_at).total_seconds() < interval_seconds:
+            raise BrokerError("provider-stall provider-clock interval is too short")
+        second = self._snapshot()
+        if second != first:
+            raise BrokerError("provider-stall evidence changed between fresh readbacks")
+        for row in second:
+            updated_at = row.get("updated_at")
+            if (
+                not isinstance(updated_at, str)
+                or (second_at - _timestamp(updated_at)).total_seconds()
+                < PROVIDER_STALL_MINIMUM_AGE_SECONDS
+            ):
+                raise BrokerError("provider-stall evidence is younger than the governed minimum")
+        trailing_state = self.state_branch.read()
+        self._require_authorized_state(trailing_state)
+        if trailing_state != state:
+            raise BrokerError("provider-stall protected state changed during observation")
+        if _main_ref(self.api, config=self.config, token=self.token) != PROVIDER_STALL_MAIN_SHA:
+            raise BrokerError("provider-stall recovery main changed during observation")
+        evidence = {
+            "first_observed_at": _format_timestamp(first_at),
+            "main_sha": PROVIDER_STALL_MAIN_SHA,
+            "minimum_age_seconds": PROVIDER_STALL_MINIMUM_AGE_SECONDS,
+            "observation_interval_seconds": interval_seconds,
+            "repository": self.config.repository,
+            "runs": second,
+            "schema_version": 1,
+            "second_observed_at": _format_timestamp(second_at),
+            "state_commit": PROVIDER_STALL_STATE_COMMIT,
+            "state_generation": PROVIDER_STALL_STATE_GENERATION,
+        }
+        summary = {
+            "cadence": "protected-main",
+            "conclusion": "failure",
+            "obligations": [
+                {"id": f"Provider stall / {workflow}", "result": "failure"}
+                for _key, workflow, _run_id, _timestamp_value in PROVIDER_STALL_EXPECTED_RUNS
+            ],
+            "provider_stall": evidence,
+            "recorded_at": _format_timestamp(second_at),
+            "run_id": PROVIDER_STALL_RESULT_PREFIX + digest(evidence),
+            "schema_version": 1,
+            "sha": PROVIDER_STALL_MAIN_SHA,
+        }
+        try:
+            stop_the_line._validate_summary(summary)
+        except stop_the_line.HealthError as exc:
+            raise BrokerError(f"provider-stall retained evidence is invalid: {exc}") from exc
+        return summary
+
+    def execute(self, *, interval_seconds: int) -> dict[str, Any]:
+        summary = self.observe(interval_seconds=interval_seconds)
+        updated = self.state_branch.append(
+            expected_generation=PROVIDER_STALL_STATE_GENERATION,
+            scope="main",
+            summary=summary,
+        )
+        if (
+            updated.get("generation") != PROVIDER_STALL_STATE_GENERATION + 1
+            or updated.get("status") != "red"
+            or updated.get("first_bad_sha") != PROVIDER_STALL_MAIN_SHA
+            or not isinstance(updated.get("incident_digest"), str)
+            or updated.get("last_good_sha") != "5d6df8e6db0054d990623d042143e75e6b91ebce"
+        ):
+            raise BrokerError("provider-stall state append did not create the exact red incident")
+        return {"state": updated, "summary": summary}
 
 
 class HealthReconciler:
@@ -7501,8 +7855,17 @@ class Broker:
             state_branch=state_branch,
             token=token,
         )
-        reconciler.reconcile_main(provider_now)
-        reconciler.reconcile_deep(self.api.provider_now(token))
+        main_before_health = _main_ref(self.api, config=self.config, token=token)
+        provider_stall_repair = False
+        if main_before_health == PROVIDER_STALL_MAIN_SHA:
+            provider_stall_repair = _provider_stall_owner_repair_boundary(
+                main_sha=main_before_health,
+                repository=self.config.repository,
+                state=state_branch.read(),
+            )
+        if not provider_stall_repair:
+            reconciler.reconcile_main(provider_now)
+            reconciler.reconcile_deep(self.api.provider_now(token))
         self._reconcile_repair(
             settings_token=settings_token,
             state_branch=state_branch,
@@ -7546,7 +7909,13 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("once", "recover-publish-quarantine", "run", "validate-config"),
+        choices=(
+            "once",
+            "recover-provider-stall",
+            "recover-publish-quarantine",
+            "run",
+            "validate-config",
+        ),
     )
     parser.add_argument("--config", type=Path, required=True)
     mode = parser.add_mutually_exclusive_group()
@@ -7563,6 +7932,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-sha256")
     parser.add_argument("--wheel-sha256")
     parser.add_argument("--sdist-sha256")
+    parser.add_argument("--pull-request", type=int)
+    parser.add_argument("--source-sha")
+    parser.add_argument("--source-tree")
+    parser.add_argument("--observation-interval-seconds", type=int)
     return parser
 
 
@@ -7627,6 +8000,81 @@ def main() -> int:
         api = GitHubApi()
         authenticator = AppAuthenticator(api, config)
         settings_authenticator = AppAuthenticator(api, config, purpose="settings")
+        if args.command == "recover-provider-stall":
+            if args.dry_run == args.execute:
+                raise BrokerError(
+                    "provider-stall recovery requires exactly one of --dry-run or --execute"
+                )
+            if (
+                args.pull_request is None
+                or args.source_sha is None
+                or args.source_tree is None
+                or args.observation_interval_seconds is None
+            ):
+                raise BrokerError("provider-stall recovery invocation is missing a frozen identity")
+            installation = authenticator.mint()
+            token = installation.token
+            provider_now = api.provider_now(token)
+            validate_clock(
+                local_now=datetime.now(UTC),
+                provider_now=provider_now,
+                max_clock_skew_seconds=config.max_clock_skew_seconds,
+            )
+            settings_installation = settings_authenticator.mint()
+            settings_token = settings_installation.token
+            settings_now = api.provider_now(settings_token)
+            validate_clock(
+                local_now=datetime.now(UTC),
+                provider_now=settings_now,
+                max_clock_skew_seconds=config.max_clock_skew_seconds,
+            )
+            if installation.expires_at - provider_now < timedelta(
+                minutes=10
+            ) or settings_installation.expires_at - settings_now < timedelta(minutes=10):
+                raise BrokerError("provider-stall recovery token lifetime is unexpectedly short")
+            candidate = validate_provider_stall_bootstrap_candidate(
+                api=api,
+                config=config,
+                expected_source_sha=args.source_sha,
+                expected_source_tree=args.source_tree,
+                pull_request=args.pull_request,
+                settings_token=settings_token,
+                source_root=Path(__file__).resolve().parents[1],
+                token=token,
+            )
+            recovery = ProviderStallRecovery(
+                api=api,
+                config=config,
+                sleep=time.sleep,
+                state_branch=StateBranch(
+                    api=api,
+                    config=config,
+                    sleep=time.sleep,
+                    token=token,
+                ),
+                token=token,
+            )
+            try:
+                if args.dry_run:
+                    result: dict[str, Any] = {
+                        "candidate": candidate,
+                        "mode": "dry-run",
+                        "mutations": 0,
+                        "summary": recovery.observe(
+                            interval_seconds=args.observation_interval_seconds
+                        ),
+                    }
+                else:
+                    result = {
+                        "candidate": candidate,
+                        "mode": "execute",
+                        "mutations": 1,
+                        **recovery.execute(interval_seconds=args.observation_interval_seconds),
+                    }
+                print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+                return 0
+            finally:
+                os.close(lock_descriptor)
         if args.command == "recover-publish-quarantine":
             if args.dry_run == args.execute:
                 raise BrokerError(

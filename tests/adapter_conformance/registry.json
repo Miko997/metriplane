@@ -59,8 +59,7 @@
       "module_name": "maniskill_pickcube",
       "cli_name": "maniskill-pickcube",
       "python_versions": [
-        "3.12",
-        "3.13"
+        "3.12"
       ],
       "full_suite_python_versions": [
         "3.12"
@@ -94,6 +93,7 @@
       },
       "known_gaps": [
         "Frozen source conversion is evidenced only on CPython 3.12, Linux x86_64.",
+        "The locked ManiSkill 3.0.1 Linux dependency chain requires mplib 0.1.1, which has no CPython 3.13 distribution; the adapter package therefore supports CPython 3.12 only.",
         "The external ZIP/HDF5 source is reference-only and unavailable to the always-on gate.",
         "Published proof bytes predate the current Ruff rendering; format migration is verified only in an ephemeral copy so the frozen identity remains unchanged.",
         "No package-local static type-check command is defined."

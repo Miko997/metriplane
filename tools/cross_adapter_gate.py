@@ -290,6 +290,11 @@ def _manual_registry_shape(registry: Mapping[str, Any]) -> None:
     known_variant_ids = {item["variant_id"] for item in variants}
     fixture_ids = {item["fixture_id"] for item in variants}
     for adapter in adapters:
+        if not set(adapter["source_conversion_python_versions"]) <= set(adapter["python_versions"]):
+            raise GateError(
+                f"source-conversion Python versions exceed package coverage for "
+                f"{adapter['component_id']}"
+            )
         if not set(adapter["portable_fixture_variants"]) <= known_variant_ids:
             raise GateError(f"{adapter['component_id']} references an unknown portable variant")
         expected = adapter["expected_results"]
@@ -552,7 +557,8 @@ def discover_repository(repo: Path | str, registry: Mapping[str, Any]) -> dict[s
             raise GateError(f"package licence drift for {component['component_id']}")
         if requires_python != ">=3.12,<3.14":
             raise GateError(
-                f"Python support drift for {component['component_id']}: {requires_python}"
+                f"Python metadata compatibility drift for "
+                f"{component['component_id']}: {requires_python}"
             )
         module_root = package / "src" / component["module_name"]
         if not module_root.is_dir():
