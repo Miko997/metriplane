@@ -59,6 +59,46 @@ protected state branch. The former direct owner-emergency CLI and human ruleset
 bypass remain retired; only the App-broker transaction can consume an active
 manifest.
 
+### Incident-only provider-stall recovery
+
+One exact 2026-09-13 provider divergence is authorized as a single-use
+bootstrap transition. Protected main
+`3fd763816c9493475083adcd1299d2eed0daa0b2` left four original push runs
+permanently `queued`, with null conclusions, zero jobs, and unchanged provider
+timestamps, while the latest protected state remained green at generation 68
+and LKG `5d6df8e6db0054d990623d042143e75e6b91ebce`. The normal reconciler must
+continue to reject active CI generally. It does not infer a terminal result or
+silently age arbitrary pending work into failure.
+
+The separately invoked incident-only recovery command is hard-bound to state
+commit `6e25a9a9cdc13f36f743a10b9c5d3a4306c124c4`, generation 68, the exact main
+SHA, and the four original run IDs 34749333980, 34749334015, 34749334201, and
+34749334271. It requires two complete live provider readbacks separated by the
+configured bounded interval, a provider-clock age of at least one hour, exact
+push/main/SHA/workflow/attempt identities, original timestamps, and zero jobs.
+Any missing, extra, substituted, newer, completed, changed, malformed, or
+ambiguous provider fact rejects the transition.
+
+The retained failure result embeds both read times and all four original run
+records. Only the broker App can append it through the normal expected-generation
+CAS path. A successful append opens one ordinary red incident and consumes the
+bootstrap permanently because the authorized state commit and generation no
+longer match. It cannot merge or update main, write green/LKG state, alter a
+provider result, change settings, or authorize any other incident. The existing
+owner-emergency repair and resolution contract governs everything after red
+state exists.
+
+At the resulting exact repair boundary only—state commit
+`7855be7d0de1f7f873fd3a8d392e95e540ca158d`, generation 69, red status,
+incident digest
+`c19598c316f5096e0e7f04de16706007ac9333ff35a75b71edc34419ea0df0df`,
+the same unchanged protected main, and the same stale LKG—the broker does not
+re-observe the already retained stalled main/deep provider set before evaluating
+the existing owner-emergency repair admission. This is not a green result or a
+second bootstrap. Any repository, main, state commit, generation, status,
+incident, first-bad, or LKG change disables the exception and restores ordinary
+fail-closed health reconciliation immediately.
+
 ## Admission
 
 The repository has exactly seven active governed rulesets:
