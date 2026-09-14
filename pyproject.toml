@@ -57,7 +57,7 @@ dev = [
   "pytest==8.4.2",
   "ruff==0.16.2",
   "setuptools==82.0.1",
-  "twine==6.2.0",
+  "twine==7.0.0",
   "types-PyYAML==6.0.12.20260724",
 ]
 
