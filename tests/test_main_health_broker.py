@@ -3898,6 +3898,333 @@ class FakeStateBranch:
         return dict(self.state)
 
 
+class ProviderStallState:
+    def __init__(self) -> None:
+        self.state = {
+            "first_bad_sha": None,
+            "generation": broker.PROVIDER_STALL_STATE_GENERATION,
+            "incident_digest": None,
+            "last_good_sha": "5d6df8e6db0054d990623d042143e75e6b91ebce",
+            "state_commit": broker.PROVIDER_STALL_STATE_COMMIT,
+            "status": "green",
+        }
+        self.appends: list[dict[str, Any]] = []
+
+    def read(self) -> dict[str, Any]:
+        return copy.deepcopy(self.state)
+
+    def append(
+        self, *, expected_generation: int, scope: str, summary: dict[str, Any]
+    ) -> dict[str, Any]:
+        if expected_generation != self.state["generation"]:
+            raise broker.BrokerError("CAS conflict")
+        assert scope == "main"
+        self.appends.append(copy.deepcopy(summary))
+        self.state.update(
+            {
+                "first_bad_sha": broker.PROVIDER_STALL_MAIN_SHA,
+                "generation": broker.PROVIDER_STALL_STATE_GENERATION + 1,
+                "incident_digest": "1" * 64,
+                "state_commit": "2" * 40,
+                "status": "red",
+            }
+        )
+        return self.read()
+
+
+def _provider_stall_red_state() -> dict[str, Any]:
+    return {
+        "first_bad_sha": broker.PROVIDER_STALL_MAIN_SHA,
+        "generation": broker.PROVIDER_STALL_RED_STATE_GENERATION,
+        "incident_digest": broker.PROVIDER_STALL_INCIDENT_DIGEST,
+        "last_good_sha": broker.PROVIDER_STALL_STALE_LKG_SHA,
+        "state_commit": broker.PROVIDER_STALL_RED_STATE_COMMIT,
+        "status": "red",
+    }
+
+
+def test_provider_stall_owner_repair_boundary_is_exact() -> None:
+    assert broker._provider_stall_owner_repair_boundary(
+        main_sha=broker.PROVIDER_STALL_MAIN_SHA,
+        repository=broker.stop_the_line.PROVIDER_STALL_REPOSITORY,
+        state=_provider_stall_red_state(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("state_commit", "0" * 40),
+        ("generation", broker.PROVIDER_STALL_RED_STATE_GENERATION + 1),
+        ("status", "green"),
+        ("first_bad_sha", "0" * 40),
+        ("last_good_sha", "0" * 40),
+        ("incident_digest", "0" * 64),
+    ],
+)
+def test_provider_stall_owner_repair_boundary_rejects_state_drift(
+    field: str, value: object
+) -> None:
+    state = _provider_stall_red_state()
+    state[field] = value
+    assert not broker._provider_stall_owner_repair_boundary(
+        main_sha=broker.PROVIDER_STALL_MAIN_SHA,
+        repository=broker.stop_the_line.PROVIDER_STALL_REPOSITORY,
+        state=state,
+    )
+
+
+def test_provider_stall_owner_repair_boundary_rejects_main_or_repository_drift() -> None:
+    state = _provider_stall_red_state()
+    assert not broker._provider_stall_owner_repair_boundary(
+        main_sha="0" * 40,
+        repository=broker.stop_the_line.PROVIDER_STALL_REPOSITORY,
+        state=state,
+    )
+    assert not broker._provider_stall_owner_repair_boundary(
+        main_sha=broker.PROVIDER_STALL_MAIN_SHA,
+        repository="Miko997/not-metriplane",
+        state=state,
+    )
+
+
+class ProviderStallApi(broker.GitHubApi):
+    def __init__(self) -> None:
+        super().__init__()
+        self.main_sha = broker.PROVIDER_STALL_MAIN_SHA
+        self.run_list_reads = 0
+        self.mutation: str | None = None
+        self.jobs: dict[int, list[dict[str, Any]]] = {}
+        self.provider_times = iter(
+            [
+                datetime(2026, 9, 13, 15, 0, tzinfo=UTC),
+                datetime(2026, 9, 13, 15, 1, tzinfo=UTC),
+            ]
+        )
+
+    @staticmethod
+    def _runs() -> list[dict[str, Any]]:
+        return [
+            {
+                "conclusion": None,
+                "created_at": timestamp,
+                "event": "push",
+                "head_branch": "main",
+                "head_sha": broker.PROVIDER_STALL_MAIN_SHA,
+                "id": run_id,
+                "name": workflow,
+                "run_attempt": 1,
+                "run_started_at": timestamp,
+                "status": "queued",
+                "updated_at": timestamp,
+            }
+            for _key, workflow, run_id, timestamp in broker.PROVIDER_STALL_EXPECTED_RUNS
+        ]
+
+    def provider_now(self, token: str) -> datetime:
+        assert token == "token"
+        return next(self.provider_times)
+
+    def request(
+        self,
+        path: str,
+        *,
+        token: str,
+        method: str = "GET",
+        payload: dict[str, Any] | None = None,
+        expected: tuple[int, ...] = (200,),
+    ) -> broker.ApiResult:
+        assert token == "token"
+        assert path.endswith("/git/ref/heads/main")
+        return broker.ApiResult(
+            {},
+            200,
+            {"object": {"sha": self.main_sha, "type": "commit"}, "ref": "refs/heads/main"},
+        )
+
+    def list_items(self, path: str, *, key: str, token: str) -> list[dict[str, Any]]:
+        assert token == "token"
+        if self.mutation == "outage":
+            raise broker.ProviderTransportError("provider unavailable")
+        if key == "jobs":
+            run_id = int(path.split("/runs/", 1)[1].split("/", 1)[0])
+            return copy.deepcopy(self.jobs.get(run_id, []))
+        assert key == "workflow_runs"
+        self.run_list_reads += 1
+        runs = self._runs()
+        mutation = self.mutation
+        if mutation == "missing":
+            runs.pop()
+        elif mutation == "extra":
+            runs.append({**runs[0], "id": 99999999})
+        elif mutation == "wrong-run-id":
+            runs[0]["id"] = 99999999
+        elif mutation == "wrong-workflow":
+            runs[0]["name"] = "Substituted workflow"
+        elif mutation == "newer-attempt":
+            runs[0]["run_attempt"] = 2
+        elif mutation == "completed-newer":
+            runs[0].update({"conclusion": "success", "id": 99999999, "status": "completed"})
+        elif mutation == "wrong-event":
+            runs[0]["event"] = "workflow_dispatch"
+        elif mutation == "wrong-ref":
+            runs[0]["head_branch"] = "release"
+        elif mutation == "malformed":
+            runs[0]["run_attempt"] = "1"
+        elif mutation == "changed-timestamp" and self.run_list_reads == 2:
+            runs[0]["updated_at"] = "2026-09-13T15:00:00Z"
+        return runs
+
+
+def _provider_stall_recovery(
+    *, api: ProviderStallApi | None = None, state: ProviderStallState | None = None
+) -> tuple[broker.ProviderStallRecovery, ProviderStallApi, ProviderStallState]:
+    provider = api or ProviderStallApi()
+    protected_state = state or ProviderStallState()
+    recovery = broker.ProviderStallRecovery(
+        api=provider,
+        config=_config(Path("/tmp/provider-stall-test")),
+        sleep=lambda _seconds: None,
+        state_branch=protected_state,  # type: ignore[arg-type]
+        token="token",
+    )
+    return recovery, provider, protected_state
+
+
+def test_provider_stall_observation_retains_exact_live_evidence() -> None:
+    recovery, _api, state = _provider_stall_recovery()
+
+    summary = recovery.observe(interval_seconds=60)
+
+    assert summary["run_id"] == broker.PROVIDER_STALL_RESULT_PREFIX + broker.digest(
+        summary["provider_stall"]
+    )
+    assert [row["run_id"] for row in summary["provider_stall"]["runs"]] == [
+        34749333980,
+        34749334015,
+        34749334201,
+        34749334271,
+    ]
+    assert state.appends == []
+    assert {
+        "docs/maintainers/testing-policy.md",
+        "docs/requirements/requirements.json",
+        "docs/status/capability-test-ledger.json",
+        "docs/status/functional-inventory.json",
+        "docs/status/public-surface-inventory.md",
+        "tests/test_toolchain_policy.py",
+    } <= broker.PROVIDER_STALL_ALLOWED_PATHS
+
+
+def test_provider_stall_execute_appends_exactly_one_red_incident() -> None:
+    recovery, _api, state = _provider_stall_recovery()
+
+    result = recovery.execute(interval_seconds=60)
+
+    assert result["state"]["status"] == "red"
+    assert result["state"]["generation"] == 69
+    assert len(state.appends) == 1
+    with pytest.raises(broker.BrokerError, match="authority is consumed"):
+        recovery.execute(interval_seconds=60)
+    assert len(state.appends) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "extra",
+        "wrong-run-id",
+        "wrong-workflow",
+        "newer-attempt",
+        "completed-newer",
+        "wrong-event",
+        "wrong-ref",
+        "malformed",
+        "changed-timestamp",
+        "outage",
+    ],
+)
+def test_provider_stall_rejects_changed_partial_or_ambiguous_evidence(mutation: str) -> None:
+    api = ProviderStallApi()
+    api.mutation = mutation
+    recovery, _api, state = _provider_stall_recovery(api=api)
+
+    with pytest.raises(broker.BrokerError):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+
+def test_provider_stall_rejects_nonzero_jobs() -> None:
+    api = ProviderStallApi()
+    api.jobs[34749334271] = [{"id": 1}]
+    recovery, _api, state = _provider_stall_recovery(api=api)
+
+    with pytest.raises(broker.BrokerError, match="evidence changed"):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+
+def test_provider_stall_rejects_wrong_main_and_state_boundaries() -> None:
+    api = ProviderStallApi()
+    api.main_sha = "f" * 40
+    recovery, _api, state = _provider_stall_recovery(api=api)
+    with pytest.raises(broker.BrokerError, match="main SHA changed"):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+    state.state["generation"] = 67
+    api.main_sha = broker.PROVIDER_STALL_MAIN_SHA
+    recovery, _api, state = _provider_stall_recovery(api=ProviderStallApi(), state=state)
+    with pytest.raises(broker.BrokerError, match="state-boundary changed"):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+    state.state["generation"] = broker.PROVIDER_STALL_STATE_GENERATION
+    state.state["state_commit"] = "f" * 40
+    recovery, _api, state = _provider_stall_recovery(api=ProviderStallApi(), state=state)
+    with pytest.raises(broker.BrokerError, match="state-boundary changed"):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+
+def test_provider_stall_rejects_too_young_or_too_close_observations() -> None:
+    api = ProviderStallApi()
+    api.provider_times = iter(
+        [
+            datetime(2026, 9, 13, 9, 30, tzinfo=UTC),
+            datetime(2026, 9, 13, 9, 31, tzinfo=UTC),
+        ]
+    )
+    recovery, _api, state = _provider_stall_recovery(api=api)
+    with pytest.raises(broker.BrokerError, match="younger"):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+    api = ProviderStallApi()
+    api.provider_times = iter(
+        [
+            datetime(2026, 9, 13, 15, 0, tzinfo=UTC),
+            datetime(2026, 9, 13, 15, 0, 59, tzinfo=UTC),
+        ]
+    )
+    recovery, _api, state = _provider_stall_recovery(api=api)
+    with pytest.raises(broker.BrokerError, match="interval is too short"):
+        recovery.observe(interval_seconds=60)
+    assert state.appends == []
+
+
+def test_provider_stall_propagates_state_cas_conflict_without_retry() -> None:
+    class ConflictingState(ProviderStallState):
+        def append(self, **_kwargs: Any) -> dict[str, Any]:
+            raise broker.BrokerError("CAS conflict")
+
+    recovery, _api, state = _provider_stall_recovery(state=ConflictingState())
+    with pytest.raises(broker.BrokerError, match="CAS conflict"):
+        recovery.execute(interval_seconds=60)
+    assert state.appends == []
+
+
 def test_protected_state_rejects_duplicate_aggregate_identity(tmp_path: Path) -> None:
     results = tmp_path / "results"
     results.mkdir()
@@ -6710,6 +7037,23 @@ def test_run_once_never_processes_a_pull_while_publication_is_fenced(
             assert token == "token"
             return now
 
+        def request(
+            self,
+            path: str,
+            *,
+            token: str,
+            method: str = "GET",
+            payload: dict[str, Any] | None = None,
+            expected: tuple[int, ...] = (200,),
+        ) -> broker.ApiResult:
+            assert token == "token" and method == "GET" and payload is None
+            assert expected == (200,) and path.endswith("/git/ref/heads/main")
+            return broker.ApiResult(
+                {},
+                200,
+                {"object": {"sha": BASE_SHA, "type": "commit"}, "ref": "refs/heads/main"},
+            )
+
     class Checks:
         def __init__(self, **_values: Any) -> None:
             return None
@@ -6730,6 +7074,16 @@ def test_run_once_never_processes_a_pull_while_publication_is_fenced(
     class State:
         def __init__(self, **_values: Any) -> None:
             return None
+
+        def read(self) -> dict[str, Any]:
+            return {
+                "first_bad_sha": None,
+                "generation": 5,
+                "incident_digest": None,
+                "last_good_sha": BASE_SHA,
+                "state_commit": "f" * 40,
+                "status": "green",
+            }
 
     class Health:
         def __init__(self, **_values: Any) -> None:
@@ -6769,6 +7123,112 @@ def test_run_once_never_processes_a_pull_while_publication_is_fenced(
 
     assert service.run_once() == []
     assert events == ["lease-fenced", "lease-fenced"]
+
+
+def test_run_once_reaches_repair_admission_at_exact_provider_stall_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    events: list[str] = []
+
+    class Authenticator:
+        def mint(self) -> broker.InstallationToken:
+            return broker.InstallationToken(
+                expires_at=now + timedelta(hours=1),
+                installation_id=1,
+                token="token",
+            )
+
+    class Api(broker.GitHubApi):
+        def provider_now(self, token: str) -> datetime:
+            assert token == "token"
+            return now
+
+        def request(
+            self,
+            path: str,
+            *,
+            token: str,
+            method: str = "GET",
+            payload: dict[str, Any] | None = None,
+            expected: tuple[int, ...] = (200,),
+        ) -> broker.ApiResult:
+            assert token == "token" and method == "GET" and payload is None
+            assert expected == (200,) and path.endswith("/git/ref/heads/main")
+            return broker.ApiResult(
+                {},
+                200,
+                {
+                    "object": {"sha": broker.PROVIDER_STALL_MAIN_SHA, "type": "commit"},
+                    "ref": "refs/heads/main",
+                },
+            )
+
+    class Checks:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def ensure_failed(self, *, head_sha: str, reason: str) -> int:
+            assert head_sha == HEAD_SHA and reason
+            return 1
+
+    class Leases:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def reconcile(self, *, provider_now: datetime, settings_token: str) -> bool:
+            assert provider_now == now and settings_token == "token"
+            return False
+
+    class State:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def read(self) -> dict[str, Any]:
+            return _provider_stall_red_state()
+
+    class Health:
+        def __init__(self, **_values: Any) -> None:
+            return None
+
+        def reconcile_main(self, _provider_now: datetime) -> None:
+            pytest.fail("stalled main was re-observed before repair admission")
+
+        def reconcile_deep(self, _provider_now: datetime) -> None:
+            pytest.fail("deep health was re-observed before repair admission")
+
+    service = broker.Broker(
+        api=Api(),
+        authenticator=Authenticator(),  # type: ignore[arg-type]
+        config=_config(tmp_path),
+        settings_authenticator=Authenticator(),  # type: ignore[arg-type]
+        spool=broker.DurableSpool(tmp_path / "spool"),
+    )
+    monkeypatch.setattr(service, "_reconcile_orphans", lambda _token: [])
+    monkeypatch.setattr(
+        service,
+        "_reconcile_repair",
+        lambda **_values: events.append("repair-reconciliation") or {},
+    )
+    monkeypatch.setattr(
+        service,
+        "_process_pull",
+        lambda **_values: events.append("repair-admission") or None,
+    )
+    monkeypatch.setattr(
+        broker,
+        "_provider_list",
+        lambda *_args, **_kwargs: [{"head": {"sha": HEAD_SHA}, "number": 132}],
+    )
+    monkeypatch.setattr(broker, "CheckController", Checks)
+    monkeypatch.setattr(broker, "PublishLeaseController", Leases)
+    monkeypatch.setattr(broker, "StateBranch", State)
+    monkeypatch.setattr(broker, "HealthReconciler", Health)
+    monkeypatch.setattr(broker, "_rulesets", lambda *_args, **_kwargs: _rulesets(_config(tmp_path)))
+    monkeypatch.setattr(broker, "validate_hosted_rulesets", lambda **_values: {})
+
+    assert service.run_once() == []
+    assert events == ["repair-reconciliation", "repair-admission"]
 
 
 def _expired_owner_review(selected: dict[str, Any]) -> dict[str, Any]:
